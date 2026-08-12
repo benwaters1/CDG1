@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ vehicle['name'] }} — Transfers{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ vehicle['name'] }} — Transfers</h1>
+  <a href="{{ url_for('management_vehicles') }}" class="small-link" style="color:var(--steel);">← Vehicles</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Guest pickups and drop-offs logged against this vehicle.</p>
+
+{% if not transfers %}
+  <div class="empty-state">No transfers logged yet.</div>
+{% else %}
+  <div class="mini-list" style="margin-bottom:22px;">
+    {% for t in transfers %}
+    <div class="mini-row">
+      <span class="mini-name">{{ t['guest_name'] or 'Guest' }} — {{ t['direction'] }}</span>
+      <span class="mini-role">{{ local_datetime_str(t['scheduled_at']) }}{% if t['driver_name'] %} · {{ t['driver_name'] }}{% endif %}</span>
+      {% if t['notes'] %}<span class="upload-hint">{{ t['notes'] }}</span>{% endif %}
+      <form method="post" action="{{ url_for('delete_vehicle_transfer', transfer_id=t['id']) }}" onsubmit="return confirm('Remove this transfer?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px;">
+  <h3>Log a transfer</h3>
+  <form method="post" action="{{ url_for('new_vehicle_transfer', vehicle_id=vehicle['id']) }}" class="upload-form">
+    <input type="text" name="guest_name" placeholder="Guest name">
+    <select name="direction" required>
+      <option value="">Pickup or drop-off?</option>
+      <option value="pickup">Pickup</option>
+      <option value="dropoff">Drop-off</option>
+    </select>
+    <label class="field-label">Scheduled time</label>
+    <input type="datetime-local" name="scheduled_at" required>
+    <select name="driver_user_id">
+      <option value="">Driver (optional)</option>
+      {% for d in drivers %}
+      <option value="{{ d['id'] }}">{{ d['name'] }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Log transfer</button>
+  </form>
+</div>
+
+{% endblock %}

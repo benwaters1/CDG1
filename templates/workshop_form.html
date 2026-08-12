@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{% if workshop %}Edit workshop{% else %}Add workshop{% endif %}{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{% if workshop %}Edit {{ workshop['title'] }}{% else %}Add Workshop{% endif %}</h1>
+  <form method="post">
+    <label class="field-label">Title</label>
+    <input type="text" name="title" required value="{{ workshop['title'] if workshop else '' }}">
+
+    <label class="field-label">Description (shown to guests)</label>
+    <textarea name="description" placeholder="What this workshop covers, what to bring, who it's for">{{ workshop['description'] if workshop else '' }}</textarea>
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Instructor name</label>
+        <input type="text" name="instructor_name" value="{{ workshop['instructor_name'] if workshop else '' }}">
+      </div>
+      <div>
+        <label class="field-label">Instructor (if staff)</label>
+        <select name="instructor_user_id">
+          <option value="">— not on staff —</option>
+          {% for i in instructors %}
+          <option value="{{ i['id'] }}" {{ 'selected' if workshop and workshop['instructor_user_id'] == i['id'] }}>{{ i['name'] }}{{ ' (owner)' if i['role'] == 'owner' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Price per person (€)</label>
+        <input type="number" name="price_per_person" step="0.01" min="0" value="{{ workshop['price_per_person'] if workshop else '' }}">
+      </div>
+      <div>
+        <label class="field-label">Default capacity</label>
+        <input type="number" name="default_capacity" min="1" value="{{ workshop['default_capacity'] if workshop else 10 }}">
+      </div>
+    </div>
+    <p class="upload-hint">Default capacity pre-fills new sessions — each session can still set its own.</p>
+
+    <label class="field-label" style="margin-top:16px;">What's included (shown to guests)</label>
+    <textarea name="inclusions" placeholder="e.g. Accommodation, all meals and château beverages, and all workshop activities as per the itinerary. Excludes transport and travel insurance.">{{ workshop['inclusions'] if workshop else '' }}</textarea>
+
+    <label class="field-label">Deposit required at booking (%)</label>
+    <input type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">
+    <p class="upload-hint">The rest is due as a balance 30 days before the session starts (or in full, if booked within 30 days).</p>
+
+    {% if workshop %}
+    <label class="field-label" style="margin-top:16px;">
+      <input type="checkbox" name="active" {{ 'checked' if workshop['active'] }} style="width:auto; display:inline; margin-right:6px;">
+      Open for registration
+    </label>
+    {% endif %}
+
+    <button type="submit" class="btn-primary">{% if workshop %}Save changes{% else %}Add workshop{% endif %}</button>
+  </form>
+</div>
+
+{% endblock %}

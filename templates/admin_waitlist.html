@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Waitlist{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Waitlist</h1>
+  <a href="{{ url_for('export_waitlist_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Guests who wanted dates with nothing available — reach out if a cancellation frees them up.</p>
+
+{% if not entries %}
+  <div class="empty-state">Nobody on the waitlist right now.</div>
+{% else %}
+  {% for e in entries %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ e['name'] }}</strong>
+        <span class="mini-status status-{{ 'onshift' if e['status'] == 'booked' else ('inactive' if e['status'] == 'closed' else ('pending' if e['status'] == 'open' else 'current')) }}" style="margin-left:8px;">{{ e['status'] }}</span>
+      </div>
+    </div>
+    <p class="upload-hint">
+      {{ e['desired_arrival'] or '?' }} → {{ e['desired_departure'] or '?' }}
+      {% if e['party_size'] %} · Party of {{ e['party_size'] }}{% endif %}
+    </p>
+    <p class="upload-hint">
+      <a href="mailto:{{ e['email'] }}" style="color:var(--steel);">{{ e['email'] }}</a>
+      {% if e['phone'] %} · <a href="tel:{{ e['phone'] }}" style="color:var(--steel);">{{ e['phone'] }}</a>{% endif %}
+    </p>
+    {% if e['notes'] %}<p class="manual-body">{{ e['notes'] }}</p>{% endif %}
+    <p class="upload-hint">Joined {{ e['created_at'][:10] }}</p>
+    <div class="expense-actions">
+      {% if e['status'] in ('open', 'contacted') and e['desired_arrival'] and e['desired_departure'] %}
+      <a href="{{ url_for('book_rooms', arrival=e['desired_arrival'], departure=e['desired_departure'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; book</a>
+      {% endif %}
+      <form method="post" action="{{ url_for('update_waitlist_status', entry_id=e['id']) }}">
+        <select name="status" onchange="this.form.submit()">
+          {% for s in ['open','contacted','booked','closed'] %}
+          <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

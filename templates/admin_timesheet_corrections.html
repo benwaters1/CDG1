@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Timesheet Corrections{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Timesheet Corrections</h1>
+  <a href="{{ url_for('admin_timesheets') }}" class="small-link" style="color:var(--steel);">← Timesheets</a>
+</div>
+
+{% if not corrections %}
+  <div class="empty-state">No corrections requested.</div>
+{% else %}
+  {% for c in corrections %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ c['employee_name'] }}</strong>
+        <span class="mini-status status-{{ 'onshift' if c['status'] == 'resolved' else ('inactive' if c['status'] == 'dismissed' else 'pending') }}" style="margin-left:8px;">{{ c['status'] }}</span>
+        {% if c['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:4px;">auto-closed</span>{% endif %}
+      </div>
+    </div>
+    <p class="manual-body">{{ c['note'] }}</p>
+    <p class="upload-hint">
+      Current: {{ local_datetime_str(c['clock_in_at']) }} →
+      {% if c['clock_out_at'] %}{{ local_time_str(c['clock_out_at']) }}{% else %}still clocked in{% endif %}
+      · Flagged {{ c['created_at'][:10] }}
+    </p>
+    {% if c['status'] == 'pending' %}
+    <form method="post" action="{{ url_for('resolve_timesheet_correction', correction_id=c['id']) }}" class="upload-form">
+      <div>
+        <label class="field-label">Corrected clock in (optional)</label>
+        <input type="time" name="clock_in_time">
+      </div>
+      <div>
+        <label class="field-label">Corrected clock out (optional)</label>
+        <input type="time" name="clock_out_time">
+      </div>
+      <button type="submit" class="btn-mini">Apply & resolve</button>
+    </form>
+    <form method="post" action="{{ url_for('dismiss_timesheet_correction', correction_id=c['id']) }}" style="margin-top:8px;">
+      <button type="submit" class="btn-text-danger">Dismiss</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

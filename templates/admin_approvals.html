@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Approvals{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Approvals</h1>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <span class="upload-hint">{{ queue|length }} waiting on you</span>
+    {% if queue %}
+    <button type="submit" form="bulk-approve-form" class="btn-mini" onclick="return confirm('Approve everything checked?');">Approve selected (<span id="selected-count">0</span>)</button>
+    {% endif %}
+  </div>
+</div>
+<form id="bulk-approve-form" method="post" action="{{ url_for('bulk_approve_queue') }}"></form>
+
+{% if not queue %}
+  <div class="empty-state">Nothing waiting — leave requests and expense claims will show up here as they come in.</div>
+{% else %}
+  {% for item in queue %}
+  {% set r = item['row'] %}
+  <div class="expense-card">
+    {% if item['kind'] == 'leave' %}
+    <div class="expense-head">
+      <div>
+        <input type="checkbox" name="items" value="leave:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;">
+        <span class="mini-status status-pending" style="margin-right:8px;">Time off</span>
+        <strong>{{ r['employee_name'] }}</strong> — {{ r['start_date'] }} → {{ r['end_date'] }}
+      </div>
+    </div>
+    {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
+    <p class="upload-hint">Requested {{ r['requested_at'][:10] }} · <a href="{{ url_for('admin_leave') }}" style="color:inherit;">full time off list</a></p>
+    <div class="expense-actions">
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+    </div>
+    {% else %}
+    <div class="expense-head">
+      <div>
+        <input type="checkbox" name="items" value="expense:{{ r['id'] }}" form="bulk-approve-form" class="bulk-check" style="margin-right:8px;">
+        <span class="mini-status status-pending" style="margin-right:8px;">{{ 'Invoice' if r['kind'] == 'supplier_invoice' else 'Expense claim' }}</span>
+        <strong>{{ r['vendor_name'] or r['submitter_name'] or 'Former employee' }}</strong> — €{{ '%.2f'|format(r['amount']) }}
+      </div>
+    </div>
+    <p class="manual-body">{{ r['description'] }}</p>
+    <p class="upload-hint">Submitted {{ r['submitted_at'][:10] }} · <a href="{{ url_for('expenses') }}" style="color:inherit;">full expenses list</a></p>
+    <div class="expense-actions">
+      {% if r['filename'] %}
+      {% if is_viewable(r['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=r['id']) }}', '{{ (r['vendor_name'] or r['submitter_name'] or '')|e }}')">View</button>{% endif %}
+      <a href="{{ url_for('download_expense_file', expense_id=r['id']) }}" class="small-link" style="color:var(--steel);">Download</a>
+      {% endif %}
+      <form method="post" action="{{ url_for('decide_expense', expense_id=r['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=r['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+<script>
+document.querySelectorAll('.bulk-check').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var n = document.querySelectorAll('.bulk-check:checked').length;
+    var el = document.getElementById('selected-count');
+    if (el) el.textContent = n;
+  });
+});
+</script>
+
+{% endblock %}

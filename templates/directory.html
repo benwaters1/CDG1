@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Team{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Team</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('export_team_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('export_pay_history_csv') }}" class="btn-mini">Pay History (CSV)</a>
+    <a href="{{ url_for('admin_shifts') }}" class="btn-mini">Shifts</a>
+    <a href="{{ url_for('admin_timesheets') }}" class="btn-mini">Timesheets</a>
+    <a href="{{ url_for('new_employee') }}" class="btn-primary" style="margin-top:0;">+ Add employee</a>
+  </div>
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="">All</option>
+      <option value="active" {{ 'selected' if status_filter == 'active' }}>Active</option>
+      <option value="inactive" {{ 'selected' if status_filter == 'inactive' }}>Inactive</option>
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Search</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="Name or role">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if status_filter or q %}<a href="{{ url_for('directory') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+{% if not employees %}
+  <div class="empty-state">{% if status_filter or q %}No employees match those filters.{% else %}No employees added yet. Click "Add employee" to get started.{% endif %}</div>
+{% else %}
+  <div class="card-grid profile-grid">
+    {% for person in employees %}
+    <div class="profile-card {{ 'inactive' if person['status']=='inactive' }}">
+      <a href="{{ url_for('profile', user_id=person['id']) }}" style="display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-decoration:none; color:inherit; width:100%;">
+        <div class="profile-avatar">{{ person['name'][:2]|upper }}</div>
+        <div class="profile-card-name">{{ person['name'] }}</div>
+        <div class="profile-card-role">{{ person['job_role'] or 'No role set' }}</div>
+        {% if person['id'] in on_shift_ids %}<div class="profile-card-status status-onshift">on shift</div>{% endif %}
+        <div class="profile-card-status status-{{ person['status'] }}">{{ person['status'] }}</div>
+        {% if not person['account_claimed'] %}<div class="profile-card-status" style="background:var(--gold-soft);color:var(--chestnut-deep);">invite pending</div>{% endif %}
+      </a>
+      <form method="post" action="{{ url_for('toggle_employee_status', user_id=person['id']) }}" style="margin-top:10px; width:100%;">
+        <button type="submit" class="btn-mini" style="width:100%;">{{ 'Mark inactive' if person['status']=='active' else 'Mark active' }}</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

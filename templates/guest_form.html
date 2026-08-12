@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{% if guest %}Edit guest{% else %}Add guest{% endif %}{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{% if guest %}Edit {{ guest['name'] }}{% else %}Add Guest{% endif %}</h1>
+  <form method="post">
+    <label class="field-label">Guest name</label>
+    <input type="text" name="name" required value="{{ guest['name'] if guest else '' }}">
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Arrival date</label>
+        <input type="date" name="arrival_date" value="{{ guest['arrival_date'] if guest else '' }}">
+      </div>
+      <div>
+        <label class="field-label">Departure date</label>
+        <input type="date" name="departure_date" value="{{ guest['departure_date'] if guest else '' }}">
+      </div>
+    </div>
+
+    <label class="field-label">Party size</label>
+    <input type="number" name="party_size" min="1" value="{{ guest['party_size'] if guest else '' }}">
+
+    <label class="field-label">Notes for staff</label>
+    <textarea name="notes" placeholder="Dietary notes, room assignment, arrival time, preferences...">{{ guest['notes'] if guest else '' }}</textarea>
+
+    <button type="submit" class="btn-primary">{% if guest %}Save changes{% else %}Add guest{% endif %}</button>
+  </form>
+
+  {% if guest %}
+  <form method="post" action="{{ url_for('delete_guest', guest_id=guest['id']) }}" onsubmit="return confirm('Remove {{ guest['name'] }} from the guest list?');" class="danger-zone">
+    <button type="submit" class="btn-text-danger">Remove this guest</button>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}

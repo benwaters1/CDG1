@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Vendors{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Vendors</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_vendors_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Supplier reference — contact info and payment terms, so it's not buried in old invoice emails. For everyday emergency contacts (plumber, electrician), see <a href="{{ url_for('contacts') }}" style="color:inherit;">Contacts</a>.</p>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Search</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="Name or contact person">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if q %}<a href="{{ url_for('vendors') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+{% if not vendors %}
+  <div class="empty-state">{% if q %}No vendors match that search.{% else %}No vendors added yet.{% endif %}</div>
+{% else %}
+  <div class="doc-list" style="max-width:680px;">
+    {% for v in vendors %}
+    <div class="doc-row" id="view-vendor-{{ v['id'] }}" style="align-items:flex-start; flex-direction:column; gap:2px; padding:10px 12px;">
+      <div style="display:flex; align-items:center; width:100%; gap:8px;">
+        <strong style="flex:1;">{{ v['name'] }}{% if v['contact_person'] %} <span class="upload-hint">— {{ v['contact_person'] }}</span>{% endif %}</strong>
+        {% if spend_by_vendor.get(v['name']) %}<span class="mini-status status-pending">€{{ '%.0f'|format(spend_by_vendor[v['name']]) }} lifetime</span>{% endif %}
+        <a href="{{ url_for('submit_expense', vendor=v['name']) }}" class="small-link" style="color:var(--steel);">Log expense</a>
+        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVendorEdit({{ v['id'] }})">Edit</span>
+        <form method="post" action="{{ url_for('delete_vendor', vendor_id=v['id']) }}" onsubmit="return confirm('Remove this vendor?');">
+          <button type="submit" class="doc-delete">×</button>
+        </form>
+      </div>
+      {% if v['phone'] %}<a href="tel:{{ v['phone'] }}" style="color:var(--steel); font-weight:600;">{{ v['phone'] }}</a>{% endif %}
+      {% if v['email'] %}<a href="mailto:{{ v['email'] }}" style="color:var(--steel);">{{ v['email'] }}</a>{% endif %}
+      {% if v['payment_terms'] %}<span class="upload-hint">Terms: {{ v['payment_terms'] }}</span>{% endif %}
+      {% if v['notes'] %}<span class="upload-hint">{{ v['notes'] }}</span>{% endif %}
+    </div>
+    <form method="post" action="{{ url_for('edit_vendor', vendor_id=v['id']) }}" id="edit-vendor-{{ v['id'] }}" class="upload-form" style="display:none;">
+      <input type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
+      <input type="text" name="contact_person" value="{{ v['contact_person'] or '' }}" placeholder="Contact person">
+      <input type="text" name="phone" value="{{ v['phone'] or '' }}" placeholder="Phone">
+      <input type="email" name="email" value="{{ v['email'] or '' }}" placeholder="Email">
+      <input type="text" name="payment_terms" value="{{ v['payment_terms'] or '' }}" placeholder="Payment terms (e.g. Net 30)">
+      <input type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px;">
+  <h3>Add a vendor</h3>
+  <form method="post" action="{{ url_for('new_vendor') }}" class="upload-form">
+    <input type="text" name="name" placeholder="Name" required>
+    <input type="text" name="contact_person" placeholder="Contact person">
+    <input type="text" name="phone" placeholder="Phone">
+    <input type="email" name="email" placeholder="Email">
+    <input type="text" name="payment_terms" placeholder="Payment terms (e.g. Net 30)">
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Add vendor</button>
+  </form>
+</div>
+
+<script>
+function toggleVendorEdit(id) {
+  var view = document.getElementById('view-vendor-' + id);
+  var edit = document.getElementById('edit-vendor-' + id);
+  var showEdit = edit.style.display === 'none';
+  edit.style.display = showEdit ? 'block' : 'none';
+  view.style.display = showEdit ? 'none' : 'flex';
+}
+</script>
+
+{% endblock %}

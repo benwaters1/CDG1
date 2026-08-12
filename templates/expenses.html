@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Expenses & Invoices{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Expenses &amp; Invoices</h1>
+  <a href="{{ url_for('export_expenses_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+
+<div class="detail-card">
+  <h3>Supplier invoice link</h3>
+  <p class="pay-disclaimer" style="margin-top:0;">Share this link with suppliers so they can submit invoices directly — no login needed. Nothing is final until you approve it below.</p>
+  <p class="share-link-box">{{ supplier_upload_url }}</p>
+  <form method="post" action="{{ url_for('regenerate_supplier_link') }}" style="margin-top:10px;" onsubmit="return confirm('Generate a new link? The old one will stop working.');">
+    <button type="submit" class="btn-mini">Generate a new link</button>
+  </form>
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="">All</option>
+      {% for s in ['pending','approved','rejected','paid'] %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Search</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="Vendor, submitter, or description">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if status_filter or q %}<a href="{{ url_for('expenses') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+<h2 class="section-heading">Supplier Invoices</h2>
+{% if not invoices %}
+  <div class="empty-state">{% if status_filter or q %}No supplier invoices match those filters.{% else %}No supplier invoices submitted yet.{% endif %}</div>
+{% else %}
+  {% for inv in invoices %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ inv['vendor_name'] }}</strong> — €{{ '%.2f'|format(inv['amount']) }}
+        <span class="mini-status status-{{ inv['status'] }}" style="margin-left:8px;">{{ inv['status'] }}</span>
+        {% if inv['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
+      </div>
+    </div>
+    <p class="manual-body">{{ inv['description'] }}</p>
+    <p class="upload-hint">Submitted {{ inv['submitted_at'][:10] }}{% if inv['decided_at'] %} · Decided {{ inv['decided_at'][:10] }}{% endif %}</p>
+    {% if inv['owner_note'] %}<p class="upload-hint">Note: {{ inv['owner_note'] }}</p>{% endif %}
+    <div class="expense-actions">
+      {% if inv['filename'] %}
+      {% if is_viewable(inv['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=inv['id']) }}', '{{ inv['vendor_name']|e }}')">View</button>{% endif %}
+      <a href="{{ url_for('download_expense_file', expense_id=inv['id']) }}" class="small-link" style="color:var(--steel);">Download file</a>
+      {% endif %}
+      {% if inv['status'] == 'pending' %}
+      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+      {% elif inv['status'] == 'approved' %}
+      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark paid</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=inv['id']) }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if inv['restaurant_related'] else 'Mark' }} restaurant</button></form>
+      <form method="post" action="{{ url_for('delete_expense', expense_id=inv['id']) }}" onsubmit="return confirm('Remove this invoice record?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+<h2 class="section-heading">Staff Expense Claims</h2>
+{% if not claims %}
+  <div class="empty-state">{% if status_filter or q %}No expense claims match those filters.{% else %}No expense claims submitted yet.{% endif %}</div>
+{% else %}
+  {% for c in claims %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ c['submitter_name'] or 'Former employee' }}</strong>{% if c['vendor_name'] %} — {{ c['vendor_name'] }}{% endif %} — €{{ '%.2f'|format(c['amount']) }}
+        <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>
+        {% if c['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
+      </div>
+    </div>
+    <p class="manual-body">{{ c['description'] }}</p>
+    <p class="upload-hint">Submitted {{ c['submitted_at'][:10] }}{% if c['decided_at'] %} · Decided {{ c['decided_at'][:10] }}{% endif %}</p>
+    {% if c['owner_note'] %}<p class="upload-hint">Note: {{ c['owner_note'] }}</p>{% endif %}
+    <div class="expense-actions">
+      {% if c['filename'] %}
+      {% if is_viewable(c['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=c['id']) }}', '{{ (c['vendor_name'] or c['submitter_name'] or '')|e }}')">View</button>{% endif %}
+      <a href="{{ url_for('download_expense_file', expense_id=c['id']) }}" class="small-link" style="color:var(--steel);">Download receipt</a>
+      {% endif %}
+      {% if c['status'] == 'pending' %}
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+      {% elif c['status'] == 'approved' %}
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark reimbursed</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=c['id']) }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if c['restaurant_related'] else 'Mark' }} restaurant</button></form>
+      <form method="post" action="{{ url_for('delete_expense', expense_id=c['id']) }}" onsubmit="return confirm('Remove this expense record?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

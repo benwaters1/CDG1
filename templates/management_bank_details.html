@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Bank Details{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Bank Details</h1>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← Management</a>
+</div>
+
+{% if entries is none %}
+
+  <div class="detail-card" style="max-width:640px;">
+    <h3>Bank details need the vault key set up first</h3>
+    <p class="manual-body">
+      Account numbers and IBANs are encrypted the same way as Vault passwords — hidden until you
+      click Reveal, unreadable from the raw database file alone. Set the
+      <code>VAULT_ENCRYPTION_KEY</code> environment variable to turn this on. See DEPLOY.md.
+    </p>
+  </div>
+
+{% else %}
+
+  <p class="pay-disclaimer" style="margin-top:-10px;">
+    Account number, IBAN, and SWIFT/BIC stay hidden until you click Reveal — the same protection as the Vault.
+  </p>
+
+  {% if not entries %}
+    <div class="empty-state">Nothing saved yet.</div>
+  {% else %}
+    {% for e in entries %}
+    <div class="expense-card" data-entry-id="{{ e['id'] }}">
+      <div class="expense-head">
+        <div>
+          <strong>{{ e['label'] }}</strong>{% if e['bank_name'] %} — {{ e['bank_name'] }}{% endif %}
+        </div>
+      </div>
+      {% if e['account_holder'] %}<p class="upload-hint">Account holder: {{ e['account_holder'] }}{% if e['currency'] %} ({{ e['currency'] }}){% endif %}</p>{% endif %}
+      <p class="share-link-box bank-secret">Account: •••••••• &nbsp;·&nbsp; IBAN: •••••••• &nbsp;·&nbsp; SWIFT: ••••••••</p>
+      {% if e['notes'] %}<p class="upload-hint">{{ e['notes'] }}</p>{% endif %}
+      <div class="expense-actions">
+        <button type="button" class="btn-mini" data-revealed="0" onclick="bankReveal({{ e['id'] }}, this)">Reveal</button>
+        <button type="button" class="btn-mini" onclick="bankToggleEdit({{ e['id'] }})">Edit</button>
+        <form method="post" action="{{ url_for('delete_bank_details', entry_id=e['id']) }}" onsubmit="return confirm('Delete these bank details? This cannot be undone.');">
+          <button type="submit" class="btn-text-danger">Remove</button>
+        </form>
+      </div>
+      <div id="bank-edit-{{ e['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
+        <form method="post" action="{{ url_for('edit_bank_details', entry_id=e['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+          <input type="text" name="label" value="{{ e['label'] }}" placeholder="Label (e.g. Main operating account)" required>
+          <input type="text" name="bank_name" value="{{ e['bank_name'] or '' }}" placeholder="Bank name">
+          <input type="text" name="account_holder" value="{{ e['account_holder'] or '' }}" placeholder="Account holder">
+          <input type="text" name="currency" value="{{ e['currency'] or '' }}" placeholder="Currency (e.g. EUR)">
+          <input type="text" name="account_number" placeholder="New account number — leave blank to keep current">
+          <input type="text" name="iban" placeholder="New IBAN — leave blank to keep current">
+          <input type="text" name="swift_bic" placeholder="New SWIFT/BIC — leave blank to keep current">
+          <textarea name="notes" rows="2" placeholder="Notes">{{ e['notes'] or '' }}</textarea>
+          <button type="submit" class="btn-mini" style="align-self:flex-start;">Save changes</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="detail-card" style="max-width:640px;">
+    <h3>Add bank details</h3>
+    <form method="post" action="{{ url_for('new_bank_details') }}" class="upload-form">
+      <input type="text" name="label" placeholder="Label (e.g. Main operating account)" required>
+      <input type="text" name="bank_name" placeholder="Bank name">
+      <input type="text" name="account_holder" placeholder="Account holder">
+      <input type="text" name="currency" placeholder="Currency (e.g. EUR)">
+      <input type="text" name="account_number" placeholder="Account number">
+      <input type="text" name="iban" placeholder="IBAN">
+      <input type="text" name="swift_bic" placeholder="SWIFT/BIC">
+      <textarea name="notes" rows="2" placeholder="Notes (optional)"></textarea>
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+  </div>
+
+  <script>
+  function bankReveal(id, btn) {
+    var row = btn.closest('.expense-card');
+    var span = row.querySelector('.bank-secret');
+    if (btn.dataset.revealed === '1') {
+      span.textContent = 'Account: •••••••• · IBAN: •••••••• · SWIFT: ••••••••';
+      btn.textContent = 'Reveal';
+      btn.dataset.revealed = '0';
+      return;
+    }
+    fetch('/management/bank-details/' + id + '/reveal', { method: 'POST' })
+      .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function(data) {
+        span.textContent = 'Account: ' + (data.account_number || '(none)') +
+          ' · IBAN: ' + (data.iban || '(none)') +
+          ' · SWIFT: ' + (data.swift_bic || '(none)');
+        btn.textContent = 'Hide';
+        btn.dataset.revealed = '1';
+      })
+      .catch(function() { alert('Could not reveal those details — check your connection and try again.'); });
+  }
+  function bankToggleEdit(id) {
+    var el = document.getElementById('bank-edit-' + id);
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+  }
+  </script>
+
+{% endif %}
+
+{% endblock %}

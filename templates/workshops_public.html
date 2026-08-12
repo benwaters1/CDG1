@@ -1,0 +1,32 @@
+{% extends "public_base.html" %}
+{% block title %}Workshops{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Workshops &amp; Retreats</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;"><a href="{{ url_for('workshop_find') }}" style="color:var(--steel);">Already registered? Manage your registration</a></p>
+
+{% if not workshops %}
+  <div class="empty-state">No workshops are open for registration right now.</div>
+{% else %}
+  {% for w in workshops %}
+  <div class="room-card">
+    <div class="room-card-head">
+      <h3><a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" style="color:inherit; text-decoration:none;">{{ w['title'] }}</a></h3>
+      {% if w['price_per_person'] %}<span class="room-price">€{{ '%.0f'|format(w['price_per_person']) }} / person</span>{% endif %}
+    </div>
+    {% if w['instructor_name'] %}<p class="room-meta">With {{ w['instructor_name'] }}</p>{% endif %}
+    {% if w['description'] %}<p class="manual-body">{{ w['description'][:220] }}{% if w['description']|length > 220 %}…{% endif %}</p>{% endif %}
+    {% set rows = sessions_by_workshop.get(w['id'], []) %}
+    {% if not rows %}
+      <p class="upload-hint">No upcoming sessions scheduled.</p>
+    {% else %}
+      <p class="upload-hint">Next: {{ rows[0].session['start_date'] }}{% if rows[0].session['end_date'] != rows[0].session['start_date'] %} → {{ rows[0].session['end_date'] }}{% endif %} · {{ rows[0].remaining }} spot{{ '' if rows[0].remaining == 1 else 's' }} left{% if rows|length > 1 %} · {{ rows|length - 1 }} more date{{ '' if rows|length == 2 else 's' }}{% endif %}</p>
+    {% endif %}
+    <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="btn-primary" style="margin-top:10px; display:inline-block;">View dates &amp; register</a>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

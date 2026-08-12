@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Update Contact Info{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Update Contact Info</h1>
+  <p class="pay-disclaimer" style="margin-top:-6px;">For anything else on your profile — role, pay, skills — ask the owner.</p>
+  <form method="post">
+    <label class="field-label">Phone</label>
+    <input type="tel" name="phone" value="{{ person['phone'] or '' }}">
+
+    <label class="field-label" style="margin-top:16px;">Emergency contact</label>
+    <div class="field-row-2">
+      <div>
+        <input type="text" name="emergency_contact_name" placeholder="Name" value="{{ person['emergency_contact_name'] or '' }}">
+      </div>
+      <div>
+        <input type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ person['emergency_contact_relationship'] or '' }}">
+      </div>
+    </div>
+    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ person['emergency_contact_phone'] or '' }}" style="margin-top:8px;">
+
+    <button type="submit" class="btn-primary">Save</button>
+  </form>
+</div>
+
+{% endblock %}

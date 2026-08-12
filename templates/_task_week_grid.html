@@ -1,0 +1,24 @@
+<div class="week-grid">
+  {% for day in sheet.week_days %}
+  <div class="week-day-col" data-date="{{ day.date.isoformat() }}" ondragover="event.preventDefault()" ondrop="dropTask(event, '{{ day.date.isoformat() }}')">
+    <div class="week-day-head {{ 'week-day-today' if day.date == today }}">{{ day.date.strftime('%a') }} {{ day.date.day }}</div>
+    {% for t in day.tasks %}
+    <div class="task-card {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and day.date < today }}" draggable="true" ondragstart="dragTask(event, {{ t['id'] }})" data-task-id="{{ t['id'] }}">
+      <div class="task-card-head">
+        <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+        <button type="button" class="task-check" onclick="event.stopPropagation(); toggleTask({{ t['id'] }}, this);">{{ '✓' if t['status'] == 'done' }}</button>
+        <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" style="margin-left:auto;" title="Duplicate to next week">
+          <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:12px;">↻</button>
+        </form>
+        <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+          <button type="submit" class="doc-delete">×</button>
+        </form>
+      </div>
+      <div class="task-card-title">{{ t['title'] }}{% if t['repeat_weekly'] %} <span title="Repeats weekly">↻</span>{% endif %}</div>
+      <div class="task-card-meta">{{ t['employee_name'] or 'Unassigned' }}{% if t['room_note'] %} · {{ t['room_note'] }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+<p class="upload-hint" style="margin-top:10px;">Drag a task card to a different day to reschedule it.</p>

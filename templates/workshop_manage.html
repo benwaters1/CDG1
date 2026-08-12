@@ -1,0 +1,74 @@
+{% extends "public_base.html" %}
+{% block title %}My Registration{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{{ booking['title'] }}</h1>
+  <p class="manual-body">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
+
+  <div class="detail-card">
+    <div class="detail-grid">
+      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
+      <div><span class="detail-label">Dates</span>{{ booking['start_date'] }}{% if booking['end_date'] != booking['start_date'] %} → {{ booking['end_date'] }}{% endif %}</div>
+      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
+      {% if booking['total_price'] %}<div><span class="detail-label">Estimated total</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
+      <div><span class="detail-label">Room arrangement</span>{{ booking['occupancy_type']|capitalize }}</div>
+      {% if booking['assigned_room_name'] %}<div><span class="detail-label">Your room</span>{{ booking['assigned_room_name'] }}</div>{% endif %}
+    </div>
+    {% if guests and guests|length > 1 %}
+    <div class="notes-block">
+      <span class="detail-label">Party</span>
+      <p>{% for g in guests %}{{ g['guest_name'] }}{{ ' (you)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
+    </div>
+    {% endif %}
+    {% if booking['requested_roommate'] %}
+    <div class="notes-block"><span class="detail-label">Requested roommate</span><p>{{ booking['requested_roommate'] }}</p></div>
+    {% endif %}
+    {% if booking['dietary_notes'] %}
+    <div class="notes-block"><span class="detail-label">Dietary notes</span><p>{{ booking['dietary_notes'] }}</p></div>
+    {% endif %}
+    {% if booking['medical_notes'] %}
+    <div class="notes-block"><span class="detail-label">Medical notes</span><p>{{ booking['medical_notes'] }}</p></div>
+    {% endif %}
+    {% if booking['special_occasion'] %}
+    <div class="notes-block"><span class="detail-label">Special occasion</span><p>{{ booking['special_occasion'] }}</p></div>
+    {% endif %}
+    {% if booking['notes'] %}
+    <div class="notes-block">
+      <span class="detail-label">Your notes</span>
+      <p>{{ booking['notes'] }}</p>
+    </div>
+    {% endif %}
+    {% if custom_fields %}
+    {% for f in custom_fields %}
+    {% if custom_responses.get(f['id']) %}
+    <div class="notes-block"><span class="detail-label">{{ f['label'] }}</span><p>{{ custom_responses[f['id']] }}</p></div>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+  </div>
+
+  {% if booking['status'] not in ('declined', 'cancelled') and total_charged %}
+  <div class="detail-card" style="margin-top:14px;">
+    <div class="detail-grid">
+      <div><span class="detail-label">Total charged</span>€{{ '%.2f'|format(total_charged) }}</div>
+      <div><span class="detail-label">Paid</span>€{{ '%.2f'|format(total_paid) }}</div>
+      <div><span class="detail-label">Balance due</span>€{{ '%.2f'|format(balance_due) }}</div>
+    </div>
+    {% if stripe_enabled and booking['deposit_amount'] and not booking['deposit_paid_at'] %}
+    <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:12px;">Pay deposit — €{{ '%.2f'|format(booking['deposit_amount']) }}</a>
+    {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}
+    <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:12px;">Pay balance — €{{ '%.2f'|format(balance_due) }}</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if booking['status'] in ('pending', 'confirmed') %}
+  <form method="post" onsubmit="return confirm('Cancel this registration? This cannot be undone.');" style="margin-top:16px;">
+    <input type="hidden" name="action" value="cancel">
+    <button type="submit" class="btn-text-danger">Cancel this registration</button>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}

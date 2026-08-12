@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Workshops{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Workshops</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('admin_workshop_registrations') }}" class="btn-mini">Registrations</a>
+    <a href="{{ url_for('admin_workshop_waitlist') }}" class="btn-mini">Waitlist</a>
+    <a href="{{ url_for('workshops_public') }}" class="btn-mini">View public page</a>
+    <a href="{{ url_for('new_workshop') }}" class="btn-primary" style="margin-top:0;">+ Add workshop</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">A workshop is the program (title, instructor, price); sessions are the specific dates it actually runs. Add a workshop, then schedule sessions under it.</p>
+
+{% if not workshops %}
+  <div class="empty-state">No workshops yet. Add one to start scheduling sessions.</div>
+{% else %}
+  {% for w in workshops %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ w['title'] }}</strong>
+        {% if w['price_per_person'] %} — €{{ '%.0f'|format(w['price_per_person']) }}/person{% endif %}
+        {% if w['instructor_name'] or w['instructor_user_id'] %} · {{ w['instructor_name'] or 'instructor on staff' }}{% endif %}
+        <span class="mini-status {{ 'status-active' if w['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for registration' if w['active'] else 'hidden' }}</span>
+      </div>
+      <a href="{{ url_for('edit_workshop', workshop_id=w['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+    </div>
+    {% if w['description'] %}<p class="manual-body">{{ w['description'] }}</p>{% endif %}
+
+    <p class="field-label" style="margin-top:14px;">Upcoming sessions</p>
+    {% set rows = sessions_by_workshop.get(w['id'], []) %}
+    {% if not rows %}
+      <p class="empty-inline">No sessions scheduled.</p>
+    {% else %}
+      <div class="doc-list">
+        {% for row in rows %}
+        {% set s = row.session %}
+        <div class="doc-row">
+          <span style="flex:1;">
+            {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+            · {{ row.remaining }}/{{ s['capacity'] }} spots left
+            {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}
+            {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
+            · <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">{{ row.rooms_assigned }}/{{ total_rooms }} rooms assigned — see rooms</a>
+          </span>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+          <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('new_workshop_session', workshop_id=w['id']) }}" class="upload-form">
+      <div class="field-row-2">
+        <div>
+          <label class="field-label">Start date</label>
+          <input type="date" name="start_date" required>
+        </div>
+        <div>
+          <label class="field-label">End date (leave blank for a single day)</label>
+          <input type="date" name="end_date">
+        </div>
+      </div>
+      <div class="field-row-2">
+        <input type="number" name="capacity" min="1" placeholder="Capacity ({{ w['default_capacity'] }} default)">
+        <input type="text" name="notes" placeholder="Notes (optional)">
+      </div>
+      <button type="submit" class="btn-mini">+ Add session</button>
+    </form>
+
+    <p class="field-label" style="margin-top:14px;">Custom registration questions</p>
+    {% set fields = custom_fields_by_workshop.get(w['id'], []) %}
+    {% if not fields %}
+      <p class="empty-inline">No extra questions — the standard registration fields are used as-is.</p>
+    {% else %}
+      <div class="doc-list">
+        {% for f in fields %}
+        <div class="doc-row">
+          <span style="flex:1;">{{ f['label'] }} <span class="upload-hint">({{ f['field_type'] }}{% if f['required'] %} · required{% endif %}{% if f['options'] %} · {{ f['options'] }}{% endif %})</span></span>
+          <form method="post" action="{{ url_for('delete_workshop_custom_field', field_id=f['id']) }}" onsubmit="return confirm('Remove this question?');" style="display:inline;">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('new_workshop_custom_field', workshop_id=w['id']) }}" class="upload-form">
+      <div class="field-row-2">
+        <input type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
+        <select name="field_type">
+          <option value="text">Short text</option>
+          <option value="textarea">Long text</option>
+          <option value="select">Choice (comma-separated options)</option>
+          <option value="checkbox">Yes/No</option>
+        </select>
+      </div>
+      <div class="field-row-2">
+        <input type="text" name="options" placeholder="Options, comma-separated (only for Choice)">
+        <label class="field-label" style="flex-direction:row; align-items:center; gap:6px;">
+          <input type="checkbox" name="required" style="width:auto;"> Required
+        </label>
+      </div>
+      <button type="submit" class="btn-mini">+ Add question</button>
+    </form>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

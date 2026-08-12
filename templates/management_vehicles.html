@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Vehicles{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Vehicles</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_vehicles_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Everything on wheels — cleanliness, fuel, maintenance, who has it out, insurance, running costs, and guest transfers.</p>
+
+{% if not vehicles %}
+  <div class="empty-state">No vehicles added yet.</div>
+{% else %}
+  <div class="card-grid" style="grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));">
+    {% for v in vehicles %}
+    {% set usage = current_usage.get(v['id']) %}
+    {% set items = maintenance_by_vehicle.get(v['id'], []) %}
+    {% set policies = insurance_by_vehicle.get(v['id'], []) %}
+    {% set transfers = recent_transfers.get(v['id'], []) %}
+    <div class="detail-card" id="view-vehicle-{{ v['id'] }}">
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+        <div>
+          <h3 style="margin-bottom:2px;">{{ v['name'] }}</h3>
+          <span class="upload-hint">{{ v['vehicle_type'] or 'Vehicle' }}{% if v['license_plate'] %} · {{ v['license_plate'] }}{% endif %}</span>
+        </div>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVehicleEdit({{ v['id'] }})">Edit</span>
+          <form method="post" action="{{ url_for('delete_vehicle', vehicle_id=v['id']) }}" onsubmit="return confirm('Remove this vehicle? This also removes its maintenance, usage, and transfer history.');">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin:10px 0;">
+        <form method="post" action="{{ url_for('toggle_vehicle_cleanliness', vehicle_id=v['id']) }}">
+          <button type="submit" class="mini-status status-{{ 'inactive' if v['cleanliness'] == 'dirty' else 'active' }}" style="border:none; cursor:pointer;">
+            {{ 'Dirty' if v['cleanliness'] == 'dirty' else 'Clean' }} — tap to mark {{ 'clean' if v['cleanliness'] == 'dirty' else 'dirty' }}
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('toggle_vehicle_fuel', vehicle_id=v['id']) }}">
+          <button type="submit" class="mini-status status-{{ 'inactive' if v['fuel_level'] == 'low' else 'active' }}" style="border:none; cursor:pointer;">
+            {{ 'Low fuel' if v['fuel_level'] == 'low' else 'Fuel OK' }}{% if v['fuel_type'] %} — {{ v['fuel_type'] }}{% endif %} — tap to mark {{ 'ok' if v['fuel_level'] == 'low' else 'low' }}
+          </button>
+        </form>
+      </div>
+
+      <div class="upload-hint" style="margin-bottom:10px;">
+        {% if v['next_service_due'] %}Next service due {{ v['next_service_due'] }}{% else %}No service date on file{% endif %}
+        {% if spend_by_vehicle.get(v['id']) %} · €{{ '%.0f'|format(spend_by_vehicle[v['id']]) }} lifetime spend{% endif %}
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:14px;">
+        <form method="post" action="{{ url_for('log_vehicle_service', vehicle_id=v['id']) }}"><button type="submit" class="btn-mini">Log service (+6mo)</button></form>
+        <a href="{{ url_for('submit_expense', vehicle_id=v['id']) }}" class="small-link" style="color:var(--steel); align-self:center;">Log expense</a>
+      </div>
+
+      <div style="border-top:1px solid var(--parchment-line); padding-top:10px; margin-bottom:10px;">
+        <div class="detail-label">Who has it</div>
+        {% if usage %}
+          <div class="mini-row" style="padding:6px 0;">
+            <span class="mini-name">{{ usage['user_name'] or 'Unknown' }}{% if usage['purpose'] %} — {{ usage['purpose'] }}{% endif %}</span>
+            <span class="upload-hint">out since {{ local_datetime_str(usage['checked_out_at']) }}</span>
+            <form method="post" action="{{ url_for('checkin_vehicle', vehicle_id=v['id']) }}"><button type="submit" class="btn-mini">Check in</button></form>
+          </div>
+        {% else %}
+          <form method="post" action="{{ url_for('checkout_vehicle', vehicle_id=v['id']) }}" class="upload-form" style="margin-top:6px;">
+            <select name="user_id" required>
+              <option value="">Who's taking it?</option>
+              {% for d in drivers %}
+              <option value="{{ d['id'] }}">{{ d['name'] }}</option>
+              {% endfor %}
+            </select>
+            <input type="text" name="purpose" placeholder="Purpose (optional)">
+            <button type="submit" class="btn-mini">Check out</button>
+          </form>
+        {% endif %}
+      </div>
+
+      <div style="border-top:1px solid var(--parchment-line); padding-top:10px; margin-bottom:10px;">
+        <div class="detail-label">Maintenance{% if items %} ({{ items|length }} open){% endif %}</div>
+        {% for item in items %}
+        <div class="mini-row" style="padding:4px 0;">
+          <span class="mini-name">{{ item['title'] }}</span>
+          <span class="upload-hint">{{ item['reported_by_name'] or 'Owner' }} · {{ item['created_at'][:10] }}</span>
+          <form method="post" action="{{ url_for('resolve_vehicle_maintenance', item_id=item['id']) }}"><button type="submit" class="btn-mini">Resolve</button></form>
+          <form method="post" action="{{ url_for('delete_vehicle_maintenance', item_id=item['id']) }}" onsubmit="return confirm('Remove this item?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+        </div>
+        {% endfor %}
+        <form method="post" action="{{ url_for('new_vehicle_maintenance', vehicle_id=v['id']) }}" class="upload-form" style="margin-top:6px;">
+          <input type="text" name="title" placeholder="e.g. Brake pads worn" required>
+          <button type="submit" class="btn-mini">Report</button>
+        </form>
+      </div>
+
+      <div style="border-top:1px solid var(--parchment-line); padding-top:10px; margin-bottom:10px;">
+        <div class="detail-label">Insurance</div>
+        {% for p in policies %}
+        <div class="mini-row" style="padding:4px 0;">
+          <span class="mini-name">{{ p['provider'] }}</span>
+          <span class="upload-hint">{% if p['expiry_date'] %}Expires {{ p['expiry_date'] }}{% else %}No expiry set{% endif %}</span>
+          <form method="post" action="{{ url_for('renew_insurance_policy', policy_id=p['id']) }}"><button type="submit" class="btn-mini">Renew</button></form>
+        </div>
+        {% endfor %}
+        <form method="post" action="{{ url_for('new_insurance_policy') }}" class="upload-form" style="margin-top:6px;">
+          <input type="hidden" name="vehicle_id" value="{{ v['id'] }}">
+          <input type="text" name="provider" placeholder="Insurer" required>
+          <input type="date" name="expiry_date">
+          <button type="submit" class="btn-mini">Add policy</button>
+        </form>
+      </div>
+
+      <div style="border-top:1px solid var(--parchment-line); padding-top:10px;">
+        <div class="detail-label">Transfers</div>
+        {% for t in transfers[:3] %}
+        <div class="mini-row" style="padding:4px 0;">
+          <span class="mini-name">{{ t['guest_name'] or 'Guest' }} — {{ t['direction'] }}</span>
+          <span class="upload-hint">{{ local_datetime_str(t['scheduled_at']) }}{% if t['driver_name'] %} · {{ t['driver_name'] }}{% endif %}</span>
+        </div>
+        {% endfor %}
+        {% if not transfers %}<div class="upload-hint">No transfers logged yet.</div>{% endif %}
+        <a href="{{ url_for('vehicle_transfers_page', vehicle_id=v['id']) }}" class="small-link" style="color:var(--steel); display:inline-block; margin-top:6px;">View / log transfers →</a>
+      </div>
+
+      {% if v['notes'] %}<div class="upload-hint" style="margin-top:10px;">{{ v['notes'] }}</div>{% endif %}
+    </div>
+
+    <form method="post" action="{{ url_for('edit_vehicle', vehicle_id=v['id']) }}" id="edit-vehicle-{{ v['id'] }}" class="upload-form detail-card" style="display:none;">
+      <input type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
+      <input type="text" name="vehicle_type" value="{{ v['vehicle_type'] or '' }}" placeholder="Type (e.g. Car, Van, Golf cart)">
+      <input type="text" name="fuel_type" value="{{ v['fuel_type'] or '' }}" placeholder="Fuel type (e.g. Petrol, Diesel, Electric)">
+      <input type="text" name="license_plate" value="{{ v['license_plate'] or '' }}" placeholder="License plate">
+      <label class="field-label">Next service due</label>
+      <input type="date" name="next_service_due" value="{{ v['next_service_due'] or '' }}">
+      <input type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
+      <button type="submit" class="btn-mini">Save</button>
+      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVehicleEdit({{ v['id'] }})">Cancel</span>
+    </form>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px; margin-top:20px;">
+  <h3>Add a vehicle</h3>
+  <form method="post" action="{{ url_for('new_vehicle') }}" class="upload-form">
+    <input type="text" name="name" placeholder="Name (e.g. Porsche Cayenne)" required>
+    <input type="text" name="vehicle_type" placeholder="Type (e.g. Car, Van, Golf cart)">
+    <input type="text" name="fuel_type" placeholder="Fuel type (e.g. Petrol, Diesel, Electric)">
+    <input type="text" name="license_plate" placeholder="License plate">
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Add vehicle</button>
+  </form>
+</div>
+
+<script>
+function toggleVehicleEdit(id) {
+  var view = document.getElementById('view-vehicle-' + id);
+  var edit = document.getElementById('edit-vehicle-' + id);
+  var showEdit = edit.style.display === 'none';
+  edit.style.display = showEdit ? 'block' : 'none';
+  view.style.display = showEdit ? 'none' : 'block';
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Booking Requests{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booking Requests</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    {% if counts.pending %}
+    <button type="button" class="btn-mini" onclick="submitBulkBookings('{{ url_for('bulk_confirm_bookings') }}', 'Confirm everything checked?')">Confirm selected (<span id="selected-count">0</span>)</button>
+    <button type="button" class="btn-mini btn-mini-danger" onclick="submitBulkBookings('{{ url_for('bulk_decline_bookings') }}', 'Decline everything checked?')">Decline selected</button>
+    {% endif %}
+    <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Calendar</a>
+    <a href="{{ url_for('admin_rooms') }}" class="btn-mini">Manage rooms</a>
+    <a href="{{ url_for('admin_extras') }}" class="btn-mini">Manage extras</a>
+    <a href="{{ url_for('admin_terms') }}" class="btn-mini">Terms &amp; Conditions</a>
+    <a href="{{ url_for('export_bookings_csv') }}" class="btn-mini">Export CSV</a>
+  </div>
+</div>
+<form id="bulk-bookings-form" method="post"></form>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.total_rooms }}</span><span class="stat-tile-label">Rooms</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.pending }}</span><span class="stat-tile-label">Pending</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('bookings', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.confirmed }}</span><span class="stat-tile-label">Confirmed</span></span>
+  </div>
+</div>
+
+{% if arriving_today or departing_today or arriving_this_week %}
+<div class="detail-card">
+  <h3>Today &amp; this week</h3>
+  <div class="detail-grid">
+    <div>
+      <span class="detail-label">Arriving today ({{ arriving_today|length }})</span>
+      {% if arriving_today %}{% for b in arriving_today %}{{ b['guest_name'] }} — {{ b['room_name'] }}<br>{% endfor %}{% else %}—{% endif %}
+    </div>
+    <div>
+      <span class="detail-label">Departing today ({{ departing_today|length }})</span>
+      {% if departing_today %}{% for b in departing_today %}{{ b['guest_name'] }} — {{ b['room_name'] }}<br>{% endfor %}{% else %}—{% endif %}
+    </div>
+    <div>
+      <span class="detail-label">Arriving this week ({{ arriving_this_week|length }})</span>
+      {% if arriving_this_week %}{% for b in arriving_this_week %}{{ b['guest_name'] }} — {{ b['arrival_date'] }}<br>{% endfor %}{% else %}—{% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="">All</option>
+      {% for s in ['pending','confirmed','declined','cancelled'] %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Room</label>
+    <select name="room_id">
+      <option value="">All</option>
+      {% for r in rooms %}
+      <option value="{{ r['id'] }}" {{ 'selected' if room_filter == r['id']|string }}>{{ r['name'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Search</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="Name, email, or reference code">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if status_filter or room_filter or q %}<a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+{% if not bookings %}
+  <div class="empty-state">{% if status_filter or room_filter or q %}No bookings match those filters.{% else %}No booking requests yet.{% endif %}</div>
+{% else %}
+  {% for b in bookings %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ b['guest_name'] }}</strong> — {{ b['room_name'] }}
+        <span class="mini-status status-{{ b['status'] }}" style="margin-left:8px;">{{ b['status'] }}</span>
+        {% if b['payment_status'] != 'unpaid' %}<span class="mini-status status-{{ b['payment_status'] }}" style="margin-left:4px;">{{ b['payment_status'] }}</span>{% endif %}
+        {% if b['guest_email'] in returning_emails %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift" style="margin-left:4px; text-decoration:none;">returning guest · €{{ '%.0f'|format(confirmed_spend_by_email[b['guest_email']]) }} lifetime</a>{% endif %}
+      </div>
+      <span class="upload-hint">
+        {{ b['reference_code'] }}
+        {% if b['status'] in ('pending', 'confirmed') %} · <a href="{{ url_for('edit_booking', booking_id=b['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>{% endif %}
+      </span>
+    </div>
+    <p class="manual-body">
+      {{ b['arrival_date'] }} → {{ b['departure_date'] }} · Party of {{ b['party_size'] }}
+      {% if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+    </p>
+    <p class="upload-hint">{{ b['guest_email'] }}{% if b['guest_phone'] %} · {{ b['guest_phone'] }}{% endif %}</p>
+    {% if b['special_requests'] %}<p class="upload-hint">Notes: {{ b['special_requests'] }}</p>{% endif %}
+    {% if b['extras_summary'] %}<p class="upload-hint">Add-ons: {{ b['extras_summary'] }}</p>{% endif %}
+    {% if b['estimated_arrival_time'] %}<p class="upload-hint">Estimated arrival: {{ b['estimated_arrival_time'] }}</p>{% endif %}
+    {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
+    <p class="upload-hint">✈ Transfer: {{ b['transfer_flight_number'] or 'flight tbc' }}{% if b['transfer_arrival_time'] %}, arriving {{ b['transfer_arrival_time'] }}{% endif %}{% if b['transfer_notes'] %} — {{ b['transfer_notes'] }}{% endif %}</p>
+    {% endif %}
+    <p class="upload-hint">Submitted {{ b['created_at'][:10] }}{% if b['decided_at'] %} · Decided {{ b['decided_at'][:10] }}{% endif %}</p>
+
+    <div class="expense-actions">
+      {% if b['status'] == 'pending' %}
+      <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;">
+      <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><button type="submit" class="btn-mini">Confirm</button></form>
+      <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" onsubmit="return confirm('Decline this request?');"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      {% elif b['status'] == 'confirmed' %}
+      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><button type="submit" class="btn-text-danger">Cancel booking</button></form>
+      {% endif %}
+      {% if b['payment_status'] == 'paid' %}
+      <form method="post" action="{{ url_for('refund_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Refund this payment via Stripe?');"><button type="submit" class="btn-mini">Refund</button></form>
+      {% endif %}
+    </div>
+
+    {% if b['status'] == 'confirmed' %}
+      {% if b['arrival_prepped_at'] %}
+      <p class="upload-hint" style="margin-top:8px;">✓ Arrival prep assigned {{ b['arrival_prepped_at'][:10] }}.</p>
+      {% elif not b['checked_out_at'] %}
+      <form method="post" action="{{ url_for('prepare_arrival', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
+        <select name="assigned_to_user_id" required style="width:auto;">
+          <option value="">Assign arrival prep to…</option>
+          {% set scheduled = scheduled_by_date.get(b['arrival_date'], []) %}
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {{ 'selected' if e['id'] in scheduled }}>{{ e['name'] }}{{ ' (scheduled)' if e['id'] in scheduled }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-mini">Prepare arrival</button>
+      </form>
+      {% endif %}
+      {% if b['checked_out_at'] %}
+      <p class="upload-hint" style="margin-top:8px;">✓ Checked out {{ b['checked_out_at'][:10] }} — turnover task assigned.</p>
+      {% else %}
+      <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
+        <select name="assigned_to_user_id" required style="width:auto;">
+          <option value="">Assign turnover to…</option>
+          {% set scheduled = scheduled_by_date.get(today_iso, []) %}
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {{ 'selected' if e['id'] in scheduled }}>{{ e['name'] }}{{ ' (scheduled)' if e['id'] in scheduled }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-mini">Guest checked out</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+<script>
+document.querySelectorAll('.bulk-check').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var n = document.querySelectorAll('.bulk-check:checked').length;
+    var el = document.getElementById('selected-count');
+    if (el) el.textContent = n;
+  });
+});
+function submitBulkBookings(action, confirmMessage) {
+  var checked = document.querySelectorAll('.bulk-check:checked');
+  if (!checked.length) { alert('Check at least one booking first.'); return; }
+  if (!confirm(confirmMessage)) return;
+  var form = document.getElementById('bulk-bookings-form');
+  form.action = action;
+  form.querySelectorAll('input[name="booking_ids"]').forEach(function(el) { el.remove(); });
+  checked.forEach(function(cb) {
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'booking_ids';
+    input.value = cb.value;
+    form.appendChild(input);
+  });
+  form.submit();
+}
+</script>
+
+{% endblock %}

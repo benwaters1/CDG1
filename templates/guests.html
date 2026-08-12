@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Guests{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Guests</h1>
+  {% if user['role'] == 'owner' %}
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('export_guests_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('new_guest') }}" class="btn-primary" style="margin-top:0;">+ Add guest</a>
+  </div>
+  {% endif %}
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Search</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="Name or notes">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if q %}<a href="{{ url_for('guests') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+{% if not current_upcoming and not past %}
+  <div class="empty-state">{% if q %}No guests match that search.{% else %}No guests on the books yet.{% endif %}</div>
+{% else %}
+
+  <div class="manual-layout">
+    {% if not current_upcoming %}
+      <div class="empty-state">No current or upcoming guests.</div>
+    {% endif %}
+    {% for g in current_upcoming %}
+    <div class="manual-section">
+      <div class="manual-section-head">
+        <h3>{{ g['name'] }} <span class="mini-status status-{{ g['stay_status'] }}" style="margin-left:8px;">{{ g['stay_status_label'] }}</span></h3>
+        {% if user['role'] == 'owner' %}
+        <div class="manual-actions">
+          <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>
+        </div>
+        {% endif %}
+      </div>
+      <p class="manual-body">
+        {%- if g['arrival_date'] or g['departure_date'] %}{{ g['arrival_date'] or '?' }} → {{ g['departure_date'] or '?' }}{% endif -%}
+        {%- if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif -%}
+      </p>
+      {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if past %}
+  <h2 class="section-heading">Past stays</h2>
+  <div class="manual-layout">
+    {% for g in past %}
+    <div class="manual-section">
+      <div class="manual-section-head">
+        <h3>{{ g['name'] }} <span class="mini-status status-{{ g['stay_status'] }}" style="margin-left:8px;">{{ g['stay_status_label'] }}</span></h3>
+        {% if user['role'] == 'owner' %}
+        <div class="manual-actions">
+          <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>
+        </div>
+        {% endif %}
+      </div>
+      <p class="manual-body">
+        {%- if g['arrival_date'] or g['departure_date'] %}{{ g['arrival_date'] or '?' }} → {{ g['departure_date'] or '?' }}{% endif -%}
+        {%- if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif -%}
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}

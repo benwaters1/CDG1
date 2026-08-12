@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Notifications</h1>
+</div>
+
+{% if not items %}
+  <div class="empty-state">Nothing here yet.</div>
+{% else %}
+  <div class="mini-list">
+    {% for n in items %}
+    <a href="{{ n['link'] or '#' }}" class="mini-row" style="align-items:flex-start; flex-direction:column; gap:2px; {{ 'opacity:0.65;' if n['read_at'] }}">
+      <div style="display:flex; width:100%; align-items:center; gap:8px;">
+        <span class="mini-name" style="flex:1;">{{ n['title'] }}</span>
+        <span class="upload-hint">{{ local_datetime_str(n['created_at']) }}</span>
+      </div>
+      {% if n['body'] %}<span class="upload-hint">{{ n['body'] }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

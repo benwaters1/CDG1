@@ -1,0 +1,25 @@
+{% if not briefing.employees %}
+  <div class="empty-state">Add employees to start assigning tasks.</div>
+{% else %}
+  <div class="card-grid">
+    {% for e in briefing.employees %}
+    {% set entry = briefing.by_employee.get(e['id']) %}
+    <div class="detail-card" style="margin-bottom:0;">
+      <h3 style="font-size:14px;">{{ e['name'] }}</h3>
+      {% if entry and entry.tasks %}
+        <div class="task-list">
+          {% for t in entry.tasks %}
+          <div class="task-row {{ 'task-done' if t['status'] == 'done' }}" data-task-id="{{ t['id'] }}">
+            <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+            <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+            <span class="task-title">{{ t['title'] }}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-inline">Nothing today.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}

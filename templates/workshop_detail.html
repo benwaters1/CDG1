@@ -1,0 +1,36 @@
+{% extends "public_base.html" %}
+{% block title %}{{ workshop['title'] }}{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{{ workshop['title'] }}</h1>
+  <p class="room-meta">
+    {% if workshop['instructor_name'] %}With {{ workshop['instructor_name'] }}{% endif %}
+    {% if workshop['price_per_person'] %} · €{{ '%.0f'|format(workshop['price_per_person']) }} / person{% endif %}
+  </p>
+  {% if workshop['description'] %}<p class="manual-body">{{ workshop['description'] }}</p>{% endif %}
+  {% if workshop['inclusions'] %}<p class="manual-body"><strong>Includes:</strong> {{ workshop['inclusions'] }}</p>{% endif %}
+  {% if workshop['price_per_person'] %}<p class="upload-hint">A {{ workshop['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay.</p>{% endif %}
+
+  <p class="field-label" style="margin-top:18px;">Upcoming dates</p>
+  {% if not session_rows %}
+    <p class="empty-inline">No sessions scheduled yet — check back soon.</p>
+  {% else %}
+    <div class="mini-list">
+      {% for row in session_rows %}
+      {% set s = row.session %}
+      <div class="mini-row">
+        <span class="mini-name">{{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}</span>
+        <span class="mini-role">{{ row.remaining }}/{{ s['capacity'] }} spots left{% if s['notes'] %} · {{ s['notes'] }}{% endif %}</span>
+        {% if row.remaining > 0 %}
+        <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="btn-mini">Register</a>
+        {% else %}
+        <span class="mini-status status-inactive">full</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

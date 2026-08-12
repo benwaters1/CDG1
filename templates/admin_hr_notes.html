@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Ask HR{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Ask HR</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Private notes employees have sent you directly.</p>
+
+{% if not notes %}
+  <div class="empty-state">Nothing sent yet.</div>
+{% else %}
+  {% for n in notes %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ n['employee_name'] }}</strong>
+        <span class="mini-status status-{{ 'onshift' if n['status'] == 'handled' else 'pending' }}" style="margin-left:8px;">{{ n['status'] }}</span>
+      </div>
+    </div>
+    <p class="manual-body">{{ n['body'] }}</p>
+    <p class="upload-hint">Sent {{ n['created_at'][:10] }}{% if n['handled_at'] %} · Handled {{ n['handled_at'][:10] }}{% endif %}</p>
+    <div class="expense-actions">
+      <form method="post" action="{{ url_for('handle_hr_note', note_id=n['id']) }}">
+        <button type="submit" class="btn-mini">{{ 'Reopen' if n['status'] == 'handled' else 'Mark handled' }}</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

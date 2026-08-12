@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Email Templates{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Email Templates</h1>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">The emails guests get at each stage of a workshop registration. Edit the wording — the merge tags below fill in automatically for each guest, so one template covers every workshop and session rather than a separate copy per program.</p>
+
+<div class="detail-card" style="max-width:760px; margin-bottom:22px;">
+  <h3>Available merge tags</h3>
+  <p class="manual-body" style="font-family:'IBM Plex Mono', monospace; font-size:12.5px; line-height:1.9;">
+    {guest_name} {workshop_title} {dates} {party_size} {reference_code}<br>
+    {total_price} {deposit_amount} {balance_amount} {balance_due_date}<br>
+    {price_block} {balance_line} {manage_url}
+  </p>
+</div>
+
+{% if not templates %}
+  <div class="empty-state">No templates found.</div>
+{% else %}
+  {% for t in templates %}
+  <div class="mini-list" style="margin-bottom:4px;">
+    <div class="mini-row" id="view-tpl-{{ t['template_key'] }}">
+      <span class="mini-name">{{ t['label'] }}</span>
+      <span class="mini-role">{{ t['subject'] }}{% if t['updated_at'] %} · edited {{ t['updated_at'][:10] }}{% endif %}</span>
+      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleTemplateEdit('{{ t['template_key'] }}')">Edit</span>
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('edit_email_template', template_key=t['template_key']) }}" id="edit-tpl-{{ t['template_key'] }}" class="detail-card" style="max-width:760px; margin-bottom:18px; display:none;">
+    <label class="field-label">Subject</label>
+    <input type="text" name="subject" value="{{ t['subject'] }}" required>
+    <label class="field-label" style="margin-top:10px;">Body</label>
+    <textarea name="body" rows="8" required style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Save</button>
+  </form>
+  {% endfor %}
+{% endif %}
+
+<script>
+function toggleTemplateEdit(key) {
+  var edit = document.getElementById('edit-tpl-' + key);
+  edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+
+{% endblock %}

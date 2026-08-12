@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Staff{% endblock %} — Château de Gudanes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#171B26">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gudanes Staff">
+</head>
+<body class="staff-shell">
+{% from "_icons.html" import icon %}
+
+{% if user %}
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="crest">Château de Gudanes</span>
+      <span class="app-name">Staff</span>
+    </div>
+    {% if user['role'] == 'owner' %}
+    <form method="get" action="{{ url_for('search') }}" class="topbar-search">
+      <input type="text" name="q" id="topbar-search-input" placeholder="Search… ( / )" value="{{ request.args.get('q', '') if request.endpoint == 'search' else '' }}">
+    </form>
+    {% endif %}
+    <div class="topbar-right">
+      <a href="{{ url_for('notifications_page') }}" class="bell-link {{ 'active' if request.endpoint=='notifications_page' }}" title="Notifications">
+        {{ icon('bell', 18) }}
+        {% if unread_notifications_count %}<span class="bell-badge" id="bell-badge">{{ unread_notifications_count }}</span>{% endif %}
+      </a>
+      <span class="who">{{ user['name'] }} <span class="role-badge role-{{ user['role'] }}">{{ user['role'] }}</span></span>
+      {% if user['role'] == 'owner' %}
+      <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
+      {% endif %}
+      <a href="{{ url_for('change_password') }}" class="small-link">Password</a>
+      <a href="{{ url_for('logout') }}" class="small-link">Log out</a>
+    </div>
+  </div>
+</header>
+{% endif %}
+
+<div class="app-shell">
+{% if user %}
+<aside class="sidebar">
+    {% set guests_endpoints = ['guests','new_guest','edit_guest','admin_bookings','guest_booking_history','confirm_booking','decline_booking',
+       'checkout_booking','edit_booking','admin_calendar','admin_rooms','new_room','edit_room','new_room_block',
+       'delete_room_block','new_ical_source','sync_ical_source_now','delete_ical_source','admin_extras','new_extra','edit_extra','delete_extra',
+       'room_issues','new_room_issue','resolve_room_issue','reopen_room_issue','delete_room_issue','export_room_issues_csv',
+       'admin_feedback','export_feedback_csv','admin_waitlist','update_waitlist_status','export_waitlist_csv',
+       'breakfast','toggle_breakfast_item','new_breakfast_item','edit_breakfast_item','delete_breakfast_item','toggle_breakfast_stock'] %}
+    {% set employee_endpoints = ['directory','new_employee','profile','edit_employee','delete_employee','regenerate_invite','toggle_employee_status','export_pay_history_csv',
+       'toggle_onboarding_item','new_onboarding_item','delete_onboarding_item',
+       'toggle_offboarding_item','new_offboarding_item','delete_offboarding_item','new_check_in_note','delete_check_in_note',
+       'new_equipment_item','toggle_equipment_returned','delete_equipment_item','equipment_overview','export_equipment_csv',
+       'candidates','new_candidate','edit_candidate','update_candidate_status','delete_candidate','export_candidates_csv','edit_own_contact_info',
+       'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
+       'my_shifts','respond_shift_swap','decide_shift_swap','ask_hr','admin_hr_notes','handle_hr_note',
+       'team_calendar','admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections',
+       'resolve_timesheet_correction','dismiss_timesheet_correction',
+       'export_timesheets_csv','export_timesheets_summary_csv','export_team_csv','admin_leave','decide_leave','export_leave_csv','admin_tasks','new_task','toggle_task',
+       'reschedule_task','delete_task','duplicate_task_next_week','manual','edit_manual_section',
+       'new_manual_section','delete_manual_section','contacts','new_contact','edit_contact','delete_contact',
+       'shopping_list','new_shopping_item','toggle_shopping_item','delete_shopping_item','clear_bought_items',
+       'announcements','new_announcement','delete_announcement'] %}
+    {% set financial_endpoints = ['expenses','decide_expense','delete_expense','regenerate_supplier_link','export_expenses_csv',
+       'management','management_documents','upload_company_document','edit_company_document','delete_company_document','view_company_document',
+       'download_company_document','management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry',
+       'admin_approvals','bulk_approve_queue','management_company_info',
+       'management_bank_details','new_bank_details','edit_bank_details','delete_bank_details',
+       'management_financials','export_financials_csv','annual_summary',
+       'management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv',
+       'management_insurance','new_insurance_policy','edit_insurance_policy','delete_insurance_policy','export_insurance_csv','renew_insurance_policy',
+       'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
+       'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
+       'log_vehicle_service','new_vehicle_maintenance','resolve_vehicle_maintenance','delete_vehicle_maintenance',
+       'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv'] %}
+  <nav class="nav">
+    <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
+
+    {% if user['role'] == 'owner' %}
+    <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>
+
+    <div class="nav-dropdown {{ 'open' if request.endpoint in guests_endpoints }}">
+      <a href="{{ url_for('guests') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in guests_endpoints }}">{{ icon('guests') }}Guests</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Guests submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint in ['guests','new_guest','edit_guest'] }}">{{ icon('guests') }}Guest List</a>
+        <a href="{{ url_for('admin_bookings') }}" class="{{ 'active' if request.endpoint in ['admin_bookings','confirm_booking','decline_booking','checkout_booking','edit_booking'] }}">{{ icon('bookings') }}Bookings</a>
+        <a href="{{ url_for('admin_calendar') }}" class="{{ 'active' if request.endpoint=='admin_calendar' }}">{{ icon('calendar') }}Booking Calendar</a>
+        <a href="{{ url_for('admin_rooms') }}" class="{{ 'active' if request.endpoint in ['admin_rooms','new_room','edit_room'] }}">{{ icon('rooms') }}Rooms</a>
+        <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
+        <a href="{{ url_for('admin_feedback') }}" class="{{ 'active' if request.endpoint=='admin_feedback' }}">{{ icon('contacts') }}Guest Feedback</a>
+        <a href="{{ url_for('admin_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_waitlist' }}">{{ icon('leave') }}Waitlist</a>
+        <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
+      </div>
+    </div>
+
+    <div class="nav-dropdown {{ 'open' if request.endpoint in employee_endpoints }}">
+      <a href="{{ url_for('directory') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in employee_endpoints }}">{{ icon('employee') }}Employee</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('directory') }}" class="{{ 'active' if request.endpoint in ['directory','new_employee','profile','edit_employee'] }}">{{ icon('employee') }}Team</a>
+        <a href="{{ url_for('candidates') }}" class="{{ 'active' if request.endpoint=='candidates' }}">{{ icon('guests') }}Candidates</a>
+        <a href="{{ url_for('equipment_overview') }}" class="{{ 'active' if request.endpoint in ['equipment_overview','export_equipment_csv'] }}">{{ icon('shopping') }}Equipment</a>
+        <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
+        <a href="{{ url_for('admin_hr_notes') }}" class="{{ 'active' if request.endpoint=='admin_hr_notes' }}">{{ icon('contacts') }}Ask HR{% if open_hr_notes_count %} ({{ open_hr_notes_count }}){% endif %}</a>
+        <a href="{{ url_for('admin_tasks') }}" class="{{ 'active' if request.endpoint=='admin_tasks' }}">{{ icon('tasks') }}Tasks</a>
+        <a href="{{ url_for('admin_shifts') }}" class="{{ 'active' if request.endpoint=='admin_shifts' }}">{{ icon('shifts') }}Shifts</a>
+        <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
+        <a href="{{ url_for('admin_timesheets') }}" class="{{ 'active' if request.endpoint=='admin_timesheets' }}">{{ icon('shifts') }}Timesheets</a>
+        <a href="{{ url_for('admin_leave') }}" class="{{ 'active' if request.endpoint=='admin_leave' }}">{{ icon('leave') }}Time Off</a>
+        <a href="{{ url_for('manual') }}" class="{{ 'active' if request.endpoint=='manual' }}">{{ icon('manual') }}Manual</a>
+        <a href="{{ url_for('contacts') }}" class="{{ 'active' if request.endpoint=='contacts' }}">{{ icon('contacts') }}Contacts</a>
+        <a href="{{ url_for('shopping_list') }}" class="{{ 'active' if request.endpoint=='shopping_list' }}">{{ icon('shopping') }}Shopping</a>
+      </div>
+    </div>
+
+    <div class="nav-dropdown {{ 'open' if request.endpoint in financial_endpoints }}">
+      <a href="{{ url_for('admin_approvals') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in financial_endpoints }}">{{ icon('financial') }}Financial</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Financial submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_approvals') }}" class="{{ 'active' if request.endpoint=='admin_approvals' }}">{{ icon('approvals') }}Approvals{% if pending_approvals_count %} ({{ pending_approvals_count }}){% endif %}</a>
+        <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
+        <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
+        <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint in ['management','management_documents','management_vault','management_company_info','management_bank_details','management_recurring_costs','management_insurance','vendors','audit_log','management_vehicles'] }}">{{ icon('management') }}Management</a>
+      </div>
+    </div>
+
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv'] }}">
+      <a href="{{ url_for('admin_restaurant') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv'] }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Restaurant submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_restaurant') }}" class="{{ 'active' if request.endpoint=='admin_restaurant' }}">{{ icon('restaurant') }}Reservations{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
+        <a href="{{ url_for('admin_restaurant_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_waitlist' }}">{{ icon('leave') }}Waitlist</a>
+        <a href="{{ url_for('admin_restaurant_settings') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_settings' }}">{{ icon('management') }}Settings</a>
+      </div>
+    </div>
+
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv'] }}">
+      <a href="{{ url_for('admin_workshops') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv'] }}">{{ icon('workshop') }}Workshops{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Workshops submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('admin_workshops') }}" class="{{ 'active' if request.endpoint=='admin_workshops' }}">{{ icon('workshop') }}Workshops &amp; Sessions</a>
+        <a href="{{ url_for('admin_workshop_registrations') }}" class="{{ 'active' if request.endpoint=='admin_workshop_registrations' }}">{{ icon('approvals') }}Registrations{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
+        <a href="{{ url_for('admin_workshop_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_workshop_waitlist' }}">{{ icon('leave') }}Waitlist</a>
+      </div>
+    </div>
+
+    {% else %}
+    <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint=='guests' }}">{{ icon('guests') }}Guests</a>
+    <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
+    <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts'] }}">
+      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts'] }}">{{ icon('employee') }}Employee</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('profile', user_id=user['id']) }}" class="{{ 'active' if request.endpoint=='profile' }}">{{ icon('employee') }}My Profile</a>
+        <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
+        <a href="{{ url_for('my_shifts') }}" class="{{ 'active' if request.endpoint=='my_shifts' }}">{{ icon('shifts') }}My Shifts</a>
+        <a href="{{ url_for('my_leave') }}" class="{{ 'active' if request.endpoint=='my_leave' }}">{{ icon('leave') }}Time Off</a>
+        <a href="{{ url_for('ask_hr') }}" class="{{ 'active' if request.endpoint=='ask_hr' }}">{{ icon('contacts') }}Ask HR</a>
+        <a href="{{ url_for('manual') }}" class="{{ 'active' if request.endpoint=='manual' }}">{{ icon('manual') }}Manual</a>
+        <a href="{{ url_for('contacts') }}" class="{{ 'active' if request.endpoint=='contacts' }}">{{ icon('contacts') }}Contacts</a>
+        <a href="{{ url_for('shopping_list') }}" class="{{ 'active' if request.endpoint=='shopping_list' }}">{{ icon('shopping') }}Shopping</a>
+      </div>
+    </div>
+    <a href="{{ url_for('my_expenses') }}" class="{{ 'active' if request.endpoint in ['my_expenses','submit_expense'] }}">{{ icon('receipt') }}Expenses</a>
+    {% endif %}
+  </nav>
+</aside>
+{% endif %}
+
+<main class="page">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-wrap">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% if user %}
+  <div id="push-prompt" class="flash flash-success" style="display:none; align-items:center; gap:10px; justify-content:space-between;">
+    <span>Get notified right here when you're sent a task — even if the app's closed.</span>
+    <span style="display:flex; gap:10px; flex-shrink:0;">
+      <button type="button" class="btn-mini" onclick="enablePushNotifications()">Enable</button>
+      <span class="small-link" onclick="dismissPushPrompt()">Not now</span>
+    </span>
+  </div>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+</div>
+
+<div id="viewer-modal" class="viewer-modal" onclick="if(event.target===this) closeViewer()">
+  <div class="viewer-modal-inner">
+    <div class="viewer-modal-head">
+      <span id="viewer-title"></span>
+      <button type="button" class="viewer-close" onclick="closeViewer()">Close ×</button>
+    </div>
+    <iframe id="viewer-frame" src="about:blank"></iframe>
+  </div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/static/sw.js').catch(function() {});
+  });
+}
+
+{% if user %}
+// --- Push notifications: prompt once per session if not yet decided, poll for unread count ---
+function urlBase64ToUint8Array(base64String) {
+  var padding = '='.repeat((4 - base64String.length % 4) % 4);
+  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var rawData = window.atob(base64);
+  var outputArray = new Uint8Array(rawData.length);
+  for (var i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+function dismissPushPrompt() {
+  document.getElementById('push-prompt').style.display = 'none';
+  sessionStorage.setItem('pushPromptDismissed', '1');
+}
+
+function enablePushNotifications() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) { dismissPushPrompt(); return; }
+  navigator.serviceWorker.ready.then(function(reg) {
+    return reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array('{{ vapid_public_key }}'),
+    });
+  }).then(function(sub) {
+    return fetch('/notifications/subscribe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sub.toJSON()),
+    });
+  }).then(function() {
+    dismissPushPrompt();
+  }).catch(function() {
+    dismissPushPrompt();
+  });
+}
+
+if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+    && Notification.permission === 'default' && !sessionStorage.getItem('pushPromptDismissed')) {
+  navigator.serviceWorker.ready.then(function(reg) {
+    return reg.pushManager.getSubscription();
+  }).then(function(existing) {
+    if (!existing) document.getElementById('push-prompt').style.display = 'flex';
+  }).catch(function() {});
+}
+
+function pollUnreadNotifications() {
+  fetch('/notifications/unread-count').then(function(r) { return r.json(); }).then(function(data) {
+    var badge = document.getElementById('bell-badge');
+    if (data.count > 0) {
+      if (!badge) {
+        var bell = document.querySelector('.bell-link');
+        if (bell) {
+          badge = document.createElement('span');
+          badge.id = 'bell-badge';
+          badge.className = 'bell-badge';
+          bell.appendChild(badge);
+        }
+      }
+      if (badge) badge.textContent = data.count;
+    } else if (badge) {
+      badge.remove();
+    }
+  }).catch(function() {});
+}
+setInterval(pollUnreadNotifications, 30000);
+{% endif %}
+
+function toggleTask(id, btn) {
+  var row = btn.closest('.task-row');
+  fetch('/tasks/' + id + '/toggle', { method: 'POST' })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function(data) {
+      if (data.status === 'done') {
+        row.classList.add('task-done');
+        btn.textContent = '✓';
+      } else {
+        row.classList.remove('task-done');
+        btn.textContent = '';
+      }
+    })
+    .catch(function() { alert('Could not update that task — check your connection and try again.'); });
+}
+
+function respondTask(id, action, btn) {
+  var row = btn.closest('.task-row');
+  fetch('/tasks/' + id + '/' + action, { method: 'POST' })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function() {
+      row.classList.remove('task-directed');
+      var statusBadge = row.querySelector('.mini-status');
+      if (statusBadge) {
+        statusBadge.className = 'mini-status ' + (action === 'accept' ? 'status-active' : 'status-inactive');
+        statusBadge.textContent = action === 'accept' ? 'accepted' : 'rejected';
+      }
+      row.querySelectorAll('.btn-mini').forEach(function(b) { b.remove(); });
+    })
+    .catch(function() { alert('Could not respond to that task — check your connection and try again.'); });
+}
+
+var draggedTaskId = null;
+function dragTask(ev, id) {
+  draggedTaskId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+}
+function dropTask(ev, dateStr) {
+  ev.preventDefault();
+  if (!draggedTaskId) return;
+  var id = draggedTaskId;
+  draggedTaskId = null;
+  var card = document.querySelector('.task-card[data-task-id="' + id + '"]');
+  var targetCol = ev.currentTarget;
+  fetch('/admin/tasks/' + id + '/reschedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ due_date: dateStr })
+  })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function() { if (card) targetCol.appendChild(card); })
+    .catch(function() { alert('Could not reschedule that task — check your connection and try again.'); });
+}
+
+function togglePasswordVisibility(inputId, btn) {
+  var input = document.getElementById(inputId);
+  if (!input) return;
+  var toText = input.type === 'password';
+  input.type = toText ? 'text' : 'password';
+  var eye = btn.querySelector('.icon-eye'), eyeOff = btn.querySelector('.icon-eye-off');
+  if (eye) eye.style.display = toText ? 'none' : '';
+  if (eyeOff) eyeOff.style.display = toText ? '' : 'none';
+  btn.setAttribute('aria-label', toText ? 'Hide password' : 'Show password');
+}
+
+function toggleNavDropdown(ev, btn) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  var dropdown = btn.closest('.nav-dropdown');
+  var wasOpen = dropdown.classList.contains('open');
+  document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+  if (!wasOpen) dropdown.classList.add('open');
+}
+document.addEventListener('click', function(ev) {
+  if (!ev.target.closest('.nav-dropdown')) {
+    document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+  }
+});
+document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape') {
+    document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+  }
+});
+document.addEventListener('keydown', function(ev) {
+  if (ev.key !== '/') return;
+  var tag = (ev.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || ev.target.isContentEditable) return;
+  var searchInput = document.getElementById('topbar-search-input');
+  if (!searchInput) return;
+  ev.preventDefault();
+  searchInput.focus();
+  searchInput.select();
+});
+
+function openViewer(url, title) {
+  document.getElementById('viewer-frame').src = url;
+  document.getElementById('viewer-title').textContent = title || '';
+  document.getElementById('viewer-modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeViewer() {
+  document.getElementById('viewer-modal').classList.remove('open');
+  document.getElementById('viewer-frame').src = 'about:blank';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape') closeViewer();
+});
+</script>
+
+</body>
+</html>

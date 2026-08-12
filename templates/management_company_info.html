@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Company Info{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Company Info</h1>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Quick-glance reference — the things you'd otherwise dig through files or your inbox to find. For scans/certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
+
+<div class="detail-card" style="max-width:640px;">
+  <h3>Legal &amp; Registration</h3>
+  <form method="post">
+    <label class="field-label">Legal entity name</label>
+    <input type="text" name="legal_name" value="{{ info['legal_name'] if info else '' }}">
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Registration number</label>
+        <input type="text" name="registration_number" value="{{ info['registration_number'] if info else '' }}">
+      </div>
+      <div>
+        <label class="field-label">VAT number</label>
+        <input type="text" name="vat_number" value="{{ info['vat_number'] if info else '' }}">
+      </div>
+    </div>
+
+    <label class="field-label">Registered address</label>
+    <textarea name="registered_address" style="min-height:60px;">{{ info['registered_address'] if info else '' }}</textarea>
+
+    <label class="field-label">Incorporation date</label>
+    <input type="date" name="incorporation_date" value="{{ info['incorporation_date'] if info else '' }}">
+
+    <label class="field-label" style="margin-top:16px;">Accountant</label>
+    <div class="field-row-2">
+      <div><input type="text" name="accountant_name" placeholder="Name / firm" value="{{ info['accountant_name'] if info else '' }}"></div>
+      <div><input type="tel" name="accountant_phone" placeholder="Phone" value="{{ info['accountant_phone'] if info else '' }}"></div>
+    </div>
+    <input type="email" name="accountant_email" placeholder="Email" value="{{ info['accountant_email'] if info else '' }}" style="margin-top:8px;">
+
+    <label class="field-label" style="margin-top:16px;">Insurance broker</label>
+    <div class="field-row-2">
+      <div><input type="text" name="insurance_broker_name" placeholder="Name / firm" value="{{ info['insurance_broker_name'] if info else '' }}"></div>
+      <div><input type="tel" name="insurance_broker_phone" placeholder="Phone" value="{{ info['insurance_broker_phone'] if info else '' }}"></div>
+    </div>
+    <input type="email" name="insurance_broker_email" placeholder="Email" value="{{ info['insurance_broker_email'] if info else '' }}" style="margin-top:8px;">
+
+    <button type="submit" class="btn-primary" style="margin-top:16px;">Save</button>
+  </form>
+  {% if info and info['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ info['updated_at'][:10] }}</p>{% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{% if employee %}Edit employee{% else %}Add employee{% endif %}{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{% if employee %}Edit {{ employee['name'] }}{% else %}Add Employee{% endif %}</h1>
+  <form method="post">
+    <label class="field-label">Full name</label>
+    <input type="text" name="name" required value="{{ employee['name'] if employee else (prefill_name or '') }}">
+
+    {% if not employee %}
+    <label class="field-label">Email (they'll use this to log in)</label>
+    <input type="email" name="email" required value="{{ prefill_email or '' }}">
+    {% endif %}
+
+    <label class="field-label">Role</label>
+    <input type="text" name="job_role" placeholder="e.g. Head Housekeeper" value="{{ employee['job_role'] if employee else (prefill_job_role or '') }}">
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Phone</label>
+        <input type="tel" name="phone" value="{{ employee['phone'] if employee else (prefill_phone or '') }}">
+      </div>
+      <div>
+        <label class="field-label">Start date</label>
+        <input type="date" name="start_date" value="{{ employee['start_date'] if employee else '' }}">
+      </div>
+    </div>
+
+    {% if employee %}
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="active" {{ 'selected' if employee['status']=='active' }}>Active</option>
+      <option value="inactive" {{ 'selected' if employee['status']=='inactive' }}>Inactive</option>
+    </select>
+
+    <label class="field-label">Reason for leaving (optional)</label>
+    <input type="text" name="reason_for_leaving" placeholder="e.g. Resigned, end of contract, terminated" value="{{ employee['reason_for_leaving'] or '' }}">
+    {% endif %}
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Pay rate (reference only)</label>
+        <input type="text" name="pay_rate" placeholder="e.g. €14/hour" value="{{ employee['pay_rate'] if employee else '' }}">
+      </div>
+      <div>
+        <label class="field-label">Pay type</label>
+        <input type="text" name="pay_type" placeholder="e.g. Hourly, salaried" value="{{ employee['pay_type'] if employee else '' }}">
+      </div>
+    </div>
+
+    <label class="field-label">Annual leave entitlement (days/year)</label>
+    <input type="number" name="annual_leave_days" min="0" step="1" placeholder="e.g. 25" value="{{ employee['annual_leave_days'] if employee and employee['annual_leave_days'] is not none else '' }}">
+    <p class="upload-hint" style="margin:-2px 0 0 0;">Leave blank to hide the leave balance on their profile.</p>
+
+    {% if employee %}
+    <label class="field-label">Skills / certifications</label>
+    <input type="text" name="skills" placeholder="e.g. First aid, pool chemicals, driving license" value="{{ employee['skills'] or '' }}">
+    <p class="upload-hint" style="margin:-2px 0 0 0;">Comma-separated — shown as tags on their profile.</p>
+
+    <label class="field-label" style="margin-top:16px;">Emergency contact</label>
+    <div class="field-row-2">
+      <div>
+        <input type="text" name="emergency_contact_name" placeholder="Name" value="{{ employee['emergency_contact_name'] or '' }}">
+      </div>
+      <div>
+        <input type="text" name="emergency_contact_relationship" placeholder="Relationship (e.g. Spouse)" value="{{ employee['emergency_contact_relationship'] or '' }}">
+      </div>
+    </div>
+    <input type="tel" name="emergency_contact_phone" placeholder="Phone" value="{{ employee['emergency_contact_phone'] or '' }}" style="margin-top:8px;">
+    {% endif %}
+
+    <label class="field-label">Notes</label>
+    <textarea name="notes" placeholder="Schedule notes, preferences — nothing sensitive.">{{ employee['notes'] if employee else '' }}</textarea>
+
+    <button type="submit" class="btn-primary">{% if employee %}Save changes{% else %}Add employee{% endif %}</button>
+  </form>
+
+  {% if employee %}
+  <form method="post" action="{{ url_for('delete_employee', user_id=employee['id']) }}" onsubmit="return confirm('Remove {{ employee['name'] }} entirely? This cannot be undone.');" class="danger-zone">
+    <button type="submit" class="btn-text-danger">Remove this employee</button>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Tasks{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Tasks</h1>
+</div>
+
+<div class="search-bar" style="justify-content:space-between;">
+  <a href="{{ url_for('admin_tasks', view=sheet.view, date=sheet.prev_anchor) }}" class="btn-mini">&larr; Prev</a>
+  <div style="display:flex; gap:6px;">
+    {% for v in ['day', 'week', 'month'] %}
+    <a href="{{ url_for('admin_tasks', view=v, date=today.isoformat()) }}" class="btn-mini {{ '' if sheet.view != v }}" style="{{ 'background:var(--chestnut-light);' if sheet.view == v }}">{{ v|capitalize }}</a>
+    {% endfor %}
+  </div>
+  <a href="{{ url_for('admin_tasks', view=sheet.view, date=sheet.next_anchor) }}" class="btn-mini">Next &rarr;</a>
+</div>
+
+<p class="upload-hint" style="margin-bottom:18px;">
+  {% if sheet.view == 'day' %}{{ sheet.anchor.strftime('%A, %B') }} {{ sheet.anchor.day }}, {{ sheet.anchor.year }}
+  {% elif sheet.view == 'week' %}{{ sheet.range_start.strftime('%b') }} {{ sheet.range_start.day }} – {{ sheet.range_end.strftime('%b') }} {{ sheet.range_end.day }}, {{ sheet.range_end.year }}
+  {% else %}{{ sheet.range_start.strftime('%B %Y') }}{% endif %}
+</p>
+
+{% include "_task_add_form.html" %}
+
+{% if sheet.view == 'month' and sheet.month_grid %}
+<div style="overflow-x:auto; margin-bottom:24px;">
+  <table class="cal-table">
+    <thead>
+      <tr>
+        <th class="cal-room-col">Employee</th>
+        {% for d in sheet.month_grid.days %}
+        <th class="{{ 'cal-today' if d == today }}">{{ d.day }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in sheet.month_grid.rows %}
+      <tr>
+        <td class="cal-room-col">{{ row.employee['name'] }}</td>
+        {% for count in row.cells %}
+        {% set d = sheet.month_grid.days[loop.index0] %}
+        <td class="cal-cell {{ 'cal-cell-confirmed' if count else 'cal-cell-free' }} {{ 'cal-today' if d == today }}" title="{{ count }} task(s)">
+          {% if count %}<a href="{{ url_for('admin_tasks', view='day', date=d.isoformat()) }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ count }}</a>{% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% include "_task_sheet.html" %}
+
+{% elif sheet.view == 'week' %}
+{% include "_task_week_grid.html" %}
+
+{% else %}
+{% include "_task_sheet.html" %}
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,6 @@
+Flask==3.0.3
+Werkzeug==3.0.3
+stripe==15.4.0
+cryptography==50.0.0
+tzdata==2026.3
+pywebpush==2.4.0

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Contacts{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Contacts</h1>
+  {% if people %}<a href="{{ url_for('export_contacts_csv') }}" class="btn-mini">Export CSV</a>{% endif %}
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Plumber, electrician, insurance broker, anyone the team might need to call in a hurry.</p>
+
+{% if not people %}
+  <div class="empty-state">No contacts added yet.{% if user['role']=='owner' %} Add the first one below.{% endif %}</div>
+{% else %}
+  <div class="doc-list" style="max-width:640px;">
+    {% for p in people %}
+    <div class="doc-row" id="view-contact-{{ p['id'] }}" style="align-items:flex-start; flex-direction:column; gap:2px; padding:10px 12px;">
+      <div style="display:flex; align-items:center; width:100%; gap:8px;">
+        <strong style="flex:1;">{{ p['name'] }}{% if p['role'] %} <span class="upload-hint">— {{ p['role'] }}</span>{% endif %}</strong>
+        {% if user['role'] == 'owner' %}
+        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleContactEdit({{ p['id'] }})">Edit</span>
+        <form method="post" action="{{ url_for('delete_contact', contact_id=p['id']) }}" onsubmit="return confirm('Remove this contact?');">
+          <button type="submit" class="doc-delete">×</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if p['phone'] %}<a href="tel:{{ p['phone'] }}" style="color:var(--steel); font-weight:600;">{{ p['phone'] }}</a>{% endif %}
+      {% if p['notes'] %}<span class="upload-hint">{{ p['notes'] }}</span>{% endif %}
+    </div>
+    {% if user['role'] == 'owner' %}
+    <form method="post" action="{{ url_for('edit_contact', contact_id=p['id']) }}" id="edit-contact-{{ p['id'] }}" class="upload-form" style="display:none;">
+      <input type="text" name="name" value="{{ p['name'] }}" placeholder="Name" required>
+      <input type="text" name="role" value="{{ p['role'] or '' }}" placeholder="Role (e.g. Plumber)">
+      <input type="text" name="phone" value="{{ p['phone'] or '' }}" placeholder="Phone">
+      <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+    {% endif %}
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if user['role'] == 'owner' %}
+<div class="detail-card" style="max-width:640px;">
+  <h3>Add a contact</h3>
+  <form method="post" action="{{ url_for('new_contact') }}" class="upload-form">
+    <input type="text" name="name" placeholder="Name" required>
+    <input type="text" name="role" placeholder="Role (e.g. Electrician)">
+    <input type="text" name="phone" placeholder="Phone">
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Add contact</button>
+  </form>
+</div>
+
+<script>
+function toggleContactEdit(id) {
+  var view = document.getElementById('view-contact-' + id);
+  var edit = document.getElementById('edit-contact-' + id);
+  var showEdit = edit.style.display === 'none';
+  edit.style.display = showEdit ? 'block' : 'none';
+  view.style.display = showEdit ? 'none' : 'flex';
+}
+</script>
+{% endif %}
+
+{% endblock %}

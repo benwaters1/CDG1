@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Guest History{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ bookings[0]['guest_name'] if bookings else (dinners[0]['guest_name'] if dinners else workshop_regs[0]['guest_name']) }}</h1>
+  <a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">← Bookings</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
+
+<div class="mini-list">
+  {% for b in bookings %}
+  <div class="mini-row">
+    <span class="mini-name">{{ b['room_name'] }}</span>
+    <span class="mini-role">{{ b['arrival_date'] }} → {{ b['departure_date'] }}{% if b['party_size'] %} · Party of {{ b['party_size'] }}{% endif %}</span>
+    <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
+    {% if b['total_price'] %}<span class="upload-hint">€{{ '%.2f'|format(b['total_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% if dinners %}
+<h2 class="section-heading">Dinner Reservations</h2>
+<div class="mini-list">
+  {% for d in dinners %}
+  <div class="mini-row">
+    <span class="mini-name">Dinner — {{ d['dinner_date'] }}</span>
+    <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
+    <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
+    {% if d['total_price'] %}<span class="upload-hint">€{{ '%.2f'|format(d['total_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if workshop_regs %}
+<h2 class="section-heading">Workshop Registrations</h2>
+<div class="mini-list">
+  {% for w in workshop_regs %}
+  <div class="mini-row">
+    <span class="mini-name">{{ w['workshop_title'] }} — {{ w['start_date'] }}</span>
+    <span class="mini-role">Party of {{ w['party_size'] }}{% if w['notes'] %} · {{ w['notes'] }}{% endif %}</span>
+    <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
+    {% if w['total_price'] %}<span class="upload-hint">€{{ '%.2f'|format(w['total_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

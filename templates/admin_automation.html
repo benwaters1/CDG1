@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Automation{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Automation</h1>
+  <a href="{{ url_for('management') }}" class="btn-mini">Back to Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Background jobs that run on their own — no need to keep the app open or set up an external cron service. Each one is safe to run more than once; running it manually below won't duplicate anything.</p>
+
+<form method="post" action="{{ url_for('update_automation_settings') }}" class="detail-card" style="max-width:680px;">
+  <div class="detail-grid" style="grid-template-columns:1fr; gap:16px;">
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_housekeeping_enabled" style="width:auto;" {{ 'checked' if settings['automation_housekeeping_enabled'] == '1' }}>
+        Housekeeping sweep
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Auto-declines pending, unpaid room bookings the owner never acted on, and pre-generates the arrival-prep checklist for stays coming up in the next 2 days — runs every few minutes.</p>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_daily_digest_enabled" style="width:auto;" {{ 'checked' if settings['automation_daily_digest_enabled'] == '1' }}>
+        Daily owner digest email
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Sends the owner the same "what needs your attention" summary shown on the dashboard, roughly once every 24 hours.</p>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_ical_sync_enabled" style="width:auto;" {{ 'checked' if settings['automation_ical_sync_enabled'] == '1' }}>
+        iCal sync
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Pulls in bookings from every connected Airbnb/Booking.com/VRBO calendar so nothing double-books.</p>
+      <div style="margin-top:6px; max-width:220px;">
+        <label class="field-label">Sync interval (hours)</label>
+        <input type="number" name="automation_ical_sync_interval_hours" min="1" step="0.5" value="{{ settings['automation_ical_sync_interval_hours'] }}">
+      </div>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_workshop_balance_reminder_enabled" style="width:auto;" {{ 'checked' if settings['automation_workshop_balance_reminder_enabled'] == '1' }}>
+        Workshop balance-due reminders
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Emails a confirmed workshop guest once, using the "Workshop: Balance due reminder" template, when their balance is due soon and still unpaid.</p>
+      <div style="margin-top:6px; max-width:220px;">
+        <label class="field-label">Days before due date</label>
+        <input type="number" name="automation_workshop_balance_reminder_days_before" min="1" value="{{ settings['automation_workshop_balance_reminder_days_before'] }}">
+      </div>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_waitlist_autonotify_enabled" style="width:auto;" {{ 'checked' if settings['automation_waitlist_autonotify_enabled'] == '1' }}>
+        Auto-notify waitlists
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">When a room, dinner reservation, or workshop registration is declined or cancelled, automatically emails any matching open waitlist entry instead of just flagging it for the owner to follow up manually.</p>
+    </div>
+
+  </div>
+
+  <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
+</form>
+
+<div class="detail-card" style="max-width:680px; margin-top:20px;">
+  <h3 style="margin-top:0;">Job status</h3>
+  <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--parchment-line);">
+          <th style="text-align:left; padding:8px 6px;">Job</th>
+          <th style="text-align:left; padding:8px 6px;">Last ran</th>
+          <th style="padding:8px 6px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job_name, label in job_labels.items() %}
+        <tr style="border-bottom:1px solid var(--parchment-line);">
+          <td style="padding:8px 6px;">{{ label }}</td>
+          <td style="padding:8px 6px;">{{ last_runs[job_name][:19].replace('T', ' ') if last_runs.get(job_name) else 'never' }}</td>
+          <td style="padding:8px 6px; text-align:right;">
+            <form method="post" action="{{ url_for('run_automation_job_now', job_name=job_name) }}">
+              <button type="submit" class="btn-mini">Run now</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Audit Log</h1>
+  <a href="{{ url_for('export_audit_log_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Who touched something sensitive, and when — deletions, status changes, vault/bank detail edits and reveals, password changes, backup downloads. Most recent 200.</p>
+
+{% if not entries %}
+  <div class="empty-state">Nothing logged yet.</div>
+{% else %}
+  <div class="mini-list">
+    {% for e in entries %}
+    <div class="mini-row">
+      <span class="mini-name">{{ e['action']|replace('_', ' ')|capitalize }}</span>
+      <span class="mini-role">{% if e['target'] %}{{ e['target'] }}{% endif %}{% if e['details'] %} — {{ e['details'] }}{% endif %}</span>
+      <span class="upload-hint">{{ e['actor_name'] or 'Unknown' }} · {{ local_datetime_str(e['created_at']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

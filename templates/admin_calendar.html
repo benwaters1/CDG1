@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Booking Calendar{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booking Calendar</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Requests</a>
+    <a href="{{ url_for('admin_rooms') }}" class="btn-mini">Rooms</a>
+  </div>
+</div>
+
+<div class="search-bar" style="justify-content:space-between;">
+  <a href="{{ url_for('admin_calendar', month=prev_month) }}" class="btn-mini">&larr; Prev</a>
+  <strong>{{ first_day.strftime('%B %Y') }}</strong>
+  <a href="{{ url_for('admin_calendar', month=next_month) }}" class="btn-mini">Next &rarr;</a>
+</div>
+
+{% if not room_rows %}
+  <div class="empty-state">No rooms yet — <a href="{{ url_for('new_room') }}">add one</a> to see the calendar.</div>
+{% else %}
+<div style="overflow-x:auto;">
+  <table class="cal-table">
+    <thead>
+      <tr>
+        <th class="cal-room-col">Room</th>
+        {% for d in days %}
+        <th class="{{ 'cal-today' if d == today }}">{{ d.day }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in room_rows %}
+      <tr>
+        <td class="cal-room-col"><a href="{{ url_for('edit_room', room_id=row.room['id']) }}">{{ row.room['name'] }}</a></td>
+        {% for cell in row.cells %}
+        <td class="cal-cell cal-cell-{{ cell.status }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.label }}"></td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div style="display:flex; gap:16px; margin-top:14px; font-size:12px; color:var(--ink-soft); flex-wrap:wrap;">
+  <span><span class="cal-legend cal-cell-confirmed"></span> Confirmed</span>
+  <span><span class="cal-legend cal-cell-pending"></span> Pending request</span>
+  <span><span class="cal-legend cal-cell-external"></span> Blocked on another platform</span>
+  <span><span class="cal-legend cal-cell-manual-block"></span> Blocked by you</span>
+  <span><span class="cal-legend cal-cell-free"></span> Free</span>
+</div>
+{% endif %}
+
+{% endblock %}

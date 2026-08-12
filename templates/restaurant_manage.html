@@ -1,0 +1,32 @@
+{% extends "public_base.html" %}
+{% block title %}My Reservation{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Dinner Reservation</h1>
+  <p class="manual-body">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
+
+  <div class="detail-card">
+    <div class="detail-grid">
+      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
+      <div><span class="detail-label">Date</span>{{ booking['dinner_date'] }}</div>
+      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
+      {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</div>{% endif %}
+    </div>
+    {% if booking['dietary_notes'] %}
+    <div class="notes-block">
+      <span class="detail-label">Your notes</span>
+      <p>{{ booking['dietary_notes'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if booking['status'] in ('pending', 'confirmed') %}
+  <form method="post" onsubmit="return confirm('Cancel this reservation? This cannot be undone.');" style="margin-top:16px;">
+    <input type="hidden" name="action" value="cancel">
+    <button type="submit" class="btn-text-danger">Cancel this reservation</button>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}

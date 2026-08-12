@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Insurance{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Insurance</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_insurance_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Policy reference — for the certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
+
+{% if not policies %}
+  <div class="empty-state">No policies tracked yet.</div>
+{% else %}
+  {% for p in policies %}
+  {% set exp = expiry_status(p['expiry_date']) %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ p['provider'] }}</strong>{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}
+        {% if exp == 'expired' %}<span class="mini-status status-inactive" style="margin-left:8px;">expired {{ p['expiry_date'] }}</span>
+        {% elif exp == 'soon' %}<span class="mini-status status-pending" style="margin-left:8px;">expires {{ p['expiry_date'] }}</span>
+        {% elif p['expiry_date'] %}<span class="upload-hint" style="margin-left:8px;">expires {{ p['expiry_date'] }}</span>{% endif %}
+      </div>
+    </div>
+    <p class="upload-hint">
+      {% if p['policy_number'] %}Policy #{{ p['policy_number'] }}{% endif %}
+      {% if p['premium'] %} · €{{ '%.2f'|format(p['premium']) }} / {{ p['premium_frequency'] }}{% endif %}
+    </p>
+    {% if p['notes'] %}<p class="manual-body">{{ p['notes'] }}</p>{% endif %}
+    <div class="expense-actions">
+      <button type="button" class="btn-mini" onclick="toggleInsuranceEdit({{ p['id'] }})">Edit</button>
+      {% if p['expiry_date'] %}
+      <form method="post" action="{{ url_for('renew_insurance_policy', policy_id=p['id']) }}"><button type="submit" class="btn-mini">Renew</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('delete_insurance_policy', policy_id=p['id']) }}" onsubmit="return confirm('Remove this policy?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+    </div>
+    <div id="insurance-edit-{{ p['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
+      <form method="post" action="{{ url_for('edit_insurance_policy', policy_id=p['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+        <input type="text" name="provider" value="{{ p['provider'] }}" placeholder="Provider" required>
+        <input type="text" name="policy_number" value="{{ p['policy_number'] or '' }}" placeholder="Policy number">
+        <input type="text" name="coverage_type" value="{{ p['coverage_type'] or '' }}" placeholder="Coverage type">
+        <input type="number" name="premium" step="0.01" min="0" value="{{ p['premium'] or '' }}" placeholder="Premium">
+        <select name="premium_frequency">
+          <option value="annual" {{ 'selected' if p['premium_frequency'] == 'annual' }}>Annual</option>
+          <option value="monthly" {{ 'selected' if p['premium_frequency'] == 'monthly' }}>Monthly</option>
+        </select>
+        <div>
+          <label class="field-label">Expiry / renewal date</label>
+          <input type="date" name="expiry_date" value="{{ p['expiry_date'] or '' }}">
+        </div>
+        <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
+        <button type="submit" class="btn-mini" style="align-self:flex-start;">Save changes</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+<div class="detail-card" style="max-width:640px; margin-top:20px;">
+  <h3>Add a policy</h3>
+  <form method="post" action="{{ url_for('new_insurance_policy') }}" class="upload-form">
+    <input type="text" name="provider" placeholder="Provider (e.g. AXA)" required>
+    <input type="text" name="policy_number" placeholder="Policy number">
+    <input type="text" name="coverage_type" placeholder="Coverage type (e.g. Property, Liability)">
+    <input type="number" name="premium" step="0.01" min="0" placeholder="Premium">
+    <select name="premium_frequency">
+      <option value="annual">Annual</option>
+      <option value="monthly">Monthly</option>
+    </select>
+    <div>
+      <label class="field-label">Expiry / renewal date</label>
+      <input type="date" name="expiry_date">
+    </div>
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</div>
+
+<script>
+function toggleInsuranceEdit(id) {
+  var el = document.getElementById('insurance-edit-' + id);
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+</script>
+
+{% endblock %}

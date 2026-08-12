@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Submit an invoice{% endblock %}
+{% block content %}
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-crest">Château de Gudanes</div>
+    <h1>Submit an Invoice</h1>
+    <form method="post" enctype="multipart/form-data">
+      <label class="field-label">Company / supplier name</label>
+      <input type="text" name="vendor_name" required>
+      <label class="field-label">Description</label>
+      <textarea name="description" required placeholder="What the invoice is for"></textarea>
+      <label class="field-label">Amount (€)</label>
+      <input type="number" name="amount" step="0.01" min="0.01" required>
+      <label class="field-label">Invoice file</label>
+      <input type="file" name="invoice" required>
+      <button type="submit" class="btn-primary btn-block">Submit invoice</button>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

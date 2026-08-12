@@ -1,0 +1,62 @@
+{% extends "public_base.html" %}
+{% block title %}Book Dinner{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Book a Table</h1>
+  <p class="manual-body">
+    {% if settings['price_per_person'] %}€{{ '%.0f'|format(settings['price_per_person']) }} per person · {% endif %}
+    Up to {{ settings['capacity'] }} guests a night{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}.
+  </p>
+
+  <form method="post" style="margin-top:18px;">
+    <label class="field-label">Date</label>
+    <input type="date" name="dinner_date" min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required>
+
+    <label class="field-label">Party size</label>
+    <input type="number" name="party_size" min="1" max="{{ settings['capacity'] }}" value="{{ prefill_party_size }}" required>
+
+    <label class="field-label">Your name</label>
+    <input type="text" name="guest_name" value="{{ prefill_name }}" required>
+
+    <label class="field-label">Email</label>
+    <input type="email" name="guest_email" value="{{ prefill_email }}" required>
+
+    <label class="field-label">Phone (optional)</label>
+    <input type="tel" name="guest_phone" value="{{ prefill_phone }}">
+
+    <label class="field-label">Dietary needs or anything else we should know?</label>
+    <textarea name="dietary_notes" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
+
+    {% if stripe_enabled and settings['price_per_person'] %}
+    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Pay &amp; Request a Table</button>
+    <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+    {% else %}
+    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Request a table</button>
+    <p class="upload-hint" style="margin-top:10px;">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You'll get a reference code and a link to manage your reservation.</p>
+    {% endif %}
+  </form>
+</div>
+
+{% if fully_booked %}
+<div class="narrow-card" style="margin-top:20px;">
+  <h1>Join the Waitlist</h1>
+  <p class="manual-body">We'll reach out if a table opens up for that date.</p>
+  <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:14px;">
+    <input type="hidden" name="desired_date" value="{{ prefill_date }}">
+    <label class="field-label">Party size</label>
+    <input type="number" name="party_size" min="1" value="{{ prefill_party_size }}" required>
+    <label class="field-label">Your name</label>
+    <input type="text" name="name" value="{{ prefill_name }}" required>
+    <label class="field-label">Email</label>
+    <input type="email" name="email" value="{{ prefill_email }}" required>
+    <label class="field-label">Phone (optional)</label>
+    <input type="tel" name="phone" value="{{ prefill_phone }}">
+    <label class="field-label">Notes</label>
+    <textarea name="notes" placeholder="Anything we should know"></textarea>
+    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Join waitlist</button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}

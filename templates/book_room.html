@@ -1,0 +1,74 @@
+{% extends "public_base.html" %}
+{% block title %}Book {{ room['name'] }}{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  {% if room['photo_filename'] %}
+  <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" class="room-photo">
+  {% endif %}
+  <h1>{{ room['name'] }}</h1>
+  <p class="room-meta">Sleeps up to {{ room['max_occupancy'] }}{% if room['price_per_night'] %} · €{{ '%.0f'|format(room['price_per_night']) }} / night{% endif %}</p>
+  {% if room['description'] %}<p class="manual-body">{{ room['description'] }}</p>{% endif %}
+  {% if room['amenities'] %}
+  <div class="amenity-tags">
+    {% for tag in room['amenities'].split(',') %}
+    <span class="amenity-tag">{{ tag.strip() }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" style="margin-top:18px;">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Arrival</label>
+        <input type="date" name="arrival_date" value="{{ arrival }}" required>
+      </div>
+      <div>
+        <label class="field-label">Departure</label>
+        <input type="date" name="departure_date" value="{{ departure }}" required>
+      </div>
+    </div>
+
+    <label class="field-label">Party size</label>
+    <input type="number" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
+
+    <label class="field-label">Your name</label>
+    <input type="text" name="guest_name" value="{{ prefill_name }}" required>
+
+    <label class="field-label">Email</label>
+    <input type="email" name="guest_email" value="{{ prefill_email }}" required>
+
+    <label class="field-label">Phone (optional)</label>
+    <input type="tel" name="guest_phone" value="{{ prefill_phone }}">
+
+    <label class="field-label">Anything we should know?</label>
+    <textarea name="special_requests" placeholder="Dietary needs, occasion, arrival time, questions..."></textarea>
+
+    {% if extras %}
+    <label class="field-label">Add-ons</label>
+    <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
+      {% for e in extras %}
+      <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="extras" value="{{ e['id'] }}" style="width:auto;">
+        {{ e['name'] }} — €{{ '%.2f'|format(e['price']) }}
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
+      <input type="checkbox" name="agree_terms" required style="width:auto;">
+      I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" style="color:var(--steel);">Terms &amp; Conditions</a>
+    </label>
+
+    {% if stripe_enabled and room['price_per_night'] %}
+    <button type="submit" class="btn-primary btn-block">Pay &amp; Request to Book</button>
+    <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your booking.</p>
+    {% else %}
+    <button type="submit" class="btn-primary btn-block">Request to Book</button>
+    <p class="upload-hint" style="margin-top:10px;">This is a booking request, not an instant confirmation — the château will review and confirm it. Your dates are held in the meantime. You'll get a reference code and a link on the next page — save it, since that's how you'll check your booking's status.</p>
+    {% endif %}
+  </form>
+</div>
+
+{% endblock %}

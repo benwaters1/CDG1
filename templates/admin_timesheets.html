@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Timesheets{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Timesheets</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('admin_timesheet_corrections') }}" class="btn-mini">Corrections{% if pending_corrections_count %} ({{ pending_corrections_count }}){% endif %}</a>
+    <a href="{{ url_for('export_timesheets_csv', employee_id=employee_id, start=start.isoformat(), end=end.isoformat()) }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('export_timesheets_summary_csv', employee_id=employee_id, start=start.isoformat(), end=end.isoformat()) }}" class="btn-mini">Export labour summary</a>
+  </div>
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Employee</label>
+    <select name="employee_id">
+      <option value="">Everyone</option>
+      {% for e in employees %}
+      <option value="{{ e['id'] }}" {{ 'selected' if employee_id == e['id']|string }}>{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">From</label>
+    <input type="date" name="start" value="{{ start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label">To</label>
+    <input type="date" name="end" value="{{ end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  <a href="{{ url_for('admin_timesheets') }}" class="small-link" style="color:var(--steel); align-self:center;">Reset</a>
+</form>
+
+{% if totals_by_user %}
+<div class="search-bar" style="margin-bottom:6px;">
+  {% for uid, t in totals_by_user.items() %}
+  <div>
+    <span class="detail-label">{{ t.name }}</span>
+    <span class="room-price">{{ t.hours }}h</span>
+    {% if t.estimated_cost is not none %}<span class="upload-hint">≈ €{{ '%.2f'|format(t.estimated_cost) }} est.</span>
+    {% elif t.pay_rate %}<span class="upload-hint">{{ t.pay_rate }}{% if t.pay_type %} · {{ t.pay_type }}{% endif %}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+<p class="pay-disclaimer">
+  Estimated cost = hours × the pay rate on file, shown only where the rate is a plain hourly number — a rough figure for your own awareness, not a payslip or payroll calculation.
+  {% if total_estimated_cost is not none %}<strong style="color:inherit;">Total across estimable staff: €{{ '%.2f'|format(total_estimated_cost) }}</strong>{% endif %}
+</p>
+{% endif %}
+
+{% if not entries %}
+  <div class="empty-state">No clock-ins in this date range.</div>
+{% else %}
+  <div class="task-list">
+    {% for e in entries %}
+    <div class="task-row">
+      <span class="task-title" style="flex:0 0 160px;">{{ e['user_name'] }}</span>
+      <span class="upload-hint" style="flex:1;">
+        {{ local_datetime_str(e['clock_in_at']) }} →
+        {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% else %}<strong style="color:var(--steel-deep);">still clocked in</strong>{% endif %}
+      </span>
+      <span class="upload-hint">
+        {% if e['clock_out_at'] %}{{ '%.2f'|format(net_hours(e)) }}h{% endif %}
+        {% if e['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:6px;">auto-closed — forgot to log out?</span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

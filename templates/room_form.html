@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{% if room %}Edit room{% else %}Add room{% endif %}{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{% if room %}Edit {{ room['name'] }}{% else %}Add Room{% endif %}</h1>
+  <form method="post" enctype="multipart/form-data">
+    <label class="field-label">Room name</label>
+    <input type="text" name="name" required value="{{ room['name'] if room else '' }}">
+
+    <label class="field-label">Description (shown to guests)</label>
+    <textarea name="description" placeholder="What makes this room special">{{ room['description'] if room else '' }}</textarea>
+
+    <label class="field-label">Photo</label>
+    {% if room and room['photo_filename'] %}
+      <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="" style="max-width:100%; border-radius:8px; margin-bottom:8px; display:block;">
+    {% endif %}
+    <input type="file" name="photo" accept=".png,.jpg,.jpeg">
+    <p class="upload-hint">PNG or JPEG.{% if room and room['photo_filename'] %} Choose a new file to replace the current photo.{% endif %}</p>
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Max occupancy</label>
+        <input type="number" name="max_occupancy" min="1" value="{{ room['max_occupancy'] if room else 2 }}">
+      </div>
+      <div>
+        <label class="field-label">Price per night (€)</label>
+        <input type="number" name="price_per_night" step="0.01" min="0" value="{{ room['price_per_night'] if room else '' }}">
+      </div>
+    </div>
+
+    <label class="field-label">Facilities (comma-separated)</label>
+    <input type="text" name="amenities" placeholder="Fireplace, Valley view, En-suite bathroom" value="{{ room['amenities'] if room else '' }}">
+
+    {% if room %}
+    <label class="field-label" style="margin-top:16px;">
+      <input type="checkbox" name="active" {{ 'checked' if room['active'] }} style="width:auto; display:inline; margin-right:6px;">
+      Open for booking
+    </label>
+    {% endif %}
+
+    <button type="submit" class="btn-primary">{% if room %}Save changes{% else %}Add room{% endif %}</button>
+  </form>
+</div>
+
+{% endblock %}

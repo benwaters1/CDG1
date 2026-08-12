@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Submit an expense{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Submit an Expense</h1>
+  <form method="post" enctype="multipart/form-data">
+    {% if prefill_vehicle_id %}<input type="hidden" name="vehicle_id" value="{{ prefill_vehicle_id }}">{% endif %}
+    <label class="field-label">What was it for</label>
+    <input type="text" name="vendor_name" value="{{ prefill_vendor }}" placeholder="e.g. Leroy Merlin, Total station" list="known-vendors">
+    {% if vendors %}
+    <datalist id="known-vendors">
+      {% for v in vendors %}
+      <option value="{{ v }}">
+      {% endfor %}
+    </datalist>
+    {% endif %}
+    <label class="field-label">Description</label>
+    <textarea name="description" required placeholder="What was purchased and why"></textarea>
+    <label class="field-label">Amount (€)</label>
+    <input type="number" name="amount" step="0.01" min="0.01" required>
+    <label class="field-label">Receipt</label>
+    <input type="file" name="receipt">
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:6px;">
+      <input type="checkbox" name="restaurant_related" style="width:auto;">
+      This is a restaurant expense (ingredients, dinner service supplies)
+    </label>
+    <button type="submit" class="btn-primary">Submit for approval</button>
+  </form>
+</div>
+
+{% endblock %}

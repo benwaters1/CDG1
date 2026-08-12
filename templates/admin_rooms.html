@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Rooms{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Rooms</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
+    <a href="{{ url_for('book_rooms') }}" class="btn-mini">View public page</a>
+    <form method="post" action="{{ url_for('sync_all_ical_sources') }}"><button type="submit" class="btn-mini">Sync all calendars</button></form>
+    <a href="{{ url_for('new_room') }}" class="btn-primary" style="margin-top:0;">+ Add room</a>
+  </div>
+</div>
+
+{% if not rooms %}
+  <div class="empty-state">No rooms yet. Add one to start taking bookings.</div>
+{% else %}
+  {% for room in rooms %}
+  <div class="expense-card">
+    {% if room['photo_filename'] %}
+    <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="" class="room-photo-thumb">
+    {% endif %}
+    <div class="expense-head">
+      <div>
+        <strong>{{ room['name'] }}</strong>
+        {% if room['price_per_night'] %} — €{{ '%.0f'|format(room['price_per_night']) }}/night{% endif %}
+        · sleeps {{ room['max_occupancy'] }}
+        <span class="mini-status {{ 'status-active' if room['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for booking' if room['active'] else 'hidden' }}</span>
+      </div>
+      <a href="{{ url_for('edit_room', room_id=room['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+    </div>
+
+    <p class="upload-hint">Paste this link into Airbnb/Booking.com/VRBO's calendar import so they see bookings made here and don't double-book this room:</p>
+    <p class="share-link-box">{{ ics_urls[room['id']] }}</p>
+
+    <p class="field-label" style="margin-top:14px;">Imported calendars (Airbnb, Booking.com, VRBO...)</p>
+    {% set sources = sources_by_room.get(room['id'], []) %}
+    {% if not sources %}
+      <p class="empty-inline">None added — this room only checks bookings made here.</p>
+    {% else %}
+      <div class="doc-list">
+        {% for s, is_stale, last_log in sources %}
+        <div class="doc-row">
+          <span style="flex:1;">
+            {{ s['label'] }}
+            {% if s['last_sync_error'] %}
+              <span class="mini-status status-rejected" style="margin-left:6px;">sync failed</span>
+            {% elif is_stale %}
+              <span class="mini-status status-pending" style="margin-left:6px;">stale — sync it</span>
+            {% elif s['last_synced_at'] %}
+              <span class="mini-status status-approved" style="margin-left:6px;">synced</span>
+            {% endif %}
+            {% if last_log and last_log['success'] %}
+              <span class="upload-hint">— last run +{{ last_log['added'] }} / -{{ last_log['removed'] }} ({{ last_log['unchanged'] }} unchanged)</span>
+            {% endif %}
+          </span>
+          <form method="post" action="{{ url_for('sync_ical_source_now', source_id=s['id']) }}" style="display:inline;">
+            <button type="submit" class="btn-mini">Sync now</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_ical_source', source_id=s['id']) }}" onsubmit="return confirm('Remove this calendar?');" style="display:inline;">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% if s['last_sync_error'] %}<p class="upload-hint" style="color:var(--danger);">{{ s['last_sync_error'] }}</p>{% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('new_ical_source', room_id=room['id']) }}" class="upload-form">
+      <input type="text" name="label" placeholder="e.g. Airbnb">
+      <input type="text" name="url" placeholder="https://www.airbnb.com/calendar/ical/....ics">
+      <button type="submit" class="btn-mini">+ Add calendar</button>
+    </form>
+
+    <p class="field-label" style="margin-top:14px;">Blocked dates (maintenance, personal use, etc.)</p>
+    {% set blocks = blocks_by_room.get(room['id'], []) %}
+    {% if not blocks %}
+      <p class="empty-inline">No manual blocks on this room.</p>
+    {% else %}
+      <div class="doc-list">
+        {% for b in blocks %}
+        <div class="doc-row">
+          <span style="flex:1;">
+            {{ b['start_date'] }} → {{ b['end_date'] }}{% if b['reason'] %} — {{ b['reason'] }}{% endif %}
+            {% if b['end_date'] < today.isoformat() %}<span class="mini-status status-past" style="margin-left:6px;">past</span>{% endif %}
+          </span>
+          <form method="post" action="{{ url_for('delete_room_block', block_id=b['id']) }}" onsubmit="return confirm('Remove this block?');" style="display:inline;">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('new_room_block', room_id=room['id']) }}" class="upload-form">
+      <div class="field-row-2">
+        <input type="date" name="start_date" required>
+        <input type="date" name="end_date" required>
+      </div>
+      <input type="text" name="reason" placeholder="Reason (optional) — e.g. Renovation, Family visit">
+      <button type="submit" class="btn-mini">+ Block these dates</button>
+    </form>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

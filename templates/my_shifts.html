@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}My Shifts{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>My Shifts</h1>
+</div>
+
+{% if offered_to_me %}
+<h2 class="section-heading" style="margin-top:0;">Offered to you</h2>
+{% for s in offered_to_me %}
+<div class="expense-card">
+  <div class="expense-head">
+    <div>
+      <strong>{{ s['requested_by_name'] }}</strong> wants to give you their shift on {{ s['shift_date'] }}
+      {% if s['start_time'] or s['end_time'] %}({{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}){% endif %}
+    </div>
+  </div>
+  {% if s['note'] %}<p class="manual-body">{{ s['note'] }}</p>{% endif %}
+  <div class="expense-actions">
+    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="accepted"><button type="submit" class="btn-mini">Accept</button></form>
+    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<h2 class="section-heading" {% if not offered_to_me %}style="margin-top:0;"{% endif %}>Your upcoming shifts</h2>
+{% if not upcoming_shifts %}
+  <div class="empty-state">Nothing scheduled.</div>
+{% else %}
+  <div class="mini-list">
+    {% for s in upcoming_shifts %}
+    <div class="mini-row" style="align-items:flex-start; flex-direction:column; gap:6px;">
+      <div style="display:flex; width:100%; gap:8px; align-items:center;">
+        <span class="mini-name">{{ s['shift_date'] }}</span>
+        <span class="mini-role">
+          {% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% else %}Scheduled{% endif %}
+          {% if s['role_note'] %} · {{ s['role_note'] }}{% endif %}
+        </span>
+      </div>
+      {% if colleagues %}
+      <form method="post" class="upload-form" style="width:100%;">
+        <input type="hidden" name="shift_id" value="{{ s['id'] }}">
+        <select name="offered_to_user_id" required>
+          <option value="">Offer this shift to…</option>
+          {% for c in colleagues %}
+          <option value="{{ c['id'] }}">{{ c['name'] }}</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="note" placeholder="Note (optional)">
+        <button type="submit" class="btn-mini">Request swap</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if my_swap_requests %}
+<h2 class="section-heading">Your swap requests</h2>
+<div class="mini-list">
+  {% for s in my_swap_requests %}
+  <div class="mini-row">
+    <span class="mini-name">{{ s['shift_date'] }} → {{ s['offered_to_name'] }}</span>
+    <span class="mini-status status-{{ 'onshift' if s['status'] == 'approved' else ('inactive' if s['status'] in ['declined','rejected'] else 'pending') }}">{{ s['status'] }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

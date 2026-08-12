@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Extras{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booking Extras</h1>
+  <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Booking requests</a>
+</div>
+
+<form method="post" action="{{ url_for('new_extra') }}" class="search-bar">
+  <div style="flex:1;">
+    <label class="field-label">Name</label>
+    <input type="text" name="name" placeholder="e.g. Breakfast, Airport transfer" required>
+  </div>
+  <div>
+    <label class="field-label">Price (€)</label>
+    <input type="number" name="price" step="0.01" min="0">
+  </div>
+  <button type="submit" class="btn-mini">+ Add extra</button>
+</form>
+
+{% if not extras %}
+  <div class="empty-state">No extras yet. Guests will only see the room rate.</div>
+{% else %}
+  <div class="doc-list">
+    {% for e in extras %}
+    <div class="doc-row">
+      <span style="flex:1;">{{ e['name'] }} — €{{ '%.2f'|format(e['price']) }} {% if not e['active'] %}<span class="mini-status status-inactive">hidden</span>{% endif %}</span>
+      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleExtraEdit({{ e['id'] }})">Edit</span>
+      <form method="post" action="{{ url_for('toggle_extra', extra_id=e['id']) }}">
+        <button type="submit" class="btn-mini">{{ 'Show' if not e['active'] else 'Hide' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('delete_extra', extra_id=e['id']) }}" onsubmit="return confirm('Remove this extra?');">
+        <button type="submit" class="doc-delete">×</button>
+      </form>
+    </div>
+    <form method="post" action="{{ url_for('edit_extra', extra_id=e['id']) }}" id="edit-extra-{{ e['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
+      <div style="flex:1;">
+        <input type="text" name="name" value="{{ e['name'] }}" placeholder="Name" required>
+      </div>
+      <div>
+        <input type="number" name="price" step="0.01" min="0" value="{{ e['price'] }}">
+      </div>
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<script>
+function toggleExtraEdit(id) {
+  var el = document.getElementById('edit-extra-' + id);
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+</script>
+
+{% endblock %}

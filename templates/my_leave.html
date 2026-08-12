@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Time Off{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Time Off</h1>
+  {% if leave and leave.entitlement is not none %}
+  <span class="upload-hint">{{ leave.remaining }} of {{ leave.entitlement }} days left in {{ leave.year }}</span>
+  {% endif %}
+</div>
+
+<div class="detail-card" style="max-width:520px;">
+  <h3>Request time off</h3>
+  <form method="post">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">From</label>
+        <input type="date" name="start_date" required>
+      </div>
+      <div>
+        <label class="field-label">To</label>
+        <input type="date" name="end_date" required>
+      </div>
+    </div>
+    <label class="field-label">Type</label>
+    <select name="leave_type">
+      <option value="vacation">Vacation</option>
+      <option value="sick">Sick</option>
+      <option value="personal">Personal</option>
+      <option value="other">Other</option>
+    </select>
+    <label class="field-label">Reason (optional)</label>
+    <input type="text" name="reason" placeholder="e.g. Family visit">
+    <button type="submit" class="btn-primary" style="margin-top:14px;">Submit request</button>
+  </form>
+</div>
+
+<h2 class="section-heading">Your requests</h2>
+{% if not requests %}
+  <div class="empty-state">No time off requested yet.</div>
+{% else %}
+  {% for r in requests %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ r['start_date'] }} → {{ r['end_date'] }}</strong>
+        <span class="mini-status status-{{ 'rejected' if r['status'] == 'declined' else ('inactive' if r['status'] == 'cancelled' else r['status']) }}" style="margin-left:8px;">{{ r['status'] }}</span>
+        <span class="upload-hint" style="margin-left:6px;">{{ r['leave_type']|default('vacation', true)|capitalize }}</span>
+      </div>
+    </div>
+    {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
+    <p class="upload-hint">Requested {{ r['requested_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+    {% if r['owner_note'] %}<p class="upload-hint">Note: {{ r['owner_note'] }}</p>{% endif %}
+    {% if r['status'] in ['pending', 'approved'] %}
+    <div class="expense-actions">
+      <form method="post" action="{{ url_for('cancel_leave_request', request_id=r['id']) }}" onsubmit="return confirm('Cancel this time off request?');">
+        <button type="submit" class="btn-text-danger">Cancel</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

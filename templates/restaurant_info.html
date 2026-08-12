@@ -1,0 +1,26 @@
+{% extends "public_base.html" %}
+{% block title %}Dinner{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Dinner at Château de Gudanes</h1>
+  {% if not_yet_open %}
+  <p class="manual-body">Our dining room opens {{ settings['opening_date'] }}. Reservations are open now for that date onward.</p>
+  {% else %}
+  <p class="manual-body">A small, seasonal dinner service — up to {{ settings['capacity'] if settings else 20 }} guests a night, cooked by our chef.</p>
+  {% endif %}
+  {% if settings and settings['price_per_person'] %}
+  <p class="room-meta">€{{ '%.0f'|format(settings['price_per_person']) }} per person{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}</p>
+  {% elif settings and settings['dinner_time'] %}
+  <p class="room-meta">Seating from {{ settings['dinner_time'] }}</p>
+  {% endif %}
+
+  {% if settings and settings['enabled'] %}
+  <a href="{{ url_for('restaurant_book') }}" class="btn-primary btn-block" style="margin-top:16px;">Book a table</a>
+  <p class="upload-hint" style="margin-top:12px; text-align:center;"><a href="{{ url_for('restaurant_find') }}" style="color:var(--steel);">Manage an existing reservation</a></p>
+  {% else %}
+  <p class="upload-hint" style="margin-top:16px;">Online reservations aren't open yet — check back soon, or contact the château directly.</p>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Terms & Conditions{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Terms &amp; Conditions</h1>
+  <a href="{{ url_for('terms_page') }}" class="btn-mini">View public page</a>
+</div>
+
+<p class="pay-disclaimer">This is shown to every guest before they can submit a booking request. It ships as a draft — have it reviewed by a lawyer before you rely on it, especially the cancellation-window bracket.</p>
+
+<form method="post">
+  <textarea name="text" style="min-height:420px; font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ text }}</textarea>
+  <button type="submit" class="btn-primary">Save</button>
+</form>
+
+{% endblock %}

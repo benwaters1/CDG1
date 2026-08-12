@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}{{ person['name'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ person['name'] }}</h1>
+  {% if user['role'] == 'owner' %}
+  <a href="{{ url_for('edit_employee', user_id=person['id']) }}" class="btn-primary">Edit profile</a>
+  {% elif person['id'] == user['id'] %}
+  <a href="{{ url_for('edit_own_contact_info') }}" class="btn-mini">Update phone / emergency contact</a>
+  {% endif %}
+</div>
+
+<div class="profile-layout">
+
+  <div class="profile-main">
+    {% if onboarding_url %}
+    <div class="detail-card" style="border-color:var(--gold);">
+      <h3>Invitation pending</h3>
+      <p class="pay-disclaimer" style="margin-top:0;">{{ person['name'] }} hasn't activated their account yet. Share this link with them directly:</p>
+      <p class="share-link-box">{{ onboarding_url }}</p>
+      <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}" style="margin-top:10px;">
+        <button type="submit" class="btn-mini">Generate a new link</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if onboarding_items %}
+    {% set done_count = onboarding_items|selectattr('done')|list|length %}
+    <div class="detail-card">
+      <h3>Onboarding{% if done_count < onboarding_items|length %} <span class="upload-hint">({{ done_count }}/{{ onboarding_items|length }})</span>{% endif %}</h3>
+      <div class="task-list">
+        {% for item in onboarding_items %}
+        <div class="task-row {{ 'task-done' if item['done'] }}">
+          <form method="post" action="{{ url_for('toggle_onboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <button type="submit" class="task-check">{{ '✓' if item['done'] }}</button>
+          </form>
+          <span class="task-title">{{ item['label'] }}</span>
+          <form method="post" action="{{ url_for('delete_onboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('new_onboarding_item', user_id=person['id']) }}" class="upload-form">
+        <input type="text" name="label" placeholder="Add a step">
+        <button type="submit" class="btn-mini">Add</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if offboarding_items %}
+    {% set off_done_count = offboarding_items|selectattr('done')|list|length %}
+    <div class="detail-card" style="border-color:var(--danger);">
+      <h3>Offboarding{% if off_done_count < offboarding_items|length %} <span class="upload-hint">({{ off_done_count }}/{{ offboarding_items|length }})</span>{% endif %}</h3>
+      <div class="task-list">
+        {% for item in offboarding_items %}
+        <div class="task-row {{ 'task-done' if item['done'] }}">
+          <form method="post" action="{{ url_for('toggle_offboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <button type="submit" class="task-check">{{ '✓' if item['done'] }}</button>
+          </form>
+          <span class="task-title">{{ item['label'] }}</span>
+          <form method="post" action="{{ url_for('delete_offboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('new_offboarding_item', user_id=person['id']) }}" class="upload-form">
+        <input type="text" name="label" placeholder="Add a step">
+        <button type="submit" class="btn-mini">Add</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if user['role'] == 'owner' %}
+    <div class="detail-card">
+      <h3>Equipment &amp; Keys</h3>
+      {% if not equipment_items %}
+        <p class="empty-inline">Nothing issued yet.</p>
+      {% else %}
+        <div class="task-list">
+          {% for item in equipment_items %}
+          <div class="task-row">
+            <span class="task-title" style="flex:1;">
+              {{ item['label'] }}
+              {% if item['notes'] %}<span class="upload-hint">({{ item['notes'] }})</span>{% endif %}
+            </span>
+            <span class="mini-status status-{{ 'inactive' if item['returned_at'] else 'onshift' }}">
+              {{ 'returned ' + item['returned_at'][:10] if item['returned_at'] else 'issued ' + item['issued_at'][:10] }}
+            </span>
+            <form method="post" action="{{ url_for('toggle_equipment_returned', user_id=person['id'], item_id=item['id']) }}">
+              <button type="submit" class="btn-mini">{{ 'Reissue' if item['returned_at'] else 'Mark returned' }}</button>
+            </form>
+            <form method="post" action="{{ url_for('delete_equipment_item', user_id=person['id'], item_id=item['id']) }}">
+              <button type="submit" class="doc-delete">×</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('new_equipment_item', user_id=person['id']) }}" class="upload-form">
+        <input type="text" name="label" placeholder="e.g. Master key, uniform (2x)" required>
+        <input type="text" name="notes" placeholder="Notes (optional)">
+        <button type="submit" class="btn-mini">Log issued item</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="detail-card">
+      <h3>Details</h3>
+      <div class="detail-grid">
+        <div><span class="detail-label">Role</span>{{ person['job_role'] or '—' }}</div>
+        <div><span class="detail-label">Status</span><span class="status-{{ person['status'] }}">{{ person['status'] }}</span></div>
+        <div><span class="detail-label">Phone</span>{{ person['phone'] or '—' }}</div>
+        <div><span class="detail-label">Email</span>{{ person['email'] }}</div>
+        <div><span class="detail-label">Start date</span>{{ person['start_date'] or '—' }}</div>
+        <div><span class="detail-label">On the team since</span>{{ person['created_at'][:10] }}</div>
+        <div><span class="detail-label">Tasks completed (7d / 30d)</span>{{ task_stats.week }} / {{ task_stats.month }}</div>
+        <div><span class="detail-label">Open tasks now</span>{{ task_stats.open }}</div>
+        {% if leave %}
+        <div>
+          <span class="detail-label">Leave taken {{ leave.year }}</span>
+          {% if leave.entitlement is not none %}{{ leave.used }} of {{ leave.entitlement }} days ({{ leave.remaining }} remaining){% else %}{{ leave.used }} days (no entitlement set){% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if person['skills'] %}
+        <div class="notes-block">
+          <span class="detail-label">Skills / certifications</span>
+          <div class="amenity-tags">
+            {% for skill in person['skills'].split(',') %}
+            <span class="amenity-tag">{{ skill.strip() }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+      {% if person['emergency_contact_name'] or person['emergency_contact_phone'] %}
+        <div class="notes-block">
+          <span class="detail-label">Emergency contact</span>
+          <p>
+            {{ person['emergency_contact_name'] or 'Unnamed' }}{% if person['emergency_contact_relationship'] %} ({{ person['emergency_contact_relationship'] }}){% endif %}
+            {% if person['emergency_contact_phone'] %} — <a href="tel:{{ person['emergency_contact_phone'] }}" style="color:var(--steel);">{{ person['emergency_contact_phone'] }}</a>{% endif %}
+          </p>
+        </div>
+      {% endif %}
+      {% if person['notes'] %}
+        <div class="notes-block">
+          <span class="detail-label">Notes</span>
+          <p>{{ person['notes'] }}</p>
+        </div>
+      {% endif %}
+      {% if person['status'] == 'inactive' and person['reason_for_leaving'] and user['role'] == 'owner' %}
+        <div class="notes-block">
+          <span class="detail-label">Reason for leaving</span>
+          <p>{{ person['reason_for_leaving'] }}</p>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if user['role'] == 'owner' %}
+    <div class="detail-card">
+      <h3>Pay reference</h3>
+      <p class="pay-disclaimer">Reference only — actual payroll runs through your accountant. This is here so you have one place to check rate/type at a glance.</p>
+      <div class="detail-grid">
+        <div><span class="detail-label">Rate</span>{{ person['pay_rate'] or '—' }}</div>
+        <div><span class="detail-label">Type</span>{{ person['pay_type'] or '—' }}</div>
+      </div>
+      {% if pay_rate_history %}
+      <div class="notes-block">
+        <span class="detail-label">Pay history</span>
+        <div class="mini-list" style="margin-top:6px;">
+          {% for h in pay_rate_history %}
+          <div class="mini-row">
+            <span class="mini-name">{{ h['old_pay_rate'] or '(unset)' }}{% if h['old_pay_type'] %} ({{ h['old_pay_type'] }}){% endif %} → {{ h['new_pay_rate'] or '(unset)' }}{% if h['new_pay_type'] %} ({{ h['new_pay_type'] }}){% endif %}</span>
+            <span class="upload-hint">{{ h['changed_by_name'] or 'Unknown' }} · {{ h['changed_at'][:10] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if user['role'] == 'owner' %}
+    <div class="detail-card">
+      <h3>Check-in Notes</h3>
+      <p class="pay-disclaimer" style="margin-top:0;">Private to you — not shown to {{ person['name'].split(' ')[0] }}.</p>
+      {% if not check_in_notes %}
+        <p class="empty-inline">No notes yet.</p>
+      {% else %}
+        <div class="doc-list">
+          {% for n in check_in_notes %}
+          <div class="doc-row" style="flex-direction:column; align-items:flex-start; gap:2px;">
+            <div style="display:flex; width:100%; gap:8px; align-items:flex-start;">
+              <span style="flex:1; color:var(--ink);">{{ n['body'] }}</span>
+              <form method="post" action="{{ url_for('delete_check_in_note', user_id=person['id'], note_id=n['id']) }}" onsubmit="return confirm('Delete this note?');">
+                <button type="submit" class="doc-delete">×</button>
+              </form>
+            </div>
+            <span class="upload-hint">{{ n['created_at'][:10] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('new_check_in_note', user_id=person['id']) }}" class="upload-form">
+        <textarea name="body" rows="2" placeholder="e.g. Discussed weekend availability, went well."></textarea>
+        <button type="submit" class="btn-mini" style="align-self:flex-start;">Add note</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="detail-card">
+      <div class="page-head" style="margin:0 0 4px 0;">
+        <h3 style="margin:0;">Timesheet</h3>
+        {% if user['role'] == 'owner' %}<a href="{{ url_for('admin_timesheets', employee_id=person['id']) }}" class="small-link" style="color:var(--steel);">Full report</a>{% endif %}
+      </div>
+      <p class="pay-disclaimer" style="margin-top:0;">Built from logging in and out — {{ week_total_hours }}h in the last 7 days.</p>
+      {% if not recent_shifts %}
+        <p class="empty-inline">No clock-ins yet.</p>
+      {% else %}
+        <div class="task-list">
+          {% for s in recent_shifts %}
+          <div class="task-row" style="flex-wrap:wrap;">
+            <span class="upload-hint" style="flex:1;">
+              {{ local_datetime_str(s['clock_in_at']) }} →
+              {% if s['clock_out_at'] %}{{ local_time_str(s['clock_out_at']) }}{% else %}<strong style="color:var(--steel-deep);">still clocked in</strong>{% endif %}
+            </span>
+            {% if s['clock_out_at'] %}<span class="upload-hint">{{ '%.2f'|format(net_hours(s)) }}h</span>{% endif %}
+            {% if s['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:6px;">auto-closed</span>{% endif %}
+            {% if person['id'] == user['id'] %}
+            <span class="small-link" style="color:var(--steel); margin-left:8px; cursor:pointer;" onclick="toggleFlag({{ s['id'] }})">Flag</span>
+            <form method="post" action="{{ url_for('flag_timesheet_entry', entry_id=s['id']) }}" id="flag-{{ s['id'] }}" class="upload-form" style="display:none; width:100%; margin-top:6px;">
+              <input type="text" name="note" placeholder="What looks wrong?" required>
+              <button type="submit" class="btn-mini">Send</button>
+            </form>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="profile-side">
+    <div class="detail-card">
+      <h3>Documents</h3>
+      {% if docs %}
+        <div class="doc-list">
+          {% for d in docs %}
+          <div class="doc-row">
+            <a href="{{ url_for('download_document', doc_id=d['id']) }}">{{ d['title'] }}</a>
+            {% set exp = expiry_status(d['expiry_date']) %}
+            {% if exp == 'expired' %}<span class="mini-status status-inactive">expired {{ d['expiry_date'] }}</span>
+            {% elif exp == 'soon' %}<span class="mini-status status-pending">expires {{ d['expiry_date'] }}</span>{% endif %}
+            {% if is_viewable(d['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_document', doc_id=d['id']) }}', '{{ d['title']|e }}')">View</button>{% endif %}
+            <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleDocEdit({{ d['id'] }})">Edit</span>
+            <form method="post" action="{{ url_for('delete_document', doc_id=d['id']) }}" onsubmit="return confirm('Delete this document?');">
+              <button type="submit" class="doc-delete">×</button>
+            </form>
+          </div>
+          <form method="post" action="{{ url_for('edit_document', doc_id=d['id']) }}" id="edit-doc-{{ d['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
+            <div style="flex:1;">
+              <input type="text" name="title" value="{{ d['title'] }}" placeholder="Title" required>
+            </div>
+            <div>
+              <input type="date" name="expiry_date" value="{{ d['expiry_date'] or '' }}">
+            </div>
+            <button type="submit" class="btn-mini">Save</button>
+          </form>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-inline">No documents uploaded yet.</p>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('upload_document', user_id=person['id']) }}" enctype="multipart/form-data" class="upload-form">
+        <input type="text" name="title" placeholder="Document title (e.g. Contract)">
+        <input type="file" name="document" required>
+        <label class="field-label">Expiry date (optional — for permits, certifications)</label>
+        <input type="date" name="expiry_date">
+        <button type="submit" class="btn-mini">Upload</button>
+        <p class="upload-hint">PDF, image, or Word doc, up to 15MB.</p>
+      </form>
+    </div>
+
+    <div class="detail-card">
+      <div class="page-head" style="margin:0 0 4px 0;">
+        <h3 style="margin:0;">Reimbursements</h3>
+        {% if user['role'] == 'owner' %}<a href="{{ url_for('expenses') }}" class="small-link" style="color:var(--steel);">All expenses</a>{% endif %}
+      </div>
+      <p class="pay-disclaimer" style="margin-top:0;">Personal expense claims only — separate from supplier invoices, which live on the main Expenses page.</p>
+      {% if not expense_claims %}
+        <p class="empty-inline">No expense claims yet.</p>
+      {% else %}
+        <div class="doc-list">
+          {% for c in expense_claims %}
+          <div class="doc-row" style="flex-direction:column; align-items:flex-start; gap:2px;">
+            <div style="display:flex; width:100%; gap:8px; align-items:center;">
+              <strong style="flex:1;">{% if c['vendor_name'] %}{{ c['vendor_name'] }} — {% endif %}€{{ '%.2f'|format(c['amount']) }}</strong>
+              <span class="mini-status status-{{ c['status'] }}">{{ c['status'] }}</span>
+            </div>
+            <span class="upload-hint">{{ c['description'] }} · {{ c['submitted_at'][:10] }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+      {% if user['role'] != 'owner' %}
+      <a href="{{ url_for('submit_expense') }}" class="btn-mini" style="margin-top:12px; align-self:flex-start;">+ New claim</a>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+function toggleFlag(id) {
+  var form = document.getElementById('flag-' + id);
+  form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+}
+function toggleDocEdit(id) {
+  var el = document.getElementById('edit-doc-' + id);
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+</script>
+
+{% endblock %}

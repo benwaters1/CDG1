@@ -1,0 +1,88 @@
+{% if not sheet.employees %}
+  <div class="empty-state">Add employees first to assign tasks.</div>
+{% else %}
+  {% for e in sheet.employees %}
+  {% set entry = sheet.by_employee.get(e['id']) %}
+  <div class="expense-card">
+    <div class="expense-head"><strong>{{ e['name'] }}</strong></div>
+    {% if entry and entry.tasks %}
+      <div class="task-list">
+        {% for t in entry.tasks %}
+        <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+          <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+          <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+          <span class="task-title">
+            {{ t['title'] }}
+            {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}
+            {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
+            {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
+            {% if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+          </span>
+          {% if t['acknowledgment_status'] == 'pending' %}<span class="mini-status status-pending">awaiting response</span>
+          {% elif t['acknowledgment_status'] == 'accepted' %}<span class="mini-status status-active">accepted</span>
+          {% elif t['acknowledgment_status'] == 'rejected' %}<span class="mini-status status-inactive">rejected — reassign</span>{% endif %}
+          {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date'] }}</span>{% endif %}
+          <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" title="Direct now — sends a push, needs accept/reject">
+            <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
+          </form>
+          <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" title="Duplicate to next week">
+            <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">↻</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="empty-inline">Nothing assigned {{ {'day': 'today', 'week': 'this week', 'month': 'this month'}[sheet.view] }}.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% if sheet.unassigned_tasks %}
+<div class="expense-card">
+  <div class="expense-head"><strong>Unassigned</strong></div>
+  <div class="task-list">
+    {% for t in sheet.unassigned_tasks %}
+    <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+      <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+      <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+      <span class="task-title">{{ t['title'] }}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
+      {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date'] }}</span>{% endif %}
+      <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" style="display:flex; gap:4px;">
+        <select name="employee_id" required style="font-size:11px; padding:1px;">
+          <option value="">Direct to…</option>
+          {% for e in sheet.employees %}
+          <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
+      </form>
+      <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+        <button type="submit" class="doc-delete">×</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if sheet.undated_tasks %}
+<div class="expense-card">
+  <div class="expense-head"><strong>No due date</strong></div>
+  <div class="task-list">
+    {% for t in sheet.undated_tasks %}
+    <div class="task-row" data-task-id="{{ t['id'] }}">
+      <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)"></button>
+      <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+      <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span></span>
+      <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+        <button type="submit" class="doc-delete">×</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

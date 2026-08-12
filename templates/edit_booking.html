@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Edit booking{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Edit Booking — {{ booking['room_name'] }}</h1>
+  <p class="upload-hint">{{ booking['guest_name'] }} · {{ booking['reference_code'] }}</p>
+
+  {% if booking['payment_status'] == 'paid' %}
+  <p class="pay-disclaimer">This booking was already paid (€{{ '%.2f'|format(booking['total_price']) if booking['total_price'] else '0.00' }}). Changing dates or party size updates the record and the reference total shown here, but does <strong>not</strong> automatically charge or refund the difference on Stripe — use the Refund button on the bookings list if you need to adjust the payment.</p>
+  {% endif %}
+
+  <form method="post">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Arrival</label>
+        <input type="date" name="arrival_date" value="{{ booking['arrival_date'] }}" required>
+      </div>
+      <div>
+        <label class="field-label">Departure</label>
+        <input type="date" name="departure_date" value="{{ booking['departure_date'] }}" required>
+      </div>
+    </div>
+
+    <label class="field-label">Party size</label>
+    <input type="number" name="party_size" min="1" max="{{ booking['max_occupancy'] }}" value="{{ booking['party_size'] }}" required>
+
+    <label class="field-label">Phone</label>
+    <input type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}">
+
+    <label class="field-label">Notes</label>
+    <textarea name="special_requests">{{ booking['special_requests'] or '' }}</textarea>
+
+    <button type="submit" class="btn-primary">Save changes</button>
+  </form>
+  <p class="upload-hint" style="margin-top:10px;">Saving emails the guest with the updated details.</p>
+</div>
+
+{% endblock %}

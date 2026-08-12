@@ -1,0 +1,38 @@
+{% extends "public_base.html" %}
+{% block title %}Registration received{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Thank you, {{ booking['guest_name'].split(' ')[0] }}</h1>
+  <p class="manual-body">Your registration for <strong>{{ booking['title'] }}</strong> is <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>.</p>
+
+  <div class="detail-card" style="margin-top:16px;">
+    <div class="detail-grid">
+      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
+      <div><span class="detail-label">Dates</span>{{ booking['start_date'] }}{% if booking['end_date'] != booking['start_date'] %} → {{ booking['end_date'] }}{% endif %}</div>
+      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
+      {% if booking['total_price'] %}<div><span class="detail-label">Estimated total</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
+      {% if booking['deposit_amount'] %}<div><span class="detail-label">Deposit</span>€{{ '%.2f'|format(booking['deposit_amount']) }} {{ 'paid' if booking['deposit_paid_at'] else '— due' }}</div>{% endif %}
+      {% if booking['balance_amount'] %}<div><span class="detail-label">Balance</span>€{{ '%.2f'|format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} due {{ booking['balance_due_date'] }}{% endif %}</div>{% endif %}
+    </div>
+    {% if guests and guests|length > 1 %}
+    <div class="notes-block">
+      <span class="detail-label">Party</span>
+      <p>{% for g in guests %}{{ g['guest_name'] }}{{ ' (you)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
+    </div>
+    {% endif %}
+    {% if booking['notes'] %}
+    <div class="notes-block">
+      <span class="detail-label">Your notes</span>
+      <p>{{ booking['notes'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <p class="pay-disclaimer" style="margin-top:16px;">Save this page's link, or write down your reference code and the email you registered with — that's how you'll manage this registration later.</p>
+  <p class="share-link-box">{{ url_for('workshop_manage', manage_token=booking['manage_token'], _external=True) }}</p>
+
+  <a href="{{ url_for('workshop_manage', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">View my registration</a>
+</div>
+
+{% endblock %}

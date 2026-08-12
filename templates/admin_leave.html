@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Time Off Requests{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Time Off Requests</h1>
+  <a href="{{ url_for('export_leave_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+
+{% if not requests %}
+  <div class="empty-state">No time off requests yet.</div>
+{% else %}
+  {% for r in requests %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ r['employee_name'] }}</strong> — {{ r['start_date'] }} → {{ r['end_date'] }}
+        <span class="mini-status status-{{ 'rejected' if r['status'] == 'declined' else ('inactive' if r['status'] == 'cancelled' else r['status']) }}" style="margin-left:8px;">{{ r['status'] }}</span>
+        <span class="upload-hint" style="margin-left:6px;">{{ r['leave_type']|default('vacation', true)|capitalize }}</span>
+        {% set bal = balances.get(r['user_id']) %}
+        {% if bal and bal.entitlement is not none %}
+        <span class="upload-hint">{{ bal.used }} of {{ bal.entitlement }} days used this year</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
+    <p class="upload-hint">Requested {{ r['requested_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+    {% if conflicts.get(r['id']) %}
+    <p class="upload-hint" style="color:var(--danger);">
+      ⚠ Already scheduled to work {{ conflicts[r['id']]|map(attribute='shift_date')|join(', ') }} —
+      <a href="{{ url_for('admin_shifts') }}" style="color:inherit;">remove those shifts</a> if this is approved.
+    </p>
+    {% endif %}
+    {% if task_conflicts.get(r['id']) %}
+    <p class="upload-hint" style="color:var(--danger);">
+      ⚠ Has open tasks due during this window: {{ task_conflicts[r['id']]|map(attribute='title')|join(', ') }} —
+      reassign them if this is approved.
+    </p>
+    {% endif %}
+    {% if r['status'] == 'pending' %}
+    <div class="expense-actions">
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

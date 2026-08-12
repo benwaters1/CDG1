@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Social Media Schedule{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Social Media Schedule</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_social_posts_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">A content calendar — ideas, drafts, and what's scheduled to go out and when.</p>
+
+<div class="search-bar" style="margin-bottom:18px;">
+  <div>
+    <label class="field-label">Status</label>
+    <select onchange="window.location.href='{{ url_for('management_social') }}?status=' + this.value + '&platform={{ platform_filter }}'">
+      <option value="">All</option>
+      {% for s in ['idea', 'drafted', 'scheduled', 'posted'] %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% if platforms %}
+  <div>
+    <label class="field-label">Platform</label>
+    <select onchange="window.location.href='{{ url_for('management_social') }}?status={{ status_filter }}&platform=' + this.value">
+      <option value="">All</option>
+      {% for p in platforms %}
+      <option value="{{ p }}" {{ 'selected' if platform_filter == p }}>{{ p }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+</div>
+
+{% if not posts %}
+  <div class="empty-state">Nothing on the schedule yet.</div>
+{% else %}
+  <div class="mini-list">
+    {% for p in posts %}
+    <div class="mini-row {{ 'inactive' if p['status'] == 'posted' }}" id="view-post-{{ p['id'] }}">
+      <span class="mini-name">{{ p['caption'][:70] }}{{ '…' if p['caption']|length > 70 }}</span>
+      <span class="mini-role">
+        {{ p['platform'] }}{% if p['post_type'] %} · {{ p['post_type'] }}{% endif %}
+        {% if p['scheduled_date'] %} · {{ p['scheduled_date'] }}{% if p['scheduled_time'] %} {{ p['scheduled_time'] }}{% endif %}{% endif %}
+        {% if p['assignee_name'] %} · {{ p['assignee_name'] }}{% endif %}
+      </span>
+      <span class="mini-status status-{{ 'onshift' if p['status'] == 'posted' else 'pending' }}">{{ p['status'] }}</span>
+      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleSocialEdit({{ p['id'] }})">Edit</span>
+      {% if p['status'] != 'posted' %}
+      <form method="post" action="{{ url_for('mark_social_post_posted', post_id=p['id']) }}"><button type="submit" class="btn-mini">Mark posted</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('delete_social_post', post_id=p['id']) }}" onsubmit="return confirm('Remove this post from the schedule?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+    </div>
+    <form method="post" action="{{ url_for('edit_social_post', post_id=p['id']) }}" id="edit-post-{{ p['id'] }}" class="upload-form" style="display:none;">
+      <select name="platform">
+        {% for opt in ['Instagram', 'Facebook', 'TikTok', 'Pinterest', 'Newsletter', 'Other'] %}
+        <option value="{{ opt }}" {{ 'selected' if p['platform'] == opt }}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      <select name="post_type">
+        <option value="">Type (optional)</option>
+        {% for opt in ['Photo', 'Reel', 'Video', 'Story', 'Carousel'] %}
+        <option value="{{ opt }}" {{ 'selected' if p['post_type'] == opt }}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+      <select name="status">
+        {% for s in ['idea', 'drafted', 'scheduled', 'posted'] %}
+        <option value="{{ s }}" {{ 'selected' if p['status'] == s }}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+      <div>
+        <label class="field-label">Scheduled date</label>
+        <input type="date" name="scheduled_date" value="{{ p['scheduled_date'] or '' }}">
+      </div>
+      <div>
+        <label class="field-label">Scheduled time</label>
+        <input type="time" name="scheduled_time" value="{{ p['scheduled_time'] or '' }}">
+      </div>
+      <select name="assigned_to_user_id">
+        <option value="">Unassigned</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}" {{ 'selected' if p['assigned_to_user_id'] == e['id'] }}>{{ e['name'] }}</option>
+        {% endfor %}
+      </select>
+      <textarea name="caption" placeholder="Caption / content" required>{{ p['caption'] }}</textarea>
+      <input type="text" name="link" value="{{ p['link'] or '' }}" placeholder="Link (optional)">
+      <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px; margin-top:20px;">
+  <h3>Add a post</h3>
+  <form method="post" action="{{ url_for('new_social_post') }}" class="upload-form">
+    <select name="platform">
+      {% for opt in ['Instagram', 'Facebook', 'TikTok', 'Pinterest', 'Newsletter', 'Other'] %}
+      <option value="{{ opt }}">{{ opt }}</option>
+      {% endfor %}
+    </select>
+    <select name="post_type">
+      <option value="">Type (optional)</option>
+      {% for opt in ['Photo', 'Reel', 'Video', 'Story', 'Carousel'] %}
+      <option value="{{ opt }}">{{ opt }}</option>
+      {% endfor %}
+    </select>
+    <div>
+      <label class="field-label">Scheduled date (optional)</label>
+      <input type="date" name="scheduled_date">
+    </div>
+    <div>
+      <label class="field-label">Scheduled time (optional)</label>
+      <input type="time" name="scheduled_time">
+    </div>
+    <select name="assigned_to_user_id">
+      <option value="">Unassigned</option>
+      {% for e in employees %}
+      <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+    <textarea name="caption" placeholder="Caption / content idea" required></textarea>
+    <input type="text" name="link" placeholder="Link (optional)">
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</div>
+
+<script>
+function toggleSocialEdit(id) {
+  var edit = document.getElementById('edit-post-' + id);
+  edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Shift Schedule{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Shift Schedule</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_shifts_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('directory') }}" class="small-link" style="color:var(--steel);">← Team</a>
+  </div>
+</div>
+
+{% if pending_swaps %}
+<h2 class="section-heading" style="margin-top:0;">Swap requests awaiting your approval</h2>
+{% for s in pending_swaps %}
+<div class="expense-card">
+  <div class="expense-head">
+    <div>
+      <strong>{{ s['requested_by_name'] }}</strong> → <strong>{{ s['offered_to_name'] }}</strong> — {{ s['shift_date'] }}
+      {% if s['start_time'] or s['end_time'] %}({{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}){% endif %}
+    </div>
+  </div>
+  {% if s['note'] %}<p class="manual-body">{{ s['note'] }}</p>{% endif %}
+  <div class="expense-actions">
+    <form method="post" action="{{ url_for('decide_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+    <form method="post" action="{{ url_for('decide_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<form method="post" action="{{ url_for('new_shift') }}" class="search-bar">
+  <div>
+    <label class="field-label">Employees</label>
+    <div style="display:flex; flex-wrap:wrap; gap:4px 12px; max-width:280px; align-items:center;">
+      {% for e in week.employees %}
+      <label style="display:flex; align-items:center; gap:4px; font-size:12.5px; font-weight:normal; color:inherit;">
+        <input type="checkbox" name="user_ids" value="{{ e['id'] }}"> {{ e['name'] }}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  <div>
+    <label class="field-label">Date</label>
+    <input type="date" name="shift_date" value="{{ week.range_start.isoformat() }}" required>
+  </div>
+  <div>
+    <label class="field-label">Start</label>
+    <input type="time" name="start_time">
+  </div>
+  <div>
+    <label class="field-label">End</label>
+    <input type="time" name="end_time">
+  </div>
+  <div style="flex:2 1 200px;">
+    <label class="field-label">Role / note</label>
+    <input type="text" name="role_note" placeholder="e.g. Front desk cover">
+  </div>
+  <button type="submit" class="btn-mini">+ Add shift</button>
+</form>
+
+<div class="search-bar" style="justify-content:space-between;">
+  <a href="{{ url_for('admin_shifts', date=week.prev_anchor) }}" class="btn-mini">&larr; Prev week</a>
+  <strong>{{ week.range_start.strftime('%b') }} {{ week.range_start.day }} – {{ week.range_end.strftime('%b') }} {{ week.range_end.day }}, {{ week.range_end.year }}</strong>
+  <div style="display:flex; gap:10px;">
+    <form method="post" action="{{ url_for('copy_previous_week_shifts') }}">
+      <input type="hidden" name="date" value="{{ week.range_start.isoformat() }}">
+      <button type="submit" class="btn-mini">Copy last week</button>
+    </form>
+    <a href="{{ url_for('admin_shifts', date=week.next_anchor) }}" class="btn-mini">Next week &rarr;</a>
+  </div>
+</div>
+
+<h2 class="section-heading" style="margin-top:0;">Staffing vs. booking volume</h2>
+<p class="pay-disclaimer" style="margin-top:-10px;">Occupied rooms this week vs. people scheduled, with a rough suggested headcount (1 per {{ 3 }} occupied rooms) — a planning nudge, not a staffing rule.</p>
+<div style="overflow-x:auto;">
+  <div style="display:flex; gap:8px; min-width:min-content; margin-bottom:22px;">
+    {% for s in staffing %}
+    <div class="detail-card" style="min-width:110px; padding:10px; {{ 'border-color:var(--danger);' if s.understaffed }}">
+      <div class="detail-label">{{ s.date.strftime('%a') }} {{ s.date.day }}</div>
+      <div class="room-price" style="font-size:18px;">{{ s.occupied_rooms }} <span style="font-size:11px; color:var(--ink-soft); font-weight:normal;">rooms</span></div>
+      <div class="upload-hint">{{ s.scheduled }} scheduled{% if s.suggested %} · suggest {{ s.suggested }}{% endif %}</div>
+      {% if s.understaffed %}<span class="mini-status status-inactive" style="margin-top:4px; display:inline-block;">understaffed</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if outliers %}
+<h2 class="section-heading" style="margin-top:0;">Timesheet outliers (last 14 days)</h2>
+<p class="pay-disclaimer" style="margin-top:-10px;">Unusually early/late clock-ins or long shifts — worth a quick look, not a policy violation.</p>
+<div class="mini-list" style="margin-bottom:22px;">
+  {% for o in outliers %}
+  <div class="mini-row">
+    <span class="mini-name">{{ o.employee_name }}</span>
+    <span class="mini-role">{{ o.date.strftime('%b') }} {{ o.date.day }} · {{ o.clock_in }}–{{ o.clock_out }} · {{ o.hours }}h</span>
+    <span class="upload-hint">{{ o.reasons|join(', ') }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not week.employees %}
+  <div class="empty-state">Add employees first to build a schedule.</div>
+{% else %}
+<div style="overflow-x:auto;">
+  <table class="cal-table" style="font-size:12px;">
+    <thead>
+      <tr>
+        <th class="cal-room-col">Employee</th>
+        {% for d in week.days %}
+        <th class="{{ 'cal-today' if d == today }}" style="min-width:110px; padding:6px 4px !important;">{{ d.strftime('%a') }} {{ d.day }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in week.rows %}
+      <tr>
+        <td class="cal-room-col">{{ row.employee['name'] }}</td>
+        {% for cell in row.cells %}
+        <td class="{{ 'cal-today' if cell.date == today }}" style="vertical-align:top; padding:4px !important; border:1px solid var(--parchment-line);">
+          {% for entry in cell.shifts %}
+          {% set s = entry.shift %}
+          {% set att = entry.attendance %}
+          <div style="background:var(--status-warn-bg); border-radius:5px; padding:3px 5px; margin-bottom:3px; font-size:11px;">
+            <div style="font-weight:600;">{% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% else %}Scheduled{% endif %}</div>
+            {% if s['role_note'] %}<div class="upload-hint">{{ s['role_note'] }}</div>{% endif %}
+            {% if att.status == 'no_show' %}
+              <div style="color:var(--danger); font-weight:600;">No clock-in</div>
+            {% elif att.status == 'late' %}
+              <div style="color:var(--gold);">Clocked in {{ att.clock_in }} ({{ att.minutes }}m late)</div>
+            {% elif att.status == 'on_time' %}
+              <div style="color:var(--success);">Clocked in {{ att.clock_in }}</div>
+            {% endif %}
+            <form method="post" action="{{ url_for('delete_shift', shift_id=s['id']) }}" onsubmit="return confirm('Remove this shift?');">
+              <button type="submit" class="small-link" style="color:var(--danger); background:none; border:none; cursor:pointer; padding:0; font-size:10px;">Remove</button>
+            </form>
+          </div>
+          {% endfor %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

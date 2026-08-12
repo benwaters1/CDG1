@@ -1,0 +1,23 @@
+# Database — contains real staff/guest data and password hashes, never commit
+*.db
+*.db-journal
+
+# Uploaded files — move to a Railway persistent volume, not the repo
+uploads/
+room_photos/
+
+# Local runtime / logs
+__pycache__/
+*.pyc
+_server_log.txt
+_server_log.txt.err
+
+# Environment / secrets
+.env
+.env.*
+
+# Editor / OS
+.DS_Store
+
+# Claude Code local session state
+.claude/settings.local.json

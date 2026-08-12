@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Today's Sheet{% endblock %}
+{% block content %}
+
+<div class="page-head no-print">
+  <h1>Today's Sheet</h1>
+  <button type="button" class="btn-mini" onclick="window.print()">Print</button>
+</div>
+<h1 class="print-only" style="display:none;">Château de Gudanes — {{ today.strftime('%A') }}, {{ today.strftime('%B') }} {{ today.day }}, {{ today.year }}</h1>
+
+<h2 class="section-heading">On Shift Today</h2>
+{% if not todays_shifts %}
+  <p class="empty-inline">Nobody scheduled today.</p>
+{% else %}
+  <div class="mini-list">
+    {% for s in todays_shifts %}
+    <div class="mini-row">
+      <span class="mini-name">{{ s['employee_name'] }}</span>
+      <span class="mini-role">{% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% else %}Scheduled{% endif %}{% if s['role_note'] %} · {{ s['role_note'] }}{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if off_today %}
+<h2 class="section-heading">Off Today</h2>
+<div class="mini-list">
+  {% for r in off_today %}
+  <div class="mini-row">
+    <span class="mini-name">{{ r['employee_name'] }}</span>
+    <span class="mini-role">Back {{ r['end_date'] }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Open Tasks</h2>
+{% if not open_tasks %}
+  <p class="empty-inline">Nothing outstanding.</p>
+{% else %}
+  <div class="task-list">
+    {% for t in open_tasks %}
+    <div class="task-row {{ 'task-overdue' if t['due_date'] and t['due_date'] < today.isoformat() }}">
+      <span class="priority-dot priority-{{ t['priority'] }}"></span>
+      <span class="task-title">
+        {{ t['title'] }}
+        {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
+        {% if t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+      </span>
+      <span class="upload-hint">{{ t['employee_name'] or 'Unassigned' }}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<h2 class="section-heading">Guests In Residence</h2>
+{% if not guests_here %}
+  <p class="empty-inline">No guests currently staying.</p>
+{% else %}
+  <div class="mini-list">
+    {% for g in guests_here %}
+    <div class="mini-row">
+      <span class="mini-name">{{ g['name'] }}</span>
+      <span class="mini-role">{{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+      {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<h2 class="section-heading">Breakfast Checklist</h2>
+{% if not breakfast_items %}
+  <p class="empty-inline">No breakfast items set up.</p>
+{% else %}
+  <div class="task-list">
+    {% for i in breakfast_items %}
+    <div class="task-row {{ 'task-done' if i['id'] in breakfast_checked_today }}">
+      <span class="task-title">{{ i['name'] }}{% if i['category'] %} <span class="upload-hint">— {{ i['category'] }}</span>{% endif %}{% if i['low_stock'] %} <span class="task-overdue-badge">Low stock</span>{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if restaurant_settings and restaurant_settings['enabled'] or tonights_dinners %}
+<h2 class="section-heading">Dinner Service Tonight{% if dinner_covers %} — {{ dinner_covers }} covers{% endif %}</h2>
+{% if not tonights_dinners %}
+  <p class="empty-inline">No confirmed reservations tonight.</p>
+{% else %}
+  <div class="mini-list">
+    {% for d in tonights_dinners %}
+    <div class="mini-row">
+      <span class="mini-name">{{ d['guest_name'] }}</span>
+      <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endif %}
+
+{% if todays_workshop_sessions %}
+<h2 class="section-heading">Workshops Running Today</h2>
+<div class="mini-list">
+  {% for s in todays_workshop_sessions %}
+  <div class="mini-row">
+    <span class="mini-name">{{ s['title'] }}</span>
+    <span class="mini-role">{{ s['covers'] }} confirmed{% if s['instructor_name'] %} · led by {{ s['instructor_name'] }}{% endif %}{% if s['notes'] %} · {{ s['notes'] }}{% endif %}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Vehicles</h2>
+{% if not vehicles %}
+  <p class="empty-inline">No vehicles on file.</p>
+{% else %}
+  <div class="mini-list">
+    {% for v in vehicles %}
+    <div class="mini-row">
+      <span class="mini-name">{{ v['name'] }}</span>
+      <span class="mini-role">
+        {{ 'Dirty' if v['cleanliness'] == 'dirty' else 'Clean' }} · {{ 'Low fuel' if v['fuel_level'] == 'low' else 'Fuel OK' }}
+        {%- if vehicle_usage_by_id.get(v['id']) %} · Out with {{ vehicle_usage_by_id[v['id']] }}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

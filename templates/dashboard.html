@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{% if user['role'] == 'owner' %}Welcome back{% else %}Welcome, {{ user['name'].split(' ')[0] }}{% endif %}</h1>
+  {% if my_shift %}
+  <div style="display:flex; gap:8px; align-items:center;">
+    <span class="mini-status status-onshift">clocked in at {{ local_time_str(my_shift['clock_in_at']) }}</span>
+    <span id="break-status" class="mini-status {{ 'status-pending' if my_open_break }}" style="{{ '' if my_open_break else 'display:none;' }}">
+      on break since {{ local_time_str(my_open_break['start_at']) if my_open_break else '' }}
+    </span>
+    <button type="button" id="break-btn" class="btn-mini" onclick="toggleBreak()">{{ 'End break' if my_open_break else 'Start break' }}</button>
+  </div>
+  {% endif %}
+  {% if my_week_hours is not none %}
+  <span class="upload-hint">{{ my_week_hours }}h this week · {{ my_month_hours }}h this month</span>
+  {% endif %}
+</div>
+
+{% if announcements_current %}
+<div class="announcement-list" style="margin-bottom:22px;">
+  {% for a in announcements_current %}
+  <div class="announcement-banner">
+    <strong>{{ a['title'] }}</strong>
+    {% if a['body'] %}<span>{{ a['body'] }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+var onBreak = {{ 'true' if my_open_break else 'false' }};
+function toggleBreak() {
+  var url = onBreak ? '/breaks/end' : '/breaks/start';
+  fetch(url, { method: 'POST' })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function(data) {
+      onBreak = data.on_break;
+      var statusEl = document.getElementById('break-status');
+      var btn = document.getElementById('break-btn');
+      if (onBreak) {
+        statusEl.textContent = 'on break since ' + data.started_at;
+        statusEl.classList.add('status-pending');
+        statusEl.style.display = '';
+        btn.textContent = 'End break';
+      } else {
+        statusEl.style.display = 'none';
+        btn.textContent = 'Start break';
+      }
+    })
+    .catch(function() { alert('Could not update your break status — check your connection and try again.'); });
+}
+</script>
+
+{% if user['role'] == 'owner' %}
+
+  <div class="stat-tiles">
+    <div class="stat-tile">
+      <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+      <span class="stat-tile-body">
+        <span class="stat-tile-value">{{ month_stats.occupancy_rate }}%</span>
+        <span class="stat-tile-label">{{ month_stats.month_name }} occupancy</span>
+      </span>
+    </div>
+    <div class="stat-tile">
+      <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+      <span class="stat-tile-body">
+        <span class="stat-tile-value">€{{ '%.0f'|format(month_stats.revenue) }}</span>
+        <span class="stat-tile-label">{{ month_stats.month_name }} revenue</span>
+      </span>
+    </div>
+    <div class="stat-tile">
+      <span class="stat-tile-icon stat-tile-icon-success">{{ icon('bookings', 19) }}</span>
+      <span class="stat-tile-body">
+        <span class="stat-tile-value">{{ month_stats.arrivals_30d }}</span>
+        <span class="stat-tile-label">Arrivals, next 30 days</span>
+      </span>
+    </div>
+    <a href="{{ url_for('admin_feedback') }}" class="stat-tile">
+      <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('star', 19) }}</span>
+      <span class="stat-tile-body">
+        <span class="stat-tile-value">{{ stats.feedback_avg if stats.feedback_avg is not none else '—' }}{% if stats.feedback_avg is not none %}<span class="stat-tile-sub">/5</span>{% endif %}</span>
+        <span class="stat-tile-label">Guest rating</span>
+      </span>
+    </a>
+    {% if stats.waitlist_open %}
+    <a href="{{ url_for('admin_waitlist') }}" class="stat-tile">
+      <span class="stat-tile-icon">{{ icon('leave', 19) }}</span>
+      <span class="stat-tile-body">
+        <span class="stat-tile-value">{{ stats.waitlist_open }}</span>
+        <span class="stat-tile-label">On waitlist</span>
+      </span>
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="page-head" style="margin-top:0;">
+    <h2 class="section-heading" style="margin:0;">Today's Briefing</h2>
+    <div style="display:flex; gap:10px;">
+      <a href="{{ url_for('today_sheet') }}" class="btn-mini">Printable sheet</a>
+      <a href="{{ url_for('admin_tasks') }}" class="btn-mini">Full calendar</a>
+    </div>
+  </div>
+  {% include "_today_briefing.html" %}
+
+  <div class="card-grid" style="margin-top:30px;">
+    <a href="{{ url_for('directory') }}" class="action-card">
+      <div class="action-title">Team</div>
+      <div class="action-sub">{{ team|length }} employee{{ '' if team|length == 1 else 's' }} on record</div>
+    </a>
+    <a href="{{ url_for('manual') }}" class="action-card">
+      <div class="action-title">Employee Manual</div>
+      <div class="action-sub">Edit the shared handbook</div>
+    </a>
+    <a href="{{ url_for('guests') }}" class="action-card">
+      <div class="action-title">Guests</div>
+      <div class="action-sub">{{ stats.guests_current }} in residence now · {{ stats.guests_upcoming }} upcoming</div>
+    </a>
+    <a href="{{ url_for('admin_approvals') }}" class="action-card">
+      <div class="action-title">Approvals</div>
+      <div class="action-sub">{{ stats.expenses_pending + stats.leave_pending }} waiting on you</div>
+    </a>
+    <a href="{{ url_for('admin_bookings') }}" class="action-card">
+      <div class="action-title">Bookings</div>
+      <div class="action-sub">{{ stats.rooms_total }} room{{ '' if stats.rooms_total == 1 else 's' }} open · {{ stats.bookings_pending }} pending request{{ '' if stats.bookings_pending == 1 else 's' }}</div>
+    </a>
+    <a href="{{ url_for('admin_calendar') }}" class="action-card">
+      <div class="action-title">Booking Calendar</div>
+      <div class="action-sub">Every room, month at a glance</div>
+    </a>
+  </div>
+
+  <div class="page-head" style="margin-top:30px;">
+    <h2 class="section-heading" style="margin:0;">On Shift Now</h2>
+    <a href="{{ url_for('admin_timesheets') }}" class="btn-mini">Timesheets</a>
+  </div>
+  {% if not on_shift_now %}
+    <div class="empty-state">Nobody's clocked in right now.</div>
+  {% else %}
+    <div class="mini-list">
+      {% for shift in on_shift_now %}
+      <div class="mini-row">
+        <span class="mini-name">{{ shift['user_name'] }}</span>
+        <span class="mini-role">{{ shift['user_job_role'] or '' }}</span>
+        <span class="mini-status status-onshift">on shift since {{ local_time_str(shift['clock_in_at']) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% set net_negative = current_month_financials and current_month_financials.net < 0 %}
+  {% set needs_attention = stats.leave_pending or stats.expenses_pending or overtime or expiring_docs or who_is_off_today or anniversaries or probation_due or unstaffed_days or backup_stale or net_negative or low_ratings or vehicle_alerts or breakfast_low_stock or restaurant_alerts %}
+  <h2 class="section-heading">Needs Attention</h2>
+  {% if not needs_attention %}
+    <div class="empty-state">Nothing needs your attention right now.</div>
+  {% else %}
+  <div class="mini-list">
+    {% if stats.leave_pending or stats.expenses_pending %}
+    <a href="{{ url_for('admin_approvals') }}" class="mini-row">
+      <span class="mini-name">Approvals waiting</span>
+      <span class="mini-status status-pending">{{ stats.leave_pending + stats.expenses_pending }}</span>
+    </a>
+    {% endif %}
+    {% if net_negative %}
+    <a href="{{ url_for('management_financials') }}" class="mini-row">
+      <span class="mini-name">{{ current_month_financials.month.strftime('%B') }} is running at a loss</span>
+      <span class="mini-role">revenue minus expenses and estimated labour</span>
+      <span class="mini-status status-inactive">€{{ '%.0f'|format(current_month_financials.net) }}</span>
+    </a>
+    {% endif %}
+    {% for f in low_ratings %}
+    <a href="{{ url_for('admin_feedback') }}" class="mini-row">
+      <span class="mini-name">{{ f['guest_name'] }}</span>
+      <span class="mini-role">{% if f['comment'] %}{{ f['comment'][:60] }}{% else %}left {{ f['rating'] }}-star feedback{% endif %}</span>
+      <span class="mini-status status-inactive">{{ f['rating'] }}★</span>
+    </a>
+    {% endfor %}
+    {% if backup_stale %}
+    <a href="{{ url_for('download_backup') }}" class="mini-row">
+      <span class="mini-name">Backup</span>
+      <span class="mini-role">{% if last_backup_at %}last downloaded {{ last_backup_at[:10] }}{% else %}never downloaded{% endif %}</span>
+      <span class="mini-status status-pending">download now</span>
+    </a>
+    {% endif %}
+    {% for o in overtime %}
+    <a href="{{ url_for('admin_timesheets') }}" class="mini-row">
+      <span class="mini-name">{{ o.name }}</span>
+      <span class="mini-role">over 35h this week</span>
+      <span class="mini-status status-pending">{{ o.hours }}h</span>
+    </a>
+    {% endfor %}
+    {% for d in expiring_docs %}
+    <a href="{{ url_for('management_insurance') if d.kind == 'Insurance' else (url_for('management_recurring_costs') if d.kind == 'Recurring cost' else (url_for('management_documents') if d.kind == 'Company doc' else url_for('directory'))) }}" class="mini-row">
+      <span class="mini-name">{{ d.title }}{% if d.employee_name %} — {{ d.employee_name }}{% endif %}</span>
+      <span class="mini-role">{{ d.kind }}</span>
+      <span class="mini-status {{ 'status-inactive' if expiry_status(d.expiry_date) == 'expired' else 'status-pending' }}">
+        {% if d.kind == 'Recurring cost' %}
+          {{ 'overdue' if expiry_status(d.expiry_date) == 'expired' else 'due' }} {{ d.expiry_date }}
+        {% else %}
+          {{ 'expired' if expiry_status(d.expiry_date) == 'expired' else 'expires' }} {{ d.expiry_date }}
+        {% endif %}
+      </span>
+    </a>
+    {% endfor %}
+    {% for r in who_is_off_today %}
+    <div class="mini-row">
+      <span class="mini-name">{{ r['employee_name'] }}</span>
+      <span class="mini-role">off today · back {{ r['end_date'] }}{% if r['reason'] %} · {{ r['reason'] }}{% endif %}</span>
+    </div>
+    {% endfor %}
+    {% for a in anniversaries %}
+    <div class="mini-row">
+      <span class="mini-name">{{ a.employee['name'] }}</span>
+      <span class="mini-role">{{ a.years }} year{{ '' if a.years == 1 else 's' }} — {{ 'today' if a.days_away == 0 else (a.date.strftime('%B') ~ ' ' ~ a.date.day) }}</span>
+    </div>
+    {% endfor %}
+    {% for p in probation_due %}
+    <a href="{{ url_for('profile', user_id=p.employee['id']) }}" class="mini-row">
+      <span class="mini-name">{{ p.employee['name'] }}</span>
+      <span class="mini-role">probation period {{ 'ended' if p.days_away < 0 else 'ends' }} {{ p.date.strftime('%B') }} {{ p.date.day }}</span>
+      <span class="mini-status status-pending">review</span>
+    </a>
+    {% endfor %}
+    {% for d in unstaffed_days %}
+    <a href="{{ url_for('admin_shifts') }}" class="mini-row">
+      <span class="mini-name">{{ d.date.strftime('%A') }} {{ d.date.strftime('%B') }} {{ d.date.day }} — nobody scheduled</span>
+      <span class="mini-role">{{ d.arrivals }} arrival{{ '' if d.arrivals == 1 else 's' }} · {{ d.departures }} departure{{ '' if d.departures == 1 else 's' }}</span>
+      <span class="mini-status status-inactive">unstaffed</span>
+    </a>
+    {% endfor %}
+    {% for v in vehicle_alerts %}
+    <a href="{{ url_for('management_vehicles') }}" class="mini-row">
+      <span class="mini-name">{{ v.title }}</span>
+      <span class="mini-status status-pending">{{ v.detail }}</span>
+    </a>
+    {% endfor %}
+    {% if breakfast_low_stock %}
+    <a href="{{ url_for('breakfast') }}" class="mini-row">
+      <span class="mini-name">Breakfast items low stock</span>
+      <span class="mini-role">{{ breakfast_low_stock|map(attribute='name')|join(', ') }}</span>
+    </a>
+    {% endif %}
+    {% for r in restaurant_alerts %}
+    <a href="{{ r.link }}" class="mini-row">
+      <span class="mini-name">{{ r.title }}</span>
+      <span class="mini-status status-pending">{{ r.detail }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if team %}
+  <h2 class="section-heading">Team</h2>
+  <div class="mini-list">
+    {% for person in team %}
+    <a href="{{ url_for('profile', user_id=person['id']) }}" class="mini-row {{ 'inactive' if person['status']=='inactive' }}">
+      <span class="mini-name">{{ person['name'] }}</span>
+      <span class="mini-role">{{ person['job_role'] or 'No role set' }}</span>
+      {% if person['id'] in on_shift_by_user %}<span class="mini-status status-onshift">on shift</span>{% endif %}
+      <span class="mini-status status-{{ person['status'] }}">{{ person['status'] }}</span>
+      {% if not person['account_claimed'] %}<span class="mini-status" style="background:var(--gold-soft);color:var(--chestnut-deep);">invite pending</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if activity %}
+  <details style="margin-top:30px;">
+    <summary class="section-heading" style="cursor:pointer; display:inline-block;">Recent Activity</summary>
+    <div class="mini-list" style="margin-top:10px;">
+      {% for a in activity %}
+      <div class="mini-row">
+        <span class="mini-name" style="flex:1; font-weight:400;">{{ a.text }}</span>
+        <span class="upload-hint">{{ local_datetime_str(a.at) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+{% else %}
+
+  {% if my_expiring_docs %}
+  <div class="announcement-list" style="margin-bottom:18px;">
+    {% for d in my_expiring_docs %}
+    <div class="announcement-banner">
+      <strong>{{ d['title'] }}</strong>
+      <span>{{ 'expired' if expiry_status(d['expiry_date']) == 'expired' else 'expires' }} {{ d['expiry_date'] }} — check your <a href="{{ url_for('profile', user_id=user['id']) }}" style="color:inherit;">profile</a></span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h2 class="section-heading" style="margin-top:0;">What I Need To Do</h2>
+  {% if not my_tasks %}
+    <div class="empty-state">Nothing on your list right now.</div>
+  {% else %}
+    <div class="task-list">
+      {% for t in my_tasks %}
+      <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() }} {{ 'task-directed' if t['acknowledgment_status'] == 'pending' }}" data-task-id="{{ t['id'] }}">
+        <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+        <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
+        <span class="task-title">
+          {{ t['title'] }}
+          {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}
+          {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
+          {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
+          {% if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+        </span>
+        {% if t['acknowledgment_status'] == 'pending' %}
+        <span class="mini-status status-pending">sent to you now</span>
+        <button type="button" class="btn-mini" onclick="respondTask({{ t['id'] }}, 'accept', this)">Accept</button>
+        <button type="button" class="btn-mini btn-mini-danger" onclick="respondTask({{ t['id'] }}, 'reject', this)">Reject</button>
+        {% elif t['acknowledgment_status'] == 'accepted' %}
+        <span class="mini-status status-active">accepted</span>
+        {% elif t['acknowledgment_status'] == 'rejected' %}
+        <span class="mini-status status-inactive">rejected</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if my_upcoming_sessions %}
+  <h2 class="section-heading" style="margin-top:0;">Workshops You're Teaching</h2>
+  <div class="mini-list">
+    {% for s in my_upcoming_sessions %}
+    <div class="mini-row">
+      <span class="mini-name">{{ s['title'] }}</span>
+      <span class="mini-role">{{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %} · {{ s['covers'] }}/{{ s['capacity'] }} confirmed</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if is_restaurant_lead %}
+  <h2 class="section-heading" style="margin-top:0;">Tonight's Dinner{% if my_tonights_dinners %} — {{ my_tonights_dinners|sum(attribute='party_size') }} covers{% endif %}</h2>
+  {% if not my_tonights_dinners %}
+    <div class="empty-state">No confirmed reservations tonight.</div>
+  {% else %}
+    <div class="mini-list">
+      {% for d in my_tonights_dinners %}
+      <div class="mini-row">
+        <span class="mini-name">{{ d['guest_name'] }}</span>
+        <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% endif %}
+
+  <h2 class="section-heading">Who's Here Today</h2>
+  {% if not who_is_here %}
+    <div class="empty-state">No guests in residence right now.</div>
+  {% else %}
+    <div class="mini-list">
+      {% for g in who_is_here %}
+      <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
+        <div style="display:flex; width:100%; gap:8px;">
+          <span class="mini-name">{{ g['name'] }}</span>
+          <span class="mini-role">{{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+        </div>
+        {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <h2 class="section-heading">Your Upcoming Shifts</h2>
+  {% if not my_upcoming_shifts %}
+    <div class="empty-state">Nothing scheduled in the next 7 days.</div>
+  {% else %}
+    <div class="mini-list">
+      {% for s in my_upcoming_shifts %}
+      <div class="mini-row">
+        <span class="mini-name">{{ s['shift_date'] }}</span>
+        <span class="mini-role">
+          {% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% else %}Scheduled{% endif %}
+          {% if s['role_note'] %} · {{ s['role_note'] }}{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}

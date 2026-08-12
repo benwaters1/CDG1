@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Financials{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Financials</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('annual_summary') }}" class="btn-mini">Annual Summary</a>
+    <a href="{{ url_for('export_financials_csv') }}" class="btn-mini">Export 12 months (CSV)</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Revenue is confirmed room bookings by arrival date plus confirmed dinner reservations; expenses are approved/paid claims and invoices; labour cost is the same estimate as the Timesheets page. A rough operating picture, not an accountant's P&amp;L.
+</p>
+
+<div class="stat-tiles" style="margin-bottom:14px;">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.revenue) }}</span><span class="stat-tile-label">{{ current.month.strftime('%B %Y') }} revenue</span></span>
+  </div>
+  {% if current.restaurant_revenue or current.workshop_revenue %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.room_revenue) }}</span><span class="stat-tile-label">— rooms</span></span>
+  </div>
+  {% if current.restaurant_revenue %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('restaurant', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.restaurant_revenue) }}</span><span class="stat-tile-label">— restaurant</span></span>
+  </div>
+  {% endif %}
+  {% if current.workshop_revenue %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('workshop', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.workshop_revenue) }}</span><span class="stat-tile-label">— workshops</span></span>
+  </div>
+  {% endif %}
+  {% endif %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.expenses_total) }}</span><span class="stat-tile-label">Expenses</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('employee', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{% if current.labour_cost is not none %}€{{ '%.0f'|format(current.labour_cost) }}{% else %}—{% endif %}</span><span class="stat-tile-label">Est. labour cost</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if current.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if current.net < 0 }}">€{{ '%.0f'|format(current.net) }}</span><span class="stat-tile-label">Net (estimate)</span></span>
+  </div>
+</div>
+
+<div class="stat-tiles" style="margin-bottom:22px;">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(ytd.revenue) }}</span><span class="stat-tile-label">{{ today.year }} year-to-date revenue</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(ytd.expenses_total) }}</span><span class="stat-tile-label">YTD expenses</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if ytd.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if ytd.net < 0 }}">€{{ '%.0f'|format(ytd.net) }}</span><span class="stat-tile-label">YTD net (estimate)</span></span>
+  </div>
+</div>
+
+<h2 class="section-heading" style="margin-top:0;">vs. {{ last_year_start.strftime('%B %Y') }}</h2>
+<div class="stat-tiles" style="margin-bottom:22px;">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.0f'|format(current.revenue) }}{% if yoy.revenue_pct is not none %}<span class="stat-tile-sub" style="color:{{ 'var(--danger)' if yoy.revenue_pct < 0 else 'var(--success)' }};">{{ '+' if yoy.revenue_pct >= 0 }}{{ yoy.revenue_pct }}%</span>{% endif %}</span>
+      <span class="stat-tile-label">Revenue then €{{ '%.0f'|format(last_year.revenue) }}, now</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ current.occupancy_rate }}%{% if yoy.occupancy_pct is not none %}<span class="stat-tile-sub" style="color:{{ 'var(--danger)' if yoy.occupancy_pct < 0 else 'var(--success)' }};">{{ '+' if yoy.occupancy_pct >= 0 }}{{ yoy.occupancy_pct }}%</span>{% endif %}</span>
+      <span class="stat-tile-label">Occupancy then {{ last_year.occupancy_rate }}%, now</span>
+    </span>
+  </div>
+</div>
+
+<h2 class="section-heading" style="margin-top:0;">Last 6 months</h2>
+
+{% set max_value = (months|map(attribute='revenue')|list + months|map(attribute='expenses_total')|list)|max %}
+<div class="bar-chart">
+  {% for m in months %}
+  <div class="bar-chart-col">
+    <div class="bar-chart-bars">
+      <div class="bar-chart-bar bar-chart-bar-revenue" style="height:{{ (m.revenue / max_value * 100) if max_value else 0 }}%;" title="{{ m.month.strftime('%B') }} revenue: €{{ '%.0f'|format(m.revenue) }}"></div>
+      <div class="bar-chart-bar bar-chart-bar-expenses" style="height:{{ (m.expenses_total / max_value * 100) if max_value else 0 }}%;" title="{{ m.month.strftime('%B') }} expenses: €{{ '%.0f'|format(m.expenses_total) }}"></div>
+    </div>
+    <span class="bar-chart-label">{{ m.month.strftime('%b') }}</span>
+  </div>
+  {% endfor %}
+</div>
+<div class="bar-chart-legend">
+  <span><span class="bar-chart-swatch bar-chart-swatch-revenue"></span>Revenue</span>
+  <span><span class="bar-chart-swatch bar-chart-swatch-expenses"></span>Expenses</span>
+</div>
+
+<div style="overflow-x:auto;">
+  <table style="width:100%; border-collapse:collapse; font-size:13px;">
+    <thead>
+      <tr style="border-bottom:1px solid var(--parchment-line);">
+        <th style="text-align:left; padding:8px 6px;">Month</th>
+        <th style="text-align:right; padding:8px 6px;">Occupancy</th>
+        <th style="text-align:right; padding:8px 6px;">Revenue</th>
+        <th style="text-align:right; padding:8px 6px;">Staff exp.</th>
+        <th style="text-align:right; padding:8px 6px;">Supplier exp.</th>
+        <th style="text-align:right; padding:8px 6px;">Labour est.</th>
+        <th style="text-align:right; padding:8px 6px;">Net</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in months|reverse %}
+      <tr style="border-bottom:1px solid var(--parchment-line);">
+        <td style="padding:8px 6px;">{{ m.month.strftime('%B %Y') }}</td>
+        <td style="text-align:right; padding:8px 6px;">{{ m.occupancy_rate }}%</td>
+        <td style="text-align:right; padding:8px 6px;">€{{ '%.0f'|format(m.revenue) }}</td>
+        <td style="text-align:right; padding:8px 6px;">€{{ '%.0f'|format(m.staff_expenses) }}</td>
+        <td style="text-align:right; padding:8px 6px;">€{{ '%.0f'|format(m.supplier_expenses) }}</td>
+        <td style="text-align:right; padding:8px 6px;">{% if m.labour_cost is not none %}€{{ '%.0f'|format(m.labour_cost) }}{% else %}—{% endif %}</td>
+        <td style="text-align:right; padding:8px 6px; color:{{ 'var(--danger)' if m.net < 0 else 'inherit' }};">€{{ '%.0f'|format(m.net) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">{{ current.month.strftime('%B') }} revenue by room</h2>
+{% if not room_revenue %}
+  <div class="empty-state">No active rooms.</div>
+{% else %}
+  <div class="mini-list">
+    {% for r in room_revenue %}
+    <div class="mini-row">
+      <span class="mini-name">{{ r['room_name'] }}</span>
+      <span class="mini-role">{{ r['booking_count'] }} booking{{ '' if r['booking_count'] == 1 else 's' }}</span>
+      <span class="mini-status status-pending">€{{ '%.0f'|format(r['revenue']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<h2 class="section-heading">{{ current.month.strftime('%B') }} spend by category</h2>
+{% if not expense_breakdown %}
+  <div class="empty-state">No approved expenses this month.</div>
+{% else %}
+  <div class="mini-list">
+    {% for c in expense_breakdown %}
+    <div class="mini-row">
+      <span class="mini-name">{{ c['category'] }}</span>
+      <span class="mini-role">{{ c['count'] }} expense{{ '' if c['count'] == 1 else 's' }}</span>
+      <span class="mini-status status-inactive">€{{ '%.0f'|format(c['total']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

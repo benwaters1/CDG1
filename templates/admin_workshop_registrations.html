@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Workshop Registrations{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Workshop Registrations</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('admin_workshops') }}" class="btn-mini">Workshops &amp; Sessions</a>
+    <a href="{{ url_for('export_workshop_registrations_csv') }}" class="btn-mini">Export CSV</a>
+  </div>
+</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pending_count }}</span><span class="stat-tile-label">Pending</span></span>
+  </div>
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="">All</option>
+      {% for s in ['pending','confirmed','declined','cancelled'] %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if status_filter %}<a href="{{ url_for('admin_workshop_registrations') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+{% if not registrations %}
+  <div class="empty-state">{% if status_filter %}No registrations match that filter.{% else %}No workshop registrations yet.{% endif %}</div>
+{% else %}
+  {% for r in registrations %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ r['guest_name'] }}</strong> — {{ r['title'] }}
+        <span class="mini-status status-{{ r['status'] }}" style="margin-left:8px;">{{ r['status'] }}</span>
+      </div>
+      <span class="upload-hint">{{ r['reference_code'] }}</span>
+    </div>
+    <p class="manual-body">
+      {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
+      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
+    </p>
+    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %}</p>
+    {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}
+    {% if r['dietary_notes'] %}<p class="upload-hint">Dietary: {{ r['dietary_notes'] }}</p>{% endif %}
+    {% if r['medical_notes'] %}<p class="upload-hint">Medical: {{ r['medical_notes'] }}</p>{% endif %}
+    {% if r['special_occasion'] %}<p class="upload-hint">Occasion: {{ r['special_occasion'] }}</p>{% endif %}
+    {% if r['notes'] %}<p class="upload-hint">Notes: {{ r['notes'] }}</p>{% endif %}
+    {% if custom_responses_by_booking.get(r['id']) %}
+    {% for cr in custom_responses_by_booking[r['id']] %}<p class="upload-hint">{{ cr['label'] }}: {{ cr['value'] }}</p>{% endfor %}
+    {% endif %}
+    {% if guests_by_booking.get(r['id']) %}
+    <p class="upload-hint">Party: {% for g in guests_by_booking[r['id']] %}{{ g['guest_name'] }}{{ ' (lead)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
+    {% endif %}
+    <p class="upload-hint">Submitted {{ r['created_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+
+    {% set balance = balance_by_booking.get(r['id']) %}
+    {% if r['total_price'] or (transactions_by_booking.get(r['id'])) %}
+    <div class="detail-card" style="margin:10px 0 0;">
+      <div class="detail-grid">
+        <div><span class="detail-label">Total charged</span>€{{ '%.2f'|format(balance[1]) }}</div>
+        <div><span class="detail-label">Paid</span>€{{ '%.2f'|format(balance[2]) }}</div>
+        <div><span class="detail-label">Balance due</span><span style="color:{{ 'var(--danger)' if balance[0] > 0 else 'inherit' }};">€{{ '%.2f'|format(balance[0]) }}</span></div>
+      </div>
+      {% if transactions_by_booking.get(r['id']) %}
+      <div class="mini-list" style="margin-top:8px;">
+        {% for t in transactions_by_booking[r['id']] %}
+        <div class="mini-row">
+          <span class="mini-name">{{ t['kind']|capitalize }} — {{ t['description'] }}</span>
+          <span class="mini-role">{{ t['created_at'][:10] }}{% if t['method'] %} · {{ t['method'] }}{% endif %}</span>
+          <span class="mini-status status-{{ 'onshift' if t['kind'] in ('payment',) else 'pending' if t['kind'] == 'charge' else 'inactive' }}">€{{ '%.2f'|format(t['amount']) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if r['status'] not in ('declined', 'cancelled') %}
+      <form method="post" action="{{ url_for('add_workshop_transaction_route', registration_id=r['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
+        <select name="kind" style="font-size:12px;">
+          <option value="charge">Add item (charge)</option>
+          <option value="discount">Add discount</option>
+          <option value="payment" selected>Add a payment</option>
+          <option value="refund">Add refund</option>
+        </select>
+        <input type="text" name="description" placeholder="Description" required style="font-size:12px;">
+        <input type="number" name="amount" step="0.01" min="0.01" placeholder="Amount" required style="font-size:12px; width:90px;">
+        <select name="method" style="font-size:12px;">
+          <option value="">Method (optional)</option>
+          <option value="online">Online</option>
+          <option value="cash">Cash</option>
+          <option value="other">Other</option>
+        </select>
+        <button type="submit" class="btn-mini">Add</button>
+      </form>
+      {% if not r['deposit_paid_at'] and r['deposit_amount'] %}
+      <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">
+        <input type="hidden" name="method" value="other">
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit (€{{ '%.2f'|format(r['deposit_amount']) }}) paid</button>
+      </form>
+      {% endif %}
+      {% if not r['balance_paid_at'] and r['balance_amount'] %}
+      <form method="post" action="{{ url_for('mark_workshop_balance_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px; margin-left:10px;">
+        <input type="hidden" name="method" value="other">
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark balance (€{{ '%.2f'|format(r['balance_amount']) }}) paid</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if r['status'] not in ('declined', 'cancelled') %}
+    <form method="post" action="{{ url_for('assign_workshop_room', registration_id=r['id']) }}" style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+      <label class="field-label" style="margin:0;">Room</label>
+      <select name="room_id" onchange="this.form.submit()" style="font-size:12px; padding:2px;">
+        <option value="">Unassigned</option>
+        {% for room in rooms %}
+        <option value="{{ room['id'] }}" {{ 'selected' if r['assigned_room_id'] == room['id'] }}>{{ room['name'] }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% elif r['assigned_room_name'] %}
+    <p class="upload-hint">Room: {{ r['assigned_room_name'] }}</p>
+    {% endif %}
+
+    <details style="margin-top:8px;">
+      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Sent messages ({{ messages_by_booking.get(r['id'], [])|length }})</summary>
+      {% if messages_by_booking.get(r['id']) %}
+      <div class="mini-list" style="margin-top:6px;">
+        {% for m in messages_by_booking[r['id']] %}
+        <div class="mini-row">
+          <span class="mini-name">{{ m['subject'] }}</span>
+          <span class="mini-role">{{ m['created_at'][:16]|replace('T', ' ') }} · {{ m['recipient'] }}</span>
+          <span class="mini-status status-{{ 'onshift' if m['status'] == 'sent' else 'inactive' }}">{{ m['status'] }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-inline">No messages sent yet.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('toggle_workshop_do_not_email', registration_id=r['id']) }}" style="margin-top:6px;">
+        <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">
+          {{ 'Resume automated emails' if r['do_not_email'] else 'Stop sending automated emails to this guest' }}
+        </button>
+      </form>
+    </details>
+
+    <div class="expense-actions">
+      {% if r['status'] == 'pending' %}
+      <form method="post" action="{{ url_for('confirm_workshop_registration', registration_id=r['id']) }}"><button type="submit" class="btn-mini">Confirm</button></form>
+      <form method="post" action="{{ url_for('decline_workshop_registration', registration_id=r['id']) }}" onsubmit="return confirm('Decline this registration?');"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      {% elif r['status'] == 'confirmed' %}
+      <form method="post" action="{{ url_for('cancel_workshop_registration_admin', registration_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed registration?');"><button type="submit" class="btn-text-danger">Cancel</button></form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

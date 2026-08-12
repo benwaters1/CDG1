@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Recurring Costs{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Recurring Costs</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_recurring_costs_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Software subscriptions, utilities, insurance premiums — the fixed costs that are easy to forget about between renewals.</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(monthly_equivalent) }}</span><span class="stat-tile-label">Active monthly-equivalent total</span></span>
+  </div>
+</div>
+
+{% if not costs %}
+  <div class="empty-state">Nothing tracked yet.</div>
+{% else %}
+  <div class="mini-list">
+    {% for c in costs %}
+    <div class="mini-row {{ 'inactive' if not c['active'] }}" id="view-cost-{{ c['id'] }}">
+      <span class="mini-name">{{ c['label'] }}{% if c['category'] %} <span class="upload-hint">({{ c['category'] }})</span>{% endif %}</span>
+      <span class="mini-role">€{{ '%.2f'|format(c['amount']) }} / {{ c['frequency'] }}{% if c['next_due_date'] %} · next due {{ c['next_due_date'] }}{% endif %}</span>
+      <span class="mini-status status-{{ 'onshift' if c['active'] else 'inactive' }}">{{ 'active' if c['active'] else 'paused' }}</span>
+      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleCostEdit({{ c['id'] }})">Edit</span>
+      {% if c['active'] and c['next_due_date'] %}
+      <form method="post" action="{{ url_for('mark_recurring_cost_paid', cost_id=c['id']) }}"><button type="submit" class="btn-mini">Mark paid</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('toggle_recurring_cost', cost_id=c['id']) }}"><button type="submit" class="btn-mini">{{ 'Pause' if c['active'] else 'Resume' }}</button></form>
+      <form method="post" action="{{ url_for('delete_recurring_cost', cost_id=c['id']) }}" onsubmit="return confirm('Remove this cost?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+    </div>
+    <form method="post" action="{{ url_for('edit_recurring_cost', cost_id=c['id']) }}" id="edit-cost-{{ c['id'] }}" class="upload-form" style="display:none;">
+      <input type="text" name="label" value="{{ c['label'] }}" placeholder="Label" required>
+      <input type="number" name="amount" step="0.01" min="0" value="{{ c['amount'] }}" placeholder="Amount" required>
+      <select name="frequency">
+        <option value="monthly" {{ 'selected' if c['frequency'] == 'monthly' }}>Monthly</option>
+        <option value="annual" {{ 'selected' if c['frequency'] == 'annual' }}>Annual</option>
+      </select>
+      <input type="text" name="category" value="{{ c['category'] or '' }}" placeholder="Category (optional)">
+      <div>
+        <label class="field-label">Next due (optional)</label>
+        <input type="date" name="next_due_date" value="{{ c['next_due_date'] or '' }}">
+      </div>
+      <input type="text" name="notes" value="{{ c['notes'] or '' }}" placeholder="Notes (optional)">
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px; margin-top:20px;">
+  <h3>Add a recurring cost</h3>
+  <form method="post" action="{{ url_for('new_recurring_cost') }}" class="upload-form">
+    <input type="text" name="label" placeholder="e.g. Property insurance" required>
+    <input type="number" name="amount" step="0.01" min="0" placeholder="Amount" required>
+    <select name="frequency">
+      <option value="monthly">Monthly</option>
+      <option value="annual">Annual</option>
+    </select>
+    <input type="text" name="category" placeholder="Category (optional)">
+    <div>
+      <label class="field-label">Next due (optional)</label>
+      <input type="date" name="next_due_date">
+    </div>
+    <input type="text" name="notes" placeholder="Notes (optional)">
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</div>
+
+<script>
+function toggleCostEdit(id) {
+  var edit = document.getElementById('edit-cost-' + id);
+  edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+
+{% endblock %}

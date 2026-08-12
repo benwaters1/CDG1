@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% from "_icons.html" import password_toggle %}
+{% block title %}Management — Vault{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Vault</h1>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel); align-self:center;">← Management</a>
+</div>
+
+{% if entries is none %}
+
+  <div class="detail-card" style="max-width:640px;">
+    <h3>Vault isn't set up yet</h3>
+    <p class="manual-body">
+      Entries here are encrypted before they ever touch the database, using a key that's kept
+      separate from the database itself — so a leaked backup file alone isn't enough to read them.
+      Set the <code>VAULT_ENCRYPTION_KEY</code> environment variable to turn this on. See DEPLOY.md
+      for how to generate one.
+    </p>
+  </div>
+
+{% else %}
+
+  <p class="pay-disclaimer" style="margin-top:-10px;">
+    Shared business logins — supplier portals, utilities, banking. Passwords stay hidden until you
+    click Reveal. For anything truly critical, a dedicated password manager is still a safer bet
+    than any self-hosted vault, this one included.
+  </p>
+
+  {% if not entries %}
+    <div class="empty-state">Nothing saved yet.</div>
+  {% else %}
+    {% for e in entries %}
+    <div class="expense-card" data-entry-id="{{ e['id'] }}">
+      <div class="expense-head">
+        <div>
+          <strong>{{ e['title'] }}</strong>{% if e['username'] %} — {{ e['username'] }}{% endif %}
+        </div>
+      </div>
+      {% if e['url'] %}<p class="upload-hint"><a href="{{ e['url'] }}" target="_blank" rel="noopener" style="color:var(--steel);">{{ e['url'] }}</a></p>{% endif %}
+      <p class="share-link-box vault-secret">••••••••</p>
+      <p class="vault-notes upload-hint"></p>
+      <div class="expense-actions">
+        <button type="button" class="btn-mini" data-revealed="0" onclick="vaultReveal({{ e['id'] }}, this)">Reveal</button>
+        <button type="button" class="btn-mini" onclick="vaultCopy(this)">Copy password</button>
+        <button type="button" class="btn-mini" onclick="vaultToggleEdit({{ e['id'] }})">Edit</button>
+        <form method="post" action="{{ url_for('delete_vault_entry', entry_id=e['id']) }}" onsubmit="return confirm('Delete this vault entry? This cannot be undone.');">
+          <button type="submit" class="btn-text-danger">Remove</button>
+        </form>
+      </div>
+      <div id="vault-edit-{{ e['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
+        <form method="post" action="{{ url_for('edit_vault_entry', entry_id=e['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+          <input type="text" name="title" value="{{ e['title'] }}" placeholder="Title" required>
+          <input type="text" name="username" value="{{ e['username'] or '' }}" placeholder="Username / account">
+          <input type="text" name="url" value="{{ e['url'] or '' }}" placeholder="URL (optional)">
+          <div style="display:flex; gap:8px;">
+            <input type="password" name="password" id="vault-password-edit-{{ e['id'] }}" placeholder="New password — leave blank to keep current" autocomplete="new-password" style="flex:1;">
+            {{ password_toggle('vault-password-edit-' ~ e['id']) }}
+            <button type="button" class="btn-mini" onclick="vaultGeneratePassword('vault-password-edit-{{ e['id'] }}')">Generate</button>
+          </div>
+          <textarea name="notes" rows="2" placeholder="New notes — leave blank to keep current"></textarea>
+          <button type="submit" class="btn-mini" style="align-self:flex-start;">Save changes</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  {% endif %}
+
+  <div class="detail-card" style="max-width:640px;">
+    <h3>Add a login</h3>
+    <form method="post" action="{{ url_for('new_vault_entry') }}" class="upload-form">
+      <input type="text" name="title" placeholder="Title (e.g. Booking.com extranet)" required>
+      <input type="text" name="username" placeholder="Username / account">
+      <input type="text" name="url" placeholder="URL (optional)">
+      <div style="display:flex; gap:8px;">
+        <input type="password" name="password" id="vault-password-new" placeholder="Password" autocomplete="new-password" style="flex:1;">
+        {{ password_toggle('vault-password-new') }}
+        <button type="button" class="btn-mini" onclick="vaultGeneratePassword('vault-password-new')">Generate</button>
+      </div>
+      <textarea name="notes" rows="2" placeholder="Notes (optional)"></textarea>
+      <button type="submit" class="btn-mini">Add to vault</button>
+    </form>
+  </div>
+
+  <script>
+  function vaultReveal(id, btn) {
+    var row = btn.closest('.expense-card');
+    var span = row.querySelector('.vault-secret');
+    var notesEl = row.querySelector('.vault-notes');
+    if (btn.dataset.revealed === '1') {
+      span.textContent = '••••••••';
+      if (notesEl) notesEl.textContent = '';
+      btn.textContent = 'Reveal';
+      btn.dataset.revealed = '0';
+      return;
+    }
+    fetch('/management/vault/' + id + '/reveal', { method: 'POST' })
+      .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function(data) {
+        span.textContent = data.password || '(no password set)';
+        if (notesEl) notesEl.textContent = data.notes ? ('Notes: ' + data.notes) : '';
+        btn.textContent = 'Hide';
+        btn.dataset.revealed = '1';
+      })
+      .catch(function() { alert('Could not reveal that entry — check your connection and try again.'); });
+  }
+  function vaultCopy(btn) {
+    var row = btn.closest('.expense-card');
+    var text = row.querySelector('.vault-secret').textContent;
+    if (text === '••••••••') { alert('Click Reveal first.'); return; }
+    navigator.clipboard.writeText(text).then(function() {
+      var old = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(function() { btn.textContent = old; }, 1200);
+    });
+  }
+  function vaultGeneratePassword(inputId) {
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*-_=+';
+    var values = new Uint32Array(20);
+    crypto.getRandomValues(values);
+    var pw = '';
+    for (var i = 0; i < values.length; i++) { pw += chars[values[i] % chars.length]; }
+    var input = document.getElementById(inputId);
+    input.value = pw;
+    input.type = 'text';
+  }
+  function vaultToggleEdit(id) {
+    var el = document.getElementById('vault-edit-' + id);
+    el.style.display = el.style.display === 'none' ? '' : 'none';
+  }
+  </script>
+
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}My Expenses{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>My Expenses</h1>
+  <a href="{{ url_for('submit_expense') }}" class="btn-primary">+ Submit an expense</a>
+</div>
+
+{% if not claims %}
+  <div class="empty-state">You haven't submitted any expenses yet.</div>
+{% else %}
+  {% for c in claims %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        {% if c['vendor_name'] %}<strong>{{ c['vendor_name'] }}</strong> — {% endif %}€{{ '%.2f'|format(c['amount']) }}
+        <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>
+      </div>
+    </div>
+    <p class="manual-body">{{ c['description'] }}</p>
+    <p class="upload-hint">Submitted {{ c['submitted_at'][:10] }}{% if c['decided_at'] %} · Decided {{ c['decided_at'][:10] }}{% endif %}</p>
+    {% if c['owner_note'] %}<p class="upload-hint">Note from owner: {{ c['owner_note'] }}</p>{% endif %}
+    {% if c['filename'] %}
+    {% if is_viewable(c['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=c['id']) }}', '{{ (c['vendor_name'] or '')|e }}')">View</button>{% endif %}
+    <a href="{{ url_for('download_expense_file', expense_id=c['id']) }}" class="small-link" style="color:var(--steel);">Download receipt</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

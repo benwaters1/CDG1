@@ -1,0 +1,30 @@
+{% extends "public_base.html" %}
+{% block title %}Reservation request received{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Thank you, {{ booking['guest_name'].split(' ')[0] }}</h1>
+  <p class="manual-body">Your dinner reservation request is <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>.</p>
+
+  <div class="detail-card" style="margin-top:16px;">
+    <div class="detail-grid">
+      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
+      <div><span class="detail-label">Date</span>{{ booking['dinner_date'] }}</div>
+      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
+      {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</div>{% endif %}
+    </div>
+    {% if booking['dietary_notes'] %}
+    <div class="notes-block">
+      <span class="detail-label">Your notes</span>
+      <p>{{ booking['dietary_notes'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <p class="pay-disclaimer" style="margin-top:16px;">Save this page's link, or write down your reference code and the email you booked with — that's how you'll manage this reservation later.</p>
+  <p class="share-link-box">{{ url_for('restaurant_manage', manage_token=booking['manage_token'], _external=True) }}</p>
+
+  <a href="{{ url_for('restaurant_manage', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">View my reservation</a>
+</div>
+
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Ask HR{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Ask HR</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Goes straight to the owner — nobody else on the team can see this.</p>
+
+<div class="detail-card" style="max-width:560px;">
+  <form method="post">
+    <label class="field-label">What's on your mind?</label>
+    <textarea name="body" placeholder="Anything you'd rather raise privately than mention in passing." required></textarea>
+    <button type="submit" class="btn-primary" style="margin-top:14px;">Send privately</button>
+  </form>
+</div>
+
+{% if my_notes %}
+<h2 class="section-heading">What you've sent</h2>
+{% for n in my_notes %}
+<div class="expense-card">
+  <div class="expense-head">
+    <div>
+      <span class="mini-status status-{{ 'onshift' if n['status'] == 'handled' else 'pending' }}">{{ n['status'] }}</span>
+    </div>
+  </div>
+  <p class="manual-body">{{ n['body'] }}</p>
+  <p class="upload-hint">Sent {{ n['created_at'][:10] }}{% if n['handled_at'] %} · Handled {{ n['handled_at'][:10] }}{% endif %}</p>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}

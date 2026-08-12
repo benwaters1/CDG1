@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Room Issues{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Room Issues</h1>
+  <a href="{{ url_for('export_room_issues_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Anything broken, missing, or worth flagging in a room — report it here so it doesn't get lost.</p>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status" onchange="this.form.submit()">
+      <option value="open" {{ 'selected' if status_filter == 'open' }}>Open</option>
+      <option value="resolved" {{ 'selected' if status_filter == 'resolved' }}>Resolved</option>
+      <option value="all" {{ 'selected' if status_filter == 'all' }}>All</option>
+    </select>
+  </div>
+</form>
+
+{% if not issues %}
+  <div class="empty-state">No {{ status_filter if status_filter != 'all' else '' }} room issues.</div>
+{% else %}
+  <div class="mini-list">
+    {% for issue in issues %}
+    <div class="mini-row" style="align-items:flex-start; flex-direction:column; gap:4px;">
+      <div style="display:flex; width:100%; align-items:center; gap:8px;">
+        <span class="mini-name" style="flex:1;">{{ issue['room_name'] }} — {{ issue['title'] }}</span>
+        <span class="mini-status status-{{ 'inactive' if issue['status'] == 'resolved' else 'pending' }}">{{ issue['status'] }}</span>
+        {% if user['role'] == 'owner' %}
+          {% if issue['status'] == 'open' %}
+          <form method="post" action="{{ url_for('resolve_room_issue', issue_id=issue['id']) }}"><button type="submit" class="btn-mini">Mark resolved</button></form>
+          {% else %}
+          <form method="post" action="{{ url_for('reopen_room_issue', issue_id=issue['id']) }}"><button type="submit" class="btn-mini">Reopen</button></form>
+          {% endif %}
+          <form method="post" action="{{ url_for('delete_room_issue', issue_id=issue['id']) }}" onsubmit="return confirm('Remove this issue?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+        {% endif %}
+      </div>
+      {% if issue['description'] %}<span class="upload-hint">{{ issue['description'] }}</span>{% endif %}
+      <span class="upload-hint">Reported by {{ issue['reported_by_name'] or 'Former employee' }} · {{ issue['created_at'][:10] }}{% if issue['resolved_at'] %} · Resolved {{ issue['resolved_at'][:10] }}{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px; margin-top:20px;">
+  <h3>Report an issue</h3>
+  <form method="post" action="{{ url_for('new_room_issue') }}" class="upload-form">
+    <select name="room_id" required>
+      <option value="">Choose a room</option>
+      {% for r in rooms %}
+      <option value="{{ r['id'] }}">{{ r['name'] }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="title" placeholder="Short summary (e.g. Leaking tap)" required>
+    <input type="text" name="description" placeholder="More detail (optional)">
+    {% if user['role'] == 'owner' %}
+    <select name="assigned_to_user_id">
+      <option value="">Also assign a task to… (optional)</option>
+      {% for e in employees %}
+      <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <button type="submit" class="btn-mini">Report issue</button>
+  </form>
+</div>
+
+{% endblock %}

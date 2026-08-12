@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Overview</h1>
+</div>
+<p class="upload-hint" style="margin-top:-10px; margin-bottom:18px;">Everything happening, in one place — bookings, staff tasks, and your own. Filter it down or watch it all.</p>
+
+<div class="search-bar" style="justify-content:space-between;">
+  <a href="{{ url_for('admin_overview', view=sheet.view, date=sheet.prev_anchor) }}" class="btn-mini">&larr; Prev</a>
+  <div style="display:flex; gap:6px;">
+    {% for v in ['day', 'week', 'month'] %}
+    <a href="{{ url_for('admin_overview', view=v, date=today.isoformat()) }}" class="btn-mini" style="{{ 'background:var(--chestnut-light);' if sheet.view == v }}">{{ v|capitalize }}</a>
+    {% endfor %}
+  </div>
+  <a href="{{ url_for('admin_overview', view=sheet.view, date=sheet.next_anchor) }}" class="btn-mini">Next &rarr;</a>
+</div>
+
+<p class="upload-hint" style="margin-bottom:18px;">
+  {% if sheet.view == 'day' %}{{ sheet.anchor.strftime('%A, %B') }} {{ sheet.anchor.day }}, {{ sheet.anchor.year }}
+  {% elif sheet.view == 'week' %}{{ sheet.range_start.strftime('%b') }} {{ sheet.range_start.day }} – {{ sheet.range_end.strftime('%b') }} {{ sheet.range_end.day }}, {{ sheet.range_end.year }}
+  {% else %}{{ sheet.range_start.strftime('%B %Y') }}{% endif %}
+</p>
+
+<div class="overview-filters" id="overview-filters">
+  <div>
+    <label class="field-label">Lane</label>
+    <select id="f-lane">
+      <option value="">All</option>
+      <option value="booking">Bookings</option>
+      <option value="restaurant">Restaurant</option>
+      <option value="workshop">Workshops</option>
+      <option value="task">Staff tasks</option>
+      <option value="owner">My tasks</option>
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Related to</label>
+    <select id="f-guest">
+      <option value="">All</option>
+      <option value="guest">Guest-related</option>
+      <option value="employee">Internal / staff</option>
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Origin</label>
+    <select id="f-scheduled">
+      <option value="">All</option>
+      <option value="1">Scheduled (checklist/recurring)</option>
+      <option value="0">Added ad-hoc</option>
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Employee</label>
+    <select id="f-employee">
+      <option value="">Everyone</option>
+      {% for e in sheet.employees %}
+      <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="flex-direction:row; align-items:center; gap:6px; align-self:flex-end; padding-bottom:9px;">
+    <input type="checkbox" id="f-show-done" style="width:auto;">
+    <label for="f-show-done" class="field-label" style="margin:0;">Show completed</label>
+  </div>
+  <div style="align-self:flex-end; padding-bottom:9px;">
+    <span class="small-link" style="color:var(--steel);" onclick="resetOverviewFilters()">Clear filters</span>
+  </div>
+</div>
+
+<div class="expense-card" style="margin-bottom:18px;">
+  <div class="expense-head"><strong>Quick add</strong></div>
+  {% include "_task_add_form.html" %}
+  <form method="post" action="{{ url_for('new_task') }}" class="search-bar" style="margin-top:0;">
+    <input type="hidden" name="assigned_to_user_id" value="{{ sheet.owner_id }}">
+    <div style="flex:2 1 220px;">
+      <label class="field-label">My task (owner)</label>
+      <input type="text" name="title" placeholder="e.g. Pay the electricity bill" required>
+    </div>
+    <div>
+      <label class="field-label">Priority</label>
+      <select name="priority">
+        <option value="low">Low</option>
+        <option value="normal" selected>Normal</option>
+        <option value="high">High</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Due date</label>
+      <input type="date" name="due_date" value="{{ sheet.anchor.isoformat() }}">
+    </div>
+    <button type="submit" class="btn-mini">+ Add my task</button>
+  </form>
+</div>
+
+<div class="task-list" id="overview-rows">
+{% if not sheet.rows %}
+  <div class="empty-state">Nothing in this range.</div>
+{% endif %}
+{% set ns = namespace(last_date='__unset__') %}
+{% for r in sheet.rows %}
+  {% if r.date != ns.last_date %}
+    {% set ns.last_date = r.date %}
+    <div class="upload-hint" style="margin-top:10px; margin-bottom:2px; font-weight:600;">{{ r.date if r.date else 'No due date' }}</div>
+  {% endif %}
+  {% if r.kind == 'task' %}
+  <div class="task-row {{ 'task-done' if r.status == 'done' }} {{ 'task-overdue' if r.status == 'open' and r.date and r.date < today.isoformat() }} {{ 'task-directed' if r.acknowledgment_status == 'pending' }}"
+       data-task-id="{{ r.id }}" data-kind="task" data-lane="{{ r.lane }}" data-guest="{{ 'guest' if r.is_guest else 'employee' }}"
+       data-scheduled="{{ '1' if r.scheduled else '0' }}" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">
+    <button type="button" class="task-check" onclick="toggleTask({{ r.id }}, this)">{{ '✓' if r.status == 'done' }}</button>
+    {% if r.priority %}<span class="priority-dot priority-{{ r.priority }}" title="{{ r.priority|capitalize }} priority"></span>{% endif %}
+    <span class="lane-badge lane-{{ r.lane }}">{{ {'booking':'Booking','task':'Staff','owner':'Mine'}[r.lane] }}</span>
+    <span class="task-title">
+      {{ r.title }}
+      {% if r.repeat_weekly %}<span title="Repeats weekly">↻</span>{% endif %}
+      {% if r.detail %} <span class="upload-hint">— {{ r.detail }}</span>{% endif %}
+      {% if r.status == 'open' and r.date and r.date < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+    </span>
+    <span class="origin-badge">{{ {'manual':'added','checklist':'checklist','recurring':'recurring','guest_request':'guest request'}[r.origin] }}</span>
+    {% if r.acknowledgment_status == 'pending' %}<span class="mini-status status-pending">awaiting response</span>
+    {% elif r.acknowledgment_status == 'accepted' %}<span class="mini-status status-active">accepted</span>
+    {% elif r.acknowledgment_status == 'rejected' %}<span class="mini-status status-inactive">rejected</span>{% endif %}
+    {% if r.assignee_name and r.lane != 'owner' %}<span class="upload-hint">{{ r.assignee_name }}</span>{% elif r.lane == 'task' %}<span class="upload-hint">unassigned</span>{% endif %}
+    {% if r.lane != 'owner' %}
+    {% if r.assignee_id %}
+    <form method="post" action="{{ url_for('direct_task', task_id=r.id) }}" title="Direct now — sends a push, needs accept/reject">
+      <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('direct_task', task_id=r.id) }}" style="display:flex; gap:4px;">
+      <select name="employee_id" required style="font-size:11px; padding:1px;">
+        <option value="">Direct to…</option>
+        {% for e in sheet.employees %}
+        <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% elif r.kind == 'dinner' %}
+  <div class="task-row" data-kind="dinner" data-lane="restaurant" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ r.status }}">
+    <span class="lane-badge lane-restaurant">Restaurant</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="mini-status status-{{ r.status }}">{{ r.status }}</span>
+  </div>
+  {% elif r.kind == 'workshop' %}
+  <div class="task-row" data-kind="workshop" data-lane="workshop" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ r.status }}">
+    <span class="lane-badge lane-workshop">Workshop</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="mini-status status-{{ r.status }}">{{ r.status }}</span>
+  </div>
+  {% else %}
+  <div class="task-row" data-kind="booking" data-lane="booking" data-guest="guest" data-scheduled="1" data-employee="" data-status="{{ r.status }}">
+    <span class="lane-badge lane-booking">Booking</span>
+    <span class="task-title"><a href="{{ r.link }}" style="color:inherit;">{{ r.title }}</a> {% if r.detail %}<span class="upload-hint">— {{ r.detail }}</span>{% endif %}</span>
+    <span class="mini-status status-{{ r.status }}">{{ r.status }}</span>
+  </div>
+  {% endif %}
+{% endfor %}
+</div>
+
+<script>
+function applyOverviewFilters() {
+  var lane = document.getElementById('f-lane').value;
+  var guest = document.getElementById('f-guest').value;
+  var scheduled = document.getElementById('f-scheduled').value;
+  var employee = document.getElementById('f-employee').value;
+  var showDone = document.getElementById('f-show-done').checked;
+  document.querySelectorAll('#overview-rows > .task-row').forEach(function(row) {
+    var ok = true;
+    if (lane && row.dataset.lane !== lane) ok = false;
+    if (guest && row.dataset.guest !== guest) ok = false;
+    if (scheduled && row.dataset.scheduled !== scheduled) ok = false;
+    if (employee && row.dataset.employee !== employee) ok = false;
+    if (!showDone && row.dataset.status === 'done') ok = false;
+    row.classList.toggle('overview-row-hidden', !ok);
+  });
+  document.querySelectorAll('#overview-rows > .upload-hint').forEach(function(hdr) {
+    var next = hdr.nextElementSibling, anyVisible = false;
+    while (next && !next.classList.contains('upload-hint')) {
+      if (next.classList.contains('task-row') && !next.classList.contains('overview-row-hidden')) anyVisible = true;
+      next = next.nextElementSibling;
+    }
+    hdr.classList.toggle('overview-row-hidden', !anyVisible);
+  });
+}
+function resetOverviewFilters() {
+  ['f-lane', 'f-guest', 'f-scheduled', 'f-employee'].forEach(function(id) { document.getElementById(id).value = ''; });
+  document.getElementById('f-show-done').checked = false;
+  applyOverviewFilters();
+}
+document.querySelectorAll('#overview-filters select, #overview-filters input').forEach(function(el) {
+  el.addEventListener('change', applyOverviewFilters);
+});
+applyOverviewFilters();
+
+function refreshOverviewStatuses() {
+  var params = new URLSearchParams({view: '{{ sheet.view }}', date: '{{ sheet.anchor.isoformat() }}'});
+  fetch('/admin/overview/status.json?' + params.toString())
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (!data) return;
+      data.tasks.forEach(function(t) {
+        var row = document.querySelector('#overview-rows .task-row[data-task-id="' + t.id + '"]');
+        if (!row) return;
+        row.dataset.status = t.status;
+        row.classList.toggle('task-done', t.status === 'done');
+        var check = row.querySelector('.task-check');
+        if (check) check.textContent = t.status === 'done' ? '✓' : '';
+      });
+      applyOverviewFilters();
+    })
+    .catch(function() {});
+}
+setInterval(refreshOverviewStatuses, 25000);
+</script>
+
+{% endblock %}

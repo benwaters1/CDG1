@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Breakfast{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Breakfast</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Today's continental breakfast checklist — resets every morning.
+  {% if guest_count %}{{ guest_count }} guest{{ '' if guest_count == 1 else 's' }} across {{ occupied_today }} room{{ '' if occupied_today == 1 else 's' }} today.{% else %}No guests in residence today.{% endif %}
+</p>
+
+{% if guest_notes %}
+<div class="expense-card" style="border-color:var(--gold);">
+  <div class="expense-head"><strong>Guest notes today</strong></div>
+  {% for g in guest_notes %}
+  <div class="mini-row">
+    <span class="mini-name">{{ g['name'] }}</span>
+    <span class="upload-hint">{{ g['notes'] }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not by_category %}
+  <div class="empty-state">No breakfast items set up yet — add some below.</div>
+{% else %}
+  {% for category, items in by_category.items() %}
+  <div class="expense-card">
+    <div class="expense-head"><strong>{{ category }}</strong></div>
+    <div class="task-list">
+      {% for i in items %}
+      <div class="task-row {{ 'task-done' if i['id'] in checked_today }}" data-item-id="{{ i['id'] }}" id="view-breakfast-{{ i['id'] }}">
+        <button type="button" class="task-check" onclick="toggleBreakfastItem({{ i['id'] }}, this)">{{ '✓' if i['id'] in checked_today }}</button>
+        <span class="task-title">{{ i['name'] }}</span>
+        {% if i['low_stock'] %}<span class="mini-status status-inactive">low stock</span>{% endif %}
+        {% if user['role'] == 'owner' %}
+        <form method="post" action="{{ url_for('toggle_breakfast_stock', item_id=i['id']) }}"><button type="submit" class="btn-mini">{{ 'Back in stock' if i['low_stock'] else 'Flag low' }}</button></form>
+        {% if i['low_stock'] %}
+        <form method="post" action="{{ url_for('new_shopping_item') }}"><input type="hidden" name="name" value="{{ i['name'] }}"><input type="hidden" name="category" value="Breakfast"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Add to shopping list</button></form>
+        {% endif %}
+        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleBreakfastEdit({{ i['id'] }})">Edit</span>
+        <form method="post" action="{{ url_for('delete_breakfast_item', item_id=i['id']) }}" onsubmit="return confirm('Remove this item?');">
+          <button type="submit" class="doc-delete">×</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('toggle_breakfast_stock', item_id=i['id']) }}"><button type="submit" class="btn-mini">{{ 'Back in stock' if i['low_stock'] else 'Flag low' }}</button></form>
+        {% endif %}
+      </div>
+      {% if user['role'] == 'owner' %}
+      <form method="post" action="{{ url_for('edit_breakfast_item', item_id=i['id']) }}" id="edit-breakfast-{{ i['id'] }}" class="upload-form" style="display:none;">
+        <input type="text" name="name" value="{{ i['name'] }}" placeholder="Name" required>
+        <input type="text" name="category" value="{{ i['category'] or '' }}" placeholder="Category">
+        <button type="submit" class="btn-mini">Save</button>
+      </form>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% if user['role'] == 'owner' %}
+<div class="detail-card" style="max-width:560px; margin-top:20px;">
+  <h3>Add a breakfast item</h3>
+  <form method="post" action="{{ url_for('new_breakfast_item') }}" class="upload-form">
+    <input type="text" name="name" placeholder="e.g. Croissants" required>
+    <input type="text" name="category" placeholder="e.g. Bread, Fruit, Dairy, Drinks">
+    <button type="submit" class="btn-mini">Add item</button>
+  </form>
+</div>
+{% endif %}
+
+<script>
+function toggleBreakfastItem(id, btn) {
+  var row = btn.closest('.task-row');
+  fetch('/breakfast/' + id + '/toggle', { method: 'POST' })
+    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+    .then(function(data) {
+      if (data.checked) {
+        row.classList.add('task-done');
+        btn.textContent = '✓';
+      } else {
+        row.classList.remove('task-done');
+        btn.textContent = '';
+      }
+    })
+    .catch(function() { alert('Could not update that item — check your connection and try again.'); });
+}
+function toggleBreakfastEdit(id) {
+  var view = document.getElementById('view-breakfast-' + id);
+  var edit = document.getElementById('edit-breakfast-' + id);
+  var showEdit = edit.style.display === 'none';
+  edit.style.display = showEdit ? 'flex' : 'none';
+  view.style.display = showEdit ? 'none' : 'flex';
+}
+</script>
+
+{% endblock %}
