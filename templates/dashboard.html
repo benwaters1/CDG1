@@ -335,6 +335,27 @@ function toggleBreak() {
   </div>
   {% endif %}
 
+  {% if my_next_session %}
+  <h2 class="section-heading" style="margin-top:0;">{{ my_next_session['title'] }} — Roster</h2>
+  <p class="upload-hint" style="margin-top:-10px;">{{ my_next_session['start_date'] }}{% if my_next_session['end_date'] != my_next_session['start_date'] %} → {{ my_next_session['end_date'] }}{% endif %}</p>
+  {% if not my_next_session_roster %}
+    <div class="empty-state">No confirmed registrations yet.</div>
+  {% else %}
+    <div class="mini-list">
+      {% for r in my_next_session_roster %}
+      <div class="mini-row" {% if r['dietary_notes'] or r['medical_notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
+        <div style="display:flex; width:100%; gap:8px;">
+          <span class="mini-name">{{ r['guest_name'] }}</span>
+          <span class="mini-role">Party of {{ r['party_size'] }}{% if r['room_name'] %} · {{ r['room_name'] }}{% endif %}</span>
+        </div>
+        {% if r['dietary_notes'] %}<span class="upload-hint">Dietary: {{ r['dietary_notes'] }}</span>{% endif %}
+        {% if r['medical_notes'] %}<span class="upload-hint">Medical: {{ r['medical_notes'] }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% endif %}
+
   {% if is_restaurant_lead %}
   <h2 class="section-heading" style="margin-top:0;">Tonight's Dinner{% if my_tonights_dinners %} — {{ my_tonights_dinners|sum(attribute='party_size') }} covers{% endif %}</h2>
   {% if not my_tonights_dinners %}
