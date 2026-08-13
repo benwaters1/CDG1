@@ -3464,6 +3464,8 @@ def dashboard():
     # Same idea for a workshop instructor who's on staff — their own view
     # into upcoming sessions they're teaching, without owner access.
     my_upcoming_sessions = []
+    my_next_session = None
+    my_next_session_roster = []
     if user["role"] != "owner":
         my_upcoming_sessions = conn.execute(
             """SELECT workshop_sessions.*, workshops.title,
@@ -3474,6 +3476,15 @@ def dashboard():
                ORDER BY workshop_sessions.start_date LIMIT 5""",
             (user["id"], today.isoformat()),
         ).fetchall()
+        if my_upcoming_sessions:
+            my_next_session = my_upcoming_sessions[0]
+            my_next_session_roster = conn.execute(
+                """SELECT workshop_bookings.*, rooms.name AS room_name
+                   FROM workshop_bookings LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+                   WHERE workshop_bookings.session_id = ? AND workshop_bookings.status = 'confirmed'
+                   ORDER BY workshop_bookings.guest_name""",
+                (my_next_session["id"],),
+            ).fetchall()
 
     conn.close()
     return render_template(
@@ -3490,6 +3501,7 @@ def dashboard():
         vehicle_alerts=vehicle_alerts, breakfast_low_stock=breakfast_low_stock,
         restaurant_alerts=restaurant_alerts, is_restaurant_lead=is_restaurant_lead,
         my_tonights_dinners=my_tonights_dinners, my_upcoming_sessions=my_upcoming_sessions,
+        my_next_session=my_next_session, my_next_session_roster=my_next_session_roster,
     )
 
 
