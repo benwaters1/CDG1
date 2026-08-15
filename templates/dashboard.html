@@ -133,7 +133,7 @@ function toggleBreak() {
               {% if cell.arrivals %}<span class="month-cal-badge month-cal-badge-arrival">↓ {{ cell.arrivals }}</span>{% endif %}
               {% if cell.departures %}<span class="month-cal-badge month-cal-badge-departure">↑ {{ cell.departures }}</span>{% endif %}
               {% if cell.dinner_covers %}<span class="month-cal-badge month-cal-badge-dinner">{{ icon('restaurant', 9) }}{{ cell.dinner_covers }}</span>{% endif %}
-              {% if cell.workshop %}<span class="month-cal-badge month-cal-badge-workshop">{{ icon('workshop', 9) }}</span>{% endif %}
+              {% if cell.workshop %}<span class="month-cal-badge month-cal-badge-workshop">{{ icon('workshop', 9) }}Workshop</span>{% endif %}
             </div>
           </a>
           {% else %}
