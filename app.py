@@ -4658,6 +4658,14 @@ def directory():
     }
     conn.close()
 
+    # Counted before the filters below so the tiles describe the whole team,
+    # not whichever subset is currently on screen.
+    team_counts = {
+        "active": sum(1 for e in employees if e["status"] == "active"),
+        "on_shift": sum(1 for e in employees if e["id"] in on_shift_ids),
+        "unclaimed": sum(1 for e in employees if not e["account_claimed"]),
+    }
+
     if status_filter:
         employees = [e for e in employees if e["status"] == status_filter]
     if q:
@@ -4669,6 +4677,7 @@ def directory():
 
     return render_template(
         "directory.html", employees=employees, status_filter=status_filter, q=q, on_shift_ids=on_shift_ids,
+        team_counts=team_counts,
     )
 
 
@@ -6507,6 +6516,16 @@ def expenses():
     ).fetchone()["value"]
     conn.close()
 
+    # Totals are deliberately computed BEFORE the filters below, so the tiles
+    # stay a stable "what's outstanding" readout rather than re-summing
+    # whatever subset happens to be on screen.
+    all_rows = list(invoices) + list(claims)
+    totals = {
+        "pending_count": sum(1 for r in all_rows if r["status"] == "pending"),
+        "pending_value": sum(r["amount"] or 0 for r in all_rows if r["status"] == "pending"),
+        "unpaid_value": sum(r["amount"] or 0 for r in all_rows if r["status"] == "approved"),
+    }
+
     if status_filter:
         invoices = [i for i in invoices if i["status"] == status_filter]
         claims = [c for c in claims if c["status"] == status_filter]
@@ -6523,7 +6542,7 @@ def expenses():
     supplier_upload_url = url_for("supplier_invoice_submit", token=supplier_token, _external=True)
     return render_template(
         "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
-        status_filter=status_filter, q=q,
+        status_filter=status_filter, q=q, totals=totals,
     )
 
 
@@ -9209,8 +9228,21 @@ def room_issues():
     issues = conn.execute(query, params).fetchall()
     rooms = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
+    # Counted separately rather than off `issues`, which the status filter
+    # above has usually already narrowed (this page defaults to open-only).
+    counts = {
+        r["status"]: r["c"] for r in conn.execute(
+            "SELECT status, COUNT(*) AS c FROM room_issues GROUP BY status"
+        ).fetchall()
+    }
+    rooms_affected = conn.execute(
+        "SELECT COUNT(DISTINCT room_id) AS c FROM room_issues WHERE status = 'open'"
+    ).fetchone()["c"]
     conn.close()
-    return render_template("room_issues.html", issues=issues, rooms=rooms, status_filter=status_filter, employees=employees)
+    return render_template(
+        "room_issues.html", issues=issues, rooms=rooms, status_filter=status_filter,
+        employees=employees, counts=counts, rooms_affected=rooms_affected,
+    )
 
 
 @app.route("/room-issues/export.csv")

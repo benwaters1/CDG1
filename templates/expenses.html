@@ -1,10 +1,26 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Expenses & Invoices{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <h1>Expenses &amp; Invoices</h1>
   <a href="{{ url_for('export_expenses_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ totals.pending_count }}</span><span class="stat-tile-label">Awaiting your decision</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(totals.pending_value) }}</span><span class="stat-tile-label">Pending value</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(totals.unpaid_value) }}</span><span class="stat-tile-label">Approved, not yet paid</span></span>
+  </div>
 </div>
 
 <div class="detail-card">
