@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Deposit Rules{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Deposit Rules</h1>
+  <a href="{{ url_for('management') }}" class="btn-mini">Back to Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">One place to see every deposit rule across restaurant and workshop bookings. A rule can be scoped to a date range, a minimum party size, or both — the most specific matching rule wins. A booking that matches no rule falls back to that category's base deposit percentage below.</p>
+
+<div class="detail-card" style="max-width:640px; margin-bottom:20px;">
+  <h3 style="margin-top:0;">Base deposit percentages (the fallback)</h3>
+  <p class="upload-hint">Restaurant: {% if restaurant_settings['deposit_percent'] %}{{ restaurant_settings['deposit_percent']|int }}%{% else %}not set — pays in full online{% endif %} · <a href="{{ url_for('admin_restaurant_settings') }}" style="color:var(--steel);">change</a></p>
+  {% for w in workshops %}
+  <p class="upload-hint">{{ w['title'] }}: {{ w['deposit_percent']|int if w['deposit_percent'] else 0 }}% · <a href="{{ url_for('edit_workshop', workshop_id=w['id']) }}" style="color:var(--steel);">change</a></p>
+  {% endfor %}
+</div>
+
+<div class="detail-card" style="max-width:680px; margin-bottom:20px;">
+  <h3 style="margin-top:0;">Add a rule</h3>
+  <form method="post" action="{{ url_for('new_deposit_rule') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Applies to</label>
+        <select name="category">
+          <option value="restaurant">Restaurant</option>
+          <option value="workshop">Workshop</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Deposit (%)</label>
+        <input type="number" name="deposit_percent" min="0" max="100" step="1" required>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">From date (optional)</label>
+        <input type="date" name="start_date">
+      </div>
+      <div>
+        <label class="field-label">To date (optional)</label>
+        <input type="date" name="end_date">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Minimum party size (optional)</label>
+        <input type="number" name="min_party_size" min="1" placeholder="Any size">
+      </div>
+      <div>
+        <label class="field-label">Label (optional)</label>
+        <input type="text" name="label" placeholder="e.g. New Year's Eve, or Large groups">
+      </div>
+    </div>
+    <p class="upload-hint" style="margin-top:2px;">Leave both dates blank to apply regardless of date; leave party size blank to apply regardless of size. At least one of the three must be set.</p>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Add rule</button>
+  </form>
+</div>
+
+{% if not rules %}
+  <div class="empty-state">No deposit rules yet — every booking uses the base percentage above.</div>
+{% else %}
+  <div class="mini-list">
+    {% for r in rules %}
+    <div class="mini-row">
+      <span class="mini-name">{{ r['category']|capitalize }}{% if r['label'] %} — {{ r['label'] }}{% endif %}</span>
+      <span class="mini-role">
+        {% if r['start_date'] or r['end_date'] %}{{ r['start_date'] or 'any date' }} → {{ r['end_date'] or 'any date' }}{% endif %}
+        {% if r['min_party_size'] %}{% if r['start_date'] or r['end_date'] %} · {% endif %}party of {{ r['min_party_size'] }}+{% endif %}
+      </span>
+      <span class="mini-status status-paid">{{ r['deposit_percent']|int }}% deposit</span>
+      <form method="post" action="{{ url_for('delete_deposit_rule', rule_id=r['id']) }}" onsubmit="return confirm('Remove this deposit rule?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-mini-danger">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}

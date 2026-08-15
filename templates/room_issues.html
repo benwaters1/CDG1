@@ -30,11 +30,11 @@
         <span class="mini-status status-{{ 'inactive' if issue['status'] == 'resolved' else 'pending' }}">{{ issue['status'] }}</span>
         {% if user['role'] == 'owner' %}
           {% if issue['status'] == 'open' %}
-          <form method="post" action="{{ url_for('resolve_room_issue', issue_id=issue['id']) }}"><button type="submit" class="btn-mini">Mark resolved</button></form>
+          <form method="post" action="{{ url_for('resolve_room_issue', issue_id=issue['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark resolved</button></form>
           {% else %}
-          <form method="post" action="{{ url_for('reopen_room_issue', issue_id=issue['id']) }}"><button type="submit" class="btn-mini">Reopen</button></form>
+          <form method="post" action="{{ url_for('reopen_room_issue', issue_id=issue['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Reopen</button></form>
           {% endif %}
-          <form method="post" action="{{ url_for('delete_room_issue', issue_id=issue['id']) }}" onsubmit="return confirm('Remove this issue?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+          <form method="post" action="{{ url_for('delete_room_issue', issue_id=issue['id']) }}" onsubmit="return confirm('Remove this issue?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
         {% endif %}
       </div>
       {% if issue['description'] %}<span class="upload-hint">{{ issue['description'] }}</span>{% endif %}
@@ -47,6 +47,7 @@
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
   <h3>Report an issue</h3>
   <form method="post" action="{{ url_for('new_room_issue') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <select name="room_id" required>
       <option value="">Choose a room</option>
       {% for r in rooms %}

@@ -17,7 +17,7 @@
     <a href="{{ url_for('export_bookings_csv') }}" class="btn-mini">Export CSV</a>
   </div>
 </div>
-<form id="bulk-bookings-form" method="post"></form>
+<form id="bulk-bookings-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 
 <div class="stat-tiles">
   <div class="stat-tile">
@@ -114,13 +114,13 @@
     <div class="expense-actions">
       {% if b['status'] == 'pending' %}
       <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;">
-      <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><button type="submit" class="btn-mini">Confirm</button></form>
-      <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" onsubmit="return confirm('Decline this request?');"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
+      <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" onsubmit="return confirm('Decline this request?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
       {% elif b['status'] == 'confirmed' %}
-      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><button type="submit" class="btn-text-danger">Cancel booking</button></form>
+      <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel booking</button></form>
       {% endif %}
       {% if b['payment_status'] == 'paid' %}
-      <form method="post" action="{{ url_for('refund_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Refund this payment via Stripe?');"><button type="submit" class="btn-mini">Refund</button></form>
+      <form method="post" action="{{ url_for('refund_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Refund this payment via Stripe?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Refund</button></form>
       {% endif %}
     </div>
 
@@ -129,6 +129,7 @@
       <p class="upload-hint" style="margin-top:8px;">✓ Arrival prep assigned {{ b['arrival_prepped_at'][:10] }}.</p>
       {% elif not b['checked_out_at'] %}
       <form method="post" action="{{ url_for('prepare_arrival', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="assigned_to_user_id" required style="width:auto;">
           <option value="">Assign arrival prep to…</option>
           {% set scheduled = scheduled_by_date.get(b['arrival_date'], []) %}
@@ -143,6 +144,7 @@
       <p class="upload-hint" style="margin-top:8px;">✓ Checked out {{ b['checked_out_at'][:10] }} — turnover task assigned.</p>
       {% else %}
       <form method="post" action="{{ url_for('checkout_booking', booking_id=b['id']) }}" class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="assigned_to_user_id" required style="width:auto;">
           <option value="">Assign turnover to…</option>
           {% set scheduled = scheduled_by_date.get(today_iso, []) %}

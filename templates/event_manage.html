@@ -1,0 +1,40 @@
+{% extends "public_base.html" %}
+{% block title %}My Event Inquiry{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>{{ inquiry['event_type']|capitalize }} Inquiry</h1>
+  <p class="manual-body">Status: <span class="mini-status status-{{ inquiry['status'] }}">{{ inquiry['status'] }}</span></p>
+
+  <div class="detail-card">
+    <div class="detail-grid">
+      <div><span class="detail-label">Reference code</span>{{ inquiry['reference_code'] }}</div>
+      {% if inquiry['preferred_date'] %}<div><span class="detail-label">Preferred date</span>{{ inquiry['preferred_date'] }}</div>{% endif %}
+      {% if inquiry['alternate_date'] %}<div><span class="detail-label">Alternate date</span>{{ inquiry['alternate_date'] }}</div>{% endif %}
+      {% if inquiry['guest_count'] %}<div><span class="detail-label">Guests</span>{{ inquiry['guest_count'] }}</div>{% endif %}
+      {% if inquiry['quoted_price'] %}<div><span class="detail-label">Quoted price</span>€{{ '%.2f'|format(inquiry['quoted_price']) }}</div>{% endif %}
+    </div>
+    {% if inquiry['message'] %}
+    <div class="notes-block">
+      <span class="detail-label">Your message</span>
+      <p>{{ inquiry['message'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if inquiry['status'] == 'quoted' %}
+  <p class="upload-hint" style="margin-top:12px;">We've sent through a quote — get in touch to confirm, or reply to the email if you have questions.</p>
+  {% elif inquiry['status'] == 'new' %}
+  <p class="upload-hint" style="margin-top:12px;">We've received your inquiry and will be in touch shortly.</p>
+  {% endif %}
+
+  {% if inquiry['status'] not in ('declined', 'cancelled') %}
+  <form method="post" onsubmit="return confirm('Cancel this inquiry? This cannot be undone.');" style="margin-top:16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="cancel">
+    <button type="submit" class="btn-text-danger">Cancel this inquiry</button>
+  </form>
+  {% endif %}
+</div>
+
+{% endblock %}

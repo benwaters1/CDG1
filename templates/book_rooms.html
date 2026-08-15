@@ -65,6 +65,7 @@
   <h3>Nothing free for those dates</h3>
   <p class="manual-body" style="margin-top:0;">Join the waitlist and we'll reach out if a cancellation opens up {{ arrival }} to {{ departure }}.</p>
   <form method="post" action="{{ url_for('join_waitlist') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="desired_arrival" value="{{ arrival }}">
     <input type="hidden" name="desired_departure" value="{{ departure }}">
     <input type="text" name="name" placeholder="Name" required>
@@ -85,11 +86,18 @@
     {% if room['photo_filename'] %}
     <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" class="room-photo">
     {% endif %}
+    {% if gallery_photos_by_room.get(room['id']) %}
+    <div class="room-gallery-strip">
+      {% for p in gallery_photos_by_room[room['id']] %}
+      <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}">
+      {% endfor %}
+    </div>
+    {% endif %}
     <div class="room-card-head">
       <h3>{{ room['name'] }}</h3>
       {% if room['price_per_night'] %}<span class="room-price">€{{ '%.0f'|format(room['price_per_night']) }} / night</span>{% endif %}
     </div>
-    <p class="room-meta">Sleeps up to {{ room['max_occupancy'] }}</p>
+    <p class="room-meta">Sleeps up to {{ room['max_occupancy'] }}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}</p>
     {% if room['description'] %}<p class="manual-body">{{ room['description'] }}</p>{% endif %}
     {% if room['amenities'] %}
     <div class="amenity-tags">
@@ -103,13 +111,26 @@
         <p style="margin-top:12px;"><span class="mini-status status-available">Available</span></p>
         <a href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}" class="btn-primary">Request to book</a>
       {% else %}
-        <p style="margin-top:12px;"><span class="mini-status status-unavailable">Not available these dates</span></p>
+        <p style="margin-top:12px;"><span class="mini-status status-unavailable">{{ unavailable_reason.get(room['id'], 'Not available these dates') }}</span></p>
       {% endif %}
     {% else %}
       <a href="{{ url_for('book_room', room_id=room['id']) }}" class="btn-primary">Check dates &amp; book</a>
     {% endif %}
   </div>
   {% endfor %}
+{% endif %}
+
+{% if featured_reviews %}
+<h2 class="section-heading">What Our Guests Say</h2>
+<div class="search-bar" style="align-items:stretch;">
+  {% for r in featured_reviews %}
+  <div class="detail-card" style="flex:1 1 220px;">
+    <span class="mini-status status-onshift">{{ r['rating'] }} / 5</span>
+    {% if r['comment'] %}<p class="manual-body" style="margin-top:8px;">&ldquo;{{ r['comment'] }}&rdquo;</p>{% endif %}
+    <p class="upload-hint" style="margin-top:8px;">{{ r['guest_name'] }}{% if r['room_name'] %} · {{ r['room_name'] }}{% endif %}</p>
+  </div>
+  {% endfor %}
+</div>
 {% endif %}
 
 <h2 class="section-heading">About the Estate</h2>

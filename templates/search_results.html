@@ -134,6 +134,32 @@
   </div>
   {% endif %}
 
+  {% if results.event_inquiries %}
+  <h2 class="section-heading">Event Inquiries</h2>
+  <div class="mini-list">
+    {% for e in results.event_inquiries %}
+    <a href="{{ url_for('admin_events') }}" class="mini-row">
+      <span class="mini-name">{{ e['contact_name'] }}</span>
+      <span class="mini-role">{{ e['event_type']|capitalize }}{% if e['preferred_date'] %} · {{ e['preferred_date'] }}{% endif %} · {{ e['reference_code'] }}</span>
+      <span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if results.promo_codes %}
+  <h2 class="section-heading">Promo Codes</h2>
+  <div class="mini-list">
+    {% for c in results.promo_codes %}
+    <a href="{{ url_for('admin_promo_codes') }}" class="mini-row">
+      <span class="mini-name">{{ c['code'] }}</span>
+      <span class="mini-role">{{ c['description'] or '' }}</span>
+      <span class="mini-status status-{{ 'onshift' if c['active'] else 'inactive' }}">{{ 'active' if c['active'] else 'inactive' }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if results.social_posts %}
   <h2 class="section-heading">Social Media Posts</h2>
   <div class="mini-list">

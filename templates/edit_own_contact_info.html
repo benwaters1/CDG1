@@ -6,6 +6,7 @@
   <h1>Update Contact Info</h1>
   <p class="pay-disclaimer" style="margin-top:-6px;">For anything else on your profile — role, pay, skills — ask the owner.</p>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Phone</label>
     <input type="tel" name="phone" value="{{ person['phone'] or '' }}">
 

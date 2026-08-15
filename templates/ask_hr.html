@@ -9,6 +9,7 @@
 
 <div class="detail-card" style="max-width:560px;">
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">What's on your mind?</label>
     <textarea name="body" placeholder="Anything you'd rather raise privately than mention in passing." required></textarea>
     <button type="submit" class="btn-primary" style="margin-top:14px;">Send privately</button>
@@ -26,6 +27,12 @@
   </div>
   <p class="manual-body">{{ n['body'] }}</p>
   <p class="upload-hint">Sent {{ n['created_at'][:10] }}{% if n['handled_at'] %} · Handled {{ n['handled_at'][:10] }}{% endif %}</p>
+  {% if n['response'] %}
+  <div class="notes-block" style="margin-top:8px;">
+    <span class="detail-label">Reply from the owner</span>
+    <p>{{ n['response'] }}</p>
+  </div>
+  {% endif %}
 </div>
 {% endfor %}
 {% endif %}

@@ -8,27 +8,32 @@
     {% if entry and entry.tasks %}
       <div class="task-list">
         {% for t in entry.tasks %}
-        <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
-          <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+        <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+          <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
           <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
           <span class="task-title">
             {{ t['title'] }}
+            {% if t['priority'] == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
+            {% if t['status'] == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
             {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}
             {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
             {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
-            {% if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+            {% if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
           </span>
           {% if t['acknowledgment_status'] == 'pending' %}<span class="mini-status status-pending">awaiting response</span>
           {% elif t['acknowledgment_status'] == 'accepted' %}<span class="mini-status status-active">accepted</span>
           {% elif t['acknowledgment_status'] == 'rejected' %}<span class="mini-status status-inactive">rejected — reassign</span>{% endif %}
           {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date'] }}</span>{% endif %}
           <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" title="Direct now — sends a push, needs accept/reject">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
           </form>
           <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" title="Duplicate to next week">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">↻</button>
           </form>
           <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
           </form>
         </div>
@@ -46,12 +51,13 @@
   <div class="expense-head"><strong>Unassigned</strong></div>
   <div class="task-list">
     {% for t in sheet.unassigned_tasks %}
-    <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
-      <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+    <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+      <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
       <span class="task-title">{{ t['title'] }}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
       {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date'] }}</span>{% endif %}
       <form method="post" action="{{ url_for('direct_task', task_id=t['id']) }}" style="display:flex; gap:4px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="employee_id" required style="font-size:11px; padding:1px;">
           <option value="">Direct to…</option>
           {% for e in sheet.employees %}
@@ -61,6 +67,7 @@
         <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
       </form>
       <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="doc-delete">×</button>
       </form>
     </div>
@@ -79,6 +86,7 @@
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
       <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span></span>
       <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="doc-delete">×</button>
       </form>
     </div>

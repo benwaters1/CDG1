@@ -7,6 +7,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+(function() {
+  var token = document.querySelector('meta[name="csrf-token"]').content;
+  var originalFetch = window.fetch;
+  window.fetch = function(input, init) {
+    init = init || {};
+    var method = (init.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+      init.headers = new Headers(init.headers || {});
+      if (!init.headers.has('X-CSRFToken')) init.headers.set('X-CSRFToken', token);
+    }
+    return originalFetch(input, init);
+  };
+})();
+</script>
 </head>
 <body>
 
@@ -20,6 +36,7 @@
       <a href="{{ url_for('book_rooms') }}" class="{{ 'active' if request.endpoint in ['book_rooms','book_room'] }}">Rooms</a>
       <a href="{{ url_for('restaurant_info') }}" class="{{ 'active' if request.endpoint in ['restaurant_info','restaurant_book','restaurant_confirmation','restaurant_find','restaurant_manage'] }}">Dinner</a>
       <a href="{{ url_for('workshops_public') }}" class="{{ 'active' if request.endpoint in ['workshops_public','workshop_detail','workshop_register','workshop_confirmation','workshop_find','workshop_manage'] }}">Workshops</a>
+      <a href="{{ url_for('events_info') }}" class="{{ 'active' if request.endpoint in ['events_info','submit_event_inquiry','event_confirmation','event_find','event_manage'] }}">Events</a>
       <a href="{{ url_for('find_booking') }}" class="{{ 'active' if request.endpoint in ['find_booking','manage_booking'] }}">Manage My Booking</a>
     </nav>
   </div>

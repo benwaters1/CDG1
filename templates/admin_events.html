@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Events{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Events</h1>
+  <a href="{{ url_for('export_events_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">One-off venue-hire inquiries — weddings, photoshoots, corporate offsites. Every event is bespoke, so this is a follow-up-and-quote queue rather than an instant-book calendar.</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ new_count }}</span><span class="stat-tile-label">New inquiries</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('megaphone', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ confirmed_count }}</span><span class="stat-tile-label">Confirmed events</span></span>
+  </div>
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="">All</option>
+      {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+  {% if status_filter %}<a href="{{ url_for('admin_events') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
+</form>
+
+{% if not inquiries %}
+  <div class="empty-state">{% if status_filter %}No inquiries match that filter.{% else %}No event inquiries yet.{% endif %}</div>
+{% else %}
+  {% for e in inquiries %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ e['contact_name'] }}</strong> — {{ e['event_type']|capitalize }}
+        <span class="mini-status status-{{ e['status'] }}" style="margin-left:8px;">{{ e['status'] }}</span>
+      </div>
+      <span class="upload-hint">{{ e['reference_code'] }}</span>
+    </div>
+    <p class="manual-body">
+      {% if e['preferred_date'] %}Preferred: {{ e['preferred_date'] }}{% endif %}
+      {% if e['alternate_date'] %} · Alternate: {{ e['alternate_date'] }}{% endif %}
+      {% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
+      {% if e['quoted_price'] %} · Quoted €{{ '%.2f'|format(e['quoted_price']) }}{% endif %}
+    </p>
+    <p class="upload-hint">{{ e['contact_email'] }}{% if e['contact_phone'] %} · {{ e['contact_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
+    {% if e['message'] %}<p class="upload-hint">Message: {{ e['message'] }}</p>{% endif %}
+    {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
+    <p class="upload-hint">Submitted {{ e['created_at'][:10] }}{% if e['decided_at'] %} · Decided {{ e['decided_at'][:10] }}{% endif %}</p>
+
+    <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="field-label">Status</label>
+        <select name="status">
+          {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
+          <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Quoted price (€)</label>
+        <input type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
+      </div>
+      <div style="flex:2 1 200px;">
+        <label class="field-label">Owner note</label>
+        <input type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">
+      </div>
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

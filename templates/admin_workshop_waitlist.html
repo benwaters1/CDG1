@@ -36,6 +36,7 @@
       <a href="{{ url_for('workshop_register', session_id=e['session_id'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; register</a>
       {% endif %}
       <form method="post" action="{{ url_for('update_workshop_waitlist_status', entry_id=e['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="status" onchange="this.form.submit()">
           {% for s in ['open','contacted','booked','closed'] %}
           <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>

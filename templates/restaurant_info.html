@@ -23,4 +23,26 @@
   {% endif %}
 </div>
 
+{% if items_by_category %}
+<div class="narrow-card" style="margin-top:20px;">
+  <h1>Menu</h1>
+  {% for category in menu_categories %}
+  {% if items_by_category.get(category) %}
+  <p class="field-label" style="margin-top:18px;">{{ category }}s</p>
+  <div class="mini-list">
+    {% for item in items_by_category[category] %}
+    <div class="mini-row" {% if item['description'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
+      <div style="display:flex; width:100%; gap:8px; justify-content:space-between;">
+        <span class="mini-name">{{ item['name'] }}{% if item['dietary_tags'] %} <span class="upload-hint">({{ item['dietary_tags'] }})</span>{% endif %}</span>
+        {% if item['price'] %}<span class="mini-role">€{{ '%.0f'|format(item['price']) }}</span>{% endif %}
+      </div>
+      {% if item['description'] %}<span class="upload-hint">{{ item['description'] }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
 {% endblock %}

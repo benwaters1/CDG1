@@ -32,6 +32,7 @@
         <a href="{{ url_for('submit_expense', vendor=v['name']) }}" class="small-link" style="color:var(--steel);">Log expense</a>
         <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVendorEdit({{ v['id'] }})">Edit</span>
         <form method="post" action="{{ url_for('delete_vendor', vendor_id=v['id']) }}" onsubmit="return confirm('Remove this vendor?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="doc-delete">×</button>
         </form>
       </div>
@@ -41,6 +42,7 @@
       {% if v['notes'] %}<span class="upload-hint">{{ v['notes'] }}</span>{% endif %}
     </div>
     <form method="post" action="{{ url_for('edit_vendor', vendor_id=v['id']) }}" id="edit-vendor-{{ v['id'] }}" class="upload-form" style="display:none;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="name" value="{{ v['name'] }}" placeholder="Name" required>
       <input type="text" name="contact_person" value="{{ v['contact_person'] or '' }}" placeholder="Contact person">
       <input type="text" name="phone" value="{{ v['phone'] or '' }}" placeholder="Phone">
@@ -56,6 +58,7 @@
 <div class="detail-card" style="max-width:640px;">
   <h3>Add a vendor</h3>
   <form method="post" action="{{ url_for('new_vendor') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="name" placeholder="Name" required>
     <input type="text" name="contact_person" placeholder="Contact person">
     <input type="text" name="phone" placeholder="Phone">

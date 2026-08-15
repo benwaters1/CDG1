@@ -5,6 +5,7 @@
 <div class="narrow-card">
   <h1>{% if guest %}Edit {{ guest['name'] }}{% else %}Add Guest{% endif %}</h1>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Guest name</label>
     <input type="text" name="name" required value="{{ guest['name'] if guest else '' }}">
 
@@ -30,6 +31,7 @@
 
   {% if guest %}
   <form method="post" action="{{ url_for('delete_guest', guest_id=guest['id']) }}" onsubmit="return confirm('Remove {{ guest['name'] }} from the guest list?');" class="danger-zone">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-text-danger">Remove this guest</button>
   </form>
   {% endif %}

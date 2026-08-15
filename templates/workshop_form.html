@@ -5,6 +5,7 @@
 <div class="narrow-card">
   <h1>{% if workshop %}Edit {{ workshop['title'] }}{% else %}Add Workshop{% endif %}</h1>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Title</label>
     <input type="text" name="title" required value="{{ workshop['title'] if workshop else '' }}">
 
@@ -41,6 +42,10 @@
 
     <label class="field-label" style="margin-top:16px;">What's included (shown to guests)</label>
     <textarea name="inclusions" placeholder="e.g. Accommodation, all meals and château beverages, and all workshop activities as per the itinerary. Excludes transport and travel insurance.">{{ workshop['inclusions'] if workshop else '' }}</textarea>
+
+    <label class="field-label">Day-by-day itinerary (shown to guests)</label>
+    <textarea name="itinerary" rows="6" placeholder="Day 1: Arrival, welcome dinner&#10;Day 2: Morning session, free afternoon, group dinner&#10;Day 3: Closing session, departure">{{ workshop['itinerary'] if workshop else '' }}</textarea>
+    <p class="upload-hint">One line per day works well — line breaks are preserved on the public workshop page.</p>
 
     <label class="field-label">Deposit required at booking (%)</label>
     <input type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">

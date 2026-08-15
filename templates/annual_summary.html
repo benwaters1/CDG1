@@ -25,7 +25,7 @@
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.revenue) }}</span><span class="stat-tile-label">Revenue</span></span>
   </div>
-  {% if financials.restaurant_revenue or financials.workshop_revenue %}
+  {% if financials.restaurant_revenue or financials.workshop_revenue or financials.event_revenue %}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('rooms', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.room_revenue) }}</span><span class="stat-tile-label">— rooms</span></span>
@@ -40,6 +40,12 @@
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('workshop', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.workshop_revenue) }}</span><span class="stat-tile-label">— workshops</span></span>
+  </div>
+  {% endif %}
+  {% if financials.event_revenue %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('megaphone', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.event_revenue) }}</span><span class="stat-tile-label">— events</span></span>
   </div>
   {% endif %}
   {% endif %}

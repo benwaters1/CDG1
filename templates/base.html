@@ -8,10 +8,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
-<meta name="theme-color" content="#171B26">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Gudanes Staff">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+(function() {
+  var token = document.querySelector('meta[name="csrf-token"]').content;
+  var originalFetch = window.fetch;
+  window.fetch = function(input, init) {
+    init = init || {};
+    var method = (init.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+      init.headers = new Headers(init.headers || {});
+      if (!init.headers.has('X-CSRFToken')) init.headers.set('X-CSRFToken', token);
+    }
+    return originalFetch(input, init);
+  };
+})();
+</script>
 </head>
 <body class="staff-shell">
 {% from "_icons.html" import icon %}
@@ -141,25 +157,30 @@
       </div>
     </div>
 
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv'] }}">
-      <a href="{{ url_for('admin_workshops') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv'] }}">{{ icon('workshop') }}Workshops{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv','admin_workshop_feedback','toggle_workshop_feedback_featured','export_workshop_feedback_csv'] }}">
+      <a href="{{ url_for('admin_workshops') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv','admin_workshop_feedback','toggle_workshop_feedback_featured','export_workshop_feedback_csv'] }}">{{ icon('workshop') }}Workshops{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Workshops submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('admin_workshops') }}" class="{{ 'active' if request.endpoint=='admin_workshops' }}">{{ icon('workshop') }}Workshops &amp; Sessions</a>
         <a href="{{ url_for('admin_workshop_registrations') }}" class="{{ 'active' if request.endpoint=='admin_workshop_registrations' }}">{{ icon('approvals') }}Registrations{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
         <a href="{{ url_for('admin_workshop_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_workshop_waitlist' }}">{{ icon('leave') }}Waitlist</a>
+        <a href="{{ url_for('admin_workshop_feedback') }}" class="{{ 'active' if request.endpoint=='admin_workshop_feedback' }}">{{ icon('contacts') }}Feedback</a>
       </div>
     </div>
+
+    <a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>
 
     {% else %}
     <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint=='guests' }}">{{ icon('guests') }}Guests</a>
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts'] }}">
-      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts'] }}">{{ icon('employee') }}Employee</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar'] }}">
+      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar'] }}">{{ icon('employee') }}Employee</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('profile', user_id=user['id']) }}" class="{{ 'active' if request.endpoint=='profile' }}">{{ icon('employee') }}My Profile</a>
+        <a href="{{ url_for('directory') }}" class="{{ 'active' if request.endpoint=='directory' }}">{{ icon('guests') }}Team Directory</a>
+        <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
         <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
         <a href="{{ url_for('my_shifts') }}" class="{{ 'active' if request.endpoint=='my_shifts' }}">{{ icon('shifts') }}My Shifts</a>
         <a href="{{ url_for('my_leave') }}" class="{{ 'active' if request.endpoint=='my_leave' }}">{{ icon('leave') }}Time Off</a>
@@ -288,11 +309,14 @@ function toggleTask(id, btn) {
   fetch('/tasks/' + id + '/toggle', { method: 'POST' })
     .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
     .then(function(data) {
+      row.classList.remove('task-done', 'task-in-progress');
       if (data.status === 'done') {
         row.classList.add('task-done');
         btn.textContent = '✓';
+      } else if (data.status === 'in_progress') {
+        row.classList.add('task-in-progress');
+        btn.textContent = '…';
       } else {
-        row.classList.remove('task-done');
         btn.textContent = '';
       }
     })

@@ -3,10 +3,10 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>{{ bookings[0]['guest_name'] if bookings else (dinners[0]['guest_name'] if dinners else workshop_regs[0]['guest_name']) }}</h1>
+  <h1>{{ bookings[0]['guest_name'] if bookings else (dinners[0]['guest_name'] if dinners else (workshop_regs[0]['guest_name'] if workshop_regs else events[0]['contact_name'])) }}</h1>
   <a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">← Bookings</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %}{% if events %} · {{ events|length }} event inquir{{ 'y' if events|length == 1 else 'ies' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
 
 <div class="mini-list">
   {% for b in bookings %}
@@ -42,6 +42,33 @@
     <span class="mini-role">Party of {{ w['party_size'] }}{% if w['notes'] %} · {{ w['notes'] }}{% endif %}</span>
     <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
     {% if w['total_price'] %}<span class="upload-hint">€{{ '%.2f'|format(w['total_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if events %}
+<h2 class="section-heading">Event Inquiries</h2>
+<div class="mini-list">
+  {% for e in events %}
+  <div class="mini-row">
+    <span class="mini-name">{{ e['event_type']|capitalize }}{% if e['preferred_date'] %} — {{ e['preferred_date'] }}{% endif %}</span>
+    <span class="mini-role">{{ e['reference_code'] }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}</span>
+    <span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span>
+    {% if e['quoted_price'] %}<span class="upload-hint">€{{ '%.2f'|format(e['quoted_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if promo_redemptions %}
+<h2 class="section-heading">Promo Codes Used</h2>
+<div class="mini-list">
+  {% for p in promo_redemptions %}
+  <div class="mini-row">
+    <span class="mini-name">{{ p['code'] }}</span>
+    <span class="mini-role">{{ p['category']|capitalize }} · {{ p['redeemed_at'][:10] }}</span>
+    <span class="upload-hint">-€{{ '%.2f'|format(p['discount_amount']) }}</span>
   </div>
   {% endfor %}
 </div>

@@ -73,6 +73,7 @@
   <div class="expense-head"><strong>Quick add</strong></div>
   {% include "_task_add_form.html" %}
   <form method="post" action="{{ url_for('new_task') }}" class="search-bar" style="margin-top:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="assigned_to_user_id" value="{{ sheet.owner_id }}">
     <div style="flex:2 1 220px;">
       <label class="field-label">My task (owner)</label>
@@ -105,17 +106,19 @@
     <div class="upload-hint" style="margin-top:10px; margin-bottom:2px; font-weight:600;">{{ r.date if r.date else 'No due date' }}</div>
   {% endif %}
   {% if r.kind == 'task' %}
-  <div class="task-row {{ 'task-done' if r.status == 'done' }} {{ 'task-overdue' if r.status == 'open' and r.date and r.date < today.isoformat() }} {{ 'task-directed' if r.acknowledgment_status == 'pending' }}"
+  <div class="task-row {{ 'task-done' if r.status == 'done' }} {{ 'task-in-progress' if r.status == 'in_progress' }} {{ 'task-overdue' if r.status != 'done' and r.date and r.date < today.isoformat() }} {{ 'task-directed' if r.acknowledgment_status == 'pending' }}"
        data-task-id="{{ r.id }}" data-kind="task" data-lane="{{ r.lane }}" data-guest="{{ 'guest' if r.is_guest else 'employee' }}"
        data-scheduled="{{ '1' if r.scheduled else '0' }}" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">
-    <button type="button" class="task-check" onclick="toggleTask({{ r.id }}, this)">{{ '✓' if r.status == 'done' }}</button>
+    <button type="button" class="task-check" onclick="toggleTask({{ r.id }}, this)">{{ '✓' if r.status == 'done' else ('…' if r.status == 'in_progress' else '') }}</button>
     {% if r.priority %}<span class="priority-dot priority-{{ r.priority }}" title="{{ r.priority|capitalize }} priority"></span>{% endif %}
     <span class="lane-badge lane-{{ r.lane }}">{{ {'booking':'Booking','task':'Staff','owner':'Mine'}[r.lane] }}</span>
     <span class="task-title">
       {{ r.title }}
+      {% if r.priority == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
+      {% if r.status == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
       {% if r.repeat_weekly %}<span title="Repeats weekly">↻</span>{% endif %}
       {% if r.detail %} <span class="upload-hint">— {{ r.detail }}</span>{% endif %}
-      {% if r.status == 'open' and r.date and r.date < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+      {% if r.status != 'done' and r.date and r.date < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
     </span>
     <span class="origin-badge">{{ {'manual':'added','checklist':'checklist','recurring':'recurring','guest_request':'guest request'}[r.origin] }}</span>
     {% if r.acknowledgment_status == 'pending' %}<span class="mini-status status-pending">awaiting response</span>
@@ -125,10 +128,12 @@
     {% if r.lane != 'owner' %}
     {% if r.assignee_id %}
     <form method="post" action="{{ url_for('direct_task', task_id=r.id) }}" title="Direct now — sends a push, needs accept/reject">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:13px;">⚡</button>
     </form>
     {% else %}
     <form method="post" action="{{ url_for('direct_task', task_id=r.id) }}" style="display:flex; gap:4px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <select name="employee_id" required style="font-size:11px; padding:1px;">
         <option value="">Direct to…</option>
         {% for e in sheet.employees %}
@@ -208,8 +213,9 @@ function refreshOverviewStatuses() {
         if (!row) return;
         row.dataset.status = t.status;
         row.classList.toggle('task-done', t.status === 'done');
+        row.classList.toggle('task-in-progress', t.status === 'in_progress');
         var check = row.querySelector('.task-check');
-        if (check) check.textContent = t.status === 'done' ? '✓' : '';
+        if (check) check.textContent = t.status === 'done' ? '✓' : (t.status === 'in_progress' ? '…' : '');
       });
       applyOverviewFilters();
     })

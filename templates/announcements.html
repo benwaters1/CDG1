@@ -17,6 +17,7 @@
         {% if user['role'] == 'owner' %}
         <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleAnnouncementEdit({{ a['id'] }})">Edit</span>
         <form method="post" action="{{ url_for('delete_announcement', announcement_id=a['id']) }}" onsubmit="return confirm('Remove this announcement?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="doc-delete">×</button>
         </form>
         {% endif %}
@@ -26,6 +27,7 @@
       {% if user['role'] == 'owner' %}
       <div id="announcement-edit-{{ a['id'] }}" style="display:none; width:100%; margin-top:8px; padding-top:8px; border-top:1px dashed var(--parchment-line);">
         <form method="post" action="{{ url_for('edit_announcement', announcement_id=a['id']) }}" class="upload-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="text" name="title" value="{{ a['title'] }}" placeholder="Title" required>
           <input type="text" name="body" value="{{ a['body'] or '' }}" placeholder="Details (optional)">
           <div>
@@ -45,6 +47,7 @@
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
   <h3>Post an announcement</h3>
   <form method="post" action="{{ url_for('new_announcement') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="title" placeholder="Title" required>
     <input type="text" name="body" placeholder="Details (optional)">
     <div>

@@ -6,12 +6,14 @@
   <h1>Shopping List</h1>
   {% if item_count %}
   <form method="post" action="{{ url_for('clear_bought_items') }}" onsubmit="return confirm('Remove everything marked bought?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-mini">Clear bought items</button>
   </form>
   {% endif %}
 </div>
 
 <form method="post" action="{{ url_for('new_shopping_item') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="flex:2 1 200px;">
     <label class="field-label">Item</label>
     <input type="text" name="name" placeholder="e.g. Bin liners" required>
@@ -39,6 +41,7 @@
         <button type="button" class="task-check" onclick="toggleShoppingItem({{ i['id'] }}, this)">{{ '✓' if i['bought'] }}</button>
         <span class="task-title">{{ i['name'] }}{% if i['store'] %} <span class="upload-hint">— {{ i['store'] }}</span>{% endif %}</span>
         <form method="post" action="{{ url_for('delete_shopping_item', item_id=i['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="doc-delete">×</button>
         </form>
       </div>

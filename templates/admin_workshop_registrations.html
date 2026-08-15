@@ -48,7 +48,7 @@
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
       · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
     </p>
-    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %}</p>
+    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
     {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Dietary: {{ r['dietary_notes'] }}</p>{% endif %}
     {% if r['medical_notes'] %}<p class="upload-hint">Medical: {{ r['medical_notes'] }}</p>{% endif %}
@@ -83,6 +83,7 @@
       {% endif %}
       {% if r['status'] not in ('declined', 'cancelled') %}
       <form method="post" action="{{ url_for('add_workshop_transaction_route', registration_id=r['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="kind" style="font-size:12px;">
           <option value="charge">Add item (charge)</option>
           <option value="discount">Add discount</option>
@@ -101,12 +102,14 @@
       </form>
       {% if not r['deposit_paid_at'] and r['deposit_amount'] %}
       <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">
         <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark deposit (€{{ '%.2f'|format(r['deposit_amount']) }}) paid</button>
       </form>
       {% endif %}
       {% if not r['balance_paid_at'] and r['balance_amount'] %}
       <form method="post" action="{{ url_for('mark_workshop_balance_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px; margin-left:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="method" value="other">
         <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">Quick: mark balance (€{{ '%.2f'|format(r['balance_amount']) }}) paid</button>
       </form>
@@ -117,6 +120,7 @@
 
     {% if r['status'] not in ('declined', 'cancelled') %}
     <form method="post" action="{{ url_for('assign_workshop_room', registration_id=r['id']) }}" style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label" style="margin:0;">Room</label>
       <select name="room_id" onchange="this.form.submit()" style="font-size:12px; padding:2px;">
         <option value="">Unassigned</option>
@@ -145,6 +149,7 @@
       <p class="empty-inline">No messages sent yet.</p>
       {% endif %}
       <form method="post" action="{{ url_for('toggle_workshop_do_not_email', registration_id=r['id']) }}" style="margin-top:6px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">
           {{ 'Resume automated emails' if r['do_not_email'] else 'Stop sending automated emails to this guest' }}
         </button>
@@ -153,10 +158,10 @@
 
     <div class="expense-actions">
       {% if r['status'] == 'pending' %}
-      <form method="post" action="{{ url_for('confirm_workshop_registration', registration_id=r['id']) }}"><button type="submit" class="btn-mini">Confirm</button></form>
-      <form method="post" action="{{ url_for('decline_workshop_registration', registration_id=r['id']) }}" onsubmit="return confirm('Decline this registration?');"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      <form method="post" action="{{ url_for('confirm_workshop_registration', registration_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
+      <form method="post" action="{{ url_for('decline_workshop_registration', registration_id=r['id']) }}" onsubmit="return confirm('Decline this registration?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
       {% elif r['status'] == 'confirmed' %}
-      <form method="post" action="{{ url_for('cancel_workshop_registration_admin', registration_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed registration?');"><button type="submit" class="btn-text-danger">Cancel</button></form>
+      <form method="post" action="{{ url_for('cancel_workshop_registration_admin', registration_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed registration?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel</button></form>
       {% endif %}
     </div>
   </div>

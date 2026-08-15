@@ -81,7 +81,7 @@
   </div>
 {% endif %}
 
-{% if restaurant_settings and restaurant_settings['enabled'] or tonights_dinners %}
+{% if restaurant_settings and restaurant_settings['enabled'] or tonights_dinners or tonights_restaurant_staff %}
 <h2 class="section-heading">Dinner Service Tonight{% if dinner_covers %} — {{ dinner_covers }} covers{% endif %}</h2>
 {% if not tonights_dinners %}
   <p class="empty-inline">No confirmed reservations tonight.</p>
@@ -91,9 +91,15 @@
     <div class="mini-row">
       <span class="mini-name">{{ d['guest_name'] }}</span>
       <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
+      {% if d['total_price'] and d['deposit_amount'] and d['deposit_amount'] < d['total_price'] %}
+      <span class="mini-status status-pending">€{{ '%.2f'|format(d['total_price'] - d['deposit_amount']) }} due tonight</span>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
+{% endif %}
+{% if tonights_restaurant_staff %}
+  <p class="upload-hint" style="margin-top:8px;"><strong>Staffing:</strong> {% for s in tonights_restaurant_staff %}{{ s['employee_name'] }}{% if s['role_note'] %} ({{ s['role_note'] }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</p>
 {% endif %}
 {% endif %}
 

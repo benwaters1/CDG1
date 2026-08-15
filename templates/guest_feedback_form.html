@@ -14,6 +14,7 @@
   <div class="detail-card" style="max-width:520px;">
     <p class="manual-body" style="margin-top:0;">{{ booking['guest_name'] }}, thank you for staying with us. A couple of minutes of your time helps us a lot.</p>
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">Rating</label>
       <select name="rating" required>
         <option value="">Choose a rating</option>

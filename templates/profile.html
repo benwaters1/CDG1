@@ -20,6 +20,7 @@
       <p class="pay-disclaimer" style="margin-top:0;">{{ person['name'] }} hasn't activated their account yet. Share this link with them directly:</p>
       <p class="share-link-box">{{ onboarding_url }}</p>
       <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}" style="margin-top:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-mini">Generate a new link</button>
       </form>
     </div>
@@ -32,20 +33,31 @@
       <div class="task-list">
         {% for item in onboarding_items %}
         <div class="task-row {{ 'task-done' if item['done'] }}">
+          {% if user['role'] == 'owner' %}
           <form method="post" action="{{ url_for('toggle_onboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="task-check">{{ '✓' if item['done'] }}</button>
           </form>
+          {% else %}
+          <span class="task-check">{{ '✓' if item['done'] }}</span>
+          {% endif %}
           <span class="task-title">{{ item['label'] }}</span>
+          {% if user['role'] == 'owner' %}
           <form method="post" action="{{ url_for('delete_onboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
           </form>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
+      {% if user['role'] == 'owner' %}
       <form method="post" action="{{ url_for('new_onboarding_item', user_id=person['id']) }}" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="label" placeholder="Add a step">
         <button type="submit" class="btn-mini">Add</button>
       </form>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -57,23 +69,26 @@
         {% for item in offboarding_items %}
         <div class="task-row {{ 'task-done' if item['done'] }}">
           <form method="post" action="{{ url_for('toggle_offboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="task-check">{{ '✓' if item['done'] }}</button>
           </form>
           <span class="task-title">{{ item['label'] }}</span>
           <form method="post" action="{{ url_for('delete_offboarding_item', user_id=person['id'], item_id=item['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
           </form>
         </div>
         {% endfor %}
       </div>
       <form method="post" action="{{ url_for('new_offboarding_item', user_id=person['id']) }}" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="label" placeholder="Add a step">
         <button type="submit" class="btn-mini">Add</button>
       </form>
     </div>
     {% endif %}
 
-    {% if user['role'] == 'owner' %}
+    {% if user['role'] == 'owner' or person['id'] == user['id'] %}
     <div class="detail-card">
       <h3>Equipment &amp; Keys</h3>
       {% if not equipment_items %}
@@ -89,21 +104,28 @@
             <span class="mini-status status-{{ 'inactive' if item['returned_at'] else 'onshift' }}">
               {{ 'returned ' + item['returned_at'][:10] if item['returned_at'] else 'issued ' + item['issued_at'][:10] }}
             </span>
+            {% if user['role'] == 'owner' %}
             <form method="post" action="{{ url_for('toggle_equipment_returned', user_id=person['id'], item_id=item['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-mini">{{ 'Reissue' if item['returned_at'] else 'Mark returned' }}</button>
             </form>
             <form method="post" action="{{ url_for('delete_equipment_item', user_id=person['id'], item_id=item['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="doc-delete">×</button>
             </form>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
       {% endif %}
+      {% if user['role'] == 'owner' %}
       <form method="post" action="{{ url_for('new_equipment_item', user_id=person['id']) }}" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="label" placeholder="e.g. Master key, uniform (2x)" required>
         <input type="text" name="notes" placeholder="Notes (optional)">
         <button type="submit" class="btn-mini">Log issued item</button>
       </form>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -144,9 +166,9 @@
           </p>
         </div>
       {% endif %}
-      {% if person['notes'] %}
+      {% if person['notes'] and user['role'] == 'owner' %}
         <div class="notes-block">
-          <span class="detail-label">Notes</span>
+          <span class="detail-label">Notes — private to you, not shown to {{ person['name'].split(' ')[0] }}</span>
           <p>{{ person['notes'] }}</p>
         </div>
       {% endif %}
@@ -195,6 +217,7 @@
             <div style="display:flex; width:100%; gap:8px; align-items:flex-start;">
               <span style="flex:1; color:var(--ink);">{{ n['body'] }}</span>
               <form method="post" action="{{ url_for('delete_check_in_note', user_id=person['id'], note_id=n['id']) }}" onsubmit="return confirm('Delete this note?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="doc-delete">×</button>
               </form>
             </div>
@@ -204,6 +227,7 @@
         </div>
       {% endif %}
       <form method="post" action="{{ url_for('new_check_in_note', user_id=person['id']) }}" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <textarea name="body" rows="2" placeholder="e.g. Discussed weekend availability, went well."></textarea>
         <button type="submit" class="btn-mini" style="align-self:flex-start;">Add note</button>
       </form>
@@ -231,6 +255,7 @@
             {% if person['id'] == user['id'] %}
             <span class="small-link" style="color:var(--steel); margin-left:8px; cursor:pointer;" onclick="toggleFlag({{ s['id'] }})">Flag</span>
             <form method="post" action="{{ url_for('flag_timesheet_entry', entry_id=s['id']) }}" id="flag-{{ s['id'] }}" class="upload-form" style="display:none; width:100%; margin-top:6px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="text" name="note" placeholder="What looks wrong?" required>
               <button type="submit" class="btn-mini">Send</button>
             </form>
@@ -256,10 +281,12 @@
             {% if is_viewable(d['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_document', doc_id=d['id']) }}', '{{ d['title']|e }}')">View</button>{% endif %}
             <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleDocEdit({{ d['id'] }})">Edit</span>
             <form method="post" action="{{ url_for('delete_document', doc_id=d['id']) }}" onsubmit="return confirm('Delete this document?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="doc-delete">×</button>
             </form>
           </div>
           <form method="post" action="{{ url_for('edit_document', doc_id=d['id']) }}" id="edit-doc-{{ d['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div style="flex:1;">
               <input type="text" name="title" value="{{ d['title'] }}" placeholder="Title" required>
             </div>
@@ -275,6 +302,7 @@
       {% endif %}
 
       <form method="post" action="{{ url_for('upload_document', user_id=person['id']) }}" enctype="multipart/form-data" class="upload-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="title" placeholder="Document title (e.g. Contract)">
         <input type="file" name="document" required>
         <label class="field-label">Expiry date (optional — for permits, certifications)</label>

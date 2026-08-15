@@ -4,14 +4,15 @@
 
 <div class="page-head">
   <h1>Time Off</h1>
-  {% if leave and leave.entitlement is not none %}
-  <span class="upload-hint">{{ leave.remaining }} of {{ leave.entitlement }} days left in {{ leave.year }}</span>
+  {% if leave %}
+  <span class="upload-hint">{% if leave.entitlement is not none %}{{ leave.remaining }} of {{ leave.entitlement }} days left in {{ leave.year }}{% else %}No leave entitlement set yet — ask the owner{% endif %}</span>
   {% endif %}
 </div>
 
 <div class="detail-card" style="max-width:520px;">
   <h3>Request time off</h3>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
         <label class="field-label">From</label>
@@ -54,6 +55,7 @@
     {% if r['status'] in ['pending', 'approved'] %}
     <div class="expense-actions">
       <form method="post" action="{{ url_for('cancel_leave_request', request_id=r['id']) }}" onsubmit="return confirm('Cancel this time off request?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-text-danger">Cancel</button>
       </form>
     </div>

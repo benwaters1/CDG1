@@ -12,7 +12,7 @@
   </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  Revenue is confirmed room bookings by arrival date plus confirmed dinner reservations; expenses are approved/paid claims and invoices; labour cost is the same estimate as the Timesheets page. A rough operating picture, not an accountant's P&amp;L.
+  Revenue is confirmed room bookings by arrival date plus confirmed dinner reservations, workshop registrations, and confirmed events (by their quoted price); expenses are approved/paid claims and invoices; labour cost is the same estimate as the Timesheets page. A rough operating picture, not an accountant's P&amp;L.
 </p>
 
 <div class="stat-tiles" style="margin-bottom:14px;">
@@ -20,7 +20,7 @@
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.revenue) }}</span><span class="stat-tile-label">{{ current.month.strftime('%B %Y') }} revenue</span></span>
   </div>
-  {% if current.restaurant_revenue or current.workshop_revenue %}
+  {% if current.restaurant_revenue or current.workshop_revenue or current.event_revenue %}
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('rooms', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.room_revenue) }}</span><span class="stat-tile-label">— rooms</span></span>
@@ -35,6 +35,12 @@
   <div class="stat-tile">
     <span class="stat-tile-icon">{{ icon('workshop', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.workshop_revenue) }}</span><span class="stat-tile-label">— workshops</span></span>
+  </div>
+  {% endif %}
+  {% if current.event_revenue %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('megaphone', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current.event_revenue) }}</span><span class="stat-tile-label">— events</span></span>
   </div>
   {% endif %}
   {% endif %}

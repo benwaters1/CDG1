@@ -20,15 +20,28 @@ Railway takes a folder of code and gives you a live URL. No server management.
    - `FLASK_SECRET_KEY` — generate one by running this on your computer:
      `python3 -c "import secrets; print(secrets.token_hex(32))"`
      and paste the output in as the value
-   - `FLASK_DEBUG` = `0` (never run with debug mode on once it's live —
-     debug mode can leak sensitive information to anyone who triggers an error)
-   - **To turn on real email** (booking confirmations, owner notifications):
-     `SMTP_HOST`, `SMTP_PORT` (usually `587`), `SMTP_USERNAME`, `SMTP_PASSWORD`,
-     and optionally `SMTP_FROM` if it should differ from `SMTP_USERNAME`.
-     Any real mailbox works — your domain's email host, a Gmail app password,
-     or a transactional service like Postmark/SendGrid's SMTP relay. Without
-     these set, the app runs exactly as it does today: no emails sent, guests
-     get their reference code/link on screen only.
+   - `FLASK_DEBUG` — leave unset (it now defaults to off). Never set this to
+     `1` once it's live — debug mode activates an interactive Python console
+     on unhandled errors, which is a real risk if left on in production.
+   - **To turn on real email** (booking confirmations, owner notifications),
+     pick one:
+     - **Resend (recommended)** — sign up at resend.com, add your domain
+       under Domains, and add the DNS records it gives you wherever your
+       domain's DNS is managed (this is unrelated to who you registered
+       the domain through — Crazy Domains, GoDaddy, etc. all let you edit
+       DNS records the same way; check their dashboard for a "DNS" or
+       "Nameservers" section). Once the domain shows "Verified" in Resend,
+       set `RESEND_API_KEY` (from Resend → API Keys) and `RESEND_FROM`
+       (e.g. `bookings@yourdomain.com`, using the domain you just verified).
+     - **Plain SMTP (fallback)** — `SMTP_HOST`, `SMTP_PORT` (usually `587`),
+       `SMTP_USERNAME`, `SMTP_PASSWORD`, and optionally `SMTP_FROM` if it
+       should differ from `SMTP_USERNAME`. Any real mailbox works — your
+       domain's email host, a Gmail app password, or a transactional
+       service's SMTP relay.
+
+     If both are set, Resend takes priority. Without either set, the app
+     runs exactly as it does today: no emails sent, guests get their
+     reference code/link on screen only.
    - **To turn on real payment collection at booking time**: `STRIPE_SECRET_KEY`
      and `STRIPE_PUBLISHABLE_KEY` from your Stripe Dashboard → Developers →
      API keys (use the test-mode keys first to try it safely, live keys once
@@ -127,6 +140,99 @@ for this — it's a summary, not a live feed.
 
 ---
 
+## Outlook add-in (guest lookup, send-time price check, AI reply drafts)
+
+Set `GUEST_LOOKUP_TOKEN` (generate it the same way as `ICAL_SYNC_TOKEN`
+above) — this one token gates all three add-in features (guest lookup,
+the send-time pricing/availability check, and reply drafting), entered
+once into the add-in itself rather than into a scheduler. Then log in as
+the owner and go to Management → Outlook Add-in for the manifest link and
+sideloading steps. Without `GUEST_LOOKUP_TOKEN` set, none of the add-in's
+API calls work — they all 404 the same way `/api/guest-lookup` does.
+
+Reply drafting additionally needs `ANTHROPIC_API_KEY` (your own Anthropic
+account's key — https://console.anthropic.com). Without it, the "Draft
+with AI" button shows an error instead of a draft; guest lookup and the
+send-time check work regardless, since neither one calls Claude.
+
+---
+
+## Microsoft Graph inbox monitoring (Inbox Flags)
+
+Management → Inbox Flags scans one real mailbox and flags two things: emails
+that haven't had a reply within a configurable window, and emails that
+mention a price or date that doesn't match this app's real pricing or
+availability data (a room, workshop, restaurant, or event quote). This is
+a meaningfully bigger setup than the other integrations above — it needs
+an Azure AD app registration with actual read access to a mailbox, not just
+an API key.
+
+You'll need whoever has **Global Administrator** (or Application
+Administrator + Exchange Administrator) on your Microsoft 365 tenant to do
+this — it can't be done from inside this app, and Claude Code can't do it
+for you either, since it needs your own Microsoft 365 admin login.
+
+1. Go to **portal.azure.com** → sign in with the admin account → search
+   "**App registrations**" → **New registration**
+   - Name: anything, e.g. "Gudanes HR Inbox Scan"
+   - Supported account types: "Accounts in this organizational directory only"
+   - Redirect URI: leave blank
+   - Click **Register**
+2. On the app's Overview page, copy two values:
+   - **Application (client) ID** → this is `MS_GRAPH_CLIENT_ID`
+   - **Directory (tenant) ID** → this is `MS_GRAPH_TENANT_ID`
+3. **Certificates & secrets** → **New client secret** → any description/expiry
+   → **Add** → copy the secret's **Value** immediately (this is
+   `MS_GRAPH_CLIENT_SECRET` — it's shown once and never again)
+4. **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Application permissions** → search "Mail" → check **Mail.Read** →
+   **Add permissions**
+5. Still on API permissions: click **"Grant admin consent for [your
+   organization]"** → confirm. Skipping this is the single most common
+   mistake — without it, every request this app makes to Graph fails with
+   a permissions error, even though the permission is listed.
+6. **Restrict it to one mailbox.** As granted above, this app can technically
+   read *every* mailbox in your Microsoft 365 tenant, not just the one you
+   want scanned. Lock that down with an Exchange Online **Application
+   Access Policy** so it can only ever touch the château's own mailbox —
+   this needs PowerShell (`Install-Module -Name ExchangeOnlineManagement`
+   if you don't have it already):
+   ```powershell
+   Connect-ExchangeOnline
+   New-DistributionGroup -Name "GudanesInboxScanMailboxes" -Type Security -Members accounts@chateaugudanes.com
+   New-ApplicationAccessPolicy -AppId "<Application (client) ID from step 2>" `
+     -PolicyScopeGroupId "GudanesInboxScanMailboxes" -AccessRight RestrictAccess `
+     -Description "Gudanes HR inbox scan - restricted to accounts@ only"
+   ```
+   This is the step that turns "an app that can technically read anyone's
+   mail" into "an app that can only ever read accounts@chateaugudanes.com" —
+   worth doing even though it's the most technical step here. If PowerShell
+   feels unfamiliar, this is a good one to do with Claude Code open next to
+   you, or with Microsoft 365 support on a call.
+7. Set these as environment variables wherever the app is hosted (Railway →
+   Settings → Variables, same as the other integrations above):
+   - `MS_GRAPH_TENANT_ID`
+   - `MS_GRAPH_CLIENT_ID`
+   - `MS_GRAPH_CLIENT_SECRET`
+   - `MS_GRAPH_MAILBOX` — the mailbox to scan, e.g. `accounts@chateaugudanes.com`
+
+Once all four are set, go to **Management → Automation** and confirm "Inbox
+scan" is turned on (it defaults to on) — from then on it runs automatically
+every ~15 minutes alongside the other background jobs, no external
+scheduler needed. Flagged emails show up at **Management → Inbox Flags**.
+Without these four variables set, that page just says it isn't connected
+yet — nothing else in the app changes.
+
+**What it can see and do:** read-only, and deliberately minimal. It never
+sends, deletes, moves, or modifies anything in the mailbox — it only lists
+recent Inbox and Sent Items messages to check whether an inbound email
+already got a reply, and reads the subject line and a short preview to look
+for a price or date worth comparing against real data. The full body of an
+email is never fetched or stored — only the sender, subject, and a short
+preview, and only for the messages that actually get flagged.
+
+---
+
 ## Option B — A cheap VPS (more control, ~€5/month, ~30-45 minutes)
 
 Providers: Hetzner, DigitalOcean, or similar. Any small/cheapest tier works
@@ -163,7 +269,7 @@ fine for a team this size.
 - [ ] Set a real `FLASK_SECRET_KEY` (not the auto-generated one that changes
       on every restart — that would log everyone out every time the app
       restarts)
-- [ ] Set `FLASK_DEBUG=0`
+- [ ] Confirm `FLASK_DEBUG` isn't set to `1` anywhere (it defaults to off)
 - [ ] Check `LOCAL_TZ` (defaults to `Europe/Paris`) matches where the team
       actually is — it's what the timesheet's clock in/out times are
       displayed in. Only needs setting if that's ever not the case.

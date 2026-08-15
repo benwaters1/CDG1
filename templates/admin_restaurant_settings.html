@@ -8,6 +8,7 @@
 </div>
 
 <form method="post" class="detail-card" style="max-width:560px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="detail-grid" style="grid-template-columns:1fr 1fr;">
     <div>
       <label class="field-label">Opening date</label>
@@ -38,7 +39,12 @@
       <label class="field-label">Chef/partner profit share (%)</label>
       <input type="number" name="profit_share_percent" min="0" max="100" step="0.1" value="{{ settings['profit_share_percent'] }}">
     </div>
+    <div>
+      <label class="field-label">Deposit at booking (%, optional)</label>
+      <input type="number" name="deposit_percent" min="0" max="100" step="1" value="{{ settings['deposit_percent'] if settings['deposit_percent'] is not none else '' }}" placeholder="Leave blank to charge in full online">
+    </div>
   </div>
+  <p class="upload-hint" style="margin-top:6px;">When set, online payment only collects this percentage as a deposit — the rest is due at the restaurant. Guests still see the full total up front; only the online charge is reduced.</p>
 
   <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
     <input type="checkbox" name="enabled" style="width:auto;" {{ 'checked' if settings['enabled'] }}>
@@ -48,6 +54,47 @@
 
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
 </form>
+
+<div class="detail-card" style="max-width:640px; margin-top:20px;">
+  <label class="field-label">Seasonal rate overrides</label>
+  <p class="upload-hint">Charge a different per-person price for a date range (NYE, a holiday tasting menu...). Any date not covered by one of these uses the base price above.</p>
+
+  {% if rate_overrides %}
+  <div class="mini-list" style="margin-top:8px;">
+    {% for r in rate_overrides %}
+    <div class="mini-row">
+      <span class="mini-name">{{ r['start_date'] }} → {{ r['end_date'] }}</span>
+      <span class="mini-role">€{{ '%.2f'|format(r['price_per_person']) }} / person{% if r['label'] %} · {{ r['label'] }}{% endif %}</span>
+      <form method="post" action="{{ url_for('delete_restaurant_rate_override', rate_id=r['id']) }}" onsubmit="return confirm('Remove this rate override?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-mini-danger">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('new_restaurant_rate_override') }}" class="search-bar" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="field-label">From</label>
+      <input type="date" name="start_date" required>
+    </div>
+    <div>
+      <label class="field-label">To</label>
+      <input type="date" name="end_date" required>
+    </div>
+    <div>
+      <label class="field-label">Rate (€ / person)</label>
+      <input type="number" name="price_per_person" step="0.01" min="0" required style="width:110px;">
+    </div>
+    <div>
+      <label class="field-label">Label (optional)</label>
+      <input type="text" name="label" placeholder="New Year's Eve">
+    </div>
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</div>
 
 <div class="detail-card" style="max-width:560px; margin-top:20px;">
   <h3>How the profit split works</h3>

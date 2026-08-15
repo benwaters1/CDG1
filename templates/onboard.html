@@ -10,6 +10,7 @@
       {{ person['job_role'] or 'Staff' }} — set a password to activate your account.
     </p>
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">Phone (optional)</label>
       <input type="tel" name="phone" value="{{ person['phone'] or '' }}">
       <label class="field-label">Set a password (min 8 characters)</label>

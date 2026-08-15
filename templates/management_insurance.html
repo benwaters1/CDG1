@@ -33,12 +33,13 @@
     <div class="expense-actions">
       <button type="button" class="btn-mini" onclick="toggleInsuranceEdit({{ p['id'] }})">Edit</button>
       {% if p['expiry_date'] %}
-      <form method="post" action="{{ url_for('renew_insurance_policy', policy_id=p['id']) }}"><button type="submit" class="btn-mini">Renew</button></form>
+      <form method="post" action="{{ url_for('renew_insurance_policy', policy_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Renew</button></form>
       {% endif %}
-      <form method="post" action="{{ url_for('delete_insurance_policy', policy_id=p['id']) }}" onsubmit="return confirm('Remove this policy?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+      <form method="post" action="{{ url_for('delete_insurance_policy', policy_id=p['id']) }}" onsubmit="return confirm('Remove this policy?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
     <div id="insurance-edit-{{ p['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
       <form method="post" action="{{ url_for('edit_insurance_policy', policy_id=p['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="provider" value="{{ p['provider'] }}" placeholder="Provider" required>
         <input type="text" name="policy_number" value="{{ p['policy_number'] or '' }}" placeholder="Policy number">
         <input type="text" name="coverage_type" value="{{ p['coverage_type'] or '' }}" placeholder="Coverage type">
@@ -62,6 +63,7 @@
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
   <h3>Add a policy</h3>
   <form method="post" action="{{ url_for('new_insurance_policy') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="provider" placeholder="Provider (e.g. AXA)" required>
     <input type="text" name="policy_number" placeholder="Policy number">
     <input type="text" name="coverage_type" placeholder="Coverage type (e.g. Property, Liability)">

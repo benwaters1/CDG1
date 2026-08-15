@@ -7,6 +7,7 @@
     <div class="login-crest">Château de Gudanes</div>
     <h1>Find My Reservation</h1>
     <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">Reference code</label>
       <input type="text" name="reference_code" placeholder="DIN-XXXXXX" required>
       <label class="field-label">Email you booked with</label>

@@ -17,7 +17,7 @@
       <span class="mini-name">{{ t['guest_name'] or 'Guest' }} — {{ t['direction'] }}</span>
       <span class="mini-role">{{ local_datetime_str(t['scheduled_at']) }}{% if t['driver_name'] %} · {{ t['driver_name'] }}{% endif %}</span>
       {% if t['notes'] %}<span class="upload-hint">{{ t['notes'] }}</span>{% endif %}
-      <form method="post" action="{{ url_for('delete_vehicle_transfer', transfer_id=t['id']) }}" onsubmit="return confirm('Remove this transfer?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+      <form method="post" action="{{ url_for('delete_vehicle_transfer', transfer_id=t['id']) }}" onsubmit="return confirm('Remove this transfer?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
     {% endfor %}
   </div>
@@ -26,6 +26,7 @@
 <div class="detail-card" style="max-width:640px;">
   <h3>Log a transfer</h3>
   <form method="post" action="{{ url_for('new_vehicle_transfer', vehicle_id=vehicle['id']) }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="guest_name" placeholder="Guest name">
     <select name="direction" required>
       <option value="">Pickup or drop-off?</option>

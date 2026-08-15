@@ -1,0 +1,59 @@
+{% extends "public_base.html" %}
+{% block title %}Events{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+  <h1>Host Your Event at Château de Gudanes</h1>
+  <p class="manual-body">
+    From intimate weddings to editorial photoshoots and corporate offsites, the château's rooms, gardens, and grounds
+    make a striking backdrop. Every event is different, so tell us what you have in mind and we'll follow up with
+    availability and pricing.
+  </p>
+  <div class="amenity-tags" style="margin-top:10px;">
+    {% for t in event_types %}
+    <span class="amenity-tag">{{ t|capitalize }}</span>
+    {% endfor %}
+  </div>
+
+  <form method="post" action="{{ url_for('submit_event_inquiry') }}" style="margin-top:18px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label">What kind of event?</label>
+    <select name="event_type" required>
+      <option value="">— choose —</option>
+      {% for t in event_types %}
+      <option value="{{ t }}">{{ t|capitalize }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="field-label">Your name</label>
+    <input type="text" name="contact_name" required>
+
+    <label class="field-label">Email</label>
+    <input type="email" name="contact_email" required>
+
+    <label class="field-label">Phone (optional)</label>
+    <input type="tel" name="contact_phone">
+
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Preferred date</label>
+        <input type="date" name="preferred_date">
+      </div>
+      <div>
+        <label class="field-label">Alternate date (optional)</label>
+        <input type="date" name="alternate_date">
+      </div>
+    </div>
+
+    <label class="field-label">Expected number of guests</label>
+    <input type="number" name="guest_count" min="1">
+
+    <label class="field-label">Tell us about your event</label>
+    <textarea name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan"></textarea>
+
+    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Send inquiry</button>
+    <p class="upload-hint" style="margin-top:10px;">This is an inquiry, not a booking — we'll follow up to discuss availability, pricing, and details. You'll get a reference code and a link to check the status of your inquiry.</p>
+  </form>
+</div>
+
+{% endblock %}

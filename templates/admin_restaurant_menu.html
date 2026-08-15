@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Menu{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Menu</h1>
+  <a href="{{ url_for('admin_restaurant') }}" class="btn-mini">Back to reservations</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Shown to prospective guests on the public dinner page. Turn a dish off to hide it without losing the entry.</p>
+
+<div class="detail-card" style="max-width:640px; margin-bottom:22px;">
+  <h3 style="margin-top:0;">Add a dish</h3>
+  <form method="post" action="{{ url_for('new_menu_item') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Name</label>
+        <input type="text" name="name" required>
+      </div>
+      <div>
+        <label class="field-label">Category</label>
+        <select name="category">
+          {% for c in categories %}
+          <option value="{{ c }}">{{ c|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label class="field-label">Description (optional)</label>
+    <textarea name="description" rows="2" placeholder="Ingredients, preparation, what makes it worth ordering"></textarea>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Dietary tags (optional)</label>
+        <input type="text" name="dietary_tags" placeholder="Vegetarian, gluten-free...">
+      </div>
+      <div>
+        <label class="field-label">Price (€, optional)</label>
+        <input type="number" name="price" step="0.01" min="0" placeholder="Leave blank if included in the set price">
+      </div>
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Add dish</button>
+  </form>
+</div>
+
+{% for category in categories %}
+{% set items = items_by_category.get(category, []) %}
+<h2 class="section-heading">{{ category|capitalize }}s</h2>
+{% if not items %}
+  <div class="empty-state">No {{ category }}s yet.</div>
+{% else %}
+  {% for item in items %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ item['name'] }}</strong>
+        {% if item['price'] %}<span class="upload-hint">€{{ '%.2f'|format(item['price']) }}</span>{% endif %}
+        <span class="mini-status {{ 'status-active' if item['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'on menu' if item['active'] else 'hidden' }}</span>
+      </div>
+    </div>
+    {% if item['description'] %}<p class="manual-body">{{ item['description'] }}</p>{% endif %}
+    {% if item['dietary_tags'] %}<p class="upload-hint">{{ item['dietary_tags'] }}</p>{% endif %}
+
+    <details style="margin-top:8px;">
+      <summary class="small-link" style="color:var(--steel); cursor:pointer; font-size:13px;">Edit</summary>
+      <form method="post" action="{{ url_for('edit_menu_item', item_id=item['id']) }}" style="margin-top:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Name</label>
+            <input type="text" name="name" value="{{ item['name'] }}" required>
+          </div>
+          <div>
+            <label class="field-label">Category</label>
+            <select name="category">
+              {% for c in categories %}
+              <option value="{{ c }}" {{ 'selected' if c == item['category'] }}>{{ c|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <label class="field-label">Description</label>
+        <textarea name="description" rows="2">{{ item['description'] or '' }}</textarea>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Dietary tags</label>
+            <input type="text" name="dietary_tags" value="{{ item['dietary_tags'] or '' }}">
+          </div>
+          <div>
+            <label class="field-label">Price (€)</label>
+            <input type="number" name="price" step="0.01" min="0" value="{{ item['price'] if item['price'] is not none else '' }}">
+          </div>
+        </div>
+        <button type="submit" class="btn-mini" style="margin-top:8px;">Save</button>
+      </form>
+    </details>
+
+    <div class="expense-actions">
+      <form method="post" action="{{ url_for('toggle_menu_item', item_id=item['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">{{ 'Hide' if item['active'] else 'Show' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('delete_menu_item', item_id=item['id']) }}" onsubmit="return confirm('Remove this dish permanently?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-mini-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endfor %}
+
+{% endblock %}
