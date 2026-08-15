@@ -2797,7 +2797,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "priority": t["priority"],
             "repeat_weekly": t["repeat_weekly"],
             "date": t["due_date"],
-            "title": t["title"],
+            "title": t["title"], "short": t["title"],
             "detail": t["room_note"] or t["notes"] or "",
             "assignee_id": t["assigned_to_user_id"],
             "assignee_name": t["employee_name"],
@@ -2826,6 +2826,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "scheduled": True, "status": b["status"], "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": b["arrival_date"],
                 "title": f"{b['guest_name']} arrives — {b['room_name']}",
+                "short": f"↓ {b['guest_name']}",
                 "detail": arrival_detail,
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
             })
@@ -2835,6 +2836,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
                 "scheduled": True, "status": b["status"], "acknowledgment_status": None,
                 "priority": None, "repeat_weekly": 0, "date": b["departure_date"],
                 "title": f"{b['guest_name']} departs — {b['room_name']}",
+                "short": f"↑ {b['guest_name']}",
                 "detail": f"Party of {b['party_size']}",
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
             })
@@ -2850,6 +2852,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "scheduled": True, "status": d["status"], "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": d["dinner_date"],
             "title": f"Dinner — {d['guest_name']}, party of {d['party_size']}",
+            "short": f"{d['guest_name']} ×{d['party_size']}",
             "detail": d["dietary_notes"] or "",
             "assignee_id": None, "assignee_name": None, "id": d["id"],
             "link": url_for("admin_restaurant"),
@@ -2869,6 +2872,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
             "scheduled": True, "status": r["status"], "acknowledgment_status": None,
             "priority": None, "repeat_weekly": 0, "date": r["start_date"],
             "title": f"{r['title']} — {r['guest_name']}, party of {r['party_size']}",
+            "short": r["title"],
             "detail": r["notes"] or "",
             "assignee_id": None, "assignee_name": None, "id": r["id"],
             "link": url_for("admin_workshop_registrations"),
@@ -4030,7 +4034,8 @@ def amount_paid_for(conn, category, booking):
 
 
 def refundable_amount(conn, category, booking):
-    return round(max(0.0, amount_paid_for(conn, category, booking) - refunded_so_far(conn, category, booking)), 2)
+    return round(max(0.0, amount_paid_for(conn, category, booking)
+                     - refunded_so_far(conn, category, booking["id"])), 2)
 
 
 def issue_refund(conn, category, booking, amount, reason, method="stripe", user_id=None):
@@ -16579,6 +16584,24 @@ if __name__ == "__main__":
     # re-stats template files; it does NOT enable the debugger.
     app.config["TEMPLATES_AUTO_RELOAD"] = True
     app.jinja_env.auto_reload = True
+
+    # Without FLASK_SECRET_KEY the key above is regenerated per process, so
+    # every local restart silently signs everyone out mid-task. Persist one
+    # for development only: this branch never runs under gunicorn, and the
+    # file is gitignored, so production still depends on the real env var.
+    if not os.environ.get("FLASK_SECRET_KEY"):
+        key_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dev_secret_key")
+        try:
+            if os.path.exists(key_path):
+                with open(key_path) as f:
+                    app.secret_key = f.read().strip()
+            else:
+                app.secret_key = secrets.token_hex(32)
+                with open(key_path, "w") as f:
+                    f.write(app.secret_key)
+                os.chmod(key_path, 0o600)
+        except OSError:
+            pass  # unwritable disk: fall back to the per-process key
     # Werkzeug's reloader (debug=True) re-executes this module in a child
     # process with WERKZEUG_RUN_MAIN set — starting the thread only there
     # (or when the reloader isn't in play at all) keeps a single automation

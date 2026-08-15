@@ -14,7 +14,10 @@
    data-status="{{ e.status }}"
    title="{{ e.title }}{% if e.detail %} — {{ e.detail }}{% endif %}">
   <span class="cal-ev-dot"></span>
-  <span class="cal-ev-text">{{ e.title }}</span>
+  {# Month cells are ~160px wide, where the list-style titles ("Dinner —
+     Name, party of 2") ellipse away the only part that matters. Compact
+     form there; full title in day/week where there's room. #}
+  <span class="cal-ev-text">{{ (e.short or e.title) if compact else e.title }}</span>
   {% if not compact and e.assignee_name %}<span class="cal-ev-who">{{ e.assignee_name }}</span>{% endif %}
 </a>
 {% endmacro %}

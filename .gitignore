@@ -17,6 +17,8 @@ _server_log.txt.err
 .env.*
 # One-off local admin script — contains a plaintext password, never commit
 reset_owner_password.py
+# Local-dev session signing key (see the __main__ block in app.py)
+.dev_secret_key
 
 # Editor / OS
 .DS_Store
