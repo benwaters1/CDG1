@@ -302,15 +302,15 @@ DIGEST_TOKEN = os.environ.get("DIGEST_TOKEN", "")
 # Unset by default — until you set it, /api/guest-lookup always 404s.
 GUEST_LOOKUP_TOKEN = os.environ.get("GUEST_LOOKUP_TOKEN", "")
 
-# Lets a permanent office/wall display keep showing /admin/tv without ever
+# Lets a permanent office/wall display keep showing /admin/display without ever
 # being logged in as the owner. That page auto-reloads every 60 seconds
 # forever, but a normal login session expires after PERMANENT_SESSION_LIFETIME
 # (12h) — without this, any kiosk left running overnight silently reloads
 # into the login screen instead of the dashboard. Same token-gated,
 # no-login-needed pattern as ICAL_SYNC_TOKEN/DIGEST_TOKEN above; unlike those,
-# this doesn't 404 without it — /admin/tv still works normally for a logged-in
+# this doesn't 404 without it — /admin/display still works normally for a logged-in
 # owner, the token is only an alternative way in. See DEPLOY.md.
-TV_DASHBOARD_TOKEN = os.environ.get("TV_DASHBOARD_TOKEN", "")
+OFFICE_DISPLAY_TOKEN = os.environ.get("OFFICE_DISPLAY_TOKEN", "")
 
 # The background automation thread (see "Automation engine" near the bottom
 # of this file) runs with no incoming request, so any email it sends that
@@ -3369,7 +3369,7 @@ def build_dashboard_calendar(conn, today):
     return {"weeks": weeks, "month_start": month_start}
 
 
-def build_tv_dashboard_queues(conn, today):
+def build_office_display_queues(conn, today):
     """Consolidated 'needs attention' items for the office TV kiosk display --
     one entry per source table, each with a live count and a short preview
     list, so nothing pending sits unseen on a page nobody happened to open."""
@@ -3522,7 +3522,7 @@ def build_tv_dashboard_queues(conn, today):
     return [q for q in queues if q["count"]]
 
 
-def build_tv_today_stats(conn, today, who_is_here):
+def build_office_display_stats(conn, today, who_is_here):
     """The always-on numbers for the kiosk's top strip -- today's occupancy and
     covers, as opposed to the Needs Attention band below it which only appears
     when something is actually wrong.
@@ -4483,14 +4483,14 @@ def dashboard():
     )
 
 
-@app.route("/admin/tv")
-def tv_dashboard():
-    # A kiosk device authenticates with ?token=TV_DASHBOARD_TOKEN instead of a
+@app.route("/admin/display")
+def office_display():
+    # A kiosk device authenticates with ?token=OFFICE_DISPLAY_TOKEN instead of a
     # login session, since it's meant to sit on a wall reloading itself
     # unattended for weeks. Anyone with a normal owner session still gets in
     # without one, same as before.
     supplied_token = request.args.get("token", "")
-    token_ok = TV_DASHBOARD_TOKEN and hmac.compare_digest(supplied_token, TV_DASHBOARD_TOKEN)
+    token_ok = OFFICE_DISPLAY_TOKEN and hmac.compare_digest(supplied_token, OFFICE_DISPLAY_TOKEN)
     if not token_ok:
         user = current_user()
         if not user:
@@ -4522,13 +4522,13 @@ def tv_dashboard():
 
     overview_today = build_overview(conn, "day", today)
     dashboard_calendar = build_dashboard_calendar(conn, today)
-    today_stats = build_tv_today_stats(conn, today, who_is_here)
-    queues = build_tv_dashboard_queues(conn, today)
+    today_stats = build_office_display_stats(conn, today, who_is_here)
+    queues = build_office_display_queues(conn, today)
     queues_total = sum(q["count"] for q in queues)
 
     conn.close()
     return render_template(
-        "admin_tv_dashboard.html",
+        "admin_office_display.html",
         today=today,
         on_shift_now=on_shift_now,
         current_tasks_by_user=current_tasks_by_user,

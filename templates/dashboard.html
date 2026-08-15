@@ -6,7 +6,7 @@
 <div class="page-head">
   <h1>{% if user['role'] == 'owner' %}Welcome back{% else %}Welcome, {{ user['name'].split(' ')[0] }}{% endif %}</h1>
   {% if user['role'] == 'owner' %}
-  <a href="{{ url_for('tv_dashboard') }}" target="_blank" rel="noopener" class="btn-mini">Open TV Display ↗</a>
+  <a href="{{ url_for('office_display') }}" target="_blank" rel="noopener" class="btn-mini">Open Office Display ↗</a>
   {% endif %}
   {% if my_shift %}
   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
