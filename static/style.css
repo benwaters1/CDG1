@@ -4,6 +4,11 @@
   --chestnut-deep:#2A1A12;
   --gold:#C9A15B;
   --gold-soft:#E4D2A8;
+  /* Gold readable as TEXT/icons on --status-warn-bg. --gold itself is tuned
+     for fills and borders and only reaches 1.9:1 there, so status badges
+     ("pending", "on shift") were effectively unreadable. Defined per shell
+     because each has its own warn background. */
+  --gold-on-warn:#7B6238;
   --ivory:#F3ECDD;
   --parchment:#FBF8F1;
   --parchment-line:#DED0AE;
@@ -53,7 +58,8 @@ body.staff-shell{
   --chestnut-light:#FBF8F2;
   --chestnut-deep:#2A2118;
   --gold:#B8853E;
-  --gold-soft:#8F6229;
+  --gold-soft:#85602D;
+  --gold-on-warn:#85602D;
   --ivory:#2B2620;
   --parchment:#FFFFFF;
   --parchment-line:#E7E0D0;
@@ -61,9 +67,9 @@ body.staff-shell{
   --steel-deep:#1F5C80;
   --paper:#F7F3EA;
   --ink:#2B2620;
-  --ink-soft:#7A705F;
+  --ink-soft:#716858;
   --danger:#B3271E;
-  --success:#2E7D46;
+  --success:#2C7742;
   --shadow: 0 2px 14px rgba(43,38,32,0.07);
   --surface:#FFFFFF;
   --focus-ring: rgba(184,133,62,0.30);
@@ -423,7 +429,7 @@ body.staff-shell a.stat-tile:hover{ transform:translateY(-2px); box-shadow:0 12p
   background:var(--status-neutral-bg); color:var(--ink-soft);
 }
 .stat-tile-icon svg{ width:19px; height:19px; margin:0; }
-.stat-tile-icon-gold{ background:var(--status-warn-bg); color:var(--gold); }
+.stat-tile-icon-gold{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .stat-tile-icon-steel{ background:var(--status-info-bg); color:var(--steel-deep); }
 body.staff-shell .stat-tile-icon-steel{ color:var(--steel); }
 .stat-tile-icon-success{ background:var(--status-success-bg); color:var(--success); }
@@ -449,7 +455,7 @@ body.staff-shell .action-card:hover{ transform:translateY(-2px); box-shadow:0 12
   margin-bottom:12px; background:var(--status-neutral-bg); color:var(--ink-soft);
 }
 .action-card-icon svg{ width:19px; height:19px; margin:0; }
-.action-card-icon-gold{ background:var(--status-warn-bg); color:var(--gold); }
+.action-card-icon-gold{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .action-card-icon-steel{ background:var(--status-info-bg); color:var(--steel-deep); }
 body.staff-shell .action-card-icon-steel{ color:var(--steel); }
 .action-card-icon-success{ background:var(--status-success-bg); color:var(--success); }
@@ -471,11 +477,11 @@ body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
 .mini-status{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; padding:2px 8px; border-radius:10px; }
 .status-active{ background:var(--status-success-bg); color:var(--success); }
 .status-inactive{ background:var(--status-danger-bg); color:var(--danger); }
-.status-onshift{ background:var(--status-warn-bg); color:var(--gold); }
-.status-current{ background:var(--status-warn-bg); color:var(--gold); }
+.status-onshift{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+.status-current{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .status-upcoming{ background:var(--status-info-bg); color:var(--steel-deep); }
 .status-past{ background:var(--status-neutral-bg); color:var(--ink-soft); }
-.status-pending{ background:var(--status-warn-bg); color:var(--gold); }
+.status-pending{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .status-approved, .status-confirmed{ background:var(--status-success-bg); color:var(--success); }
 .status-rejected, .status-declined{ background:var(--status-danger-bg); color:var(--danger); }
 .status-paid{ background:var(--status-success-bg); color:var(--success); }
@@ -485,7 +491,7 @@ body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
 .status-available{ background:var(--status-success-bg); color:var(--success); }
 .status-unavailable{ background:var(--status-danger-bg); color:var(--danger); }
 .status-new{ background:var(--status-info-bg); color:var(--steel-deep); }
-.status-contacted, .status-quoted{ background:var(--status-warn-bg); color:var(--gold); }
+.status-contacted, .status-quoted{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 
 /* ---------- Tasks ---------- */
 .task-list{ display:flex; flex-direction:column; gap:6px; }
@@ -515,9 +521,9 @@ body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
 .lane-badge{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; padding:2px 7px; border-radius:8px; flex-shrink:0; }
 .lane-badge.lane-booking{ background:var(--status-info-bg); color:var(--steel-deep); }
 .lane-badge.lane-task{ background:var(--status-neutral-bg); color:var(--ink-soft); }
-.lane-badge.lane-owner{ background:var(--status-warn-bg); color:var(--gold); }
+.lane-badge.lane-owner{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .lane-badge.lane-restaurant{ background:var(--status-success-bg); color:var(--success); }
-.lane-badge.lane-workshop{ background:var(--status-warn-bg); color:var(--gold); }
+.lane-badge.lane-workshop{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .origin-badge{ font-size:10.5px; color:var(--ink-soft); }
 .overview-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .overview-filters select, .overview-filters input[type="text"]{ font-size:12.5px; padding:5px 8px; }
@@ -797,7 +803,7 @@ body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:7
 }
 .month-cal-badge svg{ width:9px; height:9px; margin:0; flex-shrink:0; }
 .month-cal-badge-arrival{ background:var(--status-success-bg); color:var(--success); }
-.month-cal-badge-departure{ background:var(--status-warn-bg); color:var(--gold); }
+.month-cal-badge-departure{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .month-cal-badge-dinner{ background:var(--status-info-bg); color:var(--steel-deep); }
 body.staff-shell .month-cal-badge-dinner{ color:var(--steel); }
 .month-cal-badge-workshop{ background:var(--status-danger-bg); color:var(--danger); }
