@@ -157,6 +157,30 @@ send-time check work regardless, since neither one calls Claude.
 
 ---
 
+## Office TV / wallboard display
+
+`/admin/tv` is a self-contained, auto-refreshing dashboard meant for a
+permanent screen in a staff area — occupancy, who's on shift, today's
+tasks, and anything needing a decision, reloading itself every 60 seconds.
+Opening "Open TV Display" from the Home page while logged in as owner works
+immediately, but a real login session expires after 12 hours — fine for a
+quick check, not for a screen meant to run unattended for weeks.
+
+For a permanent display, set `TV_DASHBOARD_TOKEN` (generate it the same way
+as `ICAL_SYNC_TOKEN` above) and point the kiosk's browser at:
+
+```
+https://<your-domain>/admin/tv?token=<your TV_DASHBOARD_TOKEN>
+```
+
+That URL never needs a login and never expires, so it's safe to leave open
+on a dedicated device indefinitely. Without `TV_DASHBOARD_TOKEN` set,
+`/admin/tv` still works fine for a logged-in owner — it just has no
+token-based alternative yet, so an unattended screen would eventually drop
+to the login page.
+
+---
+
 ## Microsoft Graph inbox monitoring (Inbox Flags)
 
 Management → Inbox Flags scans one real mailbox and flags two things: emails

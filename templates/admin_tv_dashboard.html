@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Château de Gudanes — TV Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#170F0A;
+    --bg:#20140D;
+    --panel:#2C1D14;
+    --panel-line:rgba(201,161,91,0.22);
+    --gold:#C9A15B;
+    --gold-bright:#E4C07E;
+    --ivory:#F3ECDD;
+    --ivory-dim:#C9BCA6;
+    --clear-text:#8FD19E;
+    --clear-bg:rgba(90,160,110,0.14);
+    --clear-line:rgba(90,160,110,0.35);
+    --attn-bg:rgba(201,161,91,0.14);
+    --attn-line:rgba(201,161,91,0.45);
+    --dot-arrival:#7FB6D9;
+    --dot-departure:#C98F6B;
+    --dot-dinner:#C97E9B;
+    --dot-workshop:#9BC97E;
+    --dot-task:#C9A15B;
+    --dot-owner:#E4C07E;
+    --cat-leave:#7FB6D9;
+    --cat-expenses:#C79BE0;
+    --cat-timesheet:#7ED9C9;
+    --cat-room:#93A6E8;
+    --cat-restaurant:#E08FB8;
+    --cat-workshop:#9BC97E;
+    --cat-feedback:#E0A17E;
+    --cat-inbox:#E4C07E;
+    --cat-events:#D9B65B;
+    --cat-vehicles:#E8A0A0;
+    --cat-stock:#E0C77E;
+    --cat-balances:#B8E07E;
+    --shadow-card: 0 6px 18px rgba(0,0,0,0.35);
+  }
+  html{ font-size: clamp(15px, 1.5vw, 24px); }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(circle at 12% 6%, rgba(201,161,91,0.10), transparent 42%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+    color:var(--ivory);
+    font-family:'Inter', -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 1.1rem 1.4rem 1.6rem;
+    display:flex; flex-direction:column; gap:1rem;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2{ font-family:'Playfair Display', Georgia, serif; margin:0; }
+  ul{ list-style:none; margin:0; padding:0; }
+
+  /* The default OS scrollbar renders as a chunky light-grey slab against this
+     dark page. Thin + gold-tinted so an occasional scroll region reads as part
+     of the design rather than a Windows widget bolted on. */
+  *{ scrollbar-width:thin; scrollbar-color:rgba(201,161,91,0.30) transparent; }
+  ::-webkit-scrollbar{ width:0.32rem; height:0.32rem; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:rgba(201,161,91,0.30); border-radius:1rem; }
+  ::-webkit-scrollbar-thumb:hover{ background:rgba(201,161,91,0.55); }
+
+  /* header */
+  .tv-header{ display:flex; align-items:baseline; justify-content:space-between; padding-bottom:0.7rem; border-bottom:1px solid var(--panel-line); position:relative; }
+  .tv-header::after{ content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:linear-gradient(90deg, var(--gold) 0%, transparent 60%); }
+  .tv-header h1{ font-size:1.7rem; font-weight:700; color:var(--gold-bright); letter-spacing:0.02em; }
+  .tv-header-right{ display:flex; align-items:baseline; gap:1rem; }
+  .tv-live{ display:inline-flex; align-items:center; gap:0.35rem; font-size:0.7rem; color:var(--ivory-dim); text-transform:uppercase; letter-spacing:0.08em; }
+  .tv-live-dot{ width:0.5rem; height:0.5rem; border-radius:50%; background:var(--clear-text); animation:tvpulse 2s ease-in-out infinite; }
+  @keyframes tvpulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
+  .tv-date{ font-size:1rem; color:var(--ivory-dim); }
+  .tv-clock{ font-family:'IBM Plex Mono', monospace; font-size:1.9rem; font-weight:600; color:var(--ivory); min-width:5.2ch; text-align:right; }
+
+  /* needs-attention tiles */
+  .tv-attention h2{ font-size:1.05rem; color:var(--gold); display:flex; align-items:center; gap:0.6rem; margin-bottom:0.55rem; }
+  .tv-total-badge{ font-family:'IBM Plex Mono', monospace; font-size:0.85rem; padding:0.1rem 0.55rem; border-radius:1rem; background:var(--attn-bg); border:1px solid var(--attn-line); color:var(--gold-bright); }
+  .tv-total-badge.tv-badge-clear{ background:var(--clear-bg); border-color:var(--clear-line); color:var(--clear-text); }
+  .tv-tile-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(9.5rem, 1fr)); gap:0.6rem; }
+  .tv-tile{ border-radius:0.6rem; padding:0.6rem 0.7rem; border:1px solid var(--panel-line); border-left:0.28rem solid var(--panel-line); background:var(--panel); display:flex; flex-direction:column; gap:0.15rem; min-height:6.4rem; text-decoration:none; color:inherit; cursor:pointer; transition:filter 0.15s ease, transform 0.15s ease; box-shadow:var(--shadow-card); }
+  .tv-tile:hover{ filter:brightness(1.18); transform:translateY(-1px); }
+  .tv-tile-alert{ background:var(--attn-bg); border-color:var(--attn-line); }
+  .tv-tile-clear{ background:var(--clear-bg); border-color:var(--clear-line); border-left-color:var(--clear-line); }
+  .tv-tile-count{ font-family:'IBM Plex Mono', monospace; font-size:1.5rem; font-weight:600; line-height:1; color:var(--gold-bright); }
+  .tv-tile-clear .tv-tile-count{ color:var(--clear-text); }
+  .tv-tile-label{ font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--ivory-dim); margin-bottom:0.2rem; }
+  .tv-tile-items{ display:flex; flex-direction:column; gap:0.12rem; }
+  .tv-tile-items li{ font-size:0.72rem; color:var(--ivory); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tv-tile-more, .tv-today-more{ color:var(--ivory-dim) !important; font-style:italic; }
+  .tv-tile-clear-text{ font-size:0.78rem; color:var(--clear-text); margin-top:0.15rem; }
+
+  /* per-category accent colors. Only alert tiles ever render now, so these
+     always apply -- the all-clear case is a single banner, not 12 green boxes. */
+  .tv-tile-alert[data-key="leave"]{ border-left-color:var(--cat-leave); }
+  .tv-tile-alert[data-key="leave"] .tv-tile-count{ color:var(--cat-leave); }
+  .tv-tile-alert[data-key="expenses"]{ border-left-color:var(--cat-expenses); }
+  .tv-tile-alert[data-key="expenses"] .tv-tile-count{ color:var(--cat-expenses); }
+  .tv-tile-alert[data-key="timesheet"]{ border-left-color:var(--cat-timesheet); }
+  .tv-tile-alert[data-key="timesheet"] .tv-tile-count{ color:var(--cat-timesheet); }
+  .tv-tile-alert[data-key="pending_rooms"]{ border-left-color:var(--cat-room); }
+  .tv-tile-alert[data-key="pending_rooms"] .tv-tile-count{ color:var(--cat-room); }
+  .tv-tile-alert[data-key="pending_dinners"]{ border-left-color:var(--cat-restaurant); }
+  .tv-tile-alert[data-key="pending_dinners"] .tv-tile-count{ color:var(--cat-restaurant); }
+  .tv-tile-alert[data-key="pending_workshops"]{ border-left-color:var(--cat-workshop); }
+  .tv-tile-alert[data-key="pending_workshops"] .tv-tile-count{ color:var(--cat-workshop); }
+  .tv-tile-alert[data-key="vehicles"]{ border-left-color:var(--cat-vehicles); }
+  .tv-tile-alert[data-key="vehicles"] .tv-tile-count{ color:var(--cat-vehicles); }
+  .tv-tile-alert[data-key="stock"]{ border-left-color:var(--cat-stock); }
+  .tv-tile-alert[data-key="stock"] .tv-tile-count{ color:var(--cat-stock); }
+  .tv-tile-alert[data-key="balances"]{ border-left-color:var(--cat-balances); }
+  .tv-tile-alert[data-key="balances"] .tv-tile-count{ color:var(--cat-balances); }
+  .tv-tile-alert[data-key="feedback"]{ border-left-color:var(--cat-feedback); }
+  .tv-tile-alert[data-key="feedback"] .tv-tile-count{ color:var(--cat-feedback); }
+  .tv-tile-alert[data-key="inbox"]{ border-left-color:var(--cat-inbox); }
+  .tv-tile-alert[data-key="inbox"] .tv-tile-count{ color:var(--cat-inbox); }
+  .tv-tile-alert[data-key="events"]{ border-left-color:var(--cat-events); }
+  .tv-tile-alert[data-key="events"] .tv-tile-count{ color:var(--cat-events); }
+
+  /* KPI strip -- always-on daily numbers, visually distinct from the
+     conditional alert tiles below so the two bands never read as one list */
+  .tv-kpis{ display:grid; grid-template-columns:repeat(auto-fit, minmax(8rem, 1fr)); gap:0.6rem; }
+  .tv-kpi{ background:linear-gradient(160deg, rgba(201,161,91,0.16), rgba(201,161,91,0.05)); border:1px solid var(--panel-line); border-radius:0.6rem; padding:0.65rem 0.8rem; text-decoration:none; color:inherit; box-shadow:var(--shadow-card); transition:filter 0.15s ease; }
+  .tv-kpi:hover{ filter:brightness(1.15); }
+  .tv-kpi-value{ font-family:'IBM Plex Mono', monospace; font-size:2rem; font-weight:600; line-height:1; color:var(--gold-bright); display:flex; align-items:baseline; gap:0.35rem; }
+  .tv-kpi-sub{ font-size:0.7rem; font-weight:400; color:var(--ivory-dim); font-family:'Inter',sans-serif; }
+  .tv-kpi-label{ font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--ivory-dim); margin-top:0.3rem; }
+
+  .tv-all-clear{ display:flex; align-items:center; gap:0.6rem; background:var(--clear-bg); border:1px solid var(--clear-line); border-radius:0.6rem; padding:0.7rem 0.9rem; color:var(--clear-text); font-size:0.9rem; }
+  .tv-all-clear-tick{ font-size:1.1rem; }
+
+  /* main 3-col grid */
+  .tv-main-grid{ display:grid; grid-template-columns: 1fr 1.3fr 1fr; gap:0.8rem; flex:1; min-height:0; }
+  .tv-panel{ background:var(--panel); border:1px solid var(--panel-line); border-radius:0.7rem; padding:0.8rem 0.9rem; overflow:hidden; display:flex; flex-direction:column; box-shadow:var(--shadow-card); }
+  .tv-panel h2{ font-size:1rem; color:var(--gold); margin-bottom:0.5rem; }
+  .tv-subheading{ margin-top:0.7rem; padding-top:0.6rem; border-top:1px solid var(--panel-line); }
+  .tv-empty{ color:var(--ivory-dim); font-size:0.85rem; font-style:italic; }
+  .tv-empty-small{ font-size:0.78rem; }
+
+  /* flex:1 + min-height:0 so a full roster scrolls *inside* this list rather
+     than growing the panel and pushing Current Guests out under overflow:hidden
+     (a wallboard must never silently swallow a section). */
+  .tv-people{ display:flex; flex-direction:column; gap:0.55rem; overflow-y:auto; overflow-x:hidden; min-width:0; flex:1 1 auto; min-height:0; }
+  .tv-onshift .tv-subheading, .tv-onshift .tv-off-list, .tv-onshift .tv-empty-small{ flex:none; }
+  .tv-onshift .tv-off-list{ max-height:32%; overflow-y:auto; overflow-x:hidden; }
+  .tv-person-link{ display:block; text-decoration:none; color:inherit; border-radius:0.35rem; padding:0.15rem 0.25rem; transition:background 0.15s ease; min-width:0; }
+  .tv-person-link:hover{ background:rgba(201,161,91,0.10); }
+  .tv-person-row{ display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; }
+  .tv-avatar{ width:1.8rem; height:1.8rem; border-radius:50%; background:rgba(201,161,91,0.20); border:1px solid var(--attn-line); color:var(--gold-bright); font-size:0.62rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; font-family:'IBM Plex Mono', monospace; }
+  .tv-person-name{ font-weight:600; font-size:0.92rem; }
+  .tv-person-role{ font-size:0.72rem; color:var(--ivory-dim); }
+  .tv-person-since{ font-size:0.68rem; color:var(--dot-arrival); margin-left:auto; }
+  .tv-person-tasks{ display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.25rem; padding-left:2.3rem; min-width:0; }
+  .tv-task-chip{ font-size:0.65rem; background:rgba(201,161,91,0.12); border:1px solid var(--panel-line); border-radius:0.4rem; padding:0.1rem 0.4rem; color:var(--ivory-dim); text-decoration:none; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  a.tv-task-chip:hover{ background:rgba(201,161,91,0.22); color:var(--ivory); }
+  .tv-task-chip[data-priority="high"]{ border-color:rgba(224,143,155,0.5); color:#E8B3BA; background:rgba(224,143,155,0.14); }
+  .tv-task-chip[data-priority="low"]{ opacity:0.7; }
+  .tv-task-more{ font-style:italic; }
+
+  .tv-off-list{ min-width:0; }
+  .tv-off-list li{ font-size:0.78rem; padding:0.15rem 0; color:var(--ivory-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tv-off-dates{ font-size:0.68rem; }
+
+  .tv-panel-head{ display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.5rem; }
+  .tv-panel-head h2{ margin-bottom:0; }
+  .tv-panel-head-right{ display:flex; align-items:center; gap:0.6rem; }
+  .tv-add-task-btn{ font-size:0.7rem; text-decoration:none; color:var(--gold-bright); background:rgba(201,161,91,0.14); border:1px solid var(--attn-line); border-radius:0.4rem; padding:0.2rem 0.55rem; white-space:nowrap; transition:background 0.15s ease; }
+  .tv-add-task-btn:hover{ background:rgba(201,161,91,0.26); }
+  .tv-ring{ position:relative; width:2.3rem; height:2.3rem; border-radius:50%; flex:none; }
+  .tv-ring-inner{ position:absolute; inset:0.28rem; border-radius:50%; background:var(--panel); display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono', monospace; font-size:0.5rem; font-weight:600; color:var(--ivory); text-align:center; line-height:1; }
+
+  .tv-today-list{ display:flex; flex-direction:column; gap:0.45rem; overflow-y:auto; overflow-x:hidden; min-width:0; }
+  .tv-today-row{ list-style:none; min-width:0; }
+  .tv-today-link{ display:flex; align-items:flex-start; gap:0.5rem; text-decoration:none; color:inherit; border-radius:0.35rem; padding:0.15rem 0.25rem; transition:background 0.15s ease; min-width:0; }
+  .tv-today-link:hover{ background:rgba(201,161,91,0.10); }
+  .tv-kind-dot{ width:0.55rem; height:0.55rem; border-radius:50%; margin-top:0.35rem; flex:none; }
+  .tv-kind-dot-booking{ background:var(--dot-arrival); }
+  .tv-kind-dot-dinner{ background:var(--dot-dinner); }
+  .tv-kind-dot-workshop{ background:var(--dot-workshop); }
+  .tv-kind-dot-task{ background:var(--dot-task); }
+  .tv-today-text{ display:flex; flex-direction:column; min-width:0; flex:1; }
+  .tv-today-title{ font-size:0.85rem; font-weight:500; overflow-wrap:anywhere; }
+  .tv-today-detail{ font-size:0.72rem; color:var(--ivory-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tv-today-assignee{ font-size:0.68rem; color:var(--gold); flex:none; white-space:nowrap; max-width:5.5rem; overflow:hidden; text-overflow:ellipsis; }
+  .tv-today-more{ font-size:0.75rem; padding-top:0.2rem; }
+
+  .tv-month-head, .tv-month-week{ display:grid; grid-template-columns:repeat(7, 1fr); gap:0.25rem; }
+  .tv-month-head span{ font-size:0.62rem; text-align:center; color:var(--ivory-dim); text-transform:uppercase; }
+  .tv-month-week{ margin-top:0.25rem; }
+  .tv-month-day{ position:relative; border-radius:0.35rem; background:rgba(255,255,255,0.02); min-height:2.4rem; padding:0.15rem 0.25rem; display:flex; flex-direction:column; align-items:flex-start; }
+  .tv-month-day-blank{ background:transparent; }
+  .tv-month-today{ border:1px solid var(--gold); background:rgba(201,161,91,0.16); }
+  .tv-daynum{ font-size:0.68rem; color:var(--ivory-dim); }
+  .tv-month-today .tv-daynum{ color:var(--gold-bright); font-weight:600; }
+  .tv-daydot{ font-size:0.55rem; font-family:'IBM Plex Mono', monospace; border-radius:0.6rem; padding:0 0.28rem; margin:0.05rem 0.1rem 0 0; display:inline-block; }
+  .tv-dot-arrival{ background:rgba(127,182,217,0.25); color:var(--dot-arrival); }
+  .tv-dot-departure{ background:rgba(201,143,107,0.25); color:var(--dot-departure); }
+  .tv-dot-dinner{ background:rgba(201,126,155,0.25); color:var(--dot-dinner); }
+  .tv-dot-workshop{ background:rgba(155,201,126,0.25); color:var(--dot-workshop); }
+
+  @media (max-width: 1100px){
+    .tv-main-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="tv-header">
+    <h1>Château de Gudanes</h1>
+    <div class="tv-header-right">
+      <span class="tv-live"><span class="tv-live-dot"></span>Live</span>
+      <span class="tv-date">{{ today.strftime('%A %d %B %Y') }}</span>
+      <span class="tv-clock" id="tv-clock">--:--:--</span>
+    </div>
+  </header>
+
+  <section class="tv-kpis">
+    {% for s in today_stats %}
+    <a href="{{ s.link }}" data-key="{{ s.key }}" class="tv-kpi">
+      <div class="tv-kpi-value">{{ s.value }}{% if s.sub %}<span class="tv-kpi-sub">{{ s.sub }}</span>{% endif %}</div>
+      <div class="tv-kpi-label">{{ s.label }}</div>
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="tv-attention">
+    <h2>
+      Needs Attention
+      {% if queues_total %}
+        <span class="tv-total-badge">{{ queues_total }}</span>
+      {% endif %}
+    </h2>
+    {% if not queues %}
+      <div class="tv-all-clear"><span class="tv-all-clear-tick">✓</span> All clear — nothing needs you right now.</div>
+    {% else %}
+    <div class="tv-tile-grid">
+      {% for q in queues %}
+      <a href="{{ q.link }}" data-key="{{ q.key }}" class="tv-tile tv-tile-alert">
+        <div class="tv-tile-count">{{ q.count }}</div>
+        <div class="tv-tile-label">{{ q.label }}</div>
+        <ul class="tv-tile-items">
+          {% for item in q.preview %}<li>{{ item }}</li>{% endfor %}
+          {% if q.count > q.preview|length %}<li class="tv-tile-more">+{{ q.count - q.preview|length }} more</li>{% endif %}
+        </ul>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="tv-main-grid">
+
+    <section class="tv-panel tv-onshift">
+      <h2>On Shift Now{% if on_shift_now %} · {{ on_shift_now|length }}{% endif %}</h2>
+      {% if not on_shift_now %}
+        <div class="tv-empty">Nobody's clocked in right now.</div>
+      {% else %}
+        <ul class="tv-people">
+          {% for shift in on_shift_now %}
+          {% set worker_tasks = current_tasks_by_user.get(shift['user_id'], []) %}
+          <li>
+            <a class="tv-person-link" href="{{ url_for('profile', user_id=shift['user_id']) }}">
+              <div class="tv-person-row">
+                <span class="tv-avatar">{{ shift['initials'] }}</span>
+                <span class="tv-person-name">{{ shift['user_name'] }}</span>
+                <span class="tv-person-role">{{ shift['user_job_role'] or '' }}</span>
+                <span class="tv-person-since">since {{ local_time_str(shift['clock_in_at']) }}</span>
+              </div>
+            </a>
+            {% if worker_tasks %}
+            <div class="tv-person-tasks">
+              {% for t in worker_tasks[:3] %}
+              <a class="tv-task-chip" data-priority="{{ t['priority'] }}" href="{{ url_for('admin_tasks', view='day', date=today.isoformat()) }}">{{ t['title'] }}</a>
+              {% endfor %}
+              {% if worker_tasks|length > 3 %}<span class="tv-task-chip tv-task-more">+{{ worker_tasks|length - 3 }} more</span>{% endif %}
+            </div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      <h2 class="tv-subheading">Current Guests{% if who_is_here %} · {{ who_is_here|length }}{% endif %}</h2>
+      {% if not who_is_here %}
+        <div class="tv-empty tv-empty-small">No guests in residence right now.</div>
+      {% else %}
+        <ul class="tv-off-list">
+          {% for g in who_is_here %}
+          <li>{{ g['name'] }}{% if g['vip'] %} ★{% endif %} <span class="tv-off-dates">{{ g['room_name'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · party of {{ g['party_size'] }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="tv-panel tv-today">
+      {% set today_tasks = overview_today.rows | selectattr('kind', 'equalto', 'task') | list %}
+      {% set done_tasks = today_tasks | selectattr('status', 'equalto', 'done') | list %}
+      <div class="tv-panel-head">
+        <h2>Today{% if overview_today.rows %} · {{ overview_today.rows|length }}{% endif %}</h2>
+        <div class="tv-panel-head-right">
+          {% if today_tasks %}
+          {% set pct = (done_tasks|length / today_tasks|length * 100) | round(0, 'floor') %}
+          <div class="tv-ring" style="background: conic-gradient(var(--gold-bright) {{ pct }}%, rgba(255,255,255,0.10) 0);" title="{{ done_tasks|length }} of {{ today_tasks|length }} tasks done today">
+            <div class="tv-ring-inner">{{ done_tasks|length }}/{{ today_tasks|length }}</div>
+          </div>
+          {% endif %}
+          <a class="tv-add-task-btn" href="{{ url_for('admin_tasks', view='day', date=today.isoformat()) }}">+ Add Task</a>
+        </div>
+      </div>
+      {% if not overview_today.rows %}
+        <div class="tv-empty">Nothing scheduled today.</div>
+      {% else %}
+        <ul class="tv-today-list">
+          {% for row in overview_today.rows[:14] %}
+          <li class="tv-today-row">
+            <a class="tv-today-link" href="{{ row.link or url_for('admin_tasks', view='day', date=today.isoformat()) }}">
+              <span class="tv-kind-dot tv-kind-dot-{{ row.kind }}"></span>
+              <div class="tv-today-text">
+                <span class="tv-today-title">{{ row.title }}</span>
+                {% if row.detail %}<span class="tv-today-detail">{{ row.detail }}</span>{% endif %}
+              </div>
+              {% if row.assignee_name %}<span class="tv-today-assignee">{{ row.assignee_name }}</span>{% endif %}
+            </a>
+          </li>
+          {% endfor %}
+          {% if overview_today.rows|length > 14 %}
+          <li class="tv-today-more">+{{ overview_today.rows|length - 14 }} more today</li>
+          {% endif %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="tv-panel tv-calendar">
+      <h2>{{ dashboard_calendar.month_start.strftime('%B %Y') }}</h2>
+      <div class="tv-month-head">
+        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+      </div>
+      {% for week in dashboard_calendar.weeks %}
+      <div class="tv-month-week">
+        {% for cell in week %}
+          {% if cell %}
+          <div class="tv-month-day {{ 'tv-month-today' if cell.date == today else '' }}">
+            <span class="tv-daynum">{{ cell.date.day }}</span>
+            {% if cell.arrivals %}<span class="tv-daydot tv-dot-arrival" title="arrivals">{{ cell.arrivals }}</span>{% endif %}
+            {% if cell.departures %}<span class="tv-daydot tv-dot-departure" title="departures">{{ cell.departures }}</span>{% endif %}
+            {% if cell.dinner_covers %}<span class="tv-daydot tv-dot-dinner" title="dinner covers">{{ cell.dinner_covers }}</span>{% endif %}
+            {% if cell.workshop %}<span class="tv-daydot tv-dot-workshop" title="workshop running">W</span>{% endif %}
+          </div>
+          {% else %}
+          <div class="tv-month-day tv-month-day-blank"></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </section>
+
+  </div>
+
+<script>
+  function tvTick() {
+    var el = document.getElementById('tv-clock');
+    if (el) el.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  }
+  tvTick();
+  setInterval(tvTick, 1000);
+  setTimeout(function () { window.location.reload(); }, 60000);
+</script>
+
+</body>
+</html>

@@ -2,11 +2,37 @@
 {% block title %}Guest History{% endblock %}
 {% block content %}
 
+{# Name falls back through every source; `profile` is checked first and the
+   final `or email` guarantees a title even when a profile exists with no
+   activity yet (this used to raise when all four lists were empty). #}
+{% set display_name = (profile['name'] if profile else None)
+   or (bookings[0]['guest_name'] if bookings else None)
+   or (dinners[0]['guest_name'] if dinners else None)
+   or (workshop_regs[0]['guest_name'] if workshop_regs else None)
+   or (events[0]['contact_name'] if events else None)
+   or email %}
 <div class="page-head">
-  <h1>{{ bookings[0]['guest_name'] if bookings else (dinners[0]['guest_name'] if dinners else (workshop_regs[0]['guest_name'] if workshop_regs else events[0]['contact_name'])) }}</h1>
-  <a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">← Bookings</a>
+  <h1>{{ display_name }}{% if profile and profile['vip'] %} <span class="mini-status status-pending" style="margin-left:6px;">VIP</span>{% endif %}</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    {% if profile and user['role'] == 'owner' %}
+    <a href="{{ url_for('edit_guest', guest_id=profile['id']) }}" class="btn-mini">Edit profile</a>
+    {% endif %}
+    <a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">← Bookings</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %}{% if events %} · {{ events|length }} event inquir{{ 'y' if events|length == 1 else 'ies' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
+
+{% if profile and (profile['phone'] or profile['dietary_notes'] or profile['preferences'] or profile['notes']) %}
+<div class="detail-card" style="margin-bottom:18px;">
+  <h3 style="margin-top:0;">Profile</h3>
+  {% if profile['phone'] %}<p class="manual-body"><strong>Phone:</strong> {{ profile['phone'] }}</p>{% endif %}
+  {% if profile['dietary_notes'] %}<p class="manual-body"><strong>Dietary:</strong> {{ profile['dietary_notes'] }}</p>{% endif %}
+  {% if profile['preferences'] %}<p class="manual-body"><strong>Prefers:</strong> {{ profile['preferences'] }}</p>{% endif %}
+  {% if profile['notes'] %}<p class="manual-body">{{ profile['notes'] }}</p>{% endif %}
+</div>
+{% elif not profile %}
+<p class="upload-hint" style="margin-top:-4px;">No standing profile yet — one is created automatically when a booking is confirmed.</p>
+{% endif %}
 
 <div class="mini-list">
   {% for b in bookings %}

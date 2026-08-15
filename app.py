@@ -302,6 +302,16 @@ DIGEST_TOKEN = os.environ.get("DIGEST_TOKEN", "")
 # Unset by default — until you set it, /api/guest-lookup always 404s.
 GUEST_LOOKUP_TOKEN = os.environ.get("GUEST_LOOKUP_TOKEN", "")
 
+# Lets a permanent office/wall display keep showing /admin/tv without ever
+# being logged in as the owner. That page auto-reloads every 60 seconds
+# forever, but a normal login session expires after PERMANENT_SESSION_LIFETIME
+# (12h) — without this, any kiosk left running overnight silently reloads
+# into the login screen instead of the dashboard. Same token-gated,
+# no-login-needed pattern as ICAL_SYNC_TOKEN/DIGEST_TOKEN above; unlike those,
+# this doesn't 404 without it — /admin/tv still works normally for a logged-in
+# owner, the token is only an alternative way in. See DEPLOY.md.
+TV_DASHBOARD_TOKEN = os.environ.get("TV_DASHBOARD_TOKEN", "")
+
 # The background automation thread (see "Automation engine" near the bottom
 # of this file) runs with no incoming request, so any email it sends that
 # links back to the site (e.g. a workshop balance reminder's "manage your
@@ -794,12 +804,18 @@ def init_db():
             resolved_at TEXT
         );
 
+        -- A per-PERSON guest profile, NOT a per-stay record. Stay dates,
+        -- party size and room live on `bookings`, which is the single source
+        -- of truth for who is actually in residence; this table holds only
+        -- what stays true between visits.
         CREATE TABLE IF NOT EXISTS guests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            arrival_date TEXT,
-            departure_date TEXT,
-            party_size INTEGER,
+            email TEXT,
+            phone TEXT,
+            dietary_notes TEXT,
+            preferences TEXT,
+            vip INTEGER NOT NULL DEFAULT 0,
             notes TEXT,
             created_at TEXT NOT NULL
         );
@@ -1332,12 +1348,72 @@ def init_db():
         ("email_flags_reply_availability_conflict", "ALTER TABLE email_flags ADD COLUMN reply_availability_conflict INTEGER NOT NULL DEFAULT 0"),
         ("email_flags_reply_detail_note", "ALTER TABLE email_flags ADD COLUMN reply_detail_note TEXT"),
         ("email_flags_last_reply_checked_id", "ALTER TABLE email_flags ADD COLUMN last_reply_checked_id TEXT"),
+        # `guests` became a per-person profile rather than a per-stay register
+        # (see the drop-column migration below for why).
+        ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
+        ("guests_phone", "ALTER TABLE guests ADD COLUMN phone TEXT"),
+        ("guests_dietary_notes", "ALTER TABLE guests ADD COLUMN dietary_notes TEXT"),
+        ("guests_preferences", "ALTER TABLE guests ADD COLUMN preferences TEXT"),
+        ("guests_vip", "ALTER TABLE guests ADD COLUMN vip INTEGER NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
             conn.commit()
         except sqlite3.OperationalError:
             pass  # column already exists
+
+    # `guests` used to be a per-STAY register carrying arrival/departure/party_size,
+    # duplicating what `bookings` already owns. The two could never be kept in
+    # agreement: confirming a booking created a guest row, but cancelling one
+    # never removed it, so a cancelled guest showed as "in residence" forever.
+    # `guests` is now a per-PERSON profile (name/email/phone/dietary/preferences/
+    # VIP) and `bookings` is the single source of truth for who is actually here,
+    # which makes that ghost structurally impossible rather than patched.
+    #
+    # Uses ALTER TABLE DROP COLUMN (SQLite 3.35+) rather than the rename/recreate/
+    # copy/drop dance used for `tasks` below -- `bookings.linked_guest_id` has a
+    # foreign key onto this table, and a rename is exactly what silently broke an
+    # FK reference elsewhere in this schema.
+    guest_columns = {row["name"] for row in conn.execute("PRAGMA table_info(guests)").fetchall()}
+    if "arrival_date" in guest_columns:
+        # Fold the retired stay fields into the profile note so nothing the owner
+        # typed is silently destroyed, then drop them.
+        for row in conn.execute(
+            "SELECT id, notes, arrival_date, departure_date, party_size FROM guests"
+        ).fetchall():
+            if not (row["arrival_date"] or row["departure_date"] or row["party_size"]):
+                continue
+            stay = f"{row['arrival_date'] or '?'} to {row['departure_date'] or '?'}"
+            if row["party_size"]:
+                stay += f", party of {row['party_size']}"
+            merged = ((row["notes"] or "").strip() + f"\n[Former register entry: {stay}]").strip()
+            conn.execute("UPDATE guests SET notes = ? WHERE id = ?", (merged, row["id"]))
+        # Carry each profile's email over from any booking already linked to it.
+        conn.execute(
+            """UPDATE guests SET email = (
+                   SELECT b.guest_email FROM bookings b
+                   WHERE b.linked_guest_id = guests.id AND b.guest_email IS NOT NULL
+                   ORDER BY b.id DESC LIMIT 1
+               ) WHERE email IS NULL"""
+        )
+        for ddl in (
+            "ALTER TABLE guests DROP COLUMN arrival_date",
+            "ALTER TABLE guests DROP COLUMN departure_date",
+            "ALTER TABLE guests DROP COLUMN party_size",
+        ):
+            try:
+                conn.execute(ddl)
+            except sqlite3.OperationalError:
+                pass
+        conn.commit()
+
+    # One profile per email address, so confirming a booking can find-or-create
+    # rather than piling up a new row per stay. Partial index: profiles added by
+    # hand may legitimately have no email yet.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_email ON guests(email) WHERE email IS NOT NULL"
+    )
+    conn.commit()
 
     # tasks.assigned_to_user_id used to be NOT NULL; SQLite can't relax a
     # column constraint in place, so databases from before priority/room_note
@@ -2496,20 +2572,63 @@ def parse_datetime_iso(value):
         return None
 
 
-def guest_with_status(g, today):
-    arrival = parse_date(g["arrival_date"])
-    departure = parse_date(g["departure_date"])
-    if departure and departure < today:
-        status, label = "past", "Past stay"
-    elif arrival and arrival > today:
-        status, label = "upcoming", "Upcoming"
-    else:
-        status, label = "current", "In residence"
-    return {
-        "id": g["id"], "name": g["name"], "arrival_date": g["arrival_date"],
-        "departure_date": g["departure_date"], "party_size": g["party_size"],
-        "notes": g["notes"], "stay_status": status, "stay_status_label": label,
-    }
+def stays_with_status(conn, today, statuses=("confirmed",)):
+    """Every stay, derived from `bookings` -- the single source of truth for who
+    is physically at the château. Replaces the old `guests`-table register, which
+    duplicated these dates and drifted out of sync (a cancelled booking left its
+    guest row showing "in residence" indefinitely).
+
+    Defaults to confirmed-only because that is what "someone is actually here"
+    means; pending bookings hold a room but nobody has arrived, and they surface
+    separately as an item awaiting a decision.
+
+    Each row carries the guest's profile fields (notes/dietary/VIP) where one is
+    linked, so callers can show standing preferences alongside the current stay.
+    """
+    placeholders = ",".join("?" * len(statuses))
+    rows = conn.execute(
+        f"""SELECT bookings.id AS booking_id, bookings.guest_name AS name,
+                   bookings.guest_email AS email, bookings.arrival_date,
+                   bookings.departure_date, bookings.party_size,
+                   bookings.special_requests, bookings.reference_code,
+                   bookings.status, rooms.name AS room_name,
+                   guests.id AS profile_id, guests.notes AS profile_notes,
+                   guests.dietary_notes, guests.vip
+            FROM bookings
+            JOIN rooms ON rooms.id = bookings.room_id
+            LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+            WHERE bookings.status IN ({placeholders})
+            ORDER BY bookings.arrival_date, bookings.guest_name""",
+        tuple(statuses),
+    ).fetchall()
+
+    stays = []
+    for r in rows:
+        arrival, departure = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if departure and departure <= today:
+            status, label = "past", "Past stay"
+        elif arrival and arrival > today:
+            status, label = "upcoming", "Upcoming"
+        else:
+            status, label = "current", "In residence"
+        # Anything the guest asked for on this booking, plus anything standing
+        # on their profile -- staff shouldn't have to open two pages.
+        note_parts = [p for p in (r["special_requests"], r["profile_notes"], r["dietary_notes"]) if p]
+        stays.append({
+            "booking_id": r["booking_id"], "profile_id": r["profile_id"],
+            "name": r["name"], "email": r["email"], "room_name": r["room_name"],
+            "arrival_date": r["arrival_date"], "departure_date": r["departure_date"],
+            "party_size": r["party_size"], "reference_code": r["reference_code"],
+            "notes": " · ".join(note_parts) or None, "vip": bool(r["vip"]),
+            "stay_status": status, "stay_status_label": label,
+        })
+    return stays
+
+
+def guests_in_residence(conn, today):
+    """Just the stays covering today -- the common case for every 'who's here'
+    panel across the app."""
+    return [s for s in stays_with_status(conn, today) if s["stay_status"] == "current"]
 
 
 def build_task_sheet(conn, view, anchor):
@@ -3250,6 +3369,209 @@ def build_dashboard_calendar(conn, today):
     return {"weeks": weeks, "month_start": month_start}
 
 
+def build_tv_dashboard_queues(conn, today):
+    """Consolidated 'needs attention' items for the office TV kiosk display --
+    one entry per source table, each with a live count and a short preview
+    list, so nothing pending sits unseen on a page nobody happened to open."""
+    recent_30 = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    queues = []
+
+    leave = conn.execute(
+        """SELECT leave_requests.*, users.name AS employee_name FROM leave_requests
+           JOIN users ON users.id = leave_requests.user_id
+           WHERE leave_requests.status = 'pending'
+           ORDER BY leave_requests.requested_at"""
+    ).fetchall()
+    queues.append({
+        "key": "leave", "label": "Leave requests", "link": url_for("admin_approvals"),
+        "count": len(leave),
+        "preview": [f"{r['employee_name']} — {r['start_date']} to {r['end_date']}" for r in leave[:4]],
+    })
+
+    expenses = conn.execute(
+        """SELECT expenses.*, users.name AS submitter_name FROM expenses
+           LEFT JOIN users ON users.id = expenses.submitted_by_user_id
+           WHERE expenses.status = 'pending'
+           ORDER BY expenses.submitted_at"""
+    ).fetchall()
+    queues.append({
+        "key": "expenses", "label": "Expenses", "link": url_for("admin_approvals"),
+        "count": len(expenses),
+        "preview": [f"{r['submitter_name'] or r['vendor_name'] or 'Unknown'} — €{r['amount']:.2f}" for r in expenses[:4]],
+    })
+
+    corrections = conn.execute(
+        """SELECT timesheet_corrections.*, users.name AS employee_name FROM timesheet_corrections
+           JOIN users ON users.id = timesheet_corrections.user_id
+           WHERE timesheet_corrections.status = 'pending'
+           ORDER BY timesheet_corrections.created_at"""
+    ).fetchall()
+    queues.append({
+        "key": "timesheet", "label": "Timesheet corrections", "link": url_for("admin_timesheet_corrections"),
+        "count": len(corrections),
+        "preview": [f"{r['employee_name']} — {(r['note'] or '')[:40]}" for r in corrections[:4]],
+    })
+
+    pending_rooms = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'pending' ORDER BY bookings.arrival_date"""
+    ).fetchall()
+    queues.append({
+        "key": "pending_rooms", "label": "Room bookings to confirm", "link": url_for("admin_bookings"),
+        "count": len(pending_rooms),
+        "preview": [f"{r['guest_name']} — {r['arrival_date']} · {r['room_name']}" for r in pending_rooms[:4]],
+    })
+
+    pending_dinners = conn.execute(
+        "SELECT * FROM restaurant_bookings WHERE status = 'pending' ORDER BY dinner_date"
+    ).fetchall()
+    queues.append({
+        "key": "pending_dinners", "label": "Dinners to confirm", "link": url_for("admin_restaurant"),
+        "count": len(pending_dinners),
+        "preview": [f"{r['guest_name']} — {r['dinner_date']} · party of {r['party_size']}" for r in pending_dinners[:4]],
+    })
+
+    pending_workshops = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_bookings.status = 'pending' ORDER BY workshop_sessions.start_date"""
+    ).fetchall()
+    queues.append({
+        "key": "pending_workshops", "label": "Workshop regs to confirm", "link": url_for("admin_workshop_registrations"),
+        "count": len(pending_workshops),
+        "preview": [f"{r['guest_name']} — {r['title']}" for r in pending_workshops[:4]],
+    })
+
+    # Vehicle condition/service/overdue-checkout alerts -- same four signals the
+    # interactive dashboard surfaces, collapsed into one tile here.
+    service_soon = (today + timedelta(days=30)).isoformat()
+    vehicle_alerts = (
+        [f"{v['name']} — dirty" for v in conn.execute(
+            "SELECT name FROM vehicles WHERE cleanliness = 'dirty' ORDER BY name").fetchall()]
+        + [f"{v['name']} — low fuel" for v in conn.execute(
+            "SELECT name FROM vehicles WHERE fuel_level = 'low' ORDER BY name").fetchall()]
+        + [f"{v['name']} — service due {v['next_service_due']}" for v in conn.execute(
+            "SELECT name, next_service_due FROM vehicles WHERE next_service_due IS NOT NULL "
+            "AND next_service_due <= ? ORDER BY next_service_due", (service_soon,)).fetchall()]
+        + [f"{c['vehicle_name']} — out with {c['user_name'] or 'unknown'}"
+           for c in overdue_vehicle_checkouts(conn)]
+    )
+    queues.append({
+        "key": "vehicles", "label": "Vehicles", "link": url_for("management_vehicles"),
+        "count": len(vehicle_alerts), "preview": vehicle_alerts[:4],
+    })
+
+    low_stock = conn.execute(
+        "SELECT name FROM breakfast_items WHERE low_stock = 1 ORDER BY name"
+    ).fetchall()
+    queues.append({
+        "key": "stock", "label": "Low stock", "link": url_for("breakfast"),
+        "count": len(low_stock),
+        "preview": [r["name"] for r in low_stock[:4]],
+    })
+
+    balances_due = conn.execute(
+        """SELECT workshop_bookings.guest_name, workshop_bookings.balance_amount,
+                  workshop_bookings.balance_due_date FROM workshop_bookings
+           WHERE status = 'confirmed' AND balance_amount > 0 AND balance_paid_at IS NULL
+             AND balance_due_date IS NOT NULL AND balance_due_date <= ?
+           ORDER BY balance_due_date""",
+        ((today + timedelta(days=7)).isoformat(),),
+    ).fetchall()
+    queues.append({
+        "key": "balances", "label": "Balances due (7d)", "link": url_for("admin_workshop_registrations"),
+        "count": len(balances_due),
+        "preview": [f"{r['guest_name']} — €{r['balance_amount']:.2f} by {r['balance_due_date']}" for r in balances_due[:4]],
+    })
+
+    low_feedback = conn.execute(
+        """SELECT guest_feedback.*, bookings.reference_code FROM guest_feedback
+           LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
+           WHERE rating <= 2 AND submitted_at >= ? ORDER BY submitted_at DESC""",
+        (recent_30,),
+    ).fetchall()
+    queues.append({
+        "key": "feedback", "label": "Low feedback (30d)", "link": url_for("admin_feedback"),
+        "count": len(low_feedback),
+        "preview": [f"{r['guest_name']} — {r['rating']}★" for r in low_feedback[:4]],
+    })
+
+    inbox = conn.execute(
+        "SELECT subject, from_name FROM email_flags WHERE status = 'open' ORDER BY received_at DESC"
+    ).fetchall()
+    queues.append({
+        "key": "inbox", "label": "Inbox flags", "link": url_for("admin_inbox_flags"),
+        "count": len(inbox),
+        "preview": [f"{r['from_name'] or 'Unknown'} — {r['subject'] or '(no subject)'}" for r in inbox[:4]],
+    })
+
+    events = conn.execute(
+        "SELECT * FROM event_inquiries WHERE status = 'new' ORDER BY created_at"
+    ).fetchall()
+    queues.append({
+        "key": "events", "label": "New event inquiries", "link": url_for("admin_events"),
+        "count": len(events),
+        "preview": [f"{r['contact_name']} — {r['preferred_date'] or 'date TBC'}" for r in events[:4]],
+    })
+
+    # Only hand back what's actually firing. A wallboard showing a dozen
+    # permanent "All clear" boxes trains you to ignore the whole band -- the
+    # empty state belongs on the section, not on every category.
+    return [q for q in queues if q["count"]]
+
+
+def build_tv_today_stats(conn, today, who_is_here):
+    """The always-on numbers for the kiosk's top strip -- today's occupancy and
+    covers, as opposed to the Needs Attention band below it which only appears
+    when something is actually wrong.
+
+    `who_is_here` is passed in rather than recomputed so the headcount here is
+    the exact same source as the Current Guests list further down the page --
+    this app keeps a manual `guests` register separate from the `bookings`
+    table, and deriving the two from different tables let them contradict each
+    other on the same screen.
+    """
+    iso = today.isoformat()
+    active = "('pending','confirmed')"
+
+    occupied = conn.execute(
+        f"SELECT COUNT(*) AS c FROM bookings WHERE status IN {active} "
+        "AND arrival_date <= ? AND departure_date > ?", (iso, iso),
+    ).fetchone()["c"]
+    rooms_total = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+    arrivals = conn.execute(
+        f"SELECT COUNT(*) AS c FROM bookings WHERE status IN {active} AND arrival_date = ?", (iso,),
+    ).fetchone()["c"]
+    departures = conn.execute(
+        f"SELECT COUNT(*) AS c FROM bookings WHERE status IN {active} AND departure_date = ?", (iso,),
+    ).fetchone()["c"]
+    guests_in_residence = sum((g["party_size"] or 1) for g in who_is_here)
+    dinner_covers = conn.execute(
+        f"SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings "
+        f"WHERE status IN {active} AND dinner_date = ?", (iso,),
+    ).fetchone()["c"]
+    dinner_tables = conn.execute(
+        f"SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status IN {active} AND dinner_date = ?", (iso,),
+    ).fetchone()["c"]
+
+    return [
+        {"key": "occupancy", "label": "Rooms occupied", "value": occupied,
+         "sub": f"of {rooms_total}" if rooms_total else None, "link": url_for("admin_calendar")},
+        {"key": "guests", "label": "Guests in residence", "value": guests_in_residence,
+         "sub": f"{len(who_is_here)} part{'y' if len(who_is_here) == 1 else 'ies'}" if who_is_here else None,
+         "link": url_for("guests")},
+        {"key": "arrivals", "label": "Arrivals today", "value": arrivals,
+         "sub": None, "link": url_for("admin_bookings")},
+        {"key": "departures", "label": "Departures today", "value": departures,
+         "sub": None, "link": url_for("admin_bookings")},
+        {"key": "dinners", "label": "Dinner covers tonight", "value": dinner_covers,
+         "sub": f"{dinner_tables} booking{'' if dinner_tables == 1 else 's'}" if dinner_tables else None,
+         "link": url_for("admin_restaurant")},
+    ]
+
+
 def ical_escape(text):
     return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
 
@@ -3850,10 +4172,7 @@ def dashboard():
     briefing = None
     my_tasks = []
 
-    who_is_here = [
-        g for g in [guest_with_status(g, today) for g in conn.execute("SELECT * FROM guests").fetchall()]
-        if g["stay_status"] == "current"
-    ]
+    who_is_here = guests_in_residence(conn, today)
     announcements_current = current_announcements(conn, today)
 
     on_shift_by_user = {
@@ -3895,9 +4214,9 @@ def dashboard():
             (today.isoformat(),),
         ).fetchall():
             current_tasks_by_user.setdefault(t["assigned_to_user_id"], []).append(t)
-        all_guests = [guest_with_status(g, today) for g in conn.execute("SELECT * FROM guests").fetchall()]
-        stats["guests_current"] = sum(1 for g in all_guests if g["stay_status"] == "current")
-        stats["guests_upcoming"] = sum(1 for g in all_guests if g["stay_status"] == "upcoming")
+        all_stays = stays_with_status(conn, today)
+        stats["guests_current"] = sum(1 for g in all_stays if g["stay_status"] == "current")
+        stats["guests_upcoming"] = sum(1 for g in all_stays if g["stay_status"] == "upcoming")
         stats["rooms_total"] = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
         stats["bookings_pending"] = conn.execute(
             "SELECT COUNT(*) AS c FROM bookings WHERE status = 'pending'"
@@ -4164,6 +4483,64 @@ def dashboard():
     )
 
 
+@app.route("/admin/tv")
+def tv_dashboard():
+    # A kiosk device authenticates with ?token=TV_DASHBOARD_TOKEN instead of a
+    # login session, since it's meant to sit on a wall reloading itself
+    # unattended for weeks. Anyone with a normal owner session still gets in
+    # without one, same as before.
+    supplied_token = request.args.get("token", "")
+    token_ok = TV_DASHBOARD_TOKEN and hmac.compare_digest(supplied_token, TV_DASHBOARD_TOKEN)
+    if not token_ok:
+        user = current_user()
+        if not user:
+            return redirect(url_for("login"))
+        if user["role"] != "owner":
+            abort(403)
+
+    conn = get_db()
+    today = datetime.now(timezone.utc).date()
+
+    on_shift_now = [
+        dict(r, initials="".join(w[0] for w in r["user_name"].split()[:2]).upper())
+        for r in conn.execute(
+            """SELECT time_entries.*, users.name AS user_name, users.job_role AS user_job_role
+               FROM time_entries JOIN users ON users.id = time_entries.user_id
+               WHERE time_entries.clock_out_at IS NULL
+               ORDER BY time_entries.clock_in_at"""
+        ).fetchall()
+    ]
+    current_tasks_by_user = {}
+    for t in conn.execute(
+        """SELECT * FROM tasks WHERE status != 'done' AND assigned_to_user_id IS NOT NULL
+           AND (due_date IS NULL OR due_date <= ?) ORDER BY (due_date IS NULL), due_date""",
+        (today.isoformat(),),
+    ).fetchall():
+        current_tasks_by_user.setdefault(t["assigned_to_user_id"], []).append(t)
+
+    who_is_here = guests_in_residence(conn, today)
+
+    overview_today = build_overview(conn, "day", today)
+    dashboard_calendar = build_dashboard_calendar(conn, today)
+    today_stats = build_tv_today_stats(conn, today, who_is_here)
+    queues = build_tv_dashboard_queues(conn, today)
+    queues_total = sum(q["count"] for q in queues)
+
+    conn.close()
+    return render_template(
+        "admin_tv_dashboard.html",
+        today=today,
+        on_shift_now=on_shift_now,
+        current_tasks_by_user=current_tasks_by_user,
+        who_is_here=who_is_here,
+        overview_today=overview_today,
+        dashboard_calendar=dashboard_calendar,
+        today_stats=today_stats,
+        queues=queues,
+        queues_total=queues_total,
+    )
+
+
 @app.route("/search")
 @owner_required
 def search():
@@ -4176,8 +4553,11 @@ def search():
         needle = f"%{q}%"
         conn = get_db()
         results["guests"] = conn.execute(
-            "SELECT * FROM guests WHERE name LIKE ? OR notes LIKE ? ORDER BY name LIMIT 20",
-            (needle, needle),
+            """SELECT * FROM guests
+               WHERE name LIKE ? OR notes LIKE ? OR email LIKE ? OR phone LIKE ?
+                  OR preferences LIKE ? OR dietary_notes LIKE ?
+               ORDER BY name LIMIT 20""",
+            (needle,) * 6,
         ).fetchall()
         results["employees"] = conn.execute(
             "SELECT * FROM users WHERE role = 'employee' AND (name LIKE ? OR job_role LIKE ?) ORDER BY name LIMIT 20",
@@ -5723,11 +6103,10 @@ def breakfast():
             "SELECT item_id FROM breakfast_checklist_log WHERE checklist_date = ?", (today.isoformat(),)
         ).fetchall()
     }
-    guests_here = [
-        g for g in [guest_with_status(g, today) for g in conn.execute("SELECT * FROM guests").fetchall()]
-        if g["stay_status"] == "current"
-    ]
-    guest_count = sum(g["party_size"] or 0 for g in guests_here)
+    guests_here = guests_in_residence(conn, today)
+    # `or 1` so a booking with no party size still counts as one person here --
+    # this used to be `or 0`, silently under-reporting the breakfast headcount.
+    guest_count = sum(g["party_size"] or 1 for g in guests_here)
     guest_notes = [g for g in guests_here if g["notes"]]
     occupied_today = occupied_rooms_by_date(conn, today, today + timedelta(days=1)).get(today.isoformat(), 0)
     conn.close()
@@ -5958,23 +6337,46 @@ def admin_terms():
 @app.route("/guests")
 @login_required
 def guests():
+    """Two distinct things on one page: who is physically here right now (derived
+    from bookings) and the standing guest profiles (this table). They used to be
+    the same list, which is what let a cancelled booking leave a phantom guest."""
     q = request.args.get("q", "").strip()
     conn = get_db()
-    rows = conn.execute(
-        "SELECT * FROM guests ORDER BY (arrival_date IS NULL), arrival_date, name"
-    ).fetchall()
-    conn.close()
     today = datetime.now(timezone.utc).date()
-    all_guests = [guest_with_status(g, today) for g in rows]
+
+    stays = stays_with_status(conn, today)
+    in_residence = [s for s in stays if s["stay_status"] == "current"]
+    upcoming = [s for s in stays if s["stay_status"] == "upcoming"]
+
     if q:
-        needle = q.lower()
-        all_guests = [
-            g for g in all_guests
-            if needle in g["name"].lower() or needle in (g["notes"] or "").lower()
-        ]
-    current_upcoming = [g for g in all_guests if g["stay_status"] != "past"]
-    past = [g for g in all_guests if g["stay_status"] == "past"]
-    return render_template("guests.html", current_upcoming=current_upcoming, past=past, q=q)
+        needle = f"%{q}%"
+        profiles = conn.execute(
+            """SELECT * FROM guests
+               WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
+                  OR notes LIKE ? OR preferences LIKE ? OR dietary_notes LIKE ?
+               ORDER BY vip DESC, name""",
+            (needle,) * 6,
+        ).fetchall()
+        lowered = q.lower()
+        in_residence = [s for s in in_residence if lowered in (s["name"] or "").lower()]
+        upcoming = [s for s in upcoming if lowered in (s["name"] or "").lower()]
+    else:
+        profiles = conn.execute("SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
+
+    # How many past stays each profile has, so the list conveys "returning guest"
+    # at a glance rather than needing a click-through.
+    stay_counts = {
+        r["linked_guest_id"]: r["c"] for r in conn.execute(
+            """SELECT linked_guest_id, COUNT(*) AS c FROM bookings
+               WHERE linked_guest_id IS NOT NULL AND status = 'confirmed'
+               GROUP BY linked_guest_id"""
+        ).fetchall()
+    }
+    conn.close()
+    return render_template(
+        "guests.html", in_residence=in_residence, upcoming=upcoming,
+        profiles=profiles, stay_counts=stay_counts, q=q,
+    )
 
 
 @app.route("/guests/new", methods=["GET", "POST"])
@@ -5982,9 +6384,11 @@ def guests():
 def new_guest():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
-        arrival_date = request.form.get("arrival_date", "").strip()
-        departure_date = request.form.get("departure_date", "").strip()
-        party_size = request.form.get("party_size", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+        dietary_notes = request.form.get("dietary_notes", "").strip()
+        preferences = request.form.get("preferences", "").strip()
+        vip = 1 if request.form.get("vip") else 0
         notes = request.form.get("notes", "").strip()
 
         if not name:
@@ -5992,16 +6396,22 @@ def new_guest():
             return render_template("guest_form.html", guest=None)
 
         conn = get_db()
+        if email and conn.execute(
+            "SELECT id FROM guests WHERE email = ?", (email,)
+        ).fetchone():
+            conn.close()
+            flash(f"A guest profile with the email {email} already exists.", "error")
+            return render_template("guest_form.html", guest=None)
         conn.execute(
-            """INSERT INTO guests (name, arrival_date, departure_date, party_size, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (name, arrival_date or None, departure_date or None,
-             int(party_size) if party_size.isdigit() else None, notes,
+            """INSERT INTO guests (name, email, phone, dietary_notes, preferences, vip, notes, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, email or None, phone or None, dietary_notes or None,
+             preferences or None, vip, notes or None,
              datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         conn.close()
-        flash(f"{name} added to the guest list.", "success")
+        flash(f"Guest profile created for {name}.", "success")
         return redirect(url_for("guests"))
 
     return render_template("guest_form.html", guest=None)
@@ -6018,20 +6428,28 @@ def edit_guest(guest_id):
 
     if request.method == "POST":
         name = request.form.get("name", "").strip()
-        arrival_date = request.form.get("arrival_date", "").strip()
-        departure_date = request.form.get("departure_date", "").strip()
-        party_size = request.form.get("party_size", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+        dietary_notes = request.form.get("dietary_notes", "").strip()
+        preferences = request.form.get("preferences", "").strip()
+        vip = 1 if request.form.get("vip") else 0
         notes = request.form.get("notes", "").strip()
 
+        if email and conn.execute(
+            "SELECT id FROM guests WHERE email = ? AND id != ?", (email, guest_id)
+        ).fetchone():
+            conn.close()
+            flash(f"Another guest profile already uses the email {email}.", "error")
+            return redirect(url_for("edit_guest", guest_id=guest_id))
         conn.execute(
-            """UPDATE guests SET name=?, arrival_date=?, departure_date=?, party_size=?, notes=?
-               WHERE id=?""",
-            (name, arrival_date or None, departure_date or None,
-             int(party_size) if party_size.isdigit() else None, notes, guest_id),
+            """UPDATE guests SET name=?, email=?, phone=?, dietary_notes=?,
+               preferences=?, vip=?, notes=? WHERE id=?""",
+            (name, email or None, phone or None, dietary_notes or None,
+             preferences or None, vip, notes or None, guest_id),
         )
         conn.commit()
         conn.close()
-        flash("Guest updated.", "success")
+        flash("Guest profile updated.", "success")
         return redirect(url_for("guests"))
 
     conn.close()
@@ -9827,15 +10245,17 @@ def guest_booking_history(email):
            WHERE promo_code_redemptions.guest_email = ? ORDER BY promo_code_redemptions.redeemed_at DESC""",
         (email,),
     ).fetchall()
+    profile = conn.execute("SELECT * FROM guests WHERE email = ?", (email,)).fetchone()
     conn.close()
-    if not bookings and not dinners and not workshop_regs and not events:
+    # A profile with no activity yet is still a legitimate page to open.
+    if not bookings and not dinners and not workshop_regs and not events and not profile:
         abort(404)
     lifetime_spend = sum(b["total_price"] or 0 for b in bookings if b["status"] == "confirmed")
     lifetime_spend += sum(d["total_price"] or 0 for d in dinners if d["status"] == "confirmed")
     lifetime_spend += sum(w["total_price"] or 0 for w in workshop_regs if w["status"] == "confirmed")
     lifetime_spend += sum(e["quoted_price"] or 0 for e in events if e["status"] == "confirmed")
     return render_template(
-        "guest_booking_history.html", email=email, bookings=bookings, dinners=dinners,
+        "guest_booking_history.html", email=email, profile=profile, bookings=bookings, dinners=dinners,
         workshop_regs=workshop_regs, events=events, promo_redemptions=promo_redemptions,
         lifetime_spend=lifetime_spend,
     )
@@ -9862,16 +10282,23 @@ def confirm_booking_by_id(conn, booking_id):
         return False, conflict_reason
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
 
+    # Find-or-create the guest's standing profile, keyed on email. This used to
+    # insert a fresh per-stay row every time, so a returning guest accumulated a
+    # new "guest" per visit and their history was invisible. The profile holds
+    # nothing stay-specific -- dates and party size stay on the booking.
     guest_id = booking["linked_guest_id"]
+    if not guest_id and booking["guest_email"]:
+        existing = conn.execute(
+            "SELECT id FROM guests WHERE email = ?", (booking["guest_email"],)
+        ).fetchone()
+        guest_id = existing["id"] if existing else None
     if not guest_id:
-        notes = f"Booking {booking['reference_code']} — {room['name']}."
-        if booking["special_requests"]:
-            notes += f" Notes: {booking['special_requests']}"
         cur = conn.execute(
-            """INSERT INTO guests (name, arrival_date, departure_date, party_size, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (booking["guest_name"], booking["arrival_date"], booking["departure_date"],
-             booking["party_size"], notes, datetime.now(timezone.utc).isoformat()),
+            """INSERT INTO guests (name, email, phone, notes, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (booking["guest_name"], booking["guest_email"] or None,
+             booking["guest_phone"] or None, None,
+             datetime.now(timezone.utc).isoformat()),
         )
         guest_id = cur.lastrowid
 
@@ -10205,12 +10632,8 @@ def edit_booking(booking_id):
         )
         conn.commit()
 
-        if booking["linked_guest_id"]:
-            conn.execute(
-                "UPDATE guests SET arrival_date=?, departure_date=?, party_size=? WHERE id=?",
-                (arrival.isoformat(), departure.isoformat(), party_size, booking["linked_guest_id"]),
-            )
-            conn.commit()
+        # No guest-row date sync any more: the booking IS the record of when
+        # this stay is, so there is nothing left to keep in step.
 
         send_email(
             booking["guest_email"],
@@ -11998,9 +12421,9 @@ def export_expenses_csv():
 @owner_required
 def export_guests_csv():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM guests ORDER BY arrival_date").fetchall()
+    rows = conn.execute("SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
     conn.close()
-    fieldnames = ["name", "arrival_date", "departure_date", "party_size", "notes", "created_at"]
+    fieldnames = ["name", "email", "phone", "dietary_notes", "preferences", "vip", "notes", "created_at"]
     return csv_response(fieldnames, rows, "guests.csv")
 
 
@@ -14488,10 +14911,7 @@ def today_sheet():
            ORDER BY users.name""",
         (today.isoformat(), today.isoformat()),
     ).fetchall()
-    guests_here = [
-        g for g in [guest_with_status(g, today) for g in conn.execute("SELECT * FROM guests").fetchall()]
-        if g["stay_status"] == "current"
-    ]
+    guests_here = guests_in_residence(conn, today)
     breakfast_items = conn.execute(
         "SELECT * FROM breakfast_items ORDER BY COALESCE(category, 'zzz'), name"
     ).fetchall()

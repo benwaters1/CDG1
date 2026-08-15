@@ -5,6 +5,9 @@
 
 <div class="page-head">
   <h1>{% if user['role'] == 'owner' %}Welcome back{% else %}Welcome, {{ user['name'].split(' ')[0] }}{% endif %}</h1>
+  {% if user['role'] == 'owner' %}
+  <a href="{{ url_for('tv_dashboard') }}" target="_blank" rel="noopener" class="btn-mini">Open TV Display ↗</a>
+  {% endif %}
   {% if my_shift %}
   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
     <span class="mini-status status-onshift">clocked in at {{ local_time_str(my_shift['clock_in_at']) }}</span>
@@ -252,8 +255,8 @@ function toggleBreak() {
       {% for g in who_is_here %}
       <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
         <div style="display:flex; width:100%; gap:8px;">
-          <span class="mini-name">{{ g['name'] }}</span>
-          <span class="mini-role">{{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+          <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
+          <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
         </div>
         {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
       </div>
@@ -508,8 +511,8 @@ function toggleBreak() {
       {% for g in who_is_here %}
       <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
         <div style="display:flex; width:100%; gap:8px;">
-          <span class="mini-name">{{ g['name'] }}</span>
-          <span class="mini-role">{{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+          <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
+          <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
         </div>
         {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
       </div>

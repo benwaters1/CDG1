@@ -60,8 +60,8 @@
   <div class="mini-list">
     {% for g in guests_here %}
     <div class="mini-row">
-      <span class="mini-name">{{ g['name'] }}</span>
-      <span class="mini-role">{{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+      <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
+      <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
       {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
     </div>
     {% endfor %}

@@ -25,8 +25,8 @@
   <div class="mini-list">
     {% for g in results.guests %}
     <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="mini-row">
-      <span class="mini-name">{{ g['name'] }}</span>
-      <span class="mini-role">{{ g['arrival_date'] or '' }}{% if g['departure_date'] %} → {{ g['departure_date'] }}{% endif %}</span>
+      <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
+      <span class="mini-role">{{ g['email'] or '' }}{% if g['email'] and g['phone'] %} · {% endif %}{{ g['phone'] or '' }}</span>
     </a>
     {% endfor %}
   </div>
