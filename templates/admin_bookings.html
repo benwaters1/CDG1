@@ -10,11 +10,11 @@
     <button type="button" class="btn-mini" onclick="submitBulkBookings('{{ url_for('bulk_confirm_bookings') }}', 'Confirm everything checked?')">Confirm selected (<span id="selected-count">0</span>)</button>
     <button type="button" class="btn-mini btn-mini-danger" onclick="submitBulkBookings('{{ url_for('bulk_decline_bookings') }}', 'Decline everything checked?')">Decline selected</button>
     {% endif %}
-    <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Calendar</a>
-    <a href="{{ url_for('admin_rooms') }}" class="btn-mini">Manage rooms</a>
-    <a href="{{ url_for('admin_extras') }}" class="btn-mini">Manage extras</a>
-    <a href="{{ url_for('admin_terms') }}" class="btn-mini">Terms &amp; Conditions</a>
-    <a href="{{ url_for('export_bookings_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('admin_calendar') }}" class="btn-ghost">Calendar</a>
+    <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Manage rooms</a>
+    <a href="{{ url_for('admin_extras') }}" class="btn-ghost">Manage extras</a>
+    <a href="{{ url_for('admin_terms') }}" class="btn-ghost">Terms &amp; Conditions</a>
+    <a href="{{ url_for('export_bookings_csv') }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>
 <form id="bulk-bookings-form" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
@@ -121,50 +121,12 @@
       {% endif %}
     </div>
 
-    {# Refunds are discretionary here — house terms are non-refundable — so this
-       always asks for an amount and a reason rather than being a one-click
-       "give it all back" button. #}
     {% set already_refunded = refunded_by_booking.get(b['id'], 0) %}
     {% set remaining = (b['total_price'] or 0) - already_refunded %}
     {% if b['payment_status'] in ('paid', 'refunded') and (remaining > 0 or already_refunded > 0) %}
-    <details class="refund-box">
-      <summary>
-        Refund
-        {% if already_refunded > 0 %}
-        <span class="mini-status status-pending">€{{ '%.2f'|format(already_refunded) }} refunded{% if remaining > 0 %} · €{{ '%.2f'|format(remaining) }} left{% endif %}</span>
-        {% endif %}
-      </summary>
-      {% if remaining <= 0 %}
-      <p class="upload-hint">Fully refunded — nothing left to give back.</p>
-      {% else %}
-      <form method="post" action="{{ url_for('refund_booking_admin', booking_id=b['id']) }}"
-            onsubmit="return confirm('Issue this refund? This moves real money.');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="refund-fields">
-          <div>
-            <label class="field-label">Amount (€)</label>
-            <input type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f'|format(remaining) }}"
-                   placeholder="{{ '%.2f'|format(remaining) }}">
-            <span class="upload-hint">Blank = all €{{ '%.2f'|format(remaining) }}</span>
-          </div>
-          <div>
-            <label class="field-label">Method</label>
-            <select name="method">
-              <option value="stripe">Stripe (card)</option>
-              <option value="bank_transfer">Bank transfer</option>
-              <option value="cash">Cash</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div class="refund-reason">
-            <label class="field-label">Reason (required)</label>
-            <input type="text" name="reason" required placeholder="e.g. booked twice by mistake">
-          </div>
-        </div>
-        <button type="submit" class="btn-mini btn-mini-danger">Issue refund</button>
-      </form>
-      {% endif %}
-    </details>
+      {% with action = url_for('refund_booking_admin', booking_id=b['id']) %}
+        {% include "_refund_form.html" %}
+      {% endwith %}
     {% endif %}
 
     {% if b['status'] == 'confirmed' %}

@@ -409,6 +409,17 @@ body.staff-shell .btn-primary:hover{ background:#C89B54; transform:translateY(-1
 }
 body.staff-shell .btn-mini{ background:var(--paper); color:var(--gold-soft); border-color:var(--parchment-line); }
 body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); box-shadow:0 4px 14px rgba(184,133,62,0.16); transform:translateY(-1px); }
+
+/* Utility tier. Some page headers carry seven buttons of equal weight —
+   "Export CSV" and "Terms & Conditions" shouting as loudly as "Confirm".
+   Ghost buttons keep those reachable without competing with real actions. */
+.btn-ghost{
+  font-family:'Inter', sans-serif; font-weight:500; font-size:12.5px;
+  background:transparent; color:var(--ink-soft); border:1px solid transparent;
+  padding:8px 12px; border-radius:6px; cursor:pointer; text-decoration:none;
+  transition: background-color .15s ease, color .15s ease;
+}
+.btn-ghost:hover{ background:var(--status-neutral-bg); color:var(--ink); }
 .btn-text-danger{ background:none; border:none; color:var(--danger); font-size:12.5px; cursor:pointer; padding:0; }
 .danger-zone{ margin-top:26px; padding-top:16px; border-top:1px dashed var(--parchment-line); }
 
@@ -471,11 +482,15 @@ body.staff-shell .action-title{ color:var(--ivory); font-family:'Inter',sans-ser
 .mini-list{ display:flex; flex-direction:column; gap:6px; }
 .mini-row{
   display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-  background:var(--parchment); border:1px solid var(--parchment-line); border-radius:8px;
-  padding:12px 14px; text-decoration:none; color:var(--ink);
-  transition: border-color .15s ease;
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:10px;
+  padding:13px 16px; text-decoration:none; color:var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .12s ease;
 }
-body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
+/* Only rows that are actually links get the affordance — a plain <div>
+   row lifting on hover implies a click target that isn't there. */
+body.staff-shell a.mini-row:hover{
+  border-color:var(--gold); box-shadow:var(--shadow); transform:translateY(-1px);
+}
 .mini-row.inactive{ opacity:0.5; }
 .mini-name{ font-weight:600; font-size:14.5px; flex:1; }
 .mini-role{ font-size:13px; color:var(--ink-soft); }
@@ -559,10 +574,33 @@ body.staff-shell .week-day-head{ color:var(--ivory); font-family:'Inter',sans-se
 }
 
 /* ---------- Expenses ---------- */
-.expense-card{ background:var(--parchment); border:1px solid var(--parchment-line); border-radius:10px; padding:16px 20px; margin-bottom:10px; }
-.expense-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+/* The app's main list-item card — used by ~30 templates (bookings, expenses,
+   workshops, restaurant, vault, waitlists), so it sets the tone almost
+   everywhere. Was a flat hairline box with no depth; now matches the card
+   language established by the stat tiles and calendar. */
+.expense-card{
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px;
+  box-shadow:var(--shadow); padding:18px 22px; margin-bottom:12px;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+.expense-card:hover{ border-color:rgba(184,133,62,0.35); }
+.expense-head{
+  display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;
+  gap:10px; margin-bottom:10px; padding-bottom:10px;
+  border-bottom:1px solid var(--parchment-line);
+}
+.expense-head strong{ font-size:15px; letter-spacing:-0.01em; }
 .expense-actions{ display:flex; flex-direction:row; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+/* Must out-specify `body.staff-shell .btn-mini` (0,2,1), which otherwise
+   repainted every destructive button in the normal gold — "Decline selected"
+   and "Remove" looked exactly like "Confirm". Used across 15 templates. */
 .btn-mini-danger{ background:var(--danger); border-color:var(--danger); color:#2a0a0a; }
+body.staff-shell .btn-mini.btn-mini-danger{
+  background:var(--status-danger-bg); color:var(--danger); border-color:rgba(179,39,30,0.35);
+}
+body.staff-shell .btn-mini.btn-mini-danger:hover{
+  background:var(--danger); color:#fff; border-color:var(--danger); box-shadow:0 4px 14px rgba(179,39,30,0.22);
+}
 .share-link-box{ font-family:'IBM Plex Mono', monospace; font-size:12px; word-break:break-all; background:var(--surface); padding:10px; border-radius:7px; border:1px solid var(--parchment-line); }
 
 .profile-grid .profile-card{
@@ -585,9 +623,13 @@ body.staff-shell .profile-card-name{ color:var(--ivory); font-family:'Inter',san
 .profile-card-status{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; padding:2px 8px; border-radius:10px; margin-top:4px; }
 
 .empty-state, .empty-inline{ color:var(--ink-soft); font-size:13.5px; font-style:italic; }
+/* A dashed outline reads as "something failed to load". An empty list is a
+   normal state, so it gets a quiet filled panel instead. */
 .empty-state{
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
-  text-align:center; padding:34px 20px; border:1.5px dashed var(--parchment-line); border-radius:10px;
+  text-align:center; padding:34px 20px; border-radius:12px;
+  background:var(--paper); border:1px solid var(--parchment-line);
+  color:var(--ink-soft); font-size:13.5px;
 }
 .empty-state svg{ opacity:0.4; width:26px; height:26px; margin:0; }
 

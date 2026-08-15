@@ -6,9 +6,9 @@
 <div class="page-head">
   <h1>Restaurant</h1>
   <div style="display:flex; gap:10px; align-items:center;">
-    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-mini">Menu</a>
-    <a href="{{ url_for('admin_restaurant_settings') }}" class="btn-mini">Settings</a>
-    <a href="{{ url_for('export_restaurant_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">Menu</a>
+    <a href="{{ url_for('admin_restaurant_settings') }}" class="btn-ghost">Settings</a>
+    <a href="{{ url_for('export_restaurant_csv') }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>
 
@@ -185,10 +185,16 @@
       <form method="post" action="{{ url_for('mark_restaurant_no_show', reservation_id=r['id']) }}" onsubmit="return confirm('Mark this party as a no-show?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark no-show</button></form>
       {% endif %}
       {% endif %}
-      {% if r['payment_status'] == 'paid' %}
-      <form method="post" action="{{ url_for('refund_restaurant_booking_admin', reservation_id=r['id']) }}" onsubmit="return confirm('Refund this payment via Stripe?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Refund</button></form>
-      {% endif %}
     </div>
+
+    {% set already_refunded = refunded_by_reservation.get(r['id'], 0) %}
+    {% set paid_amount = r['deposit_amount'] if r['deposit_amount'] else (r['total_price'] or 0) %}
+    {% set remaining = paid_amount - already_refunded %}
+    {% if r['payment_status'] in ('paid', 'refunded') and (remaining > 0 or already_refunded > 0) %}
+      {% with action = url_for('refund_restaurant_booking_admin', reservation_id=r['id']) %}
+        {% include "_refund_form.html" %}
+      {% endwith %}
+    {% endif %}
   </div>
   {% endfor %}
 {% endif %}

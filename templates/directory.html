@@ -7,10 +7,10 @@
   <h1>Team</h1>
   {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
-    <a href="{{ url_for('export_team_csv') }}" class="btn-mini">Export CSV</a>
-    <a href="{{ url_for('export_pay_history_csv') }}" class="btn-mini">Pay History (CSV)</a>
-    <a href="{{ url_for('admin_shifts') }}" class="btn-mini">Shifts</a>
-    <a href="{{ url_for('admin_timesheets') }}" class="btn-mini">Timesheets</a>
+    <a href="{{ url_for('export_team_csv') }}" class="btn-ghost">Export CSV</a>
+    <a href="{{ url_for('export_pay_history_csv') }}" class="btn-ghost">Pay History (CSV)</a>
+    <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
+    <a href="{{ url_for('admin_timesheets') }}" class="btn-ghost">Timesheets</a>
     <a href="{{ url_for('new_employee') }}" class="btn-primary" style="margin-top:0;">+ Add employee</a>
   </div>
   {% endif %}
