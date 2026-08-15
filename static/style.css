@@ -377,6 +377,24 @@ textarea{ min-height:100px; resize:vertical; }
 body.staff-shell .btn-primary{ background:var(--gold); color:var(--chestnut-deep); border-color:var(--gold); font-weight:700; }
 body.staff-shell .btn-primary:hover{ background:#C89B54; transform:translateY(-1px); box-shadow:0 6px 18px rgba(184,133,62,0.28); }
 .btn-block{ width:100%; }
+
+/* ---------- Segmented control (Day / Week / Month switchers) ----------
+   Was a row of .btn-mini with the selected one tinted inline to
+   var(--chestnut-light). That read fine on the old dark palette, but the
+   light re-theme made --chestnut-light a near-white (#FBF8F2) sitting on
+   .btn-mini's --paper (#F7F3EA) — a 1.04:1 contrast ratio, i.e. no visible
+   selected state at all. This makes the selection explicit and themeable. */
+.segmented{ display:inline-flex; border:1px solid var(--parchment-line); border-radius:8px; overflow:hidden; background:var(--surface); }
+.segmented a{
+  padding:7px 15px; font-size:12.5px; font-weight:600; text-decoration:none;
+  color:var(--ink-soft); background:transparent; border:none;
+  border-right:1px solid var(--parchment-line); transition:background-color .15s ease, color .15s ease;
+}
+.segmented a:last-child{ border-right:none; }
+.segmented a:hover{ background:var(--status-neutral-bg); color:var(--ink); }
+/* Dark-on-gold, matching .btn-primary — white on this gold is only 3.25:1,
+   below AA for 12.5px text, whereas --chestnut-deep reaches 4.86:1. */
+.segmented a.is-active{ background:var(--gold); color:var(--chestnut-deep); }
 .btn-mini{
   font-family:'Inter', sans-serif; font-weight:600; font-size:12.5px;
   background:var(--chestnut); color:var(--ivory); border:1px solid var(--gold);

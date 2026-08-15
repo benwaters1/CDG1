@@ -9,9 +9,11 @@
 
 <div class="search-bar" style="justify-content:space-between;">
   <a href="{{ url_for('admin_overview', view=sheet.view, date=sheet.prev_anchor) }}" class="btn-mini">&larr; Prev</a>
-  <div style="display:flex; gap:6px;">
+  <div class="segmented">
     {% for v in ['day', 'week', 'month'] %}
-    <a href="{{ url_for('admin_overview', view=v, date=today.isoformat()) }}" class="btn-mini" style="{{ 'background:var(--chestnut-light);' if sheet.view == v }}">{{ v|capitalize }}</a>
+    <a href="{{ url_for('admin_overview', view=v, date=today.isoformat()) }}"
+       class="{{ 'is-active' if sheet.view == v }}"
+       {{ 'aria-current=page' if sheet.view == v }}>{{ v|capitalize }}</a>
     {% endfor %}
   </div>
   <a href="{{ url_for('admin_overview', view=sheet.view, date=sheet.next_anchor) }}" class="btn-mini">Next &rarr;</a>
