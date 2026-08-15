@@ -9536,7 +9536,9 @@ def admin_calendar():
             (room["id"], next_month.isoformat(), first_day.isoformat()),
         ).fetchall()
         blocked = conn.execute(
-            "SELECT * FROM blocked_dates WHERE room_id = ? AND start_date < ? AND end_date > ?",
+            """SELECT blocked_dates.*, ical_sources.label AS source_label
+               FROM blocked_dates LEFT JOIN ical_sources ON ical_sources.id = blocked_dates.ical_source_id
+               WHERE blocked_dates.room_id = ? AND blocked_dates.start_date < ? AND blocked_dates.end_date > ?""",
             (room["id"], next_month.isoformat(), first_day.isoformat()),
         ).fetchall()
         manual_blocks = conn.execute(
@@ -9546,31 +9548,70 @@ def admin_calendar():
 
         cells = []
         for d in days:
-            status, label = "free", ""
+            status, label, key, link = "free", "", None, None
             for b in bookings:
                 b_start, b_end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
                 if b_start <= d < b_end:
-                    status, label = b["status"], f"{b['guest_name']} ({b['status']})"
+                    status, label = b["status"], b["guest_name"]
+                    key, link = f"b{b['id']}", url_for("edit_booking", booking_id=b["id"])
                     break
             if status == "free":
                 for bl in blocked:
                     bl_start, bl_end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
                     if bl_start <= d < bl_end:
-                        status, label = "external", "Blocked on another platform"
+                        status = "external"
+                        label = bl["source_label"] or "Blocked on another platform"
+                        key = f"x{bl['id']}"
                         break
             if status == "free":
                 for rb in manual_blocks:
                     rb_start, rb_end = parse_date(rb["start_date"]), parse_date(rb["end_date"])
                     if rb_start <= d < rb_end:
                         status, label = "manual-block", rb["reason"] or "Blocked"
+                        key = f"m{rb['id']}"
                         break
-            cells.append({"date": d, "status": status, "label": label})
-        room_rows.append({"room": room, "cells": cells})
+            cells.append({"date": d, "status": status, "label": label, "key": key, "link": link})
+
+        # Collapse consecutive days of the same booking/block into one spanning
+        # cell so the guest's name can actually be READ on the grid. Previously
+        # every day was a separate blank square with the name only in a `title`
+        # tooltip -- invisible on touch devices, and unreadable at a glance even
+        # on desktop. Free days stay one-per-cell so each keeps its own
+        # today-outline and weekend shading.
+        segments = []
+        for cell in cells:
+            if segments and cell["key"] is not None and segments[-1]["key"] == cell["key"]:
+                segments[-1]["span"] += 1
+                segments[-1]["end_date"] = cell["date"]
+            else:
+                segments.append({
+                    "status": cell["status"], "label": cell["label"], "key": cell["key"],
+                    "link": cell["link"], "span": 1,
+                    "date": cell["date"], "end_date": cell["date"],
+                })
+        for seg in segments:
+            seg["has_today"] = seg["date"] <= today <= seg["end_date"]
+            seg["weekend"] = seg["span"] == 1 and seg["date"].weekday() >= 5
+        room_rows.append({"room": room, "cells": cells, "segments": segments})
+
+    # Occupancy for the month being viewed, so the page answers "how full are we?"
+    # without the owner counting coloured squares by eye.
+    total_slots = len(rooms) * len(days)
+    filled = sum(1 for row in room_rows for c in row["cells"] if c["status"] != "free")
+    occupancy_rate = round(filled / total_slots * 100) if total_slots else 0
+    confirmed_nights = sum(
+        1 for row in room_rows for c in row["cells"] if c["status"] == "confirmed"
+    )
+    pending_nights = sum(
+        1 for row in room_rows for c in row["cells"] if c["status"] == "pending"
+    )
     conn.close()
 
     return render_template(
         "admin_calendar.html", days=days, room_rows=room_rows, first_day=first_day, today=today,
         prev_month=prev_month.strftime("%Y-%m"), next_month=next_month.strftime("%Y-%m"),
+        this_month=today.strftime("%Y-%m"), occupancy_rate=occupancy_rate,
+        confirmed_nights=confirmed_nights, pending_nights=pending_nights,
     )
 
 

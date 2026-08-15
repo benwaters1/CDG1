@@ -677,7 +677,32 @@ body.staff-shell .room-price{ color:var(--gold-soft); font-family:'IBM Plex Mono
 .cal-room-col{ text-align:left !important; padding:4px 10px !important; white-space:nowrap; font-weight:600; background:var(--parchment); position:sticky; left:0; }
 .cal-room-col a{ text-decoration:none; color:var(--chestnut-deep); }
 body.staff-shell .cal-room-col a{ color:var(--ivory); }
-.cal-cell{ width:24px; height:24px; }
+.cal-cell{ width:24px; height:26px; }
+
+/* Booking/block runs render as one spanning cell carrying the guest's name,
+   rather than N blank squares with the name hidden in a `title` tooltip
+   (unreachable on touch, unreadable at a glance on desktop). */
+.cal-bar{
+  display:block; width:100%; height:100%; box-sizing:border-box;
+  padding:0 6px; line-height:26px; text-align:left;
+  font-size:11px; font-weight:600; color:var(--chestnut-deep); text-decoration:none;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+a.cal-bar:hover{ text-decoration:underline; }
+.cal-bar-narrow{ padding:0; }
+.cal-table th.cal-weekend, .cal-cell.cal-weekend{ background-image:linear-gradient(rgba(43,38,32,0.045), rgba(43,38,32,0.045)); }
+.cal-dow{ display:block; font-size:9px; opacity:0.65; line-height:1.1; text-transform:uppercase; }
+.cal-dom{ display:block; line-height:1.2; }
+
+.cal-toolbar{
+  display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+  background:var(--parchment); border:1px solid var(--parchment-line); border-radius:10px;
+  padding:12px 16px; margin-bottom:18px;
+}
+.cal-month-label{ font-family:'Playfair Display', serif; font-size:16px; }
+body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:700; }
+.cal-month-jump{ margin:0 0 0 auto; }
+.cal-month-jump input{ font-size:12.5px; padding:5px 8px; width:auto; }
 .cal-cell-free{ background:var(--cal-free-bg); }
 .cal-cell-pending{ background:var(--cal-pending-bg); }
 .cal-cell-confirmed{ background:var(--cal-confirmed-bg); }
