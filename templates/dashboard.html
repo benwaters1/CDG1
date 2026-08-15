@@ -112,7 +112,10 @@ function toggleBreak() {
     <div>
       <div class="page-head" style="margin:0 0 10px;">
         <h2 class="section-heading" style="margin:0;">{{ dashboard_calendar.month_start.strftime('%B %Y') }}</h2>
-        <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Full booking calendar</a>
+        <div style="display:flex; gap:8px;">
+          <a href="{{ url_for('ops_calendar', view='month') }}" class="btn-mini">Open calendar</a>
+          <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Room grid</a>
+        </div>
       </div>
       <div class="month-cal">
         <div class="month-cal-head">
@@ -122,7 +125,9 @@ function toggleBreak() {
         <div class="month-cal-week">
           {% for cell in week %}
           {% if cell %}
-          <div class="month-cal-day {{ 'month-cal-today' if cell.date == today }}">
+          <a class="month-cal-day {{ 'month-cal-today' if cell.date == today }}"
+             href="{{ url_for('ops_calendar', view='day', date=cell.date.isoformat()) }}"
+             title="Open {{ cell.date.strftime('%d %B') }} in the calendar">
             <span class="month-cal-daynum">{{ cell.date.day }}</span>
             <div class="month-cal-badges">
               {% if cell.arrivals %}<span class="month-cal-badge month-cal-badge-arrival">↓ {{ cell.arrivals }}</span>{% endif %}
@@ -130,7 +135,7 @@ function toggleBreak() {
               {% if cell.dinner_covers %}<span class="month-cal-badge month-cal-badge-dinner">{{ icon('restaurant', 9) }}{{ cell.dinner_covers }}</span>{% endif %}
               {% if cell.workshop %}<span class="month-cal-badge month-cal-badge-workshop">{{ icon('workshop', 9) }}</span>{% endif %}
             </div>
-          </div>
+          </a>
           {% else %}
           <div class="month-cal-day month-cal-day-empty"></div>
           {% endif %}

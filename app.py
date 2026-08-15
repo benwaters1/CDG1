@@ -649,6 +649,30 @@ def init_db():
             submitted_at TEXT NOT NULL
         );
 
+        -- Every refund ever issued, across all four booking types. The house
+        -- policy is non-refundable, so refunds are always a deliberate,
+        -- case-by-case decision by the owner -- which is exactly why each one
+        -- needs a reason and an attributable name against it.
+        --
+        -- booking_id is deliberately not a foreign key: it points into one of
+        -- four different tables depending on `category`, which SQLite can't
+        -- express. Look it up via the category.
+        CREATE TABLE IF NOT EXISTS refunds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL CHECK(category IN ('room','restaurant','workshop','event')),
+            booking_id INTEGER NOT NULL,
+            reference_code TEXT,
+            guest_name TEXT,
+            guest_email TEXT,
+            amount REAL NOT NULL,
+            reason TEXT NOT NULL,
+            method TEXT NOT NULL DEFAULT 'stripe'
+                CHECK(method IN ('stripe','bank_transfer','cash','other')),
+            stripe_refund_id TEXT,
+            refunded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             actor_user_id INTEGER REFERENCES users(id),
@@ -2724,12 +2748,18 @@ def _overview_task_range(conn, range_start, range_end):
     ).fetchall()
 
 
-def build_overview(conn, view, anchor):
+def build_overview(conn, view, anchor, fetch_window=None):
     """The unified ops feed — bookings and staff tasks in one filterable
     list for the given date window. Lane/guest/origin/employee filters run
     client-side against data-attributes on each row (instant, no reload);
     only the date range itself is a server round-trip, matching the
-    tasks/calendar pages elsewhere in the app."""
+    tasks/calendar pages elsewhere in the app.
+
+    `fetch_window` widens ONLY the data query, leaving the reported range and
+    prev/next anchors alone. The calendar page uses it so a month grid can
+    also fill the leading/trailing days it borrows from the adjacent months —
+    those cells would otherwise render deceptively empty rather than blank.
+    """
     if view == "day":
         range_start = anchor
         range_end = anchor + timedelta(days=1)
@@ -2741,13 +2771,20 @@ def build_overview(conn, view, anchor):
         range_start = anchor - timedelta(days=anchor.weekday())
         range_end = range_start + timedelta(days=7)
 
+    # Everything below queries against the fetch window; the view's own
+    # range_start/range_end still drive labelling and prev/next.
+    if fetch_window:
+        query_start, query_end = fetch_window
+    else:
+        query_start, query_end = range_start, range_end
+
     owner_row = conn.execute("SELECT id, name FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     owner_id = owner_row["id"] if owner_row else None
     owner_name = owner_row["name"] if owner_row else None
     employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
 
     rows = []
-    for t in _overview_task_range(conn, range_start, range_end):
+    for t in _overview_task_range(conn, query_start, query_end):
         is_owner_task = owner_id is not None and t["assigned_to_user_id"] == owner_id
         rows.append({
             "kind": "task",
@@ -2772,11 +2809,11 @@ def build_overview(conn, view, anchor):
            JOIN rooms ON rooms.id = bookings.room_id
            WHERE status IN ('pending','confirmed')
              AND ((arrival_date >= ? AND arrival_date < ?) OR (departure_date >= ? AND departure_date < ?))""",
-        (range_start.isoformat(), range_end.isoformat(), range_start.isoformat(), range_end.isoformat()),
+        (query_start.isoformat(), query_end.isoformat(), query_start.isoformat(), query_end.isoformat()),
     ).fetchall()
     for b in bookings:
         booking_link = url_for("admin_bookings", q=b["reference_code"])
-        if range_start.isoformat() <= b["arrival_date"] < range_end.isoformat():
+        if query_start.isoformat() <= b["arrival_date"] < query_end.isoformat():
             arrival_detail = f"Party of {b['party_size']}"
             if b["special_requests"]:
                 arrival_detail += f" · {b['special_requests']}"
@@ -2792,7 +2829,7 @@ def build_overview(conn, view, anchor):
                 "detail": arrival_detail,
                 "assignee_id": None, "assignee_name": None, "id": b["id"], "link": booking_link,
             })
-        if range_start.isoformat() <= b["departure_date"] < range_end.isoformat():
+        if query_start.isoformat() <= b["departure_date"] < query_end.isoformat():
             rows.append({
                 "kind": "booking", "lane": "booking", "is_guest": True, "origin": "booking",
                 "scheduled": True, "status": b["status"], "acknowledgment_status": None,
@@ -2805,7 +2842,7 @@ def build_overview(conn, view, anchor):
     dinners = conn.execute(
         """SELECT * FROM restaurant_bookings WHERE status IN ('pending', 'confirmed')
            AND dinner_date >= ? AND dinner_date < ?""",
-        (range_start.isoformat(), range_end.isoformat()),
+        (query_start.isoformat(), query_end.isoformat()),
     ).fetchall()
     for d in dinners:
         rows.append({
@@ -2824,7 +2861,7 @@ def build_overview(conn, view, anchor):
            JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_bookings.status IN ('pending', 'confirmed')
              AND workshop_sessions.start_date >= ? AND workshop_sessions.start_date < ?""",
-        (range_start.isoformat(), range_end.isoformat()),
+        (query_start.isoformat(), query_end.isoformat()),
     ).fetchall()
     for r in workshop_regs:
         rows.append({
@@ -2852,6 +2889,82 @@ def build_overview(conn, view, anchor):
         "range_end": range_end - timedelta(days=1), "rows": rows,
         "employees": employees, "owner_id": owner_id, "owner_name": owner_name,
         "prev_anchor": prev_anchor.isoformat(), "next_anchor": next_anchor.isoformat(),
+    }
+
+
+def build_calendar(conn, view, anchor, viewer=None):
+    """The main ops calendar: every task, arrival, departure, dinner and
+    workshop laid out on actual dates, in day / week / month.
+
+    Built on build_overview so the calendar and the Overview list can never
+    disagree about what's happening — same rows, same links, just arranged
+    on a grid instead of in a feed. The dashboard's month widget stays a
+    read-only glance; this is the one you work in.
+    """
+    if view not in ("day", "week", "month"):
+        view = "week"
+
+
+    if view == "day":
+        span_start, span_end = anchor, anchor + timedelta(days=1)
+        grid_start, grid_end = span_start, span_end
+    elif view == "week":
+        span_start = anchor - timedelta(days=anchor.weekday())
+        span_end = span_start + timedelta(days=7)
+        grid_start, grid_end = span_start, span_end
+    else:
+        span_start = anchor.replace(day=1)
+        span_end = (date(span_start.year + 1, 1, 1) if span_start.month == 12
+                    else date(span_start.year, span_start.month + 1, 1))
+        # Pad out to whole Monday-start weeks so the grid is rectangular.
+        grid_start = span_start - timedelta(days=span_start.weekday())
+        trailing = (7 - span_end.weekday()) % 7
+        grid_end = span_end + timedelta(days=trailing)
+
+    sheet = build_overview(conn, view, anchor, fetch_window=(grid_start, grid_end))
+
+    rows = sheet["rows"]
+    # build_overview is an owner-scoped feed: it returns every task in the
+    # window, including the owner's own private ones. This page is open to
+    # employees too, so anyone who isn't the owner sees only the operational
+    # picture -- guest arrivals/departures, dinners, workshops -- plus the
+    # tasks actually assigned to them. Never the owner's personal lane.
+    if viewer is not None and viewer["role"] != "owner":
+        rows = [
+            r for r in rows
+            if r["lane"] != "owner"
+            and (r["kind"] != "task" or r["assignee_id"] == viewer["id"])
+        ]
+
+    by_date = {}
+    for row in rows:
+        if row["date"]:
+            by_date.setdefault(row["date"], []).append(row)
+
+    today = datetime.now(timezone.utc).date()
+    cells = []
+    d = grid_start
+    while d < grid_end:
+        events = by_date.get(d.isoformat(), [])
+        cells.append({
+            "date": d,
+            "iso": d.isoformat(),
+            "in_span": span_start <= d < span_end,
+            "is_today": d == today,
+            "is_weekend": d.weekday() >= 5,
+            "events": events,
+            "open_count": sum(1 for e in events if e["kind"] != "task" or e["status"] != "done"),
+        })
+        d += timedelta(days=1)
+
+    weeks = [cells[i:i + 7] for i in range(0, len(cells), 7)] if view == "month" else [cells]
+
+    return {
+        "view": view, "anchor": anchor, "cells": cells, "weeks": weeks,
+        "span_start": span_start, "span_end": span_end - timedelta(days=1),
+        "prev_anchor": sheet["prev_anchor"], "next_anchor": sheet["next_anchor"],
+        "employees": sheet["employees"], "owner_id": sheet["owner_id"],
+        "total_events": sum(len(c["events"]) for c in cells if c["in_span"]),
     }
 
 
@@ -3884,18 +3997,122 @@ def create_booking_from_stripe_session(conn, session):
     return manage_token
 
 
-def refund_booking(conn, booking):
-    if booking["payment_status"] != "paid":
-        return False, "This booking was never marked paid."
-    if not booking["stripe_payment_intent_id"] or not stripe_enabled():
-        return False, "No Stripe payment on record for this booking."
+REFUND_TABLES = {
+    "room": "bookings",
+    "restaurant": "restaurant_bookings",
+    "workshop": "workshop_bookings",
+}
+
+
+def refunded_so_far(conn, category, booking_id):
+    """Total already refunded against one booking. Partial refunds can stack,
+    so this is what stops the second one over-refunding."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM refunds WHERE category = ? AND booking_id = ?",
+        (category, booking_id),
+    ).fetchone()
+    return round(row["total"], 2)
+
+
+def amount_paid_for(conn, category, booking):
+    """What the guest has actually handed over, which is the ceiling on any
+    refund. Differs per category: rooms pay the whole total up front, the
+    restaurant may only have taken a deposit, and workshops track real
+    payments in their own ledger."""
+    if category == "workshop":
+        _due, _charged, paid = workshop_balance_due(conn, booking["id"])
+        return round(paid, 2)
+    if category == "restaurant":
+        keys = booking.keys()
+        if "deposit_amount" in keys and booking["deposit_amount"]:
+            return round(booking["deposit_amount"], 2)
+    return round(booking["total_price"] or 0, 2)
+
+
+def refundable_amount(conn, category, booking):
+    return round(max(0.0, amount_paid_for(conn, category, booking) - refunded_so_far(conn, category, booking)), 2)
+
+
+def issue_refund(conn, category, booking, amount, reason, method="stripe", user_id=None):
+    """Issue (or record) a refund of `amount` against one booking.
+
+    Partial refunds are the point here -- the old version could only ever hand
+    back the entire payment, which made "give them half back because they
+    cancelled late" impossible. `method` distinguishes a real Stripe refund
+    from one settled outside the system (bank transfer, cash); the latter is
+    recorded but obviously moves no money here.
+
+    Returns (ok, error). Nothing is written unless the money side succeeded.
+    """
+    if not reason or not reason.strip():
+        return False, "A reason is required for every refund."
     try:
-        stripe.Refund.create(payment_intent=booking["stripe_payment_intent_id"])
-    except Exception as e:
-        return False, str(e)
-    conn.execute("UPDATE bookings SET payment_status = 'refunded' WHERE id = ?", (booking["id"],))
+        amount = round(float(amount), 2)
+    except (TypeError, ValueError):
+        return False, "Enter a valid refund amount."
+    if amount <= 0:
+        return False, "Refund amount must be greater than zero."
+
+    ceiling = refundable_amount(conn, category, booking)
+    if ceiling <= 0:
+        return False, "There's nothing left to refund on this booking."
+    if amount > ceiling + 0.005:  # tolerate float noise, not real over-refunds
+        return False, f"That's more than the €{ceiling:.2f} still refundable on this booking."
+
+    stripe_refund_id = None
+    if method == "stripe":
+        if not stripe_enabled():
+            return False, "Stripe isn't configured, so a card refund can't be issued."
+        intent = booking["stripe_payment_intent_id"] if "stripe_payment_intent_id" in booking.keys() else None
+        if not intent:
+            return False, "No Stripe payment on record — record this as a bank transfer or cash refund instead."
+        try:
+            # Stripe works in the smallest currency unit; euros -> cents.
+            refund = stripe.Refund.create(payment_intent=intent, amount=int(round(amount * 100)))
+            stripe_refund_id = getattr(refund, "id", None)
+        except Exception as e:
+            return False, str(e)
+
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, reference_code, guest_name, guest_email,
+           amount, reason, method, stripe_refund_id, refunded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (category, booking["id"],
+         booking["reference_code"] if "reference_code" in booking.keys() else None,
+         booking["guest_name"] if "guest_name" in booking.keys() else None,
+         booking["guest_email"] if "guest_email" in booking.keys() else None,
+         amount, reason.strip(), method, stripe_refund_id, user_id,
+         datetime.now(timezone.utc).isoformat()),
+    )
+
+    # Only flip the booking to 'refunded' once nothing is left outstanding --
+    # a partial refund leaves it 'paid', with the real figure living in the
+    # refunds table. That avoids rewriting the payment_status CHECK constraint,
+    # which would mean a full table rebuild on a table other rows point at.
+    table = REFUND_TABLES.get(category)
+    if table and refunded_so_far(conn, category, booking["id"]) >= amount_paid_for(conn, category, booking) - 0.005:
+        try:
+            conn.execute(f"UPDATE {table} SET payment_status = 'refunded' WHERE id = ?", (booking["id"],))
+        except sqlite3.OperationalError:
+            pass  # workshop_bookings tracks money in its ledger, not a status column
+
+    if category == "workshop":
+        add_workshop_transaction(conn, booking["id"], "refund", f"Refund — {reason.strip()}",
+                                 amount, method=method, user_id=user_id)
+
     conn.commit()
     return True, None
+
+
+def refund_booking(conn, booking, amount=None, reason="Cancelled by the château", user_id=None):
+    """Back-compat wrapper for the automatic full refund on decline, where the
+    château is the one calling the booking off and owes the money back."""
+    if booking["payment_status"] != "paid":
+        return False, "This booking was never marked paid."
+    amount = refundable_amount(conn, "room", booking) if amount is None else amount
+    if amount <= 0:
+        return False, "There's nothing left to refund on this booking."
+    return issue_refund(conn, "room", booking, amount, reason, method="stripe", user_id=user_id)
 
 
 def is_viewable(filename):
@@ -10278,6 +10495,13 @@ def admin_bookings():
     scheduled_by_date = {}
     for row in conn.execute("SELECT shift_date, user_id FROM shifts WHERE shift_date >= ?", (today_iso,)).fetchall():
         scheduled_by_date.setdefault(row["shift_date"], set()).add(row["user_id"])
+    # How much has already been handed back per booking, so the refund form can
+    # show what's actually left rather than the original total.
+    refunded_by_booking = {
+        r["booking_id"]: round(r["total"], 2) for r in conn.execute(
+            "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'room' GROUP BY booking_id"
+        ).fetchall()
+    }
     conn.close()
     return render_template(
         "admin_bookings.html", bookings=bookings, counts=counts, rooms=rooms, employees=employees,
@@ -10285,6 +10509,7 @@ def admin_bookings():
         arriving_today=arriving_today, departing_today=departing_today, arriving_this_week=arriving_this_week,
         returning_emails=returning_emails, confirmed_spend_by_email=confirmed_spend_by_email,
         scheduled_by_date=scheduled_by_date, today_iso=today_iso,
+        refunded_by_booking=refunded_by_booking,
     )
 
 
@@ -10625,14 +10850,18 @@ def cancel_booking_admin(booking_id):
     )
     conn.commit()
 
-    refunded, refund_error = refund_booking(conn, booking)
-    refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
+    # Cancelling deliberately does NOT refund. House terms are non-refundable,
+    # and refunds here are a case-by-case decision — so the money only moves
+    # when the owner explicitly says so on the refund form. This used to fire
+    # a full Stripe refund automatically, which handed back every euro on a
+    # mis-click and contradicted the stated policy.
+    still_held = refundable_amount(conn, "room", booking) if booking["payment_status"] == "paid" else 0
 
     send_email(
         booking["guest_email"],
         f"Booking cancelled — {booking['room_name']}",
         f"Hi {booking['guest_name']},\n\nYour booking for {booking['room_name']} "
-        f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}) has been cancelled.{refund_note}\n\n"
+        f"({format_date_human(booking['arrival_date'])} to {format_date_human(booking['departure_date'])}) has been cancelled.\n\n"
         f"Reference code: {booking['reference_code']}\n\n— Château de Gudanes",
     )
     notified = notify_room_waitlist_opening(conn, booking["arrival_date"], booking["departure_date"])
@@ -10642,8 +10871,56 @@ def cancel_booking_admin(booking_id):
         remaining = matching_waitlist_entries(conn, booking["arrival_date"], booking["departure_date"])
         waitlist_note = f" {len(remaining)} waitlist entr{'y wants' if len(remaining) == 1 else 'ies want'} overlapping dates — check the waitlist." if remaining else ""
     conn.close()
-    flash("Booking cancelled." + (" Payment refunded." if refunded else (f" Refund failed: {refund_error}" if refund_error and booking["payment_status"] == "paid" else "")) + waitlist_note, "success")
+    money_note = (f" €{still_held:.2f} is still held — issue a refund from the booking if you want to give any of it back."
+                  if still_held > 0 else "")
+    flash("Booking cancelled." + money_note + waitlist_note, "success")
     return redirect(url_for("admin_bookings"))
+
+
+@app.route("/admin/refunds")
+@owner_required
+def admin_refunds():
+    """Every refund ever issued, in one place. The house terms are
+    non-refundable and each refund is a discretionary call, so this doubles as
+    the record of why each exception was made."""
+    conn = get_db()
+    category = request.args.get("category", "").strip()
+    query = """SELECT refunds.*, users.name AS refunded_by_name FROM refunds
+               LEFT JOIN users ON users.id = refunds.refunded_by_user_id"""
+    params = []
+    if category in ("room", "restaurant", "workshop", "event"):
+        query += " WHERE refunds.category = ?"
+        params.append(category)
+    query += " ORDER BY refunds.created_at DESC"
+    refunds = conn.execute(query, params).fetchall()
+
+    totals = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS all_time,
+                  COALESCE(SUM(CASE WHEN created_at >= ? THEN amount END), 0) AS last_30,
+                  COUNT(*) AS count FROM refunds""",
+        ((datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),),
+    ).fetchone()
+    by_category = conn.execute(
+        "SELECT category, COUNT(*) AS c, COALESCE(SUM(amount), 0) AS total FROM refunds GROUP BY category"
+    ).fetchall()
+    conn.close()
+    return render_template("admin_refunds.html", refunds=refunds, totals=totals,
+                           by_category=by_category, category=category)
+
+
+@app.route("/admin/refunds/export.csv")
+@owner_required
+def export_refunds_csv():
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT refunds.*, users.name AS refunded_by_name FROM refunds
+           LEFT JOIN users ON users.id = refunds.refunded_by_user_id
+           ORDER BY refunds.created_at DESC"""
+    ).fetchall()
+    conn.close()
+    fieldnames = ["created_at", "category", "reference_code", "guest_name", "guest_email",
+                  "amount", "reason", "method", "stripe_refund_id", "refunded_by_name"]
+    return csv_response(fieldnames, rows, "refunds.csv")
 
 
 @app.route("/admin/bookings/<int:booking_id>/edit", methods=["GET", "POST"])
@@ -10735,10 +11012,48 @@ def refund_booking_admin(booking_id):
     if not booking:
         conn.close()
         abort(404)
-    refunded, refund_error = refund_booking(conn, booking)
+    amount = request.form.get("amount", "").strip()
+    reason = request.form.get("reason", "").strip()
+    method = request.form.get("method", "stripe").strip() or "stripe"
+    # A blank amount means "all of it" — the common case, and it saves
+    # re-typing a figure the page already shows.
+    if not amount:
+        amount = refundable_amount(conn, "room", booking)
+    ok, error = issue_refund(conn, "room", booking, amount, reason, method=method,
+                             user_id=current_user()["id"])
+    if ok:
+        log_audit(conn, "refund_issued", target=f"room booking {booking['reference_code']}",
+                  details=f"€{float(amount):.2f} — {reason}")
+        conn.commit()
     conn.close()
-    flash("Refund issued." if refunded else f"Refund failed: {refund_error}", "success" if refunded else "error")
-    return redirect(url_for("admin_bookings"))
+    flash(f"Refund of €{float(amount):.2f} recorded." if ok else f"Refund failed: {error}",
+          "success" if ok else "error")
+    return redirect(request.referrer or url_for("admin_bookings"))
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/refund", methods=["POST"])
+@owner_required
+def refund_workshop_admin(registration_id):
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?", (registration_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    amount = request.form.get("amount", "").strip()
+    reason = request.form.get("reason", "").strip()
+    method = request.form.get("method", "stripe").strip() or "stripe"
+    if not amount:
+        amount = refundable_amount(conn, "workshop", booking)
+    ok, error = issue_refund(conn, "workshop", booking, amount, reason, method=method,
+                             user_id=current_user()["id"])
+    if ok:
+        log_audit(conn, "refund_issued", target=f"workshop booking {booking['reference_code']}",
+                  details=f"€{float(amount):.2f} — {reason}")
+        conn.commit()
+    conn.close()
+    flash(f"Refund of €{float(amount):.2f} recorded." if ok else f"Refund failed: {error}",
+          "success" if ok else "error")
+    return redirect(request.referrer or url_for("admin_workshop_registrations"))
 
 
 # ---------------------------------------------------------------------------
@@ -11097,14 +11412,23 @@ def refund_restaurant_booking_admin(reservation_id):
     if not booking:
         conn.close()
         abort(404)
-    refunded, refund_error = refund_restaurant_booking(conn, booking)
-    if refunded:
-        log_audit(conn, "restaurant_booking_refunded", target=booking["reference_code"])
-        flash("Reservation refunded.", "success")
+    amount = request.form.get("amount", "").strip()
+    reason = request.form.get("reason", "").strip()
+    method = request.form.get("method", "stripe").strip() or "stripe"
+    # Blank amount means the whole remaining balance — the usual case.
+    if not amount:
+        amount = refundable_amount(conn, "restaurant", booking)
+    ok, error = issue_refund(conn, "restaurant", booking, amount, reason, method=method,
+                             user_id=current_user()["id"])
+    if ok:
+        log_audit(conn, "refund_issued", target=f"dinner {booking['reference_code']}",
+                  details=f"€{float(amount):.2f} — {reason}")
+        conn.commit()
+        flash(f"Refund of €{float(amount):.2f} recorded.", "success")
     else:
-        flash(f"Refund failed: {refund_error}", "error")
+        flash(f"Refund failed: {error}", "error")
     conn.close()
-    return redirect(url_for("admin_restaurant"))
+    return redirect(request.referrer or url_for("admin_restaurant"))
 
 
 @app.route("/admin/restaurant/export.csv")
@@ -14036,6 +14360,24 @@ def download_backup():
 # what is everyone doing" screen; admin_calendar and admin_tasks remain for
 # their focused day-to-day editing jobs.
 # ---------------------------------------------------------------------------
+
+@app.route("/calendar")
+@login_required
+def ops_calendar():
+    """The main working calendar — day/week/month, every item clickable and
+    filterable. Employees get it too (it's the "what's on" view), but the
+    server only ever hands them rows build_overview already scopes."""
+    view = request.args.get("view", "week")
+    anchor = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    user = current_user()
+    conn = get_db()
+    cal = build_calendar(conn, view, anchor, viewer=user)
+    conn.close()
+    return render_template(
+        "ops_calendar.html", cal=cal, today=datetime.now(timezone.utc).date(),
+        this_month=datetime.now(timezone.utc).date().strftime("%Y-%m"),
+    )
+
 
 @app.route("/admin/overview")
 @owner_required

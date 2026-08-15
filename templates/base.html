@@ -92,7 +92,7 @@
        'download_company_document','management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry',
        'admin_approvals','bulk_approve_queue','management_company_info',
        'management_bank_details','new_bank_details','edit_bank_details','delete_bank_details',
-       'management_financials','export_financials_csv','annual_summary',
+       'management_financials','export_financials_csv','annual_summary','admin_refunds','export_refunds_csv',
        'management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv',
        'management_insurance','new_insurance_policy','edit_insurance_policy','delete_insurance_policy','export_insurance_csv','renew_insurance_policy',
        'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
@@ -103,6 +103,7 @@
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
 
     {% if user['role'] == 'owner' %}
+    <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
     <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>
 
     <div class="nav-dropdown {{ 'open' if request.endpoint in guests_endpoints }}">
@@ -147,6 +148,7 @@
         <a href="{{ url_for('admin_approvals') }}" class="{{ 'active' if request.endpoint=='admin_approvals' }}">{{ icon('approvals') }}Approvals{% if pending_approvals_count %} ({{ pending_approvals_count }}){% endif %}</a>
         <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
         <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
+        <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
         <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint in ['management','management_documents','management_vault','management_company_info','management_bank_details','management_recurring_costs','management_insurance','vendors','audit_log','management_vehicles'] }}">{{ icon('management') }}Management</a>
       </div>
     </div>
@@ -175,6 +177,7 @@
     <a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>
 
     {% else %}
+    <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
     <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint=='guests' }}">{{ icon('guests') }}Guests</a>
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
