@@ -225,13 +225,21 @@ at the time you submit your request — before your booking is confirmed.
 This does not itself guarantee availability; see "Booking Requests" above.
 
 3. Cancellations & Refunds
-- If the château declines or cancels your booking, any payment already
-  taken is refunded automatically.
-- If you cancel a booking yourself, this does not automatically refund
-  any payment already taken — contact the château directly to arrange it.
-- [Owner: add your actual cancellation window / partial-refund policy
-  here, e.g. "Cancellations more than 14 days before arrival receive a
-  full refund; within 14 days, no refund."]
+- Bookings are non-refundable. Once your booking is confirmed and paid
+  for, we do not offer a refund as a matter of course if you cancel or do
+  not arrive.
+- We do, however, look at every cancellation individually. If your
+  circumstances change, please contact us and tell us what has happened.
+  We would rather hear from you than not, and we will do what we
+  reasonably can — including, at our discretion, a full or partial
+  refund. Please treat any such refund as a gesture of goodwill rather
+  than an entitlement.
+- If the château declines your booking request, or cancels a confirmed
+  booking, any payment already taken is refunded in full.
+- Where you booked through Booking.com or another travel site, that
+  site's own cancellation terms apply instead of these, and any refund is
+  arranged through them rather than with us directly.
+- We strongly recommend travel insurance that covers cancellation.
 
 4. Your Information
 We collect your name, email, phone number, and any notes you provide in
@@ -1412,11 +1420,14 @@ def init_db():
                 stay += f", party of {row['party_size']}"
             merged = ((row["notes"] or "").strip() + f"\n[Former register entry: {stay}]").strip()
             conn.execute("UPDATE guests SET notes = ? WHERE id = ?", (merged, row["id"]))
-        # Carry each profile's email over from any booking already linked to it.
+        # Carry each profile's email over from any booking already linked to it,
+        # lower-cased so 'Marie@x.com' and 'marie@x.com' can never become two
+        # profiles for one person.
         conn.execute(
             """UPDATE guests SET email = (
-                   SELECT b.guest_email FROM bookings b
-                   WHERE b.linked_guest_id = guests.id AND b.guest_email IS NOT NULL
+                   SELECT LOWER(TRIM(b.guest_email)) FROM bookings b
+                   WHERE b.linked_guest_id = guests.id
+                     AND b.guest_email IS NOT NULL AND TRIM(b.guest_email) != ''
                    ORDER BY b.id DESC LIMIT 1
                ) WHERE email IS NULL"""
         )
@@ -1431,13 +1442,55 @@ def init_db():
                 pass
         conn.commit()
 
+    # Normalise every stored email before the unique index goes on, and treat a
+    # blank string as "no email" so it can't masquerade as a distinct value.
+    conn.execute("UPDATE guests SET email = LOWER(TRIM(email)) WHERE email IS NOT NULL")
+    conn.execute("UPDATE guests SET email = NULL WHERE TRIM(COALESCE(email, '')) = ''")
+    conn.commit()
+
+    # Merge duplicate-email profiles before the unique index is created.
+    # Under the old per-stay model a RETURNING guest had one row per visit, all
+    # carrying the same email once backfilled -- i.e. duplicates are guaranteed
+    # for exactly the people this refactor exists to serve. Creating the index
+    # first raises IntegrityError (NOT OperationalError, so nothing below would
+    # catch it), init_db() propagates, and the app fails to boot. It also could
+    # not self-heal, because the DROP COLUMNs above commit first, so the next
+    # start skips the whole block and fails identically forever.
+    for dup in conn.execute(
+        """SELECT email, MIN(id) AS keep_id, COUNT(*) AS c FROM guests
+           WHERE email IS NOT NULL GROUP BY email HAVING c > 1"""
+    ).fetchall():
+        others = [r["id"] for r in conn.execute(
+            "SELECT id FROM guests WHERE email = ? AND id != ?", (dup["email"], dup["keep_id"])
+        ).fetchall()]
+        for other_id in others:
+            # Point that person's bookings at the surviving profile, and keep
+            # any notes rather than dropping what the owner typed.
+            conn.execute(
+                "UPDATE bookings SET linked_guest_id = ? WHERE linked_guest_id = ?",
+                (dup["keep_id"], other_id),
+            )
+            extra = conn.execute("SELECT notes FROM guests WHERE id = ?", (other_id,)).fetchone()
+            if extra and (extra["notes"] or "").strip():
+                conn.execute(
+                    "UPDATE guests SET notes = TRIM(COALESCE(notes, '') || char(10) || ?) WHERE id = ?",
+                    (extra["notes"].strip(), dup["keep_id"]),
+                )
+            conn.execute("DELETE FROM guests WHERE id = ?", (other_id,))
+    conn.commit()
+
     # One profile per email address, so confirming a booking can find-or-create
     # rather than piling up a new row per stay. Partial index: profiles added by
-    # hand may legitimately have no email yet.
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_email ON guests(email) WHERE email IS NOT NULL"
-    )
-    conn.commit()
+    # hand may legitimately have no email yet. NOCASE belt-and-braces on top of
+    # the normalisation above. Guarded so a startup can never be blocked by it.
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_email "
+            "ON guests(email COLLATE NOCASE) WHERE email IS NOT NULL"
+        )
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"[init_db] could not create unique guest-email index: {e}")
 
     # tasks.assigned_to_user_id used to be NOT NULL; SQLite can't relax a
     # column constraint in place, so databases from before priority/room_note
@@ -1687,6 +1740,11 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_workshop_custom_fields_workshop_id ON workshop_custom_fields(workshop_id)",
         "CREATE INDEX IF NOT EXISTS idx_workshop_custom_field_responses_booking_id ON workshop_custom_field_responses(workshop_booking_id)",
         "CREATE INDEX IF NOT EXISTS idx_workshop_messages_booking_id ON workshop_messages(workshop_booking_id)",
+        # refunded_so_far() runs this exact lookup once per booking row on every
+        # bookings/restaurant/workshops page render — without it that's a full
+        # table scan per row.
+        "CREATE INDEX IF NOT EXISTS idx_refunds_category_booking ON refunds(category, booking_id)",
+        "CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON refunds(created_at)",
     ):
         conn.execute(index_ddl)
     conn.commit()
@@ -2420,6 +2478,29 @@ def financial_month_summary(conn, month_start, month_end):
              AND preferred_date >= ? AND preferred_date < ?""",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
+    # Money given back is money not earned. A refund never changes a booking's
+    # status or total_price, so without this a refunded stay stayed in revenue
+    # at full value forever -- overstating both revenue and net profit in every
+    # figure the owner and the accountant see. Attributed to the month the
+    # refund was ISSUED, which is when it actually left the business.
+    refunds_by_category = {
+        r["category"]: r["total"] for r in conn.execute(
+            """SELECT category, COALESCE(SUM(amount), 0) AS total FROM refunds
+               WHERE created_at >= ? AND created_at < ? GROUP BY category""",
+            (month_start.isoformat(), month_end.isoformat()),
+        ).fetchall()
+    }
+    room_refunds = refunds_by_category.get("room", 0)
+    restaurant_refunds = refunds_by_category.get("restaurant", 0)
+    workshop_refunds = refunds_by_category.get("workshop", 0)
+    event_refunds = refunds_by_category.get("event", 0)
+    refunds_total = room_refunds + restaurant_refunds + workshop_refunds + event_refunds
+
+    room_revenue -= room_refunds
+    restaurant_revenue -= restaurant_refunds
+    workshop_revenue -= workshop_refunds
+    event_revenue -= event_refunds
+
     revenue = room_revenue + restaurant_revenue + workshop_revenue + event_revenue
     staff_expenses = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
@@ -2458,6 +2539,7 @@ def financial_month_summary(conn, month_start, month_end):
         "event_revenue": round(event_revenue, 2), "staff_expenses": round(staff_expenses, 2),
         "supplier_expenses": round(supplier_expenses, 2), "expenses_total": expenses_total,
         "labour_cost": labour_cost, "net": net,
+        "refunds_total": round(refunds_total, 2),
     }
 
 
@@ -2637,7 +2719,17 @@ def stays_with_status(conn, today, statuses=("confirmed",)):
             status, label = "current", "In residence"
         # Anything the guest asked for on this booking, plus anything standing
         # on their profile -- staff shouldn't have to open two pages.
-        note_parts = [p for p in (r["special_requests"], r["profile_notes"], r["dietary_notes"]) if p]
+        #
+        # The migration folded each retired register entry into the profile note
+        # as "[Former register entry: <old dates>]". Those lines are history and
+        # must not ride along here: shown beside the stay they'd put a second,
+        # contradictory date range in front of staff with nothing marking which
+        # is stale. They stay readable on the profile itself.
+        profile_notes = "\n".join(
+            line for line in (r["profile_notes"] or "").splitlines()
+            if not line.strip().startswith("[Former register entry:")
+        ).strip() or None
+        note_parts = [p for p in (r["special_requests"], profile_notes, r["dietary_notes"]) if p]
         stays.append({
             "booking_id": r["booking_id"], "profile_id": r["profile_id"],
             "name": r["name"], "email": r["email"], "room_name": r["room_name"],
@@ -2939,6 +3031,13 @@ def build_calendar(conn, view, anchor, viewer=None):
             if r["lane"] != "owner"
             and (r["kind"] != "task" or r["assignee_id"] == viewer["id"])
         ]
+        # Every link build_overview attaches points at an @owner_required page
+        # (admin_bookings, admin_restaurant, admin_workshop_registrations), so
+        # an employee clicking anything on their own calendar hit a 403 —
+        # including their own tasks. Send tasks to the dashboard, where their
+        # "What I Need To Do" list actually lives, and leave the rest as plain
+        # information rather than links into pages they can't open.
+        rows = [dict(r, link=(url_for("dashboard") if r["kind"] == "task" else None)) for r in rows]
 
     by_date = {}
     for row in rows:
@@ -3402,6 +3501,14 @@ def compute_month_stats(conn, today):
            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
+    # Net off room refunds issued this month, so the dashboard headline agrees
+    # with the financials page rather than quietly overstating the month.
+    revenue -= conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total FROM refunds
+           WHERE category = 'room' AND created_at >= ? AND created_at < ?""",
+        (month_start.isoformat(), month_end.isoformat()),
+    ).fetchone()["total"]
+    revenue = round(revenue, 2)
 
     arrivals_30d = conn.execute(
         """SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed'
@@ -4010,22 +4117,51 @@ REFUND_TABLES = {
 
 def refunded_so_far(conn, category, booking_id):
     """Total already refunded against one booking. Partial refunds can stack,
-    so this is what stops the second one over-refunding."""
+    so this is what stops the second one over-refunding.
+
+    For workshops this also counts refund rows entered by hand in the booking's
+    own transaction ledger. The owner can record "gave them €500 back in cash"
+    there directly, and if that didn't count against the ceiling the refund form
+    would still offer the full amount -- paying the same guest twice.
+    """
     row = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS total FROM refunds WHERE category = ? AND booking_id = ?",
         (category, booking_id),
     ).fetchone()
-    return round(row["total"], 2)
+    total = row["total"]
+    if category == "workshop":
+        # Only ledger rows NOT written by issue_refund itself -- those are
+        # already counted above, and double-counting is the bug this whole
+        # area keeps producing.
+        manual = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS total FROM workshop_transactions
+               WHERE workshop_booking_id = ? AND kind = 'refund'
+                 AND COALESCE(description, '') NOT LIKE 'Refund — %'""",
+            (booking_id,),
+        ).fetchone()
+        total += manual["total"]
+    return round(total, 2)
 
 
 def amount_paid_for(conn, category, booking):
-    """What the guest has actually handed over, which is the ceiling on any
-    refund. Differs per category: rooms pay the whole total up front, the
-    restaurant may only have taken a deposit, and workshops track real
-    payments in their own ledger."""
+    """GROSS amount the guest has handed over, ignoring anything already given
+    back -- this is the ceiling that `refundable_amount` then subtracts refunds
+    from. Differs per category: rooms pay the whole total up front, the
+    restaurant may only have taken a deposit, and workshops track real payments
+    in their own ledger.
+
+    Must stay gross. `workshop_balance_due` reports paid NET of refund rows, and
+    `issue_refund` writes a refund into that same ledger -- so using its figure
+    here subtracted every refund twice, shrinking the ceiling on each refund
+    until a guest could never be made whole.
+    """
     if category == "workshop":
-        _due, _charged, paid = workshop_balance_due(conn, booking["id"])
-        return round(paid, 2)
+        row = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS paid FROM workshop_transactions
+               WHERE workshop_booking_id = ? AND kind = 'payment'""",
+            (booking["id"],),
+        ).fetchone()
+        return round(row["paid"], 2)
     if category == "restaurant":
         keys = booking.keys()
         if "deposit_amount" in keys and booking["deposit_amount"]:
@@ -4058,6 +4194,12 @@ def issue_refund(conn, category, booking, amount, reason, method="stripe", user_
     if amount <= 0:
         return False, "Refund amount must be greater than zero."
 
+    # Never "refund" something that was never paid -- that would invent money in
+    # the record and flip the booking to 'refunded' from 'unpaid'.
+    keys = booking.keys()
+    if "payment_status" in keys and booking["payment_status"] == "unpaid":
+        return False, "This booking hasn't been paid, so there's nothing to refund."
+
     ceiling = refundable_amount(conn, category, booking)
     if ceiling <= 0:
         return False, "There's nothing left to refund on this booking."
@@ -4070,10 +4212,26 @@ def issue_refund(conn, category, booking, amount, reason, method="stripe", user_
             return False, "Stripe isn't configured, so a card refund can't be issued."
         intent = booking["stripe_payment_intent_id"] if "stripe_payment_intent_id" in booking.keys() else None
         if not intent:
-            return False, "No Stripe payment on record — record this as a bank transfer or cash refund instead."
+            # Workshops in particular have no single payment intent -- deposit
+            # and balance are taken as two separate Stripe sessions -- so a card
+            # refund genuinely cannot be issued from here. Say so plainly rather
+            # than nudging the owner to record a manual refund that moves no
+            # money and then reads as already-paid in the log.
+            return False, (
+                "No single Stripe payment on record for this booking, so a card refund "
+                "can't be issued here. Refund it from the Stripe dashboard, then record "
+                "it below as 'Other' so the log matches."
+            )
         try:
             # Stripe works in the smallest currency unit; euros -> cents.
-            refund = stripe.Refund.create(payment_intent=intent, amount=int(round(amount * 100)))
+            # The idempotency key makes a double-submit or a retry return the
+            # SAME refund instead of creating a second one.
+            refund = stripe.Refund.create(
+                payment_intent=intent,
+                amount=int(round(amount * 100)),
+                idempotency_key=f"gudanes-{category}-{booking['id']}-{int(round(amount * 100))}-"
+                                f"{refunded_so_far(conn, category, booking['id']):.2f}",
+            )
             stripe_refund_id = getattr(refund, "id", None)
         except Exception as e:
             return False, str(e)
@@ -6615,7 +6773,7 @@ def guests():
 def new_guest():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
+        email = request.form.get("email", "").strip().lower() or None
         phone = request.form.get("phone", "").strip()
         dietary_notes = request.form.get("dietary_notes", "").strip()
         preferences = request.form.get("preferences", "").strip()
@@ -6628,7 +6786,7 @@ def new_guest():
 
         conn = get_db()
         if email and conn.execute(
-            "SELECT id FROM guests WHERE email = ?", (email,)
+            "SELECT id FROM guests WHERE email = ? COLLATE NOCASE", (email,)
         ).fetchone():
             conn.close()
             flash(f"A guest profile with the email {email} already exists.", "error")
@@ -6636,7 +6794,7 @@ def new_guest():
         conn.execute(
             """INSERT INTO guests (name, email, phone, dietary_notes, preferences, vip, notes, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (name, email or None, phone or None, dietary_notes or None,
+            (name, email, phone or None, dietary_notes or None,
              preferences or None, vip, notes or None,
              datetime.now(timezone.utc).isoformat()),
         )
@@ -6659,7 +6817,7 @@ def edit_guest(guest_id):
 
     if request.method == "POST":
         name = request.form.get("name", "").strip()
-        email = request.form.get("email", "").strip()
+        email = request.form.get("email", "").strip().lower() or None
         phone = request.form.get("phone", "").strip()
         dietary_notes = request.form.get("dietary_notes", "").strip()
         preferences = request.form.get("preferences", "").strip()
@@ -6667,7 +6825,7 @@ def edit_guest(guest_id):
         notes = request.form.get("notes", "").strip()
 
         if email and conn.execute(
-            "SELECT id FROM guests WHERE email = ? AND id != ?", (email, guest_id)
+            "SELECT id FROM guests WHERE email = ? COLLATE NOCASE AND id != ?", (email, guest_id)
         ).fetchone():
             conn.close()
             flash(f"Another guest profile already uses the email {email}.", "error")
@@ -6675,7 +6833,7 @@ def edit_guest(guest_id):
         conn.execute(
             """UPDATE guests SET name=?, email=?, phone=?, dietary_notes=?,
                preferences=?, vip=?, notes=? WHERE id=?""",
-            (name, email or None, phone or None, dietary_notes or None,
+            (name, email, phone or None, dietary_notes or None,
              preferences or None, vip, notes or None, guest_id),
         )
         conn.commit()
@@ -8295,18 +8453,23 @@ def send_restaurant_email(conn, booking, template_key, context):
     send_email(booking["guest_email"], subject, body)
 
 
-def refund_restaurant_booking(conn, booking):
+def refund_restaurant_booking(conn, booking, reason="Reservation cancelled by the château", user_id=None):
+    """Automatic full refund when the château itself declines or cancels a
+    dinner -- we called it off, so the deposit goes back.
+
+    Goes through issue_refund() so it lands in the `refunds` record like every
+    other refund. It previously called Stripe directly and wrote nothing, which
+    meant the admin page still offered the whole deposit as refundable
+    afterwards: a second, manual refund would pay the guest twice, and none of
+    it appeared in the refunds log or the accountant's export.
+    """
     if booking["payment_status"] != "paid":
         return False, "This reservation was never marked paid."
-    if not booking["stripe_payment_intent_id"] or not stripe_enabled():
-        return False, "No Stripe payment on record for this reservation."
-    try:
-        stripe.Refund.create(payment_intent=booking["stripe_payment_intent_id"])
-    except Exception as e:
-        return False, str(e)
-    conn.execute("UPDATE restaurant_bookings SET payment_status = 'refunded' WHERE id = ?", (booking["id"],))
-    conn.commit()
-    return True, None
+    amount = refundable_amount(conn, "restaurant", booking)
+    if amount <= 0:
+        return False, "There's nothing left to refund on this reservation."
+    return issue_refund(conn, "restaurant", booking, amount, reason,
+                        method="stripe", user_id=user_id)
 
 
 def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner_date, party_size,
@@ -10589,17 +10752,22 @@ def confirm_booking_by_id(conn, booking_id):
     # insert a fresh per-stay row every time, so a returning guest accumulated a
     # new "guest" per visit and their history was invisible. The profile holds
     # nothing stay-specific -- dates and party size stay on the booking.
+    # guest_email is NOT NULL but '' satisfies that, and an empty string is not
+    # an identity -- matching on it would either fail or, worse, mint a brand
+    # new profile on every single confirm, reinstating the per-stay pile-up this
+    # refactor removed. Lower-cased so casing can't split one person in two.
+    guest_email = (booking["guest_email"] or "").strip().lower() or None
     guest_id = booking["linked_guest_id"]
-    if not guest_id and booking["guest_email"]:
+    if not guest_id and guest_email:
         existing = conn.execute(
-            "SELECT id FROM guests WHERE email = ?", (booking["guest_email"],)
+            "SELECT id FROM guests WHERE email = ? COLLATE NOCASE", (guest_email,)
         ).fetchone()
         guest_id = existing["id"] if existing else None
     if not guest_id:
         cur = conn.execute(
             """INSERT INTO guests (name, email, phone, notes, created_at)
                VALUES (?, ?, ?, ?, ?)""",
-            (booking["guest_name"], booking["guest_email"] or None,
+            (booking["guest_name"], guest_email,
              booking["guest_phone"] or None, None,
              datetime.now(timezone.utc).isoformat()),
         )
@@ -11153,6 +11321,16 @@ def restaurant_profit_share(conn, year, month):
         "WHERE status = 'confirmed' AND dinner_date >= ? AND dinner_date < ?",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["t"]
+    # Refunded dinners are not revenue, and this figure decides real money:
+    # the chef is paid a percentage of it. Without this, refunding €1,500 of
+    # dinners after (say) a kitchen closure still paid the chef their share of
+    # that €1,500.
+    dinner_refunds = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS t FROM refunds "
+        "WHERE category = 'restaurant' AND created_at >= ? AND created_at < ?",
+        (month_start.isoformat(), month_end.isoformat()),
+    ).fetchone()["t"]
+    revenue = round(revenue - dinner_refunds, 2)
     expense_costs = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS t FROM expenses WHERE restaurant_related = 1 "
         "AND status IN ('approved', 'paid') AND submitted_at >= ? AND submitted_at < ?",
@@ -11220,12 +11398,18 @@ def admin_restaurant():
     shifts_by_date = {}
     for s in upcoming_shifts:
         shifts_by_date.setdefault(s["dinner_date"], []).append(s)
+    refunded_by_reservation = {
+        r["booking_id"]: round(r["total"], 2) for r in conn.execute(
+            "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'restaurant' GROUP BY booking_id"
+        ).fetchall()
+    }
     conn.close()
     return render_template(
         "admin_restaurant.html", reservations=reservations, status_filter=status_filter,
         pending_count=pending_count, upcoming_covers=upcoming_covers, settings=settings,
         employees=employees, today=today, profit=profit, prev_month=prev_month, next_month=next_month,
         shifts_by_date=shifts_by_date, no_show_count=no_show_count,
+        refunded_by_reservation=refunded_by_reservation,
     )
 
 
@@ -11359,7 +11543,9 @@ def decline_restaurant_booking(reservation_id):
     log_audit(conn, "restaurant_booking_declined", target=booking["reference_code"])
     conn.commit()
 
-    refunded, refund_error = refund_restaurant_booking(conn, booking)
+    refunded, refund_error = refund_restaurant_booking(
+        conn, booking, reason="Reservation declined by the château",
+        user_id=current_user()["id"])
     refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_declined", restaurant_email_context(booking, refund_note))
 
@@ -11393,7 +11579,9 @@ def cancel_restaurant_booking_admin(reservation_id):
     log_audit(conn, "restaurant_booking_cancelled", target=booking["reference_code"])
     conn.commit()
 
-    refunded, refund_error = refund_restaurant_booking(conn, booking)
+    refunded, refund_error = refund_restaurant_booking(
+        conn, booking, reason="Reservation cancelled by the château",
+        user_id=current_user()["id"])
     refund_note = " Your payment has been refunded." if refunded else (" We'll be in touch about your refund." if booking["payment_status"] == "paid" else "")
     send_restaurant_email(conn, booking, "restaurant_cancelled", restaurant_email_context(booking, refund_note))
 
@@ -12388,6 +12576,22 @@ def admin_workshop_registrations():
     messages_by_booking = {}
     for row in conn.execute("SELECT * FROM workshop_messages ORDER BY created_at DESC").fetchall():
         messages_by_booking.setdefault(row["workshop_booking_id"], []).append(row)
+    # What each registration has actually paid (from its ledger) and what has
+    # already been handed back, so the refund form knows its ceiling.
+    refunded_by_registration = {
+        r["booking_id"]: round(r["total"], 2) for r in conn.execute(
+            "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'workshop' GROUP BY booking_id"
+        ).fetchall()
+    }
+    # Gross payments per registration, in ONE grouped query rather than a
+    # lookup per row. (Gross, not the net figure from balance_by_booking -- see
+    # amount_paid_for() for why netting refunds off here double-counts them.)
+    paid_by_registration = {
+        r["workshop_booking_id"]: round(r["paid"], 2) for r in conn.execute(
+            """SELECT workshop_booking_id, SUM(amount) AS paid FROM workshop_transactions
+               WHERE kind = 'payment' GROUP BY workshop_booking_id"""
+        ).fetchall()
+    }
     conn.close()
     return render_template(
         "admin_workshop_registrations.html", registrations=registrations, status_filter=status_filter,
@@ -12395,6 +12599,7 @@ def admin_workshop_registrations():
         guests_by_booking=guests_by_booking, custom_responses_by_booking=custom_responses_by_booking,
         transactions_by_booking=transactions_by_booking, balance_by_booking=balance_by_booking,
         messages_by_booking=messages_by_booking,
+        refunded_by_registration=refunded_by_registration, paid_by_registration=paid_by_registration,
     )
 
 

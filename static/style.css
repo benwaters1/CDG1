@@ -994,7 +994,10 @@ body.staff-shell .month-cal-badge-dinner{ color:var(--steel); }
   text-decoration:none; color:var(--ink); background:var(--status-neutral-bg);
   transition:filter .12s ease, transform .12s ease, box-shadow .12s ease;
 }
-.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:0 2px 8px rgba(43,38,32,0.12); }
+a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:0 2px 8px rgba(43,38,32,0.12); }
+/* Non-link chips (an employee's view of a booking they can't open) must not
+   advertise a click that goes nowhere. */
+.cal-ev-static{ cursor:default; }
 .cal-ev-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Week columns are ~144px — NARROWER than a month cell, so single-line
    ellipsis clipped every label there too. They do have vertical room, so

@@ -6,9 +6,12 @@
 {# One macro for every event chip, so a task looks and behaves the same in
    day, week and month view. data-* attributes drive the client-side filters
    below — same instant-filter pattern the Overview list already uses. #}
+{# Renders as <a> only when there is somewhere the viewer can actually go.
+   This used to fall back to admin_tasks, which is owner-only, so an
+   employee clicking their own task landed on a 403. #}
 {% macro event_chip(e, compact=False) %}
-<a class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-done' if e.kind == 'task' and e.status == 'done' }} {{ 'cal-ev-overdue' if e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat() }}"
-   href="{{ e.link or url_for('admin_tasks', view='day', date=e.date) }}"
+<{{ 'a' if e.link else 'span' }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-static' if not e.link }} {{ 'cal-ev-done' if e.kind == 'task' and e.status == 'done' }} {{ 'cal-ev-overdue' if e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat() }}"
+   {% if e.link %}href="{{ e.link }}"{% endif %}
    data-lane="{{ e.lane }}"
    data-employee="{{ e.assignee_id or '' }}"
    data-status="{{ e.status }}"
@@ -19,7 +22,7 @@
      form there; full title in day/week where there's room. #}
   <span class="cal-ev-text">{{ (e.short or e.title) if compact else e.title }}</span>
   {% if not compact and e.assignee_name %}<span class="cal-ev-who">{{ e.assignee_name }}</span>{% endif %}
-</a>
+</{{ 'a' if e.link else 'span' }}>
 {% endmacro %}
 
 <div class="page-head">
