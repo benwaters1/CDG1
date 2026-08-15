@@ -408,23 +408,35 @@ function togglePasswordVisibility(inputId, btn) {
   btn.setAttribute('aria-label', toText ? 'Hide password' : 'Show password');
 }
 
+// The sidebar's sections are an ACCORDION, not a floating popup: the menu is
+// position:static, it pushes the nav below it, and the section matching the
+// current page is expanded server-side to show you where you are. So the
+// popup-dismissal rules below (outside click, Escape) deliberately skip
+// anything inside .sidebar -- collapsing the current section the moment you
+// clicked into the page was the nav appearing to shut itself for no reason.
+// A genuinely floating dropdown (topbar) still dismisses the usual way.
+function isPopupDropdown(el) { return !el.closest('.sidebar'); }
+
+function closePopupDropdowns() {
+  document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
+    if (isPopupDropdown(d)) d.classList.remove('open');
+  });
+}
+
 function toggleNavDropdown(ev, btn) {
   ev.preventDefault();
   ev.stopPropagation();
   var dropdown = btn.closest('.nav-dropdown');
   var wasOpen = dropdown.classList.contains('open');
+  // Only one section expanded at a time, so a long sidebar stays scannable.
   document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
   if (!wasOpen) dropdown.classList.add('open');
 }
 document.addEventListener('click', function(ev) {
-  if (!ev.target.closest('.nav-dropdown')) {
-    document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
-  }
+  if (!ev.target.closest('.nav-dropdown')) closePopupDropdowns();
 });
 document.addEventListener('keydown', function(ev) {
-  if (ev.key === 'Escape') {
-    document.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
-  }
+  if (ev.key === 'Escape') closePopupDropdowns();
 });
 document.addEventListener('keydown', function(ev) {
   if (ev.key !== '/') return;

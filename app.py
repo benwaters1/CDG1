@@ -16229,6 +16229,14 @@ def admin_outlook_addin():
 
 if __name__ == "__main__":
     init_db()
+    # Running this file directly is the local-development path (production
+    # serves the `app` object through gunicorn and never reaches here), so
+    # pick up template edits without needing a restart. Jinja otherwise
+    # caches compiled templates for the process lifetime whenever debug is
+    # off, which silently serves the old page after every edit. This only
+    # re-stats template files; it does NOT enable the debugger.
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
     # Werkzeug's reloader (debug=True) re-executes this module in a child
     # process with WERKZEUG_RUN_MAIN set — starting the thread only there
     # (or when the reloader isn't in play at all) keeps a single automation
