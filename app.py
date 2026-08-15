@@ -3760,9 +3760,18 @@ def build_office_display_stats(conn, today, who_is_here):
     iso = today.isoformat()
     active = "('pending','confirmed')"
 
+    # Confirmed-only and active-rooms-only, to match both `who_is_here` (which
+    # is confirmed-only) and the denominator below (active-only). Previously
+    # this counted pending bookings in ANY room against an active-rooms total,
+    # so the board could read "1 room occupied / 0 guests in residence" for the
+    # same day, and a booking in a deactivated room could push the numerator
+    # above the total.
     occupied = conn.execute(
-        f"SELECT COUNT(*) AS c FROM bookings WHERE status IN {active} "
-        "AND arrival_date <= ? AND departure_date > ?", (iso, iso),
+        """SELECT COUNT(*) AS c FROM bookings
+           WHERE status = 'confirmed'
+             AND room_id IN (SELECT id FROM rooms WHERE active = 1)
+             AND arrival_date <= ? AND departure_date > ?""",
+        (iso, iso),
     ).fetchone()["c"]
     rooms_total = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
     arrivals = conn.execute(
@@ -3771,7 +3780,9 @@ def build_office_display_stats(conn, today, who_is_here):
     departures = conn.execute(
         f"SELECT COUNT(*) AS c FROM bookings WHERE status IN {active} AND departure_date = ?", (iso,),
     ).fetchone()["c"]
-    guests_in_residence = sum((g["party_size"] or 1) for g in who_is_here)
+    # Named to avoid shadowing the module-level guests_in_residence() helper,
+    # which would silently break any later call added inside this function.
+    guest_headcount = sum((g["party_size"] or 1) for g in who_is_here)
     dinner_covers = conn.execute(
         f"SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings "
         f"WHERE status IN {active} AND dinner_date = ?", (iso,),
@@ -3783,7 +3794,7 @@ def build_office_display_stats(conn, today, who_is_here):
     return [
         {"key": "occupancy", "label": "Rooms occupied", "value": occupied,
          "sub": f"of {rooms_total}" if rooms_total else None, "link": url_for("admin_calendar")},
-        {"key": "guests", "label": "Guests in residence", "value": guests_in_residence,
+        {"key": "guests", "label": "Guests in residence", "value": guest_headcount,
          "sub": f"{len(who_is_here)} part{'y' if len(who_is_here) == 1 else 'ies'}" if who_is_here else None,
          "link": url_for("guests")},
         {"key": "arrivals", "label": "Arrivals today", "value": arrivals,
@@ -7531,7 +7542,7 @@ def book_room(room_id):
                     line_items=line_items,
                     customer_email=guest_email,
                     success_url=url_for("stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
-                    cancel_url=url_for("book_room", room_id=room_id, _external=True),
+                    cancel_url=url_for("stripe_cancel", room_id=room_id, _external=True),
                     metadata={
                         "room_id": str(room_id),
                         "guest_name": guest_name,
@@ -7624,7 +7635,14 @@ def stripe_success():
 
 @app.route("/book/stripe-cancel")
 def stripe_cancel():
+    """Where Stripe returns a guest who abandons checkout. This existed but
+    nothing pointed at it — cancel_url went straight back to the booking
+    form, so the guest got no word that nothing had been booked and could
+    reasonably assume it had. Returns them to the room they were booking."""
     flash("Payment was cancelled — no booking was made.", "error")
+    room_id = request.args.get("room_id", type=int)
+    if room_id:
+        return redirect(url_for("book_room", room_id=room_id))
     return redirect(url_for("book_rooms"))
 
 
@@ -8682,7 +8700,7 @@ def restaurant_book():
                     }],
                     customer_email=guest_email,
                     success_url=url_for("restaurant_stripe_success", _external=True) + "?session_id={CHECKOUT_SESSION_ID}",
-                    cancel_url=url_for("restaurant_book", _external=True),
+                    cancel_url=url_for("restaurant_stripe_cancel", _external=True),
                     metadata={
                         "kind": "restaurant",
                         "guest_name": guest_name,
@@ -9070,7 +9088,7 @@ def start_workshop_stripe_payment(conn, booking_id, kind):
             }],
             customer_email=booking["guest_email"],
             success_url=url_for("workshop_stripe_success", manage_token=booking["manage_token"], kind=kind, _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
-            cancel_url=url_for("workshop_manage", manage_token=booking["manage_token"], _external=True),
+            cancel_url=url_for("workshop_stripe_cancel", manage_token=booking["manage_token"], _external=True),
             metadata={"workshop_booking_id": str(booking_id), "kind": f"workshop_{kind}"},
         )
     except Exception:
