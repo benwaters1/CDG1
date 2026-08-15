@@ -62,11 +62,15 @@
         <td class="cal-cell cal-cell-{{ seg.status }} {{ 'cal-today' if seg.has_today }} {{ 'cal-weekend' if seg.weekend }}"
             colspan="{{ seg.span }}"
             title="{{ seg.label }}{% if seg.status in ('pending','confirmed') %} ({{ seg.status }}){% endif %}">
-          {% if seg.label and seg.span > 1 %}
-            {% if seg.link %}<a href="{{ seg.link }}" class="cal-bar">{{ seg.label }}</a>
-            {% else %}<span class="cal-bar">{{ seg.label }}</span>{% endif %}
-          {% elif seg.link %}
-            <a href="{{ seg.link }}" class="cal-bar cal-bar-narrow" aria-label="{{ seg.label }}"></a>
+          {# Every occupied segment renders a bar — the colour now lives on the
+             bar, not the cell, so a one-night stay must still draw one or it
+             would vanish entirely. Free days deliberately render nothing. #}
+          {% if seg.status != 'free' %}
+            {% if seg.link %}
+            <a href="{{ seg.link }}" class="cal-bar" aria-label="{{ seg.label }}">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</a>
+            {% else %}
+            <span class="cal-bar">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</span>
+            {% endif %}
           {% endif %}
         </td>
         {% endfor %}
