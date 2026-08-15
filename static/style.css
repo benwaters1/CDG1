@@ -285,6 +285,33 @@ body.staff-shell .sidebar{
 }
 .sidebar .nav-dropdown-menu a{ font-size:12.5px; padding:6px 10px; }
 
+/* ---------- Mobile nav: sidebar becomes a slide-out drawer ---------- */
+.sidebar-toggle{
+  display:none; align-items:center; justify-content:center; flex-shrink:0;
+  background:none; border:none; color:var(--ink); cursor:pointer;
+  width:38px; height:38px; border-radius:7px; padding:0;
+}
+body.staff-shell .sidebar-toggle{ color:var(--ink-soft); }
+.sidebar-toggle:hover{ background:var(--status-neutral-bg); }
+.sidebar-backdrop{
+  display:none; position:fixed; inset:0; z-index:390;
+  background:rgba(0,0,0,0.45); opacity:0; transition:opacity .2s ease;
+}
+.sidebar-backdrop.open{ display:block; opacity:1; }
+
+@media (max-width: 860px){
+  .sidebar-toggle{ display:inline-flex; }
+  .sidebar{
+    position:fixed; top:0; bottom:0; left:0; z-index:400;
+    width:78vw; max-width:280px;
+    transform:translateX(-100%);
+    transition:transform .22s ease;
+    box-shadow:8px 0 30px rgba(0,0,0,0.25);
+    overflow-y:auto;
+  }
+  .sidebar.open{ transform:translateX(0); }
+}
+
 .page-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:10px; }
 .page-head h1{ font-family:'Playfair Display', serif; font-size:26px; color:var(--chestnut-deep); margin:0; }
 body.staff-shell .page-head h1{ color:var(--ivory); }

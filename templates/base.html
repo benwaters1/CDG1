@@ -35,6 +35,9 @@
 {% if user %}
 <header class="topbar">
   <div class="topbar-inner">
+    <button type="button" class="sidebar-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="app-sidebar" onclick="toggleSidebar()">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h14M3 10h14M3 14.5h14"/></svg>
+    </button>
     <div class="brand">
       <span class="crest">Château de Gudanes</span>
       <span class="app-name">Staff</span>
@@ -62,7 +65,8 @@
 
 <div class="app-shell">
 {% if user %}
-<aside class="sidebar">
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+<aside class="sidebar" id="app-sidebar">
     {% set guests_endpoints = ['guests','new_guest','edit_guest','admin_bookings','guest_booking_history','confirm_booking','decline_booking',
        'checkout_booking','edit_booking','admin_calendar','admin_rooms','new_room','edit_room','new_room_block',
        'delete_room_block','new_ical_source','sync_ical_source_now','delete_ical_source','admin_extras','new_extra','edit_extra','delete_extra',
@@ -360,6 +364,38 @@ function dropTask(ev, dateStr) {
     .then(function() { if (card) targetCol.appendChild(card); })
     .catch(function() { alert('Could not reschedule that task — check your connection and try again.'); });
 }
+
+function toggleSidebar() {
+  var sidebar = document.getElementById('app-sidebar');
+  var backdrop = document.getElementById('sidebar-backdrop');
+  var btn = document.querySelector('.sidebar-toggle');
+  if (!sidebar) return;
+  var opening = !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', opening);
+  if (backdrop) backdrop.classList.toggle('open', opening);
+  if (btn) btn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+  document.body.style.overflow = opening ? 'hidden' : '';
+}
+function closeSidebar() {
+  var sidebar = document.getElementById('app-sidebar');
+  var backdrop = document.getElementById('sidebar-backdrop');
+  var btn = document.querySelector('.sidebar-toggle');
+  if (sidebar) sidebar.classList.remove('open');
+  if (backdrop) backdrop.classList.remove('open');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(ev) {
+  if (ev.key === 'Escape') closeSidebar();
+});
+// Tapping a nav link should close the drawer instead of leaving it open
+// over the page that just loaded underneath it.
+document.addEventListener('click', function(ev) {
+  var sidebar = document.getElementById('app-sidebar');
+  if (!sidebar || !sidebar.classList.contains('open')) return;
+  var link = ev.target.closest('a');
+  if (link && sidebar.contains(link)) closeSidebar();
+});
 
 function togglePasswordVisibility(inputId, btn) {
   var input = document.getElementById(inputId);
