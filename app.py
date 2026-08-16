@@ -681,6 +681,93 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Training, tickets and certificates a staff member holds. Separate
+        -- from `documents` (which is a filing cabinet): these have an issuer
+        -- and expire, and in French hospitality some of them are legally
+        -- required to be current -- food hygiene for anyone near the kitchen,
+        -- first aid, a licence for whoever drives the guest transfers.
+        CREATE TABLE IF NOT EXISTS certifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            issuer TEXT,
+            reference TEXT,
+            issued_date TEXT,
+            expiry_date TEXT,
+            required INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- When someone is normally free to work. Recurring weekday pattern;
+        -- one row per weekday they've said something about. Absence of a row
+        -- means "no preference stated", not "unavailable".
+        CREATE TABLE IF NOT EXISTS availability_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6),
+            available INTEGER NOT NULL DEFAULT 1,
+            from_time TEXT,
+            to_time TEXT,
+            note TEXT,
+            updated_at TEXT NOT NULL,
+            UNIQUE(user_id, weekday)
+        );
+
+        -- One-off exceptions to the pattern above: "can't do the 14th",
+        -- or "actually free that Sunday".
+        CREATE TABLE IF NOT EXISTS availability_exceptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            on_date TEXT NOT NULL,
+            available INTEGER NOT NULL DEFAULT 0,
+            note TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, on_date)
+        );
+
+        -- Unplanned absence, deliberately NOT the same thing as booked leave:
+        -- annual leave is requested and approved in advance, this is what
+        -- actually happened on the day. Kept apart so a sickness pattern
+        -- doesn't hide inside holiday.
+        CREATE TABLE IF NOT EXISTS absences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'sick'
+                CHECK(kind IN ('sick','emergency','unpaid','unauthorised','other')),
+            reason TEXT,
+            self_certified INTEGER NOT NULL DEFAULT 1,
+            doctor_note_filename TEXT,
+            return_to_work_note TEXT,
+            return_to_work_done_at TEXT,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Structured review, building on the informal check-in notes. The
+        -- acknowledgement step matters: it is the record that the employee
+        -- actually saw what was written about them.
+        CREATE TABLE IF NOT EXISTS performance_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            reviewer_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            review_date TEXT NOT NULL,
+            period_start TEXT,
+            period_end TEXT,
+            overall_rating INTEGER CHECK(overall_rating BETWEEN 1 AND 5),
+            strengths TEXT,
+            improvements TEXT,
+            goals TEXT,
+            employee_comments TEXT,
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK(status IN ('draft','shared','acknowledged')),
+            shared_at TEXT,
+            acknowledged_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             actor_user_id INTEGER REFERENCES users(id),
@@ -1745,6 +1832,13 @@ def init_db():
         # table scan per row.
         "CREATE INDEX IF NOT EXISTS idx_refunds_category_booking ON refunds(category, booking_id)",
         "CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON refunds(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_certifications_expiry ON certifications(expiry_date)",
+        "CREATE INDEX IF NOT EXISTS idx_availability_rules_user_id ON availability_rules(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_availability_exceptions_user_date ON availability_exceptions(user_id, on_date)",
+        "CREATE INDEX IF NOT EXISTS idx_absences_user_id ON absences(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_absences_start_date ON absences(start_date)",
+        "CREATE INDEX IF NOT EXISTS idx_performance_reviews_user_id ON performance_reviews(user_id)",
     ):
         conn.execute(index_ddl)
     conn.commit()
@@ -3807,6 +3901,188 @@ def build_office_display_stats(conn, today, who_is_here):
     ]
 
 
+# ---------------------------------------------------------------------------
+# HR: certifications, availability, absence, working-time compliance, reviews
+# ---------------------------------------------------------------------------
+
+CERT_EXPIRY_WARNING_DAYS = 60
+
+# French working-time defaults. Deliberately configurable constants rather than
+# magic numbers buried in a query -- these are the numbers most likely to need
+# changing for a different contract type or country, and the owner should be
+# able to find them.
+MIN_REST_HOURS_BETWEEN_SHIFTS = 11
+MAX_CONSECUTIVE_DAYS_WORKED = 6
+MAX_WEEKLY_HOURS = 48
+
+
+def expiring_certifications(conn, today, within_days=CERT_EXPIRY_WARNING_DAYS):
+    """Certifications already expired or expiring soon, worst first. `required`
+    ones sort above the nice-to-haves because those are the ones that stop
+    someone legally doing their job."""
+    horizon = (today + timedelta(days=within_days)).isoformat()
+    rows = conn.execute(
+        """SELECT certifications.*, users.name AS employee_name, users.status AS employee_status
+           FROM certifications JOIN users ON users.id = certifications.user_id
+           WHERE certifications.expiry_date IS NOT NULL
+             AND certifications.expiry_date <= ?
+             AND users.status = 'active'
+           ORDER BY certifications.required DESC, certifications.expiry_date""",
+        (horizon,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        expiry = parse_date(r["expiry_date"])
+        days_left = (expiry - today).days if expiry else None
+        out.append(dict(r, days_left=days_left, expired=days_left is not None and days_left < 0))
+    return out
+
+
+def availability_for(conn, user_id, on_date):
+    """Is this person normally free on this date? Returns (available, note).
+
+    A one-off exception always beats the weekly pattern -- that's the whole
+    point of it. No rule at all means "nobody has said", which is treated as
+    available rather than blocking the rota on missing data.
+    """
+    iso = on_date.isoformat() if hasattr(on_date, "isoformat") else str(on_date)
+    exc = conn.execute(
+        "SELECT available, note FROM availability_exceptions WHERE user_id = ? AND on_date = ?",
+        (user_id, iso),
+    ).fetchone()
+    if exc:
+        return bool(exc["available"]), exc["note"]
+    weekday = (parse_date(iso) or on_date).weekday()
+    rule = conn.execute(
+        "SELECT available, note, from_time, to_time FROM availability_rules WHERE user_id = ? AND weekday = ?",
+        (user_id, weekday),
+    ).fetchone()
+    if rule:
+        note = rule["note"]
+        if rule["available"] and (rule["from_time"] or rule["to_time"]):
+            note = f"{rule['from_time'] or '?'}–{rule['to_time'] or '?'}" + (f" · {note}" if note else "")
+        return bool(rule["available"]), note
+    return True, None
+
+
+def unavailable_assigned_shifts(conn, from_date, to_date):
+    """Shifts assigned to someone who said they're not free that day. This is
+    the whole point of collecting availability -- otherwise the rota is built
+    blind and the clash only surfaces when nobody turns up."""
+    rows = conn.execute(
+        """SELECT shifts.*, users.name AS employee_name FROM shifts
+           JOIN users ON users.id = shifts.user_id
+           WHERE shifts.shift_date >= ? AND shifts.shift_date <= ?
+           ORDER BY shifts.shift_date""",
+        (from_date.isoformat(), to_date.isoformat()),
+    ).fetchall()
+    clashes = []
+    for s in rows:
+        ok, note = availability_for(conn, s["user_id"], s["shift_date"])
+        if not ok:
+            clashes.append(dict(s, unavailable_note=note))
+    return clashes
+
+
+def bradford_factor(conn, user_id, since_date):
+    """Bradford Factor = spells² × total days. Weights *frequent short*
+    absences far above one long illness, which is the pattern that actually
+    disrupts a small team -- five separate one-day absences (125) scores far
+    worse than one five-day illness (5). A screening prompt for a
+    conversation, never a disciplinary trigger on its own.
+    """
+    rows = conn.execute(
+        """SELECT start_date, end_date FROM absences
+           WHERE user_id = ? AND kind IN ('sick','unauthorised') AND start_date >= ?""",
+        (user_id, since_date.isoformat()),
+    ).fetchall()
+    spells = len(rows)
+    days = 0
+    for r in rows:
+        s, e = parse_date(r["start_date"]), parse_date(r["end_date"])
+        if s and e:
+            days += max(1, (e - s).days + 1)
+    return {"spells": spells, "days": days, "score": spells * spells * days}
+
+
+def working_time_violations(conn, from_date, to_date):
+    """Check worked time against the rest/consecutive-day/weekly-hours limits.
+
+    Reads `time_entries` -- what people actually did, not what was scheduled --
+    because that's what a labour inspector would look at. Returns one entry per
+    problem found, each naming the person, the rule and the real figure.
+    """
+    rows = conn.execute(
+        """SELECT time_entries.*, users.name AS employee_name, users.id AS uid
+           FROM time_entries JOIN users ON users.id = time_entries.user_id
+           WHERE time_entries.clock_out_at IS NOT NULL
+             AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
+           ORDER BY users.id, time_entries.clock_in_at""",
+        (from_date.isoformat(), (to_date + timedelta(days=1)).isoformat()),
+    ).fetchall()
+
+    by_user = {}
+    for r in rows:
+        by_user.setdefault((r["uid"], r["employee_name"]), []).append(r)
+
+    violations = []
+    for (uid, name), entries in by_user.items():
+        # 1. rest between consecutive shifts
+        for prev, nxt in zip(entries, entries[1:]):
+            out_at = parse_datetime_iso(prev["clock_out_at"])
+            in_at = parse_datetime_iso(nxt["clock_in_at"])
+            if not (out_at and in_at):
+                continue
+            rest = (in_at - out_at).total_seconds() / 3600
+            if 0 <= rest < MIN_REST_HOURS_BETWEEN_SHIFTS:
+                violations.append({
+                    "user_id": uid, "employee_name": name, "rule": "rest",
+                    "detail": f"only {rest:.1f}h rest between shifts "
+                              f"(minimum {MIN_REST_HOURS_BETWEEN_SHIFTS}h)",
+                    "on_date": in_at.astimezone(LOCAL_TZ).date().isoformat(),
+                })
+
+        # 2. consecutive days worked, and 3. hours per ISO week
+        days_worked = sorted({
+            parse_datetime_iso(e["clock_in_at"]).astimezone(LOCAL_TZ).date()
+            for e in entries if parse_datetime_iso(e["clock_in_at"])
+        })
+        run_start, run_len = None, 0
+        for i, d in enumerate(days_worked):
+            if i and (d - days_worked[i - 1]).days == 1:
+                run_len += 1
+            else:
+                run_start, run_len = d, 1
+            if run_len == MAX_CONSECUTIVE_DAYS_WORKED + 1:
+                violations.append({
+                    "user_id": uid, "employee_name": name, "rule": "consecutive_days",
+                    "detail": f"{run_len} days worked in a row without a rest day "
+                              f"(maximum {MAX_CONSECUTIVE_DAYS_WORKED})",
+                    "on_date": d.isoformat(),
+                })
+
+        weekly = {}
+        for e in entries:
+            start = parse_datetime_iso(e["clock_in_at"])
+            if not start:
+                continue
+            local_day = start.astimezone(LOCAL_TZ).date()
+            iso_year, iso_week, _ = local_day.isocalendar()
+            weekly.setdefault((iso_year, iso_week), []).append(e)
+        for (iso_year, iso_week), week_entries in weekly.items():
+            hours = sum(net_hours(e, conn) for e in week_entries)
+            if hours > MAX_WEEKLY_HOURS:
+                violations.append({
+                    "user_id": uid, "employee_name": name, "rule": "weekly_hours",
+                    "detail": f"{hours:.1f}h worked in week {iso_week} "
+                              f"(maximum {MAX_WEEKLY_HOURS}h)",
+                    "on_date": date.fromisocalendar(iso_year, iso_week, 1).isoformat(),
+                })
+
+    violations.sort(key=lambda v: (v["on_date"], v["employee_name"]))
+    return violations
+
+
 def ical_escape(text):
     return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
 
@@ -5669,6 +5945,342 @@ def delete_check_in_note(user_id, note_id):
     conn.commit()
     conn.close()
     return redirect(url_for("profile", user_id=user_id))
+
+
+# ---------------------------------------------------------------------------
+# HR hub — certifications, availability, absence, working time, reviews.
+# One page rather than five, because these are all "how is the team doing"
+# questions the owner asks together, not separate errands.
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/hr")
+@owner_required
+def admin_hr():
+    conn = get_db()
+    today = datetime.now(timezone.utc).date()
+    employees = conn.execute(
+        "SELECT * FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name"
+    ).fetchall()
+
+    certs_expiring = expiring_certifications(conn, today)
+    all_certs = conn.execute(
+        """SELECT certifications.*, users.name AS employee_name FROM certifications
+           JOIN users ON users.id = certifications.user_id
+           ORDER BY (certifications.expiry_date IS NULL), certifications.expiry_date"""
+    ).fetchall()
+
+    week_ahead = today + timedelta(days=14)
+    availability_clashes = unavailable_assigned_shifts(conn, today, week_ahead)
+
+    absences = conn.execute(
+        """SELECT absences.*, users.name AS employee_name FROM absences
+           JOIN users ON users.id = absences.user_id
+           ORDER BY absences.start_date DESC LIMIT 50"""
+    ).fetchall()
+    year_ago = today - timedelta(days=365)
+    bradford = []
+    for e in employees:
+        score = bradford_factor(conn, e["id"], year_ago)
+        if score["spells"]:
+            bradford.append(dict(score, employee_name=e["name"], user_id=e["id"]))
+    bradford.sort(key=lambda b: b["score"], reverse=True)
+
+    violations = working_time_violations(conn, today - timedelta(days=28), today)
+
+    reviews = conn.execute(
+        """SELECT performance_reviews.*, users.name AS employee_name,
+                  reviewer.name AS reviewer_name
+           FROM performance_reviews
+           JOIN users ON users.id = performance_reviews.user_id
+           LEFT JOIN users AS reviewer ON reviewer.id = performance_reviews.reviewer_user_id
+           ORDER BY performance_reviews.review_date DESC LIMIT 50"""
+    ).fetchall()
+    reviewed_ids = {r["user_id"] for r in conn.execute(
+        "SELECT DISTINCT user_id FROM performance_reviews WHERE review_date >= ?",
+        ((today - timedelta(days=365)).isoformat(),),
+    ).fetchall()}
+    review_due = [e for e in employees if e["id"] not in reviewed_ids]
+
+    conn.close()
+    return render_template(
+        "admin_hr.html", today=today, employees=employees,
+        certs_expiring=certs_expiring, all_certs=all_certs,
+        availability_clashes=availability_clashes, week_ahead=week_ahead,
+        absences=absences, bradford=bradford, violations=violations,
+        reviews=reviews, review_due=review_due,
+        rest_hours=MIN_REST_HOURS_BETWEEN_SHIFTS,
+        max_days=MAX_CONSECUTIVE_DAYS_WORKED, max_weekly=MAX_WEEKLY_HOURS,
+    )
+
+
+@app.route("/admin/hr/certifications/new", methods=["POST"])
+@owner_required
+def new_certification():
+    user_id = request.form.get("user_id", "")
+    name = request.form.get("name", "").strip()
+    if not user_id.isdigit() or not name:
+        flash("Choose an employee and give the certification a name.", "error")
+        return redirect(url_for("admin_hr"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO certifications (user_id, name, issuer, reference, issued_date,
+           expiry_date, required, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (int(user_id), name, request.form.get("issuer", "").strip() or None,
+         request.form.get("reference", "").strip() or None,
+         request.form.get("issued_date", "").strip() or None,
+         request.form.get("expiry_date", "").strip() or None,
+         1 if request.form.get("required") else 0,
+         request.form.get("notes", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    log_audit(conn, "certification_added", target=name)
+    conn.commit()
+    conn.close()
+    flash(f"{name} recorded.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/admin/hr/certifications/<int:cert_id>/delete", methods=["POST"])
+@owner_required
+def delete_certification(cert_id):
+    conn = get_db()
+    conn.execute("DELETE FROM certifications WHERE id = ?", (cert_id,))
+    conn.commit()
+    conn.close()
+    flash("Certification removed.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/admin/hr/absences/new", methods=["POST"])
+@owner_required
+def new_absence():
+    user_id = request.form.get("user_id", "")
+    start = request.form.get("start_date", "").strip()
+    end = request.form.get("end_date", "").strip() or start
+    kind = request.form.get("kind", "sick")
+    if not user_id.isdigit() or not start:
+        flash("Choose an employee and a start date.", "error")
+        return redirect(url_for("admin_hr"))
+    if kind not in ("sick", "emergency", "unpaid", "unauthorised", "other"):
+        kind = "other"
+    if parse_date(end) and parse_date(start) and parse_date(end) < parse_date(start):
+        flash("The end date can't be before the start date.", "error")
+        return redirect(url_for("admin_hr"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO absences (user_id, start_date, end_date, kind, reason,
+           self_certified, recorded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (int(user_id), start, end, kind, request.form.get("reason", "").strip() or None,
+         1 if request.form.get("self_certified") else 0,
+         current_user()["id"], datetime.now(timezone.utc).isoformat()),
+    )
+    log_audit(conn, "absence_recorded", target=f"user {user_id} {start}")
+    conn.commit()
+    conn.close()
+    flash("Absence recorded.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/admin/hr/absences/<int:absence_id>/return-to-work", methods=["POST"])
+@owner_required
+def absence_return_to_work(absence_id):
+    note = request.form.get("return_to_work_note", "").strip()
+    conn = get_db()
+    conn.execute(
+        """UPDATE absences SET return_to_work_note = ?, return_to_work_done_at = ?
+           WHERE id = ?""",
+        (note or None, datetime.now(timezone.utc).isoformat(), absence_id),
+    )
+    conn.commit()
+    conn.close()
+    flash("Return-to-work recorded.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/admin/hr/reviews/new", methods=["POST"])
+@owner_required
+def new_performance_review():
+    user_id = request.form.get("user_id", "")
+    review_date = request.form.get("review_date", "").strip()
+    if not user_id.isdigit() or not review_date:
+        flash("Choose an employee and a review date.", "error")
+        return redirect(url_for("admin_hr"))
+    rating = request.form.get("overall_rating", "").strip()
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO performance_reviews (user_id, reviewer_user_id, review_date,
+           period_start, period_end, overall_rating, strengths, improvements, goals,
+           status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)""",
+        (int(user_id), current_user()["id"], review_date,
+         request.form.get("period_start", "").strip() or None,
+         request.form.get("period_end", "").strip() or None,
+         int(rating) if rating.isdigit() and 1 <= int(rating) <= 5 else None,
+         request.form.get("strengths", "").strip() or None,
+         request.form.get("improvements", "").strip() or None,
+         request.form.get("goals", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    log_audit(conn, "performance_review_created", target=f"user {user_id}")
+    conn.commit()
+    conn.close()
+    flash("Review saved as a draft — share it when you're ready.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/admin/hr/reviews/<int:review_id>/share", methods=["POST"])
+@owner_required
+def share_performance_review(review_id):
+    conn = get_db()
+    review = conn.execute(
+        "SELECT * FROM performance_reviews WHERE id = ?", (review_id,)
+    ).fetchone()
+    if not review:
+        conn.close()
+        abort(404)
+    conn.execute(
+        "UPDATE performance_reviews SET status = 'shared', shared_at = ? WHERE id = ? AND status = 'draft'",
+        (datetime.now(timezone.utc).isoformat(), review_id),
+    )
+    send_notification(
+        conn, review["user_id"], "performance_review",
+        "Your performance review is ready",
+        body="Your manager has shared a review with you. Please read it and confirm you've seen it.",
+        link="/my-reviews",
+    )
+    conn.commit()
+    conn.close()
+    flash("Review shared with the employee.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/my-reviews")
+@login_required
+def my_reviews():
+    """An employee's own reviews. Drafts are deliberately excluded -- a review
+    is not theirs to see until the manager has finished writing it."""
+    user = current_user()
+    conn = get_db()
+    reviews = conn.execute(
+        """SELECT performance_reviews.*, reviewer.name AS reviewer_name
+           FROM performance_reviews
+           LEFT JOIN users AS reviewer ON reviewer.id = performance_reviews.reviewer_user_id
+           WHERE performance_reviews.user_id = ? AND performance_reviews.status != 'draft'
+           ORDER BY performance_reviews.review_date DESC""",
+        (user["id"],),
+    ).fetchall()
+    conn.close()
+    return render_template("my_reviews.html", reviews=reviews)
+
+
+@app.route("/my-reviews/<int:review_id>/acknowledge", methods=["POST"])
+@login_required
+def acknowledge_review(review_id):
+    user = current_user()
+    comments = request.form.get("employee_comments", "").strip()
+    conn = get_db()
+    # Scoped to this user's own review, so nobody can acknowledge someone else's.
+    cur = conn.execute(
+        """UPDATE performance_reviews
+           SET status = 'acknowledged', acknowledged_at = ?, employee_comments = ?
+           WHERE id = ? AND user_id = ? AND status = 'shared'""",
+        (datetime.now(timezone.utc).isoformat(), comments or None, review_id, user["id"]),
+    )
+    if cur.rowcount:
+        owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+        if owner_row:
+            send_notification(
+                conn, owner_row["id"], "performance_review",
+                f"{user['name']} acknowledged their review",
+                body=comments[:200] if comments else None, link="/admin/hr",
+            )
+    conn.commit()
+    conn.close()
+    flash("Thanks — your review has been acknowledged." if cur.rowcount
+          else "That review isn't awaiting your acknowledgement.",
+          "success" if cur.rowcount else "error")
+    return redirect(url_for("my_reviews"))
+
+
+@app.route("/availability", methods=["GET", "POST"])
+@login_required
+def my_availability():
+    """Employees keep their own normal weekly availability, plus one-off
+    exceptions. The owner sees clashes on the HR page when a shift is assigned
+    against it."""
+    user = current_user()
+    conn = get_db()
+    if request.method == "POST":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for weekday in range(7):
+            available = 1 if request.form.get(f"available_{weekday}") else 0
+            from_time = request.form.get(f"from_{weekday}", "").strip() or None
+            to_time = request.form.get(f"to_{weekday}", "").strip() or None
+            conn.execute(
+                """INSERT INTO availability_rules (user_id, weekday, available, from_time, to_time, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(user_id, weekday) DO UPDATE SET
+                     available = excluded.available, from_time = excluded.from_time,
+                     to_time = excluded.to_time, updated_at = excluded.updated_at""",
+                (user["id"], weekday, available, from_time, to_time, now_iso),
+            )
+        conn.commit()
+        conn.close()
+        flash("Your availability has been saved.", "success")
+        return redirect(url_for("my_availability"))
+
+    rules = {r["weekday"]: r for r in conn.execute(
+        "SELECT * FROM availability_rules WHERE user_id = ?", (user["id"],)
+    ).fetchall()}
+    today = datetime.now(timezone.utc).date()
+    exceptions = conn.execute(
+        "SELECT * FROM availability_exceptions WHERE user_id = ? AND on_date >= ? ORDER BY on_date",
+        (user["id"], today.isoformat()),
+    ).fetchall()
+    conn.close()
+    weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    return render_template("my_availability.html", rules=rules, exceptions=exceptions,
+                           weekdays=weekdays, today=today)
+
+
+@app.route("/availability/exception", methods=["POST"])
+@login_required
+def add_availability_exception():
+    user = current_user()
+    on_date = request.form.get("on_date", "").strip()
+    if not on_date:
+        flash("Pick a date.", "error")
+        return redirect(url_for("my_availability"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO availability_exceptions (user_id, on_date, available, note, created_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, on_date) DO UPDATE SET
+             available = excluded.available, note = excluded.note""",
+        (user["id"], on_date, 1 if request.form.get("available") else 0,
+         request.form.get("note", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("my_availability"))
+
+
+@app.route("/availability/exception/<int:exception_id>/delete", methods=["POST"])
+@login_required
+def delete_availability_exception(exception_id):
+    user = current_user()
+    conn = get_db()
+    conn.execute(
+        "DELETE FROM availability_exceptions WHERE id = ? AND user_id = ?",
+        (exception_id, user["id"]),
+    )
+    conn.commit()
+    conn.close()
+    return redirect(url_for("my_availability"))
 
 
 # ---------------------------------------------------------------------------
@@ -16217,7 +16829,12 @@ def run_stale_shift_cleanup_job(conn, hours_threshold):
         employee = conn.execute("SELECT name FROM users WHERE id = ?", (entry["user_id"],)).fetchone()
         title = f"A shift was auto-closed after {hours_threshold}h — check it's right"
         body = f"{employee['name'] if employee else 'Someone'} clocked in at {local_datetime_str(entry['clock_in_at'])} and never clocked out, so it was closed automatically."
-        send_notification(conn, entry["user_id"], "shift_auto_closed", "Your last shift was auto-closed", body=body, link="/profile")
+        # /profile is not a route — the employee's own page is /directory/<id>,
+        # so this notification 404'd for the person being told to check it.
+        send_notification(
+            conn, entry["user_id"], "shift_auto_closed", "Your last shift was auto-closed",
+            body=body, link=f"/directory/{entry['user_id']}",
+        )
         if owner_row:
             send_notification(conn, owner_row["id"], "shift_auto_closed", title, body=body, link=f"/directory/{entry['user_id']}")
     if stale:

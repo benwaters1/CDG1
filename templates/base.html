@@ -80,6 +80,8 @@
        'candidates','new_candidate','edit_candidate','update_candidate_status','delete_candidate','export_candidates_csv','edit_own_contact_info',
        'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
        'my_shifts','respond_shift_swap','decide_shift_swap','ask_hr','admin_hr_notes','handle_hr_note',
+       'admin_hr','new_certification','delete_certification','new_absence','absence_return_to_work',
+       'new_performance_review','share_performance_review',
        'team_calendar','admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections',
        'resolve_timesheet_correction','dismiss_timesheet_correction',
        'export_timesheets_csv','export_timesheets_summary_csv','export_team_csv','admin_leave','decide_leave','export_leave_csv','admin_tasks','new_task','toggle_task',
@@ -87,18 +89,25 @@
        'new_manual_section','delete_manual_section','contacts','new_contact','edit_contact','delete_contact',
        'shopping_list','new_shopping_item','toggle_shopping_item','delete_shopping_item','clear_bought_items',
        'announcements','new_announcement','delete_announcement'] %}
+    {# Financial is now genuinely financial. The Management hub used to live in
+       here, but four of its five sections (Marketing, Automation, Reference,
+       Access) aren't financial — and burying it meant e.g. "who's driving the
+       airport run" sat five clicks deep. It's a top-level group below. #}
     {% set financial_endpoints = ['expenses','decide_expense','delete_expense','regenerate_supplier_link','export_expenses_csv',
-       'management','management_documents','upload_company_document','edit_company_document','delete_company_document','view_company_document',
-       'download_company_document','management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry',
-       'admin_approvals','bulk_approve_queue','management_company_info',
+       'admin_approvals','bulk_approve_queue',
        'management_bank_details','new_bank_details','edit_bank_details','delete_bank_details',
        'management_financials','export_financials_csv','annual_summary','admin_refunds','export_refunds_csv',
-       'management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv',
+       'management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv'] %}
+    {% set management_endpoints = ['management','management_documents','upload_company_document','edit_company_document',
+       'delete_company_document','view_company_document','download_company_document',
+       'management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry','management_company_info',
        'management_insurance','new_insurance_policy','edit_insurance_policy','delete_insurance_policy','export_insurance_csv','renew_insurance_policy',
        'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
        'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
        'log_vehicle_service','new_vehicle_maintenance','resolve_vehicle_maintenance','delete_vehicle_maintenance',
-       'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv'] %}
+       'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv',
+       'admin_automation','update_automation_settings','run_automation_job_now','admin_inbox_flags','admin_inbox_flags_status',
+       'admin_outlook_addin','management_email_templates','management_social','admin_promo_codes','admin_deposit_rules','promo_code_blast'] %}
   <nav class="nav">
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
 
@@ -130,6 +139,7 @@
         <a href="{{ url_for('equipment_overview') }}" class="{{ 'active' if request.endpoint in ['equipment_overview','export_equipment_csv'] }}">{{ icon('shopping') }}Equipment</a>
         <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
         <a href="{{ url_for('admin_hr_notes') }}" class="{{ 'active' if request.endpoint=='admin_hr_notes' }}">{{ icon('contacts') }}Ask HR{% if open_hr_notes_count %} ({{ open_hr_notes_count }}){% endif %}</a>
+        <a href="{{ url_for('admin_hr') }}" class="{{ 'active' if request.endpoint=='admin_hr' }}">{{ icon('approvals') }}HR &amp; Compliance</a>
         <a href="{{ url_for('admin_tasks') }}" class="{{ 'active' if request.endpoint=='admin_tasks' }}">{{ icon('tasks') }}Tasks</a>
         <a href="{{ url_for('admin_shifts') }}" class="{{ 'active' if request.endpoint=='admin_shifts' }}">{{ icon('shifts') }}Shifts</a>
         <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
@@ -149,7 +159,27 @@
         <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
         <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
-        <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint in ['management','management_documents','management_vault','management_company_info','management_bank_details','management_recurring_costs','management_insurance','vendors','audit_log','management_vehicles'] }}">{{ icon('management') }}Management</a>
+        <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
+        <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
+      </div>
+    </div>
+
+    <div class="nav-dropdown {{ 'open' if request.endpoint in management_endpoints }}">
+      <a href="{{ url_for('management') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in management_endpoints }}">{{ icon('management') }}Management</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
+        <a href="{{ url_for('management_vehicles') }}" class="{{ 'active' if request.endpoint=='management_vehicles' }}">{{ icon('car') }}Vehicles</a>
+        <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
+        <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
+        <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
+        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company Info</a>
+        <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
+        <a href="{{ url_for('management_email_templates') }}" class="{{ 'active' if request.endpoint=='management_email_templates' }}">{{ icon('megaphone') }}Email Templates</a>
+        <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
+        <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
+        <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
+        <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
       </div>
     </div>
 
@@ -181,8 +211,8 @@
     <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint=='guests' }}">{{ icon('guests') }}Guests</a>
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar'] }}">
-      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar'] }}">{{ icon('employee') }}Employee</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar','my_availability','my_reviews'] }}">
+      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar','my_availability','my_reviews'] }}">{{ icon('employee') }}Employee</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('profile', user_id=user['id']) }}" class="{{ 'active' if request.endpoint=='profile' }}">{{ icon('employee') }}My Profile</a>
@@ -192,6 +222,8 @@
         <a href="{{ url_for('my_shifts') }}" class="{{ 'active' if request.endpoint=='my_shifts' }}">{{ icon('shifts') }}My Shifts</a>
         <a href="{{ url_for('my_leave') }}" class="{{ 'active' if request.endpoint=='my_leave' }}">{{ icon('leave') }}Time Off</a>
         <a href="{{ url_for('ask_hr') }}" class="{{ 'active' if request.endpoint=='ask_hr' }}">{{ icon('contacts') }}Ask HR</a>
+        <a href="{{ url_for('my_availability') }}" class="{{ 'active' if request.endpoint=='my_availability' }}">{{ icon('calendar') }}My Availability</a>
+        <a href="{{ url_for('my_reviews') }}" class="{{ 'active' if request.endpoint=='my_reviews' }}">{{ icon('approvals') }}My Reviews</a>
         <a href="{{ url_for('manual') }}" class="{{ 'active' if request.endpoint=='manual' }}">{{ icon('manual') }}Manual</a>
         <a href="{{ url_for('contacts') }}" class="{{ 'active' if request.endpoint=='contacts' }}">{{ icon('contacts') }}Contacts</a>
         <a href="{{ url_for('shopping_list') }}" class="{{ 'active' if request.endpoint=='shopping_list' }}">{{ icon('shopping') }}Shopping</a>
