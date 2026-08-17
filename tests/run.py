@@ -34,6 +34,7 @@ SUITES = [
     "test_terminal",
     "test_arrive",
     "test_design",
+    "test_links",
 ]
 
 
