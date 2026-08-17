@@ -5,6 +5,60 @@ file, no complicated build process. Two realistic options below, easiest first.
 
 ---
 
+## Local secrets: the `.env` file
+
+Every secret (Stripe, email, Microsoft Graph, Anthropic, the vault key) can go
+in a `.env` file next to `app.py`, one `KEY=value` per line. It's gitignored,
+so it never reaches GitHub. Real environment variables always win over the
+file, so hosting platforms are unaffected.
+
+```
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+```
+
+Restart the app after editing it.
+
+---
+
+## Testing Stripe locally (before going live)
+
+Use **test-mode** keys (`sk_test_…`) — no real money moves. With those set,
+booking switches from request-only to a real Stripe Checkout page.
+
+To test what happens *after* payment, Stripe needs a way to reach your laptop.
+Install the CLI (`winget install --id Stripe.StripeCli -e --source winget`),
+then:
+
+```
+stripe login
+stripe listen --forward-to localhost:5000/webhooks/stripe
+```
+
+That prints a signing secret (`whsec_…`). **It is regenerated every time you
+run `stripe listen`**, so don't bother saving it in `.env` — pass it to the
+app for that session instead:
+
+```
+STRIPE_WEBHOOK_SECRET=whsec_... python app.py
+```
+
+Leave `stripe listen` running in its own window, then pay with test card
+`4242 4242 4242 4242`, any future expiry, any CVC.
+
+**In production the webhook secret is different and stable**: create the
+endpoint at Dashboard → Developers → Webhooks pointing at
+`https://<your-domain>/webhooks/stripe` for the `checkout.session.completed`
+event, and use the secret it gives you. That one *does* belong in your hosting
+platform's environment variables.
+
+Why the webhook matters: the booking is created both when the guest returns
+from Stripe *and* by the webhook, so a guest who pays and immediately closes
+the browser still gets their booking. A unique index on the Stripe session id
+means those two paths can never produce a duplicate.
+
+---
+
 ## Option A — Railway (easiest, ~10 minutes, free tier works for this size)
 
 Railway takes a folder of code and gives you a live URL. No server management.
@@ -215,21 +269,32 @@ for you either, since it needs your own Microsoft 365 admin login.
    organization]"** → confirm. Skipping this is the single most common
    mistake — without it, every request this app makes to Graph fails with
    a permissions error, even though the permission is listed.
-6. **Restrict it to one mailbox.** As granted above, this app can technically
-   read *every* mailbox in your Microsoft 365 tenant, not just the one you
-   want scanned. Lock that down with an Exchange Online **Application
-   Access Policy** so it can only ever touch the château's own mailbox —
-   this needs PowerShell (`Install-Module -Name ExchangeOnlineManagement`
-   if you don't have it already):
+6. **Restrict it to just the mailboxes you want scanned.** As granted above,
+   this app can technically read *every* mailbox in your Microsoft 365
+   tenant. Lock that down with an Exchange Online **Application Access
+   Policy** — this needs PowerShell (`Install-Module -Name
+   ExchangeOnlineManagement` if you don't have it already).
+
+   The policy points at a **security group**, not at a fixed list of
+   addresses. That matters: you create the group once, and adding an inbox
+   later is a one-line command — the policy itself never needs rebuilding.
+   List every inbox you run here (restaurant, bookings, experience, ariège,
+   accounts, and any others):
    ```powershell
    Connect-ExchangeOnline
-   New-DistributionGroup -Name "GudanesInboxScanMailboxes" -Type Security -Members accounts@chateaugudanes.com
+   New-DistributionGroup -Name "GudanesInboxScanMailboxes" -Type Security -Members `
+     accounts@chateaugudanes.com, ariege@chateaugudanes.com, experience@chateaugudanes.com, `
+     bookings@chateaugudanes.com, restaurant@chateaugudanes.com
    New-ApplicationAccessPolicy -AppId "<Application (client) ID from step 2>" `
      -PolicyScopeGroupId "GudanesInboxScanMailboxes" -AccessRight RestrictAccess `
-     -Description "Gudanes HR inbox scan - restricted to accounts@ only"
+     -Description "Gudanes HR inbox scan - restricted to the listed mailboxes"
+   ```
+   **To add another inbox later** (no policy changes needed):
+   ```powershell
+   Add-DistributionGroupMember -Identity "GudanesInboxScanMailboxes" -Member newinbox@chateaugudanes.com
    ```
    This is the step that turns "an app that can technically read anyone's
-   mail" into "an app that can only ever read accounts@chateaugudanes.com" —
+   mail" into "an app that can only ever read the château's own inboxes" —
    worth doing even though it's the most technical step here. If PowerShell
    feels unfamiliar, this is a good one to do with Claude Code open next to
    you, or with Microsoft 365 support on a call.
@@ -238,7 +303,11 @@ for you either, since it needs your own Microsoft 365 admin login.
    - `MS_GRAPH_TENANT_ID`
    - `MS_GRAPH_CLIENT_ID`
    - `MS_GRAPH_CLIENT_SECRET`
-   - `MS_GRAPH_MAILBOX` — the mailbox to scan, e.g. `accounts@chateaugudanes.com`
+   - `MS_GRAPH_MAILBOXES` — every inbox to scan, comma-separated. Any number:
+     `accounts@chateaugudanes.com,ariege@chateaugudanes.com,experience@chateaugudanes.com,bookings@chateaugudanes.com,restaurant@chateaugudanes.com`
+     (The older singular `MS_GRAPH_MAILBOX` still works if you only run one inbox.)
+     Each inbox appears on Management → Inbox Flags, where you set who handles it —
+     new flags are then assigned to that person automatically.
 
 Once all four are set, go to **Management → Automation** and confirm "Inbox
 scan" is turned on (it defaults to on) — from then on it runs automatically
