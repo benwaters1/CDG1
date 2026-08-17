@@ -14,6 +14,13 @@
 </div>
 {% endif %}
 
+{% if held %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>{{ held }} message{{ '' if held == 1 else 's' }} couldn't be sent</strong> — including guest confirmations. They are being kept, not dropped, and can go out once email is connected.
+  <a href="{{ url_for('admin_email_outbox') }}">See what's waiting</a>
+</div>
+{% endif %}
+
 <div class="overview-band">
   <div class="overview-cell">
     <div class="overview-value">{{ templates|length }}</div>

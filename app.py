@@ -1353,6 +1353,32 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Mail that could not be sent, kept so it can go out later.
+        --
+        -- Without this every undelivered message vanished into a console
+        -- print: a guest could pay for a stay and receive nothing, and there
+        -- was no record that a confirmation was ever owed. That is the worst
+        -- shape a failure can take here, because the guest has already paid
+        -- and neither side knows anything is missing.
+        --
+        -- Password resets and staff invitations are deliberately NOT stored
+        -- (see send_email): their body is a working credential, and one that
+        -- expires — retrying a stale reset link days later is useless, while
+        -- keeping it in a table is a real exposure.
+        CREATE TABLE IF NOT EXISTS email_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            to_address TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            ics_content TEXT,
+            ics_filename TEXT,
+            reason TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            sent_at TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS workshop_waitlist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER NOT NULL REFERENCES workshop_sessions(id) ON DELETE CASCADE,
@@ -5562,9 +5588,11 @@ def admin_emails():
            ORDER BY at DESC LIMIT 25"""
     ).fetchall()
     optouts = conn.execute("SELECT COUNT(*) AS c FROM email_optouts").fetchone()["c"]
+    held = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
     conn.close()
     return render_template("admin_emails.html", templates=templates, recent=recent,
-                           areas=CAMPAIGN_AREAS, optouts=optouts,
+                           areas=CAMPAIGN_AREAS, optouts=optouts, held=held,
                            email_configured=bool(RESEND_API_KEY or SMTP_HOST))
 
 
@@ -5779,6 +5807,90 @@ def add_email_optout():
     return redirect(url_for("admin_emails"))
 
 
+@app.route("/admin/email-outbox")
+@owner_required
+def admin_email_outbox():
+    """Mail that never went out, and the way to send it once it can."""
+    conn = get_db()
+    waiting = conn.execute(
+        """SELECT * FROM email_outbox WHERE sent_at IS NULL
+           ORDER BY created_at DESC LIMIT 200""").fetchall()
+    waiting_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    recovered = conn.execute(
+        """SELECT * FROM email_outbox WHERE sent_at IS NOT NULL
+           ORDER BY sent_at DESC LIMIT 25""").fetchall()
+    conn.close()
+    return render_template(
+        "admin_email_outbox.html", waiting=waiting, waiting_total=waiting_total,
+        recovered=recovered, can_send=email_enabled() or resend_enabled())
+
+
+@app.route("/admin/email-outbox/send", methods=["POST"])
+@owner_required
+def send_email_outbox():
+    """Try the held mail again.
+
+    Sends one at a time and marks each as it goes, so a failure part-way
+    through leaves the ones already sent marked as sent — a retry that loses
+    track would deliver the same confirmation to a guest twice.
+    """
+    if not (email_enabled() or resend_enabled()):
+        flash("No email provider is configured yet, so there is nothing to send with.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    conn = get_db()
+    only = request.form.get("id", "").strip()
+    if only.isdigit():
+        rows = conn.execute("SELECT * FROM email_outbox WHERE id = ? AND sent_at IS NULL",
+                            (int(only),)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM email_outbox WHERE sent_at IS NULL ORDER BY created_at LIMIT 100"
+        ).fetchall()
+
+    sent = failed = 0
+    for row in rows:
+        # keep=False: this row IS the queue entry. Re-queueing on failure
+        # would add a duplicate every time the owner pressed the button.
+        ok = send_email(row["to_address"], row["subject"], row["body"],
+                        row["ics_content"], row["ics_filename"], keep=False)
+        if ok:
+            sent += 1
+            conn.execute(
+                "UPDATE email_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), row["id"]))
+        else:
+            failed += 1
+            conn.execute(
+                "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+                ("retry failed", row["id"]))
+        conn.commit()
+    if sent:
+        log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
+        conn.commit()
+    conn.close()
+    flash(f"{sent} sent" + (f", {failed} still waiting." if failed else "."),
+          "success" if sent and not failed else "error" if failed else "success")
+    return redirect(url_for("admin_email_outbox"))
+
+
+@app.route("/admin/email-outbox/<int:outbox_id>/discard", methods=["POST"])
+@owner_required
+def discard_email_outbox(outbox_id):
+    conn = get_db()
+    row = conn.execute("SELECT to_address, subject FROM email_outbox WHERE id = ?",
+                       (outbox_id,)).fetchone()
+    conn.execute("DELETE FROM email_outbox WHERE id = ?", (outbox_id,))
+    if row:
+        log_audit(conn, "email_outbox_discarded", target=row["to_address"],
+                  details=row["subject"])
+    conn.commit()
+    conn.close()
+    flash("Discarded — that message will not be sent.", "success")
+    return redirect(url_for("admin_email_outbox"))
+
+
 @app.route("/admin/reports")
 @owner_required
 def admin_reports():
@@ -5927,13 +6039,52 @@ def send_email_via_resend(to_address, subject, body, ics_content=None, ics_filen
         return False
 
 
-def send_email(to_address, subject, body, ics_content=None, ics_filename=None):
+def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
+    """Keep a message that could not be sent, so it can go out later.
+
+    Deliberately opens and closes its own connection and swallows everything:
+    this runs on the failure path of a side effect, and the request that
+    triggered it has real work to finish — recording a booking, deciding an
+    expense. Failing to file a failure must not lose the thing that succeeded.
+    """
+    try:
+        conn = get_db()
+        try:
+            conn.execute(
+                """INSERT INTO email_outbox (to_address, subject, body, ics_content,
+                   ics_filename, reason, last_error, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (to_address, subject, body, ics_content, ics_filename, reason, error,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                     # pragma: no cover - last resort
+        print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
+
+
+def send_email(to_address, subject, body, ics_content=None, ics_filename=None, keep=True):
+    """Send one message, and if it cannot go out, keep it.
+
+    `keep=False` for anything whose body is itself a credential — a password
+    reset or a staff invitation. Those are short-lived by design, so a retry
+    days later is useless, and storing one leaves a working key in a table.
+    """
     if not to_address:
         return False
     if resend_enabled():
-        return send_email_via_resend(to_address, subject, body, ics_content, ics_filename)
+        if send_email_via_resend(to_address, subject, body, ics_content, ics_filename):
+            return True
+        if keep:
+            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                              "provider rejected it", "Resend API call failed")
+        return False
     if not email_enabled():
-        print(f"[email skipped — no email provider configured] To: {to_address} | Subject: {subject}")
+        print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
+        if keep:
+            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                              "no email provider configured")
         return False
     try:
         # Assigning headers can itself raise (e.g. a crafted guest_email
@@ -5961,6 +6112,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None):
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
+        if keep:
+            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                              "send failed", str(e))
         return False
 
 
@@ -6491,6 +6645,7 @@ def forgot_password():
                 f"Hi {person['name'].split(' ')[0]},\n\n"
                 f"Click this link to set a new password (valid for 1 hour):\n{reset_url}\n\n"
                 f"If you didn't request this, you can ignore this email.\n\n— Château de Gudanes",
+                keep=False,   # the body is a live credential, and expires in an hour
             )
         conn.close()
         # Same message whether or not the email matched — don't reveal who has an account.

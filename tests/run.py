@@ -17,6 +17,7 @@ SUITES = [
     "test_routes",
     "test_hr_compliance",
     "test_campaign_email",
+    "test_email_outbox",
     "test_design",
 ]
 
