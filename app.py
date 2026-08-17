@@ -1779,6 +1779,36 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- The public gallery, in the sections the site's menu already links to.
+        --
+        -- The menu links /gallery#inside, #grounds, #restoration, #life and
+        -- #views. Those anchors did not exist and the page rendered a fixed
+        -- empty list, so all five went to the same blank page — which is why
+        -- the sections are a table with a `slug` rather than free-form: the
+        -- slug IS the anchor the menu is already pointing at, so a section
+        -- cannot quietly stop matching its link.
+        --
+        -- Photos reuse ROOM_PHOTO_DIR and the existing room_photo route. A
+        -- second upload directory would need its own serving route, its own
+        -- backup entry and its own permissions, to hold the same kind of file.
+        CREATE TABLE IF NOT EXISTS gallery_sections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            blurb TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS gallery_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_id INTEGER NOT NULL REFERENCES gallery_sections(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            caption TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
         -- Newsletter subscribers, from the box in the public site's menu panel.
         --
         -- Double opt-in: a row exists from the moment somebody types their
@@ -2789,6 +2819,8 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_dedupe ON campaign_sends(dedupe_key)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_template ON campaign_sends(template_id)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_unsub ON campaign_sends(unsubscribe_token)",
+        "CREATE INDEX IF NOT EXISTS idx_gallery_photos_section ON gallery_photos(section_id, sort_order)",
+        "CREATE INDEX IF NOT EXISTS idx_newsletter_token ON newsletter_subscribers(token)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_occurred ON incidents(occurred_at)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_affected ON incidents(affected_user_id)",
@@ -2934,6 +2966,19 @@ def init_db():
                 """INSERT INTO chat_channels (slug, name, kind, sort_order, created_at)
                    VALUES (?, ?, 'area', ?, ?)""",
                 (slug, name, order, datetime.now(timezone.utc).isoformat()),
+            )
+    conn.commit()
+
+    # The five gallery sections the public menu already links to by anchor.
+    # Seeded by slug so the anchors resolve on a fresh install and on the live
+    # volume alike; a section the owner renames keeps its slug, and one they
+    # delete stays deleted.
+    for slug, title, blurb, order in DEFAULT_GALLERY_SECTIONS:
+        if not conn.execute("SELECT 1 FROM gallery_sections WHERE slug = ?", (slug,)).fetchone():
+            conn.execute(
+                """INSERT INTO gallery_sections (slug, title, blurb, sort_order, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (slug, title, blurb, order, datetime.now(timezone.utc).isoformat()),
             )
     conn.commit()
 
@@ -4540,6 +4585,23 @@ DEFAULT_ROOMS = [
         "max_children": 0,
         "description": "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
     },
+]
+
+# The public menu links /gallery#inside, #grounds, #restoration, #life and
+# #views. These slugs ARE those anchors — the menu was shipped pointing at them
+# before anything answered, so the names are fixed by the markup, not chosen
+# here. Titles and blurbs are editable in the admin; slugs are not.
+DEFAULT_GALLERY_SECTIONS = [
+    ("inside", "Inside the Château",
+     "Bare plaster and finished salons, often in the same room.", 0),
+    ("grounds", "The Château & Its Grounds",
+     "The park, the terraces and the village beyond the gates.", 1),
+    ("restoration", "The Restoration Story",
+     "The work itself: what was found, and what it took to keep it.", 2),
+    ("life", "Life at the Château",
+     "Long tables, market mornings and the ordinary days between.", 3),
+    ("views", "The Views",
+     "The Pyrénées from the windows, in every season.", 4),
 ]
 
 DEFAULT_EXTRAS = [
@@ -7575,6 +7637,113 @@ def campaign_unsubscribe(token):
     return render_template("unsubscribe.html",
                            state="already" if already else "confirm",
                            email=email, name=row["recipient_name"], token=token)
+
+
+@app.route("/admin/gallery")
+@owner_required
+def admin_gallery():
+    conn = get_db()
+    sections = conn.execute(
+        "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
+    photos = conn.execute(
+        "SELECT * FROM gallery_photos ORDER BY section_id, sort_order, id").fetchall()
+    subs = conn.execute(
+        """SELECT COUNT(*) AS confirmed FROM newsletter_subscribers
+           WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL""").fetchone()["confirmed"]
+    pending = conn.execute(
+        """SELECT COUNT(*) AS c FROM newsletter_subscribers
+           WHERE confirmed_at IS NULL AND unsubscribed_at IS NULL""").fetchone()["c"]
+    conn.close()
+    by_section = {}
+    for p in photos:
+        by_section.setdefault(p["section_id"], []).append(p)
+    overview = [
+        overview_cell("Sections", len(sections)),
+        overview_cell("Photographs", len(photos)),
+        overview_cell("Newsletter", subs, sub=f"{pending} unconfirmed" if pending else None),
+    ]
+    return render_template("admin_gallery.html", sections=sections,
+                           by_section=by_section, overview=overview)
+
+
+@app.route("/admin/gallery/<int:section_id>/photos", methods=["POST"])
+@owner_required
+def add_gallery_photos(section_id):
+    conn = get_db()
+    section = conn.execute(
+        "SELECT * FROM gallery_sections WHERE id = ?", (section_id,)).fetchone()
+    if not section:
+        conn.close()
+        abort(404)
+    stored = save_room_photos_multi(request.files.getlist("photos"))
+    if not stored:
+        conn.close()
+        flash("No usable image was uploaded — PNG or JPG only.", "error")
+        return redirect(url_for("admin_gallery"))
+    start = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM gallery_photos WHERE section_id = ?",
+        (section_id,)).fetchone()["n"]
+    for i, name in enumerate(stored):
+        conn.execute(
+            """INSERT INTO gallery_photos (section_id, filename, sort_order, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (section_id, name, start + i, datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "gallery_photos_added", target=section["slug"])
+    conn.commit()
+    conn.close()
+    flash(f"Added {len(stored)} photograph(s) to {section['title']}.", "success")
+    return redirect(url_for("admin_gallery"))
+
+
+@app.route("/admin/gallery/photo/<int:photo_id>/delete", methods=["POST"])
+@owner_required
+def delete_gallery_photo(photo_id):
+    conn = get_db()
+    photo = conn.execute(
+        "SELECT * FROM gallery_photos WHERE id = ?", (photo_id,)).fetchone()
+    if not photo:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM gallery_photos WHERE id = ?", (photo_id,))
+    log_audit(conn, "gallery_photo_deleted")
+    conn.commit()
+    conn.close()
+    # The file itself goes too, but only after the row: an orphaned row shows a
+    # broken image to guests, while an orphaned file merely wastes disk.
+    path = os.path.join(ROOM_PHOTO_DIR, photo["filename"])
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    flash("Photograph removed.", "success")
+    return redirect(url_for("admin_gallery"))
+
+
+@app.route("/admin/gallery/<int:section_id>", methods=["POST"])
+@owner_required
+def edit_gallery_section(section_id):
+    """Title and blurb only. The slug is deliberately not editable: it is the
+    anchor the public menu links to, so changing it silently breaks a link
+    that is already shipped in every page's header."""
+    conn = get_db()
+    section = conn.execute(
+        "SELECT * FROM gallery_sections WHERE id = ?", (section_id,)).fetchone()
+    if not section:
+        conn.close()
+        abort(404)
+    title = (request.form.get("title", "") or "").strip()
+    if not title:
+        conn.close()
+        flash("A section needs a title.", "error")
+        return redirect(url_for("admin_gallery"))
+    conn.execute("UPDATE gallery_sections SET title = ?, blurb = ? WHERE id = ?",
+                 (title, (request.form.get("blurb", "") or "").strip() or None, section_id))
+    log_audit(conn, "gallery_section_edited", target=section["slug"])
+    conn.commit()
+    conn.close()
+    flash("Section updated.", "success")
+    return redirect(url_for("admin_gallery"))
 
 
 @app.route("/newsletter/subscribe", methods=["POST"])
@@ -12761,10 +12930,33 @@ def restoration_page():
 
 @app.route("/gallery")
 def gallery_page():
-    """Photographs. Renders a pointer to Instagram until galleries are set up —
-    the template handles an empty list, so there is nothing to configure to make
-    the page safe to link to."""
-    return render_template("gallery.html", galleries=[])
+    """Photographs, in the sections the public menu already links to.
+
+    Every section is passed whether or not it has photographs yet, because the
+    menu links to each one's anchor: a section dropped for being empty takes
+    its anchor with it and the link lands at the top of the page instead. An
+    empty section renders its heading and says so.
+    """
+    conn = get_db()
+    sections = conn.execute(
+        "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
+    photos = conn.execute(
+        "SELECT * FROM gallery_photos ORDER BY section_id, sort_order, id").fetchall()
+    conn.close()
+    by_section = {}
+    for p in photos:
+        by_section.setdefault(p["section_id"], []).append(p)
+    galleries = [{
+        "slug": s["slug"],
+        "title": s["title"],
+        "blurb": s["blurb"],
+        "images": [
+            {"url": url_for("room_photo", filename=p["filename"]),
+             "caption": p["caption"]}
+            for p in by_section.get(s["id"], [])
+        ],
+    } for s in sections]
+    return render_template("gallery.html", galleries=galleries)
 
 
 @app.route("/terms")

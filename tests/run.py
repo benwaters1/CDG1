@@ -31,6 +31,7 @@ SUITES = [
     "test_email_outbox",
     "test_email_templates",
     "test_newsletter",
+    "test_gallery",
     "test_exports",
     "test_destructive",
     "test_payments",

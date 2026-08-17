@@ -2,13 +2,11 @@
 {% block title %}Gallery{% endblock %}
 {% block content %}
 
-{# Needs a route, e.g.:
-   @app.route('/gallery')
-   def gallery_page(): return render_template('gallery.html', galleries=...)
-
-   `galleries` is expected to be a list of dicts:
-     { 'title': ..., 'blurb': ..., 'cover': <url>, 'images': [<url>, ...] }
-   With nothing passed, the page still renders its headings. #}
+{# `galleries` comes from gallery_page(): a list of
+     { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
+   The slug is the anchor id, because the site menu links to #inside, #grounds,
+   #restoration, #life and #views directly. Sections render even when empty so
+   those links always land somewhere. #}
 
 <section class="g-sec g-sec--tight">
   <div class="g-wrap">
@@ -22,14 +20,25 @@
   <div class="g-wrap">
     {% if galleries %}
       {% for gal in galleries %}
-      <h2 class="g-h2 g-rule">{{ gal['title'] }}</h2>
+      {# The id is what the site menu's #inside, #grounds … links land on.
+         scroll-margin-top clears the fixed header, which would otherwise
+         sit over the heading the reader just jumped to. #}
+      <h2 class="g-h2 g-rule" id="{{ gal['slug'] }}" style="scroll-margin-top:96px;">{{ gal['title'] }}</h2>
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:24px;">{{ gal['blurb'] }}</p>{% endif %}
-      <div class="g-grid g-grid--3">
+      {% if gal['images'] %}
+      <div class="g-grid g-grid--3" style="margin-bottom:56px;">
         {% for img in gal['images'] %}
-        <img src="{{ img }}" alt="{{ gal['title'] }}" loading="lazy"
-             style="width:100%; height:16rem; object-fit:cover; border-radius:4px;">
+        <figure style="margin:0;">
+          <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
+               style="width:100%; height:16rem; object-fit:cover; border-radius:4px;">
+          {% if img['caption'] %}<figcaption class="g-hint">{{ img['caption'] }}</figcaption>{% endif %}
+        </figure>
         {% endfor %}
       </div>
+      {% else %}
+      <p class="g-empty" style="margin-bottom:56px;">These photographs are still being chosen. The most recent work
+        is posted to <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a>.</p>
+      {% endif %}
       {% endfor %}
     {% else %}
       <p class="g-empty">Photographs are being prepared. In the meantime, the most recent work is posted to

@@ -136,7 +136,8 @@
        'management_insurance','new_insurance_policy','edit_insurance_policy','delete_insurance_policy','export_insurance_csv','renew_insurance_policy',
        'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
        'admin_automation','update_automation_settings','run_automation_job_now','admin_readiness',
-       'admin_outlook_addin','admin_promo_codes','admin_deposit_rules','promo_code_blast','admin_terms'] %}
+       'admin_outlook_addin','admin_promo_codes','admin_deposit_rules','promo_code_blast','admin_terms',
+       'admin_gallery','add_gallery_photos','delete_gallery_photo','edit_gallery_section'] %}
   <nav class="nav">
     {# Today comes before Home for everyone. It answers the question a member of
        staff actually has when they open this on a phone — who is in the house
@@ -296,6 +297,7 @@
         <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
         <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
+        <a href="{{ url_for('admin_gallery') }}" class="{{ 'active' if request.endpoint=='admin_gallery' }}">{{ icon('folder') }}Public Gallery</a>
         <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
         <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
         <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
