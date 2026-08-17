@@ -5,63 +5,84 @@
 <section class="g-hero">
 <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg" alt="Château de Gudanes">
 <div class="g-hero__wash"></div>
-<div class="g-hero__in"><h1 class="g-display"><em>Rooms at the Château</em></h1></div>
+<div class="g-hero__in">
+  <p class="g-eyebrow">Château de Gudanes</p>
+  <h1 class="g-display">Stay the Night</h1>
+</div>
 </section>
 
-<!-- Reservation. The progression: availability searched here, not telephoned. -->
-<section class="g-book-bar">
-  <div class="g-wrap">
-    <form method="get" class="g-search" aria-label="Check availability">
-      <div class="g-search__f"><label for="s_arrival">Arrival</label>
-        <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}"></div>
-      <div class="g-search__f"><label for="s_departure">Departure</label>
-        <input type="date" id="s_departure" name="departure" value="{{ departure }}"></div>
-      <div class="g-search__f"><label for="s_party">Guests</label>
-        <input type="number" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
-      <button type="submit" class="g-btn g-search__go">Check availability</button>
-    </form>
-    <p class="g-book-bar__note">
-      Reservations are made here, and confirmed by the château.
-      <a href="{{ url_for('find_booking') }}">Manage an existing booking</a>
-    </p>
+<section class="g-sec"><div class="g-wrap">
+  <div class="g-two">
+    <div>
+      <p class="g-p">A rare invitation: stay inside a world-renowned restoration project, within a building still evolving, unmodernised, and utterly unlike anywhere else. This is the château as she truly is — raw, ongoing, alive with history still being uncovered.</p>
+      <p class="g-p">And within that, real luxury: bathrooms, bedding, furniture and flooring chosen with care, set against walls that have not yet finished telling their story. It is a stay with limitations, and it is precisely those limitations that make it unforgettable.</p>
+      <p class="g-p">Choose the room that suits you, and reserve your place within these walls.</p>
+      <blockquote class="g-quote">To stay within these walls is to take part in her restoration — each visit helping bring her back to life.</blockquote>
+    </div>
+    <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="Restoration work in progress" loading="lazy">
   </div>
-</section>
+</div></section>
 
-<section class="g-sec"><div class="g-wrap"><p class="g-p"><em>Seven bedrooms have been opened to guests, each one as the restoration reached it.</em></p>
-<p class="g-p">The walls around you are as the centuries left them. Under Class I protection they may not be touched, and much of the château remains bare plaster and weathered stone. Everything within those walls has been made anew — the beds and the linen, the new oak floors underfoot, and bathrooms finished to a standard the building deserves.</p>
-<p class="g-p">Our chef cooks from the Sunday market in the village square, the producers of the Ariège, and in summer the château's own gardens. Breakfast arrives with viennoiseries carried up from the boulangerie three minutes below, and dinner is served in a dining room that took years to recover.</p>
-<p class="g-p">Rooms are reserved here and confirmed by the château. Very few will ever stay within a restoration of this standing.</p></div></section>
+<!-- Availability. Replaces "BOOK IN" per card with a real search. -->
+<section class="g-book-bar"><div class="g-wrap">
+  <form method="get" class="g-search" aria-label="Check availability">
+    <div class="g-search__f"><label for="s_arrival">Arrival</label>
+      <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}"></div>
+    <div class="g-search__f"><label for="s_departure">Departure</label>
+      <input type="date" id="s_departure" name="departure" value="{{ departure }}"></div>
+    <div class="g-search__f"><label for="s_party">Guests</label>
+      <input type="number" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
+    <button type="submit" class="g-btn g-search__go">Check availability</button>
+  </form>
+  <p class="g-book-bar__note">
+    Rooms are reserved here and confirmed by the château.
+    <a class="g-inline-link" href="{{ url_for('find_booking') }}">Manage an existing booking</a>
+  </p>
+</div></section>
 
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6781b42-750e-4a3b-9867-77097ae5de71/_DSC1938-2.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f2db99cd-30e7-4235-befa-4803738226d8/20170426-20170426-_1170917.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/67f70e6c-62f4-4db1-a6d6-7e4b4bde77a7/_DSC1938-2.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/home-7.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/home-7.jpg" alt="" loading="lazy"></div>
 
 <section class="g-sec"><div class="g-wrap">
-  <h2 class="g-place">Les Chambres</h2>
+  <h2 class="g-place">Château Rooms{% if searched %}<span class="g-rule__note">{{ arrival }} → {{ departure }}</span>{% endif %}</h2>
 
-  {% if room_rows %}
-  <details class="g-cal">
-    <summary>View the availability calendar</summary>
-    <div style="padding-top:12px">
-      <div class="g-cal__nav">
-        <a href="{{ url_for('book_rooms', month=prev_month) }}" class="g-mini">&larr; Previous</a>
-        <strong>{{ first_day.strftime('%B %Y') }}</strong>
-        <a href="{{ url_for('book_rooms', month=next_month) }}" class="g-mini">Next &rarr;</a>
+  {% if not rooms %}
+    <p class="g-empty">No rooms are open for reservation at present.</p>
+  {% else %}
+  <div class="g-cards">
+    {% for room in rooms %}
+    <article class="g-card g-card--room" id="room-{{ room['id'] }}">
+      {% if room['photo_filename'] %}
+      <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" loading="lazy">
+      {% endif %}
+      <div class="g-card__b">
+        <h3 class="g-card__name">{{ room['name'] }}</h3>
+        {% if room['price_per_night'] %}
+        <p class="g-card__rate"><b>From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
+        {% endif %}
+        {% if room['description'] %}<p class="g-card__desc">{{ room['description'] }}</p>{% endif %}
+        {% if room['amenities'] %}
+        <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if searched %}
+          {% if availability.get(room['id']) %}
+            <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book in</a>
+          {% else %}
+            <span class="g-btn g-btn--off g-card__cta">Not available these dates</span>
+          {% endif %}
+        {% else %}
+          <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id']) }}">Book in</a>
+        {% endif %}
       </div>
-      <div class="g-cal__scroll"><table class="cal-table"><thead><tr><th class="cal-room-col">Room</th>
-      {% for d in days %}<th class="{{ 'cal-today' if d == today }}">{{ d.day }}</th>{% endfor %}</tr></thead>
-      <tbody>{% for row in room_rows %}<tr><td class="cal-room-col"><a href="#room-{{ row.room['id'] }}">{{ row.room['name'] }}</a></td>
-      {% for cell in row.cells %}<td class="cal-cell {{ 'cal-cell-guest-taken' if cell.status == 'unavailable' else 'cal-cell-guest-free' }} {{ 'cal-today' if cell.date == today }}"></td>{% endfor %}
-      </tr>{% endfor %}</tbody></table></div>
-      <div class="g-legend"><span><i class="cal-legend cal-cell-guest-free"></i> Available</span>
-      <span><i class="cal-legend cal-cell-guest-taken"></i> Not available</span></div>
-    </div>
-  </details>
+    </article>
+    {% endfor %}
+  </div>
   {% endif %}
 
   {% if nothing_available %}
-  <div class="g-panel" style="max-width:40rem; margin-bottom:2.5rem">
+  <div class="g-panel" style="max-width:40rem;margin-top:var(--s7)">
     <h3 class="g-h3">Nothing free for those dates</h3>
-    <p class="g-p" style="font-size:16px">Leave your details and we shall write to you should a cancellation open between {{ arrival }} and {{ departure }}.</p>
-    <form method="post" action="{{ url_for('join_waitlist') }}" style="margin-top:18px">
+    <p class="g-p">Leave your details and we shall write to you should a cancellation open between {{ arrival }} and {{ departure }}.</p>
+    <form method="post" action="{{ url_for('join_waitlist') }}" style="margin-top:var(--s5)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="desired_arrival" value="{{ arrival }}">
       <input type="hidden" name="desired_departure" value="{{ departure }}">
@@ -74,103 +95,34 @@
     </form>
   </div>
   {% endif %}
-
-  {% if not rooms %}
-    <p class="g-empty">No rooms are open for reservation at present.</p>
-  {% else %}
-  <div class="g-rooms">
-    {% for room in rooms %}
-    <article class="g-room" id="room-{{ room['id'] }}">
-      <div class="g-room__media">
-        {% if room['photo_filename'] %}
-          <img class="g-room__img" src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" loading="lazy">
-        {% else %}<div class="g-room__img g-room__img--none"></div>{% endif %}
-        {% if searched %}
-          {% if availability.get(room['id']) %}<span class="g-flag g-flag--free">Available</span>
-          {% else %}<span class="g-flag g-flag--gone">{{ unavailable_reason.get(room['id'], 'Not available') }}</span>{% endif %}
-        {% endif %}
-      </div>
-      <div class="g-room__body">
-        <div class="g-room__head">
-          <h3 class="g-room__name">{{ room['name'] }}</h3>
-          {% if room['price_per_night'] %}
-          <p class="g-room__rate"><span class="g-fig">€{{ '%.0f'|format(room['price_per_night']) }}</span><span>per night</span></p>
-          {% endif %}
-        </div>
-        <p class="g-room__meta">Sleeps up to {{ room['max_occupancy'] }}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}</p>
-        {% if room['description'] %}<p class="g-room__desc">{{ room['description'] }}</p>{% endif %}
-        {% if room['amenities'] %}<ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>{% endif %}
-        {% if gallery_photos_by_room.get(room['id']) %}
-        <div class="g-strip">{% for p in gallery_photos_by_room[room['id']] %}
-        <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}" loading="lazy">{% endfor %}</div>
-        {% endif %}
-        <div class="g-room__cta">
-          {% if searched %}
-            {% if availability.get(room['id']) %}
-              <a class="g-btn" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Reserve this room</a>
-            {% else %}<span class="g-btn g-btn--off">Not available these dates</span>{% endif %}
-          {% else %}
-            <a class="g-btn" href="{{ url_for('book_room', room_id=room['id']) }}">Dates &amp; reservation</a>
-          {% endif %}
-        </div>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% endif %}
 </div></section>
 
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="" loading="lazy">
-  <div class="g-half__text">
-    <h2 class="g-place">Included With Every Stay</h2>
-    <div class="g-incs"><div class='g-inc'><h3>A private historical tour</h3><p>Of the château's interiors, arranged around your day and led by a member of the household.</p></div><div class='g-inc'><h3>A promenade through the village</h3><p>Through the gardens and down into Les Cabannes, weather and season permitting.</p></div><div class='g-inc'><h3>Petit-déjeuner</h3><p>Croissants and viennoiseries from the village boulangerie, local yoghurts and preserves, and teas made from herbs grown in the gardens.</p></div><div class='g-inc'><h3>Salon de thé</h3><p>Tea and coffee from morning until evening, refreshed throughout the day.</p></div><div class='g-inc'><h3>Flowers cut that morning</h3><p>Together with a personalised welcome card, a carafe of fresh water and glassware.</p></div><div class='g-inc'><h3>Wi-Fi in the shared salons</h3><p>And a self-service laundry, available throughout your stay.</p></div></div>
-  </div>
-</div></section>
-
-<section class="g-sec--flush"><div class="g-half g-half--flip">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f2db99cd-30e7-4235-befa-4803738226d8/20170426-20170426-_1170917.jpg" alt="" loading="lazy">
   <div class="g-half__text">
-    <h2 class="g-place">The Bathrooms</h2>
-    <p class="g-p"><em>A château under restoration might suggest a certain hardship. Here it is quite the opposite — the bathrooms are the most modern rooms in the building, because they had to be.</em></p>
-<p class="g-p">Ensuites are not permitted. To cut them into the bedrooms would destroy the historic plaster, stonework and papers that have survived there. Instead they are gathered together in a central space on the ground floor, within a room already altered in the twentieth century — the one place where intervention costs the château nothing.</p>
-<p class="g-p">Each has a shower, washbasin and WC, and one a freestanding bath. There are two further powder rooms, on the ground and first floors, and a dressing room recovered as part of the same work — vanities, soft lighting, and somewhere to prepare for the evening that is not the end of a bed.</p>
-<p class="g-p">Chambre Marie-Louise Lachapelle has a half ensuite of its own, with washbasin and bath.</p>
-  </div>
-</div></section>
-
-<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
-  <h2 class="g-place">The Salons &amp; Grounds</h2>
-  <div class="g-incs g-incs--3"><div class='g-inc'><h3>Salon de Rose</h3><p>The drawing room. A library, comfortable seating, cards and jigsaws, and a writing desk with postcards, stamps and stationery.</p></div><div class='g-inc'><h3>Salon de Thé</h3><p>Open from morning until evening. French and local teas, herbs from the château gardens, coffee, and hot water refreshed through the day.</p></div><div class='g-inc'><h3>La Piscine</h3><p>Hidden within the gardens, with views across the valley to the mountains, surrounded by cherry and plum trees and raspberry bushes. Towels provided.</p></div><div class='g-inc'><h3>The Tennis Court</h3><p>Secluded within the parkland. Rackets and balls for tennis and pickleball are kept at reception.</p></div></div>
-</div></section>
-
-<section class="g-sec"><div class="g-wrap">
-  <h2 class="g-place">The Rhythm Of The House</h2>
-  <ul class="g-time"><li><b>Arrival</b><span>From two o'clock. Early arrival by request and subject to availability. Tell us when to expect you and we shall be waiting.</span></li><li><b>Departure</b><span>By ten o'clock, with late departure by arrangement. The house keeps quiet hours between ten in the evening and eight in the morning.</span></li><li><b>Breakfast</b><span>Served between eight and ten. Dietary requirements are designed into the menu rather than worked around on the night — please send them before you arrive.</span></li><li><b>Children</b><span>Warmly welcome. Cots and high chairs are provided with our compliments.</span></li><li><b>Finding us</b><span>Two hours from Toulouse. Les Cabannes lies three minutes' walk below — boulangerie, grocer, pharmacy, post office, and a market in the square on Sunday mornings.</span></li></ul>
-</div></section>
-
-<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
-  <h2 class="g-display" style="font-size:clamp(26px,3.6vw,42px); font-style:italic; margin-bottom:20px"><em>What we would have you know</em></h2>
-  <p class="g-p" style="margin-bottom:36px">We would rather you arrived knowing precisely what awaits you. Gudanes is not a hotel, and she has never pretended to be.</p>
-  <div class="g-split">
-    <div><h3 class="g-h3">What you will find</h3><ul><li>Bedrooms and bathrooms finished to a genuinely high standard</li><li>Meals drawn from the valley, the market and the gardens</li><li>Mountains, silence, and remarkably few other people</li><li>The freedom to walk into rooms still being worked upon</li></ul></div>
-    <div><h3 class="g-h3">What you will not</h3><ul><li>A finished building — much of her remains bare</li><li>Ensuite bathrooms in most rooms; the law that protects her forbids them</li><li>Hotel uniformity, room service, or a front desk</li><li>Scaffolding hidden from view when work is underway</li></ul></div>
+    <h2 class="g-place">Bathrooms</h2>
+    <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
+    <p class="g-p">The King Room, Suite with Mountain View and Family Suite each have a private bathroom nearby in the area. The Double and Twin/Double rooms share a beautifully appointed modern bathroom set between the two.</p>
+    <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules — which is why they sit together, and why they are the most modern rooms in the building.</p>
   </div>
 </div></section>
 
 <section class="g-sec"><div class="g-wrap">
-  <h2 class="g-place">The Estate</h2>
-  <ul class="g-tags g-tags--lg"><li>Heated pool</li><li>Tennis court</li><li>Historic gardens</li><li>Free parking</li><li>Table tennis</li><li>Laundry</li><li>Salons</li><li>Starlink Wi-Fi</li><li>Barbecue</li><li>Tea &amp; coffee</li></ul>
-  <p class="g-p" style="margin-top:22px">Skiing through the winter with transport and lift passes, yoga, guided walks, market and brocante tours, electric and mountain bicycles, and kayaking when the weather allows. We should be glad to arrange any of them when you book.</p>
+  <h2 class="g-place">Château Estate</h2>
+  <ul class="g-tags g-tags--lg"><li>Pool</li><li>Tennis Court</li><li>Tea &amp; Coffee</li><li>Lounge Areas</li><li>Historic Gardens</li><li>Walking in Château Parkland</li><li>Free Parking</li><li>Table Tennis</li><li>Continental Breakfast</li><li>BBQ Area</li><li>Laundry Facilities</li><li>Starlink Wi-Fi (select areas)</li><li>Power Outlets in Room</li><li>Bedside Lamps</li><li>Small Gym</li></ul>
 </div></section>
 
-<section class="g-sec--flush"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/home-7.jpg" alt="" loading="lazy">
-  <div class="g-half__text">
-    <h2 class="g-display" style="font-size:clamp(26px,3.6vw,42px); font-style:italic; margin-bottom:26px"><em>A house of this consequence deserves the longer course</em></h2>
-    <p class="g-p">Restoration is slower and more exacting than renovation, and Gudanes will be held to that standard for as long as the work takes. Guests are welcome throughout it — and are the reason the rooms are opened at all.</p>
-    <p style="margin-top:32px"><a href="#top" class="g-btn">Check availability</a></p>
-  </div>
+<section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
+  <h2 class="g-place">Experiences &amp; Extras</h2>
+  <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
+  <div class="g-incs g-incs--3" style="margin-top:var(--s6)"><div class='g-inc'><h3>Skiing (Winter)</h3><p>Ski transport and lift passes arranged for you.</p></div><div class='g-inc'><h3>Airport Transfer</h3><p>Private vehicle, up to three people, Toulouse Airport — €350.</p></div><div class='g-inc'><h3>Yoga</h3><p>On-site sessions set against the château and mountains.</p></div><div class='g-inc'><h3>Guided Walks</h3><p>Explore the surrounding valleys and trails with a guide.</p></div><div class='g-inc'><h3>Market Tours</h3><p>Visit the region's local markets and producers.</p></div><div class='g-inc'><h3>Antique &amp; Brocante Tours</h3><p>Discover the area's antique fairs and brocante finds.</p></div><div class='g-inc'><h3>Electric Bikes</h3><p>Explore further afield with an assisted ride.</p></div><div class='g-inc'><h3>Mountain Bikes</h3><p>Take on the surrounding trails at your own pace.</p></div><div class='g-inc'><h3>Kayaking</h3><p>Paddle the nearby waters, weather dependent.</p></div><div class='g-inc'><h3>Karaoke</h3><p>An evening of song, set up on request.</p></div><div class='g-inc'><h3>Private Meals</h3><p>A curated dining experience, arranged just for you.</p></div></div>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">Interiors &amp; Details</h2>
+  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. Most bathrooms sit together in a central area, though each is privately allocated to its room, aside from the shared rooms, which share a bathroom between the two.</p>
+  <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
+  <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
 </div></section>
 
 {% endblock %}

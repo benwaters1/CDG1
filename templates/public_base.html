@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
-<meta name="description" content="{% block description %}A Class I Historic Monument in the French Pyrenees, restored since 2013. Seven bedrooms. Your stay funds the next room.{% endblock %}">
+<meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -34,7 +34,7 @@
     <details class="g-navtoggle"><summary>Menu</summary>
       <nav class="g-nav">
       <a href="{{ url_for('book_rooms') }}" class="{{ 'is-on' if request.endpoint in ['book_rooms','book_room'] }}">Stay</a>
-      <a href="{{ url_for('workshops_public') }}" class="{{ 'is-on' if request.endpoint in ['workshops_public','workshop_detail','workshop_register'] }}">Ateliers</a>
+      <a href="{{ url_for('workshops_public') }}" class="{{ 'is-on' if request.endpoint in ['workshops_public','workshop_detail','workshop_register'] }}">Workshops</a>
       <a href="{{ url_for('restaurant_info') }}" class="{{ 'is-on' if request.endpoint in ['restaurant_info','restaurant_book'] }}">La Table</a>
       <a href="{{ url_for('events_info') }}" class="{{ 'is-on' if request.endpoint in ['events_info'] }}">Weddings &amp; Events</a>
       <a href="/restoration">The Restoration</a>
@@ -76,7 +76,7 @@
         <h4>Visit</h4>
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">Nightly stays</a></li>
-          <li><a href="{{ url_for('workshops_public') }}">Ateliers</a></li>
+          <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
           <li><a href="{{ url_for('restaurant_info') }}">La Table</a></li>
           <li><a href="{{ url_for('events_info') }}">Weddings &amp; events</a></li>
           <li><a href="/restoration">The restoration</a></li>
