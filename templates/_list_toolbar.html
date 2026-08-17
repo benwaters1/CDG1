@@ -51,6 +51,9 @@
   <a href="{{ url_for(request.endpoint, **dict(args, **request.view_args or {})) }}"
      class="chip {{ 'is-on' if o.selected }}">{{ o.label }} <span class="chip-n">{{ o.count }}</span></a>
   {% endfor %}
+  {# Say what was left out rather than quietly showing the top few. The search
+     box reaches the rest. #}
+  {% if f.hidden %}<span class="facet-more">+{{ f.hidden }} more — use search</span>{% endif %}
 </div>
 {% endfor %}
 

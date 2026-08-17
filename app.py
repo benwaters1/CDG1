@@ -3739,7 +3739,7 @@ def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, en
 # and they can pass `paged=True` to keep the toolbar and do their own slicing.
 # ---------------------------------------------------------------------------
 
-def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True):
+def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True, limit=None):
     """One way of classifying a list.
 
     `bucket` maps a row to a group name, or to None to leave it out of this
@@ -3747,10 +3747,15 @@ def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True):
     it simply isn't part of that question). `order` fixes the chip order where
     the natural one matters — pending before confirmed before cancelled reads
     as a workflow; alphabetical reads as noise.
+
+    `limit` keeps only the commonest values as chips. Some classifications are
+    open-ended — every distinct audit action, every supplier — and forty chips
+    is not a filter, it is a second list to read. Whatever is currently chosen
+    always survives the cut, or clicking a chip would make it disappear.
     """
     return {"key": key, "label": label, "bucket": bucket,
             "order": list(order or []), "labels": dict(labels or {}),
-            "hide_empty": hide_empty}
+            "hide_empty": hide_empty, "limit": limit}
 
 
 def sort_option(key, label, keyfn, *, reverse=False):
@@ -3812,6 +3817,14 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
             counts[str(b)] = counts.get(str(b), 0) + 1
         keys = [k for k in f["order"] if k in counts] if f["order"] else []
         keys += sorted(k for k in counts if k not in keys)
+        hidden = 0
+        if f["limit"] and len(keys) > f["limit"]:
+            picked = sorted(keys, key=lambda k: (-counts[k], k))[:f["limit"]]
+            here = chosen.get(f["key"])
+            if here and here in counts and here not in picked:
+                picked = picked[:-1] + [here]
+            hidden = len(keys) - len(picked)
+            keys = [k for k in keys if k in set(picked)]
         if f["hide_empty"] and not keys:
             continue
         options = [{"value": k, "label": f["labels"].get(k, str(k).replace("_", " ")),
@@ -3819,7 +3832,7 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
                    for k in keys]
         facet_state.append({
             "key": f["key"], "label": f["label"], "options": options,
-            "selected": chosen.get(f["key"], ""), "total": len(pool),
+            "selected": chosen.get(f["key"], ""), "total": len(pool), "hidden": hidden,
         })
 
     sorts = list(sorts)
@@ -20437,31 +20450,105 @@ def reveal_vault_entry(entry_id):
 # which could in principle catch a write mid-flight.
 # ---------------------------------------------------------------------------
 
+# What kind of thing an audit entry is. The action names are already
+# structured — "vault_reveal", "employee_deleted", "backup_download" — so this
+# is reading what is there rather than inventing a taxonomy.
+AUDIT_KINDS = [
+    ("Deletions", ("delete", "removed", "purge")),
+    ("Secrets seen", ("vault", "reveal", "bank_detail", "password")),
+    ("Money", ("refund", "payout", "invoice", "expense", "pay_rate", "payroll")),
+    ("People", ("employee", "user", "role", "contract", "access")),
+    ("Bookings", ("booking", "reservation", "registration", "no_show", "waitlist")),
+    ("Backups & export", ("backup", "export", "download")),
+]
+
+
+def audit_kind(action):
+    a = (action or "").lower()
+    for label, tokens in AUDIT_KINDS:
+        if any(t in a for t in tokens):
+            return label
+    return "Other"
+
+
+def audit_list_view(conn, args):
+    """The audit log as the page and the export both see it.
+
+    Shared deliberately: the export button says "export this view", and a
+    button that says that while writing a CSV of everything is worse than one
+    that doesn't offer it.
+    """
+    # The old page took the most recent 200 and said so in small print. On a
+    # compliance record that is the wrong shape: you come here asking "who
+    # revealed a bank detail in March", and the answer was silently outside
+    # the window. Filter first, cap afterwards, and say when a cap was hit.
+    entries = conn.execute(
+        """SELECT audit_log.*, users.name AS actor_name FROM audit_log
+           LEFT JOIN users ON users.id = audit_log.actor_user_id
+           ORDER BY audit_log.created_at DESC"""
+    ).fetchall()
+
+    today = datetime.now(timezone.utc).date()
+
+    def when(row):
+        stamp = (row["created_at"] or "")[:10]
+        if not stamp:
+            return None
+        if stamp == today.isoformat():
+            return "Today"
+        if stamp >= (today - timedelta(days=7)).isoformat():
+            return "Last 7 days"
+        if stamp >= (today - timedelta(days=30)).isoformat():
+            return "Last 30 days"
+        if stamp >= (today - timedelta(days=365)).isoformat():
+            return "This year"
+        return "Older"
+
+    return list_view(
+        entries, args,
+        search=["action", "target", "details", "actor_name"],
+        search_hint="Search action, target, detail or who",
+        facets=[
+            facet("kind", "Kind", lambda e: audit_kind(e["action"]),
+                  order=[label for label, _t in AUDIT_KINDS] + ["Other"]),
+            facet("who", "Who", lambda e: e["actor_name"] or "Unknown", limit=8),
+            facet("when", "When", when,
+                  order=["Today", "Last 7 days", "Last 30 days", "This year", "Older"]),
+            facet("action", "Action", lambda e: (e["action"] or "").replace("_", " "),
+                  limit=10),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda e: e["created_at"] or "",
+                        reverse=True),
+            sort_option("oldest", "Oldest first", lambda e: e["created_at"] or ""),
+            sort_option("who", "Who did it",
+                        lambda e: ((e["actor_name"] or "~").lower(), e["created_at"] or "")),
+        ],
+        default_sort="recent",
+    )
+
+
 @app.route("/admin/audit-log")
 @owner_required
 def audit_log():
     conn = get_db()
-    entries = conn.execute(
-        """SELECT audit_log.*, users.name AS actor_name FROM audit_log
-           LEFT JOIN users ON users.id = audit_log.actor_user_id
-           ORDER BY audit_log.created_at DESC LIMIT 200"""
-    ).fetchall()
+    lv = audit_list_view(conn, request.args)
     conn.close()
-    return render_template("audit_log.html", entries=entries)
+    cap = 400
+    return render_template("audit_log.html", entries=lv["rows"][:cap], lv=lv, cap=cap,
+                           capped=len(lv["rows"]) > cap)
 
 
 @app.route("/admin/audit-log/export.csv")
 @owner_required
 def export_audit_log_csv():
     conn = get_db()
-    rows = conn.execute(
-        """SELECT audit_log.*, users.name AS actor_name FROM audit_log
-           LEFT JOIN users ON users.id = audit_log.actor_user_id
-           ORDER BY audit_log.created_at DESC"""
-    ).fetchall()
+    # Same filters as the page, so "export this view" means it.
+    lv = audit_list_view(conn, request.args)
     conn.close()
     fieldnames = ["created_at", "actor_name", "action", "target", "details"]
-    return csv_response(fieldnames, rows, "audit_log.csv")
+    name = "audit_log_filtered.csv" if lv["filtered"] else "audit_log.csv"
+    return csv_response(fieldnames, lv["rows"], name)
 
 
 def readiness_checks(conn):

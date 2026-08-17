@@ -3,14 +3,36 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Audit Log</h1>
-  <a href="{{ url_for('export_audit_log_csv') }}" class="btn-mini">Export CSV</a>
+  <h1>Audit log</h1>
+  {# Export follows what you are looking at. A CSV of everything when the page
+     shows one person's March is not the same document. #}
+  <a href="{{ url_for('export_audit_log_csv', **request.args.to_dict()) }}" class="btn-mini">
+    Export {{ 'this view' if lv.filtered else 'CSV' }}
+  </a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Who touched something sensitive, and when — deletions, status changes, vault/bank detail edits and reveals, password changes, backup downloads. Most recent 200.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Who touched something sensitive, and when — deletions, status changes, vault and
+  bank-detail edits and reveals, password changes, backup downloads.
+</p>
+
+{% include "_list_toolbar.html" %}
 
 {% if not entries %}
-  <div class="empty-state">Nothing logged yet.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that.
+      <a href="{{ url_for('audit_log') }}">Show all {{ lv.total }} entries</a>
+    {% else %}
+      Nothing logged yet.
+    {% endif %}
+  </div>
 {% else %}
+  {% if capped %}
+  <p class="list-count">
+    Showing the most recent {{ cap }} of {{ lv.shown }} matches — narrow it down above,
+    or <a href="{{ url_for('export_audit_log_csv', **request.args.to_dict()) }}" class="small-link">export the lot</a>.
+  </p>
+  {% endif %}
   <div class="mini-list">
     {% for e in entries %}
     <div class="mini-row">
