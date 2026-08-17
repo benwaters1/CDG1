@@ -6533,6 +6533,84 @@ def menu_dishes_for(conn, menu_id, *, include_unavailable=True):
     return {c: grouped[c] for c in COURSE_ORDER if c in grouped}
 
 
+def card_capacity(conn, menu_id, service_date, service="dinner"):
+    """Can the card on the pass actually get through the covers that are booked?
+
+    Three things the system already knows separately, put together: the dishes
+    on tonight's card, the stock ledger behind each of them, and the covers on
+    the booking sheet. Nobody holds all three at once at six in the evening,
+    which is how a kitchen 86s a dish at nine with four tables still waiting on
+    it.
+
+    Reported per course, because that is the unit a guest actually chooses in:
+    a set menu with three mains needs `covers` portions across the three, not
+    from any one of them. A course with even one untracked dish can always be
+    served — the answer is honest about that rather than inventing a shortfall.
+
+    Dishes already sold tonight need no special handling: selling depletes the
+    ledger, so the level read here is what is left, not what was bought.
+    """
+    if hasattr(service_date, "isoformat"):
+        service_date = service_date.isoformat()
+    covers = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS n FROM restaurant_bookings
+           WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL""",
+        (service_date,)).fetchone()["n"] or 0
+    dishes = conn.execute(
+        """SELECT menu_dishes.*, menu_items.stock_item_id, menu_items.stock_qty_per_unit,
+                  stock_items.name AS stock_name, stock_items.unit AS stock_unit
+             FROM menu_dishes
+             LEFT JOIN menu_items ON menu_items.id = menu_dishes.menu_item_id
+             LEFT JOIN stock_items ON stock_items.id = menu_items.stock_item_id
+            WHERE menu_dishes.menu_id = ?
+            ORDER BY menu_dishes.sort_order, menu_dishes.id""", (menu_id,)).fetchall()
+    levels = stock_levels(conn, [d["stock_item_id"] for d in dishes if d["stock_item_id"]])
+
+    courses = {}
+    for d in dishes:
+        c = courses.setdefault(d["course"] or "main",
+                               {"course": d["course"] or "main", "dishes": [],
+                                "portions": 0, "untracked": False, "off": 0})
+        if not d["available"]:
+            # Already 86'd. It is not a shortfall to warn about, but it does
+            # mean the rest of the course is carrying the whole service.
+            c["off"] += 1
+            c["dishes"].append({"name": d["name"], "portions": 0, "off": True,
+                                "tracked": bool(d["stock_item_id"]), "stock": None})
+            continue
+        if not d["stock_item_id"]:
+            c["untracked"] = True
+            c["dishes"].append({"name": d["name"], "portions": None, "off": False,
+                                "tracked": False, "stock": None})
+            continue
+        per = d["stock_qty_per_unit"] or 1
+        level = levels.get(d["stock_item_id"], 0)
+        portions = int(level // per) if per else 0
+        c["portions"] += max(0, portions)
+        c["dishes"].append({
+            "name": d["name"], "portions": max(0, portions), "off": False,
+            "tracked": True,
+            "stock": f"{level:g} {d['stock_unit'] or ''}".strip() + f" of {d['stock_name']}",
+        })
+
+    out = []
+    for key in COURSE_ORDER:
+        c = courses.get(key)
+        if not c:
+            continue
+        servable = c["dishes"] and not all(d["off"] for d in c["dishes"])
+        c["short_by"] = 0 if (c["untracked"] or not covers) else max(0, covers - c["portions"])
+        c["all_off"] = bool(c["dishes"]) and not servable
+        # Worth naming the dish that goes first, because that is the decision:
+        # not "the mains are tight" but "there are six pigeon and fourteen booked".
+        tight = [d for d in c["dishes"] if d["tracked"] and not d["off"]]
+        c["first_out"] = min(tight, key=lambda d: d["portions"]) if tight else None
+        out.append(c)
+    return {"covers": covers, "courses": out, "service": service,
+            "service_date": service_date,
+            "short": [c for c in out if c["short_by"] or c["all_off"]]}
+
+
 def menu_dish_vat(conn, dish):
     """A dish's VAT: its own if set, otherwise the rate for its course."""
     if dish["vat_rate"] is not None:
@@ -20782,10 +20860,12 @@ def menu_day():
     standing = conn.execute(
         """SELECT COUNT(*) AS c FROM menu_items
            WHERE active = 1 AND sold_in_pos = 1 AND always_available = 1""").fetchone()["c"]
+    capacity = card_capacity(conn, menu["id"], on, service) if menu else None
     conn.close()
     return render_template(
         "menu_day.html", menu=menu, dishes=dishes, on=on, service=service,
         courses=MENU_COURSES, allergens=ALLERGENS, recent=recent, standing=standing,
+        capacity=capacity,
         prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
 
 

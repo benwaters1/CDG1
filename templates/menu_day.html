@@ -107,6 +107,50 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
     {% endif %}
   </div>
 
+  {# The card, the booking sheet and the stock ledger, read together. Each is
+     already on screen somewhere; nobody holds all three at six in the evening,
+     which is how a dish comes off at nine with four tables still on it. #}
+  {% if capacity and capacity.covers %}
+  <div class="detail-card" style="max-width:760px;">
+    <h3 style="margin-top:0;">
+      {{ capacity.covers }} cover{{ '' if capacity.covers == 1 else 's' }} booked
+      {% if capacity.short %}
+        <span class="mini-status status-declined">{{ capacity.short|length }} course{{ '' if capacity.short|length == 1 else 's' }} short</span>
+      {% else %}
+        <span class="mini-status status-onshift">the card covers them</span>
+      {% endif %}
+    </h3>
+    <div class="doc-list">
+      {% for c in capacity.courses %}
+      <div class="doc-row" style="align-items:baseline; gap:10px; flex-wrap:wrap;">
+        <strong style="min-width:130px;">{{ courses.get(c.course, c.course) }}</strong>
+        {% if c.all_off %}
+          <span class="mini-status status-declined">everything off</span>
+        {% elif c.untracked %}
+          <span class="upload-hint">not counted — served from the kitchen, not a tracked stock line</span>
+        {% elif c.short_by %}
+          <span class="mini-status status-declined">{{ c.portions }} of {{ capacity.covers }} — {{ c.short_by }} short</span>
+          {% if c.first_out %}
+          <span class="upload-hint">{{ c.first_out.name }} goes first ({{ c.first_out.portions }} left)</span>
+          {% endif %}
+        {% else %}
+          <span class="mini-status status-onshift">{{ c.portions }} portions</span>
+          {% if c.first_out %}
+          <span class="upload-hint">{{ c.first_out.name }} is the tightest ({{ c.first_out.portions }})</span>
+          {% endif %}
+        {% endif %}
+        {% if c.off %}<span class="upload-hint">{{ c.off }} already off</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <p class="field-hint" style="margin-bottom:0;">
+      Counted from the stock ledger against confirmed bookings for this date. Walk-ins are not
+      in that number, and a course with an untracked dish can always be served — so this warns,
+      it does not promise. <a href="{{ url_for('admin_stock') }}">Stock</a>.
+    </p>
+  </div>
+  {% endif %}
+
   <form method="post" action="{{ url_for('edit_menu_day', menu_id=menu['id']) }}"
         class="detail-card" style="max-width:760px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
