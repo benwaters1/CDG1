@@ -59,6 +59,31 @@ def run():
             stripped.append(f"{r['template_key']} lost {','.join(sorted(missing))}")
     s.check("no template has lost a placeholder", not stripped, detail=" | ".join(stripped[:3]))
 
+    s.section("Placeholder wording cannot reach a guest")
+    # Catching this on a page only works if somebody opens the page. Three
+    # times now the restaurant confirmation has sat reading "TEST SUBJECT"
+    # between one look and the next, so the send itself has to refuse.
+    conn = db()
+    conn.execute("UPDATE email_templates SET subject = ?, body = ? WHERE template_key = ?",
+                 ("TEST SUBJECT {guest_name}", "TEST BODY {reference_code}", KEY))
+    conn.commit()
+    subject, body = m.render_email_template(conn, KEY, {
+        "guest_name": "Marie", "dinner_date": "2026-09-01", "party_size": 2,
+        "reference_code": "ABC123", "manage_url": "https://example.com/x",
+        "price_block": "", "balance_block": "", "arrival_time": "19:30",
+    })
+    s.check("a template holding TEST text is not sent as written",
+            "TEST SUBJECT" not in (subject or "") and "TEST BODY" not in (body or ""),
+            detail=f"got {subject!r}")
+    s.check("the guest gets the shipped wording instead, filled in",
+            subject and "Marie" not in (subject or "") and "ABC123" in (body or ""),
+            detail=f"subject={subject!r}")
+    # and it is not a silent swap
+    conn.execute("UPDATE email_templates SET subject = ?, body = ?, updated_at = NULL "
+                 "WHERE template_key = ?", (orig_subject, orig_body, KEY))
+    conn.commit()
+    conn.close()
+
     s.section("A bad edit can be undone")
     r = oc.post(f"/management/email-templates/{KEY}/edit",
                 data={"subject": "ZZTPL wrecked", "body": "ZZTPL nothing useful"},

@@ -161,6 +161,13 @@
     <p class="upload-hint"><span class="mini-status status-paid">deposit €{{ '%.2f'|format(r['deposit_amount']) }} paid</span> · <strong>€{{ '%.2f'|format(r['total_price'] - r['deposit_amount']) }} due onsite</strong></p>
     {% endif %}
     <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
+    {% if no_show_history.get(r['id']) %}
+    {# Shown before Confirm, not after — the point is to decide with it. #}
+    <p class="no-show-warning">
+      {{ no_show_history[r['id']] }} previous no-show{{ '' if no_show_history[r['id']] == 1 else 's' }} on this address.
+      {% if r['status'] == 'pending' %}Worth asking for a deposit, or a phone number that answers.{% endif %}
+    </p>
+    {% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Notes: {{ r['dietary_notes'] }}</p>{% endif %}
     <p class="upload-hint">Submitted {{ r['created_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
 

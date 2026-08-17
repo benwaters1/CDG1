@@ -224,7 +224,13 @@ def run():
 
     s.section("Markup uses classes the stylesheet defines")
     import glob
-    defined = set(re.findall(r"\.([a-zA-Z][\w-]*)", css))
+    # The public site loads a second stylesheet. Checking only style.css
+    # reported every .g- class as undefined, which is a false alarm loud
+    # enough to make the real ones easy to skip past.
+    defined = set()
+    for sheet in glob.glob(os.path.join(ROOT, "static", "*.css")):
+        defined |= set(re.findall(r"\.([a-zA-Z][\w-]*)",
+                                  _strip_comments(open(sheet, encoding="utf-8").read())))
     used = {}
     for path in glob.glob(os.path.join(ROOT, "templates", "*.html")):
         html = open(path, encoding="utf-8").read()

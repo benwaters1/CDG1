@@ -10518,9 +10518,16 @@ def resolve_timesheet_correction(correction_id):
         "UPDATE timesheet_corrections SET status = 'resolved', resolved_at = ? WHERE id = ?",
         (datetime.now(timezone.utc).isoformat(), correction_id),
     )
+    # Their hours just changed. Tell them what they now are, so the first they
+    # see of it isn't a payslip.
+    send_notification(
+        conn, correction["user_id"], "timesheet", "Your hours have been corrected",
+        f"That shift now reads {local_datetime_str(new_in)} → "
+        f"{local_datetime_str(new_out) if new_out else 'still open'}.",
+        link="/shifts/mine")
     conn.commit()
     conn.close()
-    flash("Correction applied.", "success")
+    flash("Correction applied, and they've been told.", "success")
     return redirect(url_for("admin_timesheet_corrections"))
 
 
@@ -10528,13 +10535,30 @@ def resolve_timesheet_correction(correction_id):
 @owner_required
 def dismiss_timesheet_correction(correction_id):
     conn = get_db()
+    correction = conn.execute(
+        "SELECT * FROM timesheet_corrections WHERE id = ? AND status = 'pending'",
+        (correction_id,)).fetchone()
+    if not correction:
+        conn.close()
+        flash("That correction has already been dealt with.", "error")
+        return redirect(url_for("admin_timesheet_corrections"))
     conn.execute(
-        "UPDATE timesheet_corrections SET status = 'dismissed', resolved_at = ? WHERE id = ? AND status = 'pending'",
-        (datetime.now(timezone.utc).isoformat(), correction_id),
-    )
+        """UPDATE timesheet_corrections SET status = 'dismissed', resolved_at = ?
+           WHERE id = ? AND status = 'pending'""",
+        (datetime.now(timezone.utc).isoformat(), correction_id))
+    # Somebody asked for their hours to be fixed. Declining without telling
+    # them is worse than declining: they assume it is still coming, and the
+    # next they know is a payslip that doesn't match what they worked.
+    send_notification(
+        conn, correction["user_id"], "timesheet",
+        "Your timesheet correction wasn't applied",
+        (request.form.get("reason", "") or "").strip()
+        or "The hours on file were checked and left as they are. Speak to the "
+           "owner if that isn't right.",
+        link="/shifts/mine")
     conn.commit()
     conn.close()
-    flash("Dismissed.", "success")
+    flash("Dismissed, and they've been told.", "success")
     return redirect(url_for("admin_timesheet_corrections"))
 
 
@@ -14244,21 +14268,44 @@ def add_workshop_transaction(conn, booking_id, kind, description, amount, method
     )
 
 
+PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
+
+
 def render_email_template(conn, template_key, context):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
-    missing a key rather than crashing an email send over a typo."""
+    missing a key rather than crashing an email send over a typo.
+
+    Placeholder wording never reaches a guest. These templates are DATA, so a
+    stray edit shows up in no diff and no commit — the restaurant confirmation
+    has sat reading "TEST SUBJECT {guest_name}" three separate times, and each
+    time it was only caught by someone happening to look. A page that reports
+    it is not enough: the send itself has to refuse. The shipped wording is
+    used instead, and the substitution is recorded so it can be found later.
+    """
     row = conn.execute("SELECT subject, body FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
     if not row:
         return None, None
+    subject_src, body_src = row["subject"] or "", row["body"] or ""
+    if PLACEHOLDER_TEXT.search(subject_src + " " + body_src):
+        shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+        if shipped:
+            app.logger.error(
+                "Email template %r holds placeholder text; sending the shipped "
+                "wording instead. Fix it at /management/email-templates.", template_key)
+            subject_src, body_src = shipped[2], shipped[3]
+        else:
+            app.logger.error("Email template %r holds placeholder text and has no "
+                             "shipped original; not sending.", template_key)
+            return None, None
     try:
-        subject = row["subject"].format(**context)
+        subject = subject_src.format(**context)
     except (KeyError, IndexError):
-        subject = row["subject"]
+        subject = subject_src
     try:
-        body = row["body"].format(**context)
+        body = body_src.format(**context)
     except (KeyError, IndexError):
-        body = row["body"]
+        body = body_src
     return subject, body
 
 
@@ -15160,14 +15207,27 @@ def new_room_issue():
     return redirect(url_for("room_issues"))
 
 
+def _tell_reporter(conn, issue, headline, body):
+    """Close the loop with whoever raised something. Reported-by is optional on
+    older rows, so this quietly does nothing rather than failing the action."""
+    reporter = issue["reported_by_user_id"] if "reported_by_user_id" in issue.keys() else None
+    if reporter:
+        send_notification(conn, reporter, "room_issue", headline, body, link="/room-issues")
+
+
 @app.route("/room-issues/<int:issue_id>/resolve", methods=["POST"])
 @owner_required
 def resolve_room_issue(issue_id):
     conn = get_db()
+    issue = conn.execute("SELECT * FROM room_issues WHERE id = ?", (issue_id,)).fetchone()
+    if not issue:
+        conn.close()
+        abort(404)
     conn.execute(
         "UPDATE room_issues SET status='resolved', resolved_at=? WHERE id=?",
         (datetime.now(timezone.utc).isoformat(), issue_id),
     )
+    _tell_reporter(conn, issue, "Fixed", f"“{issue['title']}” has been marked resolved.")
     conn.commit()
     conn.close()
     flash("Issue marked resolved.", "success")
@@ -15178,7 +15238,13 @@ def resolve_room_issue(issue_id):
 @owner_required
 def reopen_room_issue(issue_id):
     conn = get_db()
+    issue = conn.execute("SELECT * FROM room_issues WHERE id = ?", (issue_id,)).fetchone()
+    if not issue:
+        conn.close()
+        abort(404)
     conn.execute("UPDATE room_issues SET status='open', resolved_at=NULL WHERE id=?", (issue_id,))
+    _tell_reporter(conn, issue, "Reopened",
+                   f"“{issue['title']}” has been reopened — it wasn't fixed after all.")
     conn.commit()
     conn.close()
     flash("Issue reopened.", "success")
@@ -16884,13 +16950,22 @@ def admin_restaurant():
             "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'restaurant' GROUP BY booking_id"
         ).fetchall()
     }
+    # A no-show is only worth recording if it is seen the next time that name
+    # asks for a table. One query for the whole page, then each row is told how
+    # many OTHER times this guest didn't turn up.
+    history = prior_no_shows(conn, [r["guest_email"] for r in reservations])
+    no_show_history = {}
+    for r in reservations:
+        others = history.get((r["guest_email"] or "").lower(), 0) - (1 if r["no_show_at"] else 0)
+        if others > 0:
+            no_show_history[r["id"]] = others
     conn.close()
     return render_template(
         "admin_restaurant.html", reservations=reservations, status_filter=status_filter,
         pending_count=pending_count, upcoming_covers=upcoming_covers, settings=settings,
         employees=employees, today=today, profit=profit, prev_month=prev_month, next_month=next_month,
         shifts_by_date=shifts_by_date, no_show_count=no_show_count,
-        refunded_by_reservation=refunded_by_reservation,
+        refunded_by_reservation=refunded_by_reservation, no_show_history=no_show_history,
         overview=overview, period=period,
     )
 
@@ -16973,6 +17048,26 @@ def confirm_restaurant_booking(reservation_id):
     return redirect(url_for("admin_restaurant"))
 
 
+def prior_no_shows(conn, emails):
+    """{email: how many times they've not turned up before}.
+
+    A no-show recorded and never surfaced again is just a tidy database. The
+    point of recording it is that the NEXT booking from the same person is seen
+    differently — so it is fetched for the whole list in one query.
+    """
+    emails = [e for e in {(e or "").strip().lower() for e in emails} if e]
+    if not emails:
+        return {}
+    marks = ",".join("?" * len(emails))
+    return {
+        r["guest_email"]: r["c"] for r in conn.execute(
+            f"""SELECT LOWER(guest_email) AS guest_email, COUNT(*) AS c
+                FROM restaurant_bookings
+                WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
+                GROUP BY LOWER(guest_email)""", emails).fetchall()
+    }
+
+
 @app.route("/admin/restaurant/<int:reservation_id>/no-show", methods=["POST"])
 @owner_required
 def mark_restaurant_no_show(reservation_id):
@@ -16990,6 +17085,18 @@ def mark_restaurant_no_show(reservation_id):
         flash("Only a confirmed reservation can be marked as a no-show.", "error")
         return redirect(url_for("admin_restaurant"))
     log_audit(conn, "restaurant_booking_no_show", target=booking["reference_code"])
+    # A first no-show is bad luck. A third is a pattern worth knowing about
+    # before the table is held again.
+    previous = prior_no_shows(conn, [booking["guest_email"]]).get(
+        (booking["guest_email"] or "").lower(), 0)
+    if previous > 1:
+        owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+        if owner:
+            send_notification(
+                conn, owner["id"], "restaurant",
+                f"{booking['guest_name']} has now not turned up {previous} times",
+                "Worth deciding whether to keep taking their reservations.",
+                link="/admin/restaurant")
     conn.commit()
     conn.close()
     flash("Marked as a no-show.", "success")
@@ -19360,6 +19467,35 @@ def delete_vehicle(vehicle_id):
     return redirect(url_for("management_vehicles"))
 
 
+def notify_vehicle_issue(conn, vehicle, what, message):
+    """Tell someone, and make it a job.
+
+    A flag is not a request. This raises a task so it lands in somebody's
+    list, and marks it high priority if the car is due out on a transfer
+    soon — "low on fuel" matters far more when there is an airport run at six.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    soon = (datetime.now(timezone.utc) + timedelta(hours=36)).isoformat()
+    upcoming = conn.execute(
+        """SELECT scheduled_at, guest_name FROM vehicle_transfers
+           WHERE vehicle_id = ? AND scheduled_at BETWEEN ? AND ?
+           ORDER BY scheduled_at LIMIT 1""",
+        (vehicle["id"], now_iso, soon)).fetchone()
+    urgency = ""
+    if upcoming:
+        urgency = (f" It's booked out at {local_datetime_str(upcoming['scheduled_at'])}"
+                   f"{' for ' + upcoming['guest_name'] if upcoming['guest_name'] else ''}.")
+    conn.execute(
+        """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, status, created_at)
+           VALUES (NULL, ?, ?, ?, 'open', ?)""",
+        (f"{vehicle['name']} {what}", message + urgency,
+         "high" if upcoming else "normal", now_iso))
+    owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+    if owner:
+        send_notification(conn, owner["id"], "vehicle", f"{vehicle['name']} {what}",
+                          message + urgency, link="/management/vehicles")
+
+
 @app.route("/management/vehicles/<int:vehicle_id>/toggle-clean", methods=["POST"])
 @owner_required
 def toggle_vehicle_cleanliness(vehicle_id):
@@ -19370,6 +19506,10 @@ def toggle_vehicle_cleanliness(vehicle_id):
         abort(404)
     new_state = "dirty" if vehicle["cleanliness"] == "clean" else "clean"
     conn.execute("UPDATE vehicles SET cleanliness = ? WHERE id = ?", (new_state, vehicle_id))
+    if new_state == "dirty":
+        notify_vehicle_issue(conn, vehicle, "needs cleaning",
+                             f"{vehicle['name']} has been marked dirty.")
+    log_audit(conn, "vehicle_cleanliness", vehicle["name"], new_state)
     conn.commit()
     conn.close()
     return redirect(url_for("management_vehicles"))
@@ -19385,6 +19525,9 @@ def toggle_vehicle_fuel(vehicle_id):
         abort(404)
     new_state = "low" if vehicle["fuel_level"] == "ok" else "ok"
     conn.execute("UPDATE vehicles SET fuel_level = ? WHERE id = ?", (new_state, vehicle_id))
+    if new_state == "low":
+        notify_vehicle_issue(conn, vehicle, "needs fuel", f"{vehicle['name']} is low on fuel.")
+    log_audit(conn, "vehicle_fuel_level", vehicle["name"], new_state)
     conn.commit()
     conn.close()
     return redirect(url_for("management_vehicles"))
@@ -19442,10 +19585,17 @@ def new_vehicle_maintenance(vehicle_id):
 @owner_required
 def resolve_vehicle_maintenance(item_id):
     conn = get_db()
+    item = conn.execute("SELECT * FROM vehicle_maintenance WHERE id = ?", (item_id,)).fetchone()
     conn.execute(
         "UPDATE vehicle_maintenance SET status = 'resolved', resolved_at = ? WHERE id = ?",
         (datetime.now(timezone.utc).isoformat(), item_id),
     )
+    # Whoever reported it is usually whoever is working around it.
+    if item and item["reported_by_user_id"]:
+        send_notification(conn, item["reported_by_user_id"], "vehicle",
+                          "The fault you reported is fixed",
+                          f"“{item['title']}” has been marked resolved.",
+                          link="/management/vehicles")
     conn.commit()
     conn.close()
     flash("Maintenance item resolved.", "success")
@@ -20165,7 +20315,7 @@ def readiness_checks(conn):
     defaults = {k: (subj, body) for k, _label, subj, body in DEFAULT_EMAIL_TEMPLATES}
     for row in conn.execute("SELECT template_key, subject, body FROM email_templates").fetchall():
         text = (row["subject"] or "") + " " + (row["body"] or "")
-        if re.search(r"\bTEST\b|\bTODO\b|\bFIXME\b|lorem ipsum", text, re.I):
+        if PLACEHOLDER_TEXT.search(text):
             placeholder_templates.append(row["template_key"])
         want = defaults.get(row["template_key"])
         if want and set(re.findall(r"\{(\w+)\}", want[0] + want[1])) - set(

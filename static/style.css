@@ -1471,3 +1471,11 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
    be pinned by an inline style either - an inline width:auto used to beat the
    touch-target sizing and left the booking form's consent box 13px wide. */
 input[type="checkbox"], input[type="radio"]{ width:auto; }
+
+/* A guest who has not turned up before. Shown on the reservation row, above
+   the Confirm button, because after Confirm it is only a reproach. */
+.no-show-warning{
+  background:var(--status-warn-bg); color:var(--gold-soft);
+  border-radius:7px; padding:7px 11px; margin:8px 0 0;
+  font-size:13px; line-height:1.55;
+}
