@@ -3,54 +3,111 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Email Templates</h1>
+  <h1>Email templates</h1>
   <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">The emails guests get at each stage of a workshop registration. Edit the wording — the merge tags below fill in automatically for each guest, so one template covers every workshop and session rather than a separate copy per program.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The wording a guest receives automatically at each step — for rooms, the restaurant,
+  workshops and events. Merge tags fill in per guest, so one template covers every
+  booking rather than a copy per stay.
+</p>
 
-<div class="detail-card" style="max-width:760px; margin-bottom:22px;">
-  <h3>Available merge tags</h3>
-  <p class="manual-body" style="font-family:'IBM Plex Mono', monospace; font-size:12.5px; line-height:1.9;">
-    {guest_name} {workshop_title} {dates} {party_size} {reference_code}<br>
-    {total_price} {deposit_amount} {balance_amount} {balance_due_date}<br>
-    {price_block} {balance_line} {manage_url}
-  </p>
+{% set broken = states.values()|select('equalto', 'Needs fixing')|list|length %}
+{% if broken %}
+{# These are data, not code, so a stray edit shows in no diff. The send itself
+   now refuses and uses the original wording, but the row still needs sorting. #}
+<div class="alert-band">
+  <strong>{{ broken }} template{{ '' if broken == 1 else 's' }} still hold{{ 's' if broken == 1 else '' }} placeholder text.</strong>
+  Guests are being sent the original wording instead, so nothing is broken —
+  but these need fixing or restoring.
+  <a href="{{ url_for('management_email_templates', state='Needs fixing') }}">Show them</a>
 </div>
+{% endif %}
+
+{% include "_list_toolbar.html" %}
 
 {% if not templates %}
-  <div class="empty-state">No templates found.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that.
+      <a href="{{ url_for('management_email_templates') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No templates yet — they are created the first time the app sends one.
+    {% endif %}
+  </div>
 {% else %}
   {% for t in templates %}
-  <div class="mini-list" style="margin-bottom:4px;">
-    <div class="mini-row" id="view-tpl-{{ t['template_key'] }}">
-      <span class="mini-name">{{ t['label'] }}</span>
-      <span class="mini-role">{{ t['subject'] }}{% if t['updated_at'] %} · edited {{ t['updated_at'][:10] }}{% endif %}</span>
-      <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleTemplateEdit('{{ t['template_key'] }}')">Edit</span>
+  {% set key = t['template_key'] %}
+  {% set state = states[key] %}
+  <div class="tpl-card {{ 'is-broken' if state == 'Needs fixing' }}">
+    <div class="tpl-head">
+      <div>
+        <strong>{{ t['label'] }}</strong>
+        {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
+        {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at'][:10] }}{% endif %}</span>
+        {% endif %}
+      </div>
+      <span class="small-link" style="color:var(--steel); cursor:pointer;"
+            onclick="toggleTemplateEdit('{{ key }}')">Edit</span>
     </div>
+
+    {# What the guest actually sees, without opening the editor. #}
+    <p class="tpl-subject">{{ t['subject'] }}</p>
+    <p class="tpl-preview">{{ (t['body'] or '')|replace('\n', ' ')|truncate(180) }}</p>
+
+    {% if tags[key] %}
+    <p class="tpl-tags">{% for tag in tags[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
+    {% endif %}
   </div>
-  <form method="post" action="{{ url_for('edit_email_template', template_key=t['template_key']) }}" id="edit-tpl-{{ t['template_key'] }}" class="detail-card" style="max-width:760px; margin-bottom:18px; display:none;">
+
+  <form method="post" action="{{ url_for('edit_email_template', template_key=key) }}"
+        id="edit-tpl-{{ key }}" class="detail-card tpl-editor" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Subject</label>
     <input type="text" name="subject" value="{{ t['subject'] }}" required>
     <label class="field-label" style="margin-top:10px;">Body</label>
-    <textarea name="body" rows="8" required style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
-    <button type="submit" class="btn-mini" style="margin-top:10px;">Save</button>
+    <textarea name="body" rows="10" required
+              style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
+    {% if tags[key] %}
+    <p class="field-hint">Keep every tag you want filled in: {% for tag in tags[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
+    {% endif %}
+    <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
+      <button type="submit" class="btn-mini">Save</button>
+      {% if key in edited %}
+      <button type="submit" class="btn-text-danger" formaction="{{ url_for('restore_email_template', template_key=key) }}"
+              formnovalidate
+              onclick="return confirm('Put this template back to its original wording? Your changes will be lost.');">
+        Restore original wording
+      </button>
+      {% endif %}
+    </div>
   </form>
-  {% if t['template_key'] in edited %}
-  <form method="post" action="{{ url_for('restore_email_template', template_key=t['template_key']) }}"
-        style="max-width:760px; margin:-12px 0 18px;"
-        onsubmit="return confirm('Put this template back to its original wording? Your changes will be lost.');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-mini">Restore original wording</button>
-  </form>
-  {% endif %}
   {% endfor %}
 {% endif %}
+
+<style>
+.tpl-card{
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:10px;
+  padding:13px 16px; margin-bottom:9px;
+}
+.tpl-card.is-broken{ border-color:var(--danger); }
+.tpl-head{ display:flex; justify-content:space-between; gap:14px; align-items:baseline; }
+.tpl-head .mini-status{ margin-left:8px; }
+.tpl-subject{ margin:7px 0 3px; font-size:14px; }
+.tpl-preview{ margin:0; font-size:12.5px; color:var(--steel); line-height:1.6; }
+.tpl-tags{ margin:8px 0 0; display:flex; gap:5px; flex-wrap:wrap; }
+.tpl-tags code, .tpl-editor code{
+  font-family:'IBM Plex Mono', monospace; font-size:11px; color:var(--steel);
+  background:var(--parchment); border-radius:4px; padding:1px 5px;
+}
+.tpl-editor{ max-width:760px; margin:-4px 0 18px; }
+</style>
 
 <script>
 function toggleTemplateEdit(key) {
   var edit = document.getElementById('edit-tpl-' + key);
   edit.style.display = edit.style.display === 'none' ? 'block' : 'none';
+  if (edit.style.display === 'block') edit.querySelector('textarea').focus();
 }
 </script>
 

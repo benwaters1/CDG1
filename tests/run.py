@@ -19,6 +19,7 @@ SUITES = [
     "test_workflows",
     "test_operations",
     "test_closing_loops",
+    "test_list_view",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",

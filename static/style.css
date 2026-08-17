@@ -1479,3 +1479,54 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   border-radius:7px; padding:7px 11px; margin:8px 0 0;
   font-size:13px; line-height:1.55;
 }
+
+
+/* ---------------------------------------------------------------------------
+   List toolbar: search, classification chips, sort. One appearance for every
+   list in the app, so the same question is asked the same way on each screen.
+   --------------------------------------------------------------------------- */
+.list-toolbar{
+  display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap; margin:0 0 12px;
+}
+.list-search{ display:flex; gap:8px; align-items:center; flex:1 1 260px; }
+.list-search input[type="search"]{ margin:0; flex:1; min-width:0; }
+.list-sort{ display:flex; gap:8px; align-items:center; }
+.list-sort .field-label{ margin:0; white-space:nowrap; }
+.list-sort select{ margin:0; width:auto; }
+
+.facet-row{ display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin:0 0 9px; }
+.facet-label{
+  font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--steel); margin-right:2px;
+}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 11px; border-radius:999px; text-decoration:none;
+  border:1px solid var(--parchment-line); background:var(--surface);
+  color:var(--ink); font-size:13px; line-height:1.2; white-space:nowrap;
+}
+.chip:hover{ border-color:var(--steel); }
+/* The count is the point of the chip: it says where the work is before you
+   click. Muted so the label still reads first. */
+.chip-n{ color:var(--steel); font-size:12px; font-variant-numeric:tabular-nums; }
+.chip.is-on{ background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.chip.is-on .chip-n{ color:var(--surface); opacity:.78; }
+.list-count{ font-size:12.5px; color:var(--steel); margin:0 0 12px; }
+.list-count .small-link{ margin-left:8px; }
+
+@media (max-width:600px){
+  .list-toolbar{ gap:10px; }
+  .list-sort{ width:100%; }
+  .list-sort select{ flex:1; }
+  /* Chips scroll sideways rather than stacking into a wall on a phone. */
+  .facet-row{ flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
+}
+
+/* A banner for something that needs a decision, not merely a notice. Sits
+   above a list and links to the filtered view of exactly those rows. */
+.alert-band{
+  background:var(--status-danger-bg); color:var(--danger);
+  border-radius:9px; padding:11px 14px; margin:0 0 16px;
+  font-size:13.5px; line-height:1.6;
+}
+.alert-band a{ color:var(--danger); }

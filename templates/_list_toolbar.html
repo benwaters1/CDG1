@@ -1,0 +1,62 @@
+{#
+  The controls above a list: search, classification chips, sort.
+
+  Used as {% with lv = <the dict from list_view()> %}{% include "_list_toolbar.html" %}{% endwith %}
+
+  Everything is a link or a plain GET form, so a filtered list is a URL — it
+  can be bookmarked, sent to somebody, or left open on the second screen. No
+  JavaScript is required for any of it; the one script here only submits the
+  sort menu on change, and it still works as a button without.
+
+  `keep` carries any query parameters the page owns (period, month, tab) so
+  clicking a chip never quietly resets them.
+#}
+{% set keep = request.args.to_dict() %}
+{% set _ = keep.pop('page', None) %}
+
+<div class="list-toolbar">
+  {% if lv.searchable %}
+  <form method="get" class="list-search" role="search">
+    {% for k, v in keep.items() if k != 'q' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="search" name="q" value="{{ lv.q }}" placeholder="{{ lv.search_hint }}"
+           aria-label="{{ lv.search_hint }}">
+    <button type="submit" class="btn-mini">Search</button>
+  </form>
+  {% endif %}
+
+  {% if lv.sorts %}
+  <form method="get" class="list-sort">
+    {% for k, v in keep.items() if k != 'sort' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <label class="field-label" for="list-sort-select">Sort</label>
+    <select name="sort" id="list-sort-select" onchange="this.form.submit()">
+      {% for s in lv.sorts %}
+      <option value="{{ s.key }}" {{ 'selected' if s.key == lv.sort }}>{{ s.label }}</option>
+      {% endfor %}
+    </select>
+    <noscript><button type="submit" class="btn-mini">Apply</button></noscript>
+  </form>
+  {% endif %}
+</div>
+
+{% for f in lv.facets %}
+{# Counts on every chip. A status list you have to click through to find where
+   the work is has told you nothing; "Pending 4 · Confirmed 112" already has. #}
+<div class="facet-row">
+  <span class="facet-label">{{ f.label }}</span>
+  {% set base = keep.copy() %}{% set _ = base.pop(f.key, None) %}
+  <a href="{{ url_for(request.endpoint, **dict(base, **request.view_args or {})) }}"
+     class="chip {{ 'is-on' if not f.selected }}">All <span class="chip-n">{{ f.total }}</span></a>
+  {% for o in f.options %}
+  {% set args = base.copy() %}{% set _ = args.update({f.key: o.value}) %}
+  <a href="{{ url_for(request.endpoint, **dict(args, **request.view_args or {})) }}"
+     class="chip {{ 'is-on' if o.selected }}">{{ o.label }} <span class="chip-n">{{ o.count }}</span></a>
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% if lv.filtered %}
+<p class="list-count">
+  Showing {{ lv.shown }} of {{ lv.total }}
+  <a href="{{ url_for(request.endpoint, **(request.view_args or {})) }}" class="small-link">Clear filters</a>
+</p>
+{% endif %}

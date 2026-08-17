@@ -3718,6 +3718,136 @@ def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, en
             "hint": hint, "delta": delta, "endpoint": endpoint}
 
 
+# ---------------------------------------------------------------------------
+# List views.
+#
+# Every page in here eventually becomes a long list. Left alone, each one grows
+# its own half-answer — a search box on Guests, a status dropdown on Bookings,
+# nothing at all on the other forty — so the same question ("show me only the
+# ones that need me") is asked a different way on every screen, and most of the
+# time cannot be asked at all.
+#
+# So: one helper, one include. A page declares what its rows can be searched
+# by, classified by and sorted by; `_list_toolbar.html` renders that the same
+# way everywhere. State lives in the query string, so a filtered list is a URL
+# you can bookmark, share, or leave open on the second screen.
+#
+# Filtering happens in Python over rows already fetched, which is how these
+# pages already work — they all `fetchall()` and render. It keeps a facet one
+# line of code instead of a rewritten query, and nothing here is big enough to
+# care. `chunked` list pages that genuinely need SQL paging are the exception,
+# and they can pass `paged=True` to keep the toolbar and do their own slicing.
+# ---------------------------------------------------------------------------
+
+def facet(key, label, bucket, *, order=None, labels=None, hide_empty=True):
+    """One way of classifying a list.
+
+    `bucket` maps a row to a group name, or to None to leave it out of this
+    classification entirely (an expense with no receipt is not "receipt: none",
+    it simply isn't part of that question). `order` fixes the chip order where
+    the natural one matters — pending before confirmed before cancelled reads
+    as a workflow; alphabetical reads as noise.
+    """
+    return {"key": key, "label": label, "bucket": bucket,
+            "order": list(order or []), "labels": dict(labels or {}),
+            "hide_empty": hide_empty}
+
+
+def sort_option(key, label, keyfn, *, reverse=False):
+    """One ordering, named so it can appear in the query string."""
+    return {"key": key, "label": label, "keyfn": keyfn, "reverse": reverse}
+
+
+def _searchable(row, fields):
+    parts = []
+    for f in fields:
+        value = f(row) if callable(f) else (row[f] if f in row.keys() else None)
+        if value is not None:
+            parts.append(str(value))
+    return " ".join(parts).lower()
+
+
+def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
+              search_hint="", paged=False):
+    """Apply ?q=, ?facet=value and ?sort= to a list of rows.
+
+    Returns everything the toolbar needs to render itself, including a count
+    on every chip — the counts are the point. A status filter that just lists
+    the statuses makes you click each one to find out where the work is; one
+    that says "Pending 4 · Confirmed 112 · Cancelled 9" has already told you.
+
+    Counts are worked out against the OTHER filters, not the whole list, so
+    they always describe what you would actually get by clicking. A chip
+    reading 12 that yields nothing is worse than no chip.
+    """
+    rows = list(rows)
+    args = args or {}
+    q = (args.get("q") or "").strip()
+    chosen = {f["key"]: (args.get(f["key"]) or "").strip() for f in facets}
+    chosen = {k: v for k, v in chosen.items() if v}
+
+    def matches_search(row):
+        return not q or q.lower() in _searchable(row, search)
+
+    def matches_facets(row, skip=None):
+        for f in facets:
+            want = chosen.get(f["key"])
+            if not want or f["key"] == skip:
+                continue
+            if str(f["bucket"](row) or "") != want:
+                return False
+        return True
+
+    visible = [r for r in rows if matches_search(r) and matches_facets(r)]
+
+    # Chip counts: everything except this facet's own selection applied.
+    facet_state = []
+    for f in facets:
+        pool = [r for r in rows if matches_search(r) and matches_facets(r, skip=f["key"])]
+        counts = {}
+        for r in pool:
+            b = f["bucket"](r)
+            if b is None or b == "":
+                continue
+            counts[str(b)] = counts.get(str(b), 0) + 1
+        keys = [k for k in f["order"] if k in counts] if f["order"] else []
+        keys += sorted(k for k in counts if k not in keys)
+        if f["hide_empty"] and not keys:
+            continue
+        options = [{"value": k, "label": f["labels"].get(k, str(k).replace("_", " ")),
+                    "count": counts[k], "selected": chosen.get(f["key"]) == k}
+                   for k in keys]
+        facet_state.append({
+            "key": f["key"], "label": f["label"], "options": options,
+            "selected": chosen.get(f["key"], ""), "total": len(pool),
+        })
+
+    sorts = list(sorts)
+    active_sort = (args.get("sort") or default_sort or (sorts[0]["key"] if sorts else "")).strip()
+    chosen_sort = next((s for s in sorts if s["key"] == active_sort), None)
+    if chosen_sort:
+        # A None in a sort key makes Python refuse the whole comparison, so
+        # missing values sort last rather than crashing the page.
+        def safe(r):
+            v = chosen_sort["keyfn"](r)
+            return (v is None, v if v is not None else "")
+        visible.sort(key=safe, reverse=chosen_sort["reverse"])
+
+    return {
+        "rows": visible if not paged else rows,
+        "total": len(rows),
+        "shown": len(visible),
+        "q": q,
+        "search_hint": search_hint or "Search",
+        "searchable": bool(search),
+        "facets": facet_state,
+        "sorts": sorts,
+        "sort": active_sort if chosen_sort else "",
+        "chosen": chosen,
+        "filtered": bool(q or chosen),
+    }
+
+
 def euro(value):
     """Money as it is written everywhere else in the app."""
     value = value or 0
@@ -19901,20 +20031,92 @@ def delete_company_document(doc_id):
     return redirect(url_for("management_documents"))
 
 
+# Which part of the house a template belongs to, and where in a guest's
+# progress it sits. Both are already in the key — they were just never used,
+# so seventeen unrelated messages sat in one flat alphabetical list.
+TEMPLATE_AREAS = [
+    ("workshop", "Workshops"), ("restaurant", "Restaurant"),
+    ("event", "Events"), ("room", "Rooms"),
+]
+TEMPLATE_STAGES = [
+    ("received", "Enquiry received"), ("confirmed", "Confirmed"),
+    ("deposit", "Deposit"), ("reminder", "Reminder"), ("balance", "Balance due"),
+    ("waitlist", "Waitlist"), ("declined", "Declined"), ("cancelled", "Cancelled"),
+    ("feedback", "After the stay"),
+]
+
+
+def template_area(key):
+    for prefix, label in TEMPLATE_AREAS:
+        if key.startswith(prefix):
+            return label
+    return "Other"
+
+
+def template_stage(key):
+    for token, label in TEMPLATE_STAGES:
+        if token in key:
+            return label
+    return "Other"
+
+
+def template_state(row, defaults):
+    """Shipped wording, edited, or holding placeholder text.
+
+    The third is the one worth being able to filter to: it means a guest is
+    about to be sent "TEST SUBJECT". The send now refuses and substitutes the
+    original, but that is a safety net, not a fix — the row still needs sorting.
+    """
+    if PLACEHOLDER_TEXT.search((row["subject"] or "") + " " + (row["body"] or "")):
+        return "Needs fixing"
+    want = defaults.get(row["template_key"])
+    if want and (row["subject"], row["body"]) != want:
+        return "Edited"
+    return "Original wording"
+
+
 @app.route("/management/email-templates")
 @owner_required
 def management_email_templates():
     conn = get_db()
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
     conn.close()
+    defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
     # Which ones have been changed from the original wording, so the editor can
     # offer a way back only where there is something to go back to.
-    defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
     edited = {t["template_key"] for t in templates
               if t["template_key"] in defaults
               and (t["subject"], t["body"]) != defaults[t["template_key"]]}
-    return render_template("management_email_templates.html", templates=templates,
-                           edited=edited)
+    states = {t["template_key"]: template_state(t, defaults) for t in templates}
+    # The merge tags each template actually uses. A single global list is
+    # worse than none: this page carried the workshop tags above restaurant
+    # and event templates that cannot use half of them.
+    tags = {t["template_key"]: sorted(set(re.findall(
+        r"\{(\w+)\}", (t["subject"] or "") + " " + (t["body"] or "")))) for t in templates}
+
+    lv = list_view(
+        templates, request.args,
+        search=["label", "subject", "body"],
+        search_hint="Search wording, subject or name",
+        facets=[
+            facet("area", "Part of the house", lambda t: template_area(t["template_key"]),
+                  order=[label for _p, label in TEMPLATE_AREAS] + ["Other"]),
+            facet("stage", "Stage", lambda t: template_stage(t["template_key"]),
+                  order=[label for _t, label in TEMPLATE_STAGES] + ["Other"]),
+            facet("state", "Wording", lambda t: states[t["template_key"]],
+                  order=["Needs fixing", "Edited", "Original wording"]),
+        ],
+        sorts=[
+            sort_option("area", "Part of the house",
+                        lambda t: (template_area(t["template_key"]), t["label"] or "")),
+            sort_option("name", "Name", lambda t: (t["label"] or "").lower()),
+            sort_option("edited", "Recently edited", lambda t: t["updated_at"] or "",
+                        reverse=True),
+        ],
+        default_sort="area",
+    )
+    return render_template("management_email_templates.html", templates=lv["rows"], lv=lv,
+                           edited=edited, states=states, tags=tags)
 
 
 @app.route("/management/email-templates/<template_key>/restore", methods=["POST"])
