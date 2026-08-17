@@ -2336,6 +2336,14 @@ def init_db():
         # card" twice, or reloading the page mid-payment, reuses the same
         # PaymentIntent instead of asking the guest to tap for a second charge.
         ("pos_orders_payment_intent", "ALTER TABLE pos_orders ADD COLUMN payment_intent_id TEXT"),
+        # A short code for signing in on a shared device at the château. Hashed
+        # like any password: a PIN readable from the database is a PIN that lets
+        # anyone clock in as anyone, and these records feed payroll.
+        ("users_quick_pin", "ALTER TABLE users ADD COLUMN quick_pin_hash TEXT"),
+        # One link that shows a guest everything they have booked. Per person and
+        # long-lived, like the per-booking manage tokens it sits alongside, so it
+        # can go in an email and still work when they come back next year.
+        ("guests_portal_token", "ALTER TABLE guests ADD COLUMN portal_token TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -2913,7 +2921,7 @@ NAV_AREAS = {
         "update_incident"
     ],
     "rota": [
-        "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
+        "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
         "admin_timesheets", "complete_task", "copy_previous_week_shifts", "decide_leave",
         "decide_shift_swap", "delete_shift", "delete_task", "dismiss_timesheet_correction",
         "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
@@ -10492,6 +10500,139 @@ def pos_cancel_card(order_id):
     flash(problems or "Card payment cancelled — the reader is clear.",
           "error" if problems else "success")
     return redirect(url_for("pos_order", order_id=order_id))
+
+
+PIN_ATTEMPT_LIMIT = 5
+PIN_LOCKOUT_MINUTES = 10
+
+
+def pin_locked_out(conn, user_id):
+    """Whether this person has failed too many PINs to try again yet.
+
+    Counted per person, not per device. Everyone shares the château's IP on a
+    kiosk, so an IP-based limit would let one fumbled PIN lock the whole kitchen
+    out of clocking in.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(minutes=PIN_LOCKOUT_MINUTES)).isoformat()
+    failures = conn.execute(
+        """SELECT COUNT(*) AS c FROM submission_log
+           WHERE action = ? AND created_at >= ?""",
+        (f"arrive_pin_fail:{user_id}", since)).fetchone()["c"]
+    return failures >= PIN_ATTEMPT_LIMIT
+
+
+def record_pin_failure(conn, user_id):
+    """Only failures are logged. Counting successes too would lock out whoever
+    signs in most often, which is the opposite of the intent."""
+    conn.execute(
+        "INSERT INTO submission_log (ip_address, action, created_at) VALUES (?, ?, ?)",
+        (request.remote_addr or "kiosk", f"arrive_pin_fail:{user_id}",
+         datetime.now(timezone.utc).isoformat()))
+
+
+def initials_for(name):
+    parts = [p for p in (name or "").split() if p]
+    return ((parts[0][0] + parts[-1][0]) if len(parts) > 1
+            else (parts[0][:2] if parts else "?")).upper()
+
+
+@app.route("/arrive")
+def arrive():
+    """The screen on the shared iPad or a borrowed phone: tap your name, enter
+    your PIN, and you are signed in and clocked on.
+
+    Separate from /login on purpose. Signing in is not the same event as
+    arriving at work — someone checking next week's rota from home at nine at
+    night should not appear on the timesheet.
+    """
+    conn = get_db()
+    staff = conn.execute(
+        """SELECT id, name, job_role, quick_pin_hash FROM users
+           WHERE status = 'active' ORDER BY name""").fetchall()
+    on_shift = {r["user_id"] for r in conn.execute(
+        "SELECT user_id FROM time_entries WHERE clock_out_at IS NULL").fetchall()}
+    conn.close()
+    people = [{
+        "id": p["id"], "name": p["name"], "job_role": p["job_role"],
+        "initials": initials_for(p["name"]),
+        "has_pin": bool(p["quick_pin_hash"]),
+        "here": p["id"] in on_shift,
+    } for p in staff]
+    return render_template("arrive.html", people=people)
+
+
+@app.route("/arrive/<int:user_id>", methods=["POST"])
+def arrive_signin(user_id):
+    """Check the PIN, sign them in, and start their shift."""
+    pin = request.form.get("pin", "").strip()
+    conn = get_db()
+    person = conn.execute(
+        "SELECT * FROM users WHERE id = ? AND status = 'active'", (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+
+    if pin_locked_out(conn, user_id):
+        conn.commit()
+        conn.close()
+        flash(f"Too many wrong PINs. Wait {PIN_LOCKOUT_MINUTES} minutes, or ask "
+              f"the owner to reset it.", "error")
+        return redirect(url_for("arrive"))
+    if not person["quick_pin_hash"]:
+        conn.close()
+        flash(f"{person['name'].split(' ')[0]} has no PIN yet — the owner sets "
+              f"one on their profile.", "error")
+        return redirect(url_for("arrive"))
+    if not check_password_hash(person["quick_pin_hash"], pin):
+        record_pin_failure(conn, user_id)
+        log_audit(conn, "arrive_pin_failed", target=person["name"])
+        conn.commit()
+        conn.close()
+        flash("That PIN doesn't match.", "error")
+        return redirect(url_for("arrive"))
+
+    session["user_id"] = person["id"]
+    # Arriving means starting work. Only start a shift if one is not already
+    # running, so tapping in twice does not open a second overlapping entry.
+    started = False
+    if not open_shift(conn, person["id"]):
+        clock_in(conn, person["id"])
+        started = True
+    log_audit(conn, "arrived_on_shift" if started else "arrived_already_on",
+              target=person["name"])
+    conn.commit()
+    conn.close()
+    first = (person["name"] or "").split(" ")[0]
+    flash(f"Welcome, {first} — you're clocked in." if started
+          else f"Welcome back, {first}. You were already clocked in.", "success")
+    return redirect(url_for("staff_today"))
+
+
+@app.route("/directory/<int:user_id>/set-pin", methods=["POST"])
+@owner_required
+def set_quick_pin(user_id):
+    """Set or clear a staff member's arrival PIN."""
+    pin = request.form.get("pin", "").strip()
+    conn = get_db()
+    person = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+    if pin and (not pin.isdigit() or not 4 <= len(pin) <= 8):
+        conn.close()
+        flash("A PIN is 4 to 8 digits.", "error")
+        return redirect(url_for("profile", user_id=user_id))
+
+    conn.execute("UPDATE users SET quick_pin_hash = ? WHERE id = ?",
+                 (generate_password_hash(pin) if pin else None, user_id))
+    # Clear any lockout, so resetting a forgotten PIN lets them straight back in.
+    conn.execute("DELETE FROM submission_log WHERE action = ?",
+                 (f"arrive_pin_fail:{user_id}",))
+    log_audit(conn, "quick_pin_set" if pin else "quick_pin_cleared", target=person["name"])
+    conn.commit()
+    conn.close()
+    flash(f"PIN {'set' if pin else 'removed'} for {person['name']}.", "success")
+    return redirect(url_for("profile", user_id=user_id))
 
 
 @app.route("/admin/terminal", methods=["GET", "POST"])

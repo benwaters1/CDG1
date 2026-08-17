@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Arriving{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Who's arriving?</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Tap your name, enter your PIN, and you're clocked in.</p>
+
+{% if not people %}
+  <div class="empty-state">Nobody on the team yet.</div>
+{% else %}
+<div class="arrive-grid">
+  {% for p in people %}
+  <button type="button" class="arrive-person {{ 'arrive-person-here' if p.here }}"
+          onclick="askPin({{ p.id }}, '{{ p.name|e }}')"
+          {{ 'disabled' if not p.has_pin }}>
+    <span class="arrive-initials">{{ p.initials }}</span>
+    <span class="arrive-name">{{ p.name }}</span>
+    {% if p.job_role %}<span class="arrive-role">{{ p.job_role }}</span>{% endif %}
+    {% if p.here %}<span class="arrive-flag">already in</span>
+    {% elif not p.has_pin %}<span class="arrive-flag">no PIN set</span>{% endif %}
+  </button>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# The keypad. One dialog reused for whoever is tapped, so there is no separate
+   page load between choosing a name and typing — the whole thing is meant to
+   take about three seconds while holding a tray. #}
+<div class="pin-backdrop" id="pin-backdrop" hidden onclick="closePin(event)">
+  <form method="post" id="pin-form" class="pin-panel" onclick="event.stopPropagation();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="pin-who" id="pin-who"></p>
+    <input type="password" name="pin" id="pin-input" inputmode="numeric"
+           autocomplete="off" pattern="[0-9]*" maxlength="8" required
+           aria-label="Your PIN" placeholder="••••">
+    <div class="pin-pad">
+      {% for n in [1,2,3,4,5,6,7,8,9] %}
+      <button type="button" class="pin-key" onclick="pinPress('{{ n }}')">{{ n }}</button>
+      {% endfor %}
+      <button type="button" class="pin-key pin-key-quiet" onclick="pinClear()">clear</button>
+      <button type="button" class="pin-key" onclick="pinPress('0')">0</button>
+      <button type="submit" class="pin-key pin-key-go" aria-label="Sign in">→</button>
+    </div>
+    <button type="button" class="btn-mini" onclick="closePin()" style="margin-top:10px;">Cancel</button>
+  </form>
+</div>
+
+<script>
+function askPin(id, name) {
+  var form = document.getElementById('pin-form');
+  form.action = '/arrive/' + id;
+  document.getElementById('pin-who').textContent = name;
+  document.getElementById('pin-input').value = '';
+  document.getElementById('pin-backdrop').hidden = false;
+  document.getElementById('pin-input').focus();
+}
+function closePin(e) {
+  if (e && e.target !== document.getElementById('pin-backdrop')) return;
+  document.getElementById('pin-backdrop').hidden = true;
+}
+function pinPress(d) {
+  var el = document.getElementById('pin-input');
+  if (el.value.length < 8) el.value += d;
+}
+function pinClear() { document.getElementById('pin-input').value = ''; }
+</script>
+
+{% endblock %}

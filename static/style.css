@@ -1508,3 +1508,61 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 }
 .quote-unavailable{ margin:0; font-size:13.5px; color:var(--danger); font-weight:600; }
 .quote-box .upload-hint{ margin:6px 0 0; }
+
+
+/* ==================================================================
+   The arrivals screen. Used standing up, often holding something,
+   on a shared iPad by the kitchen door. Everything is thumb-sized.
+   ================================================================== */
+
+.arrive-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:11px;
+}
+.arrive-person{
+  display:flex; flex-direction:column; align-items:center; gap:5px;
+  padding:16px 12px; min-height:132px; cursor:pointer;
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:13px; box-shadow:var(--shadow); text-align:center;
+}
+.arrive-person:hover:not(:disabled){ border-color:var(--gold); }
+.arrive-person:disabled{ opacity:0.55; cursor:default; }
+/* Already clocked in — still tappable, because they may just want to sign in
+   on a different handset, but visibly different so nobody taps twice by mistake. */
+.arrive-person-here{ border-left:3px solid var(--success); }
+.arrive-initials{
+  width:52px; height:52px; border-radius:50%; background:var(--gold);
+  color:var(--chestnut-deep); font-family:'Playfair Display', serif;
+  font-size:20px; font-weight:700; line-height:52px;
+}
+.arrive-name{ font-size:14.5px; color:var(--ink); line-height:1.25; }
+.arrive-role{ font-size:11.5px; color:var(--ink-soft); }
+.arrive-flag{
+  font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase;
+  letter-spacing:0.04em; color:var(--steel);
+}
+
+.pin-backdrop{
+  position:fixed; inset:0; background:rgba(43,38,32,0.55); z-index:60;
+  display:flex; align-items:center; justify-content:center; padding:18px;
+}
+.pin-panel{
+  background:var(--surface); border-radius:15px; padding:18px; width:100%;
+  max-width:290px; box-shadow:0 18px 50px rgba(43,38,32,0.3); text-align:center;
+}
+.pin-who{
+  margin:0 0 10px; font-family:'Playfair Display', serif; font-size:18px;
+  color:var(--chestnut-deep);
+}
+.pin-panel input[type="password"]{
+  width:100%; text-align:center; font-size:26px; letter-spacing:0.3em;
+  padding:9px; margin-bottom:12px;
+}
+.pin-pad{ display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+.pin-key{
+  /* 56px so it can be hit reliably with a thumb while carrying a tray. */
+  min-height:56px; font-size:21px; border-radius:11px; cursor:pointer;
+  background:var(--parchment); border:1px solid var(--parchment-line); color:var(--ink);
+}
+.pin-key:hover{ border-color:var(--gold); }
+.pin-key-quiet{ font-size:13px; color:var(--ink-soft); }
+.pin-key-go{ background:var(--gold); color:var(--chestnut-deep); font-weight:700; }
