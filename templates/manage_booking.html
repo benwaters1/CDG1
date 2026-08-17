@@ -157,6 +157,30 @@
 </div>
 {% endif %}
 
+{# Things a guest can add to a stay they have already booked. Goes on the bill
+   rather than asking for a card each time — the balance is settled once. #}
+{% if addable and booking['status'] in ('pending', 'confirmed') %}
+<div class="detail-card" style="margin-top:20px;">
+  <h3>Add to your stay</h3>
+  <p class="upload-hint">Added to your bill, settled with the rest.</p>
+  {% for e in addable %}
+  <form method="post" class="filter-bar" style="margin-bottom:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_extra">
+    <input type="hidden" name="extra_id" value="{{ e['id'] }}">
+    <span style="flex:1; min-width:0;">
+      {{ e['name'] }} — €{{ '%.2f'|format(e['price'] or 0) }}
+      {% if e['description'] %}<span class="upload-hint">{{ e['description'] }}</span>{% endif %}
+    </span>
+    <input type="number" name="quantity" value="1" min="1"
+           {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
+           style="width:64px;" aria-label="How many {{ e['name'] }}">
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if dinner_available %}
 <div class="detail-card" style="margin-top:20px;">
   <h3>Book dinner</h3>

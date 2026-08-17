@@ -13480,6 +13480,60 @@ def manage_booking(manage_token):
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
+    elif action == "add_extra" and booking["status"] in ("pending", "confirmed"):
+        # A guest adding a transfer or a hamper to a stay they have already
+        # booked. It goes on the bill as a line and is owed — no card is asked
+        # for here, because the amount owed is settled once, on arrival or by
+        # paying the balance, rather than as a string of small charges.
+        extra_id = request.form.get("extra_id", "").strip()
+        qty_raw = request.form.get("quantity", "1").strip()
+        quantity = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
+        departure = parse_date(booking["departure_date"])
+        extra = conn.execute(
+            """SELECT * FROM extras WHERE id = ? AND active = 1
+               AND guest_bookable = 1 AND category = 'room'""",
+            (extra_id,)).fetchone() if extra_id.isdigit() else None
+
+        if departure and departure < datetime.now(timezone.utc).date():
+            flash("That stay has already finished.", "error")
+        elif not extra:
+            flash("That isn't something we can add.", "error")
+        elif extra["max_qty"] and quantity > extra["max_qty"]:
+            flash(f"We can only do {extra['max_qty']} of those.", "error")
+        else:
+            # Some things need notice — a transfer booked for tomorrow morning
+            # cannot be arranged, and promising it would be worse than refusing.
+            arrival = parse_date(booking["arrival_date"])
+            lead = extra["lead_time_days"] or 0
+            days_until = (arrival - datetime.now(timezone.utc).date()).days if arrival else 0
+            if lead and days_until < lead:
+                flash(f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
+                      f"notice, so it's too late for this stay — call us and we'll "
+                      f"see what we can do.", "error")
+            else:
+                add_booking_extra(conn, "room", booking["id"], extra, quantity,
+                                  notes="Added by the guest")
+                log_audit(conn, "guest_added_extra", target=booking["reference_code"],
+                          details=f"{quantity} x {extra['name']}")
+                owner_to = owner_email(conn)
+                # Commit before sending. send_email falls back to writing the
+                # message into email_outbox on its own connection, which cannot
+                # take a write lock while this transaction is still open — the
+                # notification was being silently lost to "database is locked".
+                conn.commit()
+                if owner_to:
+                    send_email(
+                        owner_to, f"Guest added an extra — {booking['reference_code']}",
+                        f"{booking['guest_name']} added {quantity} x {extra['name']} "
+                        f"(€{(extra['price'] or 0) * quantity:.2f}) to their "
+                        f"{booking['room_name']} stay, {booking['arrival_date']} to "
+                        f"{booking['departure_date']}.\n\n— Château de Gudanes")
+                conn.commit()
+                flash(f"{extra['name']} added — it's on your bill.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
     elif action == "book_dinner" and booking["status"] == "confirmed":
         restaurant_settings = get_restaurant_settings(conn)
         if not restaurant_settings or not restaurant_settings["enabled"]:
@@ -13536,12 +13590,21 @@ def manage_booking(manage_token):
         dinner_available = dinner_min_date <= dinner_max_date
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
     bill = booking_bill(conn, booking["id"])
+    # What they can still add. Anything needing more notice than they have left
+    # is left out rather than offered and then refused.
+    days_until = 0
+    if parse_date(booking["arrival_date"]):
+        days_until = (parse_date(booking["arrival_date"]) - datetime.now(timezone.utc).date()).days
+    addable = [e for e in conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
+           AND category = 'room' ORDER BY sort_order, name""").fetchall()
+        if (e["lead_time_days"] or 0) <= max(days_until, 0)]
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
-        dinner_available=dinner_available, bill=bill,
+        dinner_available=dinner_available, bill=bill, addable=addable,
     )
 
 

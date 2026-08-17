@@ -12,7 +12,7 @@ what the stay cost, and adding something later increases what is owed.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, ensure_room
+from _harness import Suite, clients, db, ensure_room, flashes
 import _harness
 
 m = _harness.m
@@ -47,6 +47,7 @@ def _cleanup():
     conn.execute("DELETE FROM refunds WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM extras WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM email_outbox WHERE subject LIKE '%added an extra%'")
     conn.commit()
     conn.close()
 
@@ -146,6 +147,71 @@ def run():
     s.check("nothing is owed", bill["owed"] == 0.0, detail=f"got {bill['owed']}")
     s.check("and the excess reads as credit", bill["overpaid"] > 0,
             detail=f"got {bill['overpaid']}")
+
+    s.section("A guest can add to their own stay")
+    conn = db()
+    conn.execute("""INSERT INTO extras (name, price, active, sort_order, category,
+                    guest_bookable, lead_time_days, max_qty)
+                    VALUES (?, 45, 1, 1, 'room', 1, 0, 2)""", (f"{TAG} hamper",))
+    conn.execute("""INSERT INTO extras (name, price, active, sort_order, category,
+                    guest_bookable, lead_time_days)
+                    VALUES (?, 120, 1, 2, 'room', 1, 14)""", (f"{TAG} late transfer",))
+    conn.commit()
+    hamper = conn.execute("SELECT id FROM extras WHERE name = ?", (f"{TAG} hamper",)).fetchone()["id"]
+    transfer = conn.execute("SELECT id FROM extras WHERE name = ?", (f"{TAG} late transfer",)).fetchone()["id"]
+    # A stay three days away, so the 14-day transfer is out of reach.
+    soon = date.today() + timedelta(days=3)
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token, created_at)
+           SELECT room_id, ?, ?, ?, ?, 2, 'confirmed', ?, ?, datetime('now')
+           FROM bookings WHERE reference_code = ?""",
+        (f"{TAG} adder", f"{TAG.lower()}b@example.invalid", soon.isoformat(),
+         (soon + timedelta(days=2)).isoformat(), f"{TAG}2", f"tok{TAG}2", f"{TAG}1"))
+    conn.execute("DELETE FROM email_outbox")
+    conn.commit()
+    bid2 = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                        (f"{TAG}2",)).fetchone()["id"]
+    conn.close()
+
+    pub = m.app.test_client()
+    html = pub.get(f"/book/manage/tok{TAG}2").get_data(as_text=True)
+    s.check("something with no notice period is offered", f"{TAG} hamper" in html)
+    # Offering it and then refusing would be worse than not offering it.
+    s.check("something needing two weeks' notice is not offered on a stay in three days",
+            f"{TAG} late transfer" not in html)
+
+    r = pub.post(f"/book/manage/tok{TAG}2",
+                 data={"action": "add_extra", "extra_id": str(hamper), "quantity": "1"},
+                 follow_redirects=True)
+    conn = db()
+    bill2 = m.booking_bill(conn, bid2)
+    conn.close()
+    s.check("adding it lands on the bill", len(bill2["lines"]) == 2, r,
+            detail=f"{[l['label'] for l in bill2['lines']]}")
+    s.check("and is owed", bill2["owed"] == bill2["total"], detail=f"got {bill2['owed']}")
+
+    r = pub.post(f"/book/manage/tok{TAG}2",
+                 data={"action": "add_extra", "extra_id": str(hamper), "quantity": "9"},
+                 follow_redirects=True)
+    s.check("more than the maximum is refused",
+            any("only do 2" in f for f in flashes(r)), r, detail=f"{flashes(r)[:1]}")
+    r = pub.post(f"/book/manage/tok{TAG}2",
+                 data={"action": "add_extra", "extra_id": str(transfer), "quantity": "1"},
+                 follow_redirects=True)
+    s.check("and so is something there is no longer time for",
+            any("notice" in f for f in flashes(r)), r, detail=f"{flashes(r)[:1]}")
+
+    # The owner has to hear about it, and that notification was being lost:
+    # send_email writes to email_outbox on its own connection, which could not
+    # take a write lock while the request's transaction was still open.
+    conn = db()
+    told = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE subject LIKE '%added an extra%'"
+    ).fetchone()["c"]
+    conn.close()
+    s.check("the owner is notified, not silently lost to a locked database", told >= 1,
+            detail=f"{told} rows in the outbox")
 
     _cleanup()
     return s
