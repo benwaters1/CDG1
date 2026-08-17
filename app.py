@@ -13480,6 +13480,54 @@ def manage_booking(manage_token):
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
+    elif action == "add_nights" and booking["status"] in ("pending", "confirmed"):
+        # Staying longer. Applied immediately when the room is free, even on a
+        # paid booking, because unlike a date change this only ever adds nights
+        # and cost — it cannot take a room away from anyone, or leave the guest
+        # having paid for something they no longer have. The cost shows up as
+        # owed on their bill.
+        nights_raw = request.form.get("nights", "1").strip()
+        nights = int(nights_raw) if nights_raw.isdigit() and int(nights_raw) > 0 else 0
+        departure = parse_date(booking["departure_date"])
+        room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+
+        if not nights or nights > 30:
+            flash("Choose how many nights to add.", "error")
+        elif not departure or not room:
+            flash("We couldn't work that out — please get in touch.", "error")
+        else:
+            new_departure = departure + timedelta(days=nights)
+            ok, reason = is_range_available(
+                conn, booking["room_id"], departure, new_departure,
+                exclude_booking_id=booking["id"])
+            if not ok:
+                flash(f"We can't extend that far — {reason}. Get in touch and we'll "
+                      f"see what else we can do.", "error")
+            else:
+                added = compute_room_total(conn, room, departure, new_departure)
+                conn.execute(
+                    "UPDATE bookings SET departure_date = ?, total_price = ? WHERE id = ?",
+                    (new_departure.isoformat(),
+                     round((booking["total_price"] or 0) + added, 2) or None,
+                     booking["id"]))
+                log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
+                          details=f"+{nights} night(s), +€{added:.2f}")
+                owner_to = owner_email(conn)
+                conn.commit()      # before send_email, which needs its own write lock
+                if owner_to:
+                    send_email(
+                        owner_to, f"Guest extended their stay — {booking['reference_code']}",
+                        f"{booking['guest_name']} added {nights} night"
+                        f"{'s' if nights != 1 else ''} to their {booking['room_name']} "
+                        f"stay. It now runs {booking['arrival_date']} to "
+                        f"{new_departure.isoformat()}, and €{added:.2f} has been added "
+                        f"to their bill.\n\n— Château de Gudanes")
+                flash(f"{nights} more night{'s' if nights != 1 else ''} added — "
+                      f"€{added:.2f} on your bill.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
     elif action == "add_extra" and booking["status"] in ("pending", "confirmed"):
         # A guest adding a transfer or a hamper to a stay they have already
         # booked. It goes on the bill as a line and is owed — no card is asked

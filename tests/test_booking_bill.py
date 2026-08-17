@@ -213,5 +213,61 @@ def run():
     s.check("the owner is notified, not silently lost to a locked database", told >= 1,
             detail=f"{told} rows in the outbox")
 
+    s.section("A guest can stay longer")
+    conn = db()
+    later = date.today() + timedelta(days=800)
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token,
+           created_at, total_price, amount_paid, payment_status)
+           SELECT room_id, ?, ?, ?, ?, 2, 'confirmed', ?, ?, datetime('now'), 500, 500, 'paid'
+           FROM bookings WHERE reference_code = ?""",
+        (f"{TAG} stayer", f"{TAG.lower()}c@example.invalid", later.isoformat(),
+         (later + timedelta(days=2)).isoformat(), f"{TAG}3", f"tok{TAG}3", f"{TAG}1"))
+    # Somebody else two nights after they leave, so extending past that must fail.
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token, created_at)
+           SELECT room_id, ?, ?, ?, ?, 2, 'confirmed', ?, ?, datetime('now')
+           FROM bookings WHERE reference_code = ?""",
+        (f"{TAG} blocker", f"{TAG.lower()}d@example.invalid",
+         (later + timedelta(days=4)).isoformat(), (later + timedelta(days=6)).isoformat(),
+         f"{TAG}4", f"tok{TAG}4", f"{TAG}1"))
+    conn.commit()
+    bid3 = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                        (f"{TAG}3",)).fetchone()["id"]
+    conn.close()
+
+    pub = m.app.test_client()
+    r = pub.post(f"/book/manage/tok{TAG}3",
+                 data={"action": "add_nights", "nights": "6"}, follow_redirects=True)
+    s.check("extending into someone else's booking is refused",
+            any("can't extend" in f or "can&#39;t extend" in f for f in flashes(r)), r,
+            detail=f"{flashes(r)[:1]}")
+    conn = db()
+    unchanged = conn.execute("SELECT departure_date FROM bookings WHERE id = ?",
+                             (bid3,)).fetchone()["departure_date"]
+    conn.close()
+    s.check("and the stay is left alone", unchanged == (later + timedelta(days=2)).isoformat(),
+            detail=f"got {unchanged}")
+
+    r = pub.post(f"/book/manage/tok{TAG}3",
+                 data={"action": "add_nights", "nights": "1"}, follow_redirects=True)
+    s.check("one free night is added", any("more night" in f for f in flashes(r)), r,
+            detail=f"{flashes(r)[:1]}")
+    conn = db()
+    moved = conn.execute("SELECT departure_date FROM bookings WHERE id = ?",
+                         (bid3,)).fetchone()["departure_date"]
+    bill3 = m.booking_bill(conn, bid3)
+    conn.close()
+    s.check("departure moves out by a night",
+            moved == (later + timedelta(days=3)).isoformat(), detail=f"got {moved}")
+    # The point of doing this after the bill existed: a guest who had paid in
+    # full now owes the extra night, rather than the stay silently getting longer
+    # for the same money.
+    s.check("the extra night is priced", bill3["total"] == 750.0, detail=f"got {bill3['total']}")
+    s.check("and owed by a guest who had paid in full", bill3["owed"] == 250.0,
+            detail=f"got {bill3['owed']}")
+
     _cleanup()
     return s
