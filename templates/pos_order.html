@@ -266,6 +266,12 @@
       <!-- ============================ bill ============================ -->
       <div class="till-totals">
         <div class="till-total-row"><span>Subtotal</span><span>€{{ '%.2f'|format(bill.gross) }}</span></div>
+        {% if bill.package %}
+        <div class="till-total-row is-off">
+          <span>{{ bill.package_row['name'] if bill.package_row else 'Package' }} covered</span>
+          <span>−€{{ '%.2f'|format(bill.package) }}</span>
+        </div>
+        {% endif %}
         {% if bill.discount %}
         <div class="till-total-row is-off">
           <span>Discount{% if order['discount_reason'] %} — {{ order['discount_reason'] }}{% endif %}</span>
@@ -309,6 +315,35 @@
       {% if order['status'] == 'open' and bill.live %}
       <div class="till-actions">
         <a href="{{ url_for('pos_receipt', order_id=order['id']) }}" class="btn-ghost" target="_blank">Print bill</a>
+
+        {% if packages %}
+        <details class="till-adjust" {{ 'open' if order['package_id'] }}>
+          <summary>
+            Beverage package
+            {%- if bill.package_row %} — {{ bill.package_row['name'] }}{% endif %}
+          </summary>
+          <form method="post" action="{{ url_for('pos_set_package', order_id=order['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="package_id">
+              <option value="">— none —</option>
+              {% for pk in packages %}
+              <option value="{{ pk['id'] }}" {{ 'selected' if order['package_id'] == pk['id'] }}>
+                {{ pk['name'] }}
+                {%- if pk['kind'] == 'allowance' %} — €{{ '%.2f'|format(pk['allowance_amount'] or 0) }} per {{ pk['per'] }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn-mini" style="margin-top:8px;">Apply</button>
+          </form>
+          {% if bill.package %}
+          <p class="upload-hint" style="margin-top:6px;">
+            €{{ '%.2f'|format(bill.package) }} of drinks covered so far. Anything past the
+            allowance is charged as normal.
+          </p>
+          {% endif %}
+        </details>
+        {% endif %}
+
         <details class="till-adjust">
           <summary>Discount / service</summary>
           <form method="post" action="{{ url_for('pos_adjust', order_id=order['id']) }}">

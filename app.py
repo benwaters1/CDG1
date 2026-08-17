@@ -2369,6 +2369,46 @@ def init_db():
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_orders_receipt "
          "ON pos_orders(receipt_number) WHERE receipt_number IS NOT NULL"),
 
+        # ---- Beverage packages: included with dinner, or an allowance ------
+        ("drink_packages", """CREATE TABLE IF NOT EXISTS drink_packages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'allowance' CHECK(kind IN ('fixed','allowance')),
+            price REAL NOT NULL DEFAULT 0,
+            allowance_amount REAL,
+            per TEXT NOT NULL DEFAULT 'cover' CHECK(per IN ('cover','table')),
+            -- arrete du 27 mars 1987 art. 5: the card must state whether drink
+            -- is included, and which drink, and how much of it.
+            disclosure TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )"""),
+        ("drink_package_items", """CREATE TABLE IF NOT EXISTS drink_package_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            package_id INTEGER NOT NULL REFERENCES drink_packages(id) ON DELETE CASCADE,
+            menu_item_id INTEGER REFERENCES menu_items(id) ON DELETE CASCADE,
+            quantity REAL NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )"""),
+        ("drink_package_items_idx",
+         "CREATE INDEX IF NOT EXISTS idx_drink_package_items ON drink_package_items(package_id)"),
+
+        # What a tab has on it, and how much of the allowance it has used.
+        ("pos_orders_package_id",
+         "ALTER TABLE pos_orders ADD COLUMN package_id INTEGER "
+         "REFERENCES drink_packages(id) ON DELETE SET NULL"),
+        ("pos_orders_package_credit",
+         "ALTER TABLE pos_orders ADD COLUMN package_credit REAL NOT NULL DEFAULT 0"),
+        # A line the package paid for. Kept on the line rather than inferred,
+        # so a bill reprinted next year still shows what was covered.
+        ("pos_lines_package_covered",
+         "ALTER TABLE pos_order_lines ADD COLUMN package_covered REAL NOT NULL DEFAULT 0"),
+
+        # A menu can carry a package as standard — "dinner, wine included".
+        ("menus_package_id",
+         "ALTER TABLE menus ADD COLUMN package_id INTEGER "
+         "REFERENCES drink_packages(id) ON DELETE SET NULL"),
+
         # ---- Beverage pours: glass, carafe, bottle, from one stock ---------
         ("menu_items_parent",
          "ALTER TABLE menu_items ADD COLUMN parent_item_id INTEGER "
@@ -6283,6 +6323,101 @@ def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=T
     return {c: grouped[c] for c in COURSE_ORDER if c in grouped}
 
 
+# ---------------------------------------------------------------------------
+# Beverage packages.
+#
+# Two shapes, because a chateau sells both:
+#
+#   fixed     — named drinks that come with the meal. Rung up as normal so the
+#               kitchen and the cellar still see them, then covered in full,
+#               with the package price charged once instead.
+#   allowance — a euro budget per cover. Drinks are rung up normally and the
+#               package absorbs them up to the limit; anything past it is
+#               charged. That is what "25 EUR of wine included" actually means,
+#               and it is the shape that needs the arithmetic to be right.
+#
+# The covered amount lives on the LINE, not inferred at print time, so a bill
+# reprinted next year still shows what was covered and what was not.
+# ---------------------------------------------------------------------------
+
+# Only drink lines can be covered. A package that quietly absorbed the beef
+# would be a discount wearing a different hat.
+PACKAGE_COURSES = {"aperitif", "wine", "drink", "coffee"}
+
+
+def package_for(conn, package_id):
+    if not package_id:
+        return None
+    return conn.execute("SELECT * FROM drink_packages WHERE id = ?", (package_id,)).fetchone()
+
+
+def apply_package(conn, order_id):
+    """Work out what the package covers on this tab, and mark it on the lines.
+
+    Recomputed from scratch every time rather than adjusted incrementally: a
+    voided drink has to give its allowance back, and an allowance that only
+    ever went down would quietly overcharge the next table to order.
+    """
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        return 0.0
+    package = package_for(conn, order["package_id"])
+    lines = conn.execute(
+        "SELECT * FROM pos_order_lines WHERE order_id = ? AND voided = 0 ORDER BY id",
+        (order_id,)).fetchall()
+
+    # Clear first, so removing a package or voiding a drink actually releases
+    # what it was holding.
+    conn.execute("UPDATE pos_order_lines SET package_covered = 0 WHERE order_id = ?",
+                 (order_id,))
+    if not package:
+        conn.execute("UPDATE pos_orders SET package_credit = 0 WHERE id = ?", (order_id,))
+        return 0.0
+
+    drinkable = [l for l in lines
+                 if (l["course"] or "") in PACKAGE_COURSES and not l["is_supplement"]]
+
+    if package["kind"] == "fixed":
+        # Everything on the included list is covered outright; the package
+        # price is charged once instead.
+        included = {r["menu_item_id"] for r in conn.execute(
+            "SELECT menu_item_id FROM drink_package_items WHERE package_id = ?",
+            (package["id"],)).fetchall() if r["menu_item_id"]}
+        covered = 0.0
+        for l in drinkable:
+            if l["menu_item_id"] in included:
+                amount = round((l["unit_price"] or 0) * (l["quantity"] or 0), 2)
+                conn.execute("UPDATE pos_order_lines SET package_covered = ? WHERE id = ?",
+                             (amount, l["id"]))
+                covered += amount
+        charge = round((package["price"] or 0) *
+                       (order["covers"] or 1 if package["per"] == "cover" else 1), 2)
+        credit = round(covered - charge, 2)
+    else:
+        # An allowance is a budget. Spend it against the dearest drinks first:
+        # a guest who ordered a 40 EUR bottle and a 4 EUR water expects the
+        # bottle to be what the package went on.
+        budget = round((package["allowance_amount"] or 0) *
+                       ((order["covers"] or 1) if package["per"] == "cover" else 1), 2)
+        remaining = budget
+        for l in sorted(drinkable, key=lambda x: -((x["unit_price"] or 0) * (x["quantity"] or 0))):
+            if remaining <= 0:
+                break
+            line_total = round((l["unit_price"] or 0) * (l["quantity"] or 0), 2)
+            take = round(min(remaining, line_total), 2)
+            if take > 0:
+                conn.execute("UPDATE pos_order_lines SET package_covered = ? WHERE id = ?",
+                             (take, l["id"]))
+                remaining = round(remaining - take, 2)
+        credit = round(budget - remaining, 2)
+        charge = round(package["price"] or 0, 2)
+        if charge:
+            credit = round(credit - charge, 2)
+
+    conn.execute("UPDATE pos_orders SET package_credit = ? WHERE id = ?", (credit, order_id))
+    return credit
+
+
 def pos_bill(conn, order_id):
     """Everything the bill needs, worked out once.
 
@@ -6303,6 +6438,7 @@ def pos_bill(conn, order_id):
     discount = round(order["discount_amount"] or 0, 2)
     service = round(order["service_charge"] or 0, 2)
     deposit = round(order["deposit_credit"] or 0, 2)
+    package = round(sum(l["package_covered"] or 0 for l in live), 2)
 
     # VAT is extracted from the gross (French prices are TTC), per rate.
     #
@@ -6315,26 +6451,39 @@ def pos_bill(conn, order_id):
     # A deposit is NOT a reduction: it is money already paid against the same
     # meal. It changes what is left to pay and nothing else. Netting it off the
     # VAT base would under-declare the tax on every table that booked ahead.
+    #
+    # A beverage package is a reduction too, but NOT a proportional one. It
+    # covers specific drinks, so it comes off the rate those drinks carry —
+    # spreading it across the food would move consideration from the 20% base
+    # to the 10% one and under-declare. Because the covered amount is recorded
+    # on each line, it can be taken off exactly where it landed.
     by_rate = {}
     for l in live:
         rate = l["vat_rate"] if l["vat_rate"] is not None else 0
         amount = (l["unit_price"] or 0) * (l["quantity"] or 0)
         b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
         b["gross"] += amount
+        b["covered"] = round(b.get("covered", 0.0) + (l["package_covered"] or 0), 2)
     adjustment = service - discount
+    # Apportion the discount and service over what is left after the package
+    # has taken its share, so the two reductions cannot both claim the same
+    # euro of a covered drink.
+    apportion_base = round(gross - package, 2)
     for rate, b in by_rate.items():
-        share = (b["gross"] / gross) if gross else 0
-        b["gross"] = round(b["gross"] + adjustment * share, 2)
+        net_of_package = b["gross"] - b.get("covered", 0.0)
+        share = (net_of_package / apportion_base) if apportion_base else 0
+        b["gross"] = round(net_of_package + adjustment * share, 2)
         b["vat"] = round(b["gross"] - b["gross"] / (1 + rate / 100), 2) if rate else 0.0
         b["net"] = round(b["gross"] - b["vat"], 2)
 
     paid = round(conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS t FROM pos_payments WHERE order_id = ?",
         (order_id,)).fetchone()["t"], 2)
-    total = round(max(0.0, gross - discount + service - deposit), 2)
+    total = round(max(0.0, gross - package - discount + service - deposit), 2)
     return {
         "order": order, "lines": lines, "live": live,
         "gross": gross, "discount": discount, "service": service, "deposit": deposit,
+        "package": package, "package_row": package_for(conn, order["package_id"]),
         "vat_by_rate": dict(sorted(by_rate.items())),
         "vat_total": round(sum(b["vat"] for b in by_rate.values()), 2),
         "total": total, "paid": paid, "outstanding": round(total - paid, 2),
@@ -6481,6 +6630,8 @@ POS_REGISTER_ID = os.environ.get("POS_REGISTER_ID", "CAISSE-1")
 POS_JOURNAL_EVENTS = {
     "line_added", "line_voided", "discount_set", "service_set", "covers_set",
     "payment_taken", "tab_settled", "tab_reopened", "tab_merged",
+    # A package takes money off a bill, so it belongs here with the discount.
+    "package_set",
     "receipt_issued", "closure_day", "closure_month", "closure_year",
     "archive_exported",
 }
@@ -11500,6 +11651,8 @@ def pos_order(order_id):
     formule_choices = {}
     if formule_menu:
         formule_choices = menu_dishes_for(conn, formule_menu["id"], include_unavailable=False)
+    packages = conn.execute(
+        "SELECT * FROM drink_packages WHERE active = 1 ORDER BY name").fetchall()
     conn.close()
     return render_template(
         "pos_order.html", bill=bill, order=bill["order"], lines=bill["lines"],
@@ -11509,7 +11662,8 @@ def pos_order(order_id):
         payment_methods=POS_PAYMENT_METHODS, void_reasons=POS_VOID_REASONS,
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
         allergens=ALLERGENS, other_tables=other_tables,
-        formule_menu=formule_menu, formules=formules, formule_choices=formule_choices)
+        formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
+        packages=packages)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])
@@ -11586,9 +11740,138 @@ def pos_add_item(order_id):
         conn.execute(
             "UPDATE pos_order_lines SET course = ?, seat_number = ?, vat_rate = ? WHERE id = ?",
             (request.form.get("course", "main"), seat, tax_rate(conn, "vat_food"), line_id))
+    # A new drink may fall inside the allowance, so the package has to be
+    # reconsidered on every add rather than only when it was attached.
+    if order["package_id"]:
+        apply_package(conn, order_id)
     conn.commit()
     conn.close()
     return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/package", methods=["POST"])
+@login_required
+def pos_set_package(order_id):
+    """Put a beverage package on a table, or take it off.
+
+    Recomputed rather than accumulated, so removing it releases everything it
+    was holding — an allowance that only ever went down would quietly
+    overcharge the next drink ordered.
+    """
+    raw = (request.form.get("package_id", "") or "").strip()
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    package_id = int(raw) if raw.isdigit() else None
+    if package_id and not package_for(conn, package_id):
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE pos_orders SET package_id = ? WHERE id = ?", (package_id, order_id))
+    credit = apply_package(conn, order_id)
+    pos_journal_append(conn, "package_set",
+                       {"package_id": package_id, "covered": credit},
+                       order_id=order_id, user_id=session.get("user_id"))
+    conn.commit()
+    conn.close()
+    flash(f"Package applied — €{credit:.2f} covered." if package_id
+          else "Package removed.", "success")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/admin/restaurant/packages")
+@owner_required
+def admin_drink_packages():
+    """The beverage packages: what comes with dinner, and what is extra."""
+    conn = get_db()
+    packages = conn.execute(
+        "SELECT * FROM drink_packages ORDER BY (active = 0), name").fetchall()
+    contents = {}
+    for r in conn.execute(
+            """SELECT drink_package_items.*, menu_items.name AS item_name,
+                      menu_items.price AS item_price
+               FROM drink_package_items
+               LEFT JOIN menu_items ON menu_items.id = drink_package_items.menu_item_id
+               ORDER BY menu_items.name""").fetchall():
+        contents.setdefault(r["package_id"], []).append(r)
+    drinks = conn.execute(
+        """SELECT id, name, price, course FROM menu_items
+           WHERE active = 1 AND course IN ('aperitif','wine','drink','coffee')
+           ORDER BY course, name""").fetchall()
+    conn.close()
+    return render_template("admin_drink_packages.html", packages=packages,
+                           contents=contents, drinks=drinks)
+
+
+@app.route("/admin/restaurant/packages/new", methods=["POST"])
+@owner_required
+def new_drink_package():
+    name = (request.form.get("name", "") or "").strip()
+    kind = request.form.get("kind", "allowance")
+    if not name or kind not in ("fixed", "allowance"):
+        flash("Give the package a name and a type.", "error")
+        return redirect(url_for("admin_drink_packages"))
+
+    def money(field):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    allowance = money("allowance_amount")
+    if kind == "allowance" and not allowance:
+        flash("An allowance package needs an amount — that is what it is.", "error")
+        return redirect(url_for("admin_drink_packages"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO drink_packages (name, kind, price, allowance_amount, per,
+           disclosure, active, created_at) VALUES (?,?,?,?,?,?,1,?)""",
+        (name, kind, money("price") or 0, allowance,
+         "table" if request.form.get("per") == "table" else "cover",
+         (request.form.get("disclosure", "") or "").strip() or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"{name} added.", "success")
+    return redirect(url_for("admin_drink_packages"))
+
+
+@app.route("/admin/restaurant/packages/<int:package_id>/item", methods=["POST"])
+@owner_required
+def add_drink_package_item(package_id):
+    """Add a drink to a fixed package's included list."""
+    raw = (request.form.get("menu_item_id", "") or "").strip()
+    if not raw.isdigit():
+        abort(400)
+    conn = get_db()
+    if not package_for(conn, package_id):
+        conn.close()
+        abort(404)
+    conn.execute(
+        """INSERT INTO drink_package_items (package_id, menu_item_id, quantity, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (package_id, int(raw), 1, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_drink_packages"))
+
+
+@app.route("/admin/restaurant/packages/<int:package_id>/toggle", methods=["POST"])
+@owner_required
+def toggle_drink_package(package_id):
+    conn = get_db()
+    row = package_for(conn, package_id)
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE drink_packages SET active = ? WHERE id = ?",
+                 (0 if row["active"] else 1, package_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_drink_packages"))
 
 
 @app.route("/pos/<int:order_id>/formule", methods=["POST"])
@@ -11744,6 +12027,12 @@ def pos_void_item(line_id):
         "amount": round((line["unit_price"] or 0) * line["quantity"], 2),
         "reason": reason, "already_sent": was_sent,
     }, order_id=line["order_id"], user_id=session.get("user_id"))
+    # Voiding a covered drink releases what it was holding, so the next one
+    # ordered can use the allowance instead of being charged in full.
+    order_row = conn.execute("SELECT package_id FROM pos_orders WHERE id = ?",
+                             (line["order_id"],)).fetchone()
+    if order_row and order_row["package_id"]:
+        apply_package(conn, line["order_id"])
     conn.commit()
     conn.close()
     if was_sent:

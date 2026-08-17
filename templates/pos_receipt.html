@@ -56,6 +56,14 @@
 
   <div class="receipt-totals">
     <div class="receipt-line"><span>Sous-total</span><span>€{{ '%.2f'|format(bill.gross) }}</span></div>
+    {% if bill.package %}
+    {# The guest should see what the package took off, not just a smaller
+       number they cannot account for. #}
+    <div class="receipt-line">
+      <span>{{ bill.package_row['name'] if bill.package_row else 'Formule boisson' }} — compris</span>
+      <span>−€{{ '%.2f'|format(bill.package) }}</span>
+    </div>
+    {% endif %}
     {% if bill.discount %}
     <div class="receipt-line"><span>Remise{% if order['discount_reason'] %} — {{ order['discount_reason'] }}{% endif %}</span><span>−€{{ '%.2f'|format(bill.discount) }}</span></div>
     {% endif %}

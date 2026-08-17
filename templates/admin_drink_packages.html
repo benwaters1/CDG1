@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Beverage packages{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Beverage packages</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">Standing list</a>
+    <a href="{{ url_for('pos_home') }}" class="btn-ghost">Service</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What comes with dinner, and what is charged on top. An <strong>allowance</strong> is a euro
+  budget per cover — drinks are rung up as normal and the package absorbs them up to the limit,
+  anything past it is charged. A <strong>fixed</strong> package covers a named list outright.
+</p>
+
+{% if not packages %}
+  <div class="empty-state">No packages yet. Add one below.</div>
+{% else %}
+<div class="doc-list" style="max-width:860px;">
+  {% for p in packages %}
+  <div class="doc-row {{ 'is-off' if not p['active'] }}" style="align-items:flex-start; flex-direction:column; gap:4px;">
+    <div style="display:flex; width:100%; gap:10px; align-items:baseline; flex-wrap:wrap;">
+      <strong style="flex:1;">{{ p['name'] }}</strong>
+      {% if p['kind'] == 'allowance' %}
+      <span class="mini-status status-upcoming">
+        €{{ '%.2f'|format(p['allowance_amount'] or 0) }} per {{ p['per'] }}
+      </span>
+      {% else %}
+      <span class="mini-status status-upcoming">fixed list</span>
+      {% endif %}
+      {% if p['price'] %}<span>charged €{{ '%.2f'|format(p['price']) }} per {{ p['per'] }}</span>
+      {% else %}<span class="upload-hint">included, no separate charge</span>{% endif %}
+      {% if not p['active'] %}<span class="mini-status status-inactive">off</span>{% endif %}
+      <form method="post" action="{{ url_for('toggle_drink_package', package_id=p['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">{{ 'Turn on' if not p['active'] else 'Turn off' }}</button>
+      </form>
+    </div>
+
+    {% if p['disclosure'] %}
+    {# arrêté du 27 mars 1987 art. 5 — the card has to say whether drink is
+       included, which drink, and how much of it. #}
+    <span class="upload-hint">On the card: “{{ p['disclosure'] }}”</span>
+    {% else %}
+    <span class="upload-hint" style="color:var(--danger);">
+      No wording for the card yet — French law requires the card to state what drink is
+      included and how much.
+    </span>
+    {% endif %}
+
+    {% if p['kind'] == 'fixed' %}
+    {% set items = contents.get(p['id'], []) %}
+    {% if items %}
+    <span class="upload-hint">
+      Covers: {% for it in items %}{{ it['item_name'] or '—' }}{{ ', ' if not loop.last }}{% endfor %}
+    </span>
+    {% endif %}
+    <form method="post" action="{{ url_for('add_drink_package_item', package_id=p['id']) }}"
+          style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <select name="menu_item_id" style="width:auto; margin:0;">
+        {% for d in drinks %}
+        <option value="{{ d['id'] }}">{{ d['name'] }} — €{{ '%.2f'|format(d['price'] or 0) }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit" class="btn-mini">Add to the package</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Add a package</h2>
+<form method="post" action="{{ url_for('new_drink_package') }}" class="detail-card" style="max-width:760px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="refund-fields">
+    <div style="grid-column:1 / -1;">
+      <label class="field-label">Name</label>
+      <input type="text" name="name" required placeholder="Formule boisson">
+    </div>
+    <div>
+      <label class="field-label">Type</label>
+      <select name="kind">
+        <option value="allowance">Allowance — a budget per cover</option>
+        <option value="fixed">Fixed — a named list of drinks</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Allowance (€)</label>
+      <input type="text" name="allowance_amount" inputmode="decimal" placeholder="25">
+      <span class="field-hint">Only for an allowance package.</span>
+    </div>
+    <div>
+      <label class="field-label">Charged (€)</label>
+      <input type="text" name="price" inputmode="decimal" placeholder="0">
+      <span class="field-hint">Leave at 0 when it is bundled into the menu price.</span>
+    </div>
+    <div>
+      <label class="field-label">Per</label>
+      <select name="per">
+        <option value="cover">Per cover</option>
+        <option value="table">Per table</option>
+      </select>
+    </div>
+    <div style="grid-column:1 / -1;">
+      <label class="field-label">Wording for the printed card</label>
+      <input type="text" name="disclosure"
+             placeholder="Boisson comprise : 1 verre de vin (15 cl) par personne">
+      <span class="field-hint">French law requires the card to state what is included
+        and in what quantity.</span>
+    </div>
+  </div>
+  <button type="submit" class="btn-primary" style="margin-top:10px;">Add package</button>
+</form>
+
+{% endblock %}
