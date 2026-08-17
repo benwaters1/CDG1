@@ -2151,6 +2151,13 @@ def init_db():
         # already paid is usually in Pennylane from the bank feed and must be
         # matched, not sent again, or the cost is counted twice.
         ("expenses_doc_type", "ALTER TABLE expenses ADD COLUMN doc_type TEXT DEFAULT 'bill_to_pay'"),
+        # Taxe de séjour is charged per ADULT per night. The château takes
+        # children from 8 and under-18s are exempt, so party_size alone cannot
+        # tell us what to charge — the split has to be captured at booking.
+        ("bookings_guests_under_18", "ALTER TABLE bookings ADD COLUMN guests_under_18 INTEGER NOT NULL DEFAULT 0"),
+        ("bookings_city_tax", "ALTER TABLE bookings ADD COLUMN city_tax REAL NOT NULL DEFAULT 0"),
+        ("workshop_bookings_under_18", "ALTER TABLE workshop_bookings ADD COLUMN guests_under_18 INTEGER NOT NULL DEFAULT 0"),
+        ("workshop_bookings_city_tax", "ALTER TABLE workshop_bookings ADD COLUMN city_tax REAL NOT NULL DEFAULT 0"),
         # Employment terms. `start_date` alone couldn't express a fixed-term
         # contract or a trial period, and both carry hard deadlines in France:
         # a trial period that lapses un-actioned confirms the employee, and a
@@ -22237,6 +22244,104 @@ def gather_reply_context(conn, recipient_email):
         "guest_history": guest_lookup_by_email(conn, recipient_email) if recipient_email else None,
         "current_offerings": current_offerings_snapshot(conn),
     }
+
+
+# ---------------------------------------------------------------------------
+# Taxe de séjour and VAT.
+#
+# Taxe de séjour is NOT revenue. It is collected from the guest on the
+# commune's behalf and owed onward — a liability, outside VAT, and it must
+# appear as its own line on the bill. Folding it into the room price would
+# overstate turnover AND have the château declaring VAT on a tax it merely
+# collects.
+#
+# VAT is not one rate either. In France accommodation and restaurant food are
+# 10%, alcohol is 20%. A single hardcoded rate overstates deductible VAT on
+# roughly half of what this business sells.
+# ---------------------------------------------------------------------------
+
+TAX_DEFAULTS = {
+    "city_tax_per_adult_per_night": "0.80",
+    "city_tax_exempt_under_age": "18",
+    "vat_accommodation": "10",
+    "vat_food": "10",
+    "vat_alcohol": "20",
+    "vat_workshops": "20",
+    "vat_extras": "20",
+    "city_tax_account": "",          # where the collected tax is parked
+}
+
+# Where each kind of income lands. Revenue is class 7 in the plan comptable;
+# held as settings because only the accountant knows which of the 154 revenue
+# accounts is right for a workshop.
+REVENUE_STREAMS = {
+    "rooms": "Room stays",
+    "restaurant": "Restaurant",
+    "workshops": "Workshops",
+    "events": "Events & weddings",
+    "extras": "Extras (champagne, transfers…)",
+    "pos": "Till / bar",
+}
+
+# Not every bill is handled the same way. This is the distinction that stops a
+# cost being counted twice.
+EXPENSE_DOC_TYPES = {
+    "bill_to_pay": "A bill we still owe",
+    "bill_paid": "Already paid — match it in Pennylane",
+    "employee_reimbursement": "Staff expense to reimburse",
+    "receipt": "Receipt / small purchase",
+}
+
+
+def tax_setting(conn, key):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (f"tax_{key}",)).fetchone()
+    return ((row["value"] if row else "") or "") or TAX_DEFAULTS.get(key, "")
+
+
+def tax_rate(conn, key):
+    try:
+        return float(tax_setting(conn, key))
+    except (TypeError, ValueError):
+        return float(TAX_DEFAULTS.get(key, 0) or 0)
+
+
+def revenue_account_for(conn, stream):
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (f"revenue_account_{stream}",)).fetchone()
+    return (row["value"] if row else "") or ""
+
+
+def compute_city_tax(conn, party_size, guests_under_18, nights):
+    """Taxe de séjour for one stay.
+
+    Per ADULT per night — a family of four with two children pays for two
+    people. Returns (amount, adults, rate) so the bill can show the working
+    rather than a bare figure the guest cannot check.
+    """
+    rate = tax_rate(conn, "city_tax_per_adult_per_night")
+    adults = max(0, int(party_size or 0) - int(guests_under_18 or 0))
+    nights = max(0, int(nights or 0))
+    return round(adults * nights * rate, 2), adults, rate
+
+
+def vat_breakdown(lines):
+    """Group amounts by VAT rate for the statement.
+
+    `lines` are (gross, rate_percent). Prices here are quoted INCLUSIVE of VAT,
+    so tax is extracted from the gross rather than added — which is also how a
+    French invoice has to present it.
+    """
+    by_rate = {}
+    for gross, rate in lines:
+        if not gross:
+            continue
+        rate = float(rate or 0)
+        net = round(gross / (1 + rate / 100), 2)
+        b = by_rate.setdefault(rate, {"rate": rate, "net": 0.0, "vat": 0.0, "gross": 0.0})
+        b["net"] = round(b["net"] + net, 2)
+        b["vat"] = round(b["vat"] + (gross - net), 2)
+        b["gross"] = round(b["gross"] + gross, 2)
+    return sorted(by_rate.values(), key=lambda x: -x["rate"])
 
 
 # ---------------------------------------------------------------------------
