@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Guests{% endblock %}
 {% block content %}
 
@@ -6,8 +7,33 @@
   <h1>Guests</h1>
   {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
-    <a href="{{ url_for('export_guests_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('export_guests_csv') }}" class="btn-ghost">Export CSV</a>
     <a href="{{ url_for('new_guest') }}" class="btn-primary" style="margin-top:0;">+ Add guest</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('guests', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ in_residence|sum(attribute='party_size') or in_residence|length }}</span>
+      <span class="stat-tile-label">In residence now</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ upcoming|length }}</span><span class="stat-tile-label">Arriving soon</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('contacts', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ profiles|length }}</span><span class="stat-tile-label">Guest profiles</span></span>
+  </div>
+  {% set returning = stay_counts.values()|select('gt', 1)|list|length %}
+  {% if returning %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('star', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ returning }}</span><span class="stat-tile-label">Returning guests</span></span>
   </div>
   {% endif %}
 </div>
@@ -15,61 +41,101 @@
 <form method="get" class="search-bar">
   <div>
     <label class="field-label">Search</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Name or notes">
+    <input type="text" name="q" value="{{ q }}" placeholder="Name, email, phone or notes">
   </div>
   <button type="submit" class="btn-mini">Filter</button>
   {% if q %}<a href="{{ url_for('guests') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
 </form>
 
-{% if not current_upcoming and not past %}
-  <div class="empty-state">{% if q %}No guests match that search.{% else %}No guests on the books yet.{% endif %}</div>
+{# Who is actually here comes from confirmed bookings, not from the profiles
+   below — that separation is what stops a cancelled booking leaving a phantom
+   guest sitting in residence forever. #}
+<h2 class="section-heading">In residence now{% if in_residence %} — {{ in_residence|length }}{% endif %}</h2>
+{% if not in_residence %}
+  <div class="empty-state">No guests in residence right now.</div>
 {% else %}
+<div class="manual-layout">
+  {% for s in in_residence %}
+  <div class="manual-section">
+    <div class="manual-section-head">
+      <h3>
+        {{ s['name'] }}
+        {% if s['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
+        <span class="mini-status status-current" style="margin-left:8px;">{{ s['stay_status_label'] }}</span>
+      </h3>
+      <div class="manual-actions">
+        {% if s['email'] %}<a href="{{ url_for('guest_booking_history', email=s['email']) }}" class="small-link">History</a>{% endif %}
+        {% if user['role'] == 'owner' and s['profile_id'] %}
+        <a href="{{ url_for('edit_guest', guest_id=s['profile_id']) }}" class="small-link">Profile</a>
+        {% endif %}
+      </div>
+    </div>
+    <p class="manual-body">
+      {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
+      {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
+    </p>
+    {% if s['notes'] %}<p class="manual-body">{{ s['notes'] }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
-  <div class="manual-layout">
-    {% if not current_upcoming %}
-      <div class="empty-state">No current or upcoming guests.</div>
+{% if upcoming %}
+<h2 class="section-heading">Arriving soon</h2>
+<div class="manual-layout">
+  {% for s in upcoming[:10] %}
+  <div class="manual-section">
+    <div class="manual-section-head">
+      <h3>
+        {{ s['name'] }}
+        {% if s['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
+      </h3>
+      <div class="manual-actions">
+        {% if s['email'] %}<a href="{{ url_for('guest_booking_history', email=s['email']) }}" class="small-link">History</a>{% endif %}
+      </div>
+    </div>
+    <p class="manual-body">
+      {{ s['room_name'] }} · {{ s['arrival_date'] }} → {{ s['departure_date'] }}
+      {%- if s['party_size'] %} · Party of {{ s['party_size'] }}{% endif -%}
+    </p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Guest profiles{% if profiles %} — {{ profiles|length }}{% endif %}</h2>
+<p class="upload-hint" style="margin-top:-6px;">Standing records that persist between visits — preferences, dietary needs and contact details. Stay dates live on the booking.</p>
+{% if not profiles %}
+  <div class="empty-state">{% if q %}No profiles match that search.{% else %}No guest profiles yet — one is created automatically whenever you confirm a booking.{% endif %}</div>
+{% else %}
+<div class="manual-layout">
+  {% for g in profiles %}
+  <div class="manual-section">
+    <div class="manual-section-head">
+      <h3>
+        {{ g['name'] }}
+        {% if g['vip'] %}<span class="mini-status status-pending" style="margin-left:8px;">VIP</span>{% endif %}
+        {% set visits = stay_counts.get(g['id'], 0) %}
+        {% if visits > 1 %}<span class="mini-status status-confirmed" style="margin-left:8px;">{{ visits }} stays</span>{% endif %}
+      </h3>
+      <div class="manual-actions">
+        {% if g['email'] %}<a href="{{ url_for('guest_booking_history', email=g['email']) }}" class="small-link">History</a>{% endif %}
+        {% if user['role'] == 'owner' %}
+        <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>
+        {% endif %}
+      </div>
+    </div>
+    {% if g['email'] or g['phone'] %}
+    <p class="manual-body">
+      {{ g['email'] or '' }}{% if g['email'] and g['phone'] %} · {% endif %}{{ g['phone'] or '' }}
+    </p>
     {% endif %}
-    {% for g in current_upcoming %}
-    <div class="manual-section">
-      <div class="manual-section-head">
-        <h3>{{ g['name'] }} <span class="mini-status status-{{ g['stay_status'] }}" style="margin-left:8px;">{{ g['stay_status_label'] }}</span></h3>
-        {% if user['role'] == 'owner' %}
-        <div class="manual-actions">
-          <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>
-        </div>
-        {% endif %}
-      </div>
-      <p class="manual-body">
-        {%- if g['arrival_date'] or g['departure_date'] %}{{ g['arrival_date'] or '?' }} → {{ g['departure_date'] or '?' }}{% endif -%}
-        {%- if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif -%}
-      </p>
-      {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
-    </div>
-    {% endfor %}
+    {% if g['dietary_notes'] %}<p class="manual-body"><strong>Dietary:</strong> {{ g['dietary_notes'] }}</p>{% endif %}
+    {% if g['preferences'] %}<p class="manual-body"><strong>Prefers:</strong> {{ g['preferences'] }}</p>{% endif %}
+    {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
   </div>
-
-  {% if past %}
-  <h2 class="section-heading">Past stays</h2>
-  <div class="manual-layout">
-    {% for g in past %}
-    <div class="manual-section">
-      <div class="manual-section-head">
-        <h3>{{ g['name'] }} <span class="mini-status status-{{ g['stay_status'] }}" style="margin-left:8px;">{{ g['stay_status_label'] }}</span></h3>
-        {% if user['role'] == 'owner' %}
-        <div class="manual-actions">
-          <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="small-link">Edit</a>
-        </div>
-        {% endif %}
-      </div>
-      <p class="manual-body">
-        {%- if g['arrival_date'] or g['departure_date'] %}{{ g['arrival_date'] or '?' }} → {{ g['departure_date'] or '?' }}{% endif -%}
-        {%- if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif -%}
-      </p>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-
+  {% endfor %}
+</div>
 {% endif %}
 
 {% endblock %}

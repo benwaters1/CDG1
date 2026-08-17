@@ -61,6 +61,16 @@
     <div class="action-title">Email Templates</div>
     <div class="action-sub">One set of merge-tag templates for every workshop registration email</div>
   </a>
+  <a href="{{ url_for('admin_promo_codes') }}" class="action-card">
+    <div class="action-card-icon action-card-icon-steel">{{ icon('receipt', 20) }}</div>
+    <div class="action-title">Promo Codes</div>
+    <div class="action-sub">Discount codes for room, dinner, and workshop bookings</div>
+  </a>
+  <a href="{{ url_for('admin_deposit_rules') }}" class="action-card">
+    <div class="action-card-icon action-card-icon-steel">{{ icon('financial', 20) }}</div>
+    <div class="action-title">Deposit Rules</div>
+    <div class="action-sub">Vary the deposit percentage by date range or party size — restaurant and workshops</div>
+  </a>
 </div>
 
 <h2 class="section-heading">Automation</h2>
@@ -69,6 +79,16 @@
     <div class="action-card-icon action-card-icon-steel">{{ icon('repeat', 20) }}</div>
     <div class="action-title">Automation</div>
     <div class="action-sub">Background jobs: daily digest, iCal sync, balance reminders, waitlist auto-notify</div>
+  </a>
+  <a href="{{ url_for('admin_outlook_addin') }}" class="action-card">
+    <div class="action-card-icon action-card-icon-steel">{{ icon('eye', 20) }}</div>
+    <div class="action-title">Outlook Add-in</div>
+    <div class="action-sub">See a guest's bookings inside Outlook when you open their email</div>
+  </a>
+  <a href="{{ url_for('admin_inbox_flags') }}" class="action-card">
+    <div class="action-card-icon action-card-icon-steel">{{ icon('bell', 20) }}</div>
+    <div class="action-title">Inbox Flags</div>
+    <div class="action-sub">{% if open_email_flags_count %}{{ open_email_flags_count }} open flag{{ '' if open_email_flags_count == 1 else 's' }}{% else %}Unanswered emails and pricing/availability conflicts{% endif %}</div>
   </a>
 </div>
 

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Promo Codes{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Promo Codes</h1>
+  <a href="{{ url_for('management') }}" class="btn-mini">Back to Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Guests enter a code on the room, dinner, or workshop booking form. Every discount is recomputed from the real price at the moment of booking — nothing here can be tricked into a bigger discount than what's configured. Events aren't included since those are always bespoke, owner-quoted prices.</p>
+
+<div class="detail-card" style="max-width:680px; margin-bottom:22px;">
+  <h3 style="margin-top:0;">New code</h3>
+  <form method="post" action="{{ url_for('new_promo_code') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Code</label>
+        <input type="text" name="code" style="text-transform:uppercase;" placeholder="e.g. SUMMER25" required>
+      </div>
+      <div>
+        <label class="field-label">Applies to</label>
+        <select name="applies_to">
+          {% for a in applies_to_options %}
+          <option value="{{ a }}">{{ 'All bookings' if a == 'all' else a|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label class="field-label">Description (optional, staff-only)</label>
+    <input type="text" name="description" placeholder="What this code is for">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Discount type</label>
+        <select name="discount_type">
+          <option value="percent">Percent off</option>
+          <option value="fixed">Fixed amount off (€)</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Discount value</label>
+        <input type="number" name="discount_value" step="0.01" min="0.01" required>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Max discount (€, optional — caps a percent code)</label>
+        <input type="number" name="max_discount_amount" step="0.01" min="0">
+      </div>
+      <div>
+        <label class="field-label">Minimum spend (€, optional)</label>
+        <input type="number" name="min_spend" step="0.01" min="0">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Max redemptions (optional)</label>
+        <input type="number" name="max_redemptions" min="1" placeholder="Unlimited">
+      </div>
+      <div></div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Valid from (optional)</label>
+        <input type="date" name="valid_from">
+      </div>
+      <div>
+        <label class="field-label">Valid until (optional)</label>
+        <input type="date" name="valid_until">
+      </div>
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Create code</button>
+  </form>
+</div>
+
+{% if not codes %}
+  <div class="empty-state">No promo codes yet.</div>
+{% else %}
+  {% for c in codes %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong style="font-family:'IBM Plex Mono', monospace;">{{ c['code'] }}</strong>
+        <span class="mini-status {{ 'status-active' if c['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'active' if c['active'] else 'inactive' }}</span>
+        <span class="mini-status status-pending" style="margin-left:4px;">{{ 'all bookings' if c['applies_to'] == 'all' else c['applies_to'] }}</span>
+      </div>
+      <span class="upload-hint">{{ c['redemption_count'] }} redemption{{ '' if c['redemption_count'] == 1 else 's' }}{% if c['max_redemptions'] %} / {{ c['max_redemptions'] }}{% endif %}</span>
+    </div>
+    {% if c['description'] %}<p class="manual-body">{{ c['description'] }}</p>{% endif %}
+    <p class="upload-hint">
+      {% if c['discount_type'] == 'percent' %}{{ c['discount_value']|int if c['discount_value'] % 1 == 0 else c['discount_value'] }}% off{% if c['max_discount_amount'] %}, up to €{{ '%.2f'|format(c['max_discount_amount']) }}{% endif %}{% else %}€{{ '%.2f'|format(c['discount_value']) }} off{% endif %}
+      {% if c['min_spend'] %} · min. spend €{{ '%.2f'|format(c['min_spend']) }}{% endif %}
+      {% if c['valid_from'] or c['valid_until'] %} · valid {{ c['valid_from'] or 'now' }} to {{ c['valid_until'] or 'no end date' }}{% endif %}
+    </p>
+
+    <details style="margin-top:8px;">
+      <summary class="small-link" style="color:var(--steel); cursor:pointer; font-size:13px;">Edit</summary>
+      <form method="post" action="{{ url_for('edit_promo_code', code_id=c['id']) }}" style="margin-top:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Code</label>
+            <input type="text" name="code" style="text-transform:uppercase;" value="{{ c['code'] }}" required>
+          </div>
+          <div>
+            <label class="field-label">Applies to</label>
+            <select name="applies_to">
+              {% for a in applies_to_options %}
+              <option value="{{ a }}" {{ 'selected' if a == c['applies_to'] }}>{{ 'All bookings' if a == 'all' else a|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <label class="field-label">Description</label>
+        <input type="text" name="description" value="{{ c['description'] or '' }}">
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Discount type</label>
+            <select name="discount_type">
+              <option value="percent" {{ 'selected' if c['discount_type'] == 'percent' }}>Percent off</option>
+              <option value="fixed" {{ 'selected' if c['discount_type'] == 'fixed' }}>Fixed amount off (€)</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label">Discount value</label>
+            <input type="number" name="discount_value" step="0.01" min="0.01" value="{{ c['discount_value'] }}" required>
+          </div>
+        </div>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Max discount (€, optional)</label>
+            <input type="number" name="max_discount_amount" step="0.01" min="0" value="{{ c['max_discount_amount'] if c['max_discount_amount'] is not none else '' }}">
+          </div>
+          <div>
+            <label class="field-label">Minimum spend (€, optional)</label>
+            <input type="number" name="min_spend" step="0.01" min="0" value="{{ c['min_spend'] if c['min_spend'] is not none else '' }}">
+          </div>
+        </div>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Max redemptions (optional)</label>
+            <input type="number" name="max_redemptions" min="1" value="{{ c['max_redemptions'] if c['max_redemptions'] is not none else '' }}" placeholder="Unlimited">
+          </div>
+          <div></div>
+        </div>
+        <div class="field-row-2">
+          <div>
+            <label class="field-label">Valid from</label>
+            <input type="date" name="valid_from" value="{{ c['valid_from'] or '' }}">
+          </div>
+          <div>
+            <label class="field-label">Valid until</label>
+            <input type="date" name="valid_until" value="{{ c['valid_until'] or '' }}">
+          </div>
+        </div>
+        <button type="submit" class="btn-mini" style="margin-top:8px;">Save</button>
+      </form>
+    </details>
+
+    <div class="expense-actions">
+      <a href="{{ url_for('promo_code_blast', code_id=c['id']) }}" class="btn-mini">Email to past guests</a>
+      <form method="post" action="{{ url_for('toggle_promo_code', code_id=c['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">{{ 'Deactivate' if c['active'] else 'Activate' }}</button>
+      </form>
+      <form method="post" action="{{ url_for('delete_promo_code', code_id=c['id']) }}" onsubmit="return confirm('Delete this code permanently?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-mini-danger">Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

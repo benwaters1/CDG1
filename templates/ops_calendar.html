@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+
+{# One macro for every event chip, so a task looks and behaves the same in
+   day, week and month view. data-* attributes drive the client-side filters
+   below — same instant-filter pattern the Overview list already uses. #}
+{# Renders as <a> only when there is somewhere the viewer can actually go.
+   This used to fall back to admin_tasks, which is owner-only, so an
+   employee clicking their own task landed on a 403. #}
+{% macro event_chip(e, compact=False) %}
+<{{ 'a' if e.link else 'span' }} class="cal-ev cal-ev-{{ e.lane }} {{ 'cal-ev-static' if not e.link }} {{ 'cal-ev-done' if e.kind == 'task' and e.status == 'done' }} {{ 'cal-ev-overdue' if e.kind == 'task' and e.status != 'done' and e.date and e.date < today.isoformat() }}"
+   {% if e.link %}href="{{ e.link }}"{% endif %}
+   data-lane="{{ e.lane }}"
+   data-employee="{{ e.assignee_id or '' }}"
+   data-status="{{ e.status }}"
+   title="{{ e.title }}{% if e.detail %} — {{ e.detail }}{% endif %}">
+  <span class="cal-ev-dot"></span>
+  {# Month cells are ~160px wide, where the list-style titles ("Dinner —
+     Name, party of 2") ellipse away the only part that matters. Compact
+     form there; full title in day/week where there's room. #}
+  <span class="cal-ev-text">{{ (e.short or e.title) if compact else e.title }}</span>
+  {% if not compact and e.assignee_name %}<span class="cal-ev-who">{{ e.assignee_name }}</span>{% endif %}
+</{{ 'a' if e.link else 'span' }}>
+{% endmacro %}
+
+<div class="page-head">
+  <h1>Calendar</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    {% if user['role'] == 'owner' %}
+    <a href="{{ url_for('admin_overview', view=cal.view, date=cal.anchor.isoformat()) }}" class="btn-mini">List view</a>
+    <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Room grid</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="cal-toolbar">
+  <div class="segmented">
+    {% for v in ['day', 'week', 'month'] %}
+    <a href="{{ url_for('ops_calendar', view=v, date=cal.anchor.isoformat()) }}"
+       class="{{ 'is-active' if cal.view == v }}"
+       {{ 'aria-current=page' if cal.view == v }}>{{ v|capitalize }}</a>
+    {% endfor %}
+  </div>
+  <a href="{{ url_for('ops_calendar', view=cal.view, date=cal.prev_anchor) }}" class="btn-mini" aria-label="Previous">&larr;</a>
+  <a href="{{ url_for('ops_calendar', view=cal.view, date=cal.next_anchor) }}" class="btn-mini" aria-label="Next">&rarr;</a>
+  <strong class="cal-month-label">
+    {% if cal.view == 'day' %}{{ cal.span_start.strftime('%A %d %B %Y') }}
+    {% elif cal.view == 'week' %}{{ cal.span_start.strftime('%d %b') }} – {{ cal.span_end.strftime('%d %b %Y') }}
+    {% else %}{{ cal.span_start.strftime('%B %Y') }}{% endif %}
+  </strong>
+  {% if cal.anchor != today %}
+  <a href="{{ url_for('ops_calendar', view=cal.view) }}" class="small-link" style="color:var(--steel);">Today</a>
+  {% endif %}
+  <span class="upload-hint" style="margin-left:auto;">{{ cal.total_events }} item{{ '' if cal.total_events == 1 else 's' }}</span>
+</div>
+
+<div class="cal-filters" id="cal-filters">
+  <span class="cal-filter-label">Show</span>
+  {% for key, label in [('booking','Bookings'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('task','Staff tasks'), ('owner','My tasks')] %}
+  <button type="button" class="cal-chip is-on" data-filter-lane="{{ key }}" onclick="toggleCalLane(this)">
+    <span class="cal-ev-dot cal-ev-{{ key }}"></span>{{ label }}
+  </button>
+  {% endfor %}
+  <label class="cal-chip cal-chip-plain">
+    <input type="checkbox" id="cal-hide-done" onchange="applyCalFilters()"> Hide completed
+  </label>
+  {% if user['role'] == 'owner' and cal.employees %}
+  <select id="cal-employee" onchange="applyCalFilters()" class="cal-select">
+    <option value="">Everyone</option>
+    {% for e in cal.employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+  </select>
+  {% endif %}
+</div>
+
+{% if cal.view == 'month' %}
+<div class="cal-month">
+  <div class="cal-month-head">
+    {% for d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}<span>{{ d }}</span>{% endfor %}
+  </div>
+  {% for week in cal.weeks %}
+  <div class="cal-month-row">
+    {% for c in week %}
+    <div class="cal-day {{ 'cal-day-out' if not c.in_span }} {{ 'cal-day-today' if c.is_today }} {{ 'cal-day-weekend' if c.is_weekend }}">
+      <a class="cal-daynum" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}" title="Open {{ c.date.strftime('%d %B') }}">{{ c.date.day }}</a>
+      <div class="cal-day-events">
+        {% for e in c.events[:4] %}{{ event_chip(e, compact=True) }}{% endfor %}
+        {% if c.events|length > 4 %}
+        <a class="cal-more" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">+{{ c.events|length - 4 }} more</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+{% elif cal.view == 'week' %}
+<div class="cal-week">
+  {% for c in cal.cells %}
+  <div class="cal-day cal-day-col {{ 'cal-day-today' if c.is_today }} {{ 'cal-day-weekend' if c.is_weekend }}">
+    <a class="cal-col-head" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">
+      <span class="cal-col-dow">{{ c.date.strftime('%a') }}</span>
+      <span class="cal-col-num">{{ c.date.day }}</span>
+    </a>
+    <div class="cal-day-events">
+      {% for e in c.events %}{{ event_chip(e) }}{% endfor %}
+      {% if not c.events %}<span class="cal-day-empty">—</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% else %}
+<div class="cal-dayview">
+  {% for c in cal.cells %}
+    {% if not c.events %}
+      <div class="empty-state">Nothing scheduled for {{ c.date.strftime('%A %d %B') }}.</div>
+    {% else %}
+      <div class="cal-day-events cal-day-events-list">
+        {% for e in c.events %}{{ event_chip(e) }}{% endfor %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="upload-hint" id="cal-empty-note" style="display:none; margin-top:14px;">Nothing matches those filters.</p>
+
+<script>
+// Filters run client-side against the data-* attributes on each chip, so
+// switching them is instant and never loses your place in the month.
+function toggleCalLane(btn) {
+  btn.classList.toggle('is-on');
+  applyCalFilters();
+}
+function applyCalFilters() {
+  var lanes = {};
+  document.querySelectorAll('[data-filter-lane]').forEach(function(b) {
+    lanes[b.dataset.filterLane] = b.classList.contains('is-on');
+  });
+  var hideDone = document.getElementById('cal-hide-done').checked;
+  var empSel = document.getElementById('cal-employee');
+  var emp = empSel ? empSel.value : '';
+
+  var shown = 0;
+  document.querySelectorAll('.cal-ev').forEach(function(ev) {
+    var ok = lanes[ev.dataset.lane] !== false;
+    if (ok && hideDone && ev.dataset.status === 'done') ok = false;
+    // Employee filter only narrows things that are actually assignable;
+    // a booking or dinner has no assignee and shouldn't vanish.
+    if (ok && emp && ev.dataset.employee && ev.dataset.employee !== emp) ok = false;
+    if (ok && emp && !ev.dataset.employee) ok = false;
+    ev.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  });
+  document.getElementById('cal-empty-note').style.display = shown ? 'none' : '';
+}
+applyCalFilters();
+</script>
+
+{% endblock %}

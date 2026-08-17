@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Inbox Flags{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Inbox Flags</h1>
+  <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation settings</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Scans {{ mailbox or 'the connected mailbox' }} for messages that haven't had a reply within the configured window, or that mention a price or date that doesn't match what's actually on file. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
+
+{% if not graph_enabled %}
+<div class="detail-card" style="max-width:680px; border-left:3px solid var(--gold);">
+  <strong>Not connected yet.</strong>
+  <p class="upload-hint" style="margin-top:6px;">This needs a Microsoft Graph app registration (Azure AD) with read access to the mailbox — see "Microsoft Graph inbox monitoring" in DEPLOY.md for the exact steps, then set <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code>, and <code>MS_GRAPH_MAILBOX</code>. Nothing here scans until those are set.</p>
+</div>
+{% endif %}
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('bell', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.open_count or 0 }}</span><span class="stat-tile-label">Open flags</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-danger">{{ icon('bell', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.unanswered_count or 0 }}</span><span class="stat-tile-label">Unanswered too long</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-danger">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ counts.conflict_count or 0 }}</span><span class="stat-tile-label">Pricing / availability conflicts</span></span>
+  </div>
+</div>
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      {% for s in ['open', 'resolved', 'dismissed', 'all'] %}
+      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Type</label>
+    <select name="kind">
+      <option value="all" {{ 'selected' if kind_filter == 'all' }}>All</option>
+      <option value="unanswered" {{ 'selected' if kind_filter == 'unanswered' }}>Unanswered only</option>
+      <option value="conflict" {{ 'selected' if kind_filter == 'conflict' }}>Conflicts only</option>
+    </select>
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+</form>
+
+{% if not flags %}
+  <div class="empty-state">{% if status_filter == 'open' %}Nothing flagged right now.{% else %}No flags match that filter.{% endif %}</div>
+{% else %}
+  {% for f in flags %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ f['from_name'] or f['from_address'] or 'Unknown sender' }}</strong>
+        {% if f['from_name'] and f['from_address'] %}<span class="upload-hint">{{ f['from_address'] }}</span>{% endif %}
+        <span class="mini-status status-{{ 'declined' if f['status'] == 'dismissed' else ('approved' if f['status'] == 'resolved' else 'pending') }}" style="margin-left:8px;">{{ f['status'] }}</span>
+        {% if f['assigned_to_name'] %}<span class="mini-status status-active" style="margin-left:4px;">Assigned: {{ f['assigned_to_name'] }}</span>{% endif %}
+      </div>
+      <span class="upload-hint">{{ f['received_at'][:16].replace('T', ' ') }}</span>
+    </div>
+    <p class="manual-body"><strong>{{ f['subject'] or '(no subject)' }}</strong></p>
+    {% if f['preview'] %}<p class="upload-hint">{{ f['preview'] }}</p>{% endif %}
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0;">
+      {% if f['unanswered'] %}<span class="mini-status status-declined">Unanswered</span>{% endif %}
+      {% if f['price_conflict'] %}<span class="mini-status status-declined">Pricing conflict</span>{% endif %}
+      {% if f['availability_conflict'] %}<span class="mini-status status-declined">Availability conflict</span>{% endif %}
+      {% if f['reply_price_conflict'] %}<span class="mini-status status-declined">Reply pricing conflict</span>{% endif %}
+      {% if f['reply_availability_conflict'] %}<span class="mini-status status-declined">Reply availability conflict</span>{% endif %}
+      {% if not f['unanswered'] and not f['price_conflict'] and not f['availability_conflict'] and not f['reply_price_conflict'] and not f['reply_availability_conflict'] %}<span class="mini-status status-pending">Mentions pricing — no automatic match</span>{% endif %}
+    </div>
+
+    {% if f['conflict_category'] %}<p class="upload-hint">Matched: {{ f['conflict_category'] }}</p>{% endif %}
+    {% if f['extracted_price'] is not none or f['computed_price'] is not none %}
+    <p class="upload-hint">
+      {% if f['extracted_price'] is not none %}Email mentions €{{ '%.2f'|format(f['extracted_price']) }}{% endif %}
+      {% if f['computed_price'] is not none %} · Actual price €{{ '%.2f'|format(f['computed_price']) }}{% endif %}
+    </p>
+    {% endif %}
+    {% if f['extracted_dates'] %}<p class="upload-hint">Dates mentioned: {{ f['extracted_dates'] }}</p>{% endif %}
+    {% if f['detail_note'] %}<p class="upload-hint"><strong>{{ f['detail_note'] }}</strong></p>{% endif %}
+    {% if f['reply_detail_note'] %}<p class="upload-hint" style="color:var(--danger);"><strong>The reply that was sent: {{ f['reply_detail_note'] }}</strong></p>{% endif %}
+
+    <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+      {% if f['web_link'] %}<a href="{{ f['web_link'] }}" target="_blank" rel="noopener" class="btn-mini">Open in Outlook</a>{% endif %}
+      {% if f['status'] == 'open' %}
+      <form method="post" action="{{ url_for('resolve_email_flag', flag_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <button type="submit" class="btn-mini">Mark resolved</button>
+      </form>
+      <form method="post" action="{{ url_for('dismiss_email_flag', flag_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <button type="submit" class="btn-mini">Dismiss</button>
+      </form>
+      <form method="post" action="{{ url_for('assign_email_flag', flag_id=f['id']) }}" style="display:flex; gap:4px; align-items:center;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="return_status" value="{{ status_filter }}">
+        <select name="user_id" style="width:auto;">
+          <option value="">Assign to…</option>
+          {% for e in employees %}
+          <option value="{{ e['id'] }}" {{ 'selected' if f['assigned_to_user_id'] == e['id'] }}>{{ e['name'] }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-mini">Set</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+<script>
+(function() {
+  var lastId = {{ (flags[0]['id'] if flags else 0) | tojson }};
+  function poll() {
+    fetch('{{ url_for("admin_inbox_flags_status") }}').then(function(r) { return r.json(); }).then(function(data) {
+      if (data.latest_id > lastId) {
+        var banner = document.getElementById('inbox-flags-refresh-banner');
+        if (banner) banner.style.display = 'flex';
+      }
+    }).catch(function() {});
+  }
+  setInterval(poll, 20000);
+})();
+</script>
+<div id="inbox-flags-refresh-banner" class="flash flash-success" style="display:none; align-items:center; justify-content:space-between; position:sticky; bottom:16px; margin-top:16px;">
+  <span>New activity — this list may be out of date.</span>
+  <a href="{{ url_for('admin_inbox_flags', status=status_filter, kind=kind_filter) }}" class="btn-mini">Refresh</a>
+</div>
+
+{% endblock %}

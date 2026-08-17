@@ -1,0 +1,129 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Draft a reply</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 14px; color: #2b241d; background: #fbf7ee; font-size: 13px; }
+  h2 { font-size: 15px; margin: 0 0 4px; color: #4a2f22; }
+  .hint { color: #7a6f60; margin: 0 0 12px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid #d8cdb8; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
+  textarea { width: 100%; box-sizing: border-box; padding: 8px 9px; border: 1px solid #d8cdb8; border-radius: 6px; font-size: 13px; font-family: inherit; margin: 8px 0; resize: vertical; }
+  button { background: #4a2f22; color: #fbf7ee; border: none; border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: transparent; color: #7a6f60; text-decoration: underline; padding: 4px 0; }
+  #status { color: #7a6f60; margin-top: 6px; min-height: 16px; }
+  #status.error { color: #a33; }
+</style>
+</head>
+<body>
+
+<div id="setup" style="display:none;">
+  <h2>Set up once</h2>
+  <p class="hint">Enter the lookup token from the château app's Outlook Add-in settings page (Admin → Outlook Add-in). Same token used by Guest Lookup — stored only in your own Outlook profile.</p>
+  <input type="text" id="tokenInput" placeholder="Lookup token">
+  <button onclick="saveToken()">Save</button>
+</div>
+
+<div id="ready" style="display:none;">
+  <h2>Draft with AI</h2>
+  <p class="hint">Uses this guest's real booking history and today's real pricing, availability, and terms — always review before sending.</p>
+  <button id="draftBtn" onclick="requestDraft()">Draft a reply</button>
+  <div id="draftArea" style="display:none;">
+    <textarea id="draftText" rows="12"></textarea>
+    <button onclick="insertDraft()">Insert into email</button>
+    <button class="secondary" onclick="requestDraft()">Regenerate</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script>
+var DRAFT_URL = {{ draft_url|tojson }};
+
+Office.onReady(function () {
+  var token = Office.context.roamingSettings.get("gudanesToken");
+  if (!token) {
+    document.getElementById("setup").style.display = "block";
+  } else {
+    document.getElementById("ready").style.display = "block";
+  }
+});
+
+function saveToken() {
+  var token = document.getElementById("tokenInput").value.trim();
+  if (!token) { return; }
+  Office.context.roamingSettings.set("gudanesToken", token);
+  Office.context.roamingSettings.saveAsync(function () {
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("ready").style.display = "block";
+  });
+}
+
+function setStatus(message, isError) {
+  var el = document.getElementById("status");
+  el.textContent = message || "";
+  el.className = isError ? "error" : "";
+}
+
+function requestDraft() {
+  var token = Office.context.roamingSettings.get("gudanesToken");
+  var item = Office.context.mailbox.item;
+  var draftBtn = document.getElementById("draftBtn");
+  draftBtn.disabled = true;
+  setStatus("Drafting…", false);
+
+  item.to.getAsync(function (toResult) {
+    var recipientEmail = "";
+    if (toResult.status === Office.AsyncResultStatus.Succeeded && toResult.value && toResult.value.length) {
+      recipientEmail = toResult.value[0].emailAddress || "";
+    }
+    item.subject.getAsync(function (subjectResult) {
+      var subject = subjectResult.status === Office.AsyncResultStatus.Succeeded ? (subjectResult.value || "") : "";
+      item.body.getAsync("text", function (bodyResult) {
+        var body = bodyResult.status === Office.AsyncResultStatus.Succeeded ? (bodyResult.value || "") : "";
+        var params = new URLSearchParams({ token: token, recipient_email: recipientEmail, subject: subject, body: body });
+
+        fetch(DRAFT_URL, { method: "POST", body: params })
+          .then(function (resp) {
+            if (!resp.ok) {
+              return resp.json().catch(function () { return {}; }).then(function (data) {
+                throw new Error(data.error || ("Request failed (" + resp.status + ")"));
+              });
+            }
+            return resp.json();
+          })
+          .then(function (data) {
+            document.getElementById("draftText").value = data.draft;
+            document.getElementById("draftArea").style.display = "block";
+            setStatus("", false);
+          })
+          .catch(function (err) {
+            setStatus(err.message || "Could not draft a reply — check the token or try again.", true);
+          })
+          .finally(function () {
+            draftBtn.disabled = false;
+          });
+      });
+    });
+  });
+}
+
+function insertDraft() {
+  var text = document.getElementById("draftText").value;
+  Office.context.mailbox.item.body.setSelectedDataAsync(
+    text,
+    { coercionType: Office.CoercionType.Text },
+    function (result) {
+      if (result.status !== Office.AsyncResultStatus.Succeeded) {
+        setStatus("Could not insert automatically — copy and paste the text above instead.", true);
+      } else {
+        setStatus("Inserted. Review it before sending.", false);
+      }
+    }
+  );
+}
+</script>
+
+</body>
+</html>

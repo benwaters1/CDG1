@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Refunds{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Refunds</h1>
+  <a href="{{ url_for('export_refunds_csv') }}" class="btn-mini">Export CSV</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Bookings are non-refundable as standard, so every refund here was a deliberate exception. Each one records who issued it and why.</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(totals.all_time) }}</span>
+      <span class="stat-tile-label">Refunded all time</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(totals.last_30) }}</span>
+      <span class="stat-tile-label">Last 30 days</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ totals.count }}</span>
+      <span class="stat-tile-label">Refunds issued</span>
+    </span>
+  </div>
+  {% for c in by_category %}
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.0f'|format(c.total) }}</span>
+      <span class="stat-tile-label">{{ c.category|capitalize }} ({{ c.c }})</span>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="filter-bar" style="margin-bottom:16px;">
+  <a href="{{ url_for('admin_refunds') }}" class="btn-mini {{ 'btn-mini-active' if not category }}">All</a>
+  {% for key, label in [('room','Rooms'), ('restaurant','Restaurant'), ('workshop','Workshops'), ('event','Events')] %}
+  <a href="{{ url_for('admin_refunds', category=key) }}" class="btn-mini {{ 'btn-mini-active' if category == key }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% if not refunds %}
+  <div class="empty-state">No refunds issued{% if category %} in this category{% endif %} yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Date</th><th>Type</th><th>Guest</th><th class="num">Amount</th>
+        <th>Reason</th><th>Method</th><th>Issued by</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in refunds %}
+      <tr>
+        <td>{{ local_datetime_str(r['created_at']) }}</td>
+        <td><span class="mini-status status-{{ r['category'] }}">{{ r['category']|capitalize }}</span></td>
+        <td>
+          {% if r['guest_email'] %}
+          <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}">{{ r['guest_name'] or r['guest_email'] }}</a>
+          {% else %}{{ r['guest_name'] or '—' }}{% endif %}
+          {% if r['reference_code'] %}<span class="upload-hint"> · {{ r['reference_code'] }}</span>{% endif %}
+        </td>
+        <td class="num">€{{ '%.2f'|format(r['amount']) }}</td>
+        <td>{{ r['reason'] }}</td>
+        <td>
+          {{ r['method']|replace('_', ' ')|capitalize }}
+          {% if r['method'] != 'stripe' %}<span class="upload-hint"> (outside Stripe)</span>{% endif %}
+        </td>
+        <td>{{ r['refunded_by_name'] or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

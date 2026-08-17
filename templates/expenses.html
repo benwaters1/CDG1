@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Expenses & Invoices{% endblock %}
 {% block content %}
 
@@ -7,11 +8,27 @@
   <a href="{{ url_for('export_expenses_csv') }}" class="btn-mini">Export CSV</a>
 </div>
 
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ totals.pending_count }}</span><span class="stat-tile-label">Awaiting your decision</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(totals.pending_value) }}</span><span class="stat-tile-label">Pending value</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(totals.unpaid_value) }}</span><span class="stat-tile-label">Approved, not yet paid</span></span>
+  </div>
+</div>
+
 <div class="detail-card">
   <h3>Supplier invoice link</h3>
   <p class="pay-disclaimer" style="margin-top:0;">Share this link with suppliers so they can submit invoices directly — no login needed. Nothing is final until you approve it below.</p>
   <p class="share-link-box">{{ supplier_upload_url }}</p>
   <form method="post" action="{{ url_for('regenerate_supplier_link') }}" style="margin-top:10px;" onsubmit="return confirm('Generate a new link? The old one will stop working.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-mini">Generate a new link</button>
   </form>
 </div>
@@ -56,13 +73,13 @@
       <a href="{{ url_for('download_expense_file', expense_id=inv['id']) }}" class="small-link" style="color:var(--steel);">Download file</a>
       {% endif %}
       {% if inv['status'] == 'pending' %}
-      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
-      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
       {% elif inv['status'] == 'approved' %}
-      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark paid</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark paid</button></form>
       {% endif %}
-      <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=inv['id']) }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if inv['restaurant_related'] else 'Mark' }} restaurant</button></form>
-      <form method="post" action="{{ url_for('delete_expense', expense_id=inv['id']) }}" onsubmit="return confirm('Remove this invoice record?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+      <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if inv['restaurant_related'] else 'Mark' }} restaurant</button></form>
+      <form method="post" action="{{ url_for('delete_expense', expense_id=inv['id']) }}" onsubmit="return confirm('Remove this invoice record?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
   </div>
   {% endfor %}
@@ -90,13 +107,13 @@
       <a href="{{ url_for('download_expense_file', expense_id=c['id']) }}" class="small-link" style="color:var(--steel);">Download receipt</a>
       {% endif %}
       {% if c['status'] == 'pending' %}
-      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
-      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
       {% elif c['status'] == 'approved' %}
-      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark reimbursed</button></form>
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark reimbursed</button></form>
       {% endif %}
-      <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=c['id']) }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if c['restaurant_related'] else 'Mark' }} restaurant</button></form>
-      <form method="post" action="{{ url_for('delete_expense', expense_id=c['id']) }}" onsubmit="return confirm('Remove this expense record?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+      <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if c['restaurant_related'] else 'Mark' }} restaurant</button></form>
+      <form method="post" action="{{ url_for('delete_expense', expense_id=c['id']) }}" onsubmit="return confirm('Remove this expense record?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
   </div>
   {% endfor %}

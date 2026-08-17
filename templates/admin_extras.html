@@ -8,6 +8,7 @@
 </div>
 
 <form method="post" action="{{ url_for('new_extra') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="flex:1;">
     <label class="field-label">Name</label>
     <input type="text" name="name" placeholder="e.g. Breakfast, Airport transfer" required>
@@ -28,13 +29,16 @@
       <span style="flex:1;">{{ e['name'] }} — €{{ '%.2f'|format(e['price']) }} {% if not e['active'] %}<span class="mini-status status-inactive">hidden</span>{% endif %}</span>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleExtraEdit({{ e['id'] }})">Edit</span>
       <form method="post" action="{{ url_for('toggle_extra', extra_id=e['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-mini">{{ 'Show' if not e['active'] else 'Hide' }}</button>
       </form>
       <form method="post" action="{{ url_for('delete_extra', extra_id=e['id']) }}" onsubmit="return confirm('Remove this extra?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="doc-delete">×</button>
       </form>
     </div>
     <form method="post" action="{{ url_for('edit_extra', extra_id=e['id']) }}" id="edit-extra-{{ e['id'] }}" class="search-bar" style="display:none; margin-top:6px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div style="flex:1;">
         <input type="text" name="name" value="{{ e['name'] }}" placeholder="Name" required>
       </div>

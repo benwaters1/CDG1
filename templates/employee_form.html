@@ -5,6 +5,7 @@
 <div class="narrow-card">
   <h1>{% if employee %}Edit {{ employee['name'] }}{% else %}Add Employee{% endif %}</h1>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Full name</label>
     <input type="text" name="name" required value="{{ employee['name'] if employee else (prefill_name or '') }}">
 
@@ -78,6 +79,7 @@
 
   {% if employee %}
   <form method="post" action="{{ url_for('delete_employee', user_id=employee['id']) }}" onsubmit="return confirm('Remove {{ employee['name'] }} entirely? This cannot be undone.');" class="danger-zone">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn-text-danger">Remove this employee</button>
   </form>
   {% endif %}

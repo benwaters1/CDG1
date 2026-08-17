@@ -12,6 +12,11 @@
   {% if workshop['inclusions'] %}<p class="manual-body"><strong>Includes:</strong> {{ workshop['inclusions'] }}</p>{% endif %}
   {% if workshop['price_per_person'] %}<p class="upload-hint">A {{ workshop['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay.</p>{% endif %}
 
+  {% if workshop['itinerary'] %}
+  <p class="field-label" style="margin-top:18px;">Itinerary</p>
+  <p class="manual-body" style="white-space:pre-line;">{{ workshop['itinerary'] }}</p>
+  {% endif %}
+
   <p class="field-label" style="margin-top:18px;">Upcoming dates</p>
   {% if not session_rows %}
     <p class="empty-inline">No sessions scheduled yet — check back soon.</p>

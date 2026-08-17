@@ -49,11 +49,12 @@
       <span class="mini-status status-{{ 'onshift' if p['status'] == 'posted' else 'pending' }}">{{ p['status'] }}</span>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleSocialEdit({{ p['id'] }})">Edit</span>
       {% if p['status'] != 'posted' %}
-      <form method="post" action="{{ url_for('mark_social_post_posted', post_id=p['id']) }}"><button type="submit" class="btn-mini">Mark posted</button></form>
+      <form method="post" action="{{ url_for('mark_social_post_posted', post_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark posted</button></form>
       {% endif %}
-      <form method="post" action="{{ url_for('delete_social_post', post_id=p['id']) }}" onsubmit="return confirm('Remove this post from the schedule?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+      <form method="post" action="{{ url_for('delete_social_post', post_id=p['id']) }}" onsubmit="return confirm('Remove this post from the schedule?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
     <form method="post" action="{{ url_for('edit_social_post', post_id=p['id']) }}" id="edit-post-{{ p['id'] }}" class="upload-form" style="display:none;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <select name="platform">
         {% for opt in ['Instagram', 'Facebook', 'TikTok', 'Pinterest', 'Newsletter', 'Other'] %}
         <option value="{{ opt }}" {{ 'selected' if p['platform'] == opt }}>{{ opt }}</option>
@@ -96,6 +97,7 @@
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
   <h3>Add a post</h3>
   <form method="post" action="{{ url_for('new_social_post') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <select name="platform">
       {% for opt in ['Instagram', 'Facebook', 'TikTok', 'Pinterest', 'Newsletter', 'Other'] %}
       <option value="{{ opt }}">{{ opt }}</option>

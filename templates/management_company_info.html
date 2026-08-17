@@ -11,6 +11,7 @@
 <div class="detail-card" style="max-width:640px;">
   <h3>Legal &amp; Registration</h3>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Legal entity name</label>
     <input type="text" name="legal_name" value="{{ info['legal_name'] if info else '' }}">
 

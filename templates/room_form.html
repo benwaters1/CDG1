@@ -5,6 +5,7 @@
 <div class="narrow-card">
   <h1>{% if room %}Edit {{ room['name'] }}{% else %}Add Room{% endif %}</h1>
   <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Room name</label>
     <input type="text" name="name" required value="{{ room['name'] if room else '' }}">
 
@@ -29,10 +30,21 @@
       </div>
     </div>
 
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Minimum stay (nights)</label>
+        <input type="number" name="min_nights" min="1" value="{{ room['min_nights'] if room else 1 }}">
+      </div>
+    </div>
+
     <label class="field-label">Facilities (comma-separated)</label>
     <input type="text" name="amenities" placeholder="Fireplace, Valley view, En-suite bathroom" value="{{ room['amenities'] if room else '' }}">
 
     {% if room %}
+    <label class="field-label" style="margin-top:16px;">Additional gallery photos</label>
+    <p class="upload-hint">Shown alongside the cover photo above on the public booking pages. Add as many as you like; PNG or JPEG.</p>
+    <input type="file" name="gallery_photos" accept=".png,.jpg,.jpeg" multiple>
+
     <label class="field-label" style="margin-top:16px;">
       <input type="checkbox" name="active" {{ 'checked' if room['active'] }} style="width:auto; display:inline; margin-right:6px;">
       Open for booking
@@ -41,6 +53,66 @@
 
     <button type="submit" class="btn-primary">{% if room %}Save changes{% else %}Add room{% endif %}</button>
   </form>
+
+  {% if room and gallery_photos %}
+  <div style="margin-top:20px;">
+    <label class="field-label">Current gallery photos</label>
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:6px;">
+      {% for p in gallery_photos %}
+      <div style="position:relative;">
+        <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="" style="width:100px; height:75px; object-fit:cover; border-radius:6px; display:block;">
+        <form method="post" action="{{ url_for('delete_room_photo', room_id=room['id'], photo_id=p['id']) }}" onsubmit="return confirm('Remove this photo?');" style="position:absolute; top:2px; right:2px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini btn-mini-danger" style="padding:1px 6px; font-size:11px;">&times;</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if room %}
+  <div style="margin-top:20px;">
+    <label class="field-label">Seasonal rate overrides</label>
+    <p class="upload-hint">Charge a different nightly rate for a date range (peak season, a festival week...) — "To" is the last night this rate applies to, not a checkout date. Any night not covered by one of these uses the base price above.</p>
+
+    {% if rate_overrides %}
+    <div class="mini-list" style="margin-top:8px;">
+      {% for r in rate_overrides %}
+      <div class="mini-row">
+        <span class="mini-name">{{ r['start_date'] }} → {{ r['end_date'] }}</span>
+        <span class="mini-role">€{{ '%.2f'|format(r['price_per_night']) }} / night{% if r['label'] %} · {{ r['label'] }}{% endif %}</span>
+        <form method="post" action="{{ url_for('delete_room_rate_override', room_id=room['id'], rate_id=r['id']) }}" onsubmit="return confirm('Remove this rate override?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini btn-mini-danger">Remove</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('new_room_rate_override', room_id=room['id']) }}" class="search-bar" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="field-label">From</label>
+        <input type="date" name="start_date" required>
+      </div>
+      <div>
+        <label class="field-label">To</label>
+        <input type="date" name="end_date" required>
+      </div>
+      <div>
+        <label class="field-label">Rate (€ / night)</label>
+        <input type="number" name="price_per_night" step="0.01" min="0" required style="width:110px;">
+      </div>
+      <div>
+        <label class="field-label">Label (optional)</label>
+        <input type="text" name="label" placeholder="Peak season">
+      </div>
+      <button type="submit" class="btn-mini">Add</button>
+    </form>
+  </div>
+  {% endif %}
 </div>
 
 {% endblock %}

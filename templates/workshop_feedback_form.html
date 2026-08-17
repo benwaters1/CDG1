@@ -1,0 +1,34 @@
+{% extends "public_base.html" %}
+{% block title %}Your Feedback{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>How was {{ booking['title'] }}?</h1>
+</div>
+
+{% if too_early %}
+  <div class="empty-state">This link opens once the workshop has ended — we'd love to hear from you after {{ booking['end_date'] }}.</div>
+{% elif already_submitted %}
+  <div class="empty-state">You've already sent feedback for this workshop — thank you!</div>
+{% else %}
+  <div class="detail-card" style="max-width:520px;">
+    <p class="manual-body" style="margin-top:0;">{{ booking['guest_name'] }}, thank you for joining us. A couple of minutes of your time helps us a lot.</p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label">Rating</label>
+      <select name="rating" required>
+        <option value="">Choose a rating</option>
+        <option value="5">5 — Excellent</option>
+        <option value="4">4 — Very good</option>
+        <option value="3">3 — Good</option>
+        <option value="2">2 — Fair</option>
+        <option value="1">1 — Poor</option>
+      </select>
+      <label class="field-label">Comments (optional)</label>
+      <textarea name="comment" placeholder="Anything you'd like us to know"></textarea>
+      <button type="submit" class="btn-primary">Send feedback</button>
+    </form>
+  </div>
+{% endif %}
+
+{% endblock %}

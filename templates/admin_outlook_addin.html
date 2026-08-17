@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Outlook Add-in{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Outlook Add-in</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">A small panel that shows a guest's room, dinner, and workshop bookings right inside Outlook when you open their email — works in Outlook desktop, Outlook on the web, and Outlook on the web in Safari (there's no separate Safari build; "Outlook on the web" covers it). It also quietly checks every outgoing email for a price or date that doesn't match what's actually on file, and warns before it sends — if the add-in can't be reached for any reason, the email still sends rather than getting stuck. When replying, a "Draft with AI" button can write a first draft grounded in that guest's real history and today's real pricing — always review it before sending.</p>
+
+{% if not token_configured %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  Set the <code>GUEST_LOOKUP_TOKEN</code> environment variable before installing this — without it, the add-in can't fetch any guest data. Generate one with:
+  <code>python3 -c "import secrets; print(secrets.token_urlsafe(32))"</code>
+</div>
+{% endif %}
+
+<div class="detail-card" style="max-width:640px;">
+  <h3 style="margin-top:0;">1. Download the manifest</h3>
+  <p class="manual-body">Right-click and save, or open in a new tab and save the page:</p>
+  <p class="share-link-box">{{ manifest_url }}</p>
+
+  <h3>2. Sideload it into Outlook</h3>
+  <p class="manual-body">
+    <strong>Outlook on the web:</strong> Settings (gear icon) → Mail → Customize actions → search "Get Add-ins" → My add-ins → Custom addins → Add a custom addin → Add from file, and choose the manifest you downloaded.<br><br>
+    <strong>Outlook desktop (Windows/Mac):</strong> Home ribbon → Get Add-ins → My add-ins → Custom addins → Add a custom addin → Add from file.
+  </p>
+  <p class="upload-hint">Sideloaded add-ins are per-mailbox — anyone else who wants this (like a family member checking guest emails) repeats this step for their own account. If you'd already installed an earlier version, remove and re-add it — this version asks for read/write access to the open item (needed so "Insert into email" can write the draft in), not just read access.</p>
+
+  <h3>3. Set the lookup token in the panel</h3>
+  <p class="manual-body">Open any email, click the "Guest Lookup" button in the ribbon, and paste in the same value you set as <code>GUEST_LOOKUP_TOKEN</code>. It's saved to that Outlook profile only — you won't need to re-enter it. The same token also unlocks "Draft with AI" when composing a reply.</p>
+
+  <h3>4. Reply drafting needs one more key</h3>
+  <p class="manual-body">Set <code>ANTHROPIC_API_KEY</code> (your own Anthropic account's key) as an environment variable. Without it, "Draft with AI" will show an error rather than a draft — everything else on this page works regardless.</p>
+</div>
+
+{% endblock %}

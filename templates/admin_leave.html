@@ -1,10 +1,33 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Time Off Requests{% endblock %}
 {% block content %}
 
 <div class="page-head">
   <h1>Time Off Requests</h1>
-  <a href="{{ url_for('export_leave_csv') }}" class="btn-mini">Export CSV</a>
+  <a href="{{ url_for('export_leave_csv') }}" class="btn-ghost">Export CSV</a>
+</div>
+
+{% set pending = requests|selectattr('status', 'equalto', 'pending')|list %}
+{% set approved = requests|selectattr('status', 'equalto', 'approved')|list %}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-gold' if pending else 'stat-tile-icon-success' }}">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pending|length }}</span><span class="stat-tile-label">Awaiting your decision</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('leave', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ approved|length }}</span><span class="stat-tile-label">Approved</span></span>
+  </div>
+  {% if conflicts or task_conflicts %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-danger">{{ icon('wrench', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ (conflicts|length) + (task_conflicts|length) }}</span>
+      <span class="stat-tile-label">With shift or task clashes</span>
+    </span>
+  </div>
+  {% endif %}
 </div>
 
 {% if not requests %}
@@ -39,8 +62,8 @@
     {% endif %}
     {% if r['status'] == 'pending' %}
     <div class="expense-actions">
-      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
-      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+      <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
     </div>
     {% endif %}
   </div>

@@ -7,8 +7,8 @@
   <h1>Workshops</h1>
   <div style="display:flex; gap:10px;">
     <a href="{{ url_for('admin_workshop_registrations') }}" class="btn-mini">Registrations</a>
-    <a href="{{ url_for('admin_workshop_waitlist') }}" class="btn-mini">Waitlist</a>
-    <a href="{{ url_for('workshops_public') }}" class="btn-mini">View public page</a>
+    <a href="{{ url_for('admin_workshop_waitlist') }}" class="btn-ghost">Waitlist</a>
+    <a href="{{ url_for('workshops_public') }}" class="btn-ghost">View public page</a>
     <a href="{{ url_for('new_workshop') }}" class="btn-primary" style="margin-top:0;">+ Add workshop</a>
   </div>
 </div>
@@ -65,6 +65,7 @@
           </span>
           <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
           <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
           </form>
         </div>
@@ -72,7 +73,28 @@
       </div>
     {% endif %}
 
+    {% set past_rows = past_by_workshop.get(w['id'], []) %}
+    {% if past_rows %}
+    <details style="margin-top:10px;">
+      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Past sessions ({{ past_rows|length }})</summary>
+      <div class="doc-list" style="margin-top:6px;">
+        {% for row in past_rows %}
+        {% set s = row.session %}
+        <div class="doc-row">
+          <span style="flex:1;">
+            {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+            · {{ row.attended }}/{{ s['capacity'] }} attended
+            {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
+          </span>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
     <form method="post" action="{{ url_for('new_workshop_session', workshop_id=w['id']) }}" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
         <div>
           <label class="field-label">Start date</label>
@@ -100,6 +122,7 @@
         <div class="doc-row">
           <span style="flex:1;">{{ f['label'] }} <span class="upload-hint">({{ f['field_type'] }}{% if f['required'] %} · required{% endif %}{% if f['options'] %} · {{ f['options'] }}{% endif %})</span></span>
           <form method="post" action="{{ url_for('delete_workshop_custom_field', field_id=f['id']) }}" onsubmit="return confirm('Remove this question?');" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
           </form>
         </div>
@@ -107,6 +130,7 @@
       </div>
     {% endif %}
     <form method="post" action="{{ url_for('new_workshop_custom_field', workshop_id=w['id']) }}" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">
         <input type="text" name="label" placeholder="Question (e.g. Shuttle pickup time)" required>
         <select name="field_type">

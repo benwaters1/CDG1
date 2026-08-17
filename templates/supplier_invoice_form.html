@@ -7,6 +7,7 @@
     <div class="login-crest">Château de Gudanes</div>
     <h1>Submit an Invoice</h1>
     <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field-label">Company / supplier name</label>
       <input type="text" name="vendor_name" required>
       <label class="field-label">Description</label>

@@ -41,11 +41,13 @@
         <button type="button" class="btn-mini" data-revealed="0" onclick="bankReveal({{ e['id'] }}, this)">Reveal</button>
         <button type="button" class="btn-mini" onclick="bankToggleEdit({{ e['id'] }})">Edit</button>
         <form method="post" action="{{ url_for('delete_bank_details', entry_id=e['id']) }}" onsubmit="return confirm('Delete these bank details? This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-text-danger">Remove</button>
         </form>
       </div>
       <div id="bank-edit-{{ e['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
         <form method="post" action="{{ url_for('edit_bank_details', entry_id=e['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="text" name="label" value="{{ e['label'] }}" placeholder="Label (e.g. Main operating account)" required>
           <input type="text" name="bank_name" value="{{ e['bank_name'] or '' }}" placeholder="Bank name">
           <input type="text" name="account_holder" value="{{ e['account_holder'] or '' }}" placeholder="Account holder">
@@ -64,6 +66,7 @@
   <div class="detail-card" style="max-width:640px;">
     <h3>Add bank details</h3>
     <form method="post" action="{{ url_for('new_bank_details') }}" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="label" placeholder="Label (e.g. Main operating account)" required>
       <input type="text" name="bank_name" placeholder="Bank name">
       <input type="text" name="account_holder" placeholder="Account holder">

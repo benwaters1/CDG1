@@ -17,6 +17,7 @@
   {% endif %}
 
   <form method="post" style="margin-top:18px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Party size</label>
     <input type="number" name="party_size" min="1" max="{{ session['capacity'] }}" value="{{ prefill_party_size }}" required>
 
@@ -54,6 +55,13 @@
     <label class="field-label">Anything else we should know?</label>
     <textarea name="notes" placeholder="Experience level, questions..."></textarea>
 
+    <label class="field-label">Promo code (optional)</label>
+    <div style="display:flex; gap:8px;">
+      <input type="text" name="promo_code" id="promo_code" style="text-transform:uppercase;">
+      <button type="button" class="btn-mini" id="promo_apply_btn" style="flex-shrink:0;">Apply</button>
+    </div>
+    <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
+
     {% for f in custom_fields %}
     <label class="field-label">{{ f['label'] }}{% if not f['required'] %} (optional){% endif %}</label>
     {% if f['field_type'] == 'textarea' %}
@@ -81,11 +89,27 @@
   </form>
 </div>
 
+<script>
+document.getElementById('promo_apply_btn').addEventListener('click', function() {
+  var resultEl = document.getElementById('promo_result');
+  var code = document.getElementById('promo_code').value.trim();
+  var partySize = document.querySelector('[name="party_size"]').value;
+  if (!code) { resultEl.textContent = 'Enter a code first.'; return; }
+  resultEl.textContent = 'Checking...';
+  var body = new URLSearchParams({category: 'workshop', code: code, session_id: '{{ session["id"] }}', party_size: partySize});
+  fetch('{{ url_for("api_validate_promo_code") }}', {method: 'POST', body: body})
+    .then(function(r) { return r.json(); })
+    .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
+    .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
+});
+</script>
+
 {% if fully_booked %}
 <div class="narrow-card" style="margin-top:20px;">
   <h1>Join the Waitlist</h1>
   <p class="manual-body">We'll reach out if a spot opens up for this session.</p>
   <form method="post" action="{{ url_for('join_workshop_waitlist') }}" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="session_id" value="{{ session['id'] }}">
     <label class="field-label">Party size</label>
     <input type="number" name="party_size" min="1" value="{{ prefill_party_size }}" required>

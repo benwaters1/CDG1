@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Gudanes Guest Lookup</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 14px; color: #2b241d; background: #fbf7ee; font-size: 13px; }
+  h2 { font-size: 15px; margin: 0 0 4px; color: #4a2f22; }
+  .hint { color: #7a6f60; margin: 0 0 12px; }
+  input[type=text] { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid #d8cdb8; border-radius: 6px; font-size: 13px; margin-bottom: 8px; }
+  button { background: #4a2f22; color: #fbf7ee; border: none; border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  button.secondary { background: transparent; color: #7a6f60; text-decoration: underline; padding: 4px 0; }
+  .card { background: #fff; border: 1px solid #eadfc9; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .card .title { font-weight: 600; margin-bottom: 2px; }
+  .card .meta { color: #7a6f60; font-size: 12px; }
+  .status { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: #eadfc9; margin-left: 4px; }
+  .section-label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: #a08f6c; margin: 14px 0 6px; }
+  .empty { color: #7a6f60; font-style: italic; }
+  #error { color: #a33; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<div id="setup" style="display:none;">
+  <h2>Set up once</h2>
+  <p class="hint">Enter the lookup token from the château app's Outlook Add-in settings page (Admin → Outlook Add-in). Stored only in your own Outlook profile — never shared.</p>
+  <input type="text" id="tokenInput" placeholder="Lookup token">
+  <button onclick="saveToken()">Save</button>
+</div>
+
+<div id="results" style="display:none;">
+  <h2 id="guestEmail"></h2>
+  <button class="secondary" onclick="resetToken()">Change token</button>
+  <div id="body"></div>
+</div>
+
+<div id="error"></div>
+
+<script>
+var LOOKUP_URL = {{ lookup_url|tojson }};
+
+Office.onReady(function () {
+  var token = Office.context.roamingSettings.get("gudanesToken");
+  if (!token) {
+    document.getElementById("setup").style.display = "block";
+  } else {
+    runLookup(token);
+  }
+});
+
+function saveToken() {
+  var token = document.getElementById("tokenInput").value.trim();
+  if (!token) { return; }
+  Office.context.roamingSettings.set("gudanesToken", token);
+  Office.context.roamingSettings.saveAsync(function () {
+    document.getElementById("setup").style.display = "none";
+    runLookup(token);
+  });
+}
+
+function resetToken() {
+  Office.context.roamingSettings.remove("gudanesToken");
+  Office.context.roamingSettings.saveAsync(function () {
+    document.getElementById("results").style.display = "none";
+    document.getElementById("setup").style.display = "block";
+  });
+}
+
+function runLookup(token) {
+  var item = Office.context.mailbox.item;
+  var email = (item && item.from && item.from.emailAddress) || (item && item.sender && item.sender.emailAddress);
+  if (!email) {
+    showError("Couldn't read the sender's email address from this message.");
+    return;
+  }
+  var body = new URLSearchParams({ email: email, token: token });
+  fetch(LOOKUP_URL, { method: "POST", body: body }).then(function (resp) {
+    if (!resp.ok) { throw new Error("Lookup failed (" + resp.status + ") — check the token in settings."); }
+    return resp.json();
+  }).then(function (data) {
+    renderResults(email, data);
+  }).catch(function (err) {
+    showError(err.message);
+  });
+}
+
+function showError(message) {
+  document.getElementById("error").textContent = message;
+}
+
+function renderResults(email, data) {
+  document.getElementById("guestEmail").textContent = email;
+  var body = document.getElementById("body");
+  body.innerHTML = "";
+
+  body.appendChild(section("Room bookings", data.rooms, function (r) {
+    return card(
+      r.room_name + " — " + r.arrival_date + " to " + r.departure_date,
+      "Party of " + r.party_size + (r.total_price ? " · €" + r.total_price.toFixed(2) : ""),
+      r.status, r.payment_status
+    );
+  }));
+  body.appendChild(section("Dinner reservations", data.restaurant, function (r) {
+    return card(
+      "Dinner — " + r.dinner_date,
+      "Party of " + r.party_size + (r.dietary_notes ? " · " + r.dietary_notes : ""),
+      r.status, r.payment_status
+    );
+  }));
+  body.appendChild(section("Workshop registrations", data.workshops, function (r) {
+    return card(
+      r.title + " — " + r.start_date + (r.end_date !== r.start_date ? " to " + r.end_date : ""),
+      "Party of " + r.party_size,
+      r.status, null
+    );
+  }));
+
+  document.getElementById("results").style.display = "block";
+  document.getElementById("setup").style.display = "none";
+  document.getElementById("error").textContent = "";
+}
+
+function section(label, items, renderItem) {
+  var wrap = document.createElement("div");
+  var h = document.createElement("div");
+  h.className = "section-label";
+  h.textContent = label;
+  wrap.appendChild(h);
+  if (!items || items.length === 0) {
+    var empty = document.createElement("div");
+    empty.className = "empty";
+    empty.textContent = "Nothing on file.";
+    wrap.appendChild(empty);
+  } else {
+    items.forEach(function (item) { wrap.appendChild(renderItem(item)); });
+  }
+  return wrap;
+}
+
+function card(title, meta, status, paymentStatus) {
+  var div = document.createElement("div");
+  div.className = "card";
+  var t = document.createElement("div");
+  t.className = "title";
+  t.textContent = title;
+  if (status) {
+    var s = document.createElement("span");
+    s.className = "status";
+    s.textContent = status;
+    t.appendChild(s);
+  }
+  if (paymentStatus && paymentStatus !== "unpaid") {
+    var p = document.createElement("span");
+    p.className = "status";
+    p.textContent = paymentStatus;
+    t.appendChild(p);
+  }
+  div.appendChild(t);
+  var m = document.createElement("div");
+  m.className = "meta";
+  m.textContent = meta;
+  div.appendChild(m);
+  return div;
+}
+</script>
+
+</body>
+</html>

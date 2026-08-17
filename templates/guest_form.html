@@ -3,34 +3,45 @@
 {% block content %}
 
 <div class="narrow-card">
-  <h1>{% if guest %}Edit {{ guest['name'] }}{% else %}Add Guest{% endif %}</h1>
+  <h1>{% if guest %}Edit {{ guest['name'] }}{% else %}Add Guest Profile{% endif %}</h1>
+  <p class="upload-hint">A profile is the standing record of a person — it carries across every visit. Stay dates, room and party size belong to the booking, not here.</p>
   <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Guest name</label>
     <input type="text" name="name" required value="{{ guest['name'] if guest else '' }}">
 
     <div class="field-row-2">
       <div>
-        <label class="field-label">Arrival date</label>
-        <input type="date" name="arrival_date" value="{{ guest['arrival_date'] if guest else '' }}">
+        <label class="field-label">Email</label>
+        <input type="email" name="email" value="{{ guest['email'] if guest else '' }}" placeholder="used to match their bookings">
       </div>
       <div>
-        <label class="field-label">Departure date</label>
-        <input type="date" name="departure_date" value="{{ guest['departure_date'] if guest else '' }}">
+        <label class="field-label">Phone</label>
+        <input type="text" name="phone" value="{{ guest['phone'] if guest else '' }}">
       </div>
     </div>
 
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" value="{{ guest['party_size'] if guest else '' }}">
+    <label class="field-label">Dietary requirements</label>
+    <input type="text" name="dietary_notes" value="{{ guest['dietary_notes'] if guest else '' }}" placeholder="Coeliac, no shellfish, vegetarian...">
+
+    <label class="field-label">Preferences</label>
+    <input type="text" name="preferences" value="{{ guest['preferences'] if guest else '' }}" placeholder="Prefers the Rose Room, early breakfast, quiet side...">
+
+    <label class="checkbox-row" style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+      <input type="checkbox" name="vip" value="1" {% if guest and guest['vip'] %}checked{% endif %}>
+      <span>Mark as VIP</span>
+    </label>
 
     <label class="field-label">Notes for staff</label>
-    <textarea name="notes" placeholder="Dietary notes, room assignment, arrival time, preferences...">{{ guest['notes'] if guest else '' }}</textarea>
+    <textarea name="notes" placeholder="Anything worth knowing next time they stay...">{{ guest['notes'] if guest else '' }}</textarea>
 
-    <button type="submit" class="btn-primary">{% if guest %}Save changes{% else %}Add guest{% endif %}</button>
+    <button type="submit" class="btn-primary">{% if guest %}Save changes{% else %}Create profile{% endif %}</button>
   </form>
 
   {% if guest %}
-  <form method="post" action="{{ url_for('delete_guest', guest_id=guest['id']) }}" onsubmit="return confirm('Remove {{ guest['name'] }} from the guest list?');" class="danger-zone">
-    <button type="submit" class="btn-text-danger">Remove this guest</button>
+  <form method="post" action="{{ url_for('delete_guest', guest_id=guest['id']) }}" onsubmit="return confirm('Delete {{ guest['name'] }}\'s profile? Their bookings are kept.');" class="danger-zone">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-text-danger">Delete this profile</button>
   </form>
   {% endif %}
 </div>

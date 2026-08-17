@@ -39,6 +39,7 @@
     <p class="upload-hint">Added {{ c['created_at'][:10] }}{% if c['updated_at'] %} · Updated {{ c['updated_at'][:10] }}{% endif %}</p>
     <div class="expense-actions">
       <form method="post" action="{{ url_for('update_candidate_status', candidate_id=c['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <select name="status" onchange="this.form.submit()">
           {% for s in ['new','interviewing','offered','hired','rejected'] %}
           <option value="{{ s }}" {{ 'selected' if c['status'] == s }}>{{ s|capitalize }}</option>
@@ -49,10 +50,11 @@
       <a href="{{ url_for('new_employee', name=c['name'], email=c['email'] or '', phone=c['phone'] or '', job_role=c['role_applied'] or '') }}" class="btn-mini">Convert to employee</a>
       {% endif %}
       <button type="button" class="btn-mini" onclick="toggleCandidateEdit({{ c['id'] }})">Edit</button>
-      <form method="post" action="{{ url_for('delete_candidate', candidate_id=c['id']) }}" onsubmit="return confirm('Remove this candidate?');"><button type="submit" class="btn-text-danger">Remove</button></form>
+      <form method="post" action="{{ url_for('delete_candidate', candidate_id=c['id']) }}" onsubmit="return confirm('Remove this candidate?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
     <div id="candidate-edit-{{ c['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
       <form method="post" action="{{ url_for('edit_candidate', candidate_id=c['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="name" value="{{ c['name'] }}" placeholder="Name" required>
         <input type="text" name="role_applied" value="{{ c['role_applied'] or '' }}" placeholder="Role applied for">
         <input type="email" name="email" value="{{ c['email'] or '' }}" placeholder="Email">
@@ -68,6 +70,7 @@
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
   <h3>Add a candidate</h3>
   <form method="post" action="{{ url_for('new_candidate') }}" class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="name" placeholder="Name" required>
     <input type="text" name="role_applied" placeholder="Role applied for">
     <input type="email" name="email" placeholder="Email">

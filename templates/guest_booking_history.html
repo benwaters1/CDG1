@@ -2,11 +2,37 @@
 {% block title %}Guest History{% endblock %}
 {% block content %}
 
+{# Name falls back through every source; `profile` is checked first and the
+   final `or email` guarantees a title even when a profile exists with no
+   activity yet (this used to raise when all four lists were empty). #}
+{% set display_name = (profile['name'] if profile else None)
+   or (bookings[0]['guest_name'] if bookings else None)
+   or (dinners[0]['guest_name'] if dinners else None)
+   or (workshop_regs[0]['guest_name'] if workshop_regs else None)
+   or (events[0]['contact_name'] if events else None)
+   or email %}
 <div class="page-head">
-  <h1>{{ bookings[0]['guest_name'] if bookings else (dinners[0]['guest_name'] if dinners else workshop_regs[0]['guest_name']) }}</h1>
-  <a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">← Bookings</a>
+  <h1>{{ display_name }}{% if profile and profile['vip'] %} <span class="mini-status status-pending" style="margin-left:6px;">VIP</span>{% endif %}</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    {% if profile and user['role'] == 'owner' %}
+    <a href="{{ url_for('edit_guest', guest_id=profile['id']) }}" class="btn-mini">Edit profile</a>
+    {% endif %}
+    <a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">← Bookings</a>
+  </div>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %}{% if events %} · {{ events|length }} event inquir{{ 'y' if events|length == 1 else 'ies' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
+
+{% if profile and (profile['phone'] or profile['dietary_notes'] or profile['preferences'] or profile['notes']) %}
+<div class="detail-card" style="margin-bottom:18px;">
+  <h3 style="margin-top:0;">Profile</h3>
+  {% if profile['phone'] %}<p class="manual-body"><strong>Phone:</strong> {{ profile['phone'] }}</p>{% endif %}
+  {% if profile['dietary_notes'] %}<p class="manual-body"><strong>Dietary:</strong> {{ profile['dietary_notes'] }}</p>{% endif %}
+  {% if profile['preferences'] %}<p class="manual-body"><strong>Prefers:</strong> {{ profile['preferences'] }}</p>{% endif %}
+  {% if profile['notes'] %}<p class="manual-body">{{ profile['notes'] }}</p>{% endif %}
+</div>
+{% elif not profile %}
+<p class="upload-hint" style="margin-top:-4px;">No standing profile yet — one is created automatically when a booking is confirmed.</p>
+{% endif %}
 
 <div class="mini-list">
   {% for b in bookings %}
@@ -42,6 +68,33 @@
     <span class="mini-role">Party of {{ w['party_size'] }}{% if w['notes'] %} · {{ w['notes'] }}{% endif %}</span>
     <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
     {% if w['total_price'] %}<span class="upload-hint">€{{ '%.2f'|format(w['total_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if events %}
+<h2 class="section-heading">Event Inquiries</h2>
+<div class="mini-list">
+  {% for e in events %}
+  <div class="mini-row">
+    <span class="mini-name">{{ e['event_type']|capitalize }}{% if e['preferred_date'] %} — {{ e['preferred_date'] }}{% endif %}</span>
+    <span class="mini-role">{{ e['reference_code'] }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}</span>
+    <span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span>
+    {% if e['quoted_price'] %}<span class="upload-hint">€{{ '%.2f'|format(e['quoted_price']) }}</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if promo_redemptions %}
+<h2 class="section-heading">Promo Codes Used</h2>
+<div class="mini-list">
+  {% for p in promo_redemptions %}
+  <div class="mini-row">
+    <span class="mini-name">{{ p['code'] }}</span>
+    <span class="mini-role">{{ p['category']|capitalize }} · {{ p['redeemed_at'][:10] }}</span>
+    <span class="upload-hint">-€{{ '%.2f'|format(p['discount_amount']) }}</span>
   </div>
   {% endfor %}
 </div>

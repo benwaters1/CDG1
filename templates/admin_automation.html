@@ -9,6 +9,7 @@
 <p class="pay-disclaimer" style="margin-top:-10px;">Background jobs that run on their own — no need to keep the app open or set up an external cron service. Each one is safe to run more than once; running it manually below won't duplicate anything.</p>
 
 <form method="post" action="{{ url_for('update_automation_settings') }}" class="detail-card" style="max-width:680px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="detail-grid" style="grid-template-columns:1fr; gap:16px;">
 
     <div>
@@ -59,6 +60,46 @@
       <p class="upload-hint" style="margin-top:4px;">When a room, dinner reservation, or workshop registration is declined or cancelled, automatically emails any matching open waitlist entry instead of just flagging it for the owner to follow up manually.</p>
     </div>
 
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_workshop_feedback_enabled" style="width:auto;" {{ 'checked' if settings['automation_workshop_feedback_enabled'] == '1' }}>
+        Workshop feedback requests
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Emails a confirmed workshop guest once, using the "Workshop: Feedback request" template, the day after their session ends — mirrors the room booking's checkout-time "How was your stay?" email.</p>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_email_scan_enabled" style="width:auto;" {{ 'checked' if settings['automation_email_scan_enabled'] == '1' }}>
+        Inbox scan (Inbox Flags)
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">
+        {% if graph_enabled %}Scans the connected mailbox for messages unanswered too long, and for prices/dates mentioned in an email that don't match real pricing or availability. See <a href="{{ url_for('admin_inbox_flags') }}">Inbox Flags</a>.{% else %}Not connected yet — needs a Microsoft Graph app registration (see "Microsoft Graph inbox monitoring" in DEPLOY.md), then <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code>, and <code>MS_GRAPH_MAILBOX</code>.{% endif %}
+      </p>
+      <div style="margin-top:6px; display:flex; gap:16px; flex-wrap:wrap;">
+        <div style="max-width:220px;">
+          <label class="field-label">Flag as unanswered after (hours)</label>
+          <input type="number" name="automation_email_unanswered_hours" min="1" step="1" value="{{ settings['automation_email_unanswered_hours'] }}">
+        </div>
+        <div style="max-width:220px;">
+          <label class="field-label">Scan messages from the last (days)</label>
+          <input type="number" name="automation_email_scan_lookback_days" min="1" step="1" value="{{ settings['automation_email_scan_lookback_days'] }}">
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_stale_shift_enabled" style="width:auto;" {{ 'checked' if settings['automation_stale_shift_enabled'] == '1' }}>
+        Stale shift cleanup
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Clocking in/out is a deliberate action now, not a side effect of logging in/out — this catches the "forgot to clock out" case instead, closing a shift left open too long and notifying both the employee and the owner so it can be corrected.</p>
+      <div style="margin-top:6px; max-width:220px;">
+        <label class="field-label">Auto-close after (hours)</label>
+        <input type="number" name="automation_stale_shift_hours" min="1" step="1" value="{{ settings['automation_stale_shift_hours'] }}">
+      </div>
+    </div>
+
   </div>
 
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
@@ -82,6 +123,7 @@
           <td style="padding:8px 6px;">{{ last_runs[job_name][:19].replace('T', ' ') if last_runs.get(job_name) else 'never' }}</td>
           <td style="padding:8px 6px; text-align:right;">
             <form method="post" action="{{ url_for('run_automation_job_now', job_name=job_name) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn-mini">Run now</button>
             </form>
           </td>

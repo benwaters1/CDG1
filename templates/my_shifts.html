@@ -18,8 +18,8 @@
   </div>
   {% if s['note'] %}<p class="manual-body">{{ s['note'] }}</p>{% endif %}
   <div class="expense-actions">
-    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="accepted"><button type="submit" class="btn-mini">Accept</button></form>
-    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="accepted"><button type="submit" class="btn-mini">Accept</button></form>
+    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
   </div>
 </div>
 {% endfor %}
@@ -41,6 +41,7 @@
       </div>
       {% if colleagues %}
       <form method="post" class="upload-form" style="width:100%;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="shift_id" value="{{ s['id'] }}">
         <select name="offered_to_user_id" required>
           <option value="">Offer this shift to…</option>

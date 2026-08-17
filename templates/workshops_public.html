@@ -29,4 +29,17 @@
   {% endfor %}
 {% endif %}
 
+{% if featured_reviews %}
+<h2 class="section-heading">What Past Guests Say</h2>
+<div class="search-bar" style="align-items:stretch;">
+  {% for r in featured_reviews %}
+  <div class="detail-card" style="flex:1 1 220px;">
+    <span class="mini-status status-onshift">{{ r['rating'] }} / 5</span>
+    {% if r['comment'] %}<p class="manual-body" style="margin-top:8px;">&ldquo;{{ r['comment'] }}&rdquo;</p>{% endif %}
+    <p class="upload-hint" style="margin-top:8px;">{{ r['guest_name'] }}{% if r['title'] %} · {{ r['title'] }}{% endif %}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% endblock %}

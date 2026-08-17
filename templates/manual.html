@@ -11,13 +11,13 @@
   <div class="announcement-banner" style="margin-bottom:16px;">
     <strong>You haven't acknowledged this yet.</strong>
     <span>Please read it, then confirm below.</span>
-    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><button type="submit" class="btn-mini">I've read this</button></form>
+    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">I've read this</button></form>
   </div>
   {% elif not my_ack.current %}
   <div class="announcement-banner" style="margin-bottom:16px;">
     <strong>This has changed since you last read it.</strong>
     <span>Last acknowledged {{ my_ack.acknowledged_at[:10] }}.</span>
-    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><button type="submit" class="btn-mini">I've read the update</button></form>
+    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">I've read the update</button></form>
   </div>
   {% else %}
   <p class="upload-hint" style="margin-top:-10px;">You acknowledged this on {{ my_ack.acknowledged_at[:10] }}.</p>
@@ -51,6 +51,7 @@
       <div class="manual-actions">
         <span class="small-link" onclick="toggleEdit({{ s['id'] }})">Edit</span>
         <form method="post" action="{{ url_for('delete_manual_section', section_id=s['id']) }}" onsubmit="return confirm('Remove this section?');" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="small-link danger-link">Remove</button>
         </form>
       </div>
@@ -67,6 +68,7 @@
 
     {% if user['role'] == 'owner' %}
     <form method="post" action="{{ url_for('edit_manual_section', section_id=s['id']) }}" class="manual-edit-form" id="edit-{{ s['id'] }}" style="display:none;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <textarea name="body">{{ s['body'] }}</textarea>
       <button type="submit" class="btn-mini">Save section</button>
     </form>
@@ -76,6 +78,7 @@
 
   {% if user['role'] == 'owner' %}
   <form method="post" action="{{ url_for('new_manual_section') }}" class="new-section-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="title" placeholder="New section title (e.g. Kitchen & Meals)">
     <button type="submit" class="btn-mini">+ Add section</button>
   </form>

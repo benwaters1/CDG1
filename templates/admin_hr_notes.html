@@ -20,11 +20,25 @@
     </div>
     <p class="manual-body">{{ n['body'] }}</p>
     <p class="upload-hint">Sent {{ n['created_at'][:10] }}{% if n['handled_at'] %} · Handled {{ n['handled_at'][:10] }}{% endif %}</p>
-    <div class="expense-actions">
-      <form method="post" action="{{ url_for('handle_hr_note', note_id=n['id']) }}">
-        <button type="submit" class="btn-mini">{{ 'Reopen' if n['status'] == 'handled' else 'Mark handled' }}</button>
-      </form>
+    {% if n['response'] %}
+    <div class="notes-block" style="margin-top:8px;">
+      <span class="detail-label">Your reply</span>
+      <p>{{ n['response'] }}</p>
     </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('handle_hr_note', note_id=n['id']) }}" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="response" rows="2" placeholder="Write a reply — sending it also marks this handled">{{ n['response'] or '' }}</textarea>
+      <div class="expense-actions" style="margin-top:6px;">
+        <button type="submit" class="btn-mini">{{ 'Update reply' if n['response'] else 'Send reply' }}</button>
+      </div>
+    </form>
+    <form method="post" action="{{ url_for('handle_hr_note', note_id=n['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="expense-actions">
+        <button type="submit" class="btn-mini">{{ 'Reopen' if n['status'] == 'handled' else 'Mark handled (no reply)' }}</button>
+      </div>
+    </form>
   </div>
   {% endfor %}
 {% endif %}

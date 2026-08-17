@@ -5,14 +5,26 @@
 
 <div class="page-head">
   <h1>{% if user['role'] == 'owner' %}Welcome back{% else %}Welcome, {{ user['name'].split(' ')[0] }}{% endif %}</h1>
+  {% if user['role'] == 'owner' %}
+  <a href="{{ url_for('office_display') }}" target="_blank" rel="noopener" class="btn-mini">Open Office Display ↗</a>
+  {% endif %}
   {% if my_shift %}
-  <div style="display:flex; gap:8px; align-items:center;">
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
     <span class="mini-status status-onshift">clocked in at {{ local_time_str(my_shift['clock_in_at']) }}</span>
     <span id="break-status" class="mini-status {{ 'status-pending' if my_open_break }}" style="{{ '' if my_open_break else 'display:none;' }}">
       on break since {{ local_time_str(my_open_break['start_at']) if my_open_break else '' }}
     </span>
     <button type="button" id="break-btn" class="btn-mini" onclick="toggleBreak()">{{ 'End break' if my_open_break else 'Start break' }}</button>
+    <form method="post" action="{{ url_for('clock_out_action') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini btn-mini-danger">Clock out</button>
+    </form>
   </div>
+  {% else %}
+  <form method="post" action="{{ url_for('clock_in_action') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-primary">Clock in</button>
+  </form>
   {% endif %}
   {% if my_week_hours is not none %}
   <span class="upload-hint">{{ my_week_hours }}h this week · {{ my_month_hours }}h this month</span>
@@ -96,6 +108,74 @@ function toggleBreak() {
     {% endif %}
   </div>
 
+  <div class="dashboard-overview-layout">
+    <div>
+      <div class="page-head" style="margin:0 0 10px;">
+        <h2 class="section-heading" style="margin:0;">{{ dashboard_calendar.month_start.strftime('%B %Y') }}</h2>
+        <div style="display:flex; gap:8px;">
+          <a href="{{ url_for('ops_calendar', view='month') }}" class="btn-mini">Open calendar</a>
+          <a href="{{ url_for('admin_calendar') }}" class="btn-mini">Room grid</a>
+        </div>
+      </div>
+      <div class="month-cal">
+        <div class="month-cal-head">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        {% for week in dashboard_calendar.weeks %}
+        <div class="month-cal-week">
+          {% for cell in week %}
+          {% if cell %}
+          <a class="month-cal-day {{ 'month-cal-today' if cell.date == today }}"
+             href="{{ url_for('ops_calendar', view='day', date=cell.date.isoformat()) }}"
+             title="Open {{ cell.date.strftime('%d %B') }} in the calendar">
+            <span class="month-cal-daynum">{{ cell.date.day }}</span>
+            <div class="month-cal-badges">
+              {% if cell.arrivals %}<span class="month-cal-badge month-cal-badge-arrival">↓ {{ cell.arrivals }}</span>{% endif %}
+              {% if cell.departures %}<span class="month-cal-badge month-cal-badge-departure">↑ {{ cell.departures }}</span>{% endif %}
+              {% if cell.dinner_covers %}<span class="month-cal-badge month-cal-badge-dinner">{{ icon('restaurant', 9) }}{{ cell.dinner_covers }}</span>{% endif %}
+              {% if cell.workshop %}<span class="month-cal-badge month-cal-badge-workshop">{{ icon('workshop', 9) }}Workshop</span>{% endif %}
+            </div>
+          </a>
+          {% else %}
+          <div class="month-cal-day month-cal-day-empty"></div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endfor %}
+        <div class="month-cal-legend">
+          <span><span class="month-cal-legend-dot" style="background:var(--status-success-bg);"></span>Arrivals</span>
+          <span><span class="month-cal-legend-dot" style="background:var(--status-warn-bg);"></span>Departures</span>
+          <span><span class="month-cal-legend-dot" style="background:var(--status-info-bg);"></span>Dinner covers</span>
+          <span><span class="month-cal-legend-dot" style="background:var(--status-danger-bg);"></span>Workshop running</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="section-heading" style="margin:0 0 10px;">Revenue, last 6 months</h2>
+      {% set has_trend = financial_trend_months|selectattr('revenue')|list or financial_trend_months|selectattr('expenses_total')|list %}
+      {% if not has_trend %}
+        <div class="empty-state">No revenue or expenses recorded yet.</div>
+      {% else %}
+      <div class="bar-chart">
+        {% for m in financial_trend_months %}
+        <div class="bar-chart-col">
+          <div class="bar-chart-bars">
+            <div class="bar-chart-bar bar-chart-bar-revenue" style="height:{{ (m.revenue / financial_trend_max * 100) if financial_trend_max else 0 }}%;" title="{{ m.month.strftime('%B') }} revenue: €{{ '%.0f'|format(m.revenue) }}"></div>
+            <div class="bar-chart-bar bar-chart-bar-expenses" style="height:{{ (m.expenses_total / financial_trend_max * 100) if financial_trend_max else 0 }}%;" title="{{ m.month.strftime('%B') }} expenses: €{{ '%.0f'|format(m.expenses_total) }}"></div>
+          </div>
+          <span class="bar-chart-label">{{ m.month.strftime('%b') }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="bar-chart-legend">
+        <span><span class="bar-chart-swatch bar-chart-swatch-revenue"></span>Revenue</span>
+        <span><span class="bar-chart-swatch bar-chart-swatch-expenses"></span>Expenses</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
   <div class="page-head" style="margin-top:0;">
     <h2 class="section-heading" style="margin:0;">Today's Briefing</h2>
     <div style="display:flex; gap:10px;">
@@ -105,14 +185,11 @@ function toggleBreak() {
   </div>
   {% include "_today_briefing.html" %}
 
-  <div class="card-grid" style="margin-top:30px;">
+  <h2 class="section-heading" style="margin-top:30px;">Manage</h2>
+  <div class="card-grid">
     <a href="{{ url_for('directory') }}" class="action-card">
       <div class="action-title">Team</div>
       <div class="action-sub">{{ team|length }} employee{{ '' if team|length == 1 else 's' }} on record</div>
-    </a>
-    <a href="{{ url_for('manual') }}" class="action-card">
-      <div class="action-title">Employee Manual</div>
-      <div class="action-sub">Edit the shared handbook</div>
     </a>
     <a href="{{ url_for('guests') }}" class="action-card">
       <div class="action-title">Guests</div>
@@ -123,12 +200,20 @@ function toggleBreak() {
       <div class="action-sub">{{ stats.expenses_pending + stats.leave_pending }} waiting on you</div>
     </a>
     <a href="{{ url_for('admin_bookings') }}" class="action-card">
-      <div class="action-title">Bookings</div>
+      <div class="action-title">Rooms</div>
       <div class="action-sub">{{ stats.rooms_total }} room{{ '' if stats.rooms_total == 1 else 's' }} open · {{ stats.bookings_pending }} pending request{{ '' if stats.bookings_pending == 1 else 's' }}</div>
     </a>
-    <a href="{{ url_for('admin_calendar') }}" class="action-card">
-      <div class="action-title">Booking Calendar</div>
-      <div class="action-sub">Every room, month at a glance</div>
+    <a href="{{ url_for('admin_restaurant') }}" class="action-card">
+      <div class="action-title">Restaurant</div>
+      <div class="action-sub">{% if pending_restaurant_count %}{{ pending_restaurant_count }} reservation{{ '' if pending_restaurant_count == 1 else 's' }} awaiting a decision{% else %}No reservations awaiting a decision{% endif %}</div>
+    </a>
+    <a href="{{ url_for('admin_workshop_registrations') }}" class="action-card">
+      <div class="action-title">Workshops</div>
+      <div class="action-sub">{% if pending_workshop_count %}{{ pending_workshop_count }} registration{{ '' if pending_workshop_count == 1 else 's' }} awaiting a decision{% else %}No registrations awaiting a decision{% endif %}</div>
+    </a>
+    <a href="{{ url_for('admin_events') }}" class="action-card">
+      <div class="action-title">Events</div>
+      <div class="action-sub">{% if pending_events_count %}{{ pending_events_count }} new inquir{{ 'y' if pending_events_count == 1 else 'ies' }}{% else %}No new inquiries{% endif %}</div>
     </a>
   </div>
 
@@ -141,10 +226,44 @@ function toggleBreak() {
   {% else %}
     <div class="mini-list">
       {% for shift in on_shift_now %}
-      <div class="mini-row">
-        <span class="mini-name">{{ shift['user_name'] }}</span>
-        <span class="mini-role">{{ shift['user_job_role'] or '' }}</span>
-        <span class="mini-status status-onshift">on shift since {{ local_time_str(shift['clock_in_at']) }}</span>
+      {% set worker_tasks = current_tasks_by_user.get(shift['user_id'], []) %}
+      <div class="mini-row" {% if worker_tasks %}style="align-items:flex-start; flex-direction:column; gap:6px;"{% endif %}>
+        <div style="display:flex; width:100%; gap:14px; flex-wrap:wrap;">
+          <span class="mini-name">{{ shift['user_name'] }}</span>
+          <span class="mini-role">{{ shift['user_job_role'] or '' }}</span>
+          <span class="mini-status status-onshift">on shift since {{ local_time_str(shift['clock_in_at']) }}</span>
+        </div>
+        {% if worker_tasks %}
+        <div style="display:flex; flex-wrap:wrap; gap:6px; padding-left:2px;">
+          {% for t in worker_tasks %}
+          <span class="upload-hint" style="background:var(--status-neutral-bg); padding:3px 8px; border-radius:6px;">
+            <span class="priority-dot priority-{{ t['priority'] }}" style="display:inline-block; margin-right:4px; vertical-align:middle;"></span>{{ t['title'] }}{% if t['room_note'] %} — {{ t['room_note'] }}{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <span class="upload-hint" style="padding-left:2px;">Nothing assigned for today yet.</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="page-head" style="margin-top:30px;">
+    <h2 class="section-heading" style="margin:0;">Current Guests{% if who_is_here %} — {{ who_is_here|length }} in residence{% endif %}</h2>
+    <a href="{{ url_for('guests') }}" class="btn-mini">Full guest list</a>
+  </div>
+  {% if not who_is_here %}
+    <div class="empty-state">No guests in residence right now.</div>
+  {% else %}
+    <div class="mini-list">
+      {% for g in who_is_here %}
+      <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
+        <div style="display:flex; width:100%; gap:8px;">
+          <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
+          <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+        </div>
+        {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
       </div>
       {% endfor %}
     </div>
@@ -299,15 +418,17 @@ function toggleBreak() {
   {% else %}
     <div class="task-list">
       {% for t in my_tasks %}
-      <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-overdue' if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() }} {{ 'task-directed' if t['acknowledgment_status'] == 'pending' }}" data-task-id="{{ t['id'] }}">
-        <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+      <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }} {{ 'task-directed' if t['acknowledgment_status'] == 'pending' }}" data-task-id="{{ t['id'] }}">
+        <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)" title="{{ {'open': 'Mark in progress', 'in_progress': 'Mark done', 'done': 'Reopen'}[t['status']] }}">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
         <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
         <span class="task-title">
           {{ t['title'] }}
+          {% if t['priority'] == 'high' %}<span class="mini-status status-declined">high priority</span>{% endif %}
+          {% if t['status'] == 'in_progress' %}<span class="mini-status status-pending">in progress</span>{% endif %}
           {% if t['repeat_weekly'] %}<span title="Repeats weekly">↻</span>{% endif %}
           {% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}
           {% if t['notes'] %} <span class="upload-hint">({{ t['notes'] }})</span>{% endif %}
-          {% if t['status'] == 'open' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
+          {% if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() %} <span class="task-overdue-badge">Overdue</span>{% endif %}
         </span>
         {% if t['acknowledgment_status'] == 'pending' %}
         <span class="mini-status status-pending">sent to you now</span>
@@ -366,10 +487,25 @@ function toggleBreak() {
       <div class="mini-row">
         <span class="mini-name">{{ d['guest_name'] }}</span>
         <span class="mini-role">Party of {{ d['party_size'] }}{% if d['dietary_notes'] %} · {{ d['dietary_notes'] }}{% endif %}</span>
+        {% if d['total_price'] and d['deposit_amount'] and d['deposit_amount'] < d['total_price'] %}
+        <span class="mini-status status-pending">€{{ '%.2f'|format(d['total_price'] - d['deposit_amount']) }} due tonight</span>
+        {% endif %}
       </div>
       {% endfor %}
     </div>
   {% endif %}
+  {% endif %}
+
+  {% if my_restaurant_shifts %}
+  <h2 class="section-heading" style="margin-top:0;">Your Restaurant Shifts</h2>
+  <div class="mini-list">
+    {% for s in my_restaurant_shifts %}
+    <div class="mini-row">
+      <span class="mini-name">{{ s['dinner_date'] }}</span>
+      <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours'] }}h{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
   {% endif %}
 
   <h2 class="section-heading">Who's Here Today</h2>
@@ -380,8 +516,8 @@ function toggleBreak() {
       {% for g in who_is_here %}
       <div class="mini-row" {% if g['notes'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
         <div style="display:flex; width:100%; gap:8px;">
-          <span class="mini-name">{{ g['name'] }}</span>
-          <span class="mini-role">{{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
+          <span class="mini-name">{{ g['name'] }}{% if g['vip'] %} ★{% endif %}</span>
+          <span class="mini-role">{{ g['room_name'] }} · {{ g['arrival_date'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · Party of {{ g['party_size'] }}{% endif %}</span>
         </div>
         {% if g['notes'] %}<span class="upload-hint">{{ g['notes'] }}</span>{% endif %}
       </div>

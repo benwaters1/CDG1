@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Château de Gudanes — Office Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#170F0A;
+    --bg:#20140D;
+    --panel:#2C1D14;
+    --panel-line:rgba(201,161,91,0.22);
+    --gold:#C9A15B;
+    --gold-bright:#E4C07E;
+    --ivory:#F3ECDD;
+    --ivory-dim:#C9BCA6;
+    --clear-text:#8FD19E;
+    --clear-bg:rgba(90,160,110,0.14);
+    --clear-line:rgba(90,160,110,0.35);
+    --attn-bg:rgba(201,161,91,0.14);
+    --attn-line:rgba(201,161,91,0.45);
+    --dot-arrival:#7FB6D9;
+    --dot-departure:#C98F6B;
+    --dot-dinner:#C97E9B;
+    --dot-workshop:#9BC97E;
+    --dot-task:#C9A15B;
+    --dot-owner:#E4C07E;
+    --cat-leave:#7FB6D9;
+    --cat-expenses:#C79BE0;
+    --cat-timesheet:#7ED9C9;
+    --cat-room:#93A6E8;
+    --cat-restaurant:#E08FB8;
+    --cat-workshop:#9BC97E;
+    --cat-feedback:#E0A17E;
+    --cat-inbox:#E4C07E;
+    --cat-events:#D9B65B;
+    --cat-vehicles:#E8A0A0;
+    --cat-stock:#E0C77E;
+    --cat-balances:#B8E07E;
+    --shadow-card: 0 6px 18px rgba(0,0,0,0.35);
+  }
+  html{ font-size: clamp(15px, 1.5vw, 24px); }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(circle at 12% 6%, rgba(201,161,91,0.10), transparent 42%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+    color:var(--ivory);
+    font-family:'Inter', -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 1.1rem 1.4rem 1.6rem;
+    display:flex; flex-direction:column; gap:1rem;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2{ font-family:'Playfair Display', Georgia, serif; margin:0; }
+  ul{ list-style:none; margin:0; padding:0; }
+
+  /* The default OS scrollbar renders as a chunky light-grey slab against this
+     dark page. Thin + gold-tinted so an occasional scroll region reads as part
+     of the design rather than a Windows widget bolted on. */
+  *{ scrollbar-width:thin; scrollbar-color:rgba(201,161,91,0.30) transparent; }
+  ::-webkit-scrollbar{ width:0.32rem; height:0.32rem; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  ::-webkit-scrollbar-thumb{ background:rgba(201,161,91,0.30); border-radius:1rem; }
+  ::-webkit-scrollbar-thumb:hover{ background:rgba(201,161,91,0.55); }
+
+  /* header */
+  .od-header{ display:flex; align-items:baseline; justify-content:space-between; padding-bottom:0.7rem; border-bottom:1px solid var(--panel-line); position:relative; }
+  .od-header::after{ content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:linear-gradient(90deg, var(--gold) 0%, transparent 60%); }
+  .od-header h1{ font-size:1.7rem; font-weight:700; color:var(--gold-bright); letter-spacing:0.02em; }
+  .od-header-right{ display:flex; align-items:baseline; gap:1rem; }
+  .od-live{ display:inline-flex; align-items:center; gap:0.35rem; font-size:0.7rem; color:var(--ivory-dim); text-transform:uppercase; letter-spacing:0.08em; }
+  .od-live-dot{ width:0.5rem; height:0.5rem; border-radius:50%; background:var(--clear-text); animation:odpulse 2s ease-in-out infinite; }
+  @keyframes odpulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
+  .od-date{ font-size:1rem; color:var(--ivory-dim); }
+  .od-clock{ font-family:'IBM Plex Mono', monospace; font-size:1.9rem; font-weight:600; color:var(--ivory); min-width:5.2ch; text-align:right; }
+
+  /* needs-attention tiles */
+  .od-attention h2{ font-size:1.05rem; color:var(--gold); display:flex; align-items:center; gap:0.6rem; margin-bottom:0.55rem; }
+  .od-total-badge{ font-family:'IBM Plex Mono', monospace; font-size:0.85rem; padding:0.1rem 0.55rem; border-radius:1rem; background:var(--attn-bg); border:1px solid var(--attn-line); color:var(--gold-bright); }
+  .od-total-badge.od-badge-clear{ background:var(--clear-bg); border-color:var(--clear-line); color:var(--clear-text); }
+  .od-tile-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(9.5rem, 1fr)); gap:0.6rem; }
+  .od-tile{ border-radius:0.6rem; padding:0.6rem 0.7rem; border:1px solid var(--panel-line); border-left:0.28rem solid var(--panel-line); background:var(--panel); display:flex; flex-direction:column; gap:0.15rem; min-height:6.4rem; text-decoration:none; color:inherit; cursor:pointer; transition:filter 0.15s ease, transform 0.15s ease; box-shadow:var(--shadow-card); }
+  .od-tile:hover{ filter:brightness(1.18); transform:translateY(-1px); }
+  .od-tile-alert{ background:var(--attn-bg); border-color:var(--attn-line); }
+  .od-tile-clear{ background:var(--clear-bg); border-color:var(--clear-line); border-left-color:var(--clear-line); }
+  .od-tile-count{ font-family:'IBM Plex Mono', monospace; font-size:1.5rem; font-weight:600; line-height:1; color:var(--gold-bright); }
+  .od-tile-clear .od-tile-count{ color:var(--clear-text); }
+  .od-tile-label{ font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--ivory-dim); margin-bottom:0.2rem; }
+  .od-tile-items{ display:flex; flex-direction:column; gap:0.12rem; }
+  .od-tile-items li{ font-size:0.72rem; color:var(--ivory); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .od-tile-more, .od-today-more{ color:var(--ivory-dim) !important; font-style:italic; }
+  .od-tile-clear-text{ font-size:0.78rem; color:var(--clear-text); margin-top:0.15rem; }
+
+  /* per-category accent colors. Only alert tiles ever render now, so these
+     always apply -- the all-clear case is a single banner, not 12 green boxes. */
+  .od-tile-alert[data-key="leave"]{ border-left-color:var(--cat-leave); }
+  .od-tile-alert[data-key="leave"] .od-tile-count{ color:var(--cat-leave); }
+  .od-tile-alert[data-key="expenses"]{ border-left-color:var(--cat-expenses); }
+  .od-tile-alert[data-key="expenses"] .od-tile-count{ color:var(--cat-expenses); }
+  .od-tile-alert[data-key="timesheet"]{ border-left-color:var(--cat-timesheet); }
+  .od-tile-alert[data-key="timesheet"] .od-tile-count{ color:var(--cat-timesheet); }
+  .od-tile-alert[data-key="pending_rooms"]{ border-left-color:var(--cat-room); }
+  .od-tile-alert[data-key="pending_rooms"] .od-tile-count{ color:var(--cat-room); }
+  .od-tile-alert[data-key="pending_dinners"]{ border-left-color:var(--cat-restaurant); }
+  .od-tile-alert[data-key="pending_dinners"] .od-tile-count{ color:var(--cat-restaurant); }
+  .od-tile-alert[data-key="pending_workshops"]{ border-left-color:var(--cat-workshop); }
+  .od-tile-alert[data-key="pending_workshops"] .od-tile-count{ color:var(--cat-workshop); }
+  .od-tile-alert[data-key="vehicles"]{ border-left-color:var(--cat-vehicles); }
+  .od-tile-alert[data-key="vehicles"] .od-tile-count{ color:var(--cat-vehicles); }
+  .od-tile-alert[data-key="stock"]{ border-left-color:var(--cat-stock); }
+  .od-tile-alert[data-key="stock"] .od-tile-count{ color:var(--cat-stock); }
+  .od-tile-alert[data-key="balances"]{ border-left-color:var(--cat-balances); }
+  .od-tile-alert[data-key="balances"] .od-tile-count{ color:var(--cat-balances); }
+  .od-tile-alert[data-key="feedback"]{ border-left-color:var(--cat-feedback); }
+  .od-tile-alert[data-key="feedback"] .od-tile-count{ color:var(--cat-feedback); }
+  .od-tile-alert[data-key="inbox"]{ border-left-color:var(--cat-inbox); }
+  .od-tile-alert[data-key="inbox"] .od-tile-count{ color:var(--cat-inbox); }
+  .od-tile-alert[data-key="events"]{ border-left-color:var(--cat-events); }
+  .od-tile-alert[data-key="events"] .od-tile-count{ color:var(--cat-events); }
+
+  /* KPI strip -- always-on daily numbers, visually distinct from the
+     conditional alert tiles below so the two bands never read as one list */
+  .od-kpis{ display:grid; grid-template-columns:repeat(auto-fit, minmax(8rem, 1fr)); gap:0.6rem; }
+  .od-kpi{ background:linear-gradient(160deg, rgba(201,161,91,0.16), rgba(201,161,91,0.05)); border:1px solid var(--panel-line); border-radius:0.6rem; padding:0.65rem 0.8rem; text-decoration:none; color:inherit; box-shadow:var(--shadow-card); transition:filter 0.15s ease; }
+  .od-kpi:hover{ filter:brightness(1.15); }
+  .od-kpi-value{ font-family:'IBM Plex Mono', monospace; font-size:2rem; font-weight:600; line-height:1; color:var(--gold-bright); display:flex; align-items:baseline; gap:0.35rem; }
+  .od-kpi-sub{ font-size:0.7rem; font-weight:400; color:var(--ivory-dim); font-family:'Inter',sans-serif; }
+  .od-kpi-label{ font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:var(--ivory-dim); margin-top:0.3rem; }
+
+  .od-all-clear{ display:flex; align-items:center; gap:0.6rem; background:var(--clear-bg); border:1px solid var(--clear-line); border-radius:0.6rem; padding:0.7rem 0.9rem; color:var(--clear-text); font-size:0.9rem; }
+  .od-all-clear-tick{ font-size:1.1rem; }
+
+  /* main 3-col grid */
+  .od-main-grid{ display:grid; grid-template-columns: 1fr 1.3fr 1fr; gap:0.8rem; flex:1; min-height:0; }
+  .od-panel{ background:var(--panel); border:1px solid var(--panel-line); border-radius:0.7rem; padding:0.8rem 0.9rem; overflow:hidden; display:flex; flex-direction:column; box-shadow:var(--shadow-card); }
+  .od-panel h2{ font-size:1rem; color:var(--gold); margin-bottom:0.5rem; }
+  .od-subheading{ margin-top:0.7rem; padding-top:0.6rem; border-top:1px solid var(--panel-line); }
+  .od-empty{ color:var(--ivory-dim); font-size:0.85rem; font-style:italic; }
+  .od-empty-small{ font-size:0.78rem; }
+
+  /* flex:1 + min-height:0 so a full roster scrolls *inside* this list rather
+     than growing the panel and pushing Current Guests out under overflow:hidden
+     (a wallboard must never silently swallow a section). */
+  .od-people{ display:flex; flex-direction:column; gap:0.55rem; overflow-y:auto; overflow-x:hidden; min-width:0; flex:1 1 auto; min-height:0; }
+  .od-onshift .od-subheading, .od-onshift .od-off-list, .od-onshift .od-empty-small{ flex:none; }
+  .od-onshift .od-off-list{ max-height:32%; overflow-y:auto; overflow-x:hidden; }
+  .od-person-link{ display:block; text-decoration:none; color:inherit; border-radius:0.35rem; padding:0.15rem 0.25rem; transition:background 0.15s ease; min-width:0; }
+  .od-person-link:hover{ background:rgba(201,161,91,0.10); }
+  .od-person-row{ display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; }
+  .od-avatar{ width:1.8rem; height:1.8rem; border-radius:50%; background:rgba(201,161,91,0.20); border:1px solid var(--attn-line); color:var(--gold-bright); font-size:0.62rem; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; font-family:'IBM Plex Mono', monospace; }
+  .od-person-name{ font-weight:600; font-size:0.92rem; }
+  .od-person-role{ font-size:0.72rem; color:var(--ivory-dim); }
+  .od-person-since{ font-size:0.68rem; color:var(--dot-arrival); margin-left:auto; }
+  .od-person-tasks{ display:flex; flex-wrap:wrap; gap:0.3rem; margin-top:0.25rem; padding-left:2.3rem; min-width:0; }
+  .od-task-chip{ font-size:0.65rem; background:rgba(201,161,91,0.12); border:1px solid var(--panel-line); border-radius:0.4rem; padding:0.1rem 0.4rem; color:var(--ivory-dim); text-decoration:none; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  a.od-task-chip:hover{ background:rgba(201,161,91,0.22); color:var(--ivory); }
+  .od-task-chip[data-priority="high"]{ border-color:rgba(224,143,155,0.5); color:#E8B3BA; background:rgba(224,143,155,0.14); }
+  .od-task-chip[data-priority="low"]{ opacity:0.7; }
+  .od-task-more{ font-style:italic; }
+
+  .od-off-list{ min-width:0; }
+  .od-off-list li{ font-size:0.78rem; padding:0.15rem 0; color:var(--ivory-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .od-off-dates{ font-size:0.68rem; }
+
+  .od-panel-head{ display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.5rem; }
+  .od-panel-head h2{ margin-bottom:0; }
+  .od-panel-head-right{ display:flex; align-items:center; gap:0.6rem; }
+  .od-add-task-btn{ font-size:0.7rem; text-decoration:none; color:var(--gold-bright); background:rgba(201,161,91,0.14); border:1px solid var(--attn-line); border-radius:0.4rem; padding:0.2rem 0.55rem; white-space:nowrap; transition:background 0.15s ease; }
+  .od-add-task-btn:hover{ background:rgba(201,161,91,0.26); }
+  .od-ring{ position:relative; width:2.3rem; height:2.3rem; border-radius:50%; flex:none; }
+  .od-ring-inner{ position:absolute; inset:0.28rem; border-radius:50%; background:var(--panel); display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono', monospace; font-size:0.5rem; font-weight:600; color:var(--ivory); text-align:center; line-height:1; }
+
+  .od-today-list{ display:flex; flex-direction:column; gap:0.45rem; overflow-y:auto; overflow-x:hidden; min-width:0; }
+  .od-today-row{ list-style:none; min-width:0; }
+  .od-today-link{ display:flex; align-items:flex-start; gap:0.5rem; text-decoration:none; color:inherit; border-radius:0.35rem; padding:0.15rem 0.25rem; transition:background 0.15s ease; min-width:0; }
+  .od-today-link:hover{ background:rgba(201,161,91,0.10); }
+  .od-kind-dot{ width:0.55rem; height:0.55rem; border-radius:50%; margin-top:0.35rem; flex:none; }
+  .od-kind-dot-booking{ background:var(--dot-arrival); }
+  .od-kind-dot-dinner{ background:var(--dot-dinner); }
+  .od-kind-dot-workshop{ background:var(--dot-workshop); }
+  .od-kind-dot-task{ background:var(--dot-task); }
+  .od-today-text{ display:flex; flex-direction:column; min-width:0; flex:1; }
+  .od-today-title{ font-size:0.85rem; font-weight:500; overflow-wrap:anywhere; }
+  .od-today-detail{ font-size:0.72rem; color:var(--ivory-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .od-today-assignee{ font-size:0.68rem; color:var(--gold); flex:none; white-space:nowrap; max-width:5.5rem; overflow:hidden; text-overflow:ellipsis; }
+  .od-today-more{ font-size:0.75rem; padding-top:0.2rem; }
+
+  .od-month-head, .od-month-week{ display:grid; grid-template-columns:repeat(7, 1fr); gap:0.25rem; }
+  .od-month-head span{ font-size:0.62rem; text-align:center; color:var(--ivory-dim); text-transform:uppercase; }
+  .od-month-week{ margin-top:0.25rem; }
+  .od-month-day{ position:relative; border-radius:0.35rem; background:rgba(255,255,255,0.02); min-height:2.4rem; padding:0.15rem 0.25rem; display:flex; flex-direction:column; align-items:flex-start; }
+  .od-month-day-blank{ background:transparent; }
+  .od-month-today{ border:1px solid var(--gold); background:rgba(201,161,91,0.16); }
+  .od-daynum{ font-size:0.68rem; color:var(--ivory-dim); }
+  .od-month-today .od-daynum{ color:var(--gold-bright); font-weight:600; }
+  .od-daydot{ font-size:0.55rem; font-family:'IBM Plex Mono', monospace; border-radius:0.6rem; padding:0 0.28rem; margin:0.05rem 0.1rem 0 0; display:inline-block; }
+  .od-dot-arrival{ background:rgba(127,182,217,0.25); color:var(--dot-arrival); }
+  .od-dot-departure{ background:rgba(201,143,107,0.25); color:var(--dot-departure); }
+  .od-dot-dinner{ background:rgba(201,126,155,0.25); color:var(--dot-dinner); }
+  .od-dot-workshop{ background:rgba(155,201,126,0.25); color:var(--dot-workshop); }
+
+  @media (max-width: 1100px){
+    .od-main-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+  <header class="od-header">
+    <h1>Château de Gudanes</h1>
+    <div class="od-header-right">
+      <span class="od-live"><span class="od-live-dot"></span>Live</span>
+      <span class="od-date">{{ today.strftime('%A %d %B %Y') }}</span>
+      <span class="od-clock" id="od-clock">--:--:--</span>
+    </div>
+  </header>
+
+  <section class="od-kpis">
+    {% for s in today_stats %}
+    <a href="{{ s.link }}" data-key="{{ s.key }}" class="od-kpi">
+      <div class="od-kpi-value">{{ s.value }}{% if s.sub %}<span class="od-kpi-sub">{{ s.sub }}</span>{% endif %}</div>
+      <div class="od-kpi-label">{{ s.label }}</div>
+    </a>
+    {% endfor %}
+  </section>
+
+  <section class="od-attention">
+    <h2>
+      Needs Attention
+      {% if queues_total %}
+        <span class="od-total-badge">{{ queues_total }}</span>
+      {% endif %}
+    </h2>
+    {% if not queues %}
+      <div class="od-all-clear"><span class="od-all-clear-tick">✓</span> All clear — nothing needs you right now.</div>
+    {% else %}
+    <div class="od-tile-grid">
+      {% for q in queues %}
+      <a href="{{ q.link }}" data-key="{{ q.key }}" class="od-tile od-tile-alert">
+        <div class="od-tile-count">{{ q.count }}</div>
+        <div class="od-tile-label">{{ q.label }}</div>
+        <ul class="od-tile-items">
+          {% for item in q.preview %}<li>{{ item }}</li>{% endfor %}
+          {% if q.count > q.preview|length %}<li class="od-tile-more">+{{ q.count - q.preview|length }} more</li>{% endif %}
+        </ul>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="od-main-grid">
+
+    <section class="od-panel od-onshift">
+      <h2>On Shift Now{% if on_shift_now %} · {{ on_shift_now|length }}{% endif %}</h2>
+      {% if not on_shift_now %}
+        <div class="od-empty">Nobody's clocked in right now.</div>
+      {% else %}
+        <ul class="od-people">
+          {% for shift in on_shift_now %}
+          {% set worker_tasks = current_tasks_by_user.get(shift['user_id'], []) %}
+          <li>
+            <a class="od-person-link" href="{{ url_for('profile', user_id=shift['user_id']) }}">
+              <div class="od-person-row">
+                <span class="od-avatar">{{ shift['initials'] }}</span>
+                <span class="od-person-name">{{ shift['user_name'] }}</span>
+                <span class="od-person-role">{{ shift['user_job_role'] or '' }}</span>
+                <span class="od-person-since">since {{ local_time_str(shift['clock_in_at']) }}</span>
+              </div>
+            </a>
+            {% if worker_tasks %}
+            <div class="od-person-tasks">
+              {% for t in worker_tasks[:3] %}
+              <a class="od-task-chip" data-priority="{{ t['priority'] }}" href="{{ url_for('admin_tasks', view='day', date=today.isoformat()) }}">{{ t['title'] }}</a>
+              {% endfor %}
+              {% if worker_tasks|length > 3 %}<span class="od-task-chip od-task-more">+{{ worker_tasks|length - 3 }} more</span>{% endif %}
+            </div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      <h2 class="od-subheading">Current Guests{% if who_is_here %} · {{ who_is_here|length }}{% endif %}</h2>
+      {% if not who_is_here %}
+        <div class="od-empty od-empty-small">No guests in residence right now.</div>
+      {% else %}
+        <ul class="od-off-list">
+          {% for g in who_is_here %}
+          <li>{{ g['name'] }}{% if g['vip'] %} ★{% endif %} <span class="od-off-dates">{{ g['room_name'] }} → {{ g['departure_date'] }}{% if g['party_size'] %} · party of {{ g['party_size'] }}{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="od-panel od-today">
+      {% set today_tasks = overview_today.rows | selectattr('kind', 'equalto', 'task') | list %}
+      {% set done_tasks = today_tasks | selectattr('status', 'equalto', 'done') | list %}
+      <div class="od-panel-head">
+        <h2>Today{% if overview_today.rows %} · {{ overview_today.rows|length }}{% endif %}</h2>
+        <div class="od-panel-head-right">
+          {% if today_tasks %}
+          {% set pct = (done_tasks|length / today_tasks|length * 100) | round(0, 'floor') %}
+          <div class="od-ring" style="background: conic-gradient(var(--gold-bright) {{ pct }}%, rgba(255,255,255,0.10) 0);" title="{{ done_tasks|length }} of {{ today_tasks|length }} tasks done today">
+            <div class="od-ring-inner">{{ done_tasks|length }}/{{ today_tasks|length }}</div>
+          </div>
+          {% endif %}
+          <a class="od-add-task-btn" href="{{ url_for('admin_tasks', view='day', date=today.isoformat()) }}">+ Add Task</a>
+        </div>
+      </div>
+      {% if not overview_today.rows %}
+        <div class="od-empty">Nothing scheduled today.</div>
+      {% else %}
+        <ul class="od-today-list">
+          {% for row in overview_today.rows[:14] %}
+          <li class="od-today-row">
+            <a class="od-today-link" href="{{ row.link or url_for('admin_tasks', view='day', date=today.isoformat()) }}">
+              <span class="od-kind-dot od-kind-dot-{{ row.kind }}"></span>
+              <div class="od-today-text">
+                <span class="od-today-title">{{ row.title }}</span>
+                {% if row.detail %}<span class="od-today-detail">{{ row.detail }}</span>{% endif %}
+              </div>
+              {% if row.assignee_name %}<span class="od-today-assignee">{{ row.assignee_name }}</span>{% endif %}
+            </a>
+          </li>
+          {% endfor %}
+          {% if overview_today.rows|length > 14 %}
+          <li class="od-today-more">+{{ overview_today.rows|length - 14 }} more today</li>
+          {% endif %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="od-panel od-calendar">
+      <h2>{{ dashboard_calendar.month_start.strftime('%B %Y') }}</h2>
+      <div class="od-month-head">
+        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+      </div>
+      {% for week in dashboard_calendar.weeks %}
+      <div class="od-month-week">
+        {% for cell in week %}
+          {% if cell %}
+          <div class="od-month-day {{ 'od-month-today' if cell.date == today else '' }}">
+            <span class="od-daynum">{{ cell.date.day }}</span>
+            {% if cell.arrivals %}<span class="od-daydot od-dot-arrival" title="arrivals">{{ cell.arrivals }}</span>{% endif %}
+            {% if cell.departures %}<span class="od-daydot od-dot-departure" title="departures">{{ cell.departures }}</span>{% endif %}
+            {% if cell.dinner_covers %}<span class="od-daydot od-dot-dinner" title="dinner covers">{{ cell.dinner_covers }}</span>{% endif %}
+            {% if cell.workshop %}<span class="od-daydot od-dot-workshop" title="workshop running">W</span>{% endif %}
+          </div>
+          {% else %}
+          <div class="od-month-day od-month-day-blank"></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </section>
+
+  </div>
+
+<script>
+  function odTick() {
+    var el = document.getElementById('od-clock');
+    if (el) el.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+  }
+  odTick();
+  setInterval(odTick, 1000);
+  setTimeout(function () { window.location.reload(); }, 60000);
+</script>
+
+</body>
+</html>

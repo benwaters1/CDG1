@@ -6,8 +6,9 @@
 <div class="page-head">
   <h1>Restaurant</h1>
   <div style="display:flex; gap:10px; align-items:center;">
-    <a href="{{ url_for('admin_restaurant_settings') }}" class="btn-mini">Settings</a>
-    <a href="{{ url_for('export_restaurant_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">Menu</a>
+    <a href="{{ url_for('admin_restaurant_settings') }}" class="btn-ghost">Settings</a>
+    <a href="{{ url_for('export_restaurant_csv') }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>
 
@@ -30,6 +31,10 @@
     <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(settings['price_per_person']) }}</span><span class="stat-tile-label">Price / person</span></span>
   </div>
   {% endif %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('wrench', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ no_show_count }}</span><span class="stat-tile-label">No-shows, 30 days</span></span>
+  </div>
 </div>
 
 <div class="detail-card" style="margin-bottom:22px;">
@@ -42,12 +47,15 @@
   </div>
   <div class="detail-grid" style="margin-top:10px;">
     <div><span class="detail-label">Revenue (confirmed dinners)</span>€{{ '%.2f'|format(profit.revenue) }}</div>
-    <div><span class="detail-label">Costs (restaurant-tagged expenses)</span>€{{ '%.2f'|format(profit.costs) }}</div>
+    <div><span class="detail-label">Expense costs</span>€{{ '%.2f'|format(profit.expense_costs) }}</div>
+    <div><span class="detail-label">Staffing labor (est.)</span>€{{ '%.2f'|format(profit.labor_cost) }}{% if profit.unestimated_labor_shifts %} <span class="upload-hint">({{ profit.unestimated_labor_shifts }} shift{{ '' if profit.unestimated_labor_shifts == 1 else 's' }} not estimable)</span>{% endif %}</div>
+    <div><span class="detail-label">Total costs</span>€{{ '%.2f'|format(profit.costs) }}</div>
     <div><span class="detail-label">Profit</span>€{{ '%.2f'|format(profit.profit) }}</div>
     <div><span class="detail-label">Split</span>{{ profit.share_pct|round(1) }}% chef / {{ (100 - profit.share_pct)|round(1) }}% owner</div>
     <div><span class="detail-label">Chef/partner share</span>€{{ '%.2f'|format(profit.chef_share) }}</div>
     <div><span class="detail-label">Owner share</span>€{{ '%.2f'|format(profit.owner_share) }}</div>
   </div>
+  <p class="upload-hint" style="margin-top:8px;">Staffing labor is a best-effort estimate from assigned shift hours × hourly pay rate — salaried staff or anyone without a clean hourly rate on file aren't counted. Never a payroll figure.</p>
 </div>
 
 {% if upcoming_covers %}
@@ -60,6 +68,7 @@
     {% endfor %}
   </div>
   <form method="post" action="{{ url_for('new_shopping_item') }}" class="search-bar" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="category" value="Restaurant">
     <div style="flex:2 1 200px;">
       <input type="text" name="name" placeholder="Add an ingredient to the shopping list" required>
@@ -71,6 +80,61 @@
   </form>
 </div>
 {% endif %}
+
+<div class="detail-card" style="margin-bottom:22px;">
+  <h3>Staffing, next 14 days</h3>
+  <p class="upload-hint">Who's assigned to work dinner service — feeds the estimated labor cost in the profit share above.</p>
+
+  {% if not shifts_by_date %}
+    <div class="empty-state">No one assigned yet.</div>
+  {% else %}
+    <div style="margin-top:10px;">
+      {% for dinner_date, shifts in shifts_by_date.items() %}
+      <div style="margin-bottom:10px;">
+        <span class="mini-status {{ 'status-onshift' if dinner_date == today.isoformat() else 'status-upcoming' }}">{{ dinner_date }}</span>
+        <div class="mini-list" style="margin-top:6px;">
+          {% for s in shifts %}
+          <div class="mini-row">
+            <span class="mini-name">{{ s['employee_name'] }}</span>
+            <span class="mini-role">{{ s['role_note'] or 'Dinner service' }}{% if s['estimated_hours'] %} · {{ s['estimated_hours'] }}h{% endif %}</span>
+            <form method="post" action="{{ url_for('delete_restaurant_shift', shift_id=s['id']) }}" onsubmit="return confirm('Remove this shift?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini btn-mini-danger">Remove</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('new_restaurant_shift') }}" class="search-bar" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="field-label">Employee</label>
+      <select name="user_id" required>
+        <option value="">— choose —</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}">{{ e['name'] }}{{ ' (owner)' if e['role'] == 'owner' }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Date</label>
+      <input type="date" name="dinner_date" required>
+    </div>
+    <div>
+      <label class="field-label">Role (optional)</label>
+      <input type="text" name="role_note" placeholder="Server, Kitchen, Host...">
+    </div>
+    <div>
+      <label class="field-label">Est. hours (optional)</label>
+      <input type="number" name="estimated_hours" min="0" step="0.5" style="width:90px;">
+    </div>
+    <button type="submit" class="btn-mini">Assign</button>
+  </form>
+</div>
 
 <form method="get" class="search-bar">
   <div>
@@ -97,25 +161,40 @@
         <span class="mini-status status-{{ r['status'] }}" style="margin-left:8px;">{{ r['status'] }}</span>
         {% if r['payment_status'] and r['payment_status'] != 'unpaid' %}<span class="mini-status status-{{ r['payment_status'] }}" style="margin-left:4px;">{{ r['payment_status'] }}</span>{% endif %}
         {% if r['booking_id'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">linked to a stay</span>{% endif %}
+        {% if r['no_show_at'] %}<span class="mini-status status-declined" style="margin-left:4px;">no-show</span>{% endif %}
       </div>
       <span class="upload-hint">{{ r['reference_code'] }}</span>
     </div>
     <p class="manual-body">{{ r['dinner_date'] }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}</p>
-    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %}</p>
+    {% if r['total_price'] and r['deposit_amount'] and r['deposit_amount'] < r['total_price'] %}
+    <p class="upload-hint"><span class="mini-status status-paid">deposit €{{ '%.2f'|format(r['deposit_amount']) }} paid</span> · <strong>€{{ '%.2f'|format(r['total_price'] - r['deposit_amount']) }} due onsite</strong></p>
+    {% endif %}
+    <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
     {% if r['dietary_notes'] %}<p class="upload-hint">Notes: {{ r['dietary_notes'] }}</p>{% endif %}
     <p class="upload-hint">Submitted {{ r['created_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
 
     <div class="expense-actions">
       {% if r['status'] == 'pending' %}
-      <form method="post" action="{{ url_for('confirm_restaurant_booking', reservation_id=r['id']) }}"><button type="submit" class="btn-mini">Confirm</button></form>
-      <form method="post" action="{{ url_for('decline_restaurant_booking', reservation_id=r['id']) }}" onsubmit="return confirm('Decline this reservation?');"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      <form method="post" action="{{ url_for('confirm_restaurant_booking', reservation_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
+      <form method="post" action="{{ url_for('decline_restaurant_booking', reservation_id=r['id']) }}" onsubmit="return confirm('Decline this reservation?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
       {% elif r['status'] == 'confirmed' %}
-      <form method="post" action="{{ url_for('cancel_restaurant_booking_admin', reservation_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed reservation?');"><button type="submit" class="btn-text-danger">Cancel</button></form>
+      <form method="post" action="{{ url_for('cancel_restaurant_booking_admin', reservation_id=r['id']) }}" onsubmit="return confirm('Cancel this confirmed reservation?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel</button></form>
+      {% if r['no_show_at'] %}
+      <form method="post" action="{{ url_for('undo_restaurant_no_show', reservation_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Undo no-show</button></form>
+      {% else %}
+      <form method="post" action="{{ url_for('mark_restaurant_no_show', reservation_id=r['id']) }}" onsubmit="return confirm('Mark this party as a no-show?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark no-show</button></form>
       {% endif %}
-      {% if r['payment_status'] == 'paid' %}
-      <form method="post" action="{{ url_for('refund_restaurant_booking_admin', reservation_id=r['id']) }}" onsubmit="return confirm('Refund this payment via Stripe?');"><button type="submit" class="btn-mini">Refund</button></form>
       {% endif %}
     </div>
+
+    {% set already_refunded = refunded_by_reservation.get(r['id'], 0) %}
+    {% set paid_amount = r['deposit_amount'] if r['deposit_amount'] else (r['total_price'] or 0) %}
+    {% set remaining = paid_amount - already_refunded %}
+    {% if r['payment_status'] in ('paid', 'refunded') and (remaining > 0 or already_refunded > 0) %}
+      {% with action = url_for('refund_restaurant_booking_admin', reservation_id=r['id']) %}
+        {% include "_refund_form.html" %}
+      {% endwith %}
+    {% endif %}
   </div>
   {% endfor %}
 {% endif %}

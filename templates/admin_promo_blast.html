@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Email {{ promo['code'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Email {{ promo['code'] }} to past guests</h1>
+  <a href="{{ url_for('admin_promo_codes') }}" class="btn-mini">Back to Promo Codes</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">This app has no separate marketing-consent list — everyone below gave their email for a booking, not for marketing. Before sending a real campaign, make sure you have a lawful basis to email them promotionally (existing-customer "similar products" outreach is often fine under GDPR; a cold list usually isn't) — worth a quick check with whoever handles the château's data-protection compliance if you're unsure.</p>
+
+<div class="detail-card" style="max-width:640px; margin-bottom:20px;">
+  <h3 style="margin-top:0;">1. Who should get it?</h3>
+  <form method="get">
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none;">
+      <input type="checkbox" name="segment" value="room" style="width:auto;" {{ 'checked' if 'room' in segments }}>
+      Room guests
+    </label>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
+      <input type="checkbox" name="segment" value="restaurant" style="width:auto;" {{ 'checked' if 'restaurant' in segments }}>
+      Dinner guests
+    </label>
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
+      <input type="checkbox" name="segment" value="workshop" style="width:auto;" {{ 'checked' if 'workshop' in segments }}>
+      Workshop attendees
+    </label>
+    <div style="margin-top:10px; max-width:260px;">
+      <label class="field-label">Only guests who visited in the last (months, optional)</label>
+      <input type="number" name="since_months" min="1" value="{{ since_months }}" placeholder="Any time">
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Update count</button>
+  </form>
+  <p class="upload-hint" style="margin-top:10px;"><strong>{{ recipient_count }}</strong> guest{{ '' if recipient_count == 1 else 's' }} match{{ 'es' if recipient_count == 1 else '' }} right now — a guest in more than one segment is only counted (and emailed) once.</p>
+</div>
+
+<div class="detail-card" style="max-width:640px;">
+  <h3 style="margin-top:0;">2. Write the message</h3>
+  <form method="post" action="{{ url_for('send_promo_code_blast', code_id=promo['id']) }}" onsubmit="return confirm('Send this to {{ recipient_count }} guest(s)? This can\'t be undone.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for s in segments %}<input type="hidden" name="segment" value="{{ s }}">{% endfor %}
+    <input type="hidden" name="since_months" value="{{ since_months }}">
+    <label class="field-label">Subject</label>
+    <input type="text" name="subject" value="A little something from Château de Gudanes" required>
+    <label class="field-label">Message</label>
+    <textarea name="body" rows="8" required>Hi {guest_name},
+
+We'd love to welcome you back. Use the code {promo_code} on your next booking for a little something extra.
+
+— Château de Gudanes</textarea>
+    <p class="upload-hint" style="margin-top:4px;">{guest_name} and {promo_code} are replaced per guest automatically.</p>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Send to {{ recipient_count }} guest{{ '' if recipient_count == 1 else 's' }}</button>
+  </form>
+</div>
+
+{% endblock %}

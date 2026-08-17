@@ -46,11 +46,13 @@
         <button type="button" class="btn-mini" onclick="vaultCopy(this)">Copy password</button>
         <button type="button" class="btn-mini" onclick="vaultToggleEdit({{ e['id'] }})">Edit</button>
         <form method="post" action="{{ url_for('delete_vault_entry', entry_id=e['id']) }}" onsubmit="return confirm('Delete this vault entry? This cannot be undone.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn-text-danger">Remove</button>
         </form>
       </div>
       <div id="vault-edit-{{ e['id'] }}" style="display:none; margin-top:12px; padding-top:12px; border-top:1px dashed var(--parchment-line);">
         <form method="post" action="{{ url_for('edit_vault_entry', entry_id=e['id']) }}" style="display:flex; flex-direction:column; gap:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="text" name="title" value="{{ e['title'] }}" placeholder="Title" required>
           <input type="text" name="username" value="{{ e['username'] or '' }}" placeholder="Username / account">
           <input type="text" name="url" value="{{ e['url'] or '' }}" placeholder="URL (optional)">
@@ -70,6 +72,7 @@
   <div class="detail-card" style="max-width:640px;">
     <h3>Add a login</h3>
     <form method="post" action="{{ url_for('new_vault_entry') }}" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="text" name="title" placeholder="Title (e.g. Booking.com extranet)" required>
       <input type="text" name="username" placeholder="Username / account">
       <input type="text" name="url" placeholder="URL (optional)">

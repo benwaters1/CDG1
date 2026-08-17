@@ -4,10 +4,12 @@
 
 <div class="page-head">
   <h1>Team Calendar</h1>
+  {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
     <a href="{{ url_for('admin_shifts') }}" class="btn-mini">Shift Schedule</a>
     <a href="{{ url_for('admin_leave') }}" class="btn-mini">Time Off</a>
   </div>
+  {% endif %}
 </div>
 
 <div class="search-bar" style="justify-content:space-between;">
@@ -32,27 +34,27 @@
     <tbody>
       {% if has_dinner_covers %}
       <tr>
-        <td class="cal-room-col"><a href="{{ url_for('admin_restaurant') }}">Dinner covers</a></td>
+        <td class="cal-room-col">{% if user['role'] == 'owner' %}<a href="{{ url_for('admin_restaurant') }}">Dinner covers</a>{% else %}Dinner covers{% endif %}</td>
         {% for cell in dinner_cells %}
         <td class="cal-cell {{ 'cal-cell-confirmed' if cell.covers else 'cal-cell-free' }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.covers }} covers">
-          {% if cell.covers %}<a href="{{ url_for('admin_restaurant') }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ cell.covers }}</a>{% endif %}
+          {% if cell.covers and user['role'] == 'owner' %}<a href="{{ url_for('admin_restaurant') }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ cell.covers }}</a>{% elif cell.covers %}<span style="display:block; font-size:9px; color:var(--success);">{{ cell.covers }}</span>{% endif %}
         </td>
         {% endfor %}
       </tr>
       {% endif %}
       {% if has_workshop_covers %}
       <tr>
-        <td class="cal-room-col"><a href="{{ url_for('admin_workshops') }}">Workshop covers</a></td>
+        <td class="cal-room-col">{% if user['role'] == 'owner' %}<a href="{{ url_for('admin_workshops') }}">Workshop covers</a>{% else %}Workshop covers{% endif %}</td>
         {% for cell in workshop_cells %}
         <td class="cal-cell {{ 'cal-cell-confirmed' if cell.covers else 'cal-cell-free' }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.titles }} — {{ cell.covers }} covers">
-          {% if cell.covers %}<a href="{{ url_for('admin_workshops') }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ cell.covers }}</a>{% endif %}
+          {% if cell.covers and user['role'] == 'owner' %}<a href="{{ url_for('admin_workshops') }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ cell.covers }}</a>{% elif cell.covers %}<span style="display:block; font-size:9px; color:var(--success);">{{ cell.covers }}</span>{% endif %}
         </td>
         {% endfor %}
       </tr>
       {% endif %}
       {% for row in employee_rows %}
       <tr>
-        <td class="cal-room-col"><a href="{{ url_for('profile', user_id=row.employee['id']) }}">{{ row.employee['name'] }}</a></td>
+        <td class="cal-room-col">{% if user['role'] == 'owner' or row.employee['id'] == user['id'] %}<a href="{{ url_for('profile', user_id=row.employee['id']) }}">{{ row.employee['name'] }}</a>{% else %}{{ row.employee['name'] }}{% endif %}</td>
         {% for cell in row.cells %}
         <td class="cal-cell cal-cell-{{ cell.status }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.label }}"></td>
         {% endfor %}

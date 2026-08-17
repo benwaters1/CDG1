@@ -12,6 +12,10 @@
       <div><span class="detail-label">Date</span>{{ booking['dinner_date'] }}</div>
       <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
       {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</div>{% endif %}
+      {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
+      <div><span class="detail-label">Deposit paid</span>€{{ '%.2f'|format(booking['deposit_amount']) }}</div>
+      <div><span class="detail-label">Due at the restaurant</span>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</div>
+      {% endif %}
     </div>
     {% if booking['dietary_notes'] %}
     <div class="notes-block">
@@ -23,6 +27,7 @@
 
   {% if booking['status'] in ('pending', 'confirmed') %}
   <form method="post" onsubmit="return confirm('Cancel this reservation? This cannot be undone.');" style="margin-top:16px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="cancel">
     <button type="submit" class="btn-text-danger">Cancel this reservation</button>
   </form>

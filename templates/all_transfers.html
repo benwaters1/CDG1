@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Transfers{% endblock %}
+{% block content %}
+
+{% macro transfer_row(t, show_date=True) %}
+<div class="mini-row">
+  <span class="mini-status {{ 'status-upcoming' if t['direction'] == 'pickup' else 'status-pending' }}">
+    {{ '↓ pickup' if t['direction'] == 'pickup' else '↑ dropoff' }}
+  </span>
+  <span class="mini-name">{{ t['guest_name'] or 'No guest named' }}</span>
+  <span class="mini-role">
+    {% if show_date %}{{ t['scheduled_at'][:10] }} · {% endif %}{{ t['scheduled_at'][11:16] or '—' }}
+    · {{ t['vehicle_name'] }}
+    {%- if t['notes'] %} · {{ t['notes'] }}{% endif %}
+  </span>
+  {% if t['driver_name'] %}
+  <span class="mini-status status-active">{{ t['driver_name'] }}</span>
+  {% else %}
+  <span class="mini-status status-inactive">no driver</span>
+  {% endif %}
+  {% if user['role'] == 'owner' %}
+  <a href="{{ url_for('vehicle_transfers_page', vehicle_id=t['vehicle_id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<div class="page-head">
+  <h1>Transfers</h1>
+  {% if user['role'] == 'owner' %}
+  <a href="{{ url_for('management_vehicles') }}" class="btn-ghost">Vehicles</a>
+  {% endif %}
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Every scheduled pickup and dropoff across the fleet. Add or change one from the vehicle it belongs to.</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('car', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ todays|length }}</span><span class="stat-tile-label">Today</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ upcoming|length }}</span><span class="stat-tile-label">Upcoming</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if unassigned else 'stat-tile-icon-success' }}">{{ icon('employee', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ unassigned }}</span><span class="stat-tile-label">Without a driver</span></span>
+  </div>
+</div>
+
+<h2 class="section-heading" style="margin-top:0;">Today — {{ today.strftime('%A %d %B') }}</h2>
+{% if not todays %}
+  <div class="empty-state">No transfers scheduled today.</div>
+{% else %}
+  <div class="mini-list">
+    {% for t in todays %}{{ transfer_row(t, show_date=False) }}{% endfor %}
+  </div>
+{% endif %}
+
+<h2 class="section-heading">Upcoming</h2>
+{% if not upcoming %}
+  <div class="empty-state">Nothing scheduled after today.</div>
+{% else %}
+  <div class="mini-list">
+    {% for t in upcoming %}{{ transfer_row(t) }}{% endfor %}
+  </div>
+{% endif %}
+
+{% if past %}
+<details style="margin-top:26px;">
+  <summary class="section-heading" style="cursor:pointer; display:inline-block;">Past ({{ past|length }})</summary>
+  <div class="mini-list" style="margin-top:10px;">
+    {% for t in past %}{{ transfer_row(t) }}{% endfor %}
+  </div>
+</details>
+{% endif %}
+
+{% endblock %}

@@ -4,6 +4,11 @@
   --chestnut-deep:#2A1A12;
   --gold:#C9A15B;
   --gold-soft:#E4D2A8;
+  /* Gold readable as TEXT/icons on --status-warn-bg. --gold itself is tuned
+     for fills and borders and only reaches 1.9:1 there, so status badges
+     ("pending", "on shift") were effectively unreadable. Defined per shell
+     because each has its own warn background. */
+  --gold-on-warn:#7B6238;
   --ivory:#F3ECDD;
   --parchment:#FBF8F1;
   --parchment-line:#DED0AE;
@@ -40,39 +45,47 @@
   duplication. The public booking site (public_base.html) is untouched and
   keeps the :root château palette above — it's guest-facing and already
   matches the real chateaugudanes.com branding.
+
+  This used to be a dark navy theme; revised to a light, airy palette (flat
+  white surfaces, soft shadows instead of heavy black glow, one confident
+  gold accent) so the staff portal reads as a modern dashboard rather than
+  a dark-mode app — --chestnut-deep is kept intentionally dark since its
+  only remaining job here is text-on-gold contrast (role badges, primary
+  button labels), not backgrounds.
 */
 body.staff-shell{
-  --chestnut:#262C3B;
-  --chestnut-light:#323A4D;
-  --chestnut-deep:#1B1F29;
-  --gold:#E0A94A;
-  --gold-soft:#F3CD84;
-  --ivory:#F5F2EA;
-  --parchment:#242A38;
-  --parchment-line:rgba(255,255,255,0.11);
-  --steel:#54C7EE;
-  --steel-deep:#2FA6D6;
-  --paper:#2A3142;
-  --ink:#ECEAE3;
-  --ink-soft:#9CA3B5;
-  --danger:#FF6E6E;
-  --success:#4FDB8F;
-  --shadow: 0 10px 34px rgba(0,0,0,0.35);
-  --surface:#242A38;
-  --focus-ring: rgba(224,169,74,0.35);
-  --status-success-bg: rgba(79,219,143,0.16);
-  --status-danger-bg: rgba(255,110,110,0.16);
-  --status-info-bg: rgba(84,199,238,0.16);
-  --status-warn-bg: rgba(224,169,74,0.18);
-  --status-neutral-bg: rgba(255,255,255,0.08);
-  --flash-error-bg: rgba(255,110,110,0.14); --flash-error-border: rgba(255,110,110,0.35);
-  --flash-success-bg: rgba(79,219,143,0.14); --flash-success-border: rgba(79,219,143,0.35);
-  --cal-free-bg:#242A38; --cal-pending-bg: rgba(224,169,74,0.3); --cal-confirmed-bg: rgba(79,219,143,0.26);
-  --cal-external-bg: rgba(84,199,238,0.24); --cal-block-bg:#323A4D;
-  --cal-shift-bg: rgba(84,199,238,0.24); --cal-leave-bg: rgba(224,169,74,0.3);
-  --body-bg: radial-gradient(circle at 12% -6%, rgba(224,169,74,0.12), transparent 42%),
-             radial-gradient(circle at 88% 8%, rgba(84,199,238,0.09), transparent 40%),
-             linear-gradient(180deg, #1E222D 0%, #1B1F29 100%);
+  --chestnut:#FFFFFF;
+  --chestnut-light:#FBF8F2;
+  --chestnut-deep:#2A2118;
+  --gold:#B8853E;
+  --gold-soft:#85602D;
+  --gold-on-warn:#85602D;
+  --ivory:#2B2620;
+  --parchment:#FFFFFF;
+  --parchment-line:#E7E0D0;
+  --steel:#2E7BA6;
+  --steel-deep:#1F5C80;
+  --paper:#F7F3EA;
+  --ink:#2B2620;
+  --ink-soft:#716858;
+  --danger:#B3271E;
+  --success:#2C7742;
+  --shadow: 0 2px 14px rgba(43,38,32,0.07);
+  --surface:#FFFFFF;
+  --focus-ring: rgba(184,133,62,0.30);
+  --status-success-bg:#E1EFE5;
+  --status-danger-bg:#F5E2DF;
+  --status-info-bg:#DFEAF2;
+  --status-warn-bg:#F3E8CB;
+  --status-neutral-bg:#F0EBDF;
+  --flash-error-bg:#F9E6E3; --flash-error-border:#E7BCB5;
+  --flash-success-bg:#E1EFE5; --flash-success-border:#BFDBC6;
+  --cal-free-bg:#FFFFFF; --cal-pending-bg:#F3E8CB; --cal-confirmed-bg:#DDEFE1;
+  --cal-external-bg:#DBEAF3; --cal-block-bg:#EEE8D9;
+  --cal-shift-bg:#DBEAF3; --cal-leave-bg:#F3E8CB;
+  --body-bg: radial-gradient(circle at 12% -6%, rgba(184,133,62,0.07), transparent 42%),
+             radial-gradient(circle at 88% 8%, rgba(46,123,166,0.05), transparent 40%),
+             linear-gradient(180deg, #FDFBF6 0%, #F7F3EA 100%);
 }
 
 *{ box-sizing:border-box; }
@@ -91,8 +104,8 @@ a{ color:inherit; }
 :focus-visible{ outline:2px solid var(--gold); outline-offset:2px; border-radius:4px; }
 
 body.staff-shell ::-webkit-scrollbar{ width:11px; height:11px; }
-body.staff-shell ::-webkit-scrollbar-track{ background:var(--chestnut-deep); }
-body.staff-shell ::-webkit-scrollbar-thumb{ background:var(--parchment-line); border-radius:8px; border:2px solid var(--chestnut-deep); }
+body.staff-shell ::-webkit-scrollbar-track{ background:var(--chestnut-light); }
+body.staff-shell ::-webkit-scrollbar-thumb{ background:var(--parchment-line); border-radius:8px; border:2px solid var(--chestnut-light); }
 body.staff-shell ::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
 
 /* ---------- Topbar ---------- */
@@ -103,10 +116,8 @@ body.staff-shell ::-webkit-scrollbar-thumb:hover{ background:var(--gold); }
   border-bottom:1px solid var(--parchment-line);
 }
 body.staff-shell .topbar{
-  background: linear-gradient(180deg, rgba(38,44,59,0.92) 0%, rgba(30,35,47,0.92) 100%);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 1px 0 rgba(224,169,74,0.18), 0 12px 30px rgba(0,0,0,0.35);
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--parchment-line), 0 4px 18px rgba(43,38,32,0.05);
 }
 .topbar-inner{
   max-width:1200px; margin:0 auto;
@@ -130,9 +141,11 @@ body.staff-shell .topbar{
 }
 .nav a:hover{ background:rgba(255,255,255,0.1); color:var(--ivory); }
 .nav a.active{ background:rgba(255,255,255,0.16); color:var(--ivory); }
+body.staff-shell .nav a{ color:var(--ink-soft); }
+body.staff-shell .nav a:hover{ background:var(--status-neutral-bg); color:var(--ink); }
 body.staff-shell .nav a.active{
-  background:rgba(224,169,74,0.16); color:var(--gold-soft);
-  box-shadow: inset 0 0 0 1px rgba(224,169,74,0.3);
+  background:var(--status-warn-bg); color:var(--gold-soft);
+  box-shadow: inset 0 0 0 1px rgba(184,133,62,0.3);
 }
 
 .nav-dropdown{ position:relative; display:inline-flex; align-items:center; }
@@ -145,9 +158,11 @@ body.staff-shell .nav a.active{
 }
 .nav-dropdown-label:hover{ background:rgba(255,255,255,0.1); color:var(--ivory); }
 .nav-dropdown-label.active{ background:rgba(255,255,255,0.16); color:var(--ivory); }
+body.staff-shell .nav-dropdown-label{ color:var(--ink-soft); }
+body.staff-shell .nav-dropdown-label:hover{ background:var(--status-neutral-bg); color:var(--ink); }
 body.staff-shell .nav-dropdown-label.active{
-  background:rgba(224,169,74,0.16); color:var(--gold-soft);
-  box-shadow: inset 0 0 0 1px rgba(224,169,74,0.3);
+  background:var(--status-warn-bg); color:var(--gold-soft);
+  box-shadow: inset 0 0 0 1px rgba(184,133,62,0.3);
 }
 .nav-dropdown-toggle{
   display:inline-flex; align-items:center; justify-content:center;
@@ -157,13 +172,16 @@ body.staff-shell .nav-dropdown-label.active{
 }
 .nav-dropdown-toggle:hover, .nav-dropdown-toggle:focus-visible{ background:rgba(255,255,255,0.16); color:var(--ivory); }
 .nav-dropdown.open .nav-dropdown-toggle{ background:rgba(255,255,255,0.16); color:var(--ivory); }
+body.staff-shell .nav-dropdown-toggle{ background:var(--status-neutral-bg); color:var(--ink-soft); }
+body.staff-shell .nav-dropdown-toggle:hover, body.staff-shell .nav-dropdown-toggle:focus-visible{ background:var(--status-warn-bg); color:var(--gold-soft); }
+body.staff-shell .nav-dropdown.open .nav-dropdown-toggle{ background:var(--status-warn-bg); color:var(--gold-soft); }
 .nav-dropdown-menu{
   display:none; position:absolute; top:100%; left:0; min-width:190px;
   background:var(--chestnut); border:1px solid var(--parchment-line); border-radius:8px;
   padding:6px; margin-top:6px; z-index:300; box-shadow:0 12px 30px rgba(0,0,0,0.35);
 }
 body.staff-shell .nav-dropdown-menu{
-  background:var(--chestnut-light); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--parchment-line);
 }
 .nav-dropdown:hover .nav-dropdown-menu,
 .nav-dropdown:focus-within .nav-dropdown-menu,
@@ -174,6 +192,9 @@ body.staff-shell .nav-dropdown-menu{
 }
 .nav-dropdown-menu a:hover{ background:rgba(255,255,255,0.1); color:var(--ivory); }
 .nav-dropdown-menu a.active{ color:var(--gold-soft); font-weight:600; }
+body.staff-shell .nav-dropdown-menu a{ color:var(--ink-soft); }
+body.staff-shell .nav-dropdown-menu a:hover{ background:var(--status-neutral-bg); color:var(--ink); }
+body.staff-shell .nav-dropdown-menu a.active{ color:var(--gold-soft); }
 
 .topbar-right{ display:flex; align-items:center; gap:12px; font-size:12.5px; }
 .topbar-search{ margin:0; }
@@ -184,7 +205,11 @@ body.staff-shell .nav-dropdown-menu{
 }
 .topbar-search input:focus{ width:220px; background:rgba(255,255,255,0.14); outline:none; }
 .topbar-search input::placeholder{ color:rgba(243,236,221,0.5); }
+body.staff-shell .topbar-search input{ background:var(--status-neutral-bg); border:1px solid var(--parchment-line); color:var(--ink); }
+body.staff-shell .topbar-search input:focus{ background:var(--surface); border-color:var(--gold); }
+body.staff-shell .topbar-search input::placeholder{ color:var(--ink-soft); }
 .who{ color:rgba(243,236,221,0.85); }
+body.staff-shell .who{ color:var(--ink-soft); }
 .role-badge{
   font-family:'IBM Plex Mono', monospace;
   font-size:10px; text-transform:uppercase; letter-spacing:0.04em;
@@ -194,8 +219,11 @@ body.staff-shell .nav-dropdown-menu{
 .role-employee{ background:var(--steel); color:#08131a; }
 .small-link{ color:var(--gold-soft); text-decoration:none; cursor:pointer; }
 .small-link:hover{ color:var(--ivory); }
+body.staff-shell .small-link:hover{ color:var(--gold); }
 .bell-link{ position:relative; display:inline-flex; align-items:center; color:rgba(243,236,221,0.85); text-decoration:none; }
 .bell-link:hover, .bell-link.active{ color:var(--ivory); }
+body.staff-shell .bell-link{ color:var(--ink-soft); }
+body.staff-shell .bell-link:hover, body.staff-shell .bell-link.active{ color:var(--gold); }
 .bell-badge{
   position:absolute; top:-6px; right:-8px; background:var(--danger); color:#fff;
   font-family:'IBM Plex Mono', monospace; font-size:10px; line-height:1;
@@ -243,8 +271,8 @@ body.staff-shell .nav-dropdown-menu{
   align-self:stretch;
 }
 body.staff-shell .sidebar{
-  background: linear-gradient(180deg, rgba(38,44,59,0.94) 0%, rgba(30,35,47,0.94) 100%);
-  box-shadow: 1px 0 0 rgba(224,169,74,0.18);
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--parchment-line);
 }
 .sidebar .nav{ flex-direction:column; align-items:stretch; gap:2px; padding:16px 12px; }
 .sidebar .nav a{ width:100%; }
@@ -262,6 +290,33 @@ body.staff-shell .sidebar{
   padding:2px 0 4px 16px; margin:0;
 }
 .sidebar .nav-dropdown-menu a{ font-size:12.5px; padding:6px 10px; }
+
+/* ---------- Mobile nav: sidebar becomes a slide-out drawer ---------- */
+.sidebar-toggle{
+  display:none; align-items:center; justify-content:center; flex-shrink:0;
+  background:none; border:none; color:var(--ink); cursor:pointer;
+  width:38px; height:38px; border-radius:7px; padding:0;
+}
+body.staff-shell .sidebar-toggle{ color:var(--ink-soft); }
+.sidebar-toggle:hover{ background:var(--status-neutral-bg); }
+.sidebar-backdrop{
+  display:none; position:fixed; inset:0; z-index:390;
+  background:rgba(0,0,0,0.45); opacity:0; transition:opacity .2s ease;
+}
+.sidebar-backdrop.open{ display:block; opacity:1; }
+
+@media (max-width: 860px){
+  .sidebar-toggle{ display:inline-flex; }
+  .sidebar{
+    position:fixed; top:0; bottom:0; left:0; z-index:400;
+    width:78vw; max-width:280px;
+    transform:translateX(-100%);
+    transition:transform .22s ease;
+    box-shadow:8px 0 30px rgba(0,0,0,0.25);
+    overflow-y:auto;
+  }
+  .sidebar.open{ transform:translateX(0); }
+}
 
 .page-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:10px; }
 .page-head h1{ font-family:'Playfair Display', serif; font-size:26px; color:var(--chestnut-deep); margin:0; }
@@ -283,7 +338,7 @@ body.staff-shell .section-heading{ color:var(--ivory); }
   padding:36px 34px; max-width:380px; width:100%;
 }
 body.staff-shell .login-card{
-  box-shadow: var(--shadow), 0 0 0 1px rgba(224,169,74,0.08), 0 0 60px rgba(224,169,74,0.06);
+  box-shadow: 0 8px 32px rgba(43,38,32,0.10), 0 0 0 1px var(--parchment-line);
 }
 .login-crest{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:0.18em; text-transform:uppercase; color:var(--steel); text-align:center; margin-bottom:8px; }
 .login-card h1{ font-family:'Playfair Display', serif; font-size:22px; color:var(--chestnut-deep); text-align:center; margin:0 0 22px 0; }
@@ -326,8 +381,26 @@ textarea{ min-height:100px; resize:vertical; }
 }
 .btn-primary:hover{ background:var(--chestnut-light); }
 body.staff-shell .btn-primary{ background:var(--gold); color:var(--chestnut-deep); border-color:var(--gold); font-weight:700; }
-body.staff-shell .btn-primary:hover{ background:var(--gold-soft); transform:translateY(-1px); box-shadow:0 6px 18px rgba(224,169,74,0.35); }
+body.staff-shell .btn-primary:hover{ background:#C89B54; transform:translateY(-1px); box-shadow:0 6px 18px rgba(184,133,62,0.28); }
 .btn-block{ width:100%; }
+
+/* ---------- Segmented control (Day / Week / Month switchers) ----------
+   Was a row of .btn-mini with the selected one tinted inline to
+   var(--chestnut-light). That read fine on the old dark palette, but the
+   light re-theme made --chestnut-light a near-white (#FBF8F2) sitting on
+   .btn-mini's --paper (#F7F3EA) — a 1.04:1 contrast ratio, i.e. no visible
+   selected state at all. This makes the selection explicit and themeable. */
+.segmented{ display:inline-flex; border:1px solid var(--parchment-line); border-radius:8px; overflow:hidden; background:var(--surface); }
+.segmented a{
+  padding:7px 15px; font-size:12.5px; font-weight:600; text-decoration:none;
+  color:var(--ink-soft); background:transparent; border:none;
+  border-right:1px solid var(--parchment-line); transition:background-color .15s ease, color .15s ease;
+}
+.segmented a:last-child{ border-right:none; }
+.segmented a:hover{ background:var(--status-neutral-bg); color:var(--ink); }
+/* Dark-on-gold, matching .btn-primary — white on this gold is only 3.25:1,
+   below AA for 12.5px text, whereas --chestnut-deep reaches 4.86:1. */
+.segmented a.is-active{ background:var(--gold); color:var(--chestnut-deep); }
 .btn-mini{
   font-family:'Inter', sans-serif; font-weight:600; font-size:12.5px;
   background:var(--chestnut); color:var(--ivory); border:1px solid var(--gold);
@@ -335,14 +408,27 @@ body.staff-shell .btn-primary:hover{ background:var(--gold-soft); transform:tran
   transition: transform .12s ease, box-shadow .12s ease, background-color .15s ease;
 }
 body.staff-shell .btn-mini{ background:var(--paper); color:var(--gold-soft); border-color:var(--parchment-line); }
-body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); box-shadow:0 4px 14px rgba(224,169,74,0.18); transform:translateY(-1px); }
+body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); box-shadow:0 4px 14px rgba(184,133,62,0.16); transform:translateY(-1px); }
+
+/* Utility tier. Some page headers carry seven buttons of equal weight —
+   "Export CSV" and "Terms & Conditions" shouting as loudly as "Confirm".
+   Ghost buttons keep those reachable without competing with real actions. */
+.btn-ghost{
+  font-family:'Inter', sans-serif; font-weight:500; font-size:12.5px;
+  background:transparent; color:var(--ink-soft); border:1px solid transparent;
+  padding:8px 12px; border-radius:6px; cursor:pointer; text-decoration:none;
+  transition: background-color .15s ease, color .15s ease;
+}
+.btn-ghost:hover{ background:var(--status-neutral-bg); color:var(--ink); }
 .btn-text-danger{ background:none; border:none; color:var(--danger); font-size:12.5px; cursor:pointer; padding:0; }
 .danger-zone{ margin-top:26px; padding-top:16px; border-top:1px dashed var(--parchment-line); }
 
 /* ---------- Stat tiles (KPI cards — Guesty-style summary row at the top
    of data-heavy pages, replacing plain label/value pairs stuffed into the
    filter-bar styling) ---------- */
-.stat-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(170px,1fr)); gap:14px; margin-bottom:22px; }
+/* 170px min meant a 4-tile row broke to 3+1 at common widths, stranding the
+   last tile alone beside a dead gap. 150 lets four sit on one row. */
+.stat-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
 .stat-tile{
   display:flex; align-items:center; gap:13px;
   background:var(--parchment); border:1px solid var(--parchment-line); border-radius:10px;
@@ -350,13 +436,13 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
   transition:border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 a.stat-tile:hover{ border-color:var(--gold); }
-body.staff-shell a.stat-tile:hover{ transform:translateY(-2px); box-shadow:0 14px 34px rgba(0,0,0,0.5), 0 0 0 1px rgba(224,169,74,0.25); }
+body.staff-shell a.stat-tile:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(43,38,32,0.10), 0 0 0 1px rgba(184,133,62,0.30); }
 .stat-tile-icon{
   width:38px; height:38px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
   background:var(--status-neutral-bg); color:var(--ink-soft);
 }
 .stat-tile-icon svg{ width:19px; height:19px; margin:0; }
-.stat-tile-icon-gold{ background:var(--status-warn-bg); color:var(--gold); }
+.stat-tile-icon-gold{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .stat-tile-icon-steel{ background:var(--status-info-bg); color:var(--steel-deep); }
 body.staff-shell .stat-tile-icon-steel{ color:var(--steel); }
 .stat-tile-icon-success{ background:var(--status-success-bg); color:var(--success); }
@@ -366,7 +452,10 @@ body.staff-shell .stat-tile-icon-steel{ color:var(--steel); }
 body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-serif; }
 .stat-tile-value-danger{ color:var(--danger) !important; }
 .stat-tile-sub{ font-size:12px; font-weight:500; color:var(--ink-soft); margin-left:3px; }
-.stat-tile-label{ font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* Labels wrap rather than ellipse — "Confirmed room-nights" was rendering as
+   "CONFIRMED ROOM…", which tells the reader nothing. Two lines is fine; a
+   clipped label is not. */
+.stat-tile-label{ font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; font-weight:600; line-height:1.3; }
 
 /* ---------- Cards ---------- */
 .card-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:16px; }
@@ -376,13 +465,13 @@ body.staff-shell .stat-tile-value{ color:var(--ivory); font-family:'Inter',sans-
   transition:border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
 .action-card:hover{ border-color:var(--gold); }
-body.staff-shell .action-card:hover{ transform:translateY(-2px); box-shadow:0 14px 34px rgba(0,0,0,0.5), 0 0 0 1px rgba(224,169,74,0.25); }
+body.staff-shell .action-card:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(43,38,32,0.10), 0 0 0 1px rgba(184,133,62,0.30); }
 .action-card-icon{
   width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
   margin-bottom:12px; background:var(--status-neutral-bg); color:var(--ink-soft);
 }
 .action-card-icon svg{ width:19px; height:19px; margin:0; }
-.action-card-icon-gold{ background:var(--status-warn-bg); color:var(--gold); }
+.action-card-icon-gold{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .action-card-icon-steel{ background:var(--status-info-bg); color:var(--steel-deep); }
 body.staff-shell .action-card-icon-steel{ color:var(--steel); }
 .action-card-icon-success{ background:var(--status-success-bg); color:var(--success); }
@@ -393,30 +482,36 @@ body.staff-shell .action-title{ color:var(--ivory); font-family:'Inter',sans-ser
 .mini-list{ display:flex; flex-direction:column; gap:6px; }
 .mini-row{
   display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-  background:var(--parchment); border:1px solid var(--parchment-line); border-radius:8px;
-  padding:12px 14px; text-decoration:none; color:var(--ink);
-  transition: border-color .15s ease;
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:10px;
+  padding:13px 16px; text-decoration:none; color:var(--ink);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .12s ease;
 }
-body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
+/* Only rows that are actually links get the affordance — a plain <div>
+   row lifting on hover implies a click target that isn't there. */
+body.staff-shell a.mini-row:hover{
+  border-color:var(--gold); box-shadow:var(--shadow); transform:translateY(-1px);
+}
 .mini-row.inactive{ opacity:0.5; }
 .mini-name{ font-weight:600; font-size:14.5px; flex:1; }
 .mini-role{ font-size:13px; color:var(--ink-soft); }
 .mini-status{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; padding:2px 8px; border-radius:10px; }
 .status-active{ background:var(--status-success-bg); color:var(--success); }
 .status-inactive{ background:var(--status-danger-bg); color:var(--danger); }
-.status-onshift{ background:var(--status-warn-bg); color:var(--gold); }
-.status-current{ background:var(--status-warn-bg); color:var(--gold); }
+.status-onshift{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+.status-current{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .status-upcoming{ background:var(--status-info-bg); color:var(--steel-deep); }
 .status-past{ background:var(--status-neutral-bg); color:var(--ink-soft); }
-.status-pending{ background:var(--status-warn-bg); color:var(--gold); }
+.status-pending{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .status-approved, .status-confirmed{ background:var(--status-success-bg); color:var(--success); }
 .status-rejected, .status-declined{ background:var(--status-danger-bg); color:var(--danger); }
-.status-paid{ background:var(--status-warn-bg); color:var(--gold); }
+.status-paid{ background:var(--status-success-bg); color:var(--success); }
 .status-unpaid{ background:var(--status-neutral-bg); color:var(--ink-soft); }
 .status-refunded{ background:var(--status-info-bg); color:var(--steel-deep); }
 .status-cancelled{ background:var(--status-neutral-bg); color:var(--ink-soft); }
 .status-available{ background:var(--status-success-bg); color:var(--success); }
 .status-unavailable{ background:var(--status-danger-bg); color:var(--danger); }
+.status-new{ background:var(--status-info-bg); color:var(--steel-deep); }
+.status-contacted, .status-quoted{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 
 /* ---------- Tasks ---------- */
 .task-list{ display:flex; flex-direction:column; gap:6px; }
@@ -432,6 +527,8 @@ body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
 .task-title{ flex:1; font-size:14.5px; line-height:1.4; }
 .task-row.task-done .task-title{ text-decoration:line-through; color:var(--ink-soft); }
 .task-row.task-done .task-check{ background:var(--status-success-bg); border-color:var(--success); }
+.task-row.task-in-progress .task-check{ background:var(--status-warn-bg); border-color:var(--gold); }
+.task-card.task-in-progress{ border-left:3px solid var(--gold); }
 .task-row.task-overdue, .task-card.task-overdue{ border-left:3px solid var(--danger); }
 .task-overdue-badge{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; color:var(--danger); font-weight:600; }
 .task-row.task-directed{ border-left:3px solid var(--gold); background:var(--status-warn-bg); }
@@ -444,9 +541,9 @@ body.staff-shell a.mini-row:hover{ border-color:var(--gold); }
 .lane-badge{ font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.04em; padding:2px 7px; border-radius:8px; flex-shrink:0; }
 .lane-badge.lane-booking{ background:var(--status-info-bg); color:var(--steel-deep); }
 .lane-badge.lane-task{ background:var(--status-neutral-bg); color:var(--ink-soft); }
-.lane-badge.lane-owner{ background:var(--status-warn-bg); color:var(--gold); }
+.lane-badge.lane-owner{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .lane-badge.lane-restaurant{ background:var(--status-success-bg); color:var(--success); }
-.lane-badge.lane-workshop{ background:var(--status-warn-bg); color:var(--gold); }
+.lane-badge.lane-workshop{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
 .origin-badge{ font-size:10.5px; color:var(--ink-soft); }
 .overview-filters{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
 .overview-filters select, .overview-filters input[type="text"]{ font-size:12.5px; padding:5px 8px; }
@@ -477,10 +574,33 @@ body.staff-shell .week-day-head{ color:var(--ivory); font-family:'Inter',sans-se
 }
 
 /* ---------- Expenses ---------- */
-.expense-card{ background:var(--parchment); border:1px solid var(--parchment-line); border-radius:10px; padding:16px 20px; margin-bottom:10px; }
-.expense-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+/* The app's main list-item card — used by ~30 templates (bookings, expenses,
+   workshops, restaurant, vault, waitlists), so it sets the tone almost
+   everywhere. Was a flat hairline box with no depth; now matches the card
+   language established by the stat tiles and calendar. */
+.expense-card{
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:12px;
+  box-shadow:var(--shadow); padding:18px 22px; margin-bottom:12px;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+.expense-card:hover{ border-color:rgba(184,133,62,0.35); }
+.expense-head{
+  display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;
+  gap:10px; margin-bottom:10px; padding-bottom:10px;
+  border-bottom:1px solid var(--parchment-line);
+}
+.expense-head strong{ font-size:15px; letter-spacing:-0.01em; }
 .expense-actions{ display:flex; flex-direction:row; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+/* Must out-specify `body.staff-shell .btn-mini` (0,2,1), which otherwise
+   repainted every destructive button in the normal gold — "Decline selected"
+   and "Remove" looked exactly like "Confirm". Used across 15 templates. */
 .btn-mini-danger{ background:var(--danger); border-color:var(--danger); color:#2a0a0a; }
+body.staff-shell .btn-mini.btn-mini-danger{
+  background:var(--status-danger-bg); color:var(--danger); border-color:rgba(179,39,30,0.35);
+}
+body.staff-shell .btn-mini.btn-mini-danger:hover{
+  background:var(--danger); color:#fff; border-color:var(--danger); box-shadow:0 4px 14px rgba(179,39,30,0.22);
+}
 .share-link-box{ font-family:'IBM Plex Mono', monospace; font-size:12px; word-break:break-all; background:var(--surface); padding:10px; border-radius:7px; border:1px solid var(--parchment-line); }
 
 .profile-grid .profile-card{
@@ -491,7 +611,7 @@ body.staff-shell .week-day-head{ color:var(--ivory); font-family:'Inter',sans-se
 }
 .profile-card.inactive{ opacity:0.5; }
 .profile-card:hover{ border-color:var(--gold); }
-body.staff-shell .profile-card:hover{ transform:translateY(-2px); box-shadow:0 14px 34px rgba(0,0,0,0.5), 0 0 0 1px rgba(224,169,74,0.25); }
+body.staff-shell .profile-card:hover{ transform:translateY(-2px); box-shadow:0 12px 28px rgba(43,38,32,0.10), 0 0 0 1px rgba(184,133,62,0.30); }
 .profile-avatar{
   width:42px; height:42px; border-radius:50%; background:var(--steel); color:#08131a;
   display:flex; align-items:center; justify-content:center;
@@ -503,9 +623,13 @@ body.staff-shell .profile-card-name{ color:var(--ivory); font-family:'Inter',san
 .profile-card-status{ font-family:'IBM Plex Mono', monospace; font-size:10.5px; text-transform:uppercase; padding:2px 8px; border-radius:10px; margin-top:4px; }
 
 .empty-state, .empty-inline{ color:var(--ink-soft); font-size:13.5px; font-style:italic; }
+/* A dashed outline reads as "something failed to load". An empty list is a
+   normal state, so it gets a quiet filled panel instead. */
 .empty-state{
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
-  text-align:center; padding:34px 20px; border:1.5px dashed var(--parchment-line); border-radius:10px;
+  text-align:center; padding:34px 20px; border-radius:12px;
+  background:var(--paper); border:1px solid var(--parchment-line);
+  color:var(--ink-soft); font-size:13.5px;
 }
 .empty-state svg{ opacity:0.4; width:26px; height:26px; margin:0; }
 
@@ -537,7 +661,7 @@ body.staff-shell .detail-card h3{ color:var(--ivory); font-family:'Inter',sans-s
   background:var(--gold-soft); border-left:3px solid var(--gold); border-radius:6px;
   padding:10px 14px; font-size:13.5px; color:var(--chestnut-deep);
 }
-body.staff-shell .announcement-banner{ background:rgba(224,169,74,0.12); color:var(--ivory); }
+body.staff-shell .announcement-banner{ background:var(--status-warn-bg); color:var(--ivory); }
 .announcement-banner strong{ font-family:'Playfair Display', serif; }
 
 .doc-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
@@ -596,6 +720,8 @@ body.staff-shell .manual-section h3{ color:var(--ivory); font-family:'Inter',san
 }
 .room-photo{ width:100%; max-height:280px; object-fit:cover; border-radius:7px; margin-bottom:14px; display:block; }
 .room-photo-thumb{ width:64px; height:64px; object-fit:cover; border-radius:7px; float:right; }
+.room-gallery-strip{ display:flex; gap:8px; overflow-x:auto; margin-bottom:14px; scroll-snap-type:x proximity; }
+.room-gallery-strip img{ width:120px; height:88px; object-fit:cover; border-radius:6px; flex:0 0 auto; scroll-snap-align:start; }
 .room-card-head{ display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
 .room-card-head h3{ font-family:'Playfair Display', serif; font-size:18px; color:var(--chestnut-deep); margin:0; }
 body.staff-shell .room-card-head h3{ color:var(--ivory); font-family:'Inter',sans-serif; font-weight:700; }
@@ -616,22 +742,96 @@ body.staff-shell .room-price{ color:var(--gold-soft); font-family:'IBM Plex Mono
   background:var(--paper); border:1px solid var(--parchment-line); color:var(--ink-soft);
 }
 
-.cal-table{ border-collapse:collapse; font-size:11px; }
-.cal-table th, .cal-table td{ border:1px solid var(--parchment-line); text-align:center; padding:0; }
-.cal-table th{ background:var(--parchment); font-weight:600; padding:4px 2px; color:var(--ink-soft); min-width:22px; }
-.cal-room-col{ text-align:left !important; padding:4px 10px !important; white-space:nowrap; font-weight:600; background:var(--parchment); position:sticky; left:0; }
-.cal-room-col a{ text-decoration:none; color:var(--chestnut-deep); }
-body.staff-shell .cal-room-col a{ color:var(--ivory); }
-.cal-cell{ width:24px; height:24px; }
-.cal-cell-free{ background:var(--cal-free-bg); }
-.cal-cell-pending{ background:var(--cal-pending-bg); }
-.cal-cell-confirmed{ background:var(--cal-confirmed-bg); }
-.cal-cell-external{ background:var(--cal-external-bg); }
-.cal-cell-manual-block{ background:var(--cal-block-bg); background-image:repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px); }
+/* Room timeline. This was a bordered spreadsheet — a 1px box around every
+   one of ~150 cells, 24px squares, colour filling the cell edge-to-edge.
+   Reworked so a stay reads as an OBJECT sitting on a track: no cell borders,
+   colour on a floating rounded bar inset from its cell, hairline row rules
+   only, and alignment carried by a very faint column rule instead of a full
+   grid. Same markup and colspans — this is purely how it presents. */
+.cal-table{ border-collapse:collapse; font-size:11.5px; width:100%; }
+.cal-table th, .cal-table td{ border:none; text-align:center; padding:0; }
+.cal-table th{
+  font-weight:600; padding:0 0 10px; color:var(--ink-soft); min-width:26px;
+  font-size:10px; vertical-align:bottom;
+}
+/* Capped so a long room name ("Twin/Double with Shared Bathroom") can't
+   swallow a third of the timeline and squeeze the days it exists to show. */
+.cal-room-col{
+  text-align:left !important; padding:0 14px 0 4px !important;
+  font-weight:600; font-size:12.5px; background:var(--surface);
+  position:sticky; left:0; z-index:2;
+  width:150px; max-width:150px;
+}
+.cal-room-col a{
+  text-decoration:none; color:var(--ink);
+  display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.cal-room-col a:hover{ color:var(--gold); }
+.cal-table tbody tr td{ border-bottom:1px solid var(--parchment-line); }
+.cal-table tbody tr:last-child td{ border-bottom:none; }
+.cal-cell{ height:46px; padding:4px 1px !important; position:relative; }
+
+/* The stay itself. Rounded, soft-shadowed, and inset from the cell so
+   consecutive-but-separate bookings read as two objects, not one smear. */
+.cal-bar{
+  display:flex; align-items:center; height:100%; box-sizing:border-box;
+  padding:0 9px; text-align:left; border-radius:8px;
+  font-size:11.5px; font-weight:600; color:var(--chestnut-deep); text-decoration:none;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  box-shadow:0 1px 3px rgba(43,38,32,0.13);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+a.cal-bar:hover{ transform:translateY(-1px); box-shadow:0 4px 12px rgba(43,38,32,0.20); filter:brightness(1.03); }
+
+/* Faint column rule keeps day alignment readable without drawing a grid. */
+.cal-cell::after{
+  content:""; position:absolute; right:0; top:6px; bottom:6px;
+  width:1px; background:var(--parchment-line); opacity:0.35;
+}
+.cal-cell:last-child::after{ display:none; }
+/* Weekend banding is an orientation aid, not content — kept faint enough
+   that the bookings stay the loudest thing on the timeline. */
+.cal-table th.cal-weekend, .cal-cell.cal-weekend{ background:rgba(43,38,32,0.018); }
+.cal-dow{ display:block; font-size:9px; opacity:0.6; line-height:1.1; text-transform:uppercase; letter-spacing:0.04em; }
+.cal-dom{ display:block; line-height:1.25; font-size:12px; font-weight:600; color:var(--ink); }
+
+.cal-toolbar{
+  display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+  background:var(--parchment); border:1px solid var(--parchment-line); border-radius:10px;
+  padding:12px 16px; margin-bottom:18px;
+}
+.cal-month-label{ font-family:'Playfair Display', serif; font-size:16px; }
+body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:700; }
+.cal-month-jump{ margin:0 0 0 auto; }
+.cal-month-jump input{ font-size:12.5px; padding:5px 8px; width:auto; }
+/* Colour now rides the bar, not the cell — a free day is genuinely empty
+   rather than a painted white box. The .cal-cell-* selectors are kept so the
+   legend swatches (which have no inner bar) still show the right colour. */
+.cal-cell-free{ background:transparent; }
+.cal-cell-pending .cal-bar{ background:var(--cal-pending-bg); }
+.cal-cell-confirmed .cal-bar{ background:var(--cal-confirmed-bg); }
+.cal-cell-external .cal-bar{ background:var(--cal-external-bg); }
+.cal-cell-manual-block .cal-bar{
+  background:var(--cal-block-bg);
+  background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.07) 4px, rgba(0,0,0,0.07) 8px);
+}
 .cal-cell-shift{ background:var(--cal-shift-bg); }
 .cal-cell-leave{ background:var(--cal-leave-bg); }
-.cal-today{ outline:2px solid var(--gold); outline-offset:-2px; }
+/* Today is a soft column wash rather than a hard 2px outline box. */
+.cal-today{ background:rgba(184,133,62,0.10); }
+.cal-table th.cal-today{ color:var(--gold-on-warn); }
+.cal-table th.cal-today .cal-dom{ color:var(--gold-on-warn); }
+
 .cal-legend{ display:inline-block; width:14px; height:14px; border-radius:4px; margin-right:6px; vertical-align:middle; border:1px solid var(--parchment-line); }
+/* Legend swatches have no inner bar, so they take the fill directly. */
+.cal-legend.cal-cell-pending{ background:var(--cal-pending-bg); }
+.cal-legend.cal-cell-confirmed{ background:var(--cal-confirmed-bg); }
+.cal-legend.cal-cell-external{ background:var(--cal-external-bg); }
+.cal-legend.cal-cell-manual-block{
+  background:var(--cal-block-bg);
+  background-image:repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px);
+}
+.cal-legend.cal-cell-free{ background:var(--surface); }
 
 /* Guest-facing 2-state availability grid — deliberately distinct from the
    admin grid's 4-state palette above (booked/pending/external/blocked all
@@ -640,11 +840,27 @@ body.staff-shell .cal-room-col a{ color:var(--ivory); }
 .cal-cell-guest-free{ background:var(--cal-guest-free-bg); }
 .cal-cell-guest-taken{ background:var(--cal-guest-taken-bg); }
 
+.dashboard-overview-layout{ display:grid; grid-template-columns:1.3fr 1fr; gap:20px; align-items:start; }
+
 @media (max-width: 760px){
   .profile-layout{ grid-template-columns:1fr; }
   .field-row-2{ grid-template-columns:1fr; }
   .detail-grid{ grid-template-columns:1fr; }
+  .dashboard-overview-layout{ grid-template-columns:1fr; }
 }
+
+/* ---------- Refund box (inline, collapsed by default on booking rows) ----
+   Refunds are discretionary and move real money, so the form stays folded
+   away behind a summary rather than sitting open next to routine actions. */
+.refund-box{ margin-top:10px; border:1px solid var(--parchment-line); border-radius:8px; background:var(--parchment); }
+.refund-box > summary{ cursor:pointer; padding:8px 12px; font-size:13px; color:var(--ink-soft); display:flex; align-items:center; gap:8px; }
+.refund-box > summary:hover{ color:var(--ink); }
+.refund-box[open] > summary{ border-bottom:1px dashed var(--parchment-line); }
+.refund-box > form, .refund-box > p{ padding:12px; margin:0; }
+.refund-fields{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:10px; }
+.refund-fields .field-label{ margin-bottom:2px; }
+.refund-fields input, .refund-fields select{ width:100%; }
+.refund-reason{ grid-column:1 / -1; }
 
 /* ---------- Bar chart (Financials trend) ---------- */
 .bar-chart{
@@ -667,6 +883,182 @@ body.staff-shell .cal-room-col a{ color:var(--ivory); }
 .bar-chart-swatch{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
 .bar-chart-swatch-revenue{ background:var(--gold); }
 .bar-chart-swatch-expenses{ background:var(--steel); }
+
+/* ---------- Month calendar (dashboard "what's happening this month" —
+   a real wall-calendar grid, distinct from the per-room booking-calendar
+   table elsewhere, which is a working tool rather than a glance view) ---------- */
+/* Same treatment as the main calendar: one card, hairline week rules, no box
+   drawn around every individual day. This widget sits on the landing page,
+   so it was the most-seen instance of the bordered-grid look. */
+.month-cal{
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:14px;
+  box-shadow:var(--shadow); padding:0; margin-bottom:22px; overflow:hidden;
+}
+.month-cal-head{ display:grid; grid-template-columns:repeat(7,1fr); border-bottom:1px solid var(--parchment-line); }
+.month-cal-head span{
+  font-size:10px; font-weight:600; color:var(--ink-soft); text-transform:uppercase;
+  letter-spacing:0.07em; text-align:left; padding:9px 10px;
+}
+.month-cal-week{ display:grid; grid-template-columns:repeat(7,1fr); border-bottom:1px solid var(--parchment-line); }
+.month-cal-week:last-of-type{ border-bottom:none; }
+.month-cal-day{
+  min-height:76px; padding:7px 8px;
+  display:flex; flex-direction:column; gap:4px; background:transparent;
+  /* An <a> into the calendar's day view, so it needs link resets. */
+  text-decoration:none; color:inherit;
+  transition:background-color .15s ease;
+}
+a.month-cal-day:hover{ background:var(--status-neutral-bg); }
+.month-cal-day-empty{ background:transparent; }
+.month-cal-daynum{
+  font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600; color:var(--ink-soft);
+  align-self:flex-start; min-width:22px; height:20px; line-height:20px; text-align:center; border-radius:999px;
+}
+.month-cal-today{ background:rgba(184,133,62,0.07); }
+.month-cal-today .month-cal-daynum{ background:var(--gold); color:var(--chestnut-deep); }
+/* align-items defaults to stretch in a column flex container, which was
+   pulling each badge to the full cell width -- an icon-only workshop badge
+   rendered as a long empty bar that read as a broken element. */
+.month-cal-badges{ display:flex; flex-direction:column; align-items:flex-start; gap:3px; }
+.month-cal-badge{
+  display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600;
+  padding:1px 5px; border-radius:8px; line-height:1.5; white-space:nowrap;
+}
+.month-cal-badge svg{ width:9px; height:9px; margin:0; flex-shrink:0; }
+.month-cal-badge-arrival{ background:var(--status-success-bg); color:var(--success); }
+.month-cal-badge-departure{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+.month-cal-badge-dinner{ background:var(--status-info-bg); color:var(--steel-deep); }
+body.staff-shell .month-cal-badge-dinner{ color:var(--steel); }
+.month-cal-badge-workshop{ background:var(--status-danger-bg); color:var(--danger); }
+.month-cal-legend{ display:flex; flex-wrap:wrap; gap:14px; font-size:11.5px; color:var(--ink-soft); margin-top:8px; }
+.month-cal-legend span{ display:inline-flex; align-items:center; gap:5px; }
+.month-cal-legend-dot{ width:9px; height:9px; border-radius:3px; display:inline-block; }
+
+@media (max-width: 760px){
+  .month-cal-day{ min-height:56px; padding:3px 4px; }
+  .month-cal-badge{ font-size:9px; padding:1px 4px; }
+  .month-cal-daynum{ font-size:11px; }
+}
+
+/* ---------- Ops calendar (day / week / month, clickable + filterable) ---------- */
+.cal-filters{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  margin-bottom:14px;
+}
+.cal-filter-label{ font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; margin-right:2px; }
+.cal-chip{
+  display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+  font-family:'Inter',sans-serif; font-size:12.5px; font-weight:500;
+  padding:5px 11px; border-radius:20px;
+  background:var(--surface); color:var(--ink-soft);
+  border:1px solid var(--parchment-line);
+  transition:background-color .15s ease, color .15s ease, opacity .15s ease;
+}
+.cal-chip:hover{ border-color:var(--gold); color:var(--ink); }
+/* "Off" is conveyed by more than colour — the chip also fades and its dot
+   hollows out, so the state is legible without relying on hue alone. */
+/* :not(.is-on) must not catch .cal-chip-plain — that one is a checkbox
+   wrapper, never a toggle, so it was permanently rendering struck-through
+   and half-faded as though it were disabled. */
+.cal-chip:not(.is-on):not(.cal-chip-plain){ opacity:0.45; text-decoration:line-through; }
+.cal-chip:not(.is-on):not(.cal-chip-plain) .cal-ev-dot{ background:transparent !important; box-shadow:inset 0 0 0 1.5px var(--ink-soft); }
+.cal-chip-plain{ cursor:default; }
+.cal-chip-plain input{ width:auto; margin:0; }
+.cal-select{ width:auto; font-size:12.5px; padding:5px 9px; }
+
+/* Airy, borderless month view: days are separated by whitespace and a single
+   hairline rule per week, not boxed in on all four sides. */
+.cal-month{ border:1px solid var(--parchment-line); border-radius:14px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); }
+.cal-month-head{ display:grid; grid-template-columns:repeat(7,1fr); border-bottom:1px solid var(--parchment-line); }
+.cal-month-head span{ padding:11px 12px; font-size:10.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.07em; text-align:left; }
+.cal-month-row{ display:grid; grid-template-columns:repeat(7,1fr); border-bottom:1px solid var(--parchment-line); }
+.cal-month-row:last-child{ border-bottom:none; }
+.cal-day{ min-height:116px; padding:8px 9px; display:flex; flex-direction:column; gap:4px; min-width:0; }
+.cal-day-out{ background:transparent; }
+.cal-day-out .cal-daynum, .cal-day-out .cal-ev{ opacity:0.38; }
+.cal-day-weekend{ background:rgba(43,38,32,0.022); }
+/* Today reads as a filled day-number chip, not a heavy ring round the cell. */
+.cal-day-today{ background:rgba(184,133,62,0.07); }
+.cal-daynum{
+  align-self:flex-start; font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:600;
+  color:var(--ink-soft); text-decoration:none; padding:1px 5px; border-radius:5px; min-width:22px; text-align:center;
+}
+.cal-daynum:hover{ background:var(--status-warn-bg); color:var(--gold-on-warn); }
+.cal-day-today .cal-daynum{ background:var(--gold); color:var(--chestnut-deep); border-radius:999px; min-width:24px; height:22px; line-height:20px; }
+.cal-day-events{ display:flex; flex-direction:column; gap:2px; min-width:0; overflow:hidden; }
+.cal-day-empty{ font-size:11px; color:var(--ink-soft); opacity:0.5; }
+
+.cal-ev{
+  display:flex; align-items:center; gap:6px; min-width:0;
+  font-size:11.5px; font-weight:500; line-height:1.35; padding:4px 8px; border-radius:14px;
+  text-decoration:none; color:var(--ink); background:var(--status-neutral-bg);
+  transition:filter .12s ease, transform .12s ease, box-shadow .12s ease;
+}
+a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:0 2px 8px rgba(43,38,32,0.12); }
+/* Non-link chips (an employee's view of a booking they can't open) must not
+   advertise a click that goes nowhere. */
+.cal-ev-static{ cursor:default; }
+.cal-ev-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Week columns are ~144px — NARROWER than a month cell, so single-line
+   ellipsis clipped every label there too. They do have vertical room, so
+   wrap to two lines instead of truncating. Month view stays single-line:
+   density is the point there, and the day view has full width anyway. */
+.cal-week .cal-ev{ align-items:flex-start; padding:5px 8px; gap:0; }
+.cal-week .cal-ev .cal-ev-dot{ display:none; }  /* fill colour already names the lane */
+.cal-week .cal-ev-text{
+  white-space:normal; overflow-wrap:anywhere; text-overflow:clip; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; line-clamp:3;
+}
+.cal-ev-who{ flex:none; font-size:10.5px; color:var(--ink-soft); max-width:33%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cal-ev-dot{ width:7px; height:7px; border-radius:50%; flex:none; background:var(--ink-soft); }
+.cal-ev-done{ opacity:0.55; }
+.cal-ev-done .cal-ev-text{ text-decoration:line-through; }
+.cal-ev-overdue{ box-shadow:inset 0 0 0 1px rgba(179,39,30,0.55); }
+
+/* Month cells are the tightest place text has to survive. The lane dot costs
+   ~13px there and the fill colour already says which lane it is, so drop it
+   and tighten the pill — that width goes to the label instead, which was
+   ellipsing to "BBQ C…" / "(Demo…" and telling the reader nothing. */
+.cal-month .cal-ev{ padding:3px 7px; border-radius:10px; font-size:11px; gap:0; }
+.cal-month .cal-ev .cal-ev-dot{ display:none; }
+.cal-month .cal-day-events{ gap:3px; }
+
+/* Lane colours reuse the existing status backgrounds, so the calendar reads
+   as the same system as the badges everywhere else. */
+.cal-ev-booking{ background:var(--status-info-bg); }
+.cal-ev-booking .cal-ev-dot, .cal-ev-dot.cal-ev-booking{ background:var(--steel); }
+.cal-ev-restaurant{ background:var(--status-success-bg); }
+.cal-ev-restaurant .cal-ev-dot, .cal-ev-dot.cal-ev-restaurant{ background:var(--success); }
+.cal-ev-workshop{ background:var(--status-warn-bg); }
+.cal-ev-workshop .cal-ev-dot, .cal-ev-dot.cal-ev-workshop{ background:var(--gold-on-warn); }
+.cal-ev-task{ background:var(--status-neutral-bg); }
+.cal-ev-task .cal-ev-dot, .cal-ev-dot.cal-ev-task{ background:var(--ink-soft); }
+.cal-ev-owner{ background:var(--status-warn-bg); }
+.cal-ev-owner .cal-ev-dot, .cal-ev-dot.cal-ev-owner{ background:var(--gold-on-warn); }
+
+.cal-more{ font-size:10.5px; color:var(--steel); text-decoration:none; padding-left:6px; }
+.cal-more:hover{ text-decoration:underline; }
+
+.cal-week{ display:grid; grid-template-columns:repeat(7,1fr); border:1px solid var(--parchment-line); border-radius:10px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow); }
+.cal-week .cal-day{ min-height:220px; }
+.cal-col-head{ display:flex; align-items:baseline; gap:5px; text-decoration:none; padding:2px 3px 5px; border-bottom:1px solid var(--parchment-line); margin-bottom:3px; }
+.cal-col-dow{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-soft); }
+.cal-col-num{ font-family:'IBM Plex Mono',monospace; font-size:14px; font-weight:600; color:var(--ink); }
+.cal-day-today .cal-col-num{ color:var(--gold-on-warn); }
+
+.cal-dayview{ background:var(--surface); border:1px solid var(--parchment-line); border-radius:10px; box-shadow:var(--shadow); padding:14px 16px; }
+.cal-day-events-list .cal-ev{ font-size:13px; padding:8px 10px; }
+
+@media (max-width: 900px){
+  /* A 7-column grid is unusable at phone width — week view becomes a
+     vertical day list, and the month grid scrolls horizontally as one piece
+     so a day never gets squeezed to an unreadable sliver. */
+  .cal-week{ grid-template-columns:1fr; }
+  .cal-week .cal-day{ min-height:0; border-right:none; border-bottom:1px solid var(--parchment-line); }
+  .cal-month{ overflow-x:auto; }
+  .cal-month-head, .cal-month-row{ min-width:640px; }
+  .cal-day{ min-height:88px; }
+}
 
 /* ---------- Print (today-sheet and anything else meant to be posted) ---------- */
 @media print{

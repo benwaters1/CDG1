@@ -10,6 +10,7 @@
 <p class="pay-disclaimer">This is shown to every guest before they can submit a booking request. It ships as a draft — have it reviewed by a lawyer before you rely on it, especially the cancellation-window bracket.</p>
 
 <form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <textarea name="text" style="min-height:420px; font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ text }}</textarea>
   <button type="submit" class="btn-primary">Save</button>
 </form>

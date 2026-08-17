@@ -10,6 +10,7 @@
   </p>
 
   <form method="post" style="margin-top:18px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Date</label>
     <input type="date" name="dinner_date" min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required>
 
@@ -28,9 +29,21 @@
     <label class="field-label">Dietary needs or anything else we should know?</label>
     <textarea name="dietary_notes" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
 
+    <label class="field-label">Promo code (optional)</label>
+    <div style="display:flex; gap:8px;">
+      <input type="text" name="promo_code" id="promo_code" style="text-transform:uppercase;">
+      <button type="button" class="btn-mini" id="promo_apply_btn" style="flex-shrink:0;">Apply</button>
+    </div>
+    <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
+
     {% if stripe_enabled and settings['price_per_person'] %}
-    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Pay &amp; Request a Table</button>
-    <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+      {% if settings['deposit_percent'] %}
+      <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Pay Deposit &amp; Request a Table</button>
+      <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. This still isn't an instant confirmation — the château reviews every request. If it's declined, your deposit is refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+      {% else %}
+      <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Pay &amp; Request a Table</button>
+      <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+      {% endif %}
     {% else %}
     <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Request a table</button>
     <p class="upload-hint" style="margin-top:10px;">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You'll get a reference code and a link to manage your reservation.</p>
@@ -38,11 +51,27 @@
   </form>
 </div>
 
+<script>
+document.getElementById('promo_apply_btn').addEventListener('click', function() {
+  var resultEl = document.getElementById('promo_result');
+  var code = document.getElementById('promo_code').value.trim();
+  var partySize = document.querySelector('[name="party_size"]').value;
+  if (!code) { resultEl.textContent = 'Enter a code first.'; return; }
+  resultEl.textContent = 'Checking...';
+  var body = new URLSearchParams({category: 'restaurant', code: code, party_size: partySize});
+  fetch('{{ url_for("api_validate_promo_code") }}', {method: 'POST', body: body})
+    .then(function(r) { return r.json(); })
+    .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
+    .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
+});
+</script>
+
 {% if fully_booked %}
 <div class="narrow-card" style="margin-top:20px;">
   <h1>Join the Waitlist</h1>
   <p class="manual-body">We'll reach out if a table opens up for that date.</p>
   <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="desired_date" value="{{ prefill_date }}">
     <label class="field-label">Party size</label>
     <input type="number" name="party_size" min="1" value="{{ prefill_party_size }}" required>

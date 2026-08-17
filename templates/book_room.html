@@ -6,8 +6,15 @@
   {% if room['photo_filename'] %}
   <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" class="room-photo">
   {% endif %}
+  {% if gallery_photos %}
+  <div class="room-gallery-strip">
+    {% for p in gallery_photos %}
+    <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}">
+    {% endfor %}
+  </div>
+  {% endif %}
   <h1>{{ room['name'] }}</h1>
-  <p class="room-meta">Sleeps up to {{ room['max_occupancy'] }}{% if room['price_per_night'] %} · €{{ '%.0f'|format(room['price_per_night']) }} / night{% endif %}</p>
+  <p class="room-meta">Sleeps up to {{ room['max_occupancy'] }}{% if room['price_per_night'] %} · €{{ '%.0f'|format(room['price_per_night']) }} / night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}</p>
   {% if room['description'] %}<p class="manual-body">{{ room['description'] }}</p>{% endif %}
   {% if room['amenities'] %}
   <div class="amenity-tags">
@@ -18,6 +25,7 @@
   {% endif %}
 
   <form method="post" style="margin-top:18px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
         <label class="field-label">Arrival</label>
@@ -56,6 +64,13 @@
     </div>
     {% endif %}
 
+    <label class="field-label">Promo code (optional)</label>
+    <div style="display:flex; gap:8px;">
+      <input type="text" name="promo_code" id="promo_code" style="text-transform:uppercase;">
+      <button type="button" class="btn-mini" id="promo_apply_btn" style="flex-shrink:0;">Apply</button>
+    </div>
+    <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
+
     <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
       <input type="checkbox" name="agree_terms" required style="width:auto;">
       I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" style="color:var(--steel);">Terms &amp; Conditions</a>
@@ -70,5 +85,21 @@
     {% endif %}
   </form>
 </div>
+
+<script>
+document.getElementById('promo_apply_btn').addEventListener('click', function() {
+  var resultEl = document.getElementById('promo_result');
+  var code = document.getElementById('promo_code').value.trim();
+  var arrival = document.querySelector('[name="arrival_date"]').value;
+  var departure = document.querySelector('[name="departure_date"]').value;
+  if (!code) { resultEl.textContent = 'Enter a code first.'; return; }
+  resultEl.textContent = 'Checking...';
+  var body = new URLSearchParams({category: 'room', code: code, room_id: '{{ room["id"] }}', arrival_date: arrival, departure_date: departure});
+  fetch('{{ url_for("api_validate_promo_code") }}', {method: 'POST', body: body})
+    .then(function(r) { return r.json(); })
+    .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
+    .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
+});
+</script>
 
 {% endblock %}

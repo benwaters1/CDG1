@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Booking Calendar{% endblock %}
 {% block content %}
 
@@ -10,10 +11,31 @@
   </div>
 </div>
 
-<div class="search-bar" style="justify-content:space-between;">
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ occupancy_rate }}%</span><span class="stat-tile-label">{{ first_day.strftime('%B') }} occupancy</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('bookings', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ confirmed_nights }}</span><span class="stat-tile-label">Confirmed room-nights</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ pending_nights }}</span><span class="stat-tile-label">Pending room-nights</span></span>
+  </div>
+</div>
+
+<div class="cal-toolbar">
   <a href="{{ url_for('admin_calendar', month=prev_month) }}" class="btn-mini">&larr; Prev</a>
-  <strong>{{ first_day.strftime('%B %Y') }}</strong>
+  <strong class="cal-month-label">{{ first_day.strftime('%B %Y') }}</strong>
   <a href="{{ url_for('admin_calendar', month=next_month) }}" class="btn-mini">Next &rarr;</a>
+  {% if first_day.strftime('%Y-%m') != this_month %}
+  <a href="{{ url_for('admin_calendar') }}" class="small-link" style="color:var(--steel);">Jump to today</a>
+  {% endif %}
+  <form method="get" class="cal-month-jump">
+    <input type="month" name="month" value="{{ first_day.strftime('%Y-%m') }}" onchange="this.form.submit()" aria-label="Jump to month">
+  </form>
 </div>
 
 {% if not room_rows %}
@@ -25,7 +47,10 @@
       <tr>
         <th class="cal-room-col">Room</th>
         {% for d in days %}
-        <th class="{{ 'cal-today' if d == today }}">{{ d.day }}</th>
+        <th class="{{ 'cal-today' if d == today }} {{ 'cal-weekend' if d.weekday() >= 5 }}">
+          <span class="cal-dow">{{ d.strftime('%a')[0] }}</span>
+          <span class="cal-dom">{{ d.day }}</span>
+        </th>
         {% endfor %}
       </tr>
     </thead>
@@ -33,8 +58,21 @@
       {% for row in room_rows %}
       <tr>
         <td class="cal-room-col"><a href="{{ url_for('edit_room', room_id=row.room['id']) }}">{{ row.room['name'] }}</a></td>
-        {% for cell in row.cells %}
-        <td class="cal-cell cal-cell-{{ cell.status }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.label }}"></td>
+        {% for seg in row.segments %}
+        <td class="cal-cell cal-cell-{{ seg.status }} {{ 'cal-today' if seg.has_today }} {{ 'cal-weekend' if seg.weekend }}"
+            colspan="{{ seg.span }}"
+            title="{{ seg.label }}{% if seg.status in ('pending','confirmed') %} ({{ seg.status }}){% endif %}">
+          {# Every occupied segment renders a bar — the colour now lives on the
+             bar, not the cell, so a one-night stay must still draw one or it
+             would vanish entirely. Free days deliberately render nothing. #}
+          {% if seg.status != 'free' %}
+            {% if seg.link %}
+            <a href="{{ seg.link }}" class="cal-bar" aria-label="{{ seg.label }}">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</a>
+            {% else %}
+            <span class="cal-bar">{% if seg.span > 1 %}{{ seg.label }}{% endif %}</span>
+            {% endif %}
+          {% endif %}
+        </td>
         {% endfor %}
       </tr>
       {% endfor %}
@@ -48,6 +86,7 @@
   <span><span class="cal-legend cal-cell-external"></span> Blocked on another platform</span>
   <span><span class="cal-legend cal-cell-manual-block"></span> Blocked by you</span>
   <span><span class="cal-legend cal-cell-free"></span> Free</span>
+  <span class="upload-hint" style="font-style:italic;">Click a booking to open it.</span>
 </div>
 {% endif %}
 

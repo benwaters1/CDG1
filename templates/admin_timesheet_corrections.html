@@ -27,6 +27,7 @@
     </p>
     {% if c['status'] == 'pending' %}
     <form method="post" action="{{ url_for('resolve_timesheet_correction', correction_id=c['id']) }}" class="upload-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
         <label class="field-label">Corrected clock in (optional)</label>
         <input type="time" name="clock_in_time">
@@ -38,6 +39,7 @@
       <button type="submit" class="btn-mini">Apply & resolve</button>
     </form>
     <form method="post" action="{{ url_for('dismiss_timesheet_correction', correction_id=c['id']) }}" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn-text-danger">Dismiss</button>
     </form>
     {% endif %}

@@ -22,14 +22,15 @@
   </div>
   {% if s['note'] %}<p class="manual-body">{{ s['note'] }}</p>{% endif %}
   <div class="expense-actions">
-    <form method="post" action="{{ url_for('decide_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
-    <form method="post" action="{{ url_for('decide_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
+    <form method="post" action="{{ url_for('decide_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
+    <form method="post" action="{{ url_for('decide_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
   </div>
 </div>
 {% endfor %}
 {% endif %}
 
 <form method="post" action="{{ url_for('new_shift') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
     <label class="field-label">Employees</label>
     <div style="display:flex; flex-wrap:wrap; gap:4px 12px; max-width:280px; align-items:center;">
@@ -64,6 +65,7 @@
   <strong>{{ week.range_start.strftime('%b') }} {{ week.range_start.day }} – {{ week.range_end.strftime('%b') }} {{ week.range_end.day }}, {{ week.range_end.year }}</strong>
   <div style="display:flex; gap:10px;">
     <form method="post" action="{{ url_for('copy_previous_week_shifts') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date" value="{{ week.range_start.isoformat() }}">
       <button type="submit" class="btn-mini">Copy last week</button>
     </form>
@@ -133,6 +135,7 @@
               <div style="color:var(--success);">Clocked in {{ att.clock_in }}</div>
             {% endif %}
             <form method="post" action="{{ url_for('delete_shift', shift_id=s['id']) }}" onsubmit="return confirm('Remove this shift?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="small-link" style="color:var(--danger); background:none; border:none; cursor:pointer; padding:0; font-size:10px;">Remove</button>
             </form>
           </div>
