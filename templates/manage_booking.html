@@ -160,7 +160,12 @@
     {% endif %}
     {% if bill.owed > 0 %}
     <div class="quote-total"><span>Still to pay</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
+    {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
+    <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="btn-primary" style="margin-top:10px; display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
+    <p class="upload-hint">Or we'll take it on arrival — whichever you prefer.</p>
+    {% else %}
     <p class="upload-hint">We'll take this on arrival unless you hear otherwise.</p>
+    {% endif %}
     {% elif bill.overpaid > 0 %}
     <div class="quote-total"><span>In credit</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
     {% else %}
