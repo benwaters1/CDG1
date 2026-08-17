@@ -30,7 +30,10 @@
 
 <header class="g-top">
   <div class="g-top__in">
-    <a href="/" class="g-brand">Château de Gudanes<small>Ariège · Restoration</small></a>
+    {# The brand must not point at "/" — that route is the staff dashboard and
+       sends a signed-out guest to a login screen. Until the public home page
+       owns "/", link the château's own name at the public home page itself. #}
+    <a href="{{ url_for('preview_home') }}" class="g-brand">Château de Gudanes<small>Ariège · Restoration</small></a>
     <nav class="g-nav">
       <a href="{{ url_for('book_rooms') }}" class="{{ 'is-on' if request.endpoint in ['book_rooms','book_room'] }}">Stay</a>
       <a href="{{ url_for('workshops_public') }}" class="{{ 'is-on' if request.endpoint in ['workshops_public','workshop_detail','workshop_register'] }}">Ateliers</a>
