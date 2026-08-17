@@ -2344,6 +2344,12 @@ def init_db():
         # long-lived, like the per-booking manage tokens it sits alongside, so it
         # can go in an email and still work when they come back next year.
         ("guests_portal_token", "ALTER TABLE guests ADD COLUMN portal_token TEXT"),
+        # How much has actually been received on a stay. payment_status only ever
+        # said unpaid/paid/refunded, which cannot express "paid the deposit" or
+        # "added a night and owes the difference" — so a room booking had no
+        # balance at all, while a workshop did. Everything a guest might add to
+        # their stay needs somewhere to put what it now costs them.
+        ("bookings_amount_paid", "ALTER TABLE bookings ADD COLUMN amount_paid REAL NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -6019,6 +6025,86 @@ def extras_total(rows, include_cancelled=False):
                      for r in rows if include_cancelled or r["status"] != "cancelled"), 2)
 
 
+def booking_bill(conn, booking_id):
+    """What a stay costs, what has been received, and what is still owed.
+
+    A room booking had none of this. `payment_status` could only say
+    unpaid/paid/refunded, which cannot express "paid the deposit" or "added a
+    night and owes the difference" — so there was nowhere to put the cost of
+    anything a guest might add later, which is why they could not add anything.
+    Workshops already worked this way; this brings stays into line.
+
+    The room line is recomputed from the rates rather than trusted from
+    total_price, so a stay whose dates changed prices correctly. Extras are
+    real line items. Refunds come off what was received, not off the total —
+    the stay still cost what it cost, and a bill that hides a refund is a bill
+    somebody has to reconcile by hand.
+    """
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking:
+        return None
+
+    arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    nights = (departure - arrival).days if (arrival and departure) else 0
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    room_total = compute_room_total(conn, room, arrival, departure) if (room and nights) else 0.0
+
+    lines = []
+    if room_total:
+        lines.append({
+            "label": f"{booking['room_name']} — {nights} night{'' if nights == 1 else 's'}",
+            "amount": room_total, "kind": "room"})
+
+    extras = extras_for_booking(conn, "room", booking_id)
+    for extra in extras:
+        if extra["status"] == "cancelled":
+            continue
+        amount = round((extra["unit_price"] or 0) * (extra["quantity"] or 0), 2)
+        qty = extra["quantity"] or 1
+        lines.append({
+            "label": extra["name"] + (f" × {qty}" if qty > 1 else ""),
+            "amount": amount, "kind": "extra"})
+
+    total = round(sum(l["amount"] for l in lines), 2)
+    refunded = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
+           WHERE category = 'room' AND booking_id = ?""", (booking_id,)).fetchone()["t"] or 0.0
+    paid = round((booking["amount_paid"] or 0) - refunded, 2)
+    return {
+        "booking": booking,
+        "lines": lines,
+        "nights": nights,
+        "total": total,
+        "paid": max(paid, 0.0),
+        "refunded": round(refunded, 2),
+        "owed": round(max(total - paid, 0.0), 2),
+        "overpaid": round(max(paid - total, 0.0), 2),
+    }
+
+
+def record_booking_payment(conn, booking_id, amount, reference=None):
+    """Add to what has been received on a stay.
+
+    Additive rather than a flag, so a deposit followed by a balance — or a night
+    added and paid for later — accumulates instead of overwriting. Also keeps
+    payment_status roughly in step for the older code that reads it.
+    """
+    conn.execute(
+        "UPDATE bookings SET amount_paid = COALESCE(amount_paid, 0) + ? WHERE id = ?",
+        (round(amount or 0, 2), booking_id))
+    bill = booking_bill(conn, booking_id)
+    if bill and bill["owed"] <= 0.005:
+        conn.execute("UPDATE bookings SET payment_status = 'paid' WHERE id = ?", (booking_id,))
+    if reference:
+        conn.execute(
+            "UPDATE bookings SET stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ?) "
+            "WHERE id = ?", (reference, booking_id))
+    return bill
+
+
 # How a tab can be settled. An iPad in a browser cannot read a card by itself,
 # so the methods that need no hardware come first: charge it to the guest's
 # room, or show a QR they pay on their own phone. `card_terminal` records a
@@ -7618,6 +7704,15 @@ def create_booking_from_stripe_session(conn, session):
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
     )
+    # Record the amount, not just the fact. Without this the stay shows as paid
+    # with nothing received against it, so adding a night later would look like
+    # the whole stay was owed again.
+    paid_row = conn.execute(
+        "SELECT id FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone()
+    if paid_row:
+        received = (sval(session, "amount_total") or 0) / 100.0
+        record_booking_payment(conn, paid_row["id"], received,
+                               reference=sval(session, "payment_intent"))
     if not available:
         # Money has already changed hands, so the booking is still recorded —
         # but the room may now be double-booked (another booking was confirmed
@@ -13440,12 +13535,13 @@ def manage_booking(manage_token):
         dinner_max_date = (stay_end - timedelta(days=1)).isoformat()
         dinner_available = dinner_min_date <= dinner_max_date
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    bill = booking_bill(conn, booking["id"])
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
-        dinner_available=dinner_available,
+        dinner_available=dinner_available, bill=bill,
     )
 
 

@@ -127,6 +127,36 @@
   {% endif %}
 </div>
 
+{# What the stay costs and what is still owed. A guest could previously see
+   neither, which is also why they could not add anything to it. #}
+{% if bill and bill.lines %}
+<div class="detail-card" style="margin-top:20px;">
+  <h3>Your bill</h3>
+  <div class="quote-box" style="margin-top:0;">
+    {% for line in bill.lines %}
+    <div class="quote-line"><span>{{ line.label }}</span><span>€{{ '%.2f'|format(line.amount) }}</span></div>
+    {% endfor %}
+    <div class="quote-total"><span>Total</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+    {% if bill.paid %}
+    <div class="quote-line" style="margin-top:6px;">
+      <span>Received</span><span>&minus;€{{ '%.2f'|format(bill.paid) }}</span>
+    </div>
+    {% endif %}
+    {% if bill.refunded %}
+    <div class="quote-line"><span>Refunded to you</span><span>€{{ '%.2f'|format(bill.refunded) }}</span></div>
+    {% endif %}
+    {% if bill.owed > 0 %}
+    <div class="quote-total"><span>Still to pay</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
+    <p class="upload-hint">We'll take this on arrival unless you hear otherwise.</p>
+    {% elif bill.overpaid > 0 %}
+    <div class="quote-total"><span>In credit</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
+    {% else %}
+    <p class="upload-hint" style="margin-top:8px;">Paid in full — thank you.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% if dinner_available %}
 <div class="detail-card" style="margin-top:20px;">
   <h3>Book dinner</h3>
