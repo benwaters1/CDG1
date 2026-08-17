@@ -21,8 +21,17 @@
 </div>
 {% endif %}
 
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
 {% if not entries %}
-  <div class="empty-state">No feedback submitted yet — it's sent to guests by email when you check them out.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      No feedback matches that.
+      <a href="{{ url_for('admin_feedback') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No feedback submitted yet — it's sent to guests by email when you check them out.
+    {% endif %}
+  </div>
 {% else %}
   {% for f in entries %}
   <div class="expense-card">

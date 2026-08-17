@@ -20,8 +20,17 @@
   <button type="submit" class="btn-mini">+ Add extra</button>
 </form>
 
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
 {% if not extras %}
-  <div class="empty-state">No extras yet. Guests will only see the room rate.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that.
+      <a href="{{ url_for('admin_extras') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No extras yet. Guests will only see the room rate.
+    {% endif %}
+  </div>
 {% else %}
   <div class="doc-list">
     {% for e in extras %}

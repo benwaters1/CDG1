@@ -23,6 +23,10 @@ TOOLBAR_PAGES = [
     "/admin/stock",
     "/management/recurring-costs",
     "/admin/promo-codes",
+    "/notifications",
+    "/room-issues",
+    "/admin/extras",
+    "/admin/feedback",
 ]
 
 
@@ -155,6 +159,10 @@ def run():
     _seed_for_toolbar_pages()
     broken, vacuous = [], []
     for url in TOOLBAR_PAGES:
+        # Fetched twice on purpose. Looking at Notifications marks things read,
+        # so its first render describes a state that no longer exists by the
+        # time a chip is clicked. Every other page renders identically twice.
+        oc.get(url)
         r = oc.get(url)
         if r.status_code != 200:
             broken.append(f"{url} → HTTP {r.status_code}")
@@ -241,6 +249,37 @@ def _seed_for_toolbar_pages():
                        active, valid_until, redemption_count, max_redemptions, created_at)
                        VALUES (?, 'percent', 10, 'all', ?, ?, ?, ?, ?)""",
                     (code, active, until, used, cap, now))
+        if not conn.execute("SELECT 1 FROM room_issues LIMIT 1").fetchone():
+            room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()
+            who = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+            if room:
+                # Three ages on purpose: a tap that has dripped for a month is
+                # a different conversation from one reported this morning.
+                for title, days_ago in [("Test dripping tap", 30),
+                                        ("Test cracked tile", 5),
+                                        ("Test bulb gone", 0)]:
+                    conn.execute(
+                        """INSERT INTO room_issues (room_id, reported_by_user_id, title,
+                           status, created_at) VALUES (?, ?, ?, 'open', datetime('now', ?))""",
+                        (room["id"], who["id"] if who else None, title, f"-{days_ago} days"))
+        if not conn.execute("SELECT 1 FROM extras LIMIT 1").fetchone():
+            for name, price, cat, bookable, pos, lead in [
+                    ("Test champagne on arrival", 90, "drinks", 1, 1, 1),
+                    ("Test ski transfer", 120, "transfer", 1, 0, 2),
+                    ("Test late checkout", 50, "stay", 0, 0, 0)]:
+                conn.execute(
+                    """INSERT INTO extras (name, price, active, sort_order, category,
+                       guest_bookable, sold_in_pos, lead_time_days)
+                       VALUES (?, ?, 1, 0, ?, ?, ?, ?)""",
+                    (name, price, cat, bookable, pos, lead))
+        if not conn.execute("SELECT 1 FROM guest_feedback LIMIT 1").fetchone():
+            for name, rating, comment in [("Test unhappy guest", 2, "The heating never worked"),
+                                          ("Test happy guest", 5, "Perfect"),
+                                          ("Test quiet guest", 3, "")]:
+                conn.execute(
+                    """INSERT INTO guest_feedback (guest_name, rating, comment,
+                       submitted_at, featured) VALUES (?, ?, ?, ?, 0)""",
+                    (name, rating, comment, now))
         conn.commit()
     finally:
         conn.close()

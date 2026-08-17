@@ -6,12 +6,21 @@
   <h1>Notifications</h1>
 </div>
 
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
 {% if not items %}
-  <div class="empty-state">Nothing here yet.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that.
+      <a href="{{ url_for('notifications_page') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      Nothing here yet.
+    {% endif %}
+  </div>
 {% else %}
   <div class="mini-list">
     {% for n in items %}
-    <a href="{{ n['link'] or '#' }}" class="mini-row" style="align-items:flex-start; flex-direction:column; gap:2px; {{ 'opacity:0.65;' if n['read_at'] }}">
+    <a href="{{ n['link'] or '#' }}" class="mini-row" style="align-items:flex-start; flex-direction:column; gap:2px; {{ '' if n['id'] in unread else 'opacity:0.65;' }}">
       <div style="display:flex; width:100%; align-items:center; gap:8px;">
         <span class="mini-name" style="flex:1;">{{ n['title'] }}</span>
         <span class="upload-hint">{{ local_datetime_str(n['created_at']) }}</span>

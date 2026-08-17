@@ -11418,15 +11418,49 @@ def notifications_page():
     user = current_user()
     conn = get_db()
     items = conn.execute(
-        "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100", (user["id"],)
-    ).fetchall()
-    conn.execute(
-        "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL",
-        (datetime.now(timezone.utc).isoformat(), user["id"]),
-    )
-    conn.commit()
+        "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 400",
+        (user["id"],)).fetchall()
+    # What was unread when the page was BUILT, not after. Classifying by
+    # read_at when the same request marks everything read means every row
+    # looks old and the "new" chip is empty before you can click it.
+    unread = {n["id"] for n in items if not n["read_at"]}
     conn.close()
-    return render_template("notifications.html", items=items)
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    lv = list_view(
+        items, request.args,
+        search=["title", "body"],
+        search_hint="Search what you were told",
+        facets=[
+            facet("new", "Seen", lambda n: "New to you" if n["id"] in unread else "Already read",
+                  order=["New to you", "Already read"]),
+            facet("kind", "About", lambda n: (n["kind"] or "").replace("_", " ") or None,
+                  limit=10),
+            facet("when", "When",
+                  lambda n: "Today" if (n["created_at"] or "")[:10] == today else (
+                      "This week" if (n["created_at"] or "")[:10]
+                      >= _iso_plus_days(today, -7) else "Older"),
+                  order=["Today", "This week", "Older"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda n: n["created_at"] or "",
+                        reverse=True),
+            sort_option("oldest", "Oldest first", lambda n: n["created_at"] or ""),
+        ],
+        default_sort="recent",
+    )
+    # Mark read only what was actually put in front of them. Filtering to
+    # "vehicle" and having that clear the restaurant messages you never saw is
+    # how a notification quietly disappears without being read.
+    seen = [n["id"] for n in lv["rows"] if n["id"] in unread]
+    if seen:
+        conn = get_db()
+        conn.execute(
+            f"UPDATE notifications SET read_at = ? WHERE id IN ({','.join('?' * len(seen))})",
+            [datetime.now(timezone.utc).isoformat()] + seen)
+        conn.commit()
+        conn.close()
+    return render_template("notifications.html", items=lv["rows"], lv=lv, unread=unread)
 
 
 @app.route("/notifications/unread-count")
@@ -15359,9 +15393,46 @@ def room_issues():
         "SELECT COUNT(DISTINCT room_id) AS c FROM room_issues WHERE status = 'open'"
     ).fetchone()["c"]
     conn.close()
+
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def age(i):
+        """How long it has been sitting there. A tap that has dripped for six
+        weeks is a different conversation from one reported this morning, and
+        on a list sorted by date they read the same."""
+        if i["status"] != "open":
+            return None
+        raised = (i["created_at"] or "")[:10]
+        if not raised:
+            return None
+        if raised >= _iso_plus_days(today, -2):
+            return "Just raised"
+        if raised >= _iso_plus_days(today, -14):
+            return "Open a while"
+        return "Open over a fortnight"
+
+    lv = list_view(
+        issues, request.args,
+        search=["title", "description", "room_name", "reported_by_name"],
+        search_hint="Search fault, room or who reported it",
+        facets=[
+            facet("age", "How long open", age,
+                  order=["Open over a fortnight", "Open a while", "Just raised"]),
+            facet("room", "Room", lambda i: i["room_name"], limit=10),
+            facet("who", "Reported by", lambda i: i["reported_by_name"], limit=8),
+        ],
+        sorts=[
+            sort_option("oldest", "Longest open first", lambda i: i["created_at"] or ""),
+            sort_option("recent", "Newest first", lambda i: i["created_at"] or "", reverse=True),
+            sort_option("room", "Room",
+                        lambda i: ((i["room_name"] or "").lower(), i["created_at"] or "")),
+        ],
+        default_sort="oldest",
+    )
     return render_template(
-        "room_issues.html", issues=issues, rooms=rooms, status_filter=status_filter,
-        employees=employees, counts=counts, rooms_affected=rooms_affected,
+        "room_issues.html", issues=lv["rows"], lv=lv, rooms=rooms,
+        status_filter=status_filter, employees=employees, counts=counts,
+        rooms_affected=rooms_affected,
     )
 
 
@@ -15918,7 +15989,41 @@ def admin_extras():
     conn = get_db()
     extras = conn.execute("SELECT * FROM extras ORDER BY sort_order, name").fetchall()
     conn.close()
-    return render_template("admin_extras.html", extras=extras)
+    lv = list_view(
+        extras, request.args,
+        search=["name", "description", "category"],
+        search_hint="Search name, category or description",
+        facets=[
+            facet("state", "Offered", lambda e: "On sale" if e["active"] else "Withdrawn",
+                  order=["On sale", "Withdrawn"]),
+            facet("category", "Category", lambda e: (e["category"] or "").strip() or None,
+                  limit=10),
+            # Where a guest can actually get it. An extra nobody can order is
+            # a price list entry, not a thing for sale — and until you can see
+            # which is which, that is invisible.
+            facet("where", "Can be ordered",
+                  lambda e: ("Online and at the till" if e["guest_bookable"] and e["sold_in_pos"]
+                             else "Guests online" if e["guest_bookable"]
+                             else "At the till only" if e["sold_in_pos"]
+                             else "Staff arrange it"),
+                  order=["Online and at the till", "Guests online", "At the till only",
+                         "Staff arrange it"]),
+            facet("stock", "Stock",
+                  lambda e: "Comes out of stock" if e["stock_item_id"] else "Not stock-tracked",
+                  order=["Comes out of stock", "Not stock-tracked"]),
+            facet("notice", "Notice needed",
+                  lambda e: f"{e['lead_time_days']} days" if (e["lead_time_days"] or 0) > 0
+                  else "None"),
+        ],
+        sorts=[
+            sort_option("order", "House order", lambda e: (e["sort_order"] or 0,
+                                                           (e["name"] or "").lower())),
+            sort_option("price", "Dearest first", lambda e: e["price"] or 0, reverse=True),
+            sort_option("name", "Name", lambda e: (e["name"] or "").lower()),
+        ],
+        default_sort="order",
+    )
+    return render_template("admin_extras.html", extras=lv["rows"], lv=lv)
 
 
 @app.route("/admin/extras/new", methods=["POST"])
@@ -16268,8 +16373,40 @@ def admin_feedback():
     ).fetchall()
     avg_rating = conn.execute("SELECT AVG(rating) AS a FROM guest_feedback").fetchone()["a"]
     conn.close()
+
+    def verdict(e):
+        """Grouped by what it means, not by the number. Nobody comes to this
+        page looking for "the fours" — they come looking for what went wrong."""
+        r = e["rating"] or 0
+        if r <= 2:
+            return "Unhappy"
+        return "Fine" if r == 3 else "Delighted"
+
+    lv = list_view(
+        entries, request.args,
+        search=["guest_name", "comment", "room_name", "reference_code"],
+        search_hint="Search guest, room, reference or what they said",
+        facets=[
+            facet("verdict", "Verdict", verdict, order=["Unhappy", "Fine", "Delighted"]),
+            facet("room", "Room", lambda e: e["room_name"], limit=10),
+            facet("said", "Wrote something",
+                  lambda e: "With a comment" if (e["comment"] or "").strip() else "Rating only",
+                  order=["With a comment", "Rating only"]),
+            facet("featured", "On the website",
+                  lambda e: "Featured" if e["featured"] else "Not featured",
+                  order=["Featured", "Not featured"]),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda e: e["submitted_at"] or "",
+                        reverse=True),
+            sort_option("worst", "Worst first", lambda e: (e["rating"] or 0,
+                                                           e["submitted_at"] or "")),
+            sort_option("best", "Best first", lambda e: e["rating"] or 0, reverse=True),
+        ],
+        default_sort="recent",
+    )
     return render_template(
-        "admin_feedback.html", entries=entries,
+        "admin_feedback.html", entries=lv["rows"], lv=lv,
         avg_rating=round(avg_rating, 1) if avg_rating is not None else None,
     )
 

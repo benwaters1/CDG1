@@ -35,8 +35,17 @@
   </div>
 </form>
 
+{% include "_list_toolbar.html" %}
+
 {% if not issues %}
-  <div class="empty-state">No {{ status_filter if status_filter != 'all' else '' }} room issues.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that.
+      <a href="{{ url_for('room_issues', status=status_filter) }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No {{ status_filter if status_filter != 'all' else '' }} room issues.
+    {% endif %}
+  </div>
 {% else %}
   <div class="mini-list">
     {% for issue in issues %}
