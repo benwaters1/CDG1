@@ -1,0 +1,47 @@
+{# Shared refund form — rooms, dinners and workshop registrations all use this.
+
+   House terms are non-refundable, so a refund is always a deliberate
+   exception: it asks for an amount and a mandatory reason rather than being a
+   one-click "give it all back". Folded away behind a summary so it never sits
+   open next to routine actions.
+
+   Callers pass: action (POST url), remaining (still refundable),
+   already_refunded (total handed back so far). #}
+<details class="refund-box">
+  <summary>
+    Refund
+    {% if already_refunded > 0 %}
+    <span class="mini-status status-pending">€{{ '%.2f'|format(already_refunded) }} refunded{% if remaining > 0 %} · €{{ '%.2f'|format(remaining) }} left{% endif %}</span>
+    {% endif %}
+  </summary>
+  {% if remaining <= 0 %}
+  <p class="upload-hint">Fully refunded — nothing left to give back.</p>
+  {% else %}
+  <form method="post" action="{{ action }}"
+        onsubmit="return confirm('Issue this refund? This moves real money.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Amount (€)</label>
+        <input type="number" name="amount" step="0.01" min="0.01" max="{{ '%.2f'|format(remaining) }}"
+               placeholder="{{ '%.2f'|format(remaining) }}">
+        <span class="upload-hint">Blank = all €{{ '%.2f'|format(remaining) }}</span>
+      </div>
+      <div>
+        <label class="field-label">Method</label>
+        <select name="method">
+          <option value="stripe">Stripe (card)</option>
+          <option value="bank_transfer">Bank transfer</option>
+          <option value="cash">Cash</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Reason (required)</label>
+        <input type="text" name="reason" required placeholder="e.g. booked twice by mistake">
+      </div>
+    </div>
+    <button type="submit" class="btn-mini btn-mini-danger">Issue refund</button>
+  </form>
+  {% endif %}
+</details>

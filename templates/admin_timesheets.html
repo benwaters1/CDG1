@@ -55,6 +55,7 @@
 {% else %}
   <div class="task-list">
     {% for e in entries %}
+    {% set impossible = e['clock_out_at'] and e['clock_out_at'] < e['clock_in_at'] %}
     <div class="task-row">
       <span class="task-title" style="flex:0 0 160px;">{{ e['user_name'] }}</span>
       <span class="upload-hint" style="flex:1;">
@@ -62,10 +63,35 @@
         {% if e['clock_out_at'] %}{{ local_time_str(e['clock_out_at']) }}{% else %}<strong style="color:var(--steel-deep);">still clocked in</strong>{% endif %}
       </span>
       <span class="upload-hint">
-        {% if e['clock_out_at'] %}{{ '%.2f'|format(net_hours(e)) }}h{% endif %}
+        {% if e['clock_out_at'] and not impossible %}{{ '%.2f'|format(hours_by_entry.get(e['id'], 0)) }}h{% endif %}
+        {% if impossible %}<span class="mini-status status-declined">ends before it starts</span>{% endif %}
         {% if e['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:6px;">auto-closed — forgot to log out?</span>{% endif %}
       </span>
     </div>
+    {% if impossible %}
+    {# Excluded from every hours total, so it can't quietly distort pay or the
+       labour cost — but it stays visible and fixable until someone deals with it. #}
+    <div class="refund-box" style="margin:-4px 0 10px;">
+      <p class="upload-hint" style="margin-top:0;">
+        This shift is recorded as ending before it started, so it counts as zero hours everywhere.
+        Set the real clock-out, or void it if nobody can remember.
+      </p>
+      <form method="post" action="{{ url_for('repair_time_entry', entry_id=e['id']) }}"
+            style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+          <label class="field-label">Actual clock-out</label>
+          <input type="datetime-local" name="clock_out_at" required>
+        </div>
+        <button type="submit" name="action" value="set" class="btn-mini">Correct it</button>
+        <button type="submit" name="action" value="void" class="btn-mini btn-mini-danger"
+                formnovalidate
+                onclick="return confirm('Record this shift as zero hours? The clock-in stays on file.');">
+          Void — zero hours
+        </button>
+      </form>
+    </div>
+    {% endif %}
     {% endfor %}
   </div>
 {% endif %}

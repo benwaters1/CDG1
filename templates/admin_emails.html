@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Emails{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Emails</h1>
+  <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email{% if held %} ({{ held }}){% endif %}</a>
+  <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation settings</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Reusable templates for guest emails — announcements, offers, pre-arrival notes. Send to a chosen audience, or set one to go out automatically around a guest's stay.</p>
+
+{% if not email_configured %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Email isn't connected yet.</strong> Templates can be written and previewed, but nothing can actually be sent until <code>RESEND_API_KEY</code> or the <code>SMTP_*</code> settings are configured — see DEPLOY.md.
+</div>
+{% endif %}
+
+{% if held %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>{{ held }} message{{ '' if held == 1 else 's' }} couldn't be sent</strong> — including guest confirmations. They are being kept, not dropped, and can go out once email is connected.
+  <a href="{{ url_for('admin_email_outbox') }}">See what's waiting</a>
+</div>
+{% endif %}
+
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">{{ templates|length }}</div>
+    <div class="overview-label">Templates</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ templates|selectattr('trigger_active')|list|length }}</div>
+    <div class="overview-label">Sending automatically</div>
+  </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if optouts }}">
+    <div class="overview-value">{{ optouts }}</div>
+    <div class="overview-label">Opted out</div>
+  </div>
+</div>
+
+<details class="refund-box" style="margin-bottom:20px;">
+  <summary>New template</summary>
+  <form method="post" action="{{ url_for('new_campaign_template') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Name</label>
+        <input type="text" name="name" required placeholder="Autumn &amp; Winter offer">
+      </div>
+      <div>
+        <label class="field-label">Area</label>
+        <select name="area">
+          {% for a in areas %}<option value="{{ a }}">{{ a|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Category (optional)</label>
+        <input type="text" name="category" placeholder="Offers, Pre-arrival…">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Subject</label>
+        <input type="text" name="subject" required placeholder="Bonjour {{ '{{first_name}}' }} — a note from the château">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Message</label>
+        <textarea name="body" rows="4" placeholder="Bonjour {{ '{{first_name}}' }},&#10;&#10;…"></textarea>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Create</button>
+  </form>
+</details>
+
+<h2 class="section-heading">Templates</h2>
+{% if not templates %}
+  <div class="empty-state">No templates yet — create one above.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Name</th><th>Subject</th><th>Area</th><th>Category</th><th>Automatic</th></tr></thead>
+    <tbody>
+      {% for t in templates %}
+      <tr>
+        <td><a href="{{ url_for('edit_campaign_template', template_id=t['id']) }}">{{ t['name'] }}</a></td>
+        <td>{{ t['subject'] }}</td>
+        <td>{{ t['area']|capitalize }}</td>
+        <td>{{ t['category'] or '—' }}</td>
+        <td>
+          {% if t['trigger_active'] %}
+            {% set off = t['trigger_offset_days'] or 0 %}
+            <span class="mini-status status-onshift">
+              {{ off|abs }}d {{ 'before' if off < 0 else 'after' }} {{ t['trigger_event'] }}
+            </span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Recent sends</h2>
+{% if not recent %}
+  <div class="empty-state">Nothing sent yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>When</th><th>Template</th><th>Subject</th><th class="num">Recipients</th><th class="num">Failed</th></tr></thead>
+    <tbody>
+      {% for r in recent %}
+      <tr>
+        <td>{{ local_datetime_str(r['at']) }}</td>
+        <td>{{ r['template_name'] or '—' }}</td>
+        <td>{{ r['subject'] }}</td>
+        <td class="num">{{ r['sent'] }}</td>
+        <td class="num">{% if r['failed'] %}<span class="mini-status status-pending">{{ r['failed'] }}</span>{% else %}0{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Opt-outs</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Anyone here is excluded from every campaign and automated send. Their own booking confirmations still reach them.
+  Every campaign email carries its own unsubscribe link, so guests land here by themselves —
+  add an address by hand only when someone asks you directly.
+</p>
+<form method="post" action="{{ url_for('add_email_optout') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div><label class="field-label">Email</label><input type="email" name="email" required></div>
+  <div style="flex:2 1 200px;"><label class="field-label">Reason (optional)</label><input type="text" name="reason"></div>
+  <button type="submit" class="btn-mini">Add</button>
+</form>
+
+{% endblock %}

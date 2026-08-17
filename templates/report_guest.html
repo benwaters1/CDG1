@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Guest report{% endblock %}
+{% block content %}
+{% include "_report_head.html" %}
+
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.bookings }}</div>
+    <div class="overview-label">Confirmed bookings</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.new }}</div>
+    <div class="overview-label">First-time guests</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.returning }}<span class="overview-sub">{{ (data.returning_pct ~ '%') if data.returning_pct is not none }}</span></div>
+    <div class="overview-label">Returning guests</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ (data.feedback_avg ~ '/5') if data.feedback_avg is not none else '—' }}</div>
+    <div class="overview-label">Average rating ({{ data.feedback_count }})</div>
+  </div>
+</div>
+
+<h2 class="section-heading">Highest spend this period</h2>
+{% if not data.top_guests %}
+  <div class="empty-state">No confirmed bookings in this period.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Guest</th><th class="num">Stays</th><th class="num">Spend</th></tr></thead>
+    <tbody>
+      {% for g in data.top_guests %}
+      <tr>
+        <td><a href="{{ url_for('guest_booking_history', email=g.email) }}">{{ g.name or g.email }}</a></td>
+        <td class="num">{{ g.stays }}</td>
+        <td class="num">€{{ '{:,.2f}'.format(g.total) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+<p class="upload-hint">"Returning" means they had an earlier confirmed stay before this one — counted per booking, so one guest visiting twice in a period shows once as new and once as returning.</p>
+
+{% endblock %}

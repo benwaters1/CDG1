@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}{{ template['name'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ template['name'] }}</h1>
+  <a href="{{ url_for('admin_emails') }}" class="small-link" style="color:var(--steel); align-self:center;">&larr; All emails</a>
+</div>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="detail-card">
+    <div class="refund-fields">
+      <div><label class="field-label">Name</label><input type="text" name="name" value="{{ template['name'] }}" required></div>
+      <div>
+        <label class="field-label">Area</label>
+        <select name="area">
+          {% for a in areas %}<option value="{{ a }}" {{ 'selected' if template['area'] == a }}>{{ a|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label class="field-label">Category</label><input type="text" name="category" value="{{ template['category'] or '' }}"></div>
+    </div>
+
+    <label class="field-label">Subject</label>
+    <input type="text" name="subject" value="{{ template['subject'] }}" required>
+
+    <label class="field-label">Message</label>
+    <textarea name="body" rows="16" style="font-family:inherit; line-height:1.55;">{{ template['body'] }}</textarea>
+
+    <p class="upload-hint">
+      Merge fields — type them exactly, including the double braces:
+      {% for field, desc in merge_fields.items() %}<code>&#123;&#123;{{ field }}&#125;&#125;</code>{{ ', ' if not loop.last }}{% endfor %}.
+      Anything else in braces is left alone, so ordinary punctuation and prices are safe.
+    </p>
+
+    <h3 style="margin-top:22px;">Send automatically</h3>
+    <p class="upload-hint" style="margin-top:-4px;">Optional. Leave off to send this by hand only.</p>
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Around</label>
+        <select name="trigger_event">
+          <option value="">— don't send automatically —</option>
+          <option value="arrival" {{ 'selected' if template['trigger_event'] == 'arrival' }}>Guest arrival</option>
+          <option value="departure" {{ 'selected' if template['trigger_event'] == 'departure' }}>Guest departure</option>
+          <option value="workshop_start" {{ 'selected' if template['trigger_event'] == 'workshop_start' }}>Workshop start</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Days offset</label>
+        <input type="number" name="trigger_offset_days" step="1"
+               value="{{ template['trigger_offset_days'] if template['trigger_offset_days'] is not none else '' }}"
+               placeholder="-7">
+        <span class="upload-hint">negative = before, positive = after</span>
+      </div>
+      <div class="refund-reason">
+        <label class="checkbox-row">
+          <input type="checkbox" name="trigger_active" value="1" {{ 'checked' if template['trigger_active'] }}>
+          <span>Active — send this automatically</span>
+        </label>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-primary">Save template</button>
+  </div>
+</form>
+
+<h2 class="section-heading">Preview</h2>
+<p class="upload-hint" style="margin-top:-6px;">Merge fields filled with a real guest, so you can see exactly what lands.</p>
+<div class="detail-card" style="background:var(--parchment);">
+  <p class="manual-body"><strong>Subject:</strong> {{ preview_subject }}</p>
+  <hr style="border:none; border-top:1px dashed var(--parchment-line); margin:10px 0;">
+  <div class="manual-body" style="white-space:pre-wrap;">{{ preview_body }}</div>
+</div>
+
+<h2 class="section-heading">Send</h2>
+{% if not email_configured %}
+<div class="flash flash-error">Email isn't connected, so nothing can be sent yet. The template and preview above still work.</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('send_campaign_template', template_id=template['id']) }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field-label">Who it goes to</label>
+  <div style="display:flex; flex-wrap:wrap; gap:14px; margin-bottom:12px;">
+    {% for key, label in segments.items() %}
+    <label class="checkbox-row">
+      <input type="checkbox" name="segments" value="{{ key }}">
+      <span>{{ label }} <span class="upload-hint">({{ audience_counts[key] }})</span></span>
+    </label>
+    {% endfor %}
+  </div>
+
+  <div class="refund-fields">
+    <div>
+      <label class="field-label">Only those who visited within</label>
+      <input type="number" name="since_months" min="1" placeholder="e.g. 24">
+      <span class="upload-hint">months — blank for all time</span>
+    </div>
+    <div>
+      <label class="field-label">Confirm recipient count</label>
+      <input type="text" name="confirm_count" placeholder="type the number">
+      <span class="upload-hint">so a big send is never one stray click</span>
+    </div>
+  </div>
+
+  <p class="upload-hint">Anyone who has opted out is removed automatically, and a guest in two segments is emailed once.</p>
+  <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+    <button type="submit" name="mode" value="test" class="btn-mini">Send a test to me</button>
+    <button type="submit" name="mode" value="real" class="btn-mini btn-mini-danger"
+            onclick="return confirm('Send this to every selected recipient? This cannot be undone.');">
+      Send for real
+    </button>
+  </div>
+</form>
+
+{% if sends %}
+<h2 class="section-heading">Recent sends of this template</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>When</th><th>To</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for s in sends %}
+      <tr>
+        <td>{{ local_datetime_str(s['created_at']) }}</td>
+        <td>{{ s['recipient_name'] or s['recipient_email'] }}</td>
+        <td>
+          <span class="mini-status status-{{ 'confirmed' if s['status'] == 'sent' else ('pending' if s['status'] in ('test','skipped') else 'declined') }}">{{ s['status'] }}</span>
+          {% if s['detail'] %}<span class="upload-hint"> {{ s['detail'] }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('delete_campaign_template', template_id=template['id']) }}"
+      onsubmit="return confirm('Delete this template? Its send history is kept.');" class="danger-zone">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-text-danger">Delete this template</button>
+</form>
+
+{% endblock %}

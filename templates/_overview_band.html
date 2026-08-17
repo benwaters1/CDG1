@@ -1,0 +1,27 @@
+{# The headline band at the top of every section.
+
+   Caller passes `cells` — the list built by one of the *_overview() helpers.
+   Deliberately dumb: it knows nothing about which section it is showing, so a
+   new section needs a builder and one include, not another template. #}
+<div class="overview-band">
+  {% for c in cells %}
+  {% set body %}
+    <div class="overview-value">
+      {{ c.value }}{% if c.sub %}<span class="overview-sub">{{ c.sub }}</span>{% endif %}
+      {% if c.delta is not none %}
+        {% set down = (c.delta is string and c.delta.startswith('-')) or (c.delta is not string and c.delta < 0) %}
+        <span class="overview-delta {{ 'overview-delta-down' if down else 'overview-delta-up' }}">
+          {{ c.delta if c.delta is string else ('+' ~ c.delta if c.delta >= 0 else c.delta) }}
+        </span>
+      {% endif %}
+    </div>
+    <div class="overview-label">{{ c.label }}</div>
+    {% if c.hint %}<div class="overview-hint">{{ c.hint }}</div>{% endif %}
+  {% endset %}
+  {% if c.endpoint %}
+    <a href="{{ url_for(c.endpoint) }}" class="overview-cell {{ 'overview-cell-alert' if c.alert }}">{{ body }}</a>
+  {% else %}
+    <div class="overview-cell {{ 'overview-cell-alert' if c.alert }}">{{ body }}</div>
+  {% endif %}
+  {% endfor %}
+</div>

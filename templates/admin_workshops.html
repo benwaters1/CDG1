@@ -14,22 +14,15 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">A workshop is the program (title, instructor, price); sessions are the specific dates it actually runs. Add a workshop, then schedule sessions under it.</p>
 
-{% set all_upcoming_rows = [] %}
-{% for rows in sessions_by_workshop.values() %}{% set all_upcoming_rows = all_upcoming_rows + rows %}{% endfor %}
-<div class="stat-tiles">
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('workshop', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ workshops|selectattr('active')|list|length }}</span><span class="stat-tile-label">Active workshops</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ all_upcoming_rows|length }}</span><span class="stat-tile-label">Upcoming sessions</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('guests', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ all_upcoming_rows|sum(attribute='remaining') }}</span><span class="stat-tile-label">Spots remaining</span></span>
-  </div>
-</div>
+{% with endpoint = 'admin_workshops' %}{% include "_period_selector.html" %}{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+{# The band is scoped to the chosen window; this line is the standing picture
+   across every future session, which is a different question. #}
+<p class="upload-hint" style="margin:-12px 0 20px;">
+  {{ workshops|selectattr('active')|list|length }} active workshop{{ '' if workshops|selectattr('active')|list|length == 1 else 's' }} ·
+  {{ upcoming_count }} upcoming session{{ '' if upcoming_count == 1 else 's' }} ·
+  {{ spots_remaining }} spots still free across them
+</p>
 
 {% if not workshops %}
   <div class="empty-state">No workshops yet. Add one to start scheduling sessions.</div>

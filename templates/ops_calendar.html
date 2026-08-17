@@ -99,14 +99,16 @@
 {% elif cal.view == 'week' %}
 <div class="cal-week">
   {% for c in cal.cells %}
-  <div class="cal-day cal-day-col {{ 'cal-day-today' if c.is_today }} {{ 'cal-day-weekend' if c.is_weekend }}">
+  <div class="cal-day {{ 'cal-day-today' if c.is_today }} {{ 'cal-day-weekend' if c.is_weekend }}">
     <a class="cal-col-head" href="{{ url_for('ops_calendar', view='day', date=c.iso) }}">
       <span class="cal-col-dow">{{ c.date.strftime('%a') }}</span>
       <span class="cal-col-num">{{ c.date.day }}</span>
     </a>
     <div class="cal-day-events">
       {% for e in c.events %}{{ event_chip(e) }}{% endfor %}
-      {% if not c.events %}<span class="cal-day-empty">—</span>{% endif %}
+      {# Purely a placeholder glyph: an empty cell already says "nothing on".
+         Hidden from screen readers so it isn't announced as content. #}
+      {% if not c.events %}<span class="cal-day-empty" aria-hidden="true">—</span>{% endif %}
     </div>
   </div>
   {% endfor %}

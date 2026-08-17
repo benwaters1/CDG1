@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}My availability{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>My Availability</h1></div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Tell us when you're normally free. This doesn't book anything — it just means the rota gets built around you instead of guessing. For a specific date, add an exception below.</p>
+
+<div class="detail-card">
+  <h3 style="margin-top:0;">A normal week</h3>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Day</th><th>Usually free?</th><th>From</th><th>Until</th></tr></thead>
+        <tbody>
+          {% for day in weekdays %}
+          {% set i = loop.index0 %}
+          {% set r = rules.get(i) %}
+          <tr>
+            <td>{{ day }}</td>
+            <td>
+              <label class="checkbox-row">
+                <input type="checkbox" name="available_{{ i }}" value="1" {% if not r or r['available'] %}checked{% endif %}>
+                <span class="upload-hint">available</span>
+              </label>
+            </td>
+            <td><input type="time" name="from_{{ i }}" value="{{ r['from_time'] if r and r['from_time'] else '' }}"></td>
+            <td><input type="time" name="to_{{ i }}" value="{{ r['to_time'] if r and r['to_time'] else '' }}"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="upload-hint">Leave the times blank if you're free all day.</p>
+    <button type="submit" class="btn-primary">Save my week</button>
+  </form>
+</div>
+
+<h2 class="section-heading">One-off dates</h2>
+<p class="upload-hint" style="margin-top:-6px;">Overrides the week above — use it for a specific day you can't do, or one you unusually can.</p>
+
+<form method="post" action="{{ url_for('add_availability_exception') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label">Date</label>
+    <input type="date" name="on_date" min="{{ today.isoformat() }}" required>
+  </div>
+  <div>
+    <label class="field-label">I am…</label>
+    <select name="available">
+      <option value="">not available</option>
+      <option value="1">available</option>
+    </select>
+  </div>
+  <div style="flex:2 1 200px;">
+    <label class="field-label">Note (optional)</label>
+    <input type="text" name="note" placeholder="Family thing, appointment…">
+  </div>
+  <button type="submit" class="btn-mini">Add</button>
+</form>
+
+{% if not exceptions %}
+  <div class="empty-state">No upcoming exceptions.</div>
+{% else %}
+<div class="mini-list">
+  {% for e in exceptions %}
+  <div class="mini-row">
+    <span class="mini-name">{{ e['on_date'] }}</span>
+    <span class="mini-role">{{ e['note'] or '' }}</span>
+    <span class="mini-status {{ 'status-onshift' if e['available'] else 'status-pending' }}">
+      {{ 'available' if e['available'] else 'not available' }}
+    </span>
+    <form method="post" action="{{ url_for('delete_availability_exception', exception_id=e['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">Remove</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

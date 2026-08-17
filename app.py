@@ -153,9 +153,19 @@ from py_vapid import Vapid
 from pywebpush import webpush, WebPushException
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "gudanes_hr.db")
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-ROOM_PHOTO_DIR = os.path.join(BASE_DIR, "room_photos")
+# Overridable so the test suite can run against a throwaway copy instead of
+# real staff and guest data, and so a deployment can put the file on a mounted
+# volume — on Railway the repo directory is ephemeral and would lose the
+# database on every deploy.
+DB_PATH = os.environ.get("GUDANES_DB_PATH") or os.path.join(BASE_DIR, "gudanes_hr.db")
+# Uploads live beside the database by default, so pointing GUDANES_DB_PATH at a
+# mounted volume moves the signed contracts, expense receipts and room photos
+# onto it too. They are every bit as unrecoverable as the database, and on a
+# platform that rebuilds the repo directory each deploy, leaving them here
+# would silently delete them on the next push.
+DATA_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or BASE_DIR
+UPLOAD_DIR = os.environ.get("GUDANES_UPLOAD_DIR") or os.path.join(DATA_DIR, "uploads")
+ROOM_PHOTO_DIR = os.environ.get("GUDANES_ROOM_PHOTO_DIR") or os.path.join(DATA_DIR, "room_photos")
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
 # Not RFC-5322-exhaustive — just enough shape-checking to reject garbage
 # and control characters (a public, unauthenticated form is the only place
@@ -529,6 +539,96 @@ def get_db():
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
     return conn
+
+
+# The wording every automated guest email starts from. Module level rather
+# than buried in init_db so the editor can offer a way back: an owner who
+# rewrites one badly — or pastes test text into it and forgets — otherwise
+# has no route to the original. That is not hypothetical; a reservation
+# confirmation sat reading "TEST SUBJECT {guest_name}" until it was spotted.
+DEFAULT_EMAIL_TEMPLATES = [
+    ("workshop_registration_received", "Workshop: Registration received",
+     "Registration received — {workshop_title}",
+     "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}), party of {party_size}, "
+     "has been received and is awaiting confirmation.\n{price_block}\n"
+     "Reference code: {reference_code}\n"
+     "Manage your registration: {manage_url}\n\n"
+     "— Château de Gudanes"),
+    ("workshop_confirmed", "Workshop: Registration confirmed",
+     "Registration confirmed — {workshop_title}",
+     "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) is confirmed. We look forward to "
+     "welcoming you.\n\nReference code: {reference_code}\n"
+     "Manage your registration: {manage_url}\n\n"
+     "— Château de Gudanes"),
+    ("workshop_declined", "Workshop: Registration declined",
+     "Registration update — {workshop_title}",
+     "Hi {guest_name},\n\nWe're sorry — we're unable to confirm your registration for {workshop_title} "
+     "({dates}). Please get in touch or try another date.\n\n— Château de Gudanes"),
+    ("workshop_cancelled", "Workshop: Registration cancelled",
+     "Registration cancelled — {workshop_title}",
+     "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) has been cancelled. Get in touch "
+     "if you'd like to rebook.\n\n— Château de Gudanes"),
+    ("workshop_deposit_receipt", "Workshop: Deposit receipt",
+     "Deposit received — {workshop_title}",
+     "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
+     "{balance_line}\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("workshop_balance_reminder", "Workshop: Balance due reminder",
+     "Balance due soon — {workshop_title}",
+     "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
+     "({dates}) is due by {balance_due_date}.\n"
+     "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
+    ("workshop_feedback_request", "Workshop: Feedback request",
+     "How was {workshop_title}?",
+     "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
+     "it went:\n{feedback_url}\n\n— Château de Gudanes"),
+    ("restaurant_reservation_received", "Restaurant: Reservation received",
+     "Dinner reservation received — Château de Gudanes",
+     "Hi {guest_name},\n\nYour dinner reservation request for {dinner_date}, party of {party_size}, "
+     "has been received and is awaiting confirmation.{dietary_line}{price_block}\n\n"
+     "Reference code: {reference_code}\n"
+     "Manage your reservation: {manage_url}\n\n"
+     "— Château de Gudanes"),
+    ("restaurant_confirmed", "Restaurant: Reservation confirmed",
+     "Dinner reservation confirmed — Château de Gudanes",
+     "Hi {guest_name},\n\nYour dinner reservation for {dinner_date}, party of {party_size}, is confirmed. "
+     "We look forward to hosting you.\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
+    ("restaurant_declined", "Restaurant: Reservation declined",
+     "Dinner reservation update — Château de Gudanes",
+     "Hi {guest_name},\n\nWe're sorry — we're unable to seat your party of {party_size} on {dinner_date}."
+     "{refund_note} Please get in touch or try another date.\n\n— Château de Gudanes"),
+    ("restaurant_cancelled", "Restaurant: Reservation cancelled",
+     "Dinner reservation cancelled — Château de Gudanes",
+     "Hi {guest_name},\n\nYour dinner reservation for {dinner_date} has been cancelled.{refund_note} Get in "
+     "touch if you'd like to rebook.\n\n— Château de Gudanes"),
+    ("room_waitlist_opening", "Automation: Room waitlist opening",
+     "A room may have opened up — Château de Gudanes",
+     "Hi {name},\n\nA booking was just cancelled or declined that overlaps the dates you're interested in "
+     "({desired_arrival} to {desired_departure}). If you'd still like to stay with us, book now before it's "
+     "taken again:\n{book_url}\n\n— Château de Gudanes"),
+    ("restaurant_waitlist_opening", "Automation: Restaurant waitlist opening",
+     "A table just opened up — Château de Gudanes",
+     "Hi {name},\n\nA table for {desired_date}, party of {party_size}, just became available. If you'd still "
+     "like to join us, reserve it now:\n{book_url}\n\n— Château de Gudanes"),
+    ("workshop_waitlist_opening", "Automation: Workshop waitlist opening",
+     "A spot just opened up — {workshop_title}",
+     "Hi {name},\n\nA spot for {workshop_title} ({dates}) just opened up. If you'd still like to join, "
+     "register now:\n{register_url}\n\n— Château de Gudanes"),
+    ("event_inquiry_received", "Events: Inquiry received",
+     "Event inquiry received — Château de Gudanes",
+     "Hi {contact_name},\n\nThank you for your interest in hosting a {event_type} at Château de Gudanes. "
+     "Your inquiry has been received and we'll be in touch shortly to discuss availability and pricing.\n\n"
+     "Reference code: {reference_code}\n"
+     "Manage your inquiry: {manage_url}\n\n— Château de Gudanes"),
+    ("event_inquiry_confirmed", "Events: Inquiry confirmed",
+     "Your event is confirmed — Château de Gudanes",
+     "Hi {contact_name},\n\nWe're delighted to confirm your {event_type} at Château de Gudanes.{price_block}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("event_inquiry_declined", "Events: Inquiry declined",
+     "Event inquiry update — Château de Gudanes",
+     "Hi {contact_name},\n\nWe're sorry — we're unable to host your {event_type} on the date requested. "
+     "Please get in touch if you'd like to discuss other dates.\n\n— Château de Gudanes"),
+]
 
 
 def init_db():
@@ -1272,11 +1372,107 @@ def init_db():
         -- Guests who have asked not to receive campaign email. Checked on
         -- every bulk and automated send; transactional mail (their own
         -- booking confirmation) is unaffected.
+        -- Workplace accidents and guest incidents in one register. A French
+        -- employer must keep a record of workplace accidents including minor
+        -- ones; guest incidents are kept alongside because the follow-up (and
+        -- often the insurer) is the same. `kind` separates them for reporting.
+        CREATE TABLE IF NOT EXISTS incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'workplace'
+                CHECK(kind IN ('workplace','guest','property','near_miss')),
+            occurred_at TEXT NOT NULL,
+            location TEXT,
+            summary TEXT NOT NULL,
+            detail TEXT,
+            severity TEXT NOT NULL DEFAULT 'minor'
+                CHECK(severity IN ('near_miss','minor','significant','serious')),
+            affected_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            affected_person TEXT,
+            reported_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            witnesses TEXT,
+            first_aid_given INTEGER NOT NULL DEFAULT 0,
+            medical_attention INTEGER NOT NULL DEFAULT 0,
+            work_days_lost INTEGER,
+            insurance_policy_id INTEGER REFERENCES insurance_policies(id) ON DELETE SET NULL,
+            reported_to_insurer_at TEXT,
+            action_taken TEXT,
+            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','actioned','closed')),
+            closed_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- Who holds which key, gate code or alarm PIN. Offboarding needs to be
+        -- able to ask "what does this person actually hold" rather than relying
+        -- on a generic checklist item that says "return keys".
+        CREATE TABLE IF NOT EXISTS access_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'key'
+                CHECK(kind IN ('key','code','alarm','fob','vehicle_key','other')),
+            location TEXT,
+            notes TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- One row per issue. Returning sets returned_at rather than deleting,
+        -- so "who had the cellar key in August" is still answerable later.
+        CREATE TABLE IF NOT EXISTS access_holdings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            access_item_id INTEGER NOT NULL REFERENCES access_items(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            holder_name TEXT,
+            issued_at TEXT NOT NULL,
+            issued_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            returned_at TEXT,
+            notes TEXT
+        );
+
+        -- What a job role REQUIRES. Certifications and documents were tracked
+        -- per person with no notion of what the role demands, so "who cannot
+        -- legally work this week" was never answerable — only "what expires".
+        CREATE TABLE IF NOT EXISTS role_requirements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_role TEXT NOT NULL,
+            requirement TEXT NOT NULL,
+            requirement_type TEXT NOT NULL DEFAULT 'certification'
+                CHECK(requirement_type IN ('certification','document')),
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(job_role, requirement, requirement_type)
+        );
+
         CREATE TABLE IF NOT EXISTS email_optouts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL UNIQUE,
             reason TEXT,
             created_at TEXT NOT NULL
+        );
+
+        -- Mail that could not be sent, kept so it can go out later.
+        --
+        -- Without this every undelivered message vanished into a console
+        -- print: a guest could pay for a stay and receive nothing, and there
+        -- was no record that a confirmation was ever owed. That is the worst
+        -- shape a failure can take here, because the guest has already paid
+        -- and neither side knows anything is missing.
+        --
+        -- Password resets and staff invitations are deliberately NOT stored
+        -- (see send_email): their body is a working credential, and one that
+        -- expires — retrying a stale reset link days later is useless, while
+        -- keeping it in a table is a real exposure.
+        CREATE TABLE IF NOT EXISTS email_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            to_address TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            ics_content TEXT,
+            ics_filename TEXT,
+            reason TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            sent_at TEXT
         );
 
         CREATE TABLE IF NOT EXISTS workshop_waitlist (
@@ -1713,6 +1909,14 @@ def init_db():
         # (a secret-key HMAC would not, since FLASK_SECRET_KEY is random when
         # unset).
         ("campaign_sends_unsubscribe_token", "ALTER TABLE campaign_sends ADD COLUMN unsubscribe_token TEXT"),
+        # Employment terms. `start_date` alone couldn't express a fixed-term
+        # contract or a trial period, and both carry hard deadlines in France:
+        # a trial period that lapses un-actioned confirms the employee, and a
+        # CDD left running past its end date becomes a CDI.
+        ("users_contract_type", "ALTER TABLE users ADD COLUMN contract_type TEXT"),
+        ("users_contract_end_date", "ALTER TABLE users ADD COLUMN contract_end_date TEXT"),
+        ("users_trial_end_date", "ALTER TABLE users ADD COLUMN trial_end_date TEXT"),
+        ("users_notice_period_days", "ALTER TABLE users ADD COLUMN notice_period_days INTEGER"),
     ):
         try:
             conn.execute(ddl)
@@ -2111,6 +2315,15 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_dedupe ON campaign_sends(dedupe_key)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_template ON campaign_sends(template_id)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_unsub ON campaign_sends(unsubscribe_token)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_occurred ON incidents(occurred_at)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)",
+        "CREATE INDEX IF NOT EXISTS idx_incidents_affected ON incidents(affected_user_id)",
+        # Offboarding asks "what does this person still hold" on every leaver.
+        "CREATE INDEX IF NOT EXISTS idx_access_holdings_user ON access_holdings(user_id, returned_at)",
+        "CREATE INDEX IF NOT EXISTS idx_access_holdings_item ON access_holdings(access_item_id)",
+        "CREATE INDEX IF NOT EXISTS idx_role_requirements_role ON role_requirements(job_role)",
+        "CREATE INDEX IF NOT EXISTS idx_users_contract_end ON users(contract_end_date)",
+        "CREATE INDEX IF NOT EXISTS idx_users_trial_end ON users(trial_end_date)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_expiry ON certifications(expiry_date)",
         "CREATE INDEX IF NOT EXISTS idx_availability_rules_user_id ON availability_rules(user_id)",
@@ -2129,90 +2342,7 @@ def init_db():
         )
         conn.commit()
 
-    default_email_templates = [
-        ("workshop_registration_received", "Workshop: Registration received",
-         "Registration received — {workshop_title}",
-         "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}), party of {party_size}, "
-         "has been received and is awaiting confirmation.\n{price_block}\n"
-         "Reference code: {reference_code}\n"
-         "Manage your registration: {manage_url}\n\n"
-         "— Château de Gudanes"),
-        ("workshop_confirmed", "Workshop: Registration confirmed",
-         "Registration confirmed — {workshop_title}",
-         "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) is confirmed. We look forward to "
-         "welcoming you.\n\nReference code: {reference_code}\n"
-         "Manage your registration: {manage_url}\n\n"
-         "— Château de Gudanes"),
-        ("workshop_declined", "Workshop: Registration declined",
-         "Registration update — {workshop_title}",
-         "Hi {guest_name},\n\nWe're sorry — we're unable to confirm your registration for {workshop_title} "
-         "({dates}). Please get in touch or try another date.\n\n— Château de Gudanes"),
-        ("workshop_cancelled", "Workshop: Registration cancelled",
-         "Registration cancelled — {workshop_title}",
-         "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) has been cancelled. Get in touch "
-         "if you'd like to rebook.\n\n— Château de Gudanes"),
-        ("workshop_deposit_receipt", "Workshop: Deposit receipt",
-         "Deposit received — {workshop_title}",
-         "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
-         "{balance_line}\n"
-         "Reference code: {reference_code}\n\n— Château de Gudanes"),
-        ("workshop_balance_reminder", "Workshop: Balance due reminder",
-         "Balance due soon — {workshop_title}",
-         "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
-         "({dates}) is due by {balance_due_date}.\n"
-         "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
-        ("workshop_feedback_request", "Workshop: Feedback request",
-         "How was {workshop_title}?",
-         "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
-         "it went:\n{feedback_url}\n\n— Château de Gudanes"),
-        ("restaurant_reservation_received", "Restaurant: Reservation received",
-         "Dinner reservation received — Château de Gudanes",
-         "Hi {guest_name},\n\nYour dinner reservation request for {dinner_date}, party of {party_size}, "
-         "has been received and is awaiting confirmation.{dietary_line}{price_block}\n\n"
-         "Reference code: {reference_code}\n"
-         "Manage your reservation: {manage_url}\n\n"
-         "— Château de Gudanes"),
-        ("restaurant_confirmed", "Restaurant: Reservation confirmed",
-         "Dinner reservation confirmed — Château de Gudanes",
-         "Hi {guest_name},\n\nYour dinner reservation for {dinner_date}, party of {party_size}, is confirmed. "
-         "We look forward to hosting you.\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
-        ("restaurant_declined", "Restaurant: Reservation declined",
-         "Dinner reservation update — Château de Gudanes",
-         "Hi {guest_name},\n\nWe're sorry — we're unable to seat your party of {party_size} on {dinner_date}."
-         "{refund_note} Please get in touch or try another date.\n\n— Château de Gudanes"),
-        ("restaurant_cancelled", "Restaurant: Reservation cancelled",
-         "Dinner reservation cancelled — Château de Gudanes",
-         "Hi {guest_name},\n\nYour dinner reservation for {dinner_date} has been cancelled.{refund_note} Get in "
-         "touch if you'd like to rebook.\n\n— Château de Gudanes"),
-        ("room_waitlist_opening", "Automation: Room waitlist opening",
-         "A room may have opened up — Château de Gudanes",
-         "Hi {name},\n\nA booking was just cancelled or declined that overlaps the dates you're interested in "
-         "({desired_arrival} to {desired_departure}). If you'd still like to stay with us, book now before it's "
-         "taken again:\n{book_url}\n\n— Château de Gudanes"),
-        ("restaurant_waitlist_opening", "Automation: Restaurant waitlist opening",
-         "A table just opened up — Château de Gudanes",
-         "Hi {name},\n\nA table for {desired_date}, party of {party_size}, just became available. If you'd still "
-         "like to join us, reserve it now:\n{book_url}\n\n— Château de Gudanes"),
-        ("workshop_waitlist_opening", "Automation: Workshop waitlist opening",
-         "A spot just opened up — {workshop_title}",
-         "Hi {name},\n\nA spot for {workshop_title} ({dates}) just opened up. If you'd still like to join, "
-         "register now:\n{register_url}\n\n— Château de Gudanes"),
-        ("event_inquiry_received", "Events: Inquiry received",
-         "Event inquiry received — Château de Gudanes",
-         "Hi {contact_name},\n\nThank you for your interest in hosting a {event_type} at Château de Gudanes. "
-         "Your inquiry has been received and we'll be in touch shortly to discuss availability and pricing.\n\n"
-         "Reference code: {reference_code}\n"
-         "Manage your inquiry: {manage_url}\n\n— Château de Gudanes"),
-        ("event_inquiry_confirmed", "Events: Inquiry confirmed",
-         "Your event is confirmed — Château de Gudanes",
-         "Hi {contact_name},\n\nWe're delighted to confirm your {event_type} at Château de Gudanes.{price_block}\n\n"
-         "Reference code: {reference_code}\n\n— Château de Gudanes"),
-        ("event_inquiry_declined", "Events: Inquiry declined",
-         "Event inquiry update — Château de Gudanes",
-         "Hi {contact_name},\n\nWe're sorry — we're unable to host your {event_type} on the date requested. "
-         "Please get in touch if you'd like to discuss other dates.\n\n— Château de Gudanes"),
-    ]
-    for template_key, label, subject, body in default_email_templates:
+    for template_key, label, subject, body in DEFAULT_EMAIL_TEMPLATES:
         if not conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone():
             conn.execute(
                 "INSERT INTO email_templates (template_key, label, subject, body, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -2358,6 +2488,38 @@ def break_minutes_for_entry(conn, time_entry_id):
         (time_entry_id,),
     ).fetchone()
     return row["m"] or 0.0
+
+
+def net_hours_for_entries(conn, entries):
+    """{entry_id: worked hours minus breaks} for a whole list, in ONE query.
+
+    The per-entry version costs a query each, and `net_hours()` called from a
+    template (where it gets no connection) OPENS A NEW CONNECTION per row. A
+    fortnight of timesheets was issuing 260+ queries and a connection per line
+    just to print the hours column; five years of history would have been
+    unusable. Any listing that shows hours for more than one entry should use
+    this instead.
+    """
+    entries = [e for e in entries if e["clock_out_at"]]
+    if not entries:
+        return {}
+    ids = [e["id"] for e in entries]
+    minutes = {}
+    # Chunked to stay under SQLite's variable limit on a long date range.
+    for i in range(0, len(ids), 400):
+        chunk = ids[i:i + 400]
+        marks = ",".join("?" * len(chunk))
+        for r in conn.execute(
+            f"""SELECT time_entry_id, COALESCE(SUM((julianday(end_at) - julianday(start_at)) * 1440), 0) AS m
+                FROM breaks WHERE end_at IS NOT NULL AND time_entry_id IN ({marks})
+                GROUP BY time_entry_id""", chunk,
+        ).fetchall():
+            minutes[r["time_entry_id"]] = r["m"] or 0.0
+    return {
+        e["id"]: max(0.0, round(hours_between(e["clock_in_at"], e["clock_out_at"])
+                                - minutes.get(e["id"], 0.0) / 60, 2))
+        for e in entries
+    }
 
 
 def net_hours(entry, conn=None):
@@ -2590,10 +2752,11 @@ def week_overtime(conn, today, threshold_hours=35):
            WHERE clock_in_at >= ? AND clock_in_at < ? AND clock_out_at IS NOT NULL""",
         (week_start_utc.isoformat(), week_end_utc.isoformat()),
     ).fetchall()
+    hours_by_entry = net_hours_for_entries(conn, rows)
     totals = {}
     for r in rows:
         bucket = totals.setdefault(r["user_id"], {"name": r["employee_name"], "hours": 0.0})
-        bucket["hours"] += net_hours(r, conn)
+        bucket["hours"] += hours_by_entry.get(r["id"], 0.0)
     return sorted(
         ({"name": v["name"], "hours": round(v["hours"], 2)} for v in totals.values() if v["hours"] > threshold_hours),
         key=lambda x: -x["hours"],
@@ -2768,13 +2931,14 @@ def timesheet_outliers(conn, today, lookback_days=14, early_hour=6, late_hour=22
            WHERE clock_out_at IS NOT NULL AND clock_in_at >= ?""",
         (since.isoformat(),),
     ).fetchall()
+    hours_by_entry = net_hours_for_entries(conn, rows)
     results = []
     for r in rows:
         clock_in_dt = parse_datetime_iso(r["clock_in_at"])
         if not clock_in_dt:
             continue
         local_in = clock_in_dt.astimezone(LOCAL_TZ)
-        hours = net_hours(r, conn)
+        hours = hours_by_entry.get(r["id"], 0.0)
         reasons = []
         if local_in.hour < early_hour:
             reasons.append(f"clocked in {local_in.strftime('%H:%M')} — unusually early")
@@ -3851,6 +4015,27 @@ def maybe_seed_offboarding(conn, user_id, old_status, new_status):
         ).fetchone()
         if not existing:
             seed_offboarding_checklist(conn, user_id)
+        # A generic "return keys" line doesn't say WHICH keys, so the one that
+        # never comes back is the one nobody remembered was issued. Add a real
+        # line per item the leaver is actually holding. Codes get different
+        # wording: a code they already know can't be handed back, it has to be
+        # changed.
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for h in access_held_by(conn, user_id):
+            label = (f"Change the {h['label']} code — they already know it"
+                     if h["kind"] in ("code", "alarm")
+                     else f"Recover: {h['label']}"
+                          + (f" (kept in {h['location']})" if h["location"] else ""))
+            already = conn.execute(
+                "SELECT 1 FROM offboarding_items WHERE user_id = ? AND label = ?",
+                (user_id, label),
+            ).fetchone()
+            if not already:
+                conn.execute(
+                    """INSERT INTO offboarding_items (user_id, label, done, sort_order, created_at)
+                       VALUES (?, ?, 0, 0, ?)""",
+                    (user_id, label, now_iso),
+                )
 
 
 def create_draft_agreement(conn, employee):
@@ -4572,7 +4757,219 @@ HR_ACTION_TYPES = {
     "return_to_work":      {"label": "Return-to-work not completed",       "actor": "owner",   "sla": 5,  "escalate": 14},
     "certification_expiry":{"label": "Certification expiring or expired",  "actor": "owner",   "sla": 30, "escalate": 60},
     "document_expiry":     {"label": "Employee document expiring",         "actor": "owner",   "sla": 30, "escalate": 60},
+    # Both of these confirm themselves by default if nobody acts, which is why
+    # they are flagged well before the date rather than on it.
+    "trial_period_ending": {"label": "Trial period ending — decide before it confirms",
+                            "actor": "owner", "sla": 14, "escalate": 21},
+    "contract_ending":     {"label": "Fixed-term contract ending — renew or end it",
+                            "actor": "owner", "sla": 30, "escalate": 45},
 }
+
+# What an employment contract can be. CDI/CDD are the French default pair; the
+# rest cover how this estate actually staffs itself across the season.
+CONTRACT_TYPES = {
+    "cdi": "CDI — permanent",
+    "cdd": "CDD — fixed term",
+    "seasonal": "Seasonal",
+    "apprentice": "Apprenticeship",
+    "freelance": "Freelance / service provider",
+}
+
+# How far ahead a trial period or a fixed term starts being flagged. Trial
+# periods get the longer runway because letting one lapse is irreversible.
+TRIAL_WARNING_DAYS = 21
+CONTRACT_WARNING_DAYS = 45
+
+INCIDENT_KINDS = {
+    "workplace": "Workplace accident (staff)",
+    "guest": "Guest incident",
+    "property": "Damage to property",
+    "near_miss": "Near miss",
+}
+INCIDENT_SEVERITIES = {
+    "near_miss": "Near miss — nobody hurt",
+    "minor": "Minor — first aid at most",
+    "significant": "Significant — medical attention",
+    "serious": "Serious — hospital or time off work",
+}
+ACCESS_KINDS = {
+    "key": "Key",
+    "code": "Gate / door code",
+    "alarm": "Alarm code",
+    "fob": "Fob or card",
+    "vehicle_key": "Vehicle key",
+    "other": "Other",
+}
+
+
+def role_compliance(conn, today):
+    """Who does not hold what their job role requires.
+
+    Certifications and documents were already tracked per person, but nothing
+    said what a ROLE demands — so the system could answer "what expires soon"
+    and never "who cannot legally work this week". Requirements are matched on
+    name, case-insensitively, because that is how they are actually typed in.
+
+    Each person gets one row per unmet requirement, with `state` one of
+    missing / expired / expiring, worst first.
+    """
+    reqs = conn.execute("SELECT * FROM role_requirements ORDER BY job_role, requirement").fetchall()
+    if not reqs:
+        return []
+    by_role = {}
+    for r in reqs:
+        by_role.setdefault((r["job_role"] or "").strip().lower(), []).append(r)
+
+    people = conn.execute(
+        "SELECT id, name, job_role FROM users WHERE role = 'employee' AND status = 'active'"
+    ).fetchall()
+    horizon = (today + timedelta(days=30)).isoformat()
+    out = []
+    for p in people:
+        needed = by_role.get((p["job_role"] or "").strip().lower())
+        if not needed:
+            continue
+        certs = {(" ".join((c["name"] or "").split())).lower(): c for c in conn.execute(
+            "SELECT name, expiry_date FROM certifications WHERE user_id = ?", (p["id"],)).fetchall()}
+        docs = {(" ".join((d["title"] or "").split())).lower(): d for d in conn.execute(
+            "SELECT title, expiry_date FROM documents WHERE user_id = ?", (p["id"],)).fetchall()}
+        for req in needed:
+            pool = certs if req["requirement_type"] == "certification" else docs
+            held = pool.get((" ".join((req["requirement"] or "").split())).lower())
+            if not held:
+                state, detail = "missing", "not on file"
+            elif held["expiry_date"] and held["expiry_date"] < today.isoformat():
+                state, detail = "expired", f"expired {held['expiry_date']}"
+            elif held["expiry_date"] and held["expiry_date"] <= horizon:
+                state, detail = "expiring", f"expires {held['expiry_date']}"
+            else:
+                continue
+            out.append({"user_id": p["id"], "name": p["name"], "job_role": p["job_role"],
+                        "requirement": req["requirement"],
+                        "requirement_type": req["requirement_type"],
+                        "state": state, "detail": detail})
+    order = {"missing": 0, "expired": 1, "expiring": 2}
+    return sorted(out, key=lambda x: (order[x["state"]], x["name"]))
+
+
+def access_held_by(conn, user_id):
+    """What one person currently holds — the real answer offboarding needs."""
+    return conn.execute(
+        """SELECT access_holdings.*, access_items.label, access_items.kind, access_items.location
+           FROM access_holdings JOIN access_items ON access_items.id = access_holdings.access_item_id
+           WHERE access_holdings.user_id = ? AND access_holdings.returned_at IS NULL
+           ORDER BY access_items.kind, access_items.label""",
+        (user_id,),
+    ).fetchall()
+
+
+def payroll_period_rows(conn, period):
+    """Per-employee payroll figures for one window, plus what makes them unsafe
+    to send.
+
+    The labour estimate elsewhere is explicitly not payroll-grade. This is the
+    hand-off to whoever actually runs payroll, so it carries its own blockers:
+    an impossible shift or a missing hourly rate is reported per person and the
+    export refuses rather than quietly sending a wrong number to the accountant.
+    """
+    start_iso, end_iso = period["start_iso"], period["end_iso"]
+    rows = []
+    for p in conn.execute(
+        """SELECT id, name, job_role, pay_rate, pay_type, contract_type
+           FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name"""
+    ).fetchall():
+        hours = conn.execute(
+            """SELECT COALESCE(SUM(
+                   (julianday(clock_out_at) - julianday(clock_in_at)) * 24
+                   - COALESCE((SELECT SUM((julianday(breaks.end_at) - julianday(breaks.start_at)) * 24)
+                               FROM breaks WHERE breaks.time_entry_id = time_entries.id
+                                 AND breaks.end_at IS NOT NULL), 0)), 0) AS h,
+                  COUNT(*) AS shifts
+               FROM time_entries
+               WHERE user_id = ? AND clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+                 AND clock_in_at >= ? AND clock_in_at < ?""",
+            (p["id"], start_iso, end_iso),
+        ).fetchone()
+        broken = conn.execute(
+            """SELECT COUNT(*) AS c FROM time_entries
+               WHERE user_id = ? AND clock_out_at IS NOT NULL AND clock_out_at < clock_in_at
+                 AND clock_in_at >= ? AND clock_in_at < ?""",
+            (p["id"], start_iso, end_iso),
+        ).fetchone()["c"]
+        absence_days = conn.execute(
+            """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
+               FROM absences WHERE user_id = ? AND start_date < ? AND end_date >= ?""",
+            (period["end_iso"], start_iso, p["id"], end_iso, start_iso),
+        ).fetchone()["d"]
+        leave_days = conn.execute(
+            """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
+               FROM leave_requests
+               WHERE user_id = ? AND status = 'approved' AND start_date < ? AND end_date >= ?""",
+            (period["end_iso"], start_iso, p["id"], end_iso, start_iso),
+        ).fetchone()["d"]
+
+        worked = round(hours["h"], 2)
+        cost = estimated_hourly_cost(worked, p["pay_rate"], p["pay_type"])
+        blockers = []
+        if broken:
+            blockers.append(f"{broken} impossible shift{'s' if broken != 1 else ''}")
+        if worked > 0 and cost is None:
+            blockers.append("no usable hourly rate on file")
+        rows.append({
+            "user_id": p["id"], "name": p["name"], "job_role": p["job_role"],
+            "contract_type": CONTRACT_TYPES.get(p["contract_type"], p["contract_type"] or "—"),
+            "hours": worked, "shifts": hours["shifts"],
+            "absence_days": int(absence_days), "leave_days": int(leave_days),
+            "pay_rate": p["pay_rate"], "cost": cost, "blockers": blockers,
+        })
+    return rows
+
+
+def contract_fields_from_form():
+    """The employment-terms fields, read and normalised in one place so the new
+    and edit paths can never drift apart. Dates are stored only when they parse;
+    a fixed-term end date on a permanent contract is dropped rather than kept as
+    a deadline that would then be chased for no reason."""
+    contract_type = request.form.get("contract_type", "").strip() or None
+    if contract_type not in CONTRACT_TYPES:
+        contract_type = None
+    def _d(field):
+        raw = request.form.get(field, "").strip()
+        return raw if parse_date(raw) else None
+    contract_end = _d("contract_end_date")
+    if contract_type in (None, "cdi"):
+        contract_end = None
+    notice = request.form.get("notice_period_days", "").strip()
+    return (contract_type, contract_end, _d("trial_end_date"),
+            int(notice) if notice.isdigit() else None)
+
+
+def contract_deadlines(conn, today):
+    """Trial periods and fixed terms coming up (or already passed).
+
+    Returns one row per person per deadline, with `days_left` negative once the
+    date is behind us — a lapsed trial period is more urgent than an upcoming
+    one, not less, so it must not be filtered out.
+    """
+    out = []
+    rows = conn.execute(
+        """SELECT id, name, job_role, contract_type, contract_end_date, trial_end_date
+           FROM users WHERE role = 'employee' AND status = 'active'"""
+    ).fetchall()
+    for r in rows:
+        trial = parse_date(r["trial_end_date"])
+        if trial and (trial - today).days <= TRIAL_WARNING_DAYS:
+            out.append({"kind": "trial", "user_id": r["id"], "name": r["name"],
+                        "job_role": r["job_role"], "on_date": trial,
+                        "days_left": (trial - today).days,
+                        "contract_type": r["contract_type"]})
+        end = parse_date(r["contract_end_date"])
+        if end and (end - today).days <= CONTRACT_WARNING_DAYS:
+            out.append({"kind": "contract", "user_id": r["id"], "name": r["name"],
+                        "job_role": r["job_role"], "on_date": end,
+                        "days_left": (end - today).days,
+                        "contract_type": r["contract_type"]})
+    return sorted(out, key=lambda x: x["on_date"])
 
 
 def hr_escalation_rules(conn):
@@ -4689,6 +5086,25 @@ def collect_hr_actions(conn, today):
     ).fetchall():
         add("document_expiry", r["id"], r["user_id"],
             f"{r['n']} — {r['title']}, expires {r['expiry_date']}", r["expiry_date"], f"/directory/{r['user_id']}")
+
+    # Contract deadlines. `since` is the date the warning window opened, not the
+    # deadline itself — the escalation clock should start when there was first
+    # something to do, otherwise a trial period only becomes "overdue" after it
+    # has already confirmed, which is exactly too late to be useful.
+    for d in contract_deadlines(conn, today):
+        if d["kind"] == "trial":
+            opened = d["on_date"] - timedelta(days=TRIAL_WARNING_DAYS)
+            add("trial_period_ending", f"trial-{d['user_id']}", d["user_id"],
+                f"{d['name']} — trial period ends {d['on_date'].isoformat()}"
+                + (" (already passed)" if d["days_left"] < 0 else f" ({d['days_left']}d)"),
+                max(opened, parse_date("2000-01-01")).isoformat(), f"/directory/{d['user_id']}")
+        else:
+            opened = d["on_date"] - timedelta(days=CONTRACT_WARNING_DAYS)
+            add("contract_ending", f"contract-{d['user_id']}", d["user_id"],
+                f"{d['name']} — {CONTRACT_TYPES.get(d['contract_type'], 'contract')} ends "
+                f"{d['on_date'].isoformat()}"
+                + (" (already passed)" if d["days_left"] < 0 else f" ({d['days_left']}d)"),
+                max(opened, parse_date("2000-01-01")).isoformat(), f"/directory/{d['user_id']}")
 
     return out
 
@@ -4886,6 +5302,11 @@ def working_time_violations(conn, from_date, to_date):
     for r in rows:
         by_user.setdefault((r["uid"], r["employee_name"]), []).append(r)
 
+    # Break minutes for every entry in one query. The weekly-hours check below
+    # used to call net_hours() per entry, so a month of compliance checking ran
+    # ~170 break lookups on a page that already does plenty.
+    hours_by_entry = net_hours_for_entries(conn, rows)
+
     violations = []
     for (uid, name), entries in by_user.items():
         # 1. rest between consecutive shifts
@@ -4931,7 +5352,7 @@ def working_time_violations(conn, from_date, to_date):
             iso_year, iso_week, _ = local_day.isocalendar()
             weekly.setdefault((iso_year, iso_week), []).append(e)
         for (iso_year, iso_week), week_entries in weekly.items():
-            hours = sum(net_hours(e, conn) for e in week_entries)
+            hours = sum(hours_by_entry.get(e["id"], 0.0) for e in week_entries)
             if hours > MAX_WEEKLY_HOURS:
                 violations.append({
                     "user_id": uid, "employee_name": name, "rule": "weekly_hours",
@@ -5180,9 +5601,11 @@ def admin_emails():
            ORDER BY at DESC LIMIT 25"""
     ).fetchall()
     optouts = conn.execute("SELECT COUNT(*) AS c FROM email_optouts").fetchone()["c"]
+    held = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
     conn.close()
     return render_template("admin_emails.html", templates=templates, recent=recent,
-                           areas=CAMPAIGN_AREAS, optouts=optouts,
+                           areas=CAMPAIGN_AREAS, optouts=optouts, held=held,
                            email_configured=bool(RESEND_API_KEY or SMTP_HOST))
 
 
@@ -5397,6 +5820,90 @@ def add_email_optout():
     return redirect(url_for("admin_emails"))
 
 
+@app.route("/admin/email-outbox")
+@owner_required
+def admin_email_outbox():
+    """Mail that never went out, and the way to send it once it can."""
+    conn = get_db()
+    waiting = conn.execute(
+        """SELECT * FROM email_outbox WHERE sent_at IS NULL
+           ORDER BY created_at DESC LIMIT 200""").fetchall()
+    waiting_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    recovered = conn.execute(
+        """SELECT * FROM email_outbox WHERE sent_at IS NOT NULL
+           ORDER BY sent_at DESC LIMIT 25""").fetchall()
+    conn.close()
+    return render_template(
+        "admin_email_outbox.html", waiting=waiting, waiting_total=waiting_total,
+        recovered=recovered, can_send=email_enabled() or resend_enabled())
+
+
+@app.route("/admin/email-outbox/send", methods=["POST"])
+@owner_required
+def send_email_outbox():
+    """Try the held mail again.
+
+    Sends one at a time and marks each as it goes, so a failure part-way
+    through leaves the ones already sent marked as sent — a retry that loses
+    track would deliver the same confirmation to a guest twice.
+    """
+    if not (email_enabled() or resend_enabled()):
+        flash("No email provider is configured yet, so there is nothing to send with.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    conn = get_db()
+    only = request.form.get("id", "").strip()
+    if only.isdigit():
+        rows = conn.execute("SELECT * FROM email_outbox WHERE id = ? AND sent_at IS NULL",
+                            (int(only),)).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM email_outbox WHERE sent_at IS NULL ORDER BY created_at LIMIT 100"
+        ).fetchall()
+
+    sent = failed = 0
+    for row in rows:
+        # keep=False: this row IS the queue entry. Re-queueing on failure
+        # would add a duplicate every time the owner pressed the button.
+        ok = send_email(row["to_address"], row["subject"], row["body"],
+                        row["ics_content"], row["ics_filename"], keep=False)
+        if ok:
+            sent += 1
+            conn.execute(
+                "UPDATE email_outbox SET sent_at = ?, attempts = attempts + 1 WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), row["id"]))
+        else:
+            failed += 1
+            conn.execute(
+                "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
+                ("retry failed", row["id"]))
+        conn.commit()
+    if sent:
+        log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
+        conn.commit()
+    conn.close()
+    flash(f"{sent} sent" + (f", {failed} still waiting." if failed else "."),
+          "success" if sent and not failed else "error" if failed else "success")
+    return redirect(url_for("admin_email_outbox"))
+
+
+@app.route("/admin/email-outbox/<int:outbox_id>/discard", methods=["POST"])
+@owner_required
+def discard_email_outbox(outbox_id):
+    conn = get_db()
+    row = conn.execute("SELECT to_address, subject FROM email_outbox WHERE id = ?",
+                       (outbox_id,)).fetchone()
+    conn.execute("DELETE FROM email_outbox WHERE id = ?", (outbox_id,))
+    if row:
+        log_audit(conn, "email_outbox_discarded", target=row["to_address"],
+                  details=row["subject"])
+    conn.commit()
+    conn.close()
+    flash("Discarded — that message will not be sent.", "success")
+    return redirect(url_for("admin_email_outbox"))
+
+
 @app.route("/admin/reports")
 @owner_required
 def admin_reports():
@@ -5545,13 +6052,52 @@ def send_email_via_resend(to_address, subject, body, ics_content=None, ics_filen
         return False
 
 
-def send_email(to_address, subject, body, ics_content=None, ics_filename=None):
+def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
+    """Keep a message that could not be sent, so it can go out later.
+
+    Deliberately opens and closes its own connection and swallows everything:
+    this runs on the failure path of a side effect, and the request that
+    triggered it has real work to finish — recording a booking, deciding an
+    expense. Failing to file a failure must not lose the thing that succeeded.
+    """
+    try:
+        conn = get_db()
+        try:
+            conn.execute(
+                """INSERT INTO email_outbox (to_address, subject, body, ics_content,
+                   ics_filename, reason, last_error, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (to_address, subject, body, ics_content, ics_filename, reason, error,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                     # pragma: no cover - last resort
+        print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
+
+
+def send_email(to_address, subject, body, ics_content=None, ics_filename=None, keep=True):
+    """Send one message, and if it cannot go out, keep it.
+
+    `keep=False` for anything whose body is itself a credential — a password
+    reset or a staff invitation. Those are short-lived by design, so a retry
+    days later is useless, and storing one leaves a working key in a table.
+    """
     if not to_address:
         return False
     if resend_enabled():
-        return send_email_via_resend(to_address, subject, body, ics_content, ics_filename)
+        if send_email_via_resend(to_address, subject, body, ics_content, ics_filename):
+            return True
+        if keep:
+            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                              "provider rejected it", "Resend API call failed")
+        return False
     if not email_enabled():
-        print(f"[email skipped — no email provider configured] To: {to_address} | Subject: {subject}")
+        print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
+        if keep:
+            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                              "no email provider configured")
         return False
     try:
         # Assigning headers can itself raise (e.g. a crafted guest_email
@@ -5579,6 +6125,9 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None):
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
+        if keep:
+            queue_undelivered(to_address, subject, body, ics_content, ics_filename,
+                              "send failed", str(e))
         return False
 
 
@@ -5991,6 +6540,14 @@ def inject_user():
         "pending_workshop_count": pending_workshop_count,
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
+        # Constants the forms need. Exposed here rather than passed through
+        # every render_template call, so a new form can't quietly render an
+        # empty dropdown because one route forgot to include them.
+        "contract_types": CONTRACT_TYPES,
+        "trial_warning_days": TRIAL_WARNING_DAYS,
+        "incident_kinds": INCIDENT_KINDS,
+        "incident_severities": INCIDENT_SEVERITIES,
+        "access_kinds": ACCESS_KINDS,
     }
 
 
@@ -6101,6 +6658,7 @@ def forgot_password():
                 f"Hi {person['name'].split(' ')[0]},\n\n"
                 f"Click this link to set a new password (valid for 1 hour):\n{reset_url}\n\n"
                 f"If you didn't request this, you can ignore this email.\n\n— Château de Gudanes",
+                keep=False,   # the body is a live credential, and expires in an hour
             )
         conn.close()
         # Same message whether or not the email matched — don't reveal who has an account.
@@ -6431,8 +6989,10 @@ def dashboard():
             "SELECT * FROM time_entries WHERE user_id = ? AND clock_in_at >= ? AND clock_out_at IS NOT NULL",
             (user["id"], month_ago_iso),
         ).fetchall()
-        my_week_hours = round(sum(net_hours(r, conn) for r in my_hours_entries if r["clock_in_at"] >= week_ago_iso), 2)
-        my_month_hours = round(sum(net_hours(r, conn) for r in my_hours_entries), 2)
+        my_hours_map = net_hours_for_entries(conn, my_hours_entries)
+        my_week_hours = round(sum(my_hours_map.get(r["id"], 0.0) for r in my_hours_entries
+                                  if r["clock_in_at"] >= week_ago_iso), 2)
+        my_month_hours = round(sum(my_hours_map.values()), 2)
         # Today's view: what's due today, overdue, or has no date yet — never
         # a future date, so this never turns into a forward-looking calendar.
         my_tasks = conn.execute(
@@ -6756,6 +7316,7 @@ def new_employee():
         notes = request.form.get("notes", "").strip()
         annual_leave_days = request.form.get("annual_leave_days", "").strip()
         annual_leave_days = int(annual_leave_days) if annual_leave_days.isdigit() else None
+        contract_type, contract_end_date, trial_end_date, notice_period_days = contract_fields_from_form()
 
         if not name or not email:
             flash("Name and email are required.", "error")
@@ -6772,11 +7333,13 @@ def new_employee():
                 """INSERT INTO users
                    (email, password_hash, role, name, job_role, phone, start_date,
                     status, pay_rate, pay_type, notes, account_claimed, invite_token, created_at,
-                    annual_leave_days)
-                   VALUES (?, ?, 'employee', ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?)""",
+                    annual_leave_days, contract_type, contract_end_date, trial_end_date,
+                    notice_period_days)
+                   VALUES (?, ?, 'employee', ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)""",
                 (email, placeholder_hash, name, job_role,
                  phone, start_date, pay_rate, pay_type, notes, invite_token,
-                 datetime.now(timezone.utc).isoformat(), annual_leave_days),
+                 datetime.now(timezone.utc).isoformat(), annual_leave_days,
+                 contract_type, contract_end_date, trial_end_date, notice_period_days),
             )
             conn.commit()
             new_employee_row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
@@ -6821,13 +7384,11 @@ def profile(user_id):
         "SELECT * FROM time_entries WHERE user_id = ? ORDER BY clock_in_at DESC LIMIT 10", (user_id,)
     ).fetchall()
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-    week_total_hours = sum(
-        net_hours(r, conn)
-        for r in conn.execute(
-            "SELECT * FROM time_entries WHERE user_id = ? AND clock_in_at >= ? AND clock_out_at IS NOT NULL",
-            (user_id, week_ago),
-        ).fetchall()
-    )
+    _week_entries = conn.execute(
+        "SELECT * FROM time_entries WHERE user_id = ? AND clock_in_at >= ? AND clock_out_at IS NOT NULL",
+        (user_id, week_ago),
+    ).fetchall()
+    week_total_hours = sum(net_hours_for_entries(conn, _week_entries).values())
     expense_claims = conn.execute(
         """SELECT * FROM expenses WHERE kind = 'staff_expense' AND submitted_by_user_id = ?
            ORDER BY submitted_at DESC""",
@@ -6882,16 +7443,27 @@ def profile(user_id):
             "SELECT * FROM equipment_items WHERE user_id = ? ORDER BY (returned_at IS NOT NULL), issued_at DESC", (user_id,)
         ).fetchall()
     leave = leave_balance(conn, user_id, person["annual_leave_days"]) if person["role"] == "employee" else None
+    # What they hold, and where they fall short of what their role requires —
+    # both owner-only, and both read BEFORE the connection closes.
+    shift_hours = net_hours_for_entries(conn, recent_shifts)
+    access_holdings = access_held_by(conn, user_id) if user["role"] == "owner" else []
+    compliance_gaps = [
+        g for g in role_compliance(conn, datetime.now(timezone.utc).date())
+        if g["user_id"] == user_id
+    ] if user["role"] == "owner" else []
     conn.close()
     onboarding_url = None
     if user["role"] == "owner" and not person["account_claimed"]:
         onboarding_url = url_for("onboard", token=person["invite_token"], _external=True)
+
     return render_template(
         "profile.html", person=person, docs=docs, onboarding_url=onboarding_url,
         recent_shifts=recent_shifts, week_total_hours=round(week_total_hours, 2),
         expense_claims=expense_claims, onboarding_items=onboarding_items, check_in_notes=check_in_notes,
         task_stats=task_stats, leave=leave, offboarding_items=offboarding_items,
         equipment_items=equipment_items, pay_rate_history=pay_rate_history,
+        access_holdings=access_holdings, compliance_gaps=compliance_gaps,
+        shift_hours=shift_hours,
     )
 
 
@@ -6920,16 +7492,19 @@ def edit_employee(user_id):
         annual_leave_days = request.form.get("annual_leave_days", "").strip()
         annual_leave_days = int(annual_leave_days) if annual_leave_days.isdigit() else None
         reason_for_leaving = request.form.get("reason_for_leaving", "").strip()
+        contract_type, contract_end_date, trial_end_date, notice_period_days = contract_fields_from_form()
 
         conn.execute(
             """UPDATE users SET name=?, job_role=?, phone=?, start_date=?,
                status=?, pay_rate=?, pay_type=?, notes=?, skills=?,
                emergency_contact_name=?, emergency_contact_phone=?, emergency_contact_relationship=?,
-               annual_leave_days=?, reason_for_leaving=?
+               annual_leave_days=?, reason_for_leaving=?,
+               contract_type=?, contract_end_date=?, trial_end_date=?, notice_period_days=?
                WHERE id=?""",
             (name, job_role, phone, start_date, status, pay_rate, pay_type, notes, skills,
              emergency_contact_name, emergency_contact_phone, emergency_contact_relationship,
-             annual_leave_days, reason_for_leaving or None, user_id),
+             annual_leave_days, reason_for_leaving or None,
+             contract_type, contract_end_date, trial_end_date, notice_period_days, user_id),
         )
         maybe_seed_offboarding(conn, user_id, person["status"], status)
         if (person["pay_rate"] or None) != (pay_rate or None) or (person["pay_type"] or None) != (pay_type or None):
@@ -7430,6 +8005,10 @@ def admin_hr():
         })
     hr_actions.sort(key=lambda x: -x["age_days"])
     hr_overdue_count = sum(1 for a in hr_actions if a["overdue"])
+    # Computed BEFORE the connection closes — building these inside the
+    # render_template() call ran them against a closed handle.
+    deadlines = contract_deadlines(conn, today)
+    compliance_gaps = role_compliance(conn, today)
 
     conn.close()
     return render_template(
@@ -7444,6 +8023,7 @@ def admin_hr():
         reviews=reviews, review_due=review_due,
         rest_hours=MIN_REST_HOURS_BETWEEN_SHIFTS,
         max_days=MAX_CONSECUTIVE_DAYS_WORKED, max_weekly=MAX_WEEKLY_HOURS,
+        deadlines=deadlines, compliance_gaps=compliance_gaps,
     )
 
 
@@ -7869,9 +8449,14 @@ def admin_timesheets():
     end = parse_date(request.args.get("end", "")) or today
 
     entries = timesheet_query(conn, employee_id, start, end)
+    # One query for all the breaks, not one per row. The template used to call
+    # net_hours() per line, which opens its OWN connection when it isn't given
+    # one — a fortnight of timesheets cost 260+ queries and a connection per
+    # row just to render the hours column.
+    hours_by_entry = net_hours_for_entries(conn, entries)
     totals_by_user = {}
     for e in entries:
-        hrs = net_hours(e, conn) if e["clock_out_at"] else 0.0
+        hrs = hours_by_entry.get(e["id"], 0.0)
         bucket = totals_by_user.setdefault(e["user_id"], {"name": e["user_name"], "hours": 0.0, "shifts": 0})
         bucket["hours"] = round(bucket["hours"] + hrs, 2)
         bucket["shifts"] += 1
@@ -7902,6 +8487,7 @@ def admin_timesheets():
 
     return render_template(
         "admin_timesheets.html", entries=entries, totals_by_user=totals_by_user,
+        hours_by_entry=hours_by_entry,
         employees=employees, employee_id=employee_id, start=start, end=end, today=today,
         total_estimated_cost=round(total_estimated_cost, 2) if any_estimate else None,
         pending_corrections_count=pending_corrections_count,
@@ -7917,6 +8503,10 @@ def export_timesheets_csv():
     start = parse_date(request.args.get("start", "")) or (today - timedelta(days=13))
     end = parse_date(request.args.get("end", "")) or today
     entries = timesheet_query(conn, employee_id, start, end)
+    # Computed while the connection is still open. This used to call net_hours()
+    # with no connection AFTER conn.close(), so exporting a long range opened
+    # one fresh database connection per row.
+    hours_by_entry = net_hours_for_entries(conn, entries)
     conn.close()
 
     rows = [
@@ -7924,7 +8514,7 @@ def export_timesheets_csv():
             "employee": e["user_name"],
             "clock_in_at": e["clock_in_at"],
             "clock_out_at": e["clock_out_at"] or "",
-            "hours": net_hours(e) if e["clock_out_at"] else "",
+            "hours": hours_by_entry.get(e["id"], "") if e["clock_out_at"] else "",
             "auto_closed": "yes" if e["auto_closed"] else "",
         }
         for e in entries
@@ -7942,9 +8532,10 @@ def export_timesheets_summary_csv():
     start = parse_date(request.args.get("start", "")) or (today - timedelta(days=13))
     end = parse_date(request.args.get("end", "")) or today
     entries = timesheet_query(conn, employee_id, start, end)
+    hours_by_entry = net_hours_for_entries(conn, entries)
     totals_by_user = {}
     for e in entries:
-        hrs = net_hours(e, conn) if e["clock_out_at"] else 0.0
+        hrs = hours_by_entry.get(e["id"], 0.0)
         bucket = totals_by_user.setdefault(e["user_id"], {"name": e["user_name"], "hours": 0.0, "shifts": 0})
         bucket["hours"] = round(bucket["hours"] + hrs, 2)
         bucket["shifts"] += 1
@@ -8010,6 +8601,385 @@ def admin_timesheet_corrections():
     ).fetchall()
     conn.close()
     return render_template("admin_timesheet_corrections.html", corrections=corrections)
+
+
+# ---------------------------------------------------------------------------
+# Incident & accident register, role compliance, access register, payroll pack.
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/incidents")
+@owner_required
+def admin_incidents():
+    conn = get_db()
+    today = datetime.now(timezone.utc).date()
+    status_filter = request.args.get("status", "open")
+    query = """SELECT incidents.*, u.name AS affected_name, r.name AS reporter_name,
+                      insurance_policies.provider AS insurer
+               FROM incidents
+               LEFT JOIN users AS u ON u.id = incidents.affected_user_id
+               LEFT JOIN users AS r ON r.id = incidents.reported_by_user_id
+               LEFT JOIN insurance_policies ON insurance_policies.id = incidents.insurance_policy_id"""
+    params = []
+    if status_filter in ("open", "actioned", "closed"):
+        query += " WHERE incidents.status = ?"
+        params.append(status_filter)
+    query += " ORDER BY incidents.occurred_at DESC"
+    incidents = conn.execute(query, params).fetchall()
+
+    year_start = date(today.year, 1, 1).isoformat()
+    stats = conn.execute(
+        """SELECT COUNT(*) AS total,
+                  COALESCE(SUM(kind = 'workplace'), 0) AS workplace,
+                  COALESCE(SUM(severity IN ('significant','serious')), 0) AS serious,
+                  COALESCE(SUM(work_days_lost), 0) AS days_lost
+           FROM incidents WHERE occurred_at >= ?""", (year_start,),
+    ).fetchone()
+    open_count = conn.execute(
+        "SELECT COUNT(*) AS c FROM incidents WHERE status = 'open'").fetchone()["c"]
+    employees = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    policies = conn.execute(
+        "SELECT id, provider, coverage_type FROM insurance_policies ORDER BY provider").fetchall()
+    conn.close()
+    overview = [
+        overview_cell("Open", open_count, alert=open_count),
+        overview_cell("This year", stats["total"]),
+        overview_cell("Workplace", stats["workplace"], hint="staff accidents"),
+        overview_cell("Significant or worse", stats["serious"], alert=stats["serious"]),
+        overview_cell("Work days lost", int(stats["days_lost"] or 0)),
+    ]
+    return render_template("admin_incidents.html", incidents=incidents, overview=overview,
+                           employees=employees, policies=policies,
+                           status_filter=status_filter, today=today)
+
+
+@app.route("/admin/incidents/new", methods=["POST"])
+@owner_required
+def new_incident():
+    occurred = request.form.get("occurred_at", "").strip()
+    summary = request.form.get("summary", "").strip()
+    if not summary or not parse_date(occurred[:10]):
+        flash("An incident needs a date and a short summary.", "error")
+        return redirect(url_for("admin_incidents"))
+    kind = request.form.get("kind", "workplace")
+    severity = request.form.get("severity", "minor")
+    if kind not in INCIDENT_KINDS or severity not in INCIDENT_SEVERITIES:
+        abort(400)
+    affected_raw = request.form.get("affected_user_id", "").strip()
+    policy_raw = request.form.get("insurance_policy_id", "").strip()
+    days_raw = request.form.get("work_days_lost", "").strip()
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO incidents (kind, occurred_at, location, summary, detail, severity,
+           affected_user_id, affected_person, reported_by_user_id, witnesses,
+           first_aid_given, medical_attention, work_days_lost, insurance_policy_id,
+           action_taken, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (kind, occurred, request.form.get("location", "").strip() or None, summary,
+         request.form.get("detail", "").strip() or None, severity,
+         int(affected_raw) if affected_raw.isdigit() else None,
+         request.form.get("affected_person", "").strip() or None,
+         (current_user() or {})["id"],
+         request.form.get("witnesses", "").strip() or None,
+         1 if request.form.get("first_aid_given") else 0,
+         1 if request.form.get("medical_attention") else 0,
+         int(days_raw) if days_raw.isdigit() else None,
+         int(policy_raw) if policy_raw.isdigit() else None,
+         request.form.get("action_taken", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    log_audit(conn, "incident_recorded", summary[:80], f"{kind}, {severity}, {occurred}")
+    conn.commit()
+    conn.close()
+    flash("Incident recorded.", "success")
+    return redirect(url_for("admin_incidents"))
+
+
+@app.route("/admin/incidents/<int:incident_id>/update", methods=["POST"])
+@owner_required
+def update_incident(incident_id):
+    status = request.form.get("status", "")
+    if status not in ("open", "actioned", "closed"):
+        abort(400)
+    conn = get_db()
+    action = request.form.get("action_taken", "").strip()
+    reported = request.form.get("reported_to_insurer") == "1"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE incidents SET status = ?,
+             action_taken = COALESCE(NULLIF(?, ''), action_taken),
+             closed_at = CASE WHEN ? = 'closed' THEN ? ELSE NULL END,
+             reported_to_insurer_at = CASE WHEN ? THEN COALESCE(reported_to_insurer_at, ?)
+                                           ELSE reported_to_insurer_at END
+           WHERE id = ?""",
+        (status, action, status, now_iso, 1 if reported else 0, now_iso, incident_id),
+    )
+    log_audit(conn, "incident_updated", f"incident #{incident_id}", f"status -> {status}")
+    conn.commit()
+    conn.close()
+    flash("Incident updated.", "success")
+    return redirect(url_for("admin_incidents"))
+
+
+@app.route("/admin/compliance")
+@owner_required
+def admin_compliance():
+    conn = get_db()
+    today = datetime.now(timezone.utc).date()
+    gaps = role_compliance(conn, today)
+    requirements = conn.execute(
+        "SELECT * FROM role_requirements ORDER BY job_role, requirement_type, requirement").fetchall()
+    by_role = {}
+    for r in requirements:
+        by_role.setdefault(r["job_role"], []).append(r)
+    known_roles = [r["job_role"] for r in conn.execute(
+        """SELECT DISTINCT job_role FROM users
+           WHERE role = 'employee' AND status = 'active'
+             AND job_role IS NOT NULL AND TRIM(job_role) != '' ORDER BY job_role""").fetchall()]
+    people_affected = len({g["user_id"] for g in gaps})
+    conn.close()
+    counts = {s: sum(1 for g in gaps if g["state"] == s) for s in ("missing", "expired", "expiring")}
+    overview = [
+        overview_cell("People not compliant", people_affected, alert=people_affected),
+        overview_cell("Missing", counts["missing"], alert=counts["missing"]),
+        overview_cell("Expired", counts["expired"], alert=counts["expired"]),
+        overview_cell("Expiring soon", counts["expiring"], hint="within 30 days"),
+        overview_cell("Rules defined", len(requirements)),
+    ]
+    return render_template("admin_compliance.html", gaps=gaps, by_role=by_role,
+                           known_roles=known_roles, overview=overview)
+
+
+@app.route("/admin/compliance/new", methods=["POST"])
+@owner_required
+def new_role_requirement():
+    job_role = request.form.get("job_role", "").strip()
+    requirement = request.form.get("requirement", "").strip()
+    rtype = request.form.get("requirement_type", "certification")
+    if not job_role or not requirement or rtype not in ("certification", "document"):
+        flash("Choose a role and name what it requires.", "error")
+        return redirect(url_for("admin_compliance"))
+    conn = get_db()
+    conn.execute(
+        """INSERT OR IGNORE INTO role_requirements (job_role, requirement, requirement_type, notes, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (job_role, requirement, rtype, request.form.get("notes", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    flash(f"{job_role} now requires {requirement}.", "success")
+    return redirect(url_for("admin_compliance"))
+
+
+@app.route("/admin/compliance/<int:req_id>/delete", methods=["POST"])
+@owner_required
+def delete_role_requirement(req_id):
+    conn = get_db()
+    conn.execute("DELETE FROM role_requirements WHERE id = ?", (req_id,))
+    conn.commit()
+    conn.close()
+    flash("Requirement removed.", "success")
+    return redirect(url_for("admin_compliance"))
+
+
+@app.route("/admin/access")
+@owner_required
+def admin_access():
+    conn = get_db()
+    items = conn.execute(
+        """SELECT access_items.*,
+                  (SELECT COUNT(*) FROM access_holdings
+                   WHERE access_holdings.access_item_id = access_items.id
+                     AND access_holdings.returned_at IS NULL) AS out_count
+           FROM access_items WHERE active = 1 ORDER BY kind, label"""
+    ).fetchall()
+    holdings = conn.execute(
+        """SELECT access_holdings.*, access_items.label, access_items.kind,
+                  users.name AS holder, users.status AS holder_status
+           FROM access_holdings
+           JOIN access_items ON access_items.id = access_holdings.access_item_id
+           LEFT JOIN users ON users.id = access_holdings.user_id
+           WHERE access_holdings.returned_at IS NULL
+           ORDER BY users.name, access_items.label"""
+    ).fetchall()
+    employees = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    # The reason this register exists: someone who has left still holding a key.
+    leavers_holding = [h for h in holdings if h["holder_status"] == "inactive"]
+    conn.close()
+    overview = [
+        overview_cell("Items on the register", len(items)),
+        overview_cell("Currently issued", len(holdings)),
+        overview_cell("Held by leavers", len(leavers_holding), alert=len(leavers_holding),
+                      hint="not returned"),
+    ]
+    return render_template("admin_access.html", items=items, holdings=holdings,
+                           employees=employees, overview=overview,
+                           leavers_holding=leavers_holding)
+
+
+@app.route("/admin/access/items/new", methods=["POST"])
+@owner_required
+def new_access_item():
+    label = request.form.get("label", "").strip()
+    kind = request.form.get("kind", "key")
+    if not label or kind not in ACCESS_KINDS:
+        flash("Give the item a name.", "error")
+        return redirect(url_for("admin_access"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO access_items (label, kind, location, notes, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (label, kind, request.form.get("location", "").strip() or None,
+         request.form.get("notes", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    flash(f"{label} added to the register.", "success")
+    return redirect(url_for("admin_access"))
+
+
+@app.route("/admin/access/issue", methods=["POST"])
+@owner_required
+def issue_access_item():
+    item_raw = request.form.get("access_item_id", "").strip()
+    user_raw = request.form.get("user_id", "").strip()
+    if not item_raw.isdigit() or not user_raw.isdigit():
+        flash("Choose an item and who it goes to.", "error")
+        return redirect(url_for("admin_access"))
+    conn = get_db()
+    already = conn.execute(
+        """SELECT 1 FROM access_holdings WHERE access_item_id = ? AND user_id = ?
+           AND returned_at IS NULL""", (int(item_raw), int(user_raw))).fetchone()
+    if already:
+        conn.close()
+        flash("They already hold that one.", "error")
+        return redirect(url_for("admin_access"))
+    conn.execute(
+        """INSERT INTO access_holdings (access_item_id, user_id, issued_at, issued_by_user_id, notes)
+           VALUES (?, ?, ?, ?, ?)""",
+        (int(item_raw), int(user_raw), datetime.now(timezone.utc).isoformat(),
+         (current_user() or {})["id"], request.form.get("notes", "").strip() or None),
+    )
+    log_audit(conn, "access_issued", f"item #{item_raw}", f"to user #{user_raw}")
+    conn.commit()
+    conn.close()
+    flash("Issued.", "success")
+    return redirect(url_for("admin_access"))
+
+
+@app.route("/admin/access/<int:holding_id>/return", methods=["POST"])
+@owner_required
+def return_access_item(holding_id):
+    conn = get_db()
+    conn.execute("UPDATE access_holdings SET returned_at = ? WHERE id = ? AND returned_at IS NULL",
+                 (datetime.now(timezone.utc).isoformat(), holding_id))
+    log_audit(conn, "access_returned", f"holding #{holding_id}", None)
+    conn.commit()
+    conn.close()
+    flash("Marked as returned.", "success")
+    return redirect(url_for("admin_access"))
+
+
+@app.route("/admin/payroll")
+@owner_required
+def admin_payroll():
+    conn = get_db()
+    period = period_from_request()
+    rows = payroll_period_rows(conn, period)
+    conn.close()
+    blocked = [r for r in rows if r["blockers"]]
+    total_hours = round(sum(r["hours"] for r in rows), 2)
+    total_cost = round(sum(r["cost"] or 0 for r in rows), 2)
+    overview = [
+        overview_cell("People", len([r for r in rows if r["hours"] > 0])),
+        overview_cell("Hours", total_hours, sub="h", hint="net of breaks"),
+        overview_cell("Estimated pay", euro(total_cost)),
+        overview_cell("Needs fixing first", len(blocked), alert=len(blocked)),
+    ]
+    return render_template("admin_payroll.html", rows=rows, period=period,
+                           overview=overview, blocked=blocked)
+
+
+@app.route("/admin/payroll/export.csv")
+@owner_required
+def export_payroll_csv():
+    conn = get_db()
+    period = period_from_request()
+    rows = payroll_period_rows(conn, period)
+    conn.close()
+    blocked = [r for r in rows if r["blockers"]]
+    if blocked:
+        # Refusing is the point. A payroll file that silently omits an
+        # impossible shift or prices someone at zero is worse than no file,
+        # because the accountant has no way to know it was wrong.
+        names = ", ".join(r["name"] for r in blocked[:4])
+        flash(f"Fix these before exporting: {names}"
+              f"{' and others' if len(blocked) > 4 else ''}.", "error")
+        return redirect(url_for("admin_payroll", period=period["period"], date=period["anchor_iso"]))
+    fieldnames = ["name", "job_role", "contract_type", "hours", "shifts",
+                  "absence_days", "leave_days", "pay_rate", "estimated_cost"]
+    payload = [{**{k: r[k] for k in fieldnames if k in r},
+                "estimated_cost": r["cost"]} for r in rows]
+    return csv_response(fieldnames, payload, f"payroll-{period['start_iso']}.csv")
+
+
+@app.route("/admin/timesheets/<int:entry_id>/repair", methods=["POST"])
+@owner_required
+def repair_time_entry(entry_id):
+    """Owner-side fix for a shift that ends before it starts.
+
+    Every other path into `time_entries` requires the EMPLOYEE to raise a
+    correction first, so an impossible entry could be reported on the Team
+    overview and then not actually be fixable by the person being told about
+    it — the alert pointed at a page with no way to act. This is the missing
+    end of that loop: set the real clock-out, or void the entry outright when
+    nobody can remember what happened.
+
+    Voiding sets clock_out_at = clock_in_at rather than deleting the row: a
+    zero-hour shift keeps the fact that someone clocked in (and the audit
+    trail of the repair) while contributing nothing to any total. Payroll
+    history is never silently destroyed.
+    """
+    conn = get_db()
+    entry = conn.execute("SELECT * FROM time_entries WHERE id = ?", (entry_id,)).fetchone()
+    if not entry:
+        conn.close()
+        abort(404)
+
+    action = request.form.get("action", "")
+    clock_in = parse_datetime_iso(entry["clock_in_at"])
+    if action == "void":
+        new_out = entry["clock_in_at"]
+        note = "voided (zero hours)"
+    else:
+        raw = request.form.get("clock_out_at", "").strip()
+        try:
+            new_out = local_datetime_input_to_utc_iso(raw)
+        except (ValueError, TypeError):
+            conn.close()
+            flash("Enter a valid clock-out date and time.", "error")
+            return redirect(url_for("admin_timesheets"))
+        if parse_datetime_iso(new_out) <= clock_in:
+            conn.close()
+            flash("The clock-out has to be after the clock-in.", "error")
+            return redirect(url_for("admin_timesheets"))
+        note = f"clock-out set to {local_datetime_str(new_out)}"
+
+    conn.execute(
+        "UPDATE time_entries SET clock_out_at = ?, auto_closed = 0 WHERE id = ?",
+        (new_out, entry_id),
+    )
+    person = conn.execute("SELECT name FROM users WHERE id = ?", (entry["user_id"],)).fetchone()
+    log_audit(conn, "timesheet_repaired", f"time_entry #{entry_id}",
+              f"{person['name'] if person else 'Unknown'}: was {entry['clock_in_at']} → "
+              f"{entry['clock_out_at']}; {note}")
+    conn.commit()
+    conn.close()
+    flash("Timesheet entry corrected.", "success")
+    return redirect(url_for("admin_timesheets"))
 
 
 @app.route("/admin/timesheets/corrections/<int:correction_id>/resolve", methods=["POST"])
@@ -16803,7 +17773,38 @@ def management_email_templates():
     conn = get_db()
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
     conn.close()
-    return render_template("management_email_templates.html", templates=templates)
+    # Which ones have been changed from the original wording, so the editor can
+    # offer a way back only where there is something to go back to.
+    defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
+    edited = {t["template_key"] for t in templates
+              if t["template_key"] in defaults
+              and (t["subject"], t["body"]) != defaults[t["template_key"]]}
+    return render_template("management_email_templates.html", templates=templates,
+                           edited=edited)
+
+
+@app.route("/management/email-templates/<template_key>/restore", methods=["POST"])
+@owner_required
+def restore_email_template(template_key):
+    """Put one template back to the wording it shipped with.
+
+    Editing these is a one-way door otherwise: the originals only ever get
+    written when the row is absent, so a template rewritten badly — or left
+    holding test text — stays that way and goes out to guests.
+    """
+    default = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+    if not default:
+        abort(404)
+    _key, _label, subject, body = default
+    conn = get_db()
+    conn.execute(
+        "UPDATE email_templates SET subject = ?, body = ?, updated_at = NULL "
+        "WHERE template_key = ?", (subject, body, template_key))
+    log_audit(conn, "email_template_restored", target=template_key)
+    conn.commit()
+    conn.close()
+    flash("Restored to the original wording.", "success")
+    return redirect(url_for("management_email_templates"))
 
 
 @app.route("/management/email-templates/<template_key>/edit", methods=["POST"])
@@ -17125,6 +18126,152 @@ def export_audit_log_csv():
     conn.close()
     fieldnames = ["created_at", "actor_name", "action", "target", "details"]
     return csv_response(fieldnames, rows, "audit_log.csv")
+
+
+def readiness_checks(conn):
+    """Everything that has to be true before this is somebody's real business
+    system, and what is merely optional.
+
+    Written as data rather than prose because the answer changes as env vars
+    get set — a checklist in DEPLOY.md goes stale the moment something is
+    configured, and can't tell you that the owner password is still the seeded
+    one. Severity is 'blocker' (do not go live), 'warn' (works, but you will
+    regret it) or 'info' (optional feature, off).
+    """
+    out = []
+
+    def add(severity, area, label, ok, detail):
+        out.append({"severity": severity, "area": area, "label": label,
+                    "ok": ok, "detail": detail})
+
+    secret_set = bool(os.environ.get("FLASK_SECRET_KEY"))
+    add("blocker", "Core", "Session secret key", secret_set,
+        "Set — logins survive a restart." if secret_set else
+        "NOT set. A new key is generated every start, so everyone is logged out "
+        "each time the app restarts, and 'remember me' never works.")
+
+    add("blocker", "Core", "Debug mode off", not DEBUG_MODE,
+        "Off." if not DEBUG_MODE else
+        "ON. Anyone hitting an error gets an interactive Python console on your server.")
+
+    add("warn", "Core", "Public web address", bool(PUBLIC_BASE_URL),
+        f"{PUBLIC_BASE_URL}" if PUBLIC_BASE_URL else
+        "Not set. Links in automated email (balance reminders, campaigns) will "
+        "point at localhost and be useless to the recipient.")
+
+    email_ok = email_enabled()
+    held = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    if email_ok:
+        email_detail = ("Resend" if resend_enabled() else "SMTP") + " configured."
+    else:
+        email_detail = "Not configured. No booking confirmations, no reminders, no campaigns."
+        if held:
+            email_detail += (f" {held} message{'' if held == 1 else 's'} "
+                             f"{'is' if held == 1 else 'are'} being held until this is set up.")
+    add("blocker", "Email", "Outbound email", email_ok, email_detail)
+
+    # Worth its own line: with a provider configured, anything still held is
+    # mail that was actually rejected, which the email check above would
+    # otherwise show as a clean pass.
+    if held:
+        add("warn" if email_ok else "info", "Email", "Held email", False,
+            f"{held} message{'' if held == 1 else 's'} could not be sent and "
+            f"{'is' if held == 1 else 'are'} waiting. Review them under Emails → Held email.")
+
+    stripe_ok = stripe_enabled()
+    add("warn", "Payments", "Stripe", stripe_ok,
+        "Configured." if stripe_ok else
+        "Not configured. Guests can still book; nobody can pay online.")
+    if stripe_ok:
+        add("blocker", "Payments", "Stripe webhook secret", bool(STRIPE_WEBHOOK_SECRET),
+            "Set." if STRIPE_WEBHOOK_SECRET else
+            "MISSING while Stripe is live. Payments will be taken and the booking "
+            "never confirmed, because the confirmation arrives by webhook.")
+
+    add("warn", "Security", "Vault encryption key", vault_enabled(),
+        "Set." if vault_enabled() else
+        "Not set. The Vault can't store anything, so codes and passwords have "
+        "nowhere safe to live.")
+
+    owner = conn.execute(
+        "SELECT id, email, password_hash FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+    default_pw = bool(owner) and check_password_hash(owner["password_hash"], "changeme")
+    add("blocker", "Security", "Owner password changed", not default_pw,
+        "Changed." if not default_pw else
+        "STILL THE SEEDED PASSWORD. Anyone who has seen the setup notes can log "
+        "in as you.")
+
+    terms = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'terms_text'").fetchone()
+    terms_draft = not terms or "DRAFT" in (terms["value"] or "")[:200]
+    add("warn", "Legal", "Terms & conditions", not terms_draft,
+        "Replaced." if not terms_draft else
+        "Still the placeholder draft. Guests are agreeing to it at booking.")
+
+    company = conn.execute(
+        "SELECT registered_address FROM company_info WHERE id = 1").fetchone()
+    has_address = bool(company and (company["registered_address"] or "").strip())
+    add("warn", "Legal", "Registered address", has_address,
+        "On file." if has_address else
+        "Not set. Marketing email has to identify the sender by postal address; "
+        "the footer currently omits it.")
+
+    last_backup = conn.execute(
+        "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    days = None
+    if last_backup:
+        d = parse_date((last_backup["created_at"] or "")[:10])
+        days = (datetime.now(timezone.utc).date() - d).days if d else None
+    add("warn", "Data", "Recent backup", days is not None and days <= 30,
+        f"Last taken {days} day{'s' if days != 1 else ''} ago." if days is not None else
+        "Never downloaded.")
+
+    broken = conn.execute(
+        """SELECT COUNT(*) AS c FROM time_entries
+           WHERE clock_out_at IS NOT NULL AND clock_out_at < clock_in_at""").fetchone()["c"]
+    add("warn", "Data", "Timesheets sane", broken == 0,
+        "No impossible shifts." if not broken else
+        f"{broken} shift{'s' if broken != 1 else ''} end before they start — "
+        "payroll export is blocked until they're fixed.")
+
+    for label, token, why in (
+        ("Kiosk display token", OFFICE_DISPLAY_TOKEN,
+         "the wall display has to be logged in by hand and drops out after 12 hours"),
+        ("Calendar sync token", ICAL_SYNC_TOKEN, "iCal sync can't be triggered on a schedule"),
+        ("Daily digest token", DIGEST_TOKEN, "the daily summary email can't be triggered"),
+        ("Outlook add-in token", GUEST_LOOKUP_TOKEN, "the Outlook add-in can't look anything up"),
+    ):
+        add("info", "Optional", label, bool(token), "Set." if token else f"Not set — {why}.")
+
+    add("info", "Optional", "Mailbox scanning (Microsoft Graph)", graph_enabled(),
+        f"{len(MS_GRAPH_MAILBOXES)} mailbox(es)." if graph_enabled() else
+        "Not connected — inbox flags and reply drafting are off.")
+    add("info", "Optional", "Reply drafting (Claude)", claude_configured(),
+        "Configured." if claude_configured() else "Not configured.")
+    return out
+
+
+@app.route("/admin/readiness")
+@owner_required
+def admin_readiness():
+    conn = get_db()
+    checks = readiness_checks(conn)
+    conn.close()
+    blockers = [c for c in checks if c["severity"] == "blocker" and not c["ok"]]
+    warnings = [c for c in checks if c["severity"] == "warn" and not c["ok"]]
+    by_area = {}
+    for c in checks:
+        by_area.setdefault(c["area"], []).append(c)
+    overview = [
+        overview_cell("Must fix", len(blockers), alert=len(blockers)),
+        overview_cell("Worth fixing", len(warnings), alert=len(warnings)),
+        overview_cell("Checks passing", sum(1 for c in checks if c["ok"]),
+                      sub=f"/{len(checks)}"),
+    ]
+    return render_template("admin_readiness.html", by_area=by_area, overview=overview,
+                           blockers=blockers, warnings=warnings)
 
 
 @app.route("/admin/backup")
@@ -19722,6 +20869,20 @@ def admin_outlook_addin():
     )
 
 
+def start_background_work():
+    """Start the automation loop for this process.
+
+    Must be called exactly once per process. It sends balance reminders,
+    campaign triggers, waitlist openings and the daily digest, so two of them
+    means guests get everything twice — which is why production runs a single
+    gunicorn worker (see Procfile) rather than scaling out.
+
+    Kept out of module import on purpose: importing app.py should never start
+    a thread that emails people. The test suite imports this module.
+    """
+    threading.Thread(target=automation_loop, daemon=True).start()
+
+
 if __name__ == "__main__":
     init_db()
     # Running this file directly is the local-development path (production
@@ -19763,6 +20924,6 @@ if __name__ == "__main__":
     # reloader isn't in play at all) keeps a single automation loop per
     # running server instead of one per reloader generation.
     if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        threading.Thread(target=automation_loop, daemon=True).start()
+        start_background_work()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE, use_reloader=use_reloader, threaded=True)

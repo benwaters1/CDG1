@@ -1,0 +1,54 @@
+{% extends "public_base.html" %}
+{% block title %}Email preferences{% endblock %}
+{% block content %}
+
+<div class="narrow-card">
+{% if state == "confirm" %}
+  <h1>Unsubscribe</h1>
+  <p class="manual-body">
+    {% if name %}{{ name.split(' ')[0] }}, this{% else %}This{% endif %} will stop
+    announcements and offers going to <strong>{{ email }}</strong>.
+  </p>
+  <p class="manual-body">
+    You'll still receive emails about your own bookings — confirmations, changes
+    and anything to do with a stay, a dinner or a workshop you've reserved.
+  </p>
+  {# The link is only ever followed on POST: inboxes and security scanners fetch
+     every URL in a message, so acting on the GET would unsubscribe people who
+     never clicked. #}
+  <form method="post" style="margin-top:18px;">
+    <button type="submit" class="btn-primary" style="margin-top:0;">Unsubscribe {{ email }}</button>
+  </form>
+
+{% elif state == "already" %}
+  <h1>Already unsubscribed</h1>
+  <p class="manual-body">
+    <strong>{{ email }}</strong> is already off the list — no announcements or
+    offers are being sent to it.
+  </p>
+  <p class="manual-body">If you'd like to start receiving them again, just reply to any
+    email from us and we'll put you back on.</p>
+
+{% elif state == "done" %}
+  <h1>Done</h1>
+  <p class="manual-body">
+    <strong>{{ email }}</strong> won't receive any more announcements or offers.
+  </p>
+  <p class="manual-body">
+    Emails about your own bookings will still reach you. If you'd like to be
+    added back later, reply to any email from us.
+  </p>
+
+{% else %}
+  <h1>Link not recognised</h1>
+  <p class="manual-body">
+    This unsubscribe link isn't one we recognise — it may have been altered on its
+    way through, or belong to a very old message.
+  </p>
+  <p class="manual-body">
+    Reply to any email from us asking to be removed and we'll take care of it.
+  </p>
+{% endif %}
+</div>
+
+{% endblock %}

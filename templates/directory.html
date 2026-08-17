@@ -17,23 +17,11 @@
 </div>
 {% if user['role'] != 'owner' %}<p class="pay-disclaimer" style="margin-top:-10px;">Who's on the team, and their phone number if you need to reach someone.</p>{% endif %}
 
-{% if user['role'] == 'owner' %}
-<div class="stat-tiles">
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('employee', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ team_counts.active }}</span><span class="stat-tile-label">Active employees</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('shifts', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ team_counts.on_shift }}</span><span class="stat-tile-label">On shift now</span></span>
-  </div>
-  {% if team_counts.unclaimed %}
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('lock', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ team_counts.unclaimed }}</span><span class="stat-tile-label">Invites not accepted</span></span>
-  </div>
-  {% endif %}
-</div>
+{# The overview band replaces the old tile row here — it carries the same three
+   figures plus hours, leave and open tasks, over a chosen window. #}
+{% if overview %}
+{% with endpoint = 'directory', extra = ({'q': q} if q else {}) %}{% include "_period_selector.html" %}{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 {% endif %}
 
 <form method="get" class="search-bar">

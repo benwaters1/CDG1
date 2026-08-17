@@ -11,6 +11,11 @@
     {% endif %}
   </div>
 </div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Where the money stands, and everything still waiting on your decision.</p>
+
+{% with endpoint = 'admin_approvals' %}{% include "_period_selector.html" %}{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
 <form id="bulk-approve-form" method="post" action="{{ url_for('bulk_approve_queue') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
 
 {% if not queue %}

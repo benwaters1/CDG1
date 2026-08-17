@@ -100,6 +100,17 @@
         </select>
         <button type="submit" class="btn-mini">Add</button>
       </form>
+
+      {# A real refund: unlike the ledger row above, this actually returns the
+         money via Stripe and lands in the cross-category refunds record. #}
+      {% set already_refunded = refunded_by_registration.get(r['id'], 0) %}
+      {% set remaining = (paid_by_registration.get(r['id'], 0)) - already_refunded %}
+      {% if remaining > 0 or already_refunded > 0 %}
+        {% with action = url_for('refund_workshop_admin', registration_id=r['id']) %}
+          {% include "_refund_form.html" %}
+        {% endwith %}
+      {% endif %}
+
       {% if not r['deposit_paid_at'] and r['deposit_amount'] %}
       <form method="post" action="{{ url_for('mark_workshop_deposit_paid', registration_id=r['id']) }}" style="display:inline-block; margin-top:6px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

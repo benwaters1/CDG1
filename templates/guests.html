@@ -13,7 +13,15 @@
   {% endif %}
 </div>
 
+{% if overview %}
+{% with endpoint = 'guests', extra = ({'q': q} if q else {}) %}{% include "_period_selector.html" %}{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+{% endif %}
+
 <div class="stat-tiles">
+  {# The owner's band above already carries "in residence now"; showing it twice
+     on one screen just makes the page look busier than it is. #}
+  {% if not overview %}
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('guests', 19) }}</span>
     <span class="stat-tile-body">
@@ -21,6 +29,7 @@
       <span class="stat-tile-label">In residence now</span>
     </span>
   </div>
+  {% endif %}
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">{{ upcoming|length }}</span><span class="stat-tile-label">Arriving soon</span></span>

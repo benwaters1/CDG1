@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Occupancy report{% endblock %}
+{% block content %}
+{% include "_report_head.html" %}
+
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.occupancy }}<span class="overview-sub">%</span></div>
+    <div class="overview-label">Occupancy</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.booked_nights }}<span class="overview-sub">of {{ data.capacity }}</span></div>
+    <div class="overview-label">Room-nights sold</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ ('€' ~ '{:,.0f}'.format(data.adr)) if data.adr else '—' }}</div>
+    <div class="overview-label">Average nightly rate</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">€{{ '{:,.0f}'.format(data.revenue) }}</div>
+    <div class="overview-label">Room revenue</div>
+    {% if data.refunds %}<div class="overview-hint">after €{{ '{:,.0f}'.format(data.refunds) }} refunded</div>{% endif %}
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.arrivals }}</div>
+    <div class="overview-label">Arrivals</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ data.departures }}</div>
+    <div class="overview-label">Departures</div>
+  </div>
+</div>
+
+<h2 class="section-heading">By room</h2>
+{% if not data.by_room %}
+  <div class="empty-state">No confirmed stays in this period.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Room</th><th class="num">Nights sold</th><th class="num">Occupancy</th></tr></thead>
+    <tbody>
+      {% for r in data.by_room %}
+      <tr><td>{{ r.room }}</td><td class="num">{{ r.nights }}</td><td class="num">{{ r.occupancy }}%</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+<p class="upload-hint">A stay spanning the edge of the period is counted only for the nights that fall inside it, and its revenue is apportioned the same way — so nothing is double-counted across two periods.</p>
+
+{% endblock %}
