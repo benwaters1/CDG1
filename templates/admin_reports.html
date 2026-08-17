@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>Reports</h1></div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Four reports, each covering whichever period you choose. Deliberately a short list — these are the questions worth asking regularly.</p>
+
+{% with endpoint = 'admin_reports' %}{% include "_period_selector.html" %}{% endwith %}
+
+<div class="overview-band">
+  {% for slug, meta in report_types.items() %}
+  <a href="{{ url_for('admin_report', slug=slug, period=period.period, date=period.anchor_iso) }}" class="overview-cell">
+    <div class="overview-value" style="font-size:17px;">{{ headlines[slug] }}</div>
+    <div class="overview-label">{{ meta.label }}</div>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="manual-layout">
+  {% for slug, meta in report_types.items() %}
+  <div class="manual-section">
+    <div class="manual-section-head">
+      <h3>{{ meta.label }}</h3>
+      <div class="manual-actions">
+        <a href="{{ url_for('admin_report', slug=slug, period=period.period, date=period.anchor_iso) }}" class="small-link">Open</a>
+        <a href="{{ url_for('export_report_csv', slug=slug, period=period.period, date=period.anchor_iso) }}" class="small-link">CSV</a>
+      </div>
+    </div>
+    <p class="manual-body">{{ meta.blurb }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

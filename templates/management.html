@@ -8,20 +8,17 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Business reference and control — everything that isn't day-to-day staff or guest ops lives here.</p>
 
-<div class="stat-tiles">
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current_financials.revenue) }}</span><span class="stat-tile-label">{{ current_financials.month.strftime('%B') }} revenue</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(current_financials.expenses_total) }}</span><span class="stat-tile-label">{{ current_financials.month.strftime('%B') }} expenses</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if current_financials.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if current_financials.net < 0 }}">€{{ '%.0f'|format(current_financials.net) }}</span><span class="stat-tile-label">Net (estimate)</span></span>
-  </div>
-</div>
+{# No period control here on purpose: Management holds records, not activity, so
+   a day/week/month switch would move the arrows without moving the numbers.
+   This band answers "what has run out or is about to". The month's money now
+   lives in Financial, one click away in the first card below. #}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+<p class="upload-hint" style="margin:-12px 0 20px;">
+  {{ current_financials.month.strftime('%B') }} so far: €{{ '%.0f'|format(current_financials.revenue) }} in,
+  €{{ '%.0f'|format(current_financials.expenses_total) }} out,
+  <strong{% if current_financials.net < 0 %} style="color:var(--danger);"{% endif %}>{{ '−' if current_financials.net < 0 }}€{{ '%.0f'|format(current_financials.net|abs) }} net</strong> —
+  <a href="{{ url_for('management_financials') }}">full financials</a>
+</p>
 
 <h2 class="section-heading" style="margin-top:0;">Financial</h2>
 <div class="card-grid">

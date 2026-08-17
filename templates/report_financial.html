@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Financial report{% endblock %}
+{% block content %}
+{% include "_report_head.html" %}
+
+{% macro money(v) %}{{ '−' if v < 0 }}€{{ '{:,.2f}'.format(v|abs) }}{% endmacro %}
+{% macro change(c) %}
+  {% if c is not none %}
+    <span class="overview-delta {{ 'overview-delta-up' if c >= 0 else 'overview-delta-down' }}">
+      {{ '+' if c >= 0 }}{{ c }}%
+    </span>
+  {% endif %}
+{% endmacro %}
+
+<div class="overview-band">
+  {% for t in data.totals %}
+  <div class="overview-cell {{ 'overview-cell-alert' if t.label == 'Net' and t.value < 0 }}">
+    <div class="overview-value" style="font-size:20px;">{{ money(t.value) }}{{ change(t.change) }}</div>
+    <div class="overview-label">{{ t.label }}</div>
+    {% if t.label == 'Revenue' %}<div class="overview-hint">before refunds</div>{% endif %}
+    {% if t.estimated %}<div class="overview-hint">no hourly rates on file</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+<p class="upload-hint" style="margin:-12px 0 20px;">
+  Revenue less refunds, expenses and estimated labour gives the net — the figures above read left to right.
+  Labour is an estimate from clocked hours × hourly rate; salaried staff and anyone without a clean rate aren't counted.
+</p>
+
+<h2 class="section-heading">Revenue by area</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Area</th><th class="num">This period</th><th class="num">Previous</th><th class="num">Change</th></tr></thead>
+    <tbody>
+      {% for r in data.revenue_rows %}
+      <tr>
+        <td>{{ r.label }}</td>
+        <td class="num">{{ money(r.value) }}</td>
+        <td class="num">{{ money(r.prev) }}</td>
+        <td class="num">{{ change(r.change) if r.change is not none else '—' }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td><strong>Total revenue</strong></td>
+        <td class="num"><strong>{{ money(data.summary.revenue) }}</strong></td>
+        <td class="num">{{ money(data.previous.revenue) }}</td>
+        <td class="num">{{ change(data.totals[0].change) if data.totals[0].change is not none else '—' }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">What came off it</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Item</th><th class="num">This period</th><th class="num">Previous</th></tr></thead>
+    <tbody>
+      <tr><td>Refunds issued</td><td class="num">{{ money(data.summary.refunds_total) }}</td><td class="num">{{ money(data.previous.refunds_total) }}</td></tr>
+      <tr><td>Staff expenses</td><td class="num">{{ money(data.summary.staff_expenses) }}</td><td class="num">{{ money(data.previous.staff_expenses) }}</td></tr>
+      <tr><td>Supplier invoices</td><td class="num">{{ money(data.summary.supplier_expenses) }}</td><td class="num">{{ money(data.previous.supplier_expenses) }}</td></tr>
+      {% if data.summary.labour_cost is not none %}
+      <tr><td>Estimated labour</td><td class="num">{{ money(data.summary.labour_cost) }}</td><td class="num">{{ money(data.previous.labour_cost or 0) }}</td></tr>
+      {% endif %}
+      <tr>
+        <td><strong>Net</strong></td>
+        <td class="num"><strong>{{ money(data.summary.net) }}</strong></td>
+        <td class="num">{{ money(data.previous.net) }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">Refunds are attributed to the period they were issued in, not the period of the original booking. Labour is a best-effort estimate from clocked hours × hourly rate — never a payroll figure.</p>
+
+{% endblock %}

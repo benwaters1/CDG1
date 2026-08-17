@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+{% block title %}HR{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>HR</h1>
+  <a href="{{ url_for('admin_approvals') }}" class="btn-ghost">Approvals</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Certifications, availability, absence, working time and reviews — the things that need watching rather than doing.</p>
+
+{% with endpoint = 'admin_hr' %}{% include "_period_selector.html" %}{% endwith %}
+
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">{{ hr_overview.headcount }}</div>
+    <div class="overview-label">Active employees</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ hr_overview.on_shift }}</div>
+    <div class="overview-label">On shift now</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">
+      {{ hr_overview.hours }}<span class="overview-sub">h</span>
+      {% if hr_overview.hours_prev %}
+        {% set delta = hr_overview.hours - hr_overview.hours_prev %}
+        <span class="overview-delta {{ 'overview-delta-up' if delta >= 0 else 'overview-delta-down' }}">
+          {{ '+' if delta >= 0 }}{{ delta|round(1) }}
+        </span>
+      {% endif %}
+    </div>
+    <div class="overview-label">Hours worked</div>
+  </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if hr_overview.absence_days }}">
+    <div class="overview-value">{{ hr_overview.absence_days }}</div>
+    <div class="overview-label">Absence days</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">{{ hr_overview.leave_periods }}</div>
+    <div class="overview-label">On leave</div>
+  </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if hr_overdue_count }}">
+    <div class="overview-value">{{ hr_overdue_count }}</div>
+    <div class="overview-label">Overdue actions</div>
+  </div>
+</div>
+
+{% if deadlines %}
+<h2 class="section-heading">Contract deadlines</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  A trial period or a fixed term left to run out confirms itself. These are the ones where doing nothing
+  is a decision.
+</p>
+<div class="table-wrap" style="margin-bottom:20px;">
+  <table class="data-table">
+    <thead><tr><th>Person</th><th>What</th><th>Date</th><th>Left</th></tr></thead>
+    <tbody>
+      {% for d in deadlines %}
+      <tr>
+        <td><a href="{{ url_for('profile', user_id=d.user_id) }}">{{ d.name }}</a>
+          {% if d.job_role %}<span class="upload-hint"> — {{ d.job_role }}</span>{% endif %}</td>
+        <td>{{ 'Trial period ends' if d.kind == 'trial' else contract_types.get(d.contract_type, 'Fixed term') ~ ' ends' }}</td>
+        <td>{{ d.on_date.isoformat() }}</td>
+        <td>
+          {% if d.days_left < 0 %}
+            <span class="mini-status status-declined">{{ -d.days_left }}d ago — already {{ 'confirmed' if d.kind == 'trial' else 'lapsed' }}</span>
+          {% else %}
+            <span class="mini-status {{ 'status-declined' if d.days_left <= 7 else 'status-pending' }}">{{ d.days_left }} days</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if compliance_gaps %}
+<h2 class="section-heading">Not compliant for their role</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  {{ compliance_gaps|length }} gap{{ '' if compliance_gaps|length == 1 else 's' }} across
+  {{ compliance_gaps|map(attribute='user_id')|unique|list|length }} people —
+  <a href="{{ url_for('admin_compliance') }}">manage what each role requires</a>.
+</p>
+<div class="table-wrap" style="margin-bottom:20px;">
+  <table class="data-table">
+    <thead><tr><th>Person</th><th>Role</th><th>Requires</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for g in compliance_gaps[:12] %}
+      <tr>
+        <td><a href="{{ url_for('profile', user_id=g.user_id) }}">{{ g.name }}</a></td>
+        <td>{{ g.job_role or '—' }}</td>
+        <td>{{ g.requirement }}</td>
+        <td><span class="mini-status {{ 'status-declined' if g.state in ('missing','expired') else 'status-pending' }}">{{ g.state }}</span>
+          <span class="upload-hint"> {{ g.detail }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ certs_expiring|length }}</span>
+      <span class="stat-tile-label">Certifications expiring</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ availability_clashes|length }}</span>
+      <span class="stat-tile-label">Shift/availability clashes</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ violations|length }}</span>
+      <span class="stat-tile-label">Working-time warnings</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ review_due|length }}</span>
+      <span class="stat-tile-label">Reviews overdue</span>
+    </span>
+  </div>
+</div>
+
+{# ---------------- Chase-ups ---------------- #}
+<div class="page-head" style="margin-bottom:6px;">
+  <h2 class="section-heading" style="margin:0;">Needs action{% if hr_overdue_count %} — {{ hr_overdue_count }} overdue{% endif %}</h2>
+  <form method="post" action="{{ url_for('run_hr_escalation_now') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Run chase-ups now</button>
+  </form>
+</div>
+<p class="upload-hint" style="margin-top:-4px;">Everything across HR waiting on somebody, oldest first. Reminders and escalations fire once — this runs automatically every few hours.</p>
+
+{% if not hr_actions %}
+  <div class="empty-state" style="margin-bottom:22px;">Nothing outstanding — every approval, review and certificate is up to date.</div>
+{% else %}
+<div class="table-wrap" style="margin-bottom:22px;">
+  <table class="data-table">
+    <thead><tr><th>What</th><th>Detail</th><th class="num">Waiting</th><th>With</th><th>State</th></tr></thead>
+    <tbody>
+      {% for a in hr_actions %}
+      <tr>
+        <td><a href="{{ a['link'] }}">{{ a['label'] }}</a></td>
+        <td>{{ a['summary'] }}</td>
+        <td class="num">{{ a['age_days'] }}d{% if a['sla_days'] %} <span class="upload-hint">/ {{ a['sla_days']|int }}</span>{% endif %}</td>
+        <td>{{ 'the employee' if a['actor'] == 'subject' else 'you' }}</td>
+        <td>
+          {% if a['escalated'] %}<span class="mini-status status-declined">escalated</span>
+          {% elif a['reminded'] %}<span class="mini-status status-pending">reminded</span>
+          {% elif a['overdue'] %}<span class="mini-status status-pending">overdue</span>
+          {% else %}<span class="mini-status status-upcoming">in time</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:26px;">
+  <summary>How long before each thing gets chased</summary>
+  <form method="post" action="{{ url_for('update_hr_escalation_rules') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Item</th><th class="num">Remind after</th><th class="num">Escalate after</th><th>On</th></tr></thead>
+        <tbody>
+          {% for r in hr_rules %}
+          {% set cfg = hr_action_types.get(r['item_type'], {}) %}
+          <tr>
+            <td>{{ cfg.get('label', r['item_type']) }}</td>
+            <td class="num"><input type="number" name="sla_{{ r['id'] }}" min="1" step="1" value="{{ r['sla_days']|int }}" style="width:70px; font-size:12px;"> <span class="upload-hint">d</span></td>
+            <td class="num"><input type="number" name="esc_{{ r['id'] }}" min="1" step="1" value="{{ r['escalate_after_days']|int }}" style="width:70px; font-size:12px;"> <span class="upload-hint">d</span></td>
+            <td><input type="checkbox" name="active_{{ r['id'] }}" value="1" {{ 'checked' if r['active'] }}></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="upload-hint">"Remind" nudges whoever owes the action. "Escalate" brings it to you. An escalation set earlier than its reminder is raised to match.</p>
+    <button type="submit" class="btn-mini">Save thresholds</button>
+  </form>
+</details>
+
+{# ---------------- Certifications ---------------- #}
+<h2 class="section-heading">Certifications &amp; training</h2>
+{% if certs_expiring %}
+<div class="flash flash-error" style="margin-bottom:14px;">
+  {{ certs_expiring|length }} certification{{ '' if certs_expiring|length == 1 else 's' }} expired or expiring within 60 days.
+</div>
+<div class="mini-list" style="margin-bottom:16px;">
+  {% for c in certs_expiring %}
+  <div class="mini-row">
+    <span class="mini-name">{{ c['employee_name'] }} — {{ c['name'] }}{% if c['required'] %} <span class="mini-status status-pending">required</span>{% endif %}</span>
+    <span class="mini-role">
+      {% if c['expired'] %}<strong>expired {{ -c['days_left'] }} day{{ '' if c['days_left'] == -1 else 's' }} ago</strong>
+      {% else %}expires in {{ c['days_left'] }} day{{ '' if c['days_left'] == 1 else 's' }}{% endif %}
+      · {{ c['expiry_date'] }}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="margin-bottom:16px;">Nothing expiring in the next 60 days.</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:22px;">
+  <summary>Record a certification</summary>
+  <form method="post" action="{{ url_for('new_certification') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Employee</label>
+        <select name="user_id" required>
+          <option value="">— choose —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Certification</label>
+        <input type="text" name="name" required placeholder="Food hygiene, First aid, Driving licence...">
+      </div>
+      <div><label class="field-label">Issued by</label><input type="text" name="issuer"></div>
+      <div><label class="field-label">Reference</label><input type="text" name="reference"></div>
+      <div><label class="field-label">Issued</label><input type="date" name="issued_date"></div>
+      <div><label class="field-label">Expires</label><input type="date" name="expiry_date"></div>
+      <div class="refund-reason">
+        <label class="checkbox-row">
+          <input type="checkbox" name="required" value="1">
+          <span>Required for their job — flag loudly when it lapses</span>
+        </label>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+</details>
+
+{% if all_certs %}
+<div class="table-wrap" style="margin-bottom:26px;">
+  <table class="data-table">
+    <thead><tr><th>Employee</th><th>Certification</th><th>Issuer</th><th>Expires</th><th></th></tr></thead>
+    <tbody>
+      {% for c in all_certs %}
+      <tr>
+        <td>{{ c['employee_name'] }}</td>
+        <td>{{ c['name'] }}{% if c['required'] %} <span class="mini-status status-pending">required</span>{% endif %}</td>
+        <td>{{ c['issuer'] or '—' }}</td>
+        <td>{{ c['expiry_date'] or 'no expiry' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_certification', cert_id=c['id']) }}" onsubmit="return confirm('Remove this certification?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-text-danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{# ---------------- Availability ---------------- #}
+<h2 class="section-heading">Availability clashes</h2>
+<p class="upload-hint" style="margin-top:-6px;">Shifts assigned to someone who's said they aren't free, to {{ week_ahead }}.</p>
+{% if not availability_clashes %}
+  <div class="empty-state" style="margin-bottom:26px;">No clashes — everyone rostered is available.</div>
+{% else %}
+<div class="mini-list" style="margin-bottom:26px;">
+  {% for c in availability_clashes %}
+  <div class="mini-row">
+    <span class="mini-name">{{ c['employee_name'] }}</span>
+    <span class="mini-role">{{ c['shift_date'] }}{% if c['role_note'] %} · {{ c['role_note'] }}{% endif %}</span>
+    <span class="mini-status status-pending">unavailable{% if c['unavailable_note'] %} — {{ c['unavailable_note'] }}{% endif %}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------------- Absence ---------------- #}
+<h2 class="section-heading">Absence &amp; sickness</h2>
+{% if bradford %}
+<p class="upload-hint" style="margin-top:-6px;">Bradford Factor over the last year — spells² × days. It deliberately weights frequent short absences above one long illness. A prompt for a conversation, not a disciplinary measure.</p>
+<div class="mini-list" style="margin-bottom:14px;">
+  {% for b in bradford %}
+  <div class="mini-row">
+    <span class="mini-name">{{ b['employee_name'] }}</span>
+    <span class="mini-role">{{ b['spells'] }} spell{{ '' if b['spells'] == 1 else 's' }} · {{ b['days'] }} day{{ '' if b['days'] == 1 else 's' }}</span>
+    <span class="mini-status {{ 'status-pending' if b['score'] >= 125 else 'status-upcoming' }}">{{ b['score'] }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:16px;">
+  <summary>Record an absence</summary>
+  <form method="post" action="{{ url_for('new_absence') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Employee</label>
+        <select name="user_id" required>
+          <option value="">— choose —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Type</label>
+        <select name="kind">
+          <option value="sick">Sick</option>
+          <option value="emergency">Emergency / dependant</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="unauthorised">Unauthorised</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div><label class="field-label">From</label><input type="date" name="start_date" required></div>
+      <div><label class="field-label">To</label><input type="date" name="end_date"></div>
+      <div class="refund-reason"><label class="field-label">Reason / notes</label><input type="text" name="reason"></div>
+      <div class="refund-reason">
+        <label class="checkbox-row">
+          <input type="checkbox" name="self_certified" value="1" checked>
+          <span>Self-certified (no doctor's note)</span>
+        </label>
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Record</button>
+  </form>
+</details>
+
+{% if absences %}
+<div class="table-wrap" style="margin-bottom:26px;">
+  <table class="data-table">
+    <thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Reason</th><th>Return to work</th></tr></thead>
+    <tbody>
+      {% for a in absences %}
+      <tr>
+        <td>{{ a['employee_name'] }}</td>
+        <td><span class="mini-status status-{{ 'pending' if a['kind'] in ('unauthorised','sick') else 'upcoming' }}">{{ a['kind']|capitalize }}</span></td>
+        <td>{{ a['start_date'] }}{% if a['end_date'] != a['start_date'] %} → {{ a['end_date'] }}{% endif %}</td>
+        <td>{{ a['reason'] or '—' }}{% if not a['self_certified'] %} <span class="upload-hint">(certified)</span>{% endif %}</td>
+        <td>
+          {% if a['return_to_work_done_at'] %}
+            ✓ {{ a['return_to_work_note'] or 'done' }}
+          {% else %}
+          <form method="post" action="{{ url_for('absence_return_to_work', absence_id=a['id']) }}" class="search-bar" style="margin:0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="return_to_work_note" placeholder="Notes" style="font-size:12px;">
+            <button type="submit" class="btn-mini">Mark done</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state" style="margin-bottom:26px;">No absences recorded.</div>
+{% endif %}
+
+{# ---------------- Working time ---------------- #}
+<h2 class="section-heading">Working time, last 28 days</h2>
+<p class="upload-hint" style="margin-top:-6px;">Based on hours actually clocked, not the rota. Minimum {{ rest_hours }}h rest between shifts · maximum {{ max_days }} consecutive days · maximum {{ max_weekly }}h a week.</p>
+{% if not violations %}
+  <div class="empty-state" style="margin-bottom:26px;">No working-time issues in the last 28 days.</div>
+{% else %}
+<div class="mini-list" style="margin-bottom:26px;">
+  {% for v in violations[:30] %}
+  <div class="mini-row">
+    <span class="mini-name">{{ v['employee_name'] }}</span>
+    <span class="mini-role">{{ v['detail'] }}</span>
+    <span class="mini-status status-pending">{{ v['on_date'] }}</span>
+  </div>
+  {% endfor %}
+  {% if violations|length > 30 %}
+  <div class="mini-row"><span class="upload-hint">+{{ violations|length - 30 }} more</span></div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---------------- Reviews ---------------- #}
+<h2 class="section-heading">Performance reviews</h2>
+{% if review_due %}
+<div class="flash flash-error" style="margin-bottom:14px;">
+  No review in the last year for: {% for e in review_due %}{{ e['name'] }}{{ ', ' if not loop.last }}{% endfor %}
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:16px;">
+  <summary>Write a review</summary>
+  <form method="post" action="{{ url_for('new_performance_review') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Employee</label>
+        <select name="user_id" required>
+          <option value="">— choose —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label class="field-label">Review date</label><input type="date" name="review_date" value="{{ today.isoformat() }}" required></div>
+      <div><label class="field-label">Period from</label><input type="date" name="period_start"></div>
+      <div><label class="field-label">Period to</label><input type="date" name="period_end"></div>
+      <div>
+        <label class="field-label">Overall (1–5)</label>
+        <select name="overall_rating">
+          <option value="">—</option>
+          {% for n in [1,2,3,4,5] %}<option value="{{ n }}">{{ n }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="refund-reason"><label class="field-label">Strengths</label><textarea name="strengths" rows="2"></textarea></div>
+      <div class="refund-reason"><label class="field-label">Areas to improve</label><textarea name="improvements" rows="2"></textarea></div>
+      <div class="refund-reason"><label class="field-label">Goals for next period</label><textarea name="goals" rows="2"></textarea></div>
+    </div>
+    <p class="upload-hint">Saved as a draft. The employee sees nothing until you share it.</p>
+    <button type="submit" class="btn-mini">Save draft</button>
+  </form>
+</details>
+
+{% if reviews %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Employee</th><th>Date</th><th>Rating</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for r in reviews %}
+      <tr>
+        <td>{{ r['employee_name'] }}</td>
+        <td>{{ r['review_date'] }}</td>
+        <td>{{ r['overall_rating'] ~ '/5' if r['overall_rating'] else '—' }}</td>
+        <td>
+          <span class="mini-status status-{{ 'confirmed' if r['status'] == 'acknowledged' else ('onshift' if r['status'] == 'shared' else 'inactive') }}">{{ r['status'] }}</span>
+          {% if r['acknowledged_at'] %}<span class="upload-hint"> {{ r['acknowledged_at'][:10] }}</span>{% endif %}
+        </td>
+        <td>
+          {% if r['status'] == 'draft' %}
+          <form method="post" action="{{ url_for('share_performance_review', review_id=r['id']) }}" onsubmit="return confirm('Share this review with {{ r['employee_name'] }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Share</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No reviews written yet.</div>
+{% endif %}
+
+{% endblock %}

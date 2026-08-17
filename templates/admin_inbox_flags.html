@@ -7,12 +7,12 @@
   <h1>Inbox Flags</h1>
   <a href="{{ url_for('admin_automation') }}" class="btn-mini">Automation settings</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Scans {{ mailbox or 'the connected mailbox' }} for messages that haven't had a reply within the configured window, or that mention a price or date that doesn't match what's actually on file. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Scans {{ mailboxes|length }} inbox{{ '' if mailboxes|length == 1 else 'es' }} for messages that haven't had a reply within the configured window, or that mention a price or date that doesn't match what's actually on file. This is a nudge to go look, not a guaranteed read of every email — always check the actual message before acting on a conflict shown here.</p>
 
 {% if not graph_enabled %}
 <div class="detail-card" style="max-width:680px; border-left:3px solid var(--gold);">
   <strong>Not connected yet.</strong>
-  <p class="upload-hint" style="margin-top:6px;">This needs a Microsoft Graph app registration (Azure AD) with read access to the mailbox — see "Microsoft Graph inbox monitoring" in DEPLOY.md for the exact steps, then set <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code>, and <code>MS_GRAPH_MAILBOX</code>. Nothing here scans until those are set.</p>
+  <p class="upload-hint" style="margin-top:6px;">This needs a Microsoft Graph app registration (Azure AD) with read access to the mailbox — see "Microsoft Graph inbox monitoring" in DEPLOY.md for the exact steps, then set <code>MS_GRAPH_TENANT_ID</code>, <code>MS_GRAPH_CLIENT_ID</code>, <code>MS_GRAPH_CLIENT_SECRET</code>, and <code>MS_GRAPH_MAILBOXES</code> (comma-separated — any number of inboxes). Nothing here scans until those are set.</p>
 </div>
 {% endif %}
 
@@ -51,6 +51,96 @@
   <button type="submit" class="btn-mini">Filter</button>
 </form>
 
+{% if mailboxes %}
+<div class="filter-bar" style="margin-bottom:12px;">
+  <a href="{{ url_for('admin_inbox_flags', status=status_filter, kind=kind_filter) }}"
+     class="btn-mini {{ 'btn-mini-active' if mailbox_filter == 'all' }}">All inboxes</a>
+  {% for mb in mailboxes %}
+  <a href="{{ url_for('admin_inbox_flags', status=status_filter, kind=kind_filter, mailbox=mb['mailbox']) }}"
+     class="btn-mini {{ 'btn-mini-active' if mailbox_filter == mb['mailbox'] }}">
+    {{ mb['label'] or mb['mailbox'] }}{% if per_mailbox.get(mb['mailbox']) %} ({{ per_mailbox[mb['mailbox']] }}){% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+<details class="refund-box" style="margin-bottom:18px;">
+  <summary>Who handles each inbox</summary>
+  <form method="post" action="{{ url_for('update_mailbox_routing') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="upload-hint">New flags are assigned to that inbox's owner automatically. Leave blank and they come to you.</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Inbox</th><th>Shown as</th><th>Handled by</th><th>Follow the rota</th><th>Chase after</th></tr></thead>
+        <tbody>
+          {% for mb in mailboxes %}
+          <tr>
+            <td>{{ mb['mailbox'] }}</td>
+            <td><input type="text" name="label_{{ mb['id'] }}" value="{{ mb['label'] or '' }}" style="font-size:12px;"></td>
+            <td>
+              <select name="default_user_{{ mb['id'] }}" style="font-size:12px;">
+                <option value="">— me (owner) —</option>
+                {% for e in employees %}
+                <option value="{{ e['id'] }}" {{ 'selected' if mb['default_user_id'] == e['id'] }}>{{ e['name'] }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <label class="checkbox-row">
+                <input type="checkbox" name="on_shift_{{ mb['id'] }}" value="1" {{ 'checked' if mb['route_to_on_shift'] }}>
+                <span class="upload-hint">whoever's clocked in</span>
+              </label>
+            </td>
+            <td>
+              <input type="number" name="escalate_{{ mb['id'] }}" min="1" step="1"
+                     value="{{ mb['escalate_hours']|int }}" style="width:70px; font-size:12px;">
+              <span class="upload-hint">hours</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="upload-hint">"Follow the rota" assigns to whoever is on shift right now instead of a fixed person — useful for restaurant or front-desk inboxes. Anyone on leave or recorded absent is skipped either way. "Chase after" is how long a flag can sit unresolved before it escalates to you — once per email, not a repeating nag.</p>
+    <button type="submit" class="btn-mini">Save routing</button>
+  </form>
+</details>
+{% endif %}
+
+{% if duplicates %}
+<div class="flash flash-error" style="margin-bottom:14px;">
+  <strong>Same sender in more than one inbox.</strong>
+  Two people may be answering the same guest separately.
+  <ul style="margin:6px 0 0 18px;">
+    {% for d in duplicates %}
+    <li>{{ d['from_name'] or d['sender'] }} — {{ d['inboxes']|join(', ') }} ({{ d['flag_count'] }} open)</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if response_stats %}
+<details class="refund-box" style="margin-bottom:18px;">
+  <summary>Response times, last 30 days</summary>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Inbox</th><th class="num">Replied</th><th class="num">Average</th><th class="num">Slowest</th><th class="num">Still waiting</th></tr></thead>
+      <tbody>
+        {% for r in response_stats %}
+        <tr>
+          <td>{{ r['mailbox'] }}</td>
+          <td class="num">{{ r['replied'] }}</td>
+          <td class="num">{{ (r['avg_hours'] ~ 'h') if r['avg_hours'] is not none else '—' }}</td>
+          <td class="num">{{ (r['worst_hours'] ~ 'h') if r['worst_hours'] is not none else '—' }}</td>
+          <td class="num">{% if r['waiting'] %}<span class="mini-status status-pending">{{ r['waiting'] }}</span>{% else %}0{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Measured from when the guest's email arrived to when a reply actually went out.</p>
+</details>
+{% endif %}
+
 {% if not flags %}
   <div class="empty-state">{% if status_filter == 'open' %}Nothing flagged right now.{% else %}No flags match that filter.{% endif %}</div>
 {% else %}
@@ -61,11 +151,28 @@
         <strong>{{ f['from_name'] or f['from_address'] or 'Unknown sender' }}</strong>
         {% if f['from_name'] and f['from_address'] %}<span class="upload-hint">{{ f['from_address'] }}</span>{% endif %}
         <span class="mini-status status-{{ 'declined' if f['status'] == 'dismissed' else ('approved' if f['status'] == 'resolved' else 'pending') }}" style="margin-left:8px;">{{ f['status'] }}</span>
+        {% if f['mailbox'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">{{ f['mailbox_label'] or f['mailbox'] }}</span>{% endif %}
         {% if f['assigned_to_name'] %}<span class="mini-status status-active" style="margin-left:4px;">Assigned: {{ f['assigned_to_name'] }}</span>{% endif %}
+        {% if f['escalated_at'] %}<span class="mini-status status-pending" style="margin-left:4px;">escalated</span>{% endif %}
+        {% set g = guest_context.get((f['from_address'] or '')|lower) %}
+        {% if g %}
+          {% if g['vip'] %}<span class="mini-status status-pending" style="margin-left:4px;">VIP</span>{% endif %}
+          {% if g['stays'] %}<span class="mini-status status-confirmed" style="margin-left:4px;">{{ g['stays'] }} stay{{ '' if g['stays'] == 1 else 's' }}{% if g['lifetime'] %} · €{{ '%.0f'|format(g['lifetime']) }}{% endif %}</span>{% endif %}
+        {% endif %}
       </div>
       <span class="upload-hint">{{ f['received_at'][:16].replace('T', ' ') }}</span>
     </div>
     <p class="manual-body"><strong>{{ f['subject'] or '(no subject)' }}</strong></p>
+    {% set g = guest_context.get((f['from_address'] or '')|lower) %}
+    {% if g and (g['current'] or g['upcoming'] or g['dietary_notes'] or g['preferences']) %}
+    <p class="upload-hint" style="background:var(--status-info-bg); padding:6px 10px; border-radius:6px;">
+      {% if g['current'] %}<strong>Here now:</strong> {{ g['current'] }}{% endif %}
+      {% if g['upcoming'] %}{% if g['current'] %} · {% endif %}<strong>Booked:</strong> {{ g['upcoming'] }}{% endif %}
+      {% if g['dietary_notes'] %} · <strong>Dietary:</strong> {{ g['dietary_notes'] }}{% endif %}
+      {% if g['preferences'] %} · <strong>Prefers:</strong> {{ g['preferences'] }}{% endif %}
+      {% if g['profile_id'] %} · <a href="{{ url_for('edit_guest', guest_id=g['profile_id']) }}">profile</a>{% endif %}
+    </p>
+    {% endif %}
     {% if f['preview'] %}<p class="upload-hint">{{ f['preview'] }}</p>{% endif %}
 
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0;">

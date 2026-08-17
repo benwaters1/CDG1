@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Payroll pack{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Payroll pack</h1>
+  <a href="{{ url_for('export_payroll_csv', period=period.period, date=period.anchor_iso) }}"
+     class="btn-mini {{ 'btn-mini-danger' if blocked }}">Export CSV</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What to hand whoever runs payroll: hours net of breaks, plus absence and leave for the same window.
+  Still an estimate of cost — the hours are the part that matters here.
+</p>
+
+{% with endpoint = 'admin_payroll' %}{% include "_period_selector.html" %}{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if blocked %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Not ready to send.</strong> The export is blocked until these are sorted — a payroll file that
+  quietly drops a shift or prices someone at zero is worse than no file, because nobody downstream can
+  tell it was wrong.
+  <ul style="margin:8px 0 0 18px;">
+    {% for r in blocked %}
+    <li>{{ r.name }} — {{ r.blockers|join(', ') }}
+      {% if 'impossible' in r.blockers|join(' ') %}
+        (<a href="{{ url_for('admin_timesheets') }}">fix on the timesheet</a>)
+      {% else %}
+        (<a href="{{ url_for('edit_employee', user_id=r.user_id) }}">set their pay rate</a>)
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if not rows %}
+  <div class="empty-state">No active employees.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Person</th><th>Contract</th><th class="num">Hours</th><th class="num">Shifts</th>
+        <th class="num">Absence</th><th class="num">Leave</th><th>Rate</th><th class="num">Estimated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>
+          <a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.name }}</a>
+          {% if r.blockers %}<span class="mini-status status-declined">{{ r.blockers|join(', ') }}</span>{% endif %}
+          {% if r.job_role %}<div class="upload-hint">{{ r.job_role }}</div>{% endif %}
+        </td>
+        <td class="upload-hint">{{ r.contract_type }}</td>
+        <td class="num">{{ '%.2f'|format(r.hours) }}</td>
+        <td class="num">{{ r.shifts }}</td>
+        <td class="num">{{ r.absence_days or '—' }}</td>
+        <td class="num">{{ r.leave_days or '—' }}</td>
+        <td class="upload-hint">{{ r.pay_rate or '—' }}</td>
+        <td class="num">{% if r.cost is not none %}€{{ '%.2f'|format(r.cost) }}{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint" style="margin-top:10px;">
+  Absence and leave are counted in calendar days overlapping this window. Salaried staff, and anyone
+  without a clean hourly rate on file, show no estimated cost — their hours are still correct.
+</p>
+{% endif %}
+
+{% endblock %}

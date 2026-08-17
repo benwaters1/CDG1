@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Go-live checklist{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Go-live checklist</h1>
+  <a href="{{ url_for('download_backup') }}" class="btn-mini">Download a backup</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Checked live against how the app is actually configured right now, not a list someone wrote once.
+  Re-open this after changing anything on the server.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if blockers %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Not ready to go live.</strong>
+  {{ blockers|length }} thing{{ '' if blockers|length == 1 else 's' }} would cause real damage if guests
+  or staff started using this today.
+</div>
+{% elif warnings %}
+<div class="flash" style="margin-bottom:16px;">
+  Nothing dangerous outstanding. {{ warnings|length }} thing{{ '' if warnings|length == 1 else 's' }}
+  will make life harder later.
+</div>
+{% else %}
+<div class="flash flash-success" style="margin-bottom:16px;">
+  Everything checked is in place.
+</div>
+{% endif %}
+
+{% for area, checks in by_area.items() %}
+<h2 class="section-heading">{{ area }}</h2>
+<div class="task-list" style="margin-bottom:14px;">
+  {% for c in checks %}
+  <div class="task-row">
+    <span class="task-check" style="cursor:default;">{{ '✓' if c.ok else '' }}</span>
+    <span class="task-title" style="flex:0 0 220px;">{{ c.label }}</span>
+    <span class="upload-hint" style="flex:1;">{{ c.detail }}</span>
+    {% if not c.ok %}
+      <span class="mini-status {{ 'status-declined' if c.severity == 'blocker' else ('status-pending' if c.severity == 'warn' else 'status-inactive') }}">
+        {{ 'must fix' if c.severity == 'blocker' else ('worth fixing' if c.severity == 'warn' else 'optional') }}
+      </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<p class="upload-hint">
+  Each of these maps to a setting in <code>DEPLOY.md</code>. Anything marked optional is a feature
+  that's simply switched off — the rest of the app works without it.
+</p>
+
+{% endblock %}

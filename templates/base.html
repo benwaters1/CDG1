@@ -79,6 +79,9 @@
        'new_equipment_item','toggle_equipment_returned','delete_equipment_item','equipment_overview','export_equipment_csv',
        'candidates','new_candidate','edit_candidate','update_candidate_status','delete_candidate','export_candidates_csv','edit_own_contact_info',
        'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
+       'admin_compliance','new_role_requirement','delete_role_requirement',
+       'admin_payroll','export_payroll_csv','admin_incidents','new_incident','update_incident',
+       'repair_time_entry',
        'my_shifts','respond_shift_swap','decide_shift_swap','ask_hr','admin_hr_notes','handle_hr_note',
        'admin_hr','new_certification','delete_certification','new_absence','absence_return_to_work',
        'new_performance_review','share_performance_review',
@@ -97,6 +100,9 @@
        'admin_approvals','bulk_approve_queue',
        'management_bank_details','new_bank_details','edit_bank_details','delete_bank_details',
        'management_financials','export_financials_csv','annual_summary','admin_refunds','export_refunds_csv',
+       'admin_reports','admin_report','export_report_csv',
+       'admin_emails','new_campaign_template','edit_campaign_template','delete_campaign_template',
+       'send_campaign_template','add_email_optout',
        'management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv'] %}
     {% set management_endpoints = ['management','management_documents','upload_company_document','edit_company_document',
        'delete_company_document','view_company_document','download_company_document',
@@ -106,7 +112,7 @@
        'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
        'log_vehicle_service','new_vehicle_maintenance','resolve_vehicle_maintenance','delete_vehicle_maintenance',
        'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','all_transfers','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv',
-       'admin_automation','update_automation_settings','run_automation_job_now','admin_inbox_flags','admin_inbox_flags_status',
+       'admin_automation','update_automation_settings','run_automation_job_now','admin_inbox_flags','admin_inbox_flags_status','admin_access','new_access_item','issue_access_item','return_access_item','admin_readiness',
        'admin_outlook_addin','management_email_templates','management_social','admin_promo_codes','admin_deposit_rules','promo_code_blast'] %}
   <nav class="nav">
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
@@ -140,6 +146,9 @@
         <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
         <a href="{{ url_for('admin_hr_notes') }}" class="{{ 'active' if request.endpoint=='admin_hr_notes' }}">{{ icon('contacts') }}Ask HR{% if open_hr_notes_count %} ({{ open_hr_notes_count }}){% endif %}</a>
         <a href="{{ url_for('admin_hr') }}" class="{{ 'active' if request.endpoint=='admin_hr' }}">{{ icon('approvals') }}HR &amp; Compliance</a>
+        <a href="{{ url_for('admin_compliance') }}" class="{{ 'active' if request.endpoint=='admin_compliance' }}">{{ icon('shield') }}Role Compliance</a>
+        <a href="{{ url_for('admin_payroll') }}" class="{{ 'active' if request.endpoint=='admin_payroll' }}">{{ icon('financial') }}Payroll Pack</a>
+        <a href="{{ url_for('admin_incidents') }}" class="{{ 'active' if request.endpoint=='admin_incidents' }}">{{ icon('wrench') }}Incidents</a>
         <a href="{{ url_for('admin_tasks') }}" class="{{ 'active' if request.endpoint=='admin_tasks' }}">{{ icon('tasks') }}Tasks</a>
         <a href="{{ url_for('admin_shifts') }}" class="{{ 'active' if request.endpoint=='admin_shifts' }}">{{ icon('shifts') }}Shifts</a>
         <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
@@ -159,6 +168,8 @@
         <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
         <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
+        <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
+        <a href="{{ url_for('admin_emails') }}" class="{{ 'active' if request.endpoint in ['admin_emails','edit_campaign_template'] }}">{{ icon('contacts') }}Emails</a>
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
       </div>
@@ -179,7 +190,9 @@
         <a href="{{ url_for('management_email_templates') }}" class="{{ 'active' if request.endpoint=='management_email_templates' }}">{{ icon('megaphone') }}Email Templates</a>
         <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
         <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
+        <a href="{{ url_for('admin_access') }}" class="{{ 'active' if request.endpoint=='admin_access' }}">{{ icon('lock') }}Keys &amp; Access</a>
         <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
+        <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
       </div>
     </div>

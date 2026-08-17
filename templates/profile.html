@@ -88,6 +88,44 @@
     </div>
     {% endif %}
 
+    {% if user['role'] == 'owner' and (person['contract_type'] or person['trial_end_date'] or person['contract_end_date'] or compliance_gaps or access_holdings) %}
+    <div class="detail-card">
+      <h3>Contract &amp; compliance</h3>
+      <div class="detail-grid">
+        <div><span class="detail-label">Contract</span>{{ contract_types.get(person['contract_type'], '—') }}</div>
+        <div>
+          <span class="detail-label">Trial period ends</span>
+          {% if person['trial_end_date'] %}{{ person['trial_end_date'] }}{% else %}—{% endif %}
+        </div>
+        <div>
+          <span class="detail-label">Fixed term ends</span>
+          {% if person['contract_end_date'] %}{{ person['contract_end_date'] }}{% else %}—{% endif %}
+        </div>
+        <div>
+          <span class="detail-label">Notice period</span>
+          {% if person['notice_period_days'] is not none %}{{ person['notice_period_days'] }} days{% else %}—{% endif %}
+        </div>
+      </div>
+
+      {% if compliance_gaps %}
+      <p class="field-label" style="margin-top:14px;">Short of what this role requires</p>
+      {% for g in compliance_gaps %}
+      <p class="upload-hint" style="margin:2px 0;">
+        <span class="mini-status {{ 'status-declined' if g.state in ('missing','expired') else 'status-pending' }}">{{ g.state }}</span>
+        {{ g.requirement }} — {{ g.detail }}
+      </p>
+      {% endfor %}
+      {% endif %}
+
+      {% if access_holdings %}
+      <p class="field-label" style="margin-top:14px;">Currently holds</p>
+      <p class="upload-hint" style="margin:2px 0;">
+        {% for h in access_holdings %}{{ h['label'] }} ({{ access_kinds[h['kind']] }}){{ ', ' if not loop.last }}{% endfor %}
+      </p>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% if user['role'] == 'owner' or person['id'] == user['id'] %}
     <div class="detail-card">
       <h3>Equipment &amp; Keys</h3>
@@ -250,7 +288,7 @@
               {{ local_datetime_str(s['clock_in_at']) }} →
               {% if s['clock_out_at'] %}{{ local_time_str(s['clock_out_at']) }}{% else %}<strong style="color:var(--steel-deep);">still clocked in</strong>{% endif %}
             </span>
-            {% if s['clock_out_at'] %}<span class="upload-hint">{{ '%.2f'|format(net_hours(s)) }}h</span>{% endif %}
+            {% if s['clock_out_at'] %}<span class="upload-hint">{{ '%.2f'|format(shift_hours.get(s['id'], 0)) }}h</span>{% endif %}
             {% if s['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:6px;">auto-closed</span>{% endif %}
             {% if person['id'] == user['id'] %}
             <span class="small-link" style="color:var(--steel); margin-left:8px; cursor:pointer;" onclick="toggleFlag({{ s['id'] }})">Flag</span>

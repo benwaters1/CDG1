@@ -39,6 +39,39 @@
     <input type="text" name="reason_for_leaving" placeholder="e.g. Resigned, end of contract, terminated" value="{{ employee['reason_for_leaving'] or '' }}">
     {% endif %}
 
+    <h3 style="margin:22px 0 0;">Contract</h3>
+    <p class="upload-hint" style="margin-top:2px;">
+      A trial period or a fixed term left to lapse confirms itself — both are chased for you once a date is set here.
+    </p>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Contract type</label>
+        <select name="contract_type" id="contract-type">
+          <option value="">— not set —</option>
+          {% for key, label in contract_types.items() %}
+          <option value="{{ key }}" {{ 'selected' if employee and employee['contract_type'] == key }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Notice period (days)</label>
+        <input type="number" name="notice_period_days" min="0" step="1" placeholder="e.g. 30"
+               value="{{ employee['notice_period_days'] if employee and employee['notice_period_days'] is not none else '' }}">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Trial period ends</label>
+        <input type="date" name="trial_end_date" value="{{ employee['trial_end_date'] if employee and employee['trial_end_date'] else '' }}">
+        <span class="upload-hint">Flagged {{ trial_warning_days }} days ahead.</span>
+      </div>
+      <div>
+        <label class="field-label">Fixed term ends</label>
+        <input type="date" name="contract_end_date" value="{{ employee['contract_end_date'] if employee and employee['contract_end_date'] else '' }}">
+        <span class="upload-hint">Only applies to a fixed-term contract — ignored on a permanent one.</span>
+      </div>
+    </div>
+
     <div class="field-row-2">
       <div>
         <label class="field-label">Pay rate (reference only)</label>

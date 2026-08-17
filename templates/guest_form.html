@@ -27,7 +27,7 @@
     <label class="field-label">Preferences</label>
     <input type="text" name="preferences" value="{{ guest['preferences'] if guest else '' }}" placeholder="Prefers the Rose Room, early breakfast, quiet side...">
 
-    <label class="checkbox-row" style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+    <label class="checkbox-row" style="margin-top:14px;">
       <input type="checkbox" name="vip" value="1" {% if guest and guest['vip'] %}checked{% endif %}>
       <span>Mark as VIP</span>
     </label>

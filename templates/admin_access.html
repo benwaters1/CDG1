@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Keys &amp; access{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Keys, codes &amp; access</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Who holds what. When someone leaves, this is the list that matters — not a checklist item that says
+  “return keys”.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if leavers_holding %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Still held by someone who has left.</strong>
+  {% for h in leavers_holding %}{{ h['holder'] }} — {{ h['label'] }}{{ '; ' if not loop.last }}{% endfor %}.
+  {% if leavers_holding|selectattr('kind', 'in', ['code','alarm'])|list %}
+  A code they still know can't be handed back — change it.
+  {% endif %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Currently issued</h2>
+{% if not holdings %}
+  <div class="empty-state">Nothing is issued at the moment.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Holder</th><th>Item</th><th>Type</th><th>Since</th><th></th></tr></thead>
+    <tbody>
+      {% for h in holdings %}
+      <tr>
+        <td>
+          {{ h['holder'] or h['holder_name'] or '—' }}
+          {% if h['holder_status'] == 'inactive' %}<span class="mini-status status-declined">has left</span>{% endif %}
+        </td>
+        <td>{{ h['label'] }}</td>
+        <td>{{ access_kinds[h['kind']] }}</td>
+        <td>{{ local_datetime_str(h['issued_at'])[:10] }}</td>
+        <td class="num">
+          <form method="post" action="{{ url_for('return_access_item', holding_id=h['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Returned</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Issue something</h2>
+<form method="post" action="{{ url_for('issue_access_item') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label">Item</label>
+    <select name="access_item_id" required>
+      <option value="">— choose —</option>
+      {% for i in items %}
+      <option value="{{ i['id'] }}">{{ i['label'] }} ({{ access_kinds[i['kind']] }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">To</label>
+    <select name="user_id" required>
+      <option value="">— choose —</option>
+      {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+    </select>
+  </div>
+  <div style="flex:2 1 200px;">
+    <label class="field-label">Note (optional)</label>
+    <input type="text" name="notes" placeholder="e.g. spare, returned to safe nightly">
+  </div>
+  <button type="submit" class="btn-mini">Issue</button>
+</form>
+
+<h2 class="section-heading">The register</h2>
+<details class="refund-box" style="margin-bottom:16px;">
+  <summary>Add a key, code or fob</summary>
+  <form method="post" action="{{ url_for('new_access_item') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Name</label>
+        <input type="text" name="label" required placeholder="e.g. Cellar door, main gate">
+      </div>
+      <div>
+        <label class="field-label">Type</label>
+        <select name="kind">
+          {% for key, label in access_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Where it lives</label>
+        <input type="text" name="location" placeholder="e.g. Key safe, office drawer">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Note</label>
+        <input type="text" name="notes" placeholder="How many exist, who cuts copies…">
+      </div>
+    </div>
+    <p class="upload-hint">
+      Don't type the actual code here — this records that a code exists and who knows it.
+      The code itself belongs in the Vault, where it's encrypted.
+    </p>
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</details>
+
+{% if items %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Item</th><th>Type</th><th>Kept</th><th class="num">Out</th></tr></thead>
+    <tbody>
+      {% for i in items %}
+      <tr>
+        <td>{{ i['label'] }}{% if i['notes'] %} <span class="upload-hint">{{ i['notes'] }}</span>{% endif %}</td>
+        <td>{{ access_kinds[i['kind']] }}</td>
+        <td>{{ i['location'] or '—' }}</td>
+        <td class="num">{{ i['out_count'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

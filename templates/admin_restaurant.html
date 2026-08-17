@@ -16,26 +16,17 @@
 <div class="flash flash-error" style="margin-bottom:16px;">Online reservations are currently switched off — turn them on in Settings when you're ready to take bookings.</div>
 {% endif %}
 
-<div class="stat-tiles">
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ pending_count }}</span><span class="stat-tile-label">Pending</span></span>
-  </div>
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('restaurant', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ settings['capacity'] }}</span><span class="stat-tile-label">Nightly capacity</span></span>
-  </div>
-  {% if settings['price_per_person'] %}
-  <div class="stat-tile">
-    <span class="stat-tile-icon">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(settings['price_per_person']) }}</span><span class="stat-tile-label">Price / person</span></span>
-  </div>
-  {% endif %}
-  <div class="stat-tile">
-    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('wrench', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value">{{ no_show_count }}</span><span class="stat-tile-label">No-shows, 30 days</span></span>
-  </div>
-</div>
+{% with endpoint = 'admin_restaurant', extra = ({'status': status_filter} if status_filter else {}) %}
+  {% include "_period_selector.html" %}
+{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+{# Capacity and price are settings rather than performance, so they sit as a
+   caption instead of competing with the figures above. #}
+<p class="upload-hint" style="margin:-12px 0 20px;">
+  Nightly capacity {{ settings['capacity'] }}{% if settings['price_per_person'] %} · €{{ '%.0f'|format(settings['price_per_person']) }} per person{% endif %}
+  · {{ no_show_count }} no-show{{ '' if no_show_count == 1 else 's' }} in the last 30 days ·
+  <a href="{{ url_for('admin_restaurant_settings') }}">Change</a>
+</p>
 
 <div class="detail-card" style="margin-bottom:22px;">
   <div class="page-head" style="margin:0;">

@@ -1,0 +1,12 @@
+{# Shared header for every individual report: title, period control, CSV link
+   and a way back to the other reports. Keeps them consistent. #}
+<div class="page-head">
+  <h1>{{ meta.label }}</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('export_report_csv', slug=slug, period=period.period, date=period.anchor_iso) }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('admin_reports', period=period.period, date=period.anchor_iso) }}" class="small-link" style="color:var(--steel);">&larr; All reports</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ meta.blurb }}</p>
+
+{% with endpoint = 'admin_report', extra = {'slug': slug} %}{% include "_period_selector.html" %}{% endwith %}

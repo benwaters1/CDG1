@@ -28,6 +28,7 @@
 
     <label class="field-label">Registered address</label>
     <textarea name="registered_address" style="min-height:60px;">{{ info['registered_address'] if info else '' }}</textarea>
+    <span class="upload-hint">Printed at the foot of every campaign email — marketing mail has to identify the sender by postal address. Left blank, the footer simply omits it.</span>
 
     <label class="field-label">Incorporation date</label>
     <input type="date" name="incorporation_date" value="{{ info['incorporation_date'] if info else '' }}">

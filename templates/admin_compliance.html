@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Role compliance{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Role compliance</h1>
+  <a href="{{ url_for('admin_hr') }}" class="small-link" style="color:var(--steel); align-self:center;">&larr; HR</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Say what each role requires once, and this answers who can't work it — rather than you remembering
+  which certificate belongs to which job.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<h2 class="section-heading">Who is short</h2>
+{% if not by_role %}
+  <div class="empty-state">No requirements defined yet — add one below and this fills in.</div>
+{% elif not gaps %}
+  <div class="empty-state">Everyone holds what their role requires.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Person</th><th>Role</th><th>Requires</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for g in gaps %}
+      <tr>
+        <td><a href="{{ url_for('profile', user_id=g.user_id) }}">{{ g.name }}</a></td>
+        <td>{{ g.job_role or '—' }}</td>
+        <td>{{ g.requirement }} <span class="upload-hint">({{ g.requirement_type }})</span></td>
+        <td>
+          <span class="mini-status {{ 'status-declined' if g.state in ('missing','expired') else 'status-pending' }}">
+            {{ g.state }}
+          </span>
+          <span class="upload-hint"> {{ g.detail }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">What each role requires</h2>
+<details class="refund-box" style="margin-bottom:16px;">
+  <summary>Add a requirement</summary>
+  <form method="post" action="{{ url_for('new_role_requirement') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Job role</label>
+        <input type="text" name="job_role" list="known-roles" required placeholder="e.g. Housekeeping">
+        <datalist id="known-roles">
+          {% for r in known_roles %}<option value="{{ r }}">{% endfor %}
+        </datalist>
+      </div>
+      <div>
+        <label class="field-label">Requires</label>
+        <input type="text" name="requirement" required placeholder="e.g. Food hygiene">
+        <span class="upload-hint">Match the name as it's entered on their profile.</span>
+      </div>
+      <div>
+        <label class="field-label">Held as</label>
+        <select name="requirement_type">
+          <option value="certification">A certification</option>
+          <option value="document">A document</option>
+        </select>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Note (optional)</label>
+        <input type="text" name="notes" placeholder="Why it's required, renewal interval…">
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</details>
+
+{% for role, reqs in by_role.items() %}
+<div class="detail-card" style="margin-bottom:10px;">
+  <strong>{{ role }}</strong>
+  <div class="task-list" style="margin-top:8px;">
+    {% for r in reqs %}
+    <div class="task-row">
+      <span class="task-title" style="flex:1;">
+        {{ r['requirement'] }}
+        <span class="upload-hint">({{ r['requirement_type'] }}){% if r['notes'] %} — {{ r['notes'] }}{% endif %}</span>
+      </span>
+      <form method="post" action="{{ url_for('delete_role_requirement', req_id=r['id']) }}"
+            onsubmit="return confirm('Remove this requirement?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-text-danger">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

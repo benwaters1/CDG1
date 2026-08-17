@@ -879,6 +879,11 @@ body.staff-shell .btn-mini.btn-mini-active:hover{
    no layout at all, so the buttons ran together with default inline spacing. */
 .filter-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 
+/* A checkbox or radio beside its label. The class was already on ten labels
+   across six templates but had no rule — each one carried the same inline
+   flex/gap instead, so the spacing drifted (8px in some, 6px in others). */
+.checkbox-row{ display:flex; align-items:center; gap:8px; }
+
 /* ---------- Section overview band ----------
    The summary that sits at the top of a section before its sub-pages, so a
    category opens with "here's how this area is doing" rather than a menu. */

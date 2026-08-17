@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}My reviews{% endblock %}
+{% block content %}
+
+<div class="page-head"><h1>My Reviews</h1></div>
+
+{% if not reviews %}
+  <div class="empty-state">You don't have any reviews yet.</div>
+{% else %}
+  {% for r in reviews %}
+  <div class="detail-card" style="margin-bottom:18px;">
+    <div class="page-head" style="margin:0;">
+      <h3 style="margin:0;">
+        Review — {{ r['review_date'] }}
+        {% if r['status'] == 'acknowledged' %}
+        <span class="mini-status status-confirmed" style="margin-left:8px;">acknowledged</span>
+        {% else %}
+        <span class="mini-status status-onshift" style="margin-left:8px;">needs your confirmation</span>
+        {% endif %}
+      </h3>
+      {% if r['overall_rating'] %}<span class="mini-status status-upcoming">{{ r['overall_rating'] }}/5</span>{% endif %}
+    </div>
+    <p class="upload-hint">
+      {% if r['period_start'] or r['period_end'] %}Covering {{ r['period_start'] or '?' }} → {{ r['period_end'] or '?' }} · {% endif %}
+      Written by {{ r['reviewer_name'] or 'your manager' }}
+    </p>
+
+    {% if r['strengths'] %}<p class="manual-body"><strong>Strengths:</strong> {{ r['strengths'] }}</p>{% endif %}
+    {% if r['improvements'] %}<p class="manual-body"><strong>Areas to improve:</strong> {{ r['improvements'] }}</p>{% endif %}
+    {% if r['goals'] %}<p class="manual-body"><strong>Goals:</strong> {{ r['goals'] }}</p>{% endif %}
+
+    {% if r['status'] == 'acknowledged' %}
+      {% if r['employee_comments'] %}
+      <p class="manual-body"><strong>Your comments:</strong> {{ r['employee_comments'] }}</p>
+      {% endif %}
+      <p class="upload-hint">You confirmed you'd seen this on {{ r['acknowledged_at'][:10] }}.</p>
+    {% else %}
+    <form method="post" action="{{ url_for('acknowledge_review', review_id=r['id']) }}" style="margin-top:12px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field-label">Anything you'd like to add? (optional)</label>
+      <textarea name="employee_comments" rows="3" placeholder="Your own view — this is recorded alongside the review."></textarea>
+      <button type="submit" class="btn-primary">I've read this</button>
+      <p class="upload-hint">Confirming means you've seen it, not necessarily that you agree — add a comment if you see it differently.</p>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Incidents{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Incidents &amp; accidents</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    {% for key, label in {'open':'Open','actioned':'Actioned','closed':'Closed','':'All'}.items() %}
+    <a href="{{ url_for('admin_incidents', status=key) }}"
+       class="btn-mini {{ 'btn-mini-active' if status_filter == key }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A record of workplace accidents — which an employer has to keep, including minor ones — and of guest
+  incidents, which your insurer will ask about. Recording something here is not an admission of fault;
+  an empty register after an accident is the harder thing to explain.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<details class="refund-box" style="margin-bottom:20px;">
+  <summary>Record an incident</summary>
+  <form method="post" action="{{ url_for('new_incident') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">When</label>
+        <input type="datetime-local" name="occurred_at" required>
+      </div>
+      <div>
+        <label class="field-label">Type</label>
+        <select name="kind">
+          {% for key, label in incident_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Severity</label>
+        <select name="severity">
+          {% for key, label in incident_severities.items() %}
+          <option value="{{ key }}" {{ 'selected' if key == 'minor' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Where</label>
+        <input type="text" name="location" placeholder="e.g. Kitchen, north stairs, courtyard">
+      </div>
+      <div>
+        <label class="field-label">Who was affected (staff)</label>
+        <select name="affected_user_id">
+          <option value="">— not a staff member —</option>
+          {% for e in employees %}<option value="{{ e['id'] }}">{{ e['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">…or their name</label>
+        <input type="text" name="affected_person" placeholder="Guest or contractor">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">What happened</label>
+        <input type="text" name="summary" required placeholder="One line — this is what shows in the register">
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Detail</label>
+        <textarea name="detail" rows="3" placeholder="Sequence of events, conditions, anything a claim would need."></textarea>
+      </div>
+      <div>
+        <label class="field-label">Witnesses</label>
+        <input type="text" name="witnesses">
+      </div>
+      <div>
+        <label class="field-label">Work days lost</label>
+        <input type="number" name="work_days_lost" min="0" step="1">
+      </div>
+      <div>
+        <label class="field-label">Relevant policy</label>
+        <select name="insurance_policy_id">
+          <option value="">— none —</option>
+          {% for p in policies %}
+          <option value="{{ p['id'] }}">{{ p['provider'] }}{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Action taken</label>
+        <textarea name="action_taken" rows="2" placeholder="What was done at the time, and what will stop it happening again."></textarea>
+      </div>
+    </div>
+    <div style="display:flex; gap:16px; align-items:center; margin:10px 0;">
+      <label class="checkbox-row">
+        <input type="checkbox" name="first_aid_given" value="1"><span>First aid given</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" name="medical_attention" value="1"><span>Medical attention needed</span>
+      </label>
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:0;">Record it</button>
+  </form>
+</details>
+
+{% if not incidents %}
+  <div class="empty-state">
+    {% if status_filter == 'open' %}Nothing open. Switch to “All” to see the full register.
+    {% else %}Nothing recorded yet.{% endif %}
+  </div>
+{% else %}
+  {% for i in incidents %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ i['summary'] }}</strong>
+        <span class="mini-status {{ 'status-declined' if i['severity'] in ('significant','serious') else 'status-pending' }}" style="margin-left:8px;">
+          {{ incident_severities[i['severity']].split('—')[0].strip() }}
+        </span>
+        <span class="mini-status status-{{ 'confirmed' if i['status'] == 'closed' else 'pending' }}" style="margin-left:4px;">{{ i['status'] }}</span>
+      </div>
+      <span class="upload-hint">{{ local_datetime_str(i['occurred_at']) }}</span>
+    </div>
+    <p class="upload-hint" style="margin:4px 0;">
+      {{ incident_kinds[i['kind']] }}{% if i['location'] %} · {{ i['location'] }}{% endif %}
+      {% if i['affected_name'] or i['affected_person'] %} · {{ i['affected_name'] or i['affected_person'] }}{% endif %}
+      {% if i['first_aid_given'] %} · first aid given{% endif %}
+      {% if i['medical_attention'] %} · medical attention{% endif %}
+      {% if i['work_days_lost'] %} · {{ i['work_days_lost'] }} day{{ '' if i['work_days_lost'] == 1 else 's' }} lost{% endif %}
+    </p>
+    {% if i['detail'] %}<p class="manual-body">{{ i['detail'] }}</p>{% endif %}
+    {% if i['action_taken'] %}<p class="manual-body"><strong>Action:</strong> {{ i['action_taken'] }}</p>{% endif %}
+    {% if i['insurer'] %}
+    <p class="upload-hint">
+      Policy: {{ i['insurer'] }} ·
+      {% if i['reported_to_insurer_at'] %}reported {{ local_datetime_str(i['reported_to_insurer_at'])[:10] }}{% else %}<strong>not yet reported</strong>{% endif %}
+    </p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('update_incident', incident_id=i['id']) }}"
+          style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="flex:1 1 260px;">
+        <label class="field-label">Add to the action taken</label>
+        <input type="text" name="action_taken" placeholder="Leave blank to keep what's there">
+      </div>
+      <div>
+        <label class="field-label">Status</label>
+        <select name="status">
+          {% for s in ['open','actioned','closed'] %}
+          <option value="{{ s }}" {{ 'selected' if i['status'] == s }}>{{ s|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% if i['insurance_policy_id'] and not i['reported_to_insurer_at'] %}
+      <label class="checkbox-row">
+        <input type="checkbox" name="reported_to_insurer" value="1"><span class="upload-hint">Reported to insurer</span>
+      </label>
+      {% endif %}
+      <button type="submit" class="btn-mini">Update</button>
+    </form>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}
