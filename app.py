@@ -20608,6 +20608,71 @@ def edit_menu_item(item_id):
     return redirect(url_for("admin_restaurant_menu"))
 
 
+@app.route("/admin/restaurant/menus")
+@owner_required
+def menu_history():
+    """Every card ever served, searchable by the dish that was on it.
+
+    Menus grow by one a day and for ever, and the only way to reach an old one
+    was clicking back a night at a time. After one season that is unusable —
+    and the whole reason for keeping dated cards was being able to answer
+    "when did we last do the pigeon" and "what did we serve the Duponts".
+    """
+    conn = get_db()
+    menus = conn.execute(
+        """SELECT menus.*,
+                  (SELECT COUNT(*) FROM menu_dishes WHERE menu_id = menus.id) AS dish_count,
+                  (SELECT GROUP_CONCAT(name, ' · ') FROM menu_dishes
+                    WHERE menu_id = menus.id) AS dish_names
+           FROM menus ORDER BY service_date DESC, id DESC LIMIT 400""").fetchall()
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def when(m):
+        if m["service_date"] > today:
+            return "Still to come"
+        return "Tonight" if m["service_date"] == today else "Served"
+
+    lv = list_view(
+        menus, request.args,
+        # Searching the dishes is the point — you remember the dish, not the date.
+        search=["title", "formule_label", "dish_names", "service_date", "notes"],
+        search_hint="Search a dish, a date or a menu name",
+        facets=[
+            facet("when", "When", when, order=["Still to come", "Tonight", "Served"]),
+            facet("status", "State", lambda m: m["status"].capitalize(),
+                  order=["Draft", "Published", "Archived"]),
+            facet("service", "Service", lambda m: (m["service"] or "").capitalize()),
+            facet("kind", "Pricing",
+                  lambda m: "Set menu" if m["formule_price"] else "À la carte",
+                  order=["Set menu", "À la carte"]),
+            facet("source", "Entered by",
+                  lambda m: {"manual": "Typed in", "pdf": "Read from a file",
+                             "paste": "Pasted in", "copy": "Copied forward",
+                             "template": "From the template"}.get(m["source"], m["source"])),
+        ],
+        sorts=[
+            sort_option("recent", "Most recent first", lambda m: m["service_date"] or "",
+                        reverse=True),
+            sort_option("oldest", "Oldest first", lambda m: m["service_date"] or ""),
+            sort_option("price", "Dearest set menu", lambda m: m["formule_price"] or 0,
+                        reverse=True),
+        ],
+        default_sort="recent",
+    )
+    conn.close()
+    published = [m for m in menus if m["status"] == "published"]
+    drafts = [m for m in menus if m["status"] == "draft"]
+    overview = [
+        overview_cell("Cards kept", len(menus)),
+        overview_cell("Published", len(published)),
+        overview_cell("Drafts waiting", len(drafts), alert=bool(drafts),
+                      hint="not on the POS"),
+        overview_cell("Set menus", len([m for m in menus if m["formule_price"]])),
+    ]
+    return render_template("menu_history.html", menus=lv["rows"], lv=lv, overview=overview,
+                           today=today)
+
+
 @app.route("/admin/restaurant/menu/day")
 @owner_required
 def menu_day():

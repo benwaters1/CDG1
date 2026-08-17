@@ -27,6 +27,7 @@ TOOLBAR_PAGES = [
     "/room-issues",
     "/admin/extras",
     "/admin/feedback",
+    "/admin/restaurant/menus",
 ]
 
 

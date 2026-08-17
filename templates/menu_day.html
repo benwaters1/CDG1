@@ -8,6 +8,7 @@
     <a href="{{ url_for('menu_day', date=prev_day.isoformat(), service=service) }}" class="btn-mini">‹ {{ prev_day.strftime('%a %d') }}</a>
     <strong>{{ on.strftime('%A %d %B') }}</strong>
     <a href="{{ url_for('menu_day', date=next_day.isoformat(), service=service) }}" class="btn-mini">{{ next_day.strftime('%a %d') }} ›</a>
+    <a href="{{ url_for('menu_history') }}" class="btn-ghost">Every card</a>
     <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">Standing list</a>
     <a href="{{ url_for('pos_home') }}" class="btn-ghost">Service</a>
   </div>

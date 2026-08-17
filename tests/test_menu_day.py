@@ -208,6 +208,28 @@ def run():
     s.check("an employee cannot build the card",
             ec.get(f"/admin/restaurant/menu/day?date={_iso(0)}").status_code in (302, 403))
 
+    s.section("Finding an old card again")
+    # Cards grow by one a day, for ever. Reaching an old one by clicking back a
+    # night at a time stops working after a season — and being able to answer
+    # "when did we last do the pigeon" is the whole reason for keeping them.
+    page = oc.get("/admin/restaurant/menus")
+    s.check("there is a list of every card", page.status_code == 200)
+    body = page.get_data(as_text=True)
+    s.check("tonight's card is on it", _iso(0) in body)
+
+    found = oc.get("/admin/restaurant/menus?q=Pigeon").get_data(as_text=True)
+    # Searching the dishes, not the dates: you remember the dish.
+    s.check("a card can be found by a dish that was on it", _iso(1) in found,
+            detail="expected tomorrow's card, which has the Pigeon")
+    s.check("and cards without it are excluded", "Showing 1 of" in found,
+            detail=str([l for l in found.splitlines() if "Showing" in l][:1]))
+
+    drafts = oc.get("/admin/restaurant/menus?status=Draft").get_data(as_text=True)
+    s.check("drafts can be picked out from what was actually served",
+            "Showing" in drafts)
+    s.check("an employee cannot browse the cards",
+            ec.get("/admin/restaurant/menus").status_code in (302, 403))
+
     _cleanup(conn)
     conn.close()
     return s

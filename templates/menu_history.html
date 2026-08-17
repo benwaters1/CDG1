@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Every card{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Every card</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('menu_day') }}" class="btn-ghost">Tonight</a>
+    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">Standing list</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every card ever served, kept as it was served. Search by the dish rather than the date —
+  you remember the pigeon, not the Tuesday.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
+{% if not menus %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      No card matches that.
+      <a href="{{ url_for('menu_history') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No cards yet. <a href="{{ url_for('menu_day') }}">Build tonight's</a>.
+    {% endif %}
+  </div>
+{% else %}
+<div class="doc-list" style="max-width:900px;">
+  {% for m in menus %}
+  <div class="doc-row" style="align-items:flex-start; flex-direction:column; gap:3px;">
+    <div style="display:flex; width:100%; gap:10px; align-items:baseline; flex-wrap:wrap;">
+      <strong style="flex:1;">
+        <a href="{{ url_for('menu_day', date=m['service_date'], service=m['service']) }}">
+          {{ m['service_date'] }}
+        </a>
+        {% if m['title'] %} — {{ m['title'] }}{% endif %}
+      </strong>
+      {% if m['formule_price'] %}
+      <span>{{ m['formule_label'] or 'Set menu' }} · €{{ '%.2f'|format(m['formule_price']) }}</span>
+      {% else %}<span class="upload-hint">à la carte</span>{% endif %}
+      <span class="upload-hint">{{ m['dish_count'] }} dish{{ '' if m['dish_count'] == 1 else 'es' }}</span>
+      {% if m['status'] == 'draft' %}
+      <span class="mini-status status-pending">draft — not on the POS</span>
+      {% elif m['status'] == 'archived' %}
+      <span class="mini-status status-inactive">superseded</span>
+      {% endif %}
+      {% if m['service_date'] == today %}<span class="mini-status status-onshift">tonight</span>{% endif %}
+      <a href="{{ url_for('print_menu_day', menu_id=m['id']) }}" class="small-link" target="_blank">Print</a>
+    </div>
+    {% if m['dish_names'] %}
+    <span class="upload-hint">{{ m['dish_names']|truncate(190) }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
