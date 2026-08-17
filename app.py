@@ -200,6 +200,13 @@ BOOKING_RATE_LIMIT_PER_HOUR = 5
 STALE_PENDING_BOOKING_HOURS = 48
 AUTOMATION_TICK_SECONDS = 300
 VEHICLE_TRANSFER_BUFFER_HOURS = 2
+# The château may sleep 15 guests, and that is a legal limit rather than a
+# comfort one — so it binds across everything in the house on the same night, in
+# any mix: room bookings and atelier registrations together. Held as a setting
+# because a legal number can change and nobody should need a deploy for that.
+HOUSE_SETTING_DEFAULTS = {
+    "house_guest_capacity": "15",
+}
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_daily_digest_enabled": "1",
@@ -2907,9 +2914,10 @@ def init_db():
             )
     conn.commit()
 
-    for key, default_value in AUTOMATION_SETTING_DEFAULTS.items():
-        if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
-            conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, default_value))
+    for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS):
+        for key, default_value in defaults.items():
+            if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+                conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, default_value))
     conn.commit()
 
     if not conn.execute("SELECT 1 FROM restaurant_settings WHERE id = 1").fetchone():
@@ -5551,6 +5559,73 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
             return False, f"That date is held for a confirmed event ({row['event_type']})."
 
     return True, None
+
+
+def house_guest_capacity(conn):
+    """The legal ceiling on how many guests may be in the château at once —
+    everyone, in any mix of rooms and an atelier running at the same time. A
+    setting rather than a constant because it is a licensed number, not a
+    design choice, and can change without a deploy."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'house_guest_capacity'").fetchone()
+    try:
+        return int(row["value"]) if row else int(HOUSE_SETTING_DEFAULTS["house_guest_capacity"])
+    except (TypeError, ValueError):
+        return int(HOUSE_SETTING_DEFAULTS["house_guest_capacity"])
+
+
+def peak_guests_in_house(conn, start, end):
+    """The most guests present on any single night in [start, end).
+
+    A workshop already reserves every room for its run (see the block above),
+    so in practice the two occupancy sources don't overlap — but this adds
+    them together night by night regardless, rather than assuming that stays
+    true forever. Pending requests count, same as is_range_available: a
+    pending request has already staked a claim on the capacity a new one
+    would also want.
+    """
+    nights = (end - start).days
+    if nights <= 0:
+        return 0
+    peak = 0
+    for offset in range(nights):
+        day = (start + timedelta(days=offset)).isoformat()
+        room_total = conn.execute(
+            """SELECT COALESCE(SUM(party_size), 0) AS c FROM bookings
+               WHERE status IN ('pending', 'confirmed')
+                 AND arrival_date <= ? AND departure_date > ?""", (day, day)).fetchone()["c"]
+
+        ws_total = conn.execute(
+            """SELECT COALESCE(SUM(workshop_bookings.party_size), 0) AS c
+               FROM workshop_bookings JOIN workshop_sessions
+                 ON workshop_sessions.id = workshop_bookings.session_id
+               WHERE workshop_bookings.status IN ('pending', 'confirmed')
+                 AND workshop_sessions.start_date <= ? AND workshop_sessions.end_date > ?""",
+            (day, day)).fetchone()["c"]
+
+        peak = max(peak, room_total + ws_total)
+    return peak
+
+
+def house_capacity_error(conn, start, end, additional_guests):
+    """None if adding additional_guests over [start, end) stays within the
+    legal house capacity, else a guest-facing message explaining why not.
+
+    Only called from the public booking forms — a member of staff confirming,
+    editing, or entering a booking by hand is trusted to already know why a
+    particular night is going over, whether that's a licensed exception for
+    one event or a correction to old data. The law binds what the château
+    offers a stranger online; it doesn't second-guess the owner's own staff.
+    """
+    cap = house_guest_capacity(conn)
+    peak = peak_guests_in_house(conn, start, end)
+    if peak + additional_guests <= cap:
+        return None
+    if peak == 0:
+        return f"The château can host up to {cap} guests at once, and this party of {additional_guests} is over that on its own."
+    return (f"The château can host up to {cap} guests at once. {peak} "
+            f"{'is' if peak == 1 else 'are'} already booked for those dates, so {additional_guests} more would "
+            f"go over. Please call the château directly and we'll see what we can do.")
 
 
 def matching_waitlist_entries(conn, arrival_iso, departure_iso):
@@ -13365,6 +13440,8 @@ def book_room(room_id):
             ok, reason = is_range_available(conn, room_id, arrival, departure)
             if not ok:
                 error = reason
+            else:
+                error = house_capacity_error(conn, arrival, departure, party_size)
 
         if error:
             flash(error, "error")
@@ -15746,6 +15823,14 @@ def workshop_register(session_id):
         elif workshop_session_remaining_capacity(conn, session_id) < party_size:
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
+        else:
+            # end_date is the last day the guests are still there (they check
+            # out that morning, the same convention a workshop uses to hold
+            # every room — see is_range_available), so it needs +1 day to
+            # become the exclusive end peak_guests_in_house expects.
+            session_end = parse_date(session_row["end_date"])
+            error = house_capacity_error(
+                conn, start_date, session_end + timedelta(days=1), party_size)
 
         custom_values = {}
         if not error:
@@ -20830,14 +20915,24 @@ def management_company_info():
                 ON CONFLICT(id) DO UPDATE SET {', '.join(f'{f} = excluded.{f}' for f in fields)}, updated_at = excluded.updated_at""",
             (*values, datetime.now(timezone.utc).isoformat()),
         )
+        # Lives in app_settings rather than company_info: it isn't a fact about
+        # the company, it's a number the booking forms enforce, and it belongs
+        # with the other single-value settings the app already reads that way.
+        capacity_raw = request.form.get("house_guest_capacity", "").strip()
+        if capacity_raw.isdigit() and int(capacity_raw) > 0:
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('house_guest_capacity', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                (capacity_raw,))
         log_audit(conn, "company_info_updated")
         conn.commit()
         conn.close()
         flash("Company info updated.", "success")
         return redirect(url_for("management_company_info"))
     info = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    capacity = house_guest_capacity(conn)
     conn.close()
-    return render_template("management_company_info.html", info=info)
+    return render_template("management_company_info.html", info=info, house_guest_capacity=capacity)
 
 
 @app.route("/management/bank-details")

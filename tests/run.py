@@ -21,6 +21,7 @@ SUITES = [
     "test_access_levels",
     "test_booking_quote",
     "test_booking_bill",
+    "test_house_capacity",
     "test_workshop_money",
     "test_workflows",
     "test_operations",
