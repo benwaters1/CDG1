@@ -26,7 +26,7 @@
 })();
 </script>
 </head>
-<body class="g">
+<body class="g{% block bodyclass %}{% endblock %}">
 
 <header class="g-top">
   <div class="g-top__in">
@@ -210,6 +210,22 @@
     var open=w.classList.toggle('is-open');
     b.setAttribute('aria-expanded', open ? 'true' : 'false');
   });
+})();
+</script>
+
+<script>
+(function(){
+  if (!document.body.classList.contains('has-hero')) return;
+  var top = document.querySelector('.g-top');
+  var hero = document.querySelector('.g-hero');
+  if (!top) return;
+  function set(){
+    var trigger = hero ? hero.offsetHeight - 90 : 10;
+    top.classList.toggle('is-solid', window.scrollY > trigger);
+  }
+  window.addEventListener('scroll', set, {passive:true});
+  window.addEventListener('resize', set);
+  set();
 })();
 </script>
 </body>
