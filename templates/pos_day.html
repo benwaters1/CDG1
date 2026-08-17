@@ -8,10 +8,49 @@
     <a href="{{ url_for('pos_day', date=prev_day.isoformat()) }}" class="btn-mini">‹ {{ prev_day.strftime('%a %d') }}</a>
     <strong>{{ on.strftime('%A %d %B') }}</strong>
     <a href="{{ url_for('pos_day', date=next_day.isoformat()) }}" class="btn-mini">{{ next_day.strftime('%a %d') }} ›</a>
+    <a href="{{ url_for('pos_journal_page') }}" class="btn-ghost">Journal</a>
   </div>
 </div>
 
+{% if chain %}
+<div class="alert-band">
+  <strong>The journal does not verify</strong> — entry {{ chain.sequence }} {{ chain.problem }}.
+  Treat these figures as unproven.
+  <a href="{{ url_for('pos_journal_page') }}">Look at the journal</a>
+</div>
+{% endif %}
+
+{% if closure %}
+{# Frozen. This is why the number is the same today as it was last night. #}
+<div class="closure-band">
+  <strong>Closed off {{ local_datetime_str(closure.closed_at) }}.</strong>
+  These figures are fixed — €{{ '%.2f'|format(closure.taken_total) }} taken,
+  {{ closure.ticket_count }} ticket{{ '' if closure.ticket_count == 1 else 's' }},
+  {{ closure.covers }} cover{{ '' if closure.covers == 1 else 's' }}.
+  Anything found afterwards belongs to today with a note pointing back here.
+</div>
+{% endif %}
+
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not closure and user['role'] == 'owner' %}
+<form method="post" action="{{ url_for('pos_close_day') }}" class="detail-card"
+      style="max-width:640px;"
+      onsubmit="return confirm('Close {{ on.isoformat() }} off? The figures are fixed after this.');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="date" value="{{ on.isoformat() }}">
+  <h3 style="margin-top:0;">Close the day</h3>
+  <p class="upload-hint" style="margin-top:0;">
+    Freezes the totals so they cannot change afterwards. Every tab has to be settled first.
+  </p>
+  {% if is_today %}
+  <label style="display:flex; gap:8px; align-items:center; font-size:14px; margin-bottom:8px;">
+    <input type="checkbox" name="confirm" value="yes"> Yes, close today even though service may not be over
+  </label>
+  {% endif %}
+  <button type="submit" class="btn-primary" style="margin-top:0;">Close {{ on.strftime('%d %B') }}</button>
+</form>
+{% endif %}
 
 {% if not report.orders %}
   <div class="empty-state">Nothing settled on this day.</div>

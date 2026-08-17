@@ -22,6 +22,7 @@ SUITES = [
     "test_list_view",
     "test_consequences",
     "test_pos",
+    "test_pos_journal",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",

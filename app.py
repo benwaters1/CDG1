@@ -121,6 +121,8 @@ import zipfile
 import csv
 import sqlite3
 import hmac
+import calendar
+import hashlib
 import json
 import secrets
 import string
@@ -2253,6 +2255,61 @@ def init_db():
         ("pos_orders_merged_into", "ALTER TABLE pos_orders ADD COLUMN merged_into_order_id INTEGER REFERENCES pos_orders(id) ON DELETE SET NULL"),
         ("pos_orders_reopened_at", "ALTER TABLE pos_orders ADD COLUMN reopened_at TEXT"),
         ("pos_orders_deposit_credit", "ALTER TABLE pos_orders ADD COLUMN deposit_credit REAL NOT NULL DEFAULT 0"),
+
+        # ---- The journal and the closures ---------------------------------
+        # Append-only, hash-chained. Every row carries the hash of the row
+        # before it, so altering or removing anything historic stops the chain
+        # recomputing from that point. A bound ledger is tamper-evident because
+        # the pages are sewn in; a database table is not, so the chain does
+        # that job. Nothing may ever UPDATE or DELETE this table.
+        ("pos_journal", """CREATE TABLE IF NOT EXISTS pos_journal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sequence INTEGER NOT NULL UNIQUE,
+            register_id TEXT NOT NULL DEFAULT 'CAISSE-1',
+            event_type TEXT NOT NULL,
+            order_id INTEGER,
+            occurred_at TEXT NOT NULL,
+            user_id INTEGER,
+            payload TEXT NOT NULL,
+            prev_hash TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )"""),
+        ("pos_journal_seq_idx",
+         "CREATE INDEX IF NOT EXISTS idx_pos_journal_order ON pos_journal(order_id)"),
+
+        # A period, once closed, is frozen. `perpetual_total` never resets: it
+        # is a control total, so if the closed periods stop summing to it,
+        # something was taken out of the middle.
+        ("pos_closures", """CREATE TABLE IF NOT EXISTS pos_closures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL CHECK(kind IN ('day','month','year')),
+            period TEXT NOT NULL,
+            first_sequence INTEGER,
+            last_sequence INTEGER,
+            gross_total REAL NOT NULL,
+            discount_total REAL NOT NULL DEFAULT 0,
+            service_total REAL NOT NULL DEFAULT 0,
+            taken_total REAL NOT NULL DEFAULT 0,
+            vat_json TEXT NOT NULL,
+            by_method_json TEXT NOT NULL DEFAULT '{}',
+            ticket_count INTEGER NOT NULL,
+            covers INTEGER NOT NULL,
+            perpetual_total REAL NOT NULL,
+            prev_hash TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            closed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            closed_at TEXT NOT NULL,
+            UNIQUE(kind, period)
+        )"""),
+
+        # A gapless receipt number per year, allocated when money is first
+        # taken. Its absence from the sequence is itself evidence.
+        ("pos_orders_receipt_number",
+         "ALTER TABLE pos_orders ADD COLUMN receipt_number TEXT"),
+        ("pos_orders_receipt_number_idx",
+         "CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_orders_receipt "
+         "ON pos_orders(receipt_number) WHERE receipt_number IS NOT NULL"),
 
         # Splitting a bill means a tab can take more than one payment. One row
         # per payment, so "three cards and the rest on the room" is expressible
@@ -6085,6 +6142,225 @@ def pos_bill(conn, order_id):
     }
 
 
+# ---------------------------------------------------------------------------
+# The journal.
+#
+# Every event that changes what is owed or what was taken appends one row and
+# never edits one. A correction is a further entry referencing the original —
+# the same discipline as a general journal, where you post a reversing entry
+# rather than reaching for the tippex.
+#
+# The hash chain is the part paper never needed. Each row hashes the previous
+# row's hash together with its own sequence and payload, so a row changed or
+# removed halfway through stops every later hash recomputing.
+# ---------------------------------------------------------------------------
+
+POS_REGISTER_ID = os.environ.get("POS_REGISTER_ID", "CAISSE-1")
+
+# The events worth journalling: anything that moves money or changes the bill.
+# Kitchen state (ready, served) is deliberately absent — it is not a financial
+# event, and a journal that logs everything is one nobody reads.
+POS_JOURNAL_EVENTS = {
+    "line_added", "line_voided", "discount_set", "service_set", "covers_set",
+    "payment_taken", "tab_settled", "tab_reopened", "tab_merged",
+    "receipt_issued", "closure_day", "closure_month", "closure_year",
+    "archive_exported",
+}
+
+
+def _canonical(payload):
+    """The exact bytes that get hashed.
+
+    Sorted keys and fixed separators, because a hash chain that depends on
+    Python's dict ordering is a chain that breaks on an upgrade.
+    """
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, default=str)
+
+
+def pos_journal_head(conn):
+    """The last row's hash and sequence, or the genesis values."""
+    row = conn.execute(
+        "SELECT sequence, hash FROM pos_journal ORDER BY sequence DESC LIMIT 1").fetchone()
+    return (row["sequence"], row["hash"]) if row else (0, "genesis")
+
+
+def pos_journal_append(conn, event_type, payload, *, order_id=None, user_id=None):
+    """Append one event. Never call anything that UPDATEs this table."""
+    if event_type not in POS_JOURNAL_EVENTS:
+        raise ValueError(f"unknown journal event {event_type!r}")
+    now = datetime.now(timezone.utc).isoformat()
+    for _attempt in range(3):
+        seq, prev = pos_journal_head(conn)
+        seq += 1
+        body = _canonical(payload)
+        digest = hashlib.sha256(
+            f"{prev}|{seq}|{event_type}|{body}".encode("utf-8")).hexdigest()
+        try:
+            conn.execute(
+                """INSERT INTO pos_journal (sequence, register_id, event_type, order_id,
+                   occurred_at, user_id, payload, prev_hash, hash, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (seq, POS_REGISTER_ID, event_type, order_id, now, user_id, body,
+                 prev, digest, now))
+            return seq
+        except sqlite3.IntegrityError:
+            # Two writers took the same sequence. One row per event matters
+            # more than speed here, so take the next one.
+            continue
+    raise RuntimeError("could not allocate a journal sequence")
+
+
+def pos_journal_verify(conn, *, limit=None):
+    """Recompute the chain. Returns the first sequence that fails, or None.
+
+    This is the whole point of the exercise: it answers "has anything been
+    changed since it was written" with arithmetic rather than trust.
+    """
+    sql = "SELECT * FROM pos_journal ORDER BY sequence"
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    prev, expected_seq = "genesis", 1
+    for row in conn.execute(sql):
+        if row["sequence"] != expected_seq:
+            return {"sequence": row["sequence"], "problem": "gap in the sequence",
+                    "expected": expected_seq}
+        if row["prev_hash"] != prev:
+            return {"sequence": row["sequence"], "problem": "does not follow the row before it"}
+        digest = hashlib.sha256(
+            f"{prev}|{row['sequence']}|{row['event_type']}|{row['payload']}"
+            .encode("utf-8")).hexdigest()
+        if digest != row["hash"]:
+            return {"sequence": row["sequence"], "problem": "contents have been altered"}
+        prev, expected_seq = row["hash"], row["sequence"] + 1
+    return None
+
+
+def pos_allocate_receipt_number(conn, order_id):
+    """A gapless number per year, allocated the first time money is taken.
+
+    Allocated at payment rather than at open, so a table that sits down and
+    changes its mind does not eat a number and leave a hole nobody can explain.
+    """
+    order = conn.execute("SELECT receipt_number FROM pos_orders WHERE id = ?",
+                         (order_id,)).fetchone()
+    if order and order["receipt_number"]:
+        return order["receipt_number"]
+    year = datetime.now(timezone.utc).year
+    row = conn.execute(
+        "SELECT receipt_number FROM pos_orders WHERE receipt_number LIKE ? "
+        "ORDER BY receipt_number DESC LIMIT 1", (f"{year}-%",)).fetchone()
+    nxt = int(row["receipt_number"].split("-")[1]) + 1 if row else 1
+    number = f"{year}-{nxt:06d}"
+    conn.execute("UPDATE pos_orders SET receipt_number = ? WHERE id = ?", (number, order_id))
+    return number
+
+
+def pos_perpetual_total(conn):
+    """The running cumulative total, which never resets.
+
+    A control total: if the closed periods stop summing to it, something has
+    been removed from the middle.
+    """
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS t FROM pos_payments").fetchone()
+    return round(row["t"], 2)
+
+
+def pos_period_bounds(kind, period):
+    """The inclusive date range a closure covers."""
+    if kind == "day":
+        return period, period
+    if kind == "month":
+        year, month = (int(x) for x in period.split("-"))
+        last = calendar.monthrange(year, month)[1]
+        return f"{period}-01", f"{period}-{last:02d}"
+    return f"{period}-01-01", f"{period}-12-31"
+
+
+def pos_close_period(conn, kind, period, user_id=None):
+    """Freeze a period's totals. Once closed, the figure cannot move.
+
+    Anything arriving afterwards belongs to the next period with a reference to
+    this one — exactly as a late invoice does after a month-end close. Closing
+    twice is refused rather than silently recomputed, because a closure that
+    can be redone is not a closure.
+    """
+    existing = conn.execute(
+        "SELECT * FROM pos_closures WHERE kind = ? AND period = ?", (kind, period)).fetchone()
+    if existing:
+        return existing, False
+
+    start, end = pos_period_bounds(kind, period)
+    orders = conn.execute(
+        """SELECT * FROM pos_orders
+           WHERE status = 'paid' AND date(COALESCE(closed_at, opened_at)) BETWEEN ? AND ?""",
+        (start, end)).fetchall()
+
+    gross = discount = service = 0.0
+    covers = 0
+    vat = {}
+    for o in orders:
+        bill = pos_bill(conn, o["id"])
+        gross += bill["gross"]
+        discount += bill["discount"]
+        service += bill["service"]
+        covers += bill["covers"]
+        for rate, b in bill["vat_by_rate"].items():
+            acc = vat.setdefault(str(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
+            for k in ("gross", "vat", "net"):
+                acc[k] = round(acc[k] + b[k], 2)
+
+    methods = {r["method"]: round(r["t"], 2) for r in conn.execute(
+        """SELECT method, COALESCE(SUM(amount), 0) AS t FROM pos_payments
+           WHERE date(created_at) BETWEEN ? AND ? GROUP BY method""", (start, end)).fetchall()}
+    taken = round(sum(methods.values()), 2)
+
+    first_seq = conn.execute(
+        "SELECT MIN(sequence) AS s FROM pos_journal WHERE date(occurred_at) BETWEEN ? AND ?",
+        (start, end)).fetchone()["s"]
+    last_seq = conn.execute(
+        "SELECT MAX(sequence) AS s FROM pos_journal WHERE date(occurred_at) BETWEEN ? AND ?",
+        (start, end)).fetchone()["s"]
+
+    prev_row = conn.execute(
+        "SELECT hash FROM pos_closures ORDER BY id DESC LIMIT 1").fetchone()
+    prev_hash = prev_row["hash"] if prev_row else "genesis"
+    perpetual = pos_perpetual_total(conn)
+    now = datetime.now(timezone.utc).isoformat()
+
+    body = _canonical({
+        "kind": kind, "period": period, "gross": round(gross, 2),
+        "discount": round(discount, 2), "service": round(service, 2),
+        "taken": taken, "vat": vat, "methods": methods,
+        "tickets": len(orders), "covers": covers, "perpetual": perpetual,
+    })
+    digest = hashlib.sha256(f"{prev_hash}|{kind}|{period}|{body}".encode("utf-8")).hexdigest()
+
+    conn.execute(
+        """INSERT INTO pos_closures (kind, period, first_sequence, last_sequence, gross_total,
+           discount_total, service_total, taken_total, vat_json, by_method_json,
+           ticket_count, covers, perpetual_total, prev_hash, hash, closed_by_user_id, closed_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (kind, period, first_seq, last_seq, round(gross, 2), round(discount, 2),
+         round(service, 2), taken, json.dumps(vat), json.dumps(methods),
+         len(orders), covers, perpetual, prev_hash, digest, user_id, now))
+    pos_journal_append(conn, f"closure_{kind}",
+                       {"period": period, "gross": round(gross, 2), "taken": taken,
+                        "tickets": len(orders), "covers": covers,
+                        "perpetual": perpetual, "hash": digest},
+                       user_id=user_id)
+    return conn.execute("SELECT * FROM pos_closures WHERE kind = ? AND period = ?",
+                        (kind, period)).fetchone(), True
+
+
+def pos_closure_for(conn, kind, period):
+    row = conn.execute("SELECT * FROM pos_closures WHERE kind = ? AND period = ?",
+                       (kind, period)).fetchone()
+    return dict(row, vat=json.loads(row["vat_json"]),
+                by_method=json.loads(row["by_method_json"])) if row else None
+
+
 def pos_lines_by_course(lines):
     """Lines grouped the way the kitchen reads them."""
     grouped = {}
@@ -6203,7 +6479,15 @@ def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids
          ",".join(str(i) for i in (seats or [])) or None,
          room_booking_id, stripe_session_id, user_id,
          datetime.now(timezone.utc).isoformat()))
-    return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    payment_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    # The receipt number is allocated here, at the first payment, so a table
+    # that sits down and leaves does not eat a number and leave a hole.
+    receipt = pos_allocate_receipt_number(conn, order_id)
+    pos_journal_append(conn, "payment_taken", {
+        "payment_id": payment_id, "amount": round(float(amount), 2), "method": method,
+        "receipt_number": receipt, "seats": seats or None, "reference": reference,
+    }, order_id=order_id, user_id=user_id)
+    return payment_id
 
 
 def pos_day_report(conn, on_date):
@@ -6317,6 +6601,11 @@ def pos_add_menu_line(conn, order_id, item, quantity=1, *, notes=None, seat=None
                note, created_by_user_id, created_at) VALUES (?,?,'sale',?,?,?,?)""",
             (item["stock_item_id"], -abs(item["stock_qty_per_unit"] * quantity), line_id,
              f"{quantity} x {item['name']}", user_id, now))
+    pos_journal_append(conn, "line_added", {
+        "line_id": line_id, "name": item["name"], "quantity": quantity,
+        "unit_price": item["price"] or 0, "vat_rate": menu_vat_rate(conn, item),
+        "course": item["course"] or "main", "seat": seat,
+    }, order_id=order_id, user_id=user_id)
     return line_id
 
 
@@ -10815,6 +11104,13 @@ def pos_void_item(line_id):
     log_audit(conn, "pos_line_voided", target=line["name"],
               details=f"€{(line['unit_price'] or 0) * line['quantity']:.2f} — {reason}"
                       + (" (already sent to the kitchen)" if was_sent else ""))
+    # A void is a further entry, not an erasure: the original line_added row
+    # stays in the journal and this one references it.
+    pos_journal_append(conn, "line_voided", {
+        "line_id": line_id, "name": line["name"],
+        "amount": round((line["unit_price"] or 0) * line["quantity"], 2),
+        "reason": reason, "already_sent": was_sent,
+    }, order_id=line["order_id"], user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     if was_sent:
@@ -10860,6 +11156,10 @@ def pos_adjust(order_id):
         if amount:
             log_audit(conn, "pos_discount", target=order["table_label"],
                       details=f"€{amount:.2f} — {reason}")
+        pos_journal_append(conn, "discount_set",
+                           {"amount": amount, "reason": reason or None,
+                            "was": round(order["discount_amount"] or 0, 2)},
+                           order_id=order_id, user_id=session.get("user_id"))
     elif kind == "service":
         percent = (request.form.get("percent", "") or "").strip()
         amount = money("amount")
@@ -10869,6 +11169,9 @@ def pos_adjust(order_id):
             except ValueError:
                 pass
         conn.execute("UPDATE pos_orders SET service_charge = ? WHERE id = ?", (amount, order_id))
+        pos_journal_append(conn, "service_set",
+                           {"amount": amount, "was": round(order["service_charge"] or 0, 2)},
+                           order_id=order_id, user_id=session.get("user_id"))
     elif kind == "covers":
         try:
             conn.execute("UPDATE pos_orders SET covers = ? WHERE id = ?",
@@ -10911,6 +11214,10 @@ def pos_move_table(order_id):
                WHERE id = ?""", (into["id"], datetime.now(timezone.utc).isoformat(), order_id))
         conn.execute("UPDATE pos_orders SET covers = covers + ?, deposit_credit = deposit_credit + ? "
                      "WHERE id = ?", (order["covers"] or 0, order["deposit_credit"] or 0, into["id"]))
+        pos_journal_append(conn, "tab_merged",
+                           {"from_table": order["table_label"], "into_table": into["table_label"],
+                            "into_order_id": into["id"], "covers_moved": order["covers"] or 0},
+                           order_id=order_id, user_id=session.get("user_id"))
         conn.commit()
         conn.close()
         flash(f"Merged into {into['table_label']}.", "success")
@@ -10990,6 +11297,14 @@ def pos_take_payment_route(order_id):
             (after["total"], method, datetime.now(timezone.utc).isoformat(), order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
                   details=f"€{after['total']:.2f}")
+        pos_journal_append(conn, "tab_settled", {
+            "table": bill["order"]["table_label"], "total": after["total"],
+            "gross": after["gross"], "discount": after["discount"],
+            "service": after["service"], "deposit": after["deposit"],
+            "vat": {str(k): v for k, v in after["vat_by_rate"].items()},
+            "covers": after["covers"], "method": method,
+            "receipt_number": pos_allocate_receipt_number(conn, order_id),
+        }, order_id=order_id, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     if after["outstanding"] > 0.01:
@@ -11005,11 +11320,26 @@ def pos_reopen(order_id):
     """Reopen a settled tab. Mistakes happen mid-service and the alternative
     is a second tab that makes the covers count wrong forever."""
     conn = get_db()
+    # Refused once the day is closed. A closed period whose contents can still
+    # change is not a closed period, and the whole point of the closure is that
+    # yesterday's cash-up gives the same answer today.
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    day = (order["closed_at"] or "")[:10] if order else ""
+    if day and conn.execute("SELECT 1 FROM pos_closures WHERE kind='day' AND period = ?",
+                            (day,)).fetchone():
+        conn.close()
+        flash(f"{day} has been closed off — a tab inside a closed day cannot be reopened. "
+              "Take the correction on today instead.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
     conn.execute(
         """UPDATE pos_orders SET status = 'open', closed_at = NULL, reopened_at = ?
            WHERE id = ? AND status = 'paid'""",
         (datetime.now(timezone.utc).isoformat(), order_id))
     log_audit(conn, "pos_tab_reopened", target=str(order_id))
+    pos_journal_append(conn, "tab_reopened",
+                       {"table": order["table_label"] if order else None,
+                        "was_settled_at": order["closed_at"] if order else None},
+                       order_id=order_id, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     flash("Reopened.", "success")
@@ -11061,10 +11391,31 @@ def pos_kitchen():
 @app.route("/pos/day")
 @owner_required
 def pos_day():
-    """Cash up. Takings by method, VAT owed, covers and average spend."""
+    """Cash up.
+
+    Once a day is closed this reads the frozen closure, not the live rows.
+    That is the whole difference: before, voiding a line tonight silently
+    changed what yesterday had taken, and a cash-up that answers differently
+    on Tuesday than it did on Monday is not a cash-up.
+    """
     on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
     conn = get_db()
+    closure = pos_closure_for(conn, "day", on.isoformat())
     report = pos_day_report(conn, on)
+    if closure:
+        # The frozen figures win. The live list of tabs is still shown beneath,
+        # and any disagreement between the two is reported rather than hidden.
+        report = dict(report, taken=closure["taken_total"], gross=closure["gross_total"],
+                      discounts=closure["discount_total"], service=closure["service_total"],
+                      covers=closure["covers"], tabs=closure["ticket_count"],
+                      by_method=closure["by_method"],
+                      vat=round(sum(v["vat"] for v in closure["vat"].values()), 2),
+                      average_per_cover=round(closure["gross_total"] / closure["covers"], 2)
+                      if closure["covers"] else 0)
+    chain = pos_journal_verify(conn)
+    events = conn.execute(
+        """SELECT * FROM pos_journal WHERE date(occurred_at) = ?
+           ORDER BY sequence DESC LIMIT 60""", (on.isoformat(),)).fetchall()
     conn.close()
     overview = [
         overview_cell("Taken", euro(report["taken"])),
@@ -11075,8 +11426,81 @@ def pos_day():
                       alert=report["discounts"] > 0),
     ]
     return render_template("pos_day.html", report=report, overview=overview, on=on,
+                           closure=closure, chain=chain, events=events,
                            payment_methods=POS_PAYMENT_METHODS,
+                           is_today=on == datetime.now(timezone.utc).date(),
                            prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
+
+
+@app.route("/pos/day/close", methods=["POST"])
+@owner_required
+def pos_close_day():
+    """Close the day off. After this the figure cannot move."""
+    on = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
+    if on >= datetime.now(timezone.utc).date() and request.form.get("confirm") != "yes":
+        flash("That day isn't over. Tick the box if you really mean to close it now.", "error")
+        return redirect(url_for("pos_day", date=on.isoformat()))
+    conn = get_db()
+    open_tabs = conn.execute(
+        "SELECT COUNT(*) AS c FROM pos_orders WHERE status = 'open' AND date(opened_at) <= ?",
+        (on.isoformat(),)).fetchone()["c"]
+    if open_tabs:
+        conn.close()
+        flash(f"{open_tabs} tab{'' if open_tabs == 1 else 's'} still open. "
+              "Settle or void them before closing the day.", "error")
+        return redirect(url_for("pos_day", date=on.isoformat()))
+    closure, created = pos_close_period(conn, "day", on.isoformat(), session.get("user_id"))
+    log_audit(conn, "pos_day_closed", target=on.isoformat(),
+              details=f"€{closure['taken_total']:.2f} taken")
+    conn.commit()
+    conn.close()
+    flash(f"{on.isoformat()} closed — €{closure['taken_total']:.2f} taken." if created
+          else f"{on.isoformat()} was already closed.", "success" if created else "error")
+    return redirect(url_for("pos_day", date=on.isoformat()))
+
+
+@app.route("/admin/pos/journal")
+@owner_required
+def pos_journal_page():
+    """The journal itself, and whether it still verifies.
+
+    Worth having on screen rather than only in an export: the answer to "has
+    anything been altered since it was written" should be one click, not a
+    request to whoever built the system.
+    """
+    conn = get_db()
+    lv = list_view(
+        conn.execute("SELECT pos_journal.*, users.name AS who FROM pos_journal "
+                     "LEFT JOIN users ON users.id = pos_journal.user_id "
+                     "ORDER BY sequence DESC LIMIT 1000").fetchall(),
+        request.args,
+        search=["event_type", "payload", "who"],
+        search_hint="Search event, table, amount or who",
+        facets=[
+            facet("event", "Event", lambda e: e["event_type"].replace("_", " "), limit=10),
+            facet("who", "Who", lambda e: e["who"] or "System", limit=8),
+        ],
+        sorts=[
+            sort_option("recent", "Newest first", lambda e: e["sequence"], reverse=True),
+            sort_option("oldest", "Oldest first", lambda e: e["sequence"]),
+        ],
+        default_sort="recent",
+    )
+    chain = pos_journal_verify(conn)
+    closures = conn.execute(
+        "SELECT * FROM pos_closures ORDER BY closed_at DESC LIMIT 30").fetchall()
+    perpetual = pos_perpetual_total(conn)
+    total_events = conn.execute("SELECT COUNT(*) AS c FROM pos_journal").fetchone()["c"]
+    conn.close()
+    overview = [
+        overview_cell("Entries", total_events),
+        overview_cell("Chain", "Broken" if chain else "Verified", alert=bool(chain),
+                      sub=chain["problem"] if chain else "recomputed just now"),
+        overview_cell("Taken since the start", euro(perpetual), hint="never resets"),
+        overview_cell("Periods closed", len(closures)),
+    ]
+    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"], chain=chain,
+                           closures=closures, overview=overview, perpetual=perpetual)
 
 
 @app.route("/pos/<int:order_id>/pay-link", methods=["POST"])
@@ -14040,6 +14464,14 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
             (bill["total"], datetime.now(timezone.utc).isoformat(), order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
                   details=f"€{bill['total']:.2f} by card link")
+        pos_journal_append(conn, "tab_settled", {
+            "table": bill["order"]["table_label"], "total": bill["total"],
+            "gross": bill["gross"], "discount": bill["discount"],
+            "service": bill["service"], "deposit": bill["deposit"],
+            "vat": {str(k): v for k, v in bill["vat_by_rate"].items()},
+            "covers": bill["covers"], "method": "card_link",
+            "receipt_number": pos_allocate_receipt_number(conn, order_id),
+        }, order_id=order_id)
     return True
 
 

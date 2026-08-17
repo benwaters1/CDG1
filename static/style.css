@@ -1763,3 +1763,11 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 
 .till-note-bar{ display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin:0 0 10px; }
 .till-note-bar input{ margin:0; flex:1 1 240px; min-width:0; }
+
+/* A period that has been closed off. Neutral, not alarming — it is the
+   normal, correct end state, and the point is that the number is now fixed. */
+.closure-band{
+  background:var(--parchment); border-left:4px solid var(--ink);
+  border-radius:8px; padding:11px 14px; margin:0 0 16px;
+  font-size:13.5px; line-height:1.6;
+}
