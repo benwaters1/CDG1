@@ -6047,14 +6047,26 @@ def pos_bill(conn, order_id):
     deposit = round(order["deposit_credit"] or 0, 2)
 
     # VAT is extracted from the gross (French prices are TTC), per rate.
+    #
+    # A discount reduces the supply, so it reduces the VAT base — and it has to
+    # be apportioned across the rates, because taking €20 off a bill of food at
+    # 10% and wine at 20% does not reduce both by the same amount. A service
+    # charge is additional consideration for the same supply, so it is
+    # apportioned the same way.
+    #
+    # A deposit is NOT a reduction: it is money already paid against the same
+    # meal. It changes what is left to pay and nothing else. Netting it off the
+    # VAT base would under-declare the tax on every table that booked ahead.
     by_rate = {}
     for l in live:
         rate = l["vat_rate"] if l["vat_rate"] is not None else 0
         amount = (l["unit_price"] or 0) * (l["quantity"] or 0)
         b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
         b["gross"] += amount
+    adjustment = service - discount
     for rate, b in by_rate.items():
-        b["gross"] = round(b["gross"], 2)
+        share = (b["gross"] / gross) if gross else 0
+        b["gross"] = round(b["gross"] + adjustment * share, 2)
         b["vat"] = round(b["gross"] - b["gross"] / (1 + rate / 100), 2) if rate else 0.0
         b["net"] = round(b["gross"] - b["vat"], 2)
 
@@ -13996,6 +14008,41 @@ def stripe_cancel():
     return redirect(url_for("book_rooms"))
 
 
+def settle_pos_from_stripe_session(conn, stripe_session, meta):
+    """Record a card payment a guest made on their own phone.
+
+    Trusts the amount Stripe actually captured rather than recomputing the
+    bill: between the QR being shown and the guest paying, a waiter may have
+    added a coffee. What was charged is what happened.
+
+    Idempotent on the session id, because Stripe retries webhooks and the
+    guest's success redirect can arrive first — a tab must not be credited
+    twice for one payment.
+    """
+    order_id = (meta.get("pos_order_id") or "").strip()
+    if not order_id.isdigit():
+        return False
+    order_id = int(order_id)
+    if conn.execute("SELECT 1 FROM pos_payments WHERE stripe_session_id = ?",
+                    (stripe_session["id"],)).fetchone():
+        return False
+    amount = (sval(stripe_session, "amount_total") or 0) / 100.0
+    if amount <= 0:
+        return False
+    pos_take_payment(conn, order_id, amount, "card_link",
+                     reference=stripe_session["id"],
+                     stripe_session_id=stripe_session["id"])
+    bill = pos_bill(conn, order_id)
+    if bill and bill["outstanding"] <= 0.01 and bill["order"]["status"] == "open":
+        conn.execute(
+            """UPDATE pos_orders SET status = 'paid', settled_total = ?,
+               payment_method = 'card_link', closed_at = ? WHERE id = ?""",
+            (bill["total"], datetime.now(timezone.utc).isoformat(), order_id))
+        log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
+                  details=f"€{bill['total']:.2f} by card link")
+    return True
+
+
 @app.route("/webhooks/stripe", methods=["POST"])
 @csrf.exempt
 def stripe_webhook():
@@ -14016,6 +14063,12 @@ def stripe_webhook():
             if meta.get("kind") in ("workshop_deposit", "workshop_balance"):
                 if sval(session, "payment_status") == "paid":
                     mark_workshop_payment_paid(conn, session)
+            elif meta.get("kind") == "pos":
+                # Without this the guest paid, Stripe took the money, and the
+                # tab stayed open — the takings never appeared in the day's
+                # figures and somebody would have chased them for it.
+                if sval(session, "payment_status") == "paid":
+                    settle_pos_from_stripe_session(conn, session, meta)
             elif meta.get("kind") == "restaurant":
                 existing = conn.execute(
                     "SELECT id FROM restaurant_bookings WHERE stripe_session_id = ?", (session["id"],)
@@ -18785,6 +18838,13 @@ def delete_deposit_rule(rule_id):
 
 
 MENU_CATEGORIES = ["starter", "main", "dessert", "drink"]
+# The public page speaks in four categories; the till speaks in nine courses.
+# This maps one onto the other so a dish entered once appears correctly in both.
+COURSE_TO_CATEGORY = {
+    "aperitif": "drink", "starter": "starter", "main": "main", "side": "main",
+    "cheese": "dessert", "dessert": "dessert", "wine": "drink", "drink": "drink",
+    "coffee": "drink",
+}
 
 
 @app.route("/admin/restaurant/menu")
@@ -18860,6 +18920,11 @@ def new_menu_item():
     course = request.form.get("course", "main").strip()
     if course not in MENU_COURSES:
         course = "main"
+    # The public /restaurant page groups by `category`, and no form has ever
+    # set it — so every dish added since the POS rewrite landed under "main"
+    # and the page showed one undifferentiated list. Derive it from the course
+    # the owner actually chose.
+    category = COURSE_TO_CATEGORY.get(course, "main")
     allergens = ",".join(a for a in request.form.getlist("allergens") if a in ALLERGENS)
     stock_item_id = (request.form.get("stock_item_id", "") or "").strip()
     stock_item_id = int(stock_item_id) if stock_item_id.isdigit() else None
@@ -18924,6 +18989,7 @@ def edit_menu_item(item_id):
     course = request.form.get("course", item["course"] or "main").strip()
     if course not in MENU_COURSES:
         course = item["course"] or "main"
+    category = COURSE_TO_CATEGORY.get(course, item["category"] or "main")
     allergens = ",".join(a for a in request.form.getlist("allergens") if a in ALLERGENS)
     stock_item_id = (request.form.get("stock_item_id", "") or "").strip()
     stock_item_id = int(stock_item_id) if stock_item_id.isdigit() else None

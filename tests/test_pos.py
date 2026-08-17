@@ -247,6 +247,118 @@ def run():
     s.check("showing VAT by rate", "TVA 10%" in receipt)
     s.check("and the deposit the guest already paid", "Acompte" in receipt)
 
+    # ------------------------------------------------ defects found in review
+    s.section("VAT follows the money, not the menu price")
+    # A €100 bill with €20 off charges €80, so the VAT is the VAT contained in
+    # €80. The first version computed it from the untouched line total and
+    # overstated it — and pos_day_report inherited that, so the day's VAT was
+    # wrong on every discounted table.
+    conn.execute("INSERT INTO pos_orders (table_label, covers, status, service_state, opened_at) "
+                 "VALUES (?, 2, 'open', 'seated', ?)", (TAG + "VAT", now))
+    conn.commit()
+    v = conn.execute("SELECT id FROM pos_orders WHERE table_label = ?", (TAG + "VAT",)).fetchone()
+    conn.execute("""INSERT INTO pos_order_lines (order_id, name, unit_price, quantity, course,
+                    state, vat_rate, created_at)
+                    VALUES (?, ?, 100.0, 1, 'main', 'new', 10, ?)""",
+                 (v["id"], TAG + "dish", now))
+    conn.commit()
+    plain = m.pos_bill(conn, v["id"])
+    s.check("undiscounted VAT is the VAT within the price",
+            abs(plain["vat_total"] - round(100 - 100 / 1.1, 2)) < 0.01,
+            detail=str(plain["vat_total"]))
+
+    conn.execute("UPDATE pos_orders SET discount_amount = 20, discount_reason = 'test' WHERE id = ?",
+                 (v["id"],))
+    conn.commit()
+    disc = m.pos_bill(conn, v["id"])
+    s.check("a discount reduces the VAT base",
+            abs(disc["vat_total"] - round(80 - 80 / 1.1, 2)) < 0.01,
+            detail=f"{disc['vat_total']} on a total of {disc['total']}")
+
+    # A deposit is money already paid for the same meal, not a smaller meal.
+    # Netting it off the VAT base would under-declare on every booked table.
+    conn.execute("UPDATE pos_orders SET discount_amount = 0, deposit_credit = 40 WHERE id = ?",
+                 (v["id"],))
+    conn.commit()
+    dep = m.pos_bill(conn, v["id"])
+    s.check("a deposit does not reduce the VAT base",
+            abs(dep["vat_total"] - round(100 - 100 / 1.1, 2)) < 0.01,
+            detail=f"{dep['vat_total']} with {dep['total']} left to pay")
+    s.check("it only reduces what is left to pay", dep["total"] == 60.0,
+            detail=str(dep["total"]))
+
+    # Two rates, one discount: it must be split between them, not taken off
+    # whichever happens to be first.
+    conn.execute("""INSERT INTO pos_order_lines (order_id, name, unit_price, quantity, course,
+                    state, vat_rate, created_at)
+                    VALUES (?, ?, 100.0, 1, 'wine', 'new', 20, ?)""",
+                 (v["id"], TAG + "wine", now))
+    conn.execute("UPDATE pos_orders SET deposit_credit = 0, discount_amount = 20 WHERE id = ?",
+                 (v["id"],))
+    conn.commit()
+    split = m.pos_bill(conn, v["id"])
+    s.check("a discount is apportioned across both VAT rates",
+            abs(split["vat_by_rate"][10.0]["gross"] - 90) < 0.01
+            and abs(split["vat_by_rate"][20.0]["gross"] - 90) < 0.01,
+            detail=str({k: x["gross"] for k, x in split["vat_by_rate"].items()}))
+
+    s.section("A card payment made on the guest's phone lands")
+    # metadata kind='pos' was set on the Stripe session and the webhook had no
+    # branch for it, so the guest paid, Stripe took the money, and the tab
+    # stayed open with the takings missing from the day.
+    conn.execute("UPDATE pos_orders SET discount_amount = 0 WHERE id = ?", (v["id"],))
+    conn.commit()
+    fake_session = {"id": TAG + "sess1", "amount_total": 20000, "payment_status": "paid"}
+    # Inside a request context because that is where it runs — the webhook is a
+    # POST, and log_audit reads the session off it.
+    with m.app.test_request_context():
+        m.settle_pos_from_stripe_session(conn, fake_session, {"pos_order_id": str(v["id"])})
+    conn.commit()
+    after_pay = m.pos_bill(conn, v["id"])
+    s.check("the payment is recorded against the tab", after_pay["paid"] == 200.0,
+            detail=str(after_pay["paid"]))
+    s.check("and the tab closes", after_pay["order"]["status"] == "paid",
+            detail=after_pay["order"]["status"])
+    # Stripe retries webhooks, and the guest's success redirect can beat them.
+    with m.app.test_request_context():
+        m.settle_pos_from_stripe_session(conn, fake_session, {"pos_order_id": str(v["id"])})
+    conn.commit()
+    s.check("a retried webhook does not pay twice",
+            m.pos_bill(conn, v["id"])["paid"] == 200.0,
+            detail=str(m.pos_bill(conn, v["id"])["paid"]))
+
+    s.section("A kitchen note can be attached to a dish on the menu")
+    # pos_add_menu_line accepted notes= from the start; the menu button never
+    # sent one, so the only way to say "no butter" was the off-menu form.
+    till = oc.get(f"/pos/{order['id']}").get_data(as_text=True)
+    s.check("the till has a note field", 'name="notes"' in till and "note-input" in till)
+    conn.execute("INSERT INTO pos_orders (table_label, covers, status, service_state, opened_at) "
+                 "VALUES (?, 2, 'open', 'seated', ?)", (TAG + "NOTE", now))
+    conn.commit()
+    noted_tab = conn.execute("SELECT id FROM pos_orders WHERE table_label = ?",
+                             (TAG + "NOTE",)).fetchone()
+    oc.post(f"/pos/{noted_tab['id']}/add",
+            data={"menu_item_id": dish["starter"], "notes": "no cream", "seat_number": "2"},
+            follow_redirects=True)
+    noted = conn.execute(
+        "SELECT * FROM pos_order_lines WHERE order_id = ? ORDER BY id DESC LIMIT 1",
+        (noted_tab["id"],)).fetchone()
+    s.check("the note is stored on the line", bool(noted) and noted["notes"] == "no cream",
+            detail=str(noted["notes"] if noted else None))
+    oc.post(f"/pos/{noted_tab['id']}/send", follow_redirects=True)
+    s.check("and reaches the pass", "no cream" in oc.get("/pos/kitchen").get_data(as_text=True))
+
+    s.section("A dish shows in the right place on the public menu")
+    # The public page groups by `category`; no form ever set it, so every dish
+    # added since the POS rewrite landed under "main".
+    oc.post("/admin/restaurant/menu/new",
+            data={"name": TAG + "Sauternes", "course": "wine", "price": "40"},
+            follow_redirects=True)
+    added = conn.execute("SELECT * FROM menu_items WHERE name = ?", (TAG + "Sauternes",)).fetchone()
+    s.check("a wine is categorised as a drink, not a main",
+            bool(added) and added["category"] == "drink",
+            detail=str(added["category"] if added else None))
+
     # ------------------------------------------------------------- cash up
     s.section("Cash up")
     report = m.pos_day_report(conn, today)

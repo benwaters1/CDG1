@@ -82,6 +82,10 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="menu_item_id" value="{{ m['id'] }}">
           <input type="hidden" name="seat_number" class="seat-input" value="">
+          {# The note rides with the next tap, exactly as the seat does. Without
+             this the only way to say "no butter" was the off-menu form, which
+             is not where anybody orders a dish that IS on the menu. #}
+          <input type="hidden" name="notes" class="note-input" value="">
           <button type="submit" class="till-item {{ 'is-out' if out }}"
                   {{ 'disabled' if out or order['status'] != 'open' }}>
             <span class="till-item-name">{{ m['name'] }}</span>
@@ -107,6 +111,13 @@
         <button type="button" class="till-seat" data-seat="{{ n }}" onclick="pickSeat(this, '{{ n }}')">{{ n }}</button>
         {% endfor %}
         <span class="upload-hint">Pick a seat and the next item goes on it — that's how you serve without asking.</span>
+      </div>
+
+      <div class="till-note-bar">
+        <label class="field-label" for="till-note" style="margin:0;">Note for the kitchen</label>
+        <input type="text" id="till-note" placeholder="no butter · allergy seat 2 · well done"
+               oninput="setNote(this.value)" autocomplete="off">
+        <span class="upload-hint">Rides with the next dish you tap, then clears.</span>
       </div>
 
       <details class="till-manual">
@@ -370,6 +381,12 @@ function pickSeat(button, seat) {
   document.querySelectorAll('.till-seat').forEach(function (b) { b.classList.remove('is-on'); });
   button.classList.add('is-on');
   document.querySelectorAll('.seat-input').forEach(function (i) { i.value = seat; });
+}
+// Same idea for a kitchen note: type it once, tap the dish, and it goes with
+// that dish. Typing it into every hidden field is how it survives the fact
+// that each menu button is its own little form.
+function setNote(value) {
+  document.querySelectorAll('.note-input').forEach(function (i) { i.value = value; });
 }
 </script>
 

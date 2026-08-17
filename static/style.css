@@ -1760,3 +1760,6 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   .g-top, .page-head, .receipt-print, nav, header, footer{ display:none !important; }
   .receipt{ border:none; max-width:none; padding:0; }
 }
+
+.till-note-bar{ display:flex; gap:9px; align-items:center; flex-wrap:wrap; margin:0 0 10px; }
+.till-note-bar input{ margin:0; flex:1 1 240px; min-width:0; }
