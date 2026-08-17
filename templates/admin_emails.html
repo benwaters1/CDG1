@@ -4,6 +4,7 @@
 
 <div class="page-head">
   <h1>Emails</h1>
+  <a href="{{ url_for('admin_email_outbox') }}" class="btn-ghost">Held email{% if held %} ({{ held }}){% endif %}</a>
   <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation settings</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Reusable templates for guest emails — announcements, offers, pre-arrival notes. Send to a chosen audience, or set one to go out automatically around a guest's stay.</p>

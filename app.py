@@ -18116,10 +18116,24 @@ def readiness_checks(conn):
         "point at localhost and be useless to the recipient.")
 
     email_ok = email_enabled()
-    add("blocker", "Email", "Outbound email", email_ok,
-        ("Resend" if resend_enabled() else "SMTP") + " configured." if email_ok else
-        "Not configured. No booking confirmations, no reminders, no campaigns — "
-        "the app will quietly log them instead of sending.")
+    held = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE sent_at IS NULL").fetchone()["c"]
+    if email_ok:
+        email_detail = ("Resend" if resend_enabled() else "SMTP") + " configured."
+    else:
+        email_detail = "Not configured. No booking confirmations, no reminders, no campaigns."
+        if held:
+            email_detail += (f" {held} message{'' if held == 1 else 's'} "
+                             f"{'is' if held == 1 else 'are'} being held until this is set up.")
+    add("blocker", "Email", "Outbound email", email_ok, email_detail)
+
+    # Worth its own line: with a provider configured, anything still held is
+    # mail that was actually rejected, which the email check above would
+    # otherwise show as a clean pass.
+    if held:
+        add("warn" if email_ok else "info", "Email", "Held email", False,
+            f"{held} message{'' if held == 1 else 's'} could not be sent and "
+            f"{'is' if held == 1 else 'are'} waiting. Review them under Emails → Held email.")
 
     stripe_ok = stripe_enabled()
     add("warn", "Payments", "Stripe", stripe_ok,
