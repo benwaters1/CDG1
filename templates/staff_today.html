@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Today{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Today</h1>
+  <div>
+    {% if clocked_in %}
+      <form method="post" action="{{ url_for('clock_out_action') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-ghost">Clock out</button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ url_for('clock_in_action') }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-primary">Clock in</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% for a in announcements_current %}
+<div class="today-notice">
+  <strong>{{ a['title'] }}</strong>
+  {% if a['body'] %}<span>{{ a['body'] }}</span>{% endif %}
+</div>
+{% endfor %}
+
+{# ---- Who's in the house. First, because it's what staff need before they
+       walk into a room, and the whole point is greeting people by name. ---- #}
+<h2 class="section-heading">
+  In the house
+  {% if guests_here %}<span class="today-count">{{ guests_here|length }}</span>{% endif %}
+</h2>
+
+{% if not guests_here %}
+  <div class="empty-state">Nobody staying right now.</div>
+{% else %}
+  <div class="guest-cards">
+    {% for g in guests_here %}
+    <details class="guest-card {{ 'guest-card-urgent' if g.urgent }}">
+      <summary>
+        <span class="guest-card-top">
+          <span class="guest-name">
+            {{ g.name }}{% if g.vip %} <span class="guest-vip" title="VIP">★</span>{% endif %}
+          </span>
+          <span class="guest-when {{ 'guest-when-urgent' if g.urgent }}">{{ g.when }}</span>
+        </span>
+        {% if g.pronunciation %}
+        <span class="guest-say">say: {{ g.pronunciation }}</span>
+        {% endif %}
+        <span class="guest-card-meta">
+          {{ g.room }}
+          {%- if g.party_size %} · party of {{ g.party_size }}{% endif -%}
+          {%- if g.returning %} · <strong>{{ g.stay_number }}{{ 'st' if g.stay_number % 10 == 1 and g.stay_number != 11 else ('nd' if g.stay_number % 10 == 2 and g.stay_number != 12 else ('rd' if g.stay_number % 10 == 3 and g.stay_number != 13 else 'th')) }} stay</strong>{% endif -%}
+        </span>
+        {% if g.highlight %}<span class="guest-highlight">{{ g.highlight }}</span>{% endif %}
+      </summary>
+
+      <div class="guest-detail">
+        {% if g.detail.dietary %}
+        <p><span class="guest-detail-label">Dietary</span> {{ g.detail.dietary }}</p>
+        {% endif %}
+        {% if g.detail.requests %}
+        <p><span class="guest-detail-label">Asked for</span> {{ g.detail.requests }}</p>
+        {% endif %}
+        {% if g.detail.notes %}
+        <p><span class="guest-detail-label">Notes</span> {{ g.detail.notes }}</p>
+        {% endif %}
+        {# %-d is a glibc extension and raises on Windows, where this is also
+           developed — %d costs a leading zero and works everywhere. #}
+        <p class="guest-detail-dates">
+          {{ g.detail.arrival.strftime('%a %d %b') if g.detail.arrival else '?' }}
+          &rarr;
+          {{ g.detail.departure.strftime('%a %d %b') if g.detail.departure else '?' }}
+          {% if g.detail.reference %} · {{ g.detail.reference }}{% endif %}
+        </p>
+        {% if not (g.detail.dietary or g.detail.requests or g.detail.notes) %}
+        <p class="upload-hint">Nothing else on file.</p>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# ---- The checklist. One tap is done, and the list is today only. ---- #}
+<h2 class="section-heading">
+  My list
+  {% if open_count %}<span class="today-count">{{ open_count }}</span>{% endif %}
+</h2>
+
+{% if not my_tasks %}
+  <div class="empty-state">Nothing on your list today.</div>
+{% else %}
+  <div class="check-list">
+    {% for t in my_tasks %}
+    <div class="check-row {{ 'check-row-done' if t['status'] == 'done' }}" id="task-{{ t['id'] }}">
+      <button type="button" class="check-box" aria-label="Mark done"
+              onclick="completeTask({{ t['id'] }}, this)">
+        <span aria-hidden="true">{{ '✓' if t['status'] == 'done' else '' }}</span>
+      </button>
+      <span class="check-text">
+        <span class="check-title">{{ t['title'] }}</span>
+        {% if t['room_note'] or t['notes'] %}
+        <span class="check-sub">{{ t['room_note'] or t['notes'] }}</span>
+        {% endif %}
+      </span>
+      {% if t['priority'] == 'high' %}<span class="mini-status status-declined">urgent</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{# ---- Your shift, then who else is around to ask. ---- #}
+<h2 class="section-heading">Your shift</h2>
+{% if not my_shift_today %}
+  <div class="empty-state">You're not rostered today.</div>
+{% else %}
+  <div class="mini-list">
+    {% for s in my_shift_today %}
+    <div class="mini-row">
+      <span class="mini-name">
+        {% if s['start_time'] or s['end_time'] %}{{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}
+        {% else %}Rostered{% endif %}
+      </span>
+      {% if s['role_note'] %}<span class="mini-role">{{ s['role_note'] }}</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if on_today %}
+<h2 class="section-heading">Also on today</h2>
+<div class="mini-list">
+  {% for s in on_today %}
+  <div class="mini-row">
+    <span class="mini-name">{{ s['name'] }}</span>
+    <span class="mini-role">
+      {%- if s['job_role'] %}{{ s['job_role'] }}{% endif -%}
+      {%- if s['start_time'] or s['end_time'] %} · {{ s['start_time'] or '?' }}–{{ s['end_time'] or '?' }}{% endif -%}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+function completeTask(id, btn) {
+  var row = document.getElementById('task-' + id);
+  btn.disabled = true;
+  fetch('/tasks/' + id + '/complete', { method: 'POST' })
+    .then(function(r) { if (!r.ok) throw new Error('failed'); return r.json(); })
+    .then(function(data) {
+      var done = data.status === 'done';
+      row.classList.toggle('check-row-done', done);
+      btn.firstElementChild.textContent = done ? '✓' : '';
+      var badge = document.querySelector('.section-heading .today-count');
+      // Keep the count honest without a reload — a checklist that still claims
+      // "4 left" after you ticked one reads as though the tap didn't register.
+      var open = document.querySelectorAll('.check-row:not(.check-row-done)').length;
+      var listBadge = document.querySelectorAll('.today-count');
+      if (listBadge.length) {
+        var last = listBadge[listBadge.length - 1];
+        if (open) { last.textContent = open; last.style.display = ''; }
+        else { last.style.display = 'none'; }
+      }
+    })
+    .catch(function() { alert("Couldn't save that — check your connection and try again."); })
+    .finally(function() { btn.disabled = false; });
+}
+</script>
+
+{% endblock %}

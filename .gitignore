@@ -1,6 +1,10 @@
-# Database — contains real staff/guest data and password hashes, never commit
+# Database — contains real staff/guest data and password hashes, never commit.
+# The -wal and -shm files are part of the database in WAL mode and hold real
+# committed rows; they were missing here and got staged by a `git add -A`.
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Uploaded files — move to a Railway persistent volume, not the repo
 uploads/

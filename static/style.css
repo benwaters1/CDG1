@@ -363,6 +363,12 @@ select, textarea{
   background:var(--surface); color:var(--ink);
   transition: border-color .15s ease, box-shadow .15s ease;
 }
+/* Checkboxes and radios must not be stretched by any width rule, but they
+   also must not be pinned by an inline style — templates used to carry
+   `style="width:auto"`, which then beat the touch-target sizing further down
+   and left the booking form's consent box 13px wide on a phone. */
+input[type="checkbox"], input[type="radio"]{ width:auto; }
+
 input:focus, select:focus, textarea:focus{
   outline:none; border-color:var(--gold); box-shadow:0 0 0 3px var(--focus-ring);
 }
@@ -905,6 +911,102 @@ body.staff-shell .btn-mini.btn-mini-active:hover{
    flex/gap instead, so the spacing drifted (8px in some, 6px in others). */
 .checkbox-row{ display:flex; align-items:center; gap:8px; }
 
+
+/* ==================================================================
+   The staff "Today" screen — read on a phone, usually standing up,
+   usually in a hurry. Everything here is sized for a thumb and for
+   glancing rather than reading.
+   ================================================================== */
+
+.today-notice{
+  background:var(--status-warn-bg); border:1px solid var(--gold);
+  border-radius:10px; padding:11px 13px; margin-bottom:16px;
+  display:flex; flex-direction:column; gap:3px; font-size:14px;
+}
+.today-count{
+  display:inline-block; min-width:21px; padding:1px 7px; margin-left:7px;
+  border-radius:999px; background:var(--gold); color:var(--chestnut-deep);
+  font-family:'Inter',sans-serif; font-size:12px; font-weight:700;
+  vertical-align:middle; text-align:center;
+}
+
+/* --- Guest recognition cards --- */
+.guest-cards{ display:flex; flex-direction:column; gap:9px; }
+.guest-card{
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:11px; box-shadow:var(--shadow); overflow:hidden;
+}
+/* An arrival or a departure changes somebody's morning; a guest mid-stay
+   doesn't. The gold edge is the only thing on this screen that shouts. */
+.guest-card-urgent{ border-left:3px solid var(--gold); }
+.guest-card > summary{
+  padding:12px 13px; cursor:pointer; display:flex; flex-direction:column; gap:3px;
+  list-style:none;
+}
+.guest-card > summary::-webkit-details-marker{ display:none; }
+.guest-card > summary::after{
+  content:'Details'; font-family:'IBM Plex Mono', monospace; font-size:10px;
+  text-transform:uppercase; letter-spacing:0.05em; color:var(--steel);
+}
+.guest-card[open] > summary::after{ content:'Hide'; }
+.guest-card-top{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.guest-name{
+  font-family:'Playfair Display', serif; font-size:19px; font-weight:600;
+  color:var(--chestnut-deep); line-height:1.2;
+}
+.guest-vip{ color:var(--gold); }
+.guest-when{
+  font-family:'IBM Plex Mono', monospace; font-size:11px; text-transform:uppercase;
+  letter-spacing:0.04em; color:var(--ink-soft); white-space:nowrap; flex-shrink:0;
+}
+.guest-when-urgent{ color:var(--gold-on-warn); font-weight:600; }
+/* How to say it. Set in the guest's own profile, and the reason a gardener
+   who has never met them can still greet them properly. */
+.guest-say{
+  font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--steel);
+}
+.guest-card-meta{ font-size:13px; color:var(--ink-soft); }
+.guest-highlight{ font-size:13.5px; color:var(--ink); line-height:1.45; }
+.guest-detail{
+  border-top:1px solid var(--parchment-line); padding:11px 13px;
+  background:var(--parchment); font-size:13.5px; line-height:1.5;
+}
+.guest-detail p{ margin:0 0 7px; }
+.guest-detail p:last-child{ margin-bottom:0; }
+.guest-detail-label{
+  font-family:'IBM Plex Mono', monospace; font-size:10px; text-transform:uppercase;
+  letter-spacing:0.05em; color:var(--steel); display:block;
+}
+.guest-detail-dates{ color:var(--ink-soft); font-size:12.5px; }
+
+/* --- The checklist. One tap is done. --- */
+.check-list{ display:flex; flex-direction:column; gap:7px; }
+.check-row{
+  display:flex; align-items:flex-start; gap:12px; background:var(--surface);
+  border:1px solid var(--parchment-line); border-radius:10px; padding:11px 12px;
+}
+.check-box{
+  /* 34px plus the row padding clears the 44px touch target a thumb needs;
+     smaller than this and people miss it while walking. */
+  width:34px; height:34px; flex-shrink:0; border-radius:8px;
+  border:1.5px solid var(--parchment-line); background:var(--parchment);
+  color:var(--success); font-size:17px; font-weight:700; line-height:1;
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  padding:0; transition:border-color 0.12s ease, background 0.12s ease;
+}
+.check-box:hover{ border-color:var(--success); }
+.check-box:disabled{ opacity:0.5; cursor:default; }
+.check-text{ display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+.check-title{ font-size:15px; line-height:1.35; color:var(--ink); }
+.check-sub{ font-size:12.5px; color:var(--ink-soft); }
+.check-row-done .check-box{ background:var(--status-success-bg); border-color:var(--success); }
+.check-row-done .check-title{ text-decoration:line-through; color:var(--ink-soft); }
+
+@media (max-width:520px){
+  .guest-card-top{ flex-direction:column; gap:1px; }
+  .guest-when{ align-self:flex-start; }
+}
+
 /* ---------- Section overview band ----------
    The summary that sits at the top of a section before its sub-pages, so a
    category opens with "here's how this area is doing" rather than a menu. */
@@ -1171,6 +1273,150 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 @media (max-width: 760px){
   .data-table{ font-size:12px; }
   .data-table thead th, .data-table td{ padding:9px 10px; }
+}
+
+/* ---------- Restaurant till ----------
+   Sized for a tablet held in one hand during service: every control is a big
+   target, the bill never leaves the screen, and nothing needs a keyboard. */
+.pos-layout{ display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start; }
+.pos-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+.pos-tile{
+  display:flex; flex-direction:column; gap:3px; padding:14px;
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-left:3px solid var(--gold); border-radius:10px; text-decoration:none; color:inherit;
+}
+.pos-tile:hover{ box-shadow:var(--shadow); }
+.pos-tile-table{ font-family:'Playfair Display', serif; font-size:19px; font-weight:600; color:var(--chestnut-deep); }
+.pos-tile-total{ font-family:'IBM Plex Mono', monospace; font-size:17px; font-weight:600; }
+.pos-tile-meta{ font-size:11px; color:var(--ink-soft); }
+
+.pos-item{
+  width:100%; min-height:74px; display:flex; flex-direction:column; justify-content:center;
+  gap:2px; padding:10px; cursor:pointer; text-align:left;
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:10px;
+  font-family:inherit; color:var(--ink);
+}
+.pos-item:hover:not(:disabled){ border-color:var(--gold); box-shadow:var(--shadow); }
+.pos-item:disabled{ opacity:0.5; cursor:default; }
+.pos-item-name{ font-size:13.5px; font-weight:600; line-height:1.25; }
+.pos-item-price{ font-family:'IBM Plex Mono', monospace; font-size:13px; color:var(--ink-soft); }
+.pos-item-stock{ font-size:10.5px; color:var(--ink-soft); }
+/* Out of stock stays sellable — the cellar is not always right, and refusing a
+   sale because a number is wrong is worse than letting stock go negative and
+   showing it. */
+.pos-item-out{ border-left:3px solid var(--danger); }
+.pos-item-out .pos-item-stock{ color:var(--danger); font-weight:600; }
+
+.pos-bill{
+  position:sticky; top:16px;
+  background:var(--parchment); border:1px solid var(--parchment-line);
+  border-radius:12px; padding:14px;
+}
+.pos-total{
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-top:12px; padding-top:12px; border-top:2px solid var(--parchment-line);
+  font-family:'IBM Plex Mono', monospace; font-size:20px;
+}
+
+@media (max-width: 900px){
+  .pos-layout{ grid-template-columns:1fr; }
+  .pos-bill{ position:static; }
+}
+
+/* ---------- Command palette ---------- */
+.topbar-search{ position:relative; }
+.palette-results{
+  position:absolute; top:calc(100% + 6px); left:0; z-index:60;
+  width:min(420px, 90vw); max-height:60vh; overflow-y:auto;
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.18); padding:5px;
+}
+.palette-item{
+  display:flex; align-items:center; gap:9px; padding:9px 10px; border-radius:7px;
+  text-decoration:none; color:var(--ink); font-size:13px;
+}
+.palette-item.is-active, .palette-item:hover{ background:var(--status-neutral-bg); }
+.palette-kind{
+  font-family:'IBM Plex Mono', monospace; font-size:9.5px; text-transform:uppercase;
+  letter-spacing:0.06em; color:var(--ink-soft); background:var(--parchment);
+  border-radius:5px; padding:2px 6px; flex-shrink:0; min-width:56px; text-align:center;
+}
+.palette-label{ font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.palette-sub{ color:var(--ink-soft); font-size:11.5px; margin-left:auto; flex-shrink:0; }
+
+/* Shown only on touch devices — turned back on inside the block below.
+   Declared here rather than after it: a later rule of equal specificity wins
+   even over one inside a matching media query. */
+.touch-only{ display:none; }
+
+/* ---------- Touch devices ----------
+   Staff use this on a phone, standing up, often with one hand and sometimes
+   wet or gloved hands. Measured at 375px: the header links were 15px tall,
+   checkboxes 13px, and every text input small enough that iOS zooms the whole
+   page the moment it's focused — which then leaves the page scrolled sideways
+   with no obvious way back.
+
+   Keyed off `pointer: coarse` rather than width, so it applies to a phone or a
+   tablet but never shrinks the mouse-driven office display. */
+@media (pointer: coarse){
+  /* iOS zooms any input whose text is under 16px. Nothing else fixes this —
+     it is a hard threshold in the platform, not a preference. The type
+     selectors are spelled out because the base rule uses them too, and a bare
+     `input` loses to `input[type=text]` on specificity. */
+  input, select, textarea,
+  input[type=text], input[type=email], input[type=password], input[type=tel],
+  input[type=date], input[type=file], input[type=number], input[type=search],
+  input[type=datetime-local], input[type=time],
+  .overview-filters select, .overview-filters input[type="text"]{ font-size:16px; }
+
+  /* The header row: "Log out" sat directly beside "Password" at 15px tall.
+     Mis-tapping there logs someone out mid-shift. */
+  .topbar-right .small-link{
+    min-height:44px; display:inline-flex; align-items:center; padding:0 4px;
+  }
+  .bell-link{ min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+
+  /* Anything checkable. 13px is smaller than a fingertip's contact patch. */
+  input[type="checkbox"], input[type="radio"]{
+    width:22px; height:22px; flex-shrink:0;
+  }
+  .task-check{ min-width:32px; min-height:32px; }
+
+  /* Navigation and the small action buttons that fill these pages. */
+  .nav a, .nav-dropdown-label{ min-height:44px; display:flex; align-items:center; }
+  .nav-dropdown-toggle{ min-width:44px; min-height:44px; }
+  .btn-mini, .btn-ghost{ min-height:38px; display:inline-flex; align-items:center; }
+
+  /* A row of period buttons (Day/Week/Month/Year) sat at 29px and is the most
+     tapped control on every dashboard. */
+  .period-choices .btn-mini, .period-nav .btn-mini{ min-height:40px; }
+
+  /* Delete crosses and similar single-glyph controls. A × was 20px WIDE, so
+     min-height alone left it a sliver. */
+  .doc-delete, .task-check, .btn-text-danger{ min-height:38px; min-width:38px; }
+
+  /* The calendar's own controls — the day/week/month switcher and the filter
+     chips — are the two things staff touch most on the page they open first,
+     and neither uses the generic button classes above. */
+  .segmented a{ min-height:40px; display:inline-flex; align-items:center; }
+  .cal-chip{ min-height:38px; display:inline-flex; align-items:center; }
+  /* Week-view day headings double as links to that day. */
+  .week-day-head{ min-height:38px; display:flex; align-items:center; }
+
+  /* Small links inside page content (e.g. "Download receipt") — the topbar
+     ones are handled above, these are everywhere else. */
+  .small-link{ min-height:34px; display:inline-flex; align-items:center; }
+
+  /* Guest side. The footer link to the Terms is on every public page and was
+     13px tall — it is the one thing a guest may genuinely need to read before
+     agreeing to it, so it should not be the hardest thing to hit. */
+  .public-footer{ font-size:11.5px; }
+  .public-footer a{ min-height:40px; display:inline-flex; align-items:center; padding:0 6px; }
+
+  /* The consent checkbox on the booking form, and its label. */
+  .booking-form label input[type="checkbox"]{ width:24px; height:24px; }
+
+  .touch-only{ display:block; }
 }
 
 /* ---------- Print (today-sheet and anything else meant to be posted) ---------- */

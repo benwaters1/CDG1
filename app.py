@@ -293,45 +293,112 @@ _load_dotenv()
 # in the château's own local time (handles the CET/CEST switch automatically).
 LOCAL_TZ = ZoneInfo(os.environ.get("LOCAL_TZ", "Europe/Paris"))
 
-DEFAULT_TERMS = """DRAFT — NOT YET REVIEWED BY A LAWYER. Replace this notice and finalize
-this page with your own legal/insurance advisor before relying on it.
+DEFAULT_TERMS = """DRAFT — NOT YET REVIEWED BY A LAWYER. This is a starting point written
+to match how the château actually operates, not legal advice. Have it reviewed
+by a French lawyer and your insurer before you rely on it, and delete this
+notice once you have.
 
 BOOKING TERMS & CONDITIONS — CHÂTEAU DE GUDANES
 
-1. Booking Requests
-Submitting a booking request does not guarantee a reservation. Every
-request is reviewed by the château before it becomes a confirmed booking.
-You will be notified by email once a decision has been made.
+1. Who you are contracting with
+Your booking is with SCI Torrents, which operates Château de Gudanes.
+References to "we" and "the château" mean that company.
 
-2. Payment
-Where online payment is enabled, the total shown at checkout is charged
-at the time you submit your request — before your booking is confirmed.
-This does not itself guarantee availability; see "Booking Requests" above.
+2. Booking requests
+Submitting a request does not guarantee a reservation. Every request is
+reviewed by the château before it becomes a confirmed booking. You will be
+told by email once a decision has been made, and your reference code is
+the way to find your booking at any time.
 
-3. Cancellations & Refunds
-- Bookings are non-refundable. Once your booking is confirmed and paid
-  for, we do not offer a refund as a matter of course if you cancel or do
-  not arrive.
+3. Prices, deposits and balances
+- Prices are in euros and include French VAT where it applies.
+- Some bookings are taken in full at the time of request. Others take a
+  deposit, with the balance due either before arrival or on the day —
+  whichever applies to your booking is stated clearly at the time you
+  book and repeated in your confirmation.
+- Where a balance is due before arrival and is not paid by the date
+  given, we may release the booking and treat it as cancelled by you.
+- A discount code applies only to the booking it was used on, cannot be
+  applied afterwards, and cannot be exchanged for money.
+
+4. Cancellations and refunds
+- Bookings are non-refundable. Once confirmed and paid for, we do not
+  offer a refund as a matter of course if you cancel or do not arrive.
 - We do, however, look at every cancellation individually. If your
   circumstances change, please contact us and tell us what has happened.
   We would rather hear from you than not, and we will do what we
   reasonably can — including, at our discretion, a full or partial
   refund. Please treat any such refund as a gesture of goodwill rather
-  than an entitlement.
-- If the château declines your booking request, or cancels a confirmed
-  booking, any payment already taken is refunded in full.
+  than an entitlement, and not as a precedent for any other booking.
+- If the château declines your request, or cancels a confirmed booking,
+  anything already paid is refunded in full.
 - Where you booked through Booking.com or another travel site, that
   site's own cancellation terms apply instead of these, and any refund is
-  arranged through them rather than with us directly.
+  arranged through them rather than with us.
 - We strongly recommend travel insurance that covers cancellation.
 
-4. Your Information
-We collect your name, email, phone number, and any notes you provide in
-order to process your booking. It is stored securely and is not sold or
-shared with third parties, other than the payment processor (Stripe)
-where online payment is used.
+5. Dining and workshops
+- A restaurant reservation is held for the time booked. If you have not
+  arrived and have not contacted us, we may release the table.
+- Repeated no-shows may mean we decline future reservations.
+- Workshops run subject to a minimum number of participants. If we cancel
+  a workshop for any reason, including not reaching that minimum, you are
+  refunded in full or offered a place on another date, as you prefer.
+- Tell us about allergies and dietary requirements when you book. We will
+  do our best, but a château kitchen is not an allergen-free environment
+  and we cannot guarantee the absence of any ingredient.
 
-5. Contact
+6. Arrival, departure and conduct
+- Arrival and departure times are given in your confirmation. Tell us if
+  you expect to arrive late so somebody can be there to meet you.
+- Please treat the house as the historic building it is. Smoking is not
+  permitted indoors. Pets and additional guests only by prior agreement.
+- We may ask anyone whose behaviour puts the building, its contents or
+  other guests at risk to leave, without a refund.
+
+7. Damage and loss
+- The château contains antique furniture, artworks and fittings that
+  cannot simply be replaced. You are responsible for loss or damage
+  caused by you or your party beyond fair wear and tear, and we may
+  charge the reasonable cost of repair or replacement.
+- We will always tell you what has happened and what it costs before
+  charging anything.
+- Please look after your own belongings. We cannot accept responsibility
+  for personal property left in the château or its grounds.
+
+8. The building and grounds
+This is a historic château with uneven floors, steep and irregular
+stairs, open water and unlit areas outside. Please supervise children at
+all times and take care after dark. Nothing in these terms limits our
+liability for death or personal injury caused by our negligence, or for
+anything else that cannot lawfully be limited.
+
+9. Photography
+We sometimes photograph the château, its events and its workshops. If you
+would prefer not to appear in anything we publish, tell us and we will
+respect that.
+
+10. Events outside our control
+If we cannot honour a booking because of something genuinely outside our
+control — fire, flood, severe weather, utility failure, illness affecting
+the household, or an order of the authorities — we will offer you
+alternative dates or a full refund. We are not otherwise liable for costs
+you incur, such as travel booked separately.
+
+11. Your information
+We collect your name, email, phone number and anything you tell us in
+order to handle your booking and your stay. It is stored securely, kept
+only as long as we need it, and never sold. It is shared only with our
+payment processor (Stripe) where you pay online. You may ask us what we
+hold about you, and ask us to correct or delete it.
+
+12. Complaints, and the law that applies
+Please tell us at the time if something is wrong — almost everything is
+fixable while you are still here. These terms are governed by French law,
+and the French courts have jurisdiction.
+
+13. Contact
+SCI Torrents, Château de Gudanes.
 For any question about a booking, contact the château directly.
 
 Last updated: [add a date once this is finalized]"""
@@ -1428,6 +1495,137 @@ def init_db():
             notes TEXT
         );
 
+        -- Extras actually SOLD, as line items. They used to be flattened into
+        -- bookings.extras_summary (a text blob) at booking time, which meant an
+        -- extra could never be added afterwards, never counted, and never tied
+        -- to anything — so "how many bottles did we sell in July" and "does
+        -- selling one reduce stock" were both unanswerable.
+        CREATE TABLE IF NOT EXISTS booking_extras (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL DEFAULT 'room'
+                CHECK(category IN ('room','restaurant','workshop','event')),
+            booking_id INTEGER NOT NULL,
+            extra_id INTEGER REFERENCES extras(id) ON DELETE SET NULL,
+            -- Name and price are COPIED, not looked up: the catalogue price
+            -- changes, and a line on last year's booking must keep saying what
+            -- was actually charged.
+            name TEXT NOT NULL,
+            unit_price REAL NOT NULL DEFAULT 0,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            notes TEXT,
+            status TEXT NOT NULL DEFAULT 'confirmed'
+                CHECK(status IN ('requested','confirmed','delivered','cancelled')),
+            scheduled_for TEXT,
+            added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Restaurant POS. An order is a TAB: opened when people sit down, added
+        -- to through service, settled at the end. It is deliberately separate
+        -- from restaurant_bookings — plenty of covers are walk-ins with no
+        -- reservation, and a reservation that never turns up has no order.
+        CREATE TABLE IF NOT EXISTS pos_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            table_label TEXT NOT NULL,
+            covers INTEGER NOT NULL DEFAULT 1,
+            restaurant_booking_id INTEGER REFERENCES restaurant_bookings(id) ON DELETE SET NULL,
+            -- Set when the tab is charged to a room instead of paid on the spot.
+            room_booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+                CHECK(status IN ('open','paid','charged_to_room','void')),
+            payment_method TEXT
+                CHECK(payment_method IN ('cash','card_terminal','card_link','room','comp')),
+            payment_reference TEXT,
+            stripe_session_id TEXT,
+            -- The totals are FROZEN onto the order when it is settled. Menu
+            -- prices change; a closed tab must keep saying what was charged.
+            settled_total REAL,
+            notes TEXT,
+            opened_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            opened_at TEXT NOT NULL,
+            closed_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_order_lines (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL REFERENCES pos_orders(id) ON DELETE CASCADE,
+            extra_id INTEGER REFERENCES extras(id) ON DELETE SET NULL,
+            name TEXT NOT NULL,
+            unit_price REAL NOT NULL DEFAULT 0,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            notes TEXT,
+            voided INTEGER NOT NULL DEFAULT 0,
+            added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Things the château keeps a quantity of. The level is NOT stored here:
+        -- it is derived from stock_movements, so it can always be reconciled
+        -- and never silently drifts out of step with its own history.
+        CREATE TABLE IF NOT EXISTS stock_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'other'
+                CHECK(category IN ('drinks','food','cleaning','linen','maintenance','guest_supplies','other')),
+            unit TEXT NOT NULL DEFAULT 'each',
+            reorder_level REAL NOT NULL DEFAULT 0,
+            unit_cost REAL,
+            vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+            location TEXT,
+            notes TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- Append-only ledger. Every change to a stock level is a row here with
+        -- a reason and, where there is one, a link to the invoice or booking
+        -- that caused it. Nothing edits or deletes a movement; a mistake is
+        -- corrected by a further movement, so the history stays truthful.
+        CREATE TABLE IF NOT EXISTS stock_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stock_item_id INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+            delta REAL NOT NULL,
+            reason TEXT NOT NULL
+                CHECK(reason IN ('purchase','sale','wastage','stocktake','correction','opening')),
+            unit_cost REAL,
+            expense_id INTEGER REFERENCES expenses(id) ON DELETE SET NULL,
+            booking_extra_id INTEGER REFERENCES booking_extras(id) ON DELETE SET NULL,
+            note TEXT,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- What the château owns. Distinct from `equipment_items` (kit issued to
+        -- a person) and `access_items` (keys): this is the furniture, art and
+        -- fixed equipment an insurer asks about, and that a claim has to be
+        -- evidenced from. `value_source` matters more than the number — an
+        -- owner's guess and a written valuation are not the same evidence.
+        CREATE TABLE IF NOT EXISTS assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'furniture'
+                CHECK(category IN ('furniture','art','antique','equipment','fixture','vehicle','other')),
+            location TEXT,
+            description TEXT,
+            acquired_on TEXT,
+            acquired_from TEXT,
+            purchase_price REAL,
+            estimated_value REAL,
+            value_source TEXT DEFAULT 'estimate'
+                CHECK(value_source IN ('estimate','purchase','valuation','insurer')),
+            valued_on TEXT,
+            insurance_policy_id INTEGER REFERENCES insurance_policies(id) ON DELETE SET NULL,
+            serial_number TEXT,
+            condition TEXT DEFAULT 'good'
+                CHECK(condition IN ('excellent','good','fair','poor','damaged')),
+            photo_filename TEXT,
+            notes TEXT,
+            status TEXT NOT NULL DEFAULT 'held'
+                CHECK(status IN ('held','on_loan','sold','lost','destroyed')),
+            disposed_on TEXT,
+            created_at TEXT NOT NULL
+        );
+
         -- What a job role REQUIRES. Certifications and documents were tracked
         -- per person with no notion of what the role demands, so "who cannot
         -- legally work this week" was never answerable — only "what expires".
@@ -1917,6 +2115,25 @@ def init_db():
         ("users_contract_end_date", "ALTER TABLE users ADD COLUMN contract_end_date TEXT"),
         ("users_trial_end_date", "ALTER TABLE users ADD COLUMN trial_end_date TEXT"),
         ("users_notice_period_days", "ALTER TABLE users ADD COLUMN notice_period_days INTEGER"),
+        # `extras` was a flat name+price list used only at room-booking time.
+        # These turn it into a real catalogue the château can sell from.
+        ("extras_category", "ALTER TABLE extras ADD COLUMN category TEXT DEFAULT 'other'"),
+        ("extras_description", "ALTER TABLE extras ADD COLUMN description TEXT"),
+        ("extras_stock_item_id", "ALTER TABLE extras ADD COLUMN stock_item_id INTEGER REFERENCES stock_items(id) ON DELETE SET NULL"),
+        ("extras_stock_qty", "ALTER TABLE extras ADD COLUMN stock_qty_per_unit REAL NOT NULL DEFAULT 1"),
+        ("extras_lead_time_days", "ALTER TABLE extras ADD COLUMN lead_time_days INTEGER NOT NULL DEFAULT 0"),
+        ("extras_max_qty", "ALTER TABLE extras ADD COLUMN max_qty INTEGER"),
+        ("extras_guest_bookable", "ALTER TABLE extras ADD COLUMN guest_bookable INTEGER NOT NULL DEFAULT 1"),
+        ("extras_sold_in_pos", "ALTER TABLE extras ADD COLUMN sold_in_pos INTEGER NOT NULL DEFAULT 0"),
+        # A POS line depletes stock exactly as a guest extra does; the ledger
+        # needs to point back at whichever caused the movement.
+        ("stock_movements_pos_line", "ALTER TABLE stock_movements ADD COLUMN pos_line_id INTEGER REFERENCES pos_order_lines(id) ON DELETE SET NULL"),
+        # How to say the name out loud. The point of showing staff a guest's
+        # name is that they can greet them by it, and a gardener who has never
+        # met "Aoife Ó Súilleabháin" cannot get there from the spelling. Free
+        # text on purpose — "EE-fa oh-SULL-i-van" is more use to a person than
+        # any phonetic alphabet.
+        ("guest_name_pronunciation", "ALTER TABLE guests ADD COLUMN name_pronunciation TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -2324,6 +2541,16 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_role_requirements_role ON role_requirements(job_role)",
         "CREATE INDEX IF NOT EXISTS idx_users_contract_end ON users(contract_end_date)",
         "CREATE INDEX IF NOT EXISTS idx_users_trial_end ON users(trial_end_date)",
+        "CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status)",
+        "CREATE INDEX IF NOT EXISTS idx_booking_extras_booking ON booking_extras(category, booking_id)",
+        "CREATE INDEX IF NOT EXISTS idx_booking_extras_created ON booking_extras(created_at)",
+        # Stock levels are summed from movements on every listing, so this one
+        # carries the whole feature's performance.
+        "CREATE INDEX IF NOT EXISTS idx_stock_movements_item ON stock_movements(stock_item_id)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_movements_expense ON stock_movements(expense_id)",
+        "CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_pos_orders_status ON pos_orders(status)",
+        "CREATE INDEX IF NOT EXISTS idx_pos_lines_order ON pos_order_lines(order_id)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_expiry ON certifications(expiry_date)",
         "CREATE INDEX IF NOT EXISTS idx_availability_rules_user_id ON availability_rules(user_id)",
@@ -3033,6 +3260,67 @@ def leave_balance(conn, user_id, entitlement, year=None):
     return {"year": year, "entitlement": entitlement, "used": used, "remaining": remaining}
 
 
+def financial_trend(conn, months, today=None):
+    """Revenue and expenses per month for the last `months` months.
+
+    The dashboard used to call financial_month_summary() once per month, which
+    is ~10 queries each for two numbers — most of the owner home page's cost for
+    a small bar chart. This groups by month instead: a handful of queries total,
+    whatever the range.
+
+    Must agree with financial_month_summary on `revenue` and `expenses_total`,
+    including netting off refunds by the month they were ISSUED — the chart sits
+    directly above figures produced the other way, and two different answers to
+    "what did June make" is worse than a slow page.
+    """
+    today = today or datetime.now(timezone.utc).date()
+    start = today.replace(day=1)
+    for _ in range(months - 1):
+        start = date(start.year - 1, 12, 1) if start.month == 1 else date(start.year, start.month - 1, 1)
+    end = date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1)
+    s_iso, e_iso = start.isoformat(), end.isoformat()
+
+    buckets = {}
+    cursor = start
+    while cursor < end:
+        buckets[cursor.strftime("%Y-%m")] = {"month": cursor, "revenue": 0.0, "expenses_total": 0.0}
+        cursor = date(cursor.year + 1, 1, 1) if cursor.month == 12 else date(cursor.year, cursor.month + 1, 1)
+
+    def accumulate(sql, params, field, sign=1):
+        for r in conn.execute(sql, params).fetchall():
+            b = buckets.get(r["m"])
+            if b:
+                b[field] += sign * (r["total"] or 0)
+
+    accumulate("""SELECT strftime('%Y-%m', arrival_date) AS m, SUM(total_price) AS total
+                  FROM bookings WHERE status = 'confirmed'
+                    AND arrival_date >= ? AND arrival_date < ? GROUP BY m""",
+               (s_iso, e_iso), "revenue")
+    accumulate("""SELECT strftime('%Y-%m', dinner_date) AS m, SUM(total_price) AS total
+                  FROM restaurant_bookings WHERE status = 'confirmed'
+                    AND dinner_date >= ? AND dinner_date < ? GROUP BY m""",
+               (s_iso, e_iso), "revenue")
+    accumulate("""SELECT strftime('%Y-%m', workshop_sessions.start_date) AS m,
+                         SUM(workshop_bookings.total_price) AS total
+                  FROM workshop_bookings
+                  JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                  WHERE workshop_bookings.status = 'confirmed'
+                    AND workshop_sessions.start_date >= ? AND workshop_sessions.start_date < ?
+                  GROUP BY m""", (s_iso, e_iso), "revenue")
+    accumulate("""SELECT strftime('%Y-%m', preferred_date) AS m, SUM(quoted_price) AS total
+                  FROM event_inquiries WHERE status = 'confirmed' AND quoted_price IS NOT NULL
+                    AND preferred_date >= ? AND preferred_date < ? GROUP BY m""",
+               (s_iso, e_iso), "revenue")
+    accumulate("""SELECT strftime('%Y-%m', created_at) AS m, SUM(amount) AS total
+                  FROM refunds WHERE created_at >= ? AND created_at < ? GROUP BY m""",
+               (s_iso, e_iso), "revenue", sign=-1)
+    accumulate("""SELECT strftime('%Y-%m', submitted_at) AS m, SUM(amount) AS total
+                  FROM expenses WHERE status IN ('approved','paid')
+                    AND submitted_at >= ? AND submitted_at < ? GROUP BY m""",
+               (s_iso, e_iso), "expenses_total")
+    return list(buckets.values())
+
+
 def financial_month_summary(conn, month_start, month_end):
     """Revenue (confirmed bookings by arrival date), expenses (approved/paid,
     both kinds), and an estimated labour cost for one calendar month.
@@ -3640,6 +3928,123 @@ def guests_in_residence(conn, today):
     """Just the stays covering today -- the common case for every 'who's here'
     panel across the app."""
     return [s for s in stays_with_status(conn, today) if s["stay_status"] == "current"]
+
+
+def guest_recognition_cards(conn, today, viewer_role="employee"):
+    """Who is in the house, phrased so any member of staff can greet them.
+
+    The aim is the thing good hotels do and most systems can't: a gardener who
+    has never met the guest still knows their name, that it's their third stay,
+    and that they leave this morning. Raw booking rows don't achieve that — a
+    row reading `2026-08-17 → 2026-08-19` makes a person do arithmetic before
+    they can say anything useful.
+
+    So this does the work up front: how to say the name, how many nights are
+    left in words, which stay this is for them, and the one line most worth
+    knowing. Anything sensitive stays behind `detail`, which the caller shows
+    only on request rather than on the home screen.
+    """
+    # "Who is physically in the house today" is NOT the same question as
+    # occupancy, and guests_in_residence() answers the latter: a stay departing
+    # today counts as past, because the departure night was never sold. True for
+    # revenue, useless for staff — that guest still wants breakfast, still needs
+    # checking out, and their room still has to be turned over this afternoon.
+    # So departures are included here and the shared function is left alone;
+    # changing it would quietly alter every occupancy figure in the app.
+    stays = [s for s in stays_with_status(conn, today)
+             if s["stay_status"] == "current"
+             or parse_date(s["departure_date"]) == today]
+
+    cards = []
+    for stay in stays:
+        arrival, departure = parse_date(stay["arrival_date"]), parse_date(stay["departure_date"])
+        nights_left = (departure - today).days if departure else None
+
+        # In words, because "leaving today" changes how you treat someone and
+        # "2026-08-19" does not.
+        if nights_left == 0:
+            when, urgent = "Leaving today", True
+        elif nights_left == 1:
+            when, urgent = "Last night tonight", True
+        elif nights_left and nights_left > 1:
+            when, urgent = f"{nights_left} more nights", False
+        else:
+            when, urgent = "In residence", False
+        arriving_today = bool(arrival and arrival == today)
+        if arriving_today:
+            when, urgent = "Arrived today", True
+
+        # Which stay this is for them. Counted on email across every confirmed
+        # booking, so a returning guest can be greeted as one — this is the
+        # detail that makes recognition feel personal rather than administrative.
+        stay_number = 1
+        if stay["email"]:
+            stay_number = conn.execute(
+                """SELECT COUNT(*) AS c FROM bookings
+                   WHERE LOWER(TRIM(guest_email)) = LOWER(TRIM(?))
+                     AND status = 'confirmed' AND arrival_date <= ?""",
+                (stay["email"], stay["arrival_date"]),
+            ).fetchone()["c"] or 1
+
+        # stays_with_status() folds requests, dietary and profile notes into one
+        # `notes` string, which is right for a list row and wrong here: this
+        # screen needs them apart, so the greeting line can differ from what the
+        # kitchen has to know. So fetch the parts.
+        requests = conn.execute(
+            "SELECT special_requests FROM bookings WHERE id = ?", (stay["booking_id"],)
+        ).fetchone()["special_requests"]
+        profile = None
+        if stay["profile_id"]:
+            profile = conn.execute(
+                """SELECT preferences, name_pronunciation, dietary_notes, notes
+                   FROM guests WHERE id = ?""", (stay["profile_id"],),
+            ).fetchone()
+
+        # One line, chosen not concatenated: staff read the first thing and move.
+        # Preference beats dietary here because it is what you'd mention at the
+        # door; dietary matters in the kitchen and lives in `detail`.
+        highlight = ""
+        for candidate in ((profile["preferences"] if profile else None),
+                          requests, (profile["notes"] if profile else None)):
+            if candidate and candidate.strip():
+                highlight = " ".join(candidate.split())
+                break
+        if len(highlight) > 90:
+            highlight = highlight[:87].rstrip(" ,.;") + "…"
+
+        cards.append({
+            "booking_id": stay["booking_id"],
+            "profile_id": stay["profile_id"],
+            "name": stay["name"],
+            "pronunciation": (profile["name_pronunciation"] if profile else None),
+            "room": stay["room_name"],
+            "when": when,
+            "urgent": urgent,
+            "arriving_today": arriving_today,
+            "leaving_today": nights_left == 0,
+            "nights_left": nights_left,
+            "party_size": stay["party_size"],
+            "vip": bool(stay["vip"]),
+            "stay_number": stay_number,
+            "returning": stay_number > 1,
+            "highlight": highlight,
+            # Shown on tap, not on the home screen. Dietary requirements are
+            # operationally necessary but nobody needs them thrust at them while
+            # they're checking what time their shift starts.
+            "detail": {
+                "dietary": (profile["dietary_notes"] if profile else None),
+                "requests": requests,
+                "notes": (profile["notes"] if profile else None),
+                "reference": stay["reference_code"],
+                "arrival": arrival,
+                "departure": departure,
+            },
+        })
+
+    # Whoever needs attention first: arrivals and departures reorder somebody's
+    # morning, a guest mid-stay does not.
+    cards.sort(key=lambda c: (not c["urgent"], c["name"] or ""))
+    return cards
 
 
 def build_task_sheet(conn, view, anchor):
@@ -4792,6 +5197,35 @@ INCIDENT_SEVERITIES = {
     "significant": "Significant — medical attention",
     "serious": "Serious — hospital or time off work",
 }
+ASSET_CATEGORIES = {
+    "furniture": "Furniture",
+    "art": "Art",
+    "antique": "Antique",
+    "equipment": "Equipment",
+    "fixture": "Fixture / fitting",
+    "vehicle": "Vehicle",
+    "other": "Other",
+}
+# How the figure was arrived at. Kept separate from the number because an
+# insurer treats an owner's estimate and a written valuation very differently,
+# and after a fire is the wrong moment to discover which one you had.
+ASSET_VALUE_SOURCES = {
+    "estimate": "Owner's estimate",
+    "purchase": "What it cost",
+    "valuation": "Professional valuation",
+    "insurer": "Agreed with insurer",
+}
+ASSET_CONDITIONS = {
+    "excellent": "Excellent", "good": "Good", "fair": "Fair",
+    "poor": "Poor", "damaged": "Damaged",
+}
+ASSET_STATUSES = {
+    "held": "Held", "on_loan": "On loan", "sold": "Sold",
+    "lost": "Lost", "destroyed": "Destroyed",
+}
+# A valuation older than this stops being evidence of anything.
+VALUATION_STALE_YEARS = 3
+
 ACCESS_KINDS = {
     "key": "Key",
     "code": "Gate / door code",
@@ -4850,6 +5284,317 @@ def role_compliance(conn, today):
                         "state": state, "detail": detail})
     order = {"missing": 0, "expired": 1, "expiring": 2}
     return sorted(out, key=lambda x: (order[x["state"]], x["name"]))
+
+
+EXTRA_CATEGORIES = {
+    "drinks": "Drinks",
+    "food": "Food & hampers",
+    "activity": "Activities & excursions",
+    "transfer": "Transfers",
+    "wellness": "Wellness",
+    "celebration": "Celebrations",
+    "other": "Other",
+}
+STOCK_CATEGORIES = {
+    "drinks": "Drinks", "food": "Food", "cleaning": "Cleaning",
+    "linen": "Linen", "maintenance": "Maintenance",
+    "guest_supplies": "Guest supplies", "other": "Other",
+}
+STOCK_REASONS = {
+    "purchase": "Delivered / bought in",
+    "sale": "Sold to a guest",
+    "wastage": "Broken, spoiled or written off",
+    "stocktake": "Counted — adjusted to match",
+    "correction": "Correction",
+    "opening": "Opening balance",
+}
+
+
+def stock_levels(conn, item_ids=None):
+    """{stock_item_id: level} summed from the movement ledger.
+
+    The level is never stored on the item. A stored counter and a ledger
+    disagree the first time anything goes wrong, and then nobody knows which to
+    believe; summing means the number on screen is always exactly what the
+    history says it is.
+    """
+    sql = """SELECT stock_item_id, COALESCE(SUM(delta), 0) AS level
+             FROM stock_movements"""
+    params = []
+    if item_ids:
+        ids = list(item_ids)
+        sql += " WHERE stock_item_id IN ({})".format(",".join("?" * len(ids)))
+        params = ids
+    sql += " GROUP BY stock_item_id"
+    return {r["stock_item_id"]: r["level"] for r in conn.execute(sql, params).fetchall()}
+
+
+def record_stock_movement(conn, stock_item_id, delta, reason, *, unit_cost=None,
+                          expense_id=None, booking_extra_id=None, note=None,
+                          user_id=None):
+    """Append one movement. Callers commit — so a sale and the stock it consumes
+    land together or not at all."""
+    if reason not in STOCK_REASONS:
+        raise ValueError(f"unknown stock reason {reason!r}")
+    conn.execute(
+        """INSERT INTO stock_movements (stock_item_id, delta, reason, unit_cost,
+           expense_id, booking_extra_id, note, created_by_user_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?)""",
+        (stock_item_id, delta, reason, unit_cost, expense_id, booking_extra_id,
+         note, user_id, datetime.now(timezone.utc).isoformat()),
+    )
+
+
+def stock_overview(conn):
+    """Everything the stock page needs, in two queries rather than one per item."""
+    items = conn.execute(
+        "SELECT * FROM stock_items WHERE active = 1 ORDER BY category, name").fetchall()
+    levels = stock_levels(conn, [i["id"] for i in items])
+    rows, low, value = [], [], 0.0
+    for i in items:
+        level = levels.get(i["id"], 0)
+        value += level * (i["unit_cost"] or 0)
+        row = {"item": i, "level": level,
+               "short_by": max(0, (i["reorder_level"] or 0) - level),
+               "is_low": level <= (i["reorder_level"] or 0)}
+        rows.append(row)
+        if row["is_low"]:
+            low.append(row)
+    return {"rows": rows, "low": low, "value": value, "count": len(items)}
+
+
+def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
+                      unit_price=None, notes=None, user_id=None,
+                      scheduled_for=None, status="confirmed"):
+    """Sell an extra against a booking, and take it out of stock if it maps to
+    something we hold.
+
+    `extra` may be a catalogue row or a plain name — the POS and the admin form
+    both need to sell a one-off that isn't in the catalogue. Returns the new
+    line-item id.
+    """
+    if isinstance(extra, str):
+        name, extra_id, stock_item_id, per_unit = extra, None, None, 0
+        price = unit_price or 0
+    else:
+        name = extra["name"]
+        extra_id = extra["id"]
+        stock_item_id = extra["stock_item_id"] if "stock_item_id" in extra.keys() else None
+        per_unit = (extra["stock_qty_per_unit"]
+                    if "stock_qty_per_unit" in extra.keys() else 1) or 0
+        price = unit_price if unit_price is not None else (extra["price"] or 0)
+
+    conn.execute(
+        """INSERT INTO booking_extras (category, booking_id, extra_id, name, unit_price,
+           quantity, notes, status, scheduled_for, added_by_user_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+        (category, booking_id, extra_id, name, price, quantity, notes, status,
+         scheduled_for, user_id, datetime.now(timezone.utc).isoformat()),
+    )
+    line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    # Cancelled lines never consumed anything, so they must not deplete stock.
+    if stock_item_id and per_unit and status != "cancelled":
+        record_stock_movement(
+            conn, stock_item_id, -abs(per_unit * quantity), "sale",
+            booking_extra_id=line_id, user_id=user_id,
+            note=f"{quantity} x {name}")
+    return line_id
+
+
+def cancel_booking_extra(conn, line_id, user_id=None):
+    """Cancel a sold line and put back whatever it took out of stock.
+
+    The original sale movement is left alone and a matching positive one is
+    added — the ledger is append-only, so a mistake is corrected by a further
+    entry rather than by rewriting history.
+    """
+    line = conn.execute("SELECT * FROM booking_extras WHERE id = ?", (line_id,)).fetchone()
+    if not line or line["status"] == "cancelled":
+        return False
+    taken = conn.execute(
+        """SELECT COALESCE(SUM(delta), 0) AS d FROM stock_movements
+           WHERE booking_extra_id = ?""", (line_id,)).fetchone()["d"]
+    if taken:
+        mv = conn.execute(
+            "SELECT stock_item_id FROM stock_movements WHERE booking_extra_id = ? LIMIT 1",
+            (line_id,)).fetchone()
+        record_stock_movement(conn, mv["stock_item_id"], -taken, "correction",
+                              booking_extra_id=line_id, user_id=user_id,
+                              note=f"cancelled: {line['name']}")
+    conn.execute("UPDATE booking_extras SET status = 'cancelled' WHERE id = ?", (line_id,))
+    return True
+
+
+def extras_for_booking(conn, category, booking_id):
+    return conn.execute(
+        """SELECT * FROM booking_extras WHERE category = ? AND booking_id = ?
+           ORDER BY created_at""", (category, booking_id)).fetchall()
+
+
+def extras_total(rows, include_cancelled=False):
+    return round(sum((r["unit_price"] or 0) * (r["quantity"] or 0)
+                     for r in rows if include_cancelled or r["status"] != "cancelled"), 2)
+
+
+# How a tab can be settled. An iPad in a browser cannot read a card by itself,
+# so the methods that need no hardware come first: charge it to the guest's
+# room, or show a QR they pay on their own phone. `card_terminal` records a
+# payment taken on a separate machine — it does not talk to one.
+POS_PAYMENT_METHODS = {
+    "room": "Charge to their room",
+    "card_link": "Card — show a QR to pay",
+    "cash": "Cash",
+    "card_terminal": "Card — taken on the terminal",
+    "comp": "On the house",
+}
+
+
+def pos_order_lines(conn, order_id, include_voided=False):
+    sql = "SELECT * FROM pos_order_lines WHERE order_id = ?"
+    if not include_voided:
+        sql += " AND voided = 0"
+    return conn.execute(sql + " ORDER BY id", (order_id,)).fetchall()
+
+
+def pos_order_total(conn, order_id):
+    row = conn.execute(
+        """SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM pos_order_lines
+           WHERE order_id = ? AND voided = 0""", (order_id,)).fetchone()
+    return round(row["t"], 2)
+
+
+def pos_add_line(conn, order_id, extra, quantity=1, *, unit_price=None,
+                 notes=None, user_id=None):
+    """Add an item to an open tab, and take it out of stock if it maps to
+    something we hold. `extra` may be a catalogue row or a free-text name, so a
+    waiter can ring up something that isn't on the menu."""
+    if isinstance(extra, str):
+        name, extra_id, stock_item_id, per_unit = extra, None, None, 0
+        price = unit_price or 0
+    else:
+        keys = extra.keys()
+        name, extra_id = extra["name"], extra["id"]
+        stock_item_id = extra["stock_item_id"] if "stock_item_id" in keys else None
+        per_unit = (extra["stock_qty_per_unit"] if "stock_qty_per_unit" in keys else 1) or 0
+        price = unit_price if unit_price is not None else (extra["price"] or 0)
+
+    conn.execute(
+        """INSERT INTO pos_order_lines (order_id, extra_id, name, unit_price, quantity,
+           notes, added_by_user_id, created_at) VALUES (?,?,?,?,?,?,?,?)""",
+        (order_id, extra_id, name, price, quantity, notes, user_id,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    if stock_item_id and per_unit:
+        conn.execute(
+            """INSERT INTO stock_movements (stock_item_id, delta, reason, pos_line_id,
+               note, created_by_user_id, created_at) VALUES (?,?,'sale',?,?,?,?)""",
+            (stock_item_id, -abs(per_unit * quantity), line_id,
+             f"{quantity} x {name}", user_id, datetime.now(timezone.utc).isoformat()),
+        )
+    return line_id
+
+
+def pos_void_line(conn, line_id, user_id=None):
+    """Void a line and put back whatever it consumed. The sale movement stays;
+    a compensating one is added, because the ledger is append-only."""
+    line = conn.execute("SELECT * FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
+    if not line or line["voided"]:
+        return False
+    mv = conn.execute(
+        "SELECT stock_item_id, SUM(delta) AS d FROM stock_movements WHERE pos_line_id = ?",
+        (line_id,)).fetchone()
+    if mv and mv["stock_item_id"] and mv["d"]:
+        conn.execute(
+            """INSERT INTO stock_movements (stock_item_id, delta, reason, pos_line_id,
+               note, created_by_user_id, created_at) VALUES (?,?,'correction',?,?,?,?)""",
+            (mv["stock_item_id"], -mv["d"], line_id, f"voided: {line['name']}",
+             user_id, datetime.now(timezone.utc).isoformat()),
+        )
+    conn.execute("UPDATE pos_order_lines SET voided = 1 WHERE id = ?", (line_id,))
+    return True
+
+
+def pos_settle(conn, order_id, method, *, room_booking_id=None, reference=None,
+               user_id=None):
+    """Close a tab.
+
+    Charging to a room writes a real line onto that booking, so it turns up on
+    the guest's bill and in revenue like any other extra — the restaurant does
+    not get its own parallel set of money that nothing else knows about.
+    Returns (ok, message).
+    """
+    if method not in POS_PAYMENT_METHODS:
+        return False, "Unknown payment method."
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        return False, "That tab no longer exists."
+    if order["status"] != "open":
+        return False, "That tab has already been settled."
+    lines = pos_order_lines(conn, order_id)
+    if not lines:
+        return False, "Nothing has been added to this tab yet."
+    total = pos_order_total(conn, order_id)
+
+    if method == "room":
+        if not room_booking_id:
+            return False, "Choose which room to charge it to."
+        booking = conn.execute(
+            "SELECT * FROM bookings WHERE id = ? AND status = 'confirmed'",
+            (room_booking_id,)).fetchone()
+        if not booking:
+            return False, "That booking isn't a confirmed stay."
+        # One line on the room bill per item, so the guest can see what they had
+        # rather than an unexplained lump sum.
+        for l in lines:
+            conn.execute(
+                """INSERT INTO booking_extras (category, booking_id, extra_id, name,
+                   unit_price, quantity, notes, status, added_by_user_id, created_at)
+                   VALUES ('room', ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?)""",
+                (room_booking_id, l["extra_id"], l["name"], l["unit_price"],
+                 l["quantity"], f"Restaurant — table {order['table_label']}",
+                 user_id, datetime.now(timezone.utc).isoformat()),
+            )
+        conn.execute(
+            """UPDATE pos_orders SET status = 'charged_to_room', payment_method = 'room',
+               room_booking_id = ?, settled_total = ?, closed_at = ? WHERE id = ?""",
+            (room_booking_id, total, datetime.now(timezone.utc).isoformat(), order_id),
+        )
+        return True, f"€{total:.2f} charged to {booking['guest_name']}'s room."
+
+    conn.execute(
+        """UPDATE pos_orders SET status = 'paid', payment_method = ?, payment_reference = ?,
+           settled_total = ?, closed_at = ? WHERE id = ?""",
+        (method, reference, total, datetime.now(timezone.utc).isoformat(), order_id),
+    )
+    return True, (f"€{total:.2f} settled — {POS_PAYMENT_METHODS[method].lower()}."
+                  if method != "comp" else "Tab closed, nothing charged.")
+
+
+def asset_summary(conn, today):
+    """What the estate holds and what it is insured for.
+
+    The headline is deliberately the INSURED total rather than the raw one: an
+    asset with no policy attached contributes nothing to a claim, and a register
+    that quietly totals uninsured items reads as more cover than exists.
+    """
+    rows = conn.execute(
+        "SELECT * FROM assets WHERE status IN ('held','on_loan')").fetchall()
+    total = sum(r["estimated_value"] or 0 for r in rows)
+    insured = sum(r["estimated_value"] or 0 for r in rows if r["insurance_policy_id"])
+    unvalued = [r for r in rows if not r["estimated_value"]]
+    stale_before = (today - timedelta(days=365 * VALUATION_STALE_YEARS)).isoformat()
+    stale = [r for r in rows
+             if r["value_source"] == "valuation" and (r["valued_on"] or "") < stale_before]
+    uninsured_significant = [
+        r for r in rows if not r["insurance_policy_id"] and (r["estimated_value"] or 0) >= 1000]
+    return {
+        "count": len(rows), "total": total, "insured": insured,
+        "uninsured": total - insured,
+        "unvalued": unvalued, "stale": stale,
+        "uninsured_significant": uninsured_significant,
+    }
 
 
 def access_held_by(conn, user_id):
@@ -6851,13 +7596,7 @@ def dashboard():
             conn, today.replace(day=1),
             date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
         )
-        financial_trend_months = []
-        cursor_month = today.replace(day=1)
-        for _ in range(6):
-            cursor_end = date(cursor_month.year + 1, 1, 1) if cursor_month.month == 12 else date(cursor_month.year, cursor_month.month + 1, 1)
-            financial_trend_months.append(financial_month_summary(conn, cursor_month, cursor_end))
-            cursor_month = date(cursor_month.year - 1, 12, 1) if cursor_month.month == 1 else date(cursor_month.year, cursor_month.month - 1, 1)
-        financial_trend_months.reverse()
+        financial_trend_months = financial_trend(conn, 6, today)
         financial_trend_max = max(
             [m["revenue"] for m in financial_trend_months] + [m["expenses_total"] for m in financial_trend_months] + [1]
         )
@@ -8783,6 +9522,662 @@ def delete_role_requirement(req_id):
     return redirect(url_for("admin_compliance"))
 
 
+# ---------------------------------------------------------------------------
+# Restaurant POS. Built for a tablet on the pass: big targets, few taps, and
+# nothing that needs a keyboard. Staff can use it, not just the owner —
+# whoever is running service has to be able to ring things up.
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/stock")
+@owner_required
+def admin_stock():
+    conn = get_db()
+    data = stock_overview(conn)
+    vendors = conn.execute("SELECT id, name FROM vendors ORDER BY name").fetchall()
+    recent = conn.execute(
+        """SELECT stock_movements.*, stock_items.name AS item, stock_items.unit,
+                  users.name AS who
+           FROM stock_movements
+           JOIN stock_items ON stock_items.id = stock_movements.stock_item_id
+           LEFT JOIN users ON users.id = stock_movements.created_by_user_id
+           ORDER BY stock_movements.id DESC LIMIT 40"""
+    ).fetchall()
+    conn.close()
+    overview = [
+        overview_cell("Items tracked", data["count"]),
+        overview_cell("Need reordering", len(data["low"]), alert=len(data["low"])),
+        overview_cell("Stock value", euro(data["value"]), hint="at cost"),
+    ]
+    return render_template("admin_stock.html", data=data, overview=overview,
+                           vendors=vendors, recent=recent,
+                           stock_categories=STOCK_CATEGORIES, stock_reasons=STOCK_REASONS)
+
+
+@app.route("/admin/stock/new", methods=["POST"])
+@owner_required
+def new_stock_item():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Give the item a name.", "error")
+        return redirect(url_for("admin_stock"))
+    category = request.form.get("category", "other")
+    if category not in STOCK_CATEGORIES:
+        category = "other"
+
+    def num(field, default=0.0):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else default
+        except ValueError:
+            return default
+
+    vendor_raw = request.form.get("vendor_id", "").strip()
+    opening = num("opening_qty", 0.0)
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO stock_items (name, category, unit, reorder_level, unit_cost,
+           vendor_id, location, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)""",
+        (name, category, request.form.get("unit", "each").strip() or "each",
+         num("reorder_level"), num("unit_cost", None) or None,
+         int(vendor_raw) if vendor_raw.isdigit() else None,
+         request.form.get("location", "").strip() or None,
+         request.form.get("notes", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    item_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    # An opening balance is a movement like any other, so day one is on the
+    # ledger rather than being an unexplained starting number.
+    if opening:
+        record_stock_movement(conn, item_id, opening, "opening",
+                              user_id=(current_user() or {})["id"],
+                              note="Opening balance")
+    conn.commit()
+    conn.close()
+    flash(f"{name} added.", "success")
+    return redirect(url_for("admin_stock"))
+
+
+@app.route("/admin/stock/<int:item_id>/move", methods=["POST"])
+@owner_required
+def move_stock(item_id):
+    reason = request.form.get("reason", "")
+    if reason not in STOCK_REASONS:
+        abort(400)
+    raw = (request.form.get("quantity", "") or "").strip().replace(",", ".")
+    try:
+        qty = float(raw)
+    except ValueError:
+        flash("Enter a quantity.", "error")
+        return redirect(url_for("admin_stock"))
+
+    conn = get_db()
+    if reason == "stocktake":
+        # A stocktake is a COUNT, not a change: the movement is whatever it
+        # takes to make the ledger agree with what's on the shelf, and the
+        # difference is the interesting number.
+        current = stock_levels(conn, [item_id]).get(item_id, 0)
+        delta = qty - current
+        note = f"Counted {qty:g} (was {current:g})"
+    else:
+        delta = abs(qty) if reason in ("purchase", "opening") else -abs(qty)
+        note = request.form.get("note", "").strip() or None
+    if delta or reason == "stocktake":
+        record_stock_movement(conn, item_id, delta, reason,
+                              user_id=(current_user() or {})["id"], note=note)
+        conn.commit()
+    conn.close()
+    flash("Stock updated.", "success")
+    return redirect(url_for("admin_stock"))
+
+
+@app.route("/pos")
+@login_required
+def pos_home():
+    conn = get_db()
+    today = datetime.now(timezone.utc).date()
+    open_orders = conn.execute(
+        """SELECT pos_orders.*, users.name AS opened_by
+           FROM pos_orders LEFT JOIN users ON users.id = pos_orders.opened_by_user_id
+           WHERE pos_orders.status = 'open' ORDER BY pos_orders.opened_at"""
+    ).fetchall()
+    totals = {o["id"]: pos_order_total(conn, o["id"]) for o in open_orders}
+    settled = conn.execute(
+        """SELECT COUNT(*) AS n, COALESCE(SUM(settled_total), 0) AS t FROM pos_orders
+           WHERE status IN ('paid','charged_to_room') AND closed_at >= ?""",
+        (today.isoformat(),),
+    ).fetchone()
+    tonight = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS covers FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date = ?""", (today.isoformat(),)
+    ).fetchone()["covers"]
+    conn.close()
+    overview = [
+        overview_cell("Tabs open", len(open_orders)),
+        overview_cell("On open tabs", euro(sum(totals.values()))),
+        overview_cell("Settled today", euro(settled["t"]), hint=f"{settled['n']} tabs"),
+        overview_cell("Covers booked", tonight),
+    ]
+    return render_template("pos_home.html", orders=open_orders, totals=totals,
+                           overview=overview, today=today)
+
+
+@app.route("/pos/open", methods=["POST"])
+@login_required
+def pos_open_tab():
+    label = request.form.get("table_label", "").strip()
+    if not label:
+        flash("Give the table a name or number.", "error")
+        return redirect(url_for("pos_home"))
+    covers_raw = request.form.get("covers", "").strip()
+    res_raw = request.form.get("restaurant_booking_id", "").strip()
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO pos_orders (table_label, covers, restaurant_booking_id,
+           opened_by_user_id, opened_at) VALUES (?,?,?,?,?)""",
+        (label, int(covers_raw) if covers_raw.isdigit() else 1,
+         int(res_raw) if res_raw.isdigit() else None,
+         (current_user() or {})["id"], datetime.now(timezone.utc).isoformat()),
+    )
+    order_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+    conn.close()
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>")
+@login_required
+def pos_order(order_id):
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        abort(404)
+    lines = pos_order_lines(conn, order_id, include_voided=True)
+    total = pos_order_total(conn, order_id)
+    menu = conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND sold_in_pos = 1
+           ORDER BY category, sort_order, name"""
+    ).fetchall()
+    by_category = {}
+    for m in menu:
+        by_category.setdefault(m["category"] or "other", []).append(m)
+    # Only stays that are actually here can be charged to a room.
+    today = datetime.now(timezone.utc).date().isoformat()
+    in_house = conn.execute(
+        """SELECT id, guest_name, reference_code FROM bookings
+           WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?
+           ORDER BY guest_name""", (today, today)).fetchall()
+    stock = stock_levels(conn, [m["stock_item_id"] for m in menu if m["stock_item_id"]])
+    conn.close()
+    return render_template("pos_order.html", order=order, lines=lines, total=total,
+                           by_category=by_category, in_house=in_house,
+                           extra_categories=EXTRA_CATEGORIES,
+                           payment_methods=POS_PAYMENT_METHODS, stock=stock)
+
+
+@app.route("/pos/<int:order_id>/add", methods=["POST"])
+@login_required
+def pos_add_item(order_id):
+    conn = get_db()
+    order = conn.execute(
+        "SELECT status FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    qty_raw = request.form.get("quantity", "1").strip()
+    qty = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
+    extra_raw = request.form.get("extra_id", "").strip()
+    user_id = (current_user() or {})["id"]
+
+    if extra_raw.isdigit():
+        extra = conn.execute("SELECT * FROM extras WHERE id = ?", (int(extra_raw),)).fetchone()
+        if not extra:
+            conn.close()
+            abort(404)
+        pos_add_line(conn, order_id, extra, qty, notes=request.form.get("notes", "").strip() or None,
+                     user_id=user_id)
+    else:
+        name = request.form.get("name", "").strip()
+        raw = (request.form.get("unit_price", "") or "").strip().replace(",", ".")
+        try:
+            price = round(float(raw), 2) if raw else 0.0
+        except ValueError:
+            price = 0.0
+        if not name:
+            conn.close()
+            flash("Give the item a name.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        pos_add_line(conn, order_id, name, qty, unit_price=price,
+                     notes=request.form.get("notes", "").strip() or None, user_id=user_id)
+    conn.commit()
+    conn.close()
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/line/<int:line_id>/void", methods=["POST"])
+@login_required
+def pos_void_item(line_id):
+    conn = get_db()
+    line = conn.execute("SELECT order_id FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
+    if not line:
+        conn.close()
+        abort(404)
+    pos_void_line(conn, line_id, (current_user() or {})["id"])
+    conn.commit()
+    order_id = line["order_id"]
+    conn.close()
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/settle", methods=["POST"])
+@login_required
+def pos_settle_tab(order_id):
+    method = request.form.get("method", "")
+    room_raw = request.form.get("room_booking_id", "").strip()
+    conn = get_db()
+    ok, message = pos_settle(
+        conn, order_id, method,
+        room_booking_id=int(room_raw) if room_raw.isdigit() else None,
+        reference=request.form.get("reference", "").strip() or None,
+        user_id=(current_user() or {})["id"])
+    if ok:
+        log_audit(conn, "pos_tab_settled", f"tab #{order_id}", f"{method}: {message}")
+        conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("pos_home") if ok else url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/pay-link", methods=["POST"])
+@login_required
+def pos_pay_link(order_id):
+    """A Stripe Checkout link the guest pays on their own phone, shown as a QR.
+
+    This is the card route that needs no hardware at all. A physical reader
+    (Stripe Terminal) would be a different integration; this works today with
+    nothing but the iPad.
+    """
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    total = pos_order_total(conn, order_id)
+    if total <= 0:
+        conn.close()
+        flash("Nothing to charge yet.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    if not stripe_enabled():
+        conn.close()
+        flash("Card payment isn't connected — take cash, or charge it to a room.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    lines = pos_order_lines(conn, order_id)
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"{l['name']}"},
+                    "unit_amount": int(round((l["unit_price"] or 0) * 100)),
+                },
+                "quantity": l["quantity"],
+            } for l in lines],
+            success_url=url_for("pos_order", order_id=order_id, paid=1, _external=True),
+            cancel_url=url_for("pos_order", order_id=order_id, _external=True),
+            metadata={"kind": "pos", "pos_order_id": str(order_id)},
+        )
+    except Exception as e:
+        conn.close()
+        flash(f"Couldn't create the payment link: {e}", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    conn.execute("UPDATE pos_orders SET stripe_session_id = ? WHERE id = ?",
+                 (session.id, order_id))
+    conn.commit()
+    conn.close()
+    return redirect(session.url, code=303)
+
+
+# ---------------------------------------------------------------------------
+# Command palette.
+#
+# The app has grown past 190 routes behind six nav dropdowns, and the pages
+# people reach for least often are exactly the ones buried deepest. This turns
+# the topbar box into a jump-anywhere control: every page by name, plus live
+# matches from the data, without a round trip to a results page.
+# ---------------------------------------------------------------------------
+
+# (label, endpoint, keywords). Keywords exist so "keys" finds the access
+# register and "vat"/"accountant" finds the payroll pack — people search for
+# what a page is FOR, not what it is called.
+PALETTE_PAGES = [
+    ("Home", "dashboard", "dashboard today"),
+    ("Calendar", "ops_calendar", "diary schedule"),
+    ("Overview", "admin_overview", "feed activity"),
+    ("Office display", "office_display", "tv kiosk wall screen"),
+    ("Guests", "guests", "profiles visitors"),
+    ("Bookings", "admin_bookings", "reservations stays rooms"),
+    ("Booking calendar", "admin_calendar", "availability"),
+    ("Rooms", "admin_rooms", "bedrooms suites"),
+    ("Room issues", "room_issues", "maintenance faults"),
+    ("Guest feedback", "admin_feedback", "reviews"),
+    ("Waitlist", "admin_waitlist", ""),
+    ("Breakfast", "breakfast", "orders"),
+    ("Team", "directory", "employees staff people"),
+    ("Candidates", "candidates", "recruitment hiring"),
+    ("HR & compliance", "admin_hr", "certifications absence reviews working time"),
+    ("Role compliance", "admin_compliance", "required certificates qualified"),
+    ("Payroll pack", "admin_payroll", "accountant wages hours pay"),
+    ("Incidents", "admin_incidents", "accidents injuries register"),
+    ("Tasks", "admin_tasks", "jobs to do"),
+    ("Shifts", "admin_shifts", "rota scheduling"),
+    ("Timesheets", "admin_timesheets", "hours clock in out"),
+    ("Time off", "admin_leave", "holiday leave vacation"),
+    ("Ask HR", "admin_hr_notes", "questions"),
+    ("Announcements", "announcements", "notices"),
+    ("Equipment", "equipment_overview", "kit issued"),
+    ("Manual", "manual", "handbook how to"),
+    ("Contacts", "contacts", "phone numbers"),
+    ("Shopping list", "shopping_list", "buy"),
+    ("Approvals", "admin_approvals", "expenses leave pending decide"),
+    ("Expenses & invoices", "expenses", "receipts supplier bills"),
+    ("Financials", "management_financials", "revenue profit money"),
+    ("Refunds", "admin_refunds", "money back"),
+    ("Reports", "admin_reports", "financial occupancy labour guest"),
+    ("Emails", "admin_emails", "campaigns templates marketing"),
+    ("Bank details", "management_bank_details", "iban account"),
+    ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
+    ("Management", "management", "settings admin"),
+    ("Vehicles", "management_vehicles", "cars van fuel"),
+    ("Transfers", "all_transfers", "airport pickup driving"),
+    ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
+    ("Keys & access", "admin_access", "codes alarm fobs"),
+    ("Documents", "management_documents", "files"),
+    ("Insurance", "management_insurance", "policies cover"),
+    ("Vendors", "vendors", "suppliers"),
+    ("Company info", "management_company_info", "legal address siret"),
+    ("Promo codes", "admin_promo_codes", "discount offers"),
+    ("Deposit rules", "admin_deposit_rules", "percentage"),
+    ("Email templates", "management_email_templates", "merge tags"),
+    ("Automation", "admin_automation", "jobs scheduled"),
+    ("Inbox flags", "admin_inbox_flags", "unanswered email"),
+    ("Vault", "management_vault", "passwords secrets"),
+    ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
+    ("Audit log", "audit_log", "who did what history"),
+    ("Terms & conditions", "admin_terms", "legal policy"),
+    ("Restaurant", "admin_restaurant", "dinner covers reservations"),
+    ("Restaurant settings", "admin_restaurant_settings", "capacity price"),
+    ("Workshops", "admin_workshops", "courses sessions"),
+    ("Registrations", "admin_workshop_registrations", "attendees"),
+    ("Events", "admin_events", "weddings enquiries"),
+]
+
+
+@app.route("/api/palette")
+@login_required
+def api_palette():
+    """Live matches for the command palette.
+
+    Deliberately capped and cheap: a few LIKE queries against indexed columns,
+    nothing joined. It runs on every keystroke, so it must never become the
+    slowest thing on the page it is meant to speed up.
+    """
+    q = (request.args.get("q") or "").strip()
+    user = current_user()
+    is_owner = user["role"] == "owner"
+    if len(q) < 2:
+        return jsonify(results=[])
+    needle = f"%{q}%"
+    low = q.lower()
+    out = []
+
+    for label, endpoint, keywords in PALETTE_PAGES:
+        # Employees only get the handful of pages they can actually open;
+        # offering a page that 403s is worse than not offering it.
+        if not is_owner and endpoint not in (
+            "dashboard", "ops_calendar", "guests", "room_issues", "breakfast",
+            "directory", "announcements", "manual", "contacts", "shopping_list",
+            "all_transfers",
+        ):
+            continue
+        hay = f"{label} {keywords}".lower()
+        if low in hay:
+            try:
+                out.append({"kind": "Page", "label": label, "sub": "",
+                            "url": url_for(endpoint),
+                            "score": 0 if label.lower().startswith(low) else 1})
+            except Exception:
+                pass
+
+    if is_owner:
+        conn = get_db()
+        for r in conn.execute(
+            """SELECT id, name, email FROM guests
+               WHERE name LIKE ? OR email LIKE ? ORDER BY name LIMIT 6""",
+            (needle, needle),
+        ).fetchall():
+            out.append({"kind": "Guest", "label": r["name"], "sub": r["email"] or "",
+                        "url": url_for("edit_guest", guest_id=r["id"]), "score": 2})
+        for r in conn.execute(
+            """SELECT id, reference_code, guest_name, arrival_date FROM bookings
+               WHERE reference_code LIKE ? OR guest_name LIKE ?
+               ORDER BY arrival_date DESC LIMIT 6""", (needle, needle),
+        ).fetchall():
+            out.append({"kind": "Booking", "label": f"{r['guest_name']} — {r['reference_code']}",
+                        "sub": f"arrives {r['arrival_date']}",
+                        "url": url_for("edit_booking", booking_id=r["id"]), "score": 2})
+        for r in conn.execute(
+            """SELECT id, name, job_role FROM users
+               WHERE role = 'employee' AND name LIKE ? ORDER BY name LIMIT 5""", (needle,),
+        ).fetchall():
+            out.append({"kind": "Staff", "label": r["name"], "sub": r["job_role"] or "",
+                        "url": url_for("profile", user_id=r["id"]), "score": 2})
+        conn.close()
+
+    out.sort(key=lambda x: (x["score"], x["label"]))
+    return jsonify(results=out[:14], full_url=url_for("search", q=q))
+
+
+@app.route("/admin/assets")
+@owner_required
+def admin_assets():
+    conn = get_db()
+    today = datetime.now(timezone.utc).date()
+    category = request.args.get("category", "")
+    q = request.args.get("q", "").strip()
+    show = request.args.get("status", "current")
+
+    sql = """SELECT assets.*, insurance_policies.provider AS insurer
+             FROM assets LEFT JOIN insurance_policies
+               ON insurance_policies.id = assets.insurance_policy_id WHERE 1=1"""
+    params = []
+    if show == "current":
+        sql += " AND assets.status IN ('held','on_loan')"
+    elif show in ASSET_STATUSES:
+        sql += " AND assets.status = ?"
+        params.append(show)
+    if category in ASSET_CATEGORIES:
+        sql += " AND assets.category = ?"
+        params.append(category)
+    if q:
+        sql += " AND (assets.name LIKE ? OR assets.location LIKE ? OR assets.description LIKE ?)"
+        params += [f"%{q}%"] * 3
+    sql += " ORDER BY assets.category, assets.name"
+    assets = conn.execute(sql, params).fetchall()
+
+    summary = asset_summary(conn, today)
+    by_location = conn.execute(
+        """SELECT COALESCE(NULLIF(TRIM(location), ''), 'Unrecorded') AS loc,
+                  COUNT(*) AS n, COALESCE(SUM(estimated_value), 0) AS v
+           FROM assets WHERE status IN ('held','on_loan')
+           GROUP BY loc ORDER BY v DESC"""
+    ).fetchall()
+    policies = conn.execute(
+        "SELECT id, provider, coverage_type FROM insurance_policies ORDER BY provider").fetchall()
+    conn.close()
+
+    overview = [
+        overview_cell("Items", summary["count"]),
+        overview_cell("Insured value", euro(summary["insured"])),
+        overview_cell("Not insured", euro(summary["uninsured"]),
+                      alert=summary["uninsured"] > 0),
+        overview_cell("No value recorded", len(summary["unvalued"]),
+                      alert=len(summary["unvalued"])),
+        overview_cell("Valuation out of date", len(summary["stale"]),
+                      alert=len(summary["stale"]), hint=f"over {VALUATION_STALE_YEARS} years"),
+    ]
+    return render_template("admin_assets.html", assets=assets, overview=overview,
+                           summary=summary, by_location=by_location, policies=policies,
+                           category=category, q=q, show=show,
+                           asset_categories=ASSET_CATEGORIES,
+                           asset_value_sources=ASSET_VALUE_SOURCES,
+                           asset_conditions=ASSET_CONDITIONS,
+                           asset_statuses=ASSET_STATUSES)
+
+
+@app.route("/admin/assets/new", methods=["POST"])
+@owner_required
+def new_asset():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("An asset needs a name.", "error")
+        return redirect(url_for("admin_assets"))
+    category = request.form.get("category", "furniture")
+    if category not in ASSET_CATEGORIES:
+        abort(400)
+    value_source = request.form.get("value_source", "estimate")
+    if value_source not in ASSET_VALUE_SOURCES:
+        value_source = "estimate"
+
+    def money(field):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return round(float(raw), 2) if raw else None
+        except ValueError:
+            return None
+
+    policy_raw = request.form.get("insurance_policy_id", "").strip()
+    # A photo is the single most useful thing in a claim, so it's worth taking —
+    # but an unrecognised file type is skipped rather than failing the whole
+    # entry, since losing the record matters more than losing the picture.
+    photo_name = None
+    photo = request.files.get("photo")
+    if photo and photo.filename and allowed_file(photo.filename):
+        safe_name = secure_filename(photo.filename)
+        photo_name = f"asset_{secrets.token_hex(6)}_{safe_name}"
+        photo.save(os.path.join(UPLOAD_DIR, photo_name))
+    elif photo and photo.filename:
+        flash("The photo wasn't a recognised file type, so it was skipped — "
+              "the asset itself was still recorded.", "error")
+
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO assets (name, category, location, description, acquired_on, acquired_from,
+           purchase_price, estimated_value, value_source, valued_on, insurance_policy_id,
+           serial_number, condition, photo_filename, notes, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (name, category, request.form.get("location", "").strip() or None,
+         request.form.get("description", "").strip() or None,
+         request.form.get("acquired_on", "").strip() or None,
+         request.form.get("acquired_from", "").strip() or None,
+         money("purchase_price"), money("estimated_value"), value_source,
+         request.form.get("valued_on", "").strip() or None,
+         int(policy_raw) if policy_raw.isdigit() else None,
+         request.form.get("serial_number", "").strip() or None,
+         request.form.get("condition", "good"),
+         photo_name, request.form.get("notes", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    log_audit(conn, "asset_added", name, f"{category}, {request.form.get('location', '')}")
+    conn.commit()
+    conn.close()
+    flash(f"{name} added to the register.", "success")
+    return redirect(url_for("admin_assets"))
+
+
+@app.route("/admin/assets/<int:asset_id>/update", methods=["POST"])
+@owner_required
+def update_asset(asset_id):
+    conn = get_db()
+    asset = conn.execute("SELECT * FROM assets WHERE id = ?", (asset_id,)).fetchone()
+    if not asset:
+        conn.close()
+        abort(404)
+    status = request.form.get("status", asset["status"])
+    if status not in ASSET_STATUSES:
+        abort(400)
+    raw = (request.form.get("estimated_value", "") or "").strip().replace(",", ".")
+    try:
+        value = round(float(raw), 2) if raw else asset["estimated_value"]
+    except ValueError:
+        value = asset["estimated_value"]
+    policy_raw = request.form.get("insurance_policy_id", "").strip()
+    # Disposed items keep their record; only the date is stamped. Deleting them
+    # would erase the evidence that the estate ever owned the thing, which is
+    # exactly what a historic claim or a probate valuation needs.
+    disposed = (datetime.now(timezone.utc).date().isoformat()
+                if status in ("sold", "lost", "destroyed") and not asset["disposed_on"]
+                else asset["disposed_on"] if status in ("sold", "lost", "destroyed") else None)
+    conn.execute(
+        """UPDATE assets SET status = ?, estimated_value = ?, condition = ?,
+             insurance_policy_id = ?, location = COALESCE(NULLIF(?, ''), location),
+             notes = COALESCE(NULLIF(?, ''), notes), disposed_on = ?
+           WHERE id = ?""",
+        (status, value, request.form.get("condition", asset["condition"]),
+         int(policy_raw) if policy_raw.isdigit() else None,
+         request.form.get("location", "").strip(),
+         request.form.get("notes", "").strip(), disposed, asset_id),
+    )
+    log_audit(conn, "asset_updated", asset["name"], f"status -> {status}")
+    conn.commit()
+    conn.close()
+    flash("Asset updated.", "success")
+    return redirect(url_for("admin_assets"))
+
+
+@app.route("/admin/assets/<int:asset_id>/photo")
+@owner_required
+def asset_photo(asset_id):
+    """Serves an asset photograph by ASSET id, not by filename.
+
+    Taking a filename from the URL would let anyone with a session walk the
+    whole uploads directory — which also holds contracts and receipts. Looking
+    the name up from the row means only files this register actually references
+    can be reached.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT photo_filename FROM assets WHERE id = ?", (asset_id,)).fetchone()
+    conn.close()
+    if not row or not row["photo_filename"]:
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, row["photo_filename"], as_attachment=False)
+
+
+@app.route("/admin/assets/export.csv")
+@owner_required
+def export_assets_csv():
+    """The file to hand an insurer or a valuer."""
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT assets.name, assets.category, assets.location, assets.description,
+                  assets.acquired_on, assets.purchase_price, assets.estimated_value,
+                  assets.value_source, assets.valued_on, assets.serial_number,
+                  assets.condition, assets.status,
+                  insurance_policies.provider AS insurer
+           FROM assets LEFT JOIN insurance_policies
+             ON insurance_policies.id = assets.insurance_policy_id
+           WHERE assets.status IN ('held','on_loan')
+           ORDER BY assets.category, assets.name"""
+    ).fetchall()
+    conn.close()
+    fieldnames = ["name", "category", "location", "description", "acquired_on",
+                  "purchase_price", "estimated_value", "value_source", "valued_on",
+                  "serial_number", "condition", "status", "insurer"]
+    return csv_response(fieldnames, rows, "asset-register.csv")
+
+
 @app.route("/admin/access")
 @owner_required
 def admin_access():
@@ -9797,7 +11192,15 @@ def admin_terms():
         return redirect(url_for("admin_terms"))
     text = conn.execute("SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()["value"]
     conn.close()
-    return render_template("admin_terms.html", text=text)
+    # `?draft=1` loads the shipped starting point into the editor WITHOUT
+    # saving, so the owner can read it, edit it and decide — rather than an
+    # app update silently rewriting the terms guests have been agreeing to.
+    if request.args.get("draft") == "1":
+        flash("This is the shipped draft — nothing is saved until you press Save.", "success")
+        text = DEFAULT_TERMS
+    return render_template("admin_terms.html", text=text,
+                           is_draft="DRAFT" in (text or "")[:400],
+                           showing_shipped=request.args.get("draft") == "1")
 
 
 # ---------------------------------------------------------------------------
@@ -18171,6 +19574,31 @@ def readiness_checks(conn):
                              f"{'is' if held == 1 else 'are'} being held until this is set up.")
     add("blocker", "Email", "Outbound email", email_ok, email_detail)
 
+    # Guest-facing wording, checked by the app rather than only by the tests.
+    # The restaurant confirmation has twice been left reading "TEST SUBJECT
+    # {guest_name}" after someone exercised the template editor — it is data,
+    # not code, so nothing in a diff or a commit shows it, and it would have
+    # gone to every confirmed diner. A template that has lost a placeholder is
+    # the same class of fault: no {guest_name} means "Hi ," to a paying guest.
+    placeholder_templates, broken_templates = [], []
+    defaults = {k: (subj, body) for k, _label, subj, body in DEFAULT_EMAIL_TEMPLATES}
+    for row in conn.execute("SELECT template_key, subject, body FROM email_templates").fetchall():
+        text = (row["subject"] or "") + " " + (row["body"] or "")
+        if re.search(r"\bTEST\b|\bTODO\b|\bFIXME\b|lorem ipsum", text, re.I):
+            placeholder_templates.append(row["template_key"])
+        want = defaults.get(row["template_key"])
+        if want and set(re.findall(r"\{(\w+)\}", want[0] + want[1])) - set(
+                re.findall(r"\{(\w+)\}", text)):
+            broken_templates.append(row["template_key"])
+    if placeholder_templates:
+        add("blocker", "Email", "Test text in guest email", False,
+            f"{', '.join(placeholder_templates)} still contains placeholder wording. "
+            "Guests receive this. Management → Email templates → Restore original wording.")
+    if broken_templates:
+        add("warn", "Email", "Email template missing a field", False,
+            f"{', '.join(broken_templates)} has lost a placeholder like {{guest_name}}, "
+            "so that detail arrives blank. Restore the original wording to fix it.")
+
     # Worth its own line: with a provider configured, anything still held is
     # mail that was actually rejected, which the email check above would
     # otherwise show as a clean pass.
@@ -18202,9 +19630,12 @@ def readiness_checks(conn):
         "STILL THE SEEDED PASSWORD. Anyone who has seen the setup notes can log "
         "in as you.")
 
+    # The setting is `terms_and_conditions`; an earlier version of this check
+    # read a key that doesn't exist, so it reported "still a draft" for ever,
+    # including after the terms had been replaced.
     terms = conn.execute(
-        "SELECT value FROM app_settings WHERE key = 'terms_text'").fetchone()
-    terms_draft = not terms or "DRAFT" in (terms["value"] or "")[:200]
+        "SELECT value FROM app_settings WHERE key = 'terms_and_conditions'").fetchone()
+    terms_draft = not terms or "DRAFT" in (terms["value"] or "")[:400]
     add("warn", "Legal", "Terms & conditions", not terms_draft,
         "Replaced." if not terms_draft else
         "Still the placeholder draft. Guests are agreeing to it at booking.")
@@ -18412,6 +19843,103 @@ def new_task():
     conn.close()
     flash("Task added.", "success")
     return redirect(request.referrer or url_for("admin_tasks"))
+
+
+@app.route("/today")
+@login_required
+def staff_today():
+    """What a member of staff needs in the first three seconds: who is in the
+    house, what they personally have to do, and when they're working.
+
+    Separate from the main dashboard because that page answers the owner's
+    question — how is the business doing — and this one answers the gardener's:
+    whose name do I need to know before I walk round the corner.
+    """
+    user = current_user()
+    today = datetime.now(timezone.utc).date()
+    conn = get_db()
+
+    guests_here = guest_recognition_cards(conn, today, viewer_role=user["role"])
+
+    # Today's list only. A checklist showing next week's work is a to-do list,
+    # and people stop ticking things off a list that never empties.
+    my_tasks = conn.execute(
+        """SELECT * FROM tasks
+           WHERE assigned_to_user_id = ?
+             AND (due_date IS NULL OR due_date <= ?)
+             AND (status != 'done' OR completed_at >= ?)
+           ORDER BY status = 'done', (due_date IS NULL), due_date, id""",
+        (user["id"], today.isoformat(), today.isoformat()),
+    ).fetchall()
+
+    my_shift_today = conn.execute(
+        "SELECT * FROM shifts WHERE user_id = ? AND shift_date = ? ORDER BY start_time",
+        (user["id"], today.isoformat()),
+    ).fetchall()
+    # Who else is around, so staff know who to ask rather than guessing.
+    on_today = conn.execute(
+        """SELECT users.name, users.job_role, shifts.start_time, shifts.end_time,
+                  shifts.role_note
+           FROM shifts JOIN users ON users.id = shifts.user_id
+           WHERE shifts.shift_date = ? AND users.id != ?
+           ORDER BY shifts.start_time, users.name""",
+        (today.isoformat(), user["id"]),
+    ).fetchall()
+    clocked_in = conn.execute(
+        "SELECT id FROM time_entries WHERE user_id = ? AND clock_out_at IS NULL",
+        (user["id"],),
+    ).fetchone()
+    announcements_current = current_announcements(conn, today)
+    arrivals_today = [c for c in guests_here if c["arriving_today"]]
+    departures_today = [c for c in guests_here if c["leaving_today"]]
+    conn.close()
+
+    return render_template(
+        "staff_today.html", guests_here=guests_here, my_tasks=my_tasks,
+        my_shift_today=my_shift_today, on_today=on_today, clocked_in=clocked_in,
+        announcements_current=announcements_current, today=today,
+        arrivals_today=arrivals_today, departures_today=departures_today,
+        open_count=sum(1 for t in my_tasks if t["status"] != "done"),
+    )
+
+
+@app.route("/tasks/<int:task_id>/complete", methods=["POST"])
+@login_required
+def complete_task(task_id):
+    """Tick a task off, or untick it. Two states, on purpose.
+
+    The existing /toggle cycles open -> in_progress -> done, which is right on
+    the planning page but wrong under a thumb: one tap on a checklist has to
+    mean done, and it took three there. This never strands a task in
+    in_progress either — untick goes straight back to open.
+    """
+    user = current_user()
+    conn = get_db()
+    task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    if not task:
+        conn.close()
+        return jsonify(error="not found"), 404
+    if user["role"] != "owner" and task["assigned_to_user_id"] != user["id"]:
+        conn.close()
+        return jsonify(error="forbidden"), 403
+
+    done = task["status"] != "done"
+    conn.execute(
+        "UPDATE tasks SET status = ?, completed_at = ? WHERE id = ?",
+        ("done" if done else "open",
+         datetime.now(timezone.utc).isoformat() if done else None, task_id),
+    )
+    # A directed task carries a separate accept/reject field. Completing it is
+    # unambiguous acceptance, so resolve that too rather than leaving it
+    # pending — the same reasoning as in toggle_task.
+    if done and "acknowledgment_status" in {c["name"] for c in
+                                            conn.execute("PRAGMA table_info(tasks)").fetchall()}:
+        conn.execute(
+            "UPDATE tasks SET acknowledgment_status = 'accepted' WHERE id = ? "
+            "AND acknowledgment_status = 'pending'", (task_id,))
+    conn.commit()
+    conn.close()
+    return jsonify(status="done" if done else "open")
 
 
 @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])

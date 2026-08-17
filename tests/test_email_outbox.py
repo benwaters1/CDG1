@@ -90,17 +90,25 @@ def run():
     # route correctly refusing and the retry path untested.
     m.SMTP_HOST, m.SMTP_USERNAME, m.SMTP_PASSWORD = ("smtp.example.invalid", "u", "p")
     try:
-        r = oc.post("/admin/email-outbox/send", follow_redirects=True)
+        # Send OUR row by id rather than pressing "send everything". A bare
+        # retry drains the oldest 100 in the whole outbox, so on a database
+        # that already holds a backlog this row need not be in the batch —
+        # which read as the app failing to send when it was the test's fault.
+        mine = [x for x in _held() if x["sent_at"] is None]
+        target = mine[0]["id"] if mine else None
+        r = oc.post("/admin/email-outbox/send", data={"id": str(target)},
+                    follow_redirects=True)
         rows = _held()
         s.check("the held message went out", len(sent_to) >= 1, r,
                 detail=f"sent {len(sent_to)}")
-        s.check("it is marked sent", all(x["sent_at"] for x in rows),
-                detail=f"{sum(1 for x in rows if not x['sent_at'])} still unsent")
+        s.check("it is marked sent",
+                all(x["sent_at"] for x in rows if x["id"] == target),
+                detail=f"row {target} still unsent")
 
         # A second press must not re-send: a guest getting the same
         # confirmation twice is the failure this guards.
         again = len(sent_to)
-        oc.post("/admin/email-outbox/send", follow_redirects=True)
+        oc.post("/admin/email-outbox/send", data={"id": str(target)}, follow_redirects=True)
         s.check("a second retry sends nothing again", len(sent_to) == again,
                 detail=f"{again} -> {len(sent_to)}")
     finally:
