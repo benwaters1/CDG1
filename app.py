@@ -535,6 +535,96 @@ def get_db():
     return conn
 
 
+# The wording every automated guest email starts from. Module level rather
+# than buried in init_db so the editor can offer a way back: an owner who
+# rewrites one badly — or pastes test text into it and forgets — otherwise
+# has no route to the original. That is not hypothetical; a reservation
+# confirmation sat reading "TEST SUBJECT {guest_name}" until it was spotted.
+DEFAULT_EMAIL_TEMPLATES = [
+    ("workshop_registration_received", "Workshop: Registration received",
+     "Registration received — {workshop_title}",
+     "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}), party of {party_size}, "
+     "has been received and is awaiting confirmation.\n{price_block}\n"
+     "Reference code: {reference_code}\n"
+     "Manage your registration: {manage_url}\n\n"
+     "— Château de Gudanes"),
+    ("workshop_confirmed", "Workshop: Registration confirmed",
+     "Registration confirmed — {workshop_title}",
+     "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) is confirmed. We look forward to "
+     "welcoming you.\n\nReference code: {reference_code}\n"
+     "Manage your registration: {manage_url}\n\n"
+     "— Château de Gudanes"),
+    ("workshop_declined", "Workshop: Registration declined",
+     "Registration update — {workshop_title}",
+     "Hi {guest_name},\n\nWe're sorry — we're unable to confirm your registration for {workshop_title} "
+     "({dates}). Please get in touch or try another date.\n\n— Château de Gudanes"),
+    ("workshop_cancelled", "Workshop: Registration cancelled",
+     "Registration cancelled — {workshop_title}",
+     "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) has been cancelled. Get in touch "
+     "if you'd like to rebook.\n\n— Château de Gudanes"),
+    ("workshop_deposit_receipt", "Workshop: Deposit receipt",
+     "Deposit received — {workshop_title}",
+     "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
+     "{balance_line}\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("workshop_balance_reminder", "Workshop: Balance due reminder",
+     "Balance due soon — {workshop_title}",
+     "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
+     "({dates}) is due by {balance_due_date}.\n"
+     "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
+    ("workshop_feedback_request", "Workshop: Feedback request",
+     "How was {workshop_title}?",
+     "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
+     "it went:\n{feedback_url}\n\n— Château de Gudanes"),
+    ("restaurant_reservation_received", "Restaurant: Reservation received",
+     "Dinner reservation received — Château de Gudanes",
+     "Hi {guest_name},\n\nYour dinner reservation request for {dinner_date}, party of {party_size}, "
+     "has been received and is awaiting confirmation.{dietary_line}{price_block}\n\n"
+     "Reference code: {reference_code}\n"
+     "Manage your reservation: {manage_url}\n\n"
+     "— Château de Gudanes"),
+    ("restaurant_confirmed", "Restaurant: Reservation confirmed",
+     "Dinner reservation confirmed — Château de Gudanes",
+     "Hi {guest_name},\n\nYour dinner reservation for {dinner_date}, party of {party_size}, is confirmed. "
+     "We look forward to hosting you.\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
+    ("restaurant_declined", "Restaurant: Reservation declined",
+     "Dinner reservation update — Château de Gudanes",
+     "Hi {guest_name},\n\nWe're sorry — we're unable to seat your party of {party_size} on {dinner_date}."
+     "{refund_note} Please get in touch or try another date.\n\n— Château de Gudanes"),
+    ("restaurant_cancelled", "Restaurant: Reservation cancelled",
+     "Dinner reservation cancelled — Château de Gudanes",
+     "Hi {guest_name},\n\nYour dinner reservation for {dinner_date} has been cancelled.{refund_note} Get in "
+     "touch if you'd like to rebook.\n\n— Château de Gudanes"),
+    ("room_waitlist_opening", "Automation: Room waitlist opening",
+     "A room may have opened up — Château de Gudanes",
+     "Hi {name},\n\nA booking was just cancelled or declined that overlaps the dates you're interested in "
+     "({desired_arrival} to {desired_departure}). If you'd still like to stay with us, book now before it's "
+     "taken again:\n{book_url}\n\n— Château de Gudanes"),
+    ("restaurant_waitlist_opening", "Automation: Restaurant waitlist opening",
+     "A table just opened up — Château de Gudanes",
+     "Hi {name},\n\nA table for {desired_date}, party of {party_size}, just became available. If you'd still "
+     "like to join us, reserve it now:\n{book_url}\n\n— Château de Gudanes"),
+    ("workshop_waitlist_opening", "Automation: Workshop waitlist opening",
+     "A spot just opened up — {workshop_title}",
+     "Hi {name},\n\nA spot for {workshop_title} ({dates}) just opened up. If you'd still like to join, "
+     "register now:\n{register_url}\n\n— Château de Gudanes"),
+    ("event_inquiry_received", "Events: Inquiry received",
+     "Event inquiry received — Château de Gudanes",
+     "Hi {contact_name},\n\nThank you for your interest in hosting a {event_type} at Château de Gudanes. "
+     "Your inquiry has been received and we'll be in touch shortly to discuss availability and pricing.\n\n"
+     "Reference code: {reference_code}\n"
+     "Manage your inquiry: {manage_url}\n\n— Château de Gudanes"),
+    ("event_inquiry_confirmed", "Events: Inquiry confirmed",
+     "Your event is confirmed — Château de Gudanes",
+     "Hi {contact_name},\n\nWe're delighted to confirm your {event_type} at Château de Gudanes.{price_block}\n\n"
+     "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("event_inquiry_declined", "Events: Inquiry declined",
+     "Event inquiry update — Château de Gudanes",
+     "Hi {contact_name},\n\nWe're sorry — we're unable to host your {event_type} on the date requested. "
+     "Please get in touch if you'd like to discuss other dates.\n\n— Château de Gudanes"),
+]
+
+
 def init_db():
     fresh = not os.path.exists(DB_PATH)
     conn = get_db()
@@ -2246,90 +2336,7 @@ def init_db():
         )
         conn.commit()
 
-    default_email_templates = [
-        ("workshop_registration_received", "Workshop: Registration received",
-         "Registration received — {workshop_title}",
-         "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}), party of {party_size}, "
-         "has been received and is awaiting confirmation.\n{price_block}\n"
-         "Reference code: {reference_code}\n"
-         "Manage your registration: {manage_url}\n\n"
-         "— Château de Gudanes"),
-        ("workshop_confirmed", "Workshop: Registration confirmed",
-         "Registration confirmed — {workshop_title}",
-         "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) is confirmed. We look forward to "
-         "welcoming you.\n\nReference code: {reference_code}\n"
-         "Manage your registration: {manage_url}\n\n"
-         "— Château de Gudanes"),
-        ("workshop_declined", "Workshop: Registration declined",
-         "Registration update — {workshop_title}",
-         "Hi {guest_name},\n\nWe're sorry — we're unable to confirm your registration for {workshop_title} "
-         "({dates}). Please get in touch or try another date.\n\n— Château de Gudanes"),
-        ("workshop_cancelled", "Workshop: Registration cancelled",
-         "Registration cancelled — {workshop_title}",
-         "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}) has been cancelled. Get in touch "
-         "if you'd like to rebook.\n\n— Château de Gudanes"),
-        ("workshop_deposit_receipt", "Workshop: Deposit receipt",
-         "Deposit received — {workshop_title}",
-         "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
-         "{balance_line}\n"
-         "Reference code: {reference_code}\n\n— Château de Gudanes"),
-        ("workshop_balance_reminder", "Workshop: Balance due reminder",
-         "Balance due soon — {workshop_title}",
-         "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
-         "({dates}) is due by {balance_due_date}.\n"
-         "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
-        ("workshop_feedback_request", "Workshop: Feedback request",
-         "How was {workshop_title}?",
-         "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
-         "it went:\n{feedback_url}\n\n— Château de Gudanes"),
-        ("restaurant_reservation_received", "Restaurant: Reservation received",
-         "Dinner reservation received — Château de Gudanes",
-         "Hi {guest_name},\n\nYour dinner reservation request for {dinner_date}, party of {party_size}, "
-         "has been received and is awaiting confirmation.{dietary_line}{price_block}\n\n"
-         "Reference code: {reference_code}\n"
-         "Manage your reservation: {manage_url}\n\n"
-         "— Château de Gudanes"),
-        ("restaurant_confirmed", "Restaurant: Reservation confirmed",
-         "Dinner reservation confirmed — Château de Gudanes",
-         "Hi {guest_name},\n\nYour dinner reservation for {dinner_date}, party of {party_size}, is confirmed. "
-         "We look forward to hosting you.\n\nReference code: {reference_code}\n\n— Château de Gudanes"),
-        ("restaurant_declined", "Restaurant: Reservation declined",
-         "Dinner reservation update — Château de Gudanes",
-         "Hi {guest_name},\n\nWe're sorry — we're unable to seat your party of {party_size} on {dinner_date}."
-         "{refund_note} Please get in touch or try another date.\n\n— Château de Gudanes"),
-        ("restaurant_cancelled", "Restaurant: Reservation cancelled",
-         "Dinner reservation cancelled — Château de Gudanes",
-         "Hi {guest_name},\n\nYour dinner reservation for {dinner_date} has been cancelled.{refund_note} Get in "
-         "touch if you'd like to rebook.\n\n— Château de Gudanes"),
-        ("room_waitlist_opening", "Automation: Room waitlist opening",
-         "A room may have opened up — Château de Gudanes",
-         "Hi {name},\n\nA booking was just cancelled or declined that overlaps the dates you're interested in "
-         "({desired_arrival} to {desired_departure}). If you'd still like to stay with us, book now before it's "
-         "taken again:\n{book_url}\n\n— Château de Gudanes"),
-        ("restaurant_waitlist_opening", "Automation: Restaurant waitlist opening",
-         "A table just opened up — Château de Gudanes",
-         "Hi {name},\n\nA table for {desired_date}, party of {party_size}, just became available. If you'd still "
-         "like to join us, reserve it now:\n{book_url}\n\n— Château de Gudanes"),
-        ("workshop_waitlist_opening", "Automation: Workshop waitlist opening",
-         "A spot just opened up — {workshop_title}",
-         "Hi {name},\n\nA spot for {workshop_title} ({dates}) just opened up. If you'd still like to join, "
-         "register now:\n{register_url}\n\n— Château de Gudanes"),
-        ("event_inquiry_received", "Events: Inquiry received",
-         "Event inquiry received — Château de Gudanes",
-         "Hi {contact_name},\n\nThank you for your interest in hosting a {event_type} at Château de Gudanes. "
-         "Your inquiry has been received and we'll be in touch shortly to discuss availability and pricing.\n\n"
-         "Reference code: {reference_code}\n"
-         "Manage your inquiry: {manage_url}\n\n— Château de Gudanes"),
-        ("event_inquiry_confirmed", "Events: Inquiry confirmed",
-         "Your event is confirmed — Château de Gudanes",
-         "Hi {contact_name},\n\nWe're delighted to confirm your {event_type} at Château de Gudanes.{price_block}\n\n"
-         "Reference code: {reference_code}\n\n— Château de Gudanes"),
-        ("event_inquiry_declined", "Events: Inquiry declined",
-         "Event inquiry update — Château de Gudanes",
-         "Hi {contact_name},\n\nWe're sorry — we're unable to host your {event_type} on the date requested. "
-         "Please get in touch if you'd like to discuss other dates.\n\n— Château de Gudanes"),
-    ]
-    for template_key, label, subject, body in default_email_templates:
+    for template_key, label, subject, body in DEFAULT_EMAIL_TEMPLATES:
         if not conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone():
             conn.execute(
                 "INSERT INTO email_templates (template_key, label, subject, body, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -17760,7 +17767,38 @@ def management_email_templates():
     conn = get_db()
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
     conn.close()
-    return render_template("management_email_templates.html", templates=templates)
+    # Which ones have been changed from the original wording, so the editor can
+    # offer a way back only where there is something to go back to.
+    defaults = {key: (subject, body) for key, _label, subject, body in DEFAULT_EMAIL_TEMPLATES}
+    edited = {t["template_key"] for t in templates
+              if t["template_key"] in defaults
+              and (t["subject"], t["body"]) != defaults[t["template_key"]]}
+    return render_template("management_email_templates.html", templates=templates,
+                           edited=edited)
+
+
+@app.route("/management/email-templates/<template_key>/restore", methods=["POST"])
+@owner_required
+def restore_email_template(template_key):
+    """Put one template back to the wording it shipped with.
+
+    Editing these is a one-way door otherwise: the originals only ever get
+    written when the row is absent, so a template rewritten badly — or left
+    holding test text — stays that way and goes out to guests.
+    """
+    default = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
+    if not default:
+        abort(404)
+    _key, _label, subject, body = default
+    conn = get_db()
+    conn.execute(
+        "UPDATE email_templates SET subject = ?, body = ?, updated_at = NULL "
+        "WHERE template_key = ?", (subject, body, template_key))
+    log_audit(conn, "email_template_restored", target=template_key)
+    conn.commit()
+    conn.close()
+    flash("Restored to the original wording.", "success")
+    return redirect(url_for("management_email_templates"))
 
 
 @app.route("/management/email-templates/<template_key>/edit", methods=["POST"])

@@ -36,6 +36,14 @@
     <textarea name="body" rows="8" required style="font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ t['body'] }}</textarea>
     <button type="submit" class="btn-mini" style="margin-top:10px;">Save</button>
   </form>
+  {% if t['template_key'] in edited %}
+  <form method="post" action="{{ url_for('restore_email_template', template_key=t['template_key']) }}"
+        style="max-width:760px; margin:-12px 0 18px;"
+        onsubmit="return confirm('Put this template back to its original wording? Your changes will be lost.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Restore original wording</button>
+  </form>
+  {% endif %}
   {% endfor %}
 {% endif %}
 
