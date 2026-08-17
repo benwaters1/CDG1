@@ -21,6 +21,11 @@ import re
 from _harness import Suite, ROOT
 
 CSS_PATH = os.path.join(ROOT, "static", "style.css")
+# The public front end ships its own stylesheet layered on top of style.css, so
+# a class can legitimately be defined in either. Checking only the first one
+# reported every g- class in the new templates as unstyled.
+import glob as _glob
+ALL_CSS = sorted(_glob.glob(os.path.join(ROOT, "static", "*.css")))
 AA_NORMAL = 4.5
 
 
@@ -224,7 +229,10 @@ def run():
 
     s.section("Markup uses classes the stylesheet defines")
     import glob
-    defined = set(re.findall(r"\.([a-zA-Z][\w-]*)", css))
+    all_css = "\n".join(
+        _strip_comments(open(path, encoding="utf-8", errors="replace").read())
+        for path in ALL_CSS)
+    defined = set(re.findall(r"\.([a-zA-Z][\w-]*)", all_css))
     used = {}
     for path in glob.glob(os.path.join(ROOT, "templates", "*.html")):
         html = open(path, encoding="utf-8").read()

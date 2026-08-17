@@ -8201,8 +8201,18 @@ def edit_own_contact_info():
 # ---------------------------------------------------------------------------
 
 @app.route("/")
-@login_required
 def dashboard():
+    # Two audiences, one address. A visitor gets the château's front page; a
+    # signed-in member of staff gets their dashboard. The public header links the
+    # brand to "/", so without this a guest clicking the château's own name
+    # landed on a staff login screen.
+    if not current_user():
+        return render_template("home.html")
+    return staff_dashboard()
+
+
+@login_required
+def staff_dashboard():
     user = current_user()
     conn = get_db()
     stats = {}
@@ -12135,6 +12145,20 @@ def unsubscribe_push():
 # cancellation-window policy is a real business decision only the owner (or
 # their lawyer) can set, so it's left as a placeholder rather than guessed.
 # ---------------------------------------------------------------------------
+
+@app.route("/restoration")
+def restoration_page():
+    """A public page about the restoration. Static copy, no data behind it."""
+    return render_template("restoration.html")
+
+
+@app.route("/gallery")
+def gallery_page():
+    """Photographs. Renders a pointer to Instagram until galleries are set up —
+    the template handles an empty list, so there is nothing to configure to make
+    the page safe to link to."""
+    return render_template("gallery.html", galleries=[])
+
 
 @app.route("/terms")
 def terms_page():

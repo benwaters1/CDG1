@@ -1,59 +1,97 @@
 {% extends "public_base.html" %}
-{% block title %}Events{% endblock %}
+{% block title %}Weddings & Events{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>Host Your Event at Château de Gudanes</h1>
-  <p class="manual-body">
-    From intimate weddings to editorial photoshoots and corporate offsites, the château's rooms, gardens, and grounds
-    make a striking backdrop. Every event is different, so tell us what you have in mind and we'll follow up with
-    availability and pricing.
-  </p>
-  <div class="amenity-tags" style="margin-top:10px;">
-    {% for t in event_types %}
-    <span class="amenity-tag">{{ t|capitalize }}</span>
-    {% endfor %}
+{# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,
+   contact_name, contact_email, contact_phone, preferred_date,
+   alternate_date, guest_count, message. #}
+
+<section class="g-hero">
+  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/home-7.jpg" alt="The château" style="height:clamp(16rem,48vh,30rem);">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-eyebrow">Private celebrations</p>
+    <h1 class="g-display" style="font-size:clamp(30px,5.5vw,52px);">Marry in <em>a monument</em></h1>
+    <p>The whole château, the valley, and rooms most people will never enter.</p>
   </div>
+</section>
 
-  <form method="post" action="{{ url_for('submit_event_inquiry') }}" style="margin-top:18px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">What kind of event?</label>
-    <select name="event_type" required>
-      <option value="">— choose —</option>
-      {% for t in event_types %}
-      <option value="{{ t }}">{{ t|capitalize }}</option>
-      {% endfor %}
-    </select>
-
-    <label class="field-label">Your name</label>
-    <input type="text" name="contact_name" required>
-
-    <label class="field-label">Email</label>
-    <input type="email" name="contact_email" required>
-
-    <label class="field-label">Phone (optional)</label>
-    <input type="tel" name="contact_phone">
-
-    <div class="field-row-2">
-      <div>
-        <label class="field-label">Preferred date</label>
-        <input type="date" name="preferred_date">
+<section class="g-sec">
+  <div class="g-wrap">
+    <div class="g-grid g-grid--3">
+      <div class="g-panel">
+        <h3 class="g-h3">Weddings</h3>
+        <p class="g-p" style="font-size:14.5px;">Ceremonies in the grounds or the historic interiors, dinner in the dining room, and the château given over to you and your party. Exclusive use by arrangement, with accommodation for the wedding party.</p>
       </div>
-      <div>
-        <label class="field-label">Alternate date (optional)</label>
-        <input type="date" name="alternate_date">
+      <div class="g-panel">
+        <h3 class="g-h3">Celebrations</h3>
+        <p class="g-p" style="font-size:14.5px;">Birthdays, anniversaries, family gatherings and milestone dinners. Private dining, styling, flowers and menu cards arranged with the chef.</p>
+      </div>
+      <div class="g-panel">
+        <h3 class="g-h3">Photoshoots &amp; film</h3>
+        <p class="g-p" style="font-size:14.5px;">Ninety-four rooms in every state between ruin and restored — bare plaster, gilded panelling, medieval stone, an eighteenth-century façade and twelve acres of grounds. Photographed for Vogue.</p>
       </div>
     </div>
+  </div>
+</section>
 
-    <label class="field-label">Expected number of guests</label>
-    <input type="number" name="guest_count" min="1">
+<section class="g-sec g-sec--sand">
+  <div class="g-wrap">
+    <div class="g-two">
+      <div>
+        <h2 class="g-h2">A location that <em>cannot be built</em></h2>
+        <p class="g-p">Every event here is different, so rather than a package we start with a conversation. Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
+        <p class="g-p">Two hours from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège.</p>
+      </div>
 
-    <label class="field-label">Tell us about your event</label>
-    <textarea name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan"></textarea>
+      <form method="post" action="{{ url_for('submit_event_inquiry') }}" class="g-panel" style="background:var(--white); border:1px solid var(--line);">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h3 class="g-h3">Make an enquiry</h3>
 
-    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Send inquiry</button>
-    <p class="upload-hint" style="margin-top:10px;">This is an inquiry, not a booking — we'll follow up to discuss availability, pricing, and details. You'll get a reference code and a link to check the status of your inquiry.</p>
-  </form>
-</div>
+        <p class="g-field">
+          <label for="event_type">What kind of event?</label>
+          <select id="event_type" name="event_type" required>
+            <option value="">— choose —</option>
+            {% for t in event_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+          </select>
+        </p>
+        <p class="g-field">
+          <label for="contact_name">Your name</label>
+          <input type="text" id="contact_name" name="contact_name" autocomplete="name" required>
+        </p>
+        <div class="g-row">
+          <p class="g-field">
+            <label for="contact_email">Email</label>
+            <input type="email" id="contact_email" name="contact_email" autocomplete="email" required>
+          </p>
+          <p class="g-field">
+            <label for="contact_phone">Phone <span class="g-opt">optional</span></label>
+            <input type="tel" id="contact_phone" name="contact_phone" autocomplete="tel">
+          </p>
+        </div>
+        <div class="g-row">
+          <p class="g-field">
+            <label for="preferred_date">Preferred date</label>
+            <input type="date" id="preferred_date" name="preferred_date">
+          </p>
+          <p class="g-field">
+            <label for="alternate_date">Alternate date <span class="g-opt">optional</span></label>
+            <input type="date" id="alternate_date" name="alternate_date">
+          </p>
+        </div>
+        <p class="g-field g-field--narrow">
+          <label for="guest_count">Expected guests</label>
+          <input type="number" id="guest_count" name="guest_count" min="1">
+        </p>
+        <p class="g-field">
+          <label for="message">Tell us about your event</label>
+          <textarea id="message" name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan"></textarea>
+        </p>
+        <button type="submit" class="g-btn g-submit">Send enquiry</button>
+        <p class="g-foot-note">This is an enquiry, not a booking — we'll follow up to discuss availability, pricing and details. You'll get a reference code and a link to check its status.</p>
+      </form>
+    </div>
+  </div>
+</section>
 
 {% endblock %}

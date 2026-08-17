@@ -2,119 +2,178 @@
 {% block title %}Book {{ room['name'] }}{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
+{# CONTRACT: method="post", no action (posts to /book/<room_id>).
+   csrf_token first. Fields: arrival_date, departure_date, guest_name,
+   guest_email, guest_phone, party_size, special_requests, extras[],
+   promo_code, agree_terms. Stripe branch preserved verbatim. #}
+
+<div class="g-wrap" style="padding-top:clamp(1.5rem,4vw,2.5rem);">
+
   {% if room['photo_filename'] %}
-  <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" class="room-photo">
+  <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}"
+       style="width:100%; height:clamp(14rem,42vh,28rem); object-fit:cover; border-radius:4px;">
   {% endif %}
+
+  <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
+    <p class="g-eyebrow">Ariège · French Pyrénées</p>
+    <h1 class="g-display" style="font-size:clamp(28px,5vw,46px);">{{ room['name'] }}</h1>
+    <p class="g-room__meta">
+      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
+    </p>
+  </div>
+
   {% if gallery_photos %}
-  <div class="room-gallery-strip">
+  <div class="g-strip">
     {% for p in gallery_photos %}
-    <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}">
+    <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}" loading="lazy">
     {% endfor %}
   </div>
   {% endif %}
-  <h1>{{ room['name'] }}</h1>
-  <p class="room-meta">Sleeps up to {{ room['max_occupancy'] }}{% if room['price_per_night'] %} · €{{ '%.0f'|format(room['price_per_night']) }} / night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}</p>
-  {% if room['description'] %}<p class="manual-body">{{ room['description'] }}</p>{% endif %}
+
+  {% if room['description'] %}<p class="g-p">{{ room['description'] }}</p>{% endif %}
+
   {% if room['amenities'] %}
-  <div class="amenity-tags">
-    {% for tag in room['amenities'].split(',') %}
-    <span class="amenity-tag">{{ tag.strip() }}</span>
-    {% endfor %}
-  </div>
+  <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
   {% endif %}
 
-  <form method="post" style="margin-top:18px;">
+  <form method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field-row-2">
+
+    <div class="g-cols">
       <div>
-        <label class="field-label">Arrival</label>
-        <input type="date" name="arrival_date" value="{{ arrival }}" required>
-      </div>
-      <div>
-        <label class="field-label">Departure</label>
-        <input type="date" name="departure_date" value="{{ departure }}" required>
-      </div>
-    </div>
 
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
-
-    <label class="field-label">Your name</label>
-    <input type="text" name="guest_name" value="{{ prefill_name }}" required>
-
-    <label class="field-label">Email</label>
-    <input type="email" name="guest_email" value="{{ prefill_email }}" required>
-
-    <label class="field-label">Phone (optional)</label>
-    <input type="tel" name="guest_phone" value="{{ prefill_phone }}">
-
-    <label class="field-label">Anything we should know?</label>
-    <textarea name="special_requests" placeholder="Dietary needs, occasion, arrival time, questions..."></textarea>
-
-    {% if extras %}
-    <label class="field-label">Add-ons</label>
-    <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
-      {% for e in extras %}
-      <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="extras" value="{{ e['id'] }}">
-        {{ e['name'] }} — €{{ '%.2f'|format(e['price']) }}
-      </label>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    <label class="field-label">Promo code (optional)</label>
-    <div style="display:flex; gap:8px;">
-      <input type="text" name="promo_code" id="promo_code" style="text-transform:uppercase;">
-      <button type="button" class="btn-mini" id="promo_apply_btn" style="flex-shrink:0;">Apply</button>
-    </div>
-    <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
-
-    {# The price, before they commit to anything. Rendered server-side when the
-       dates arrive with them (the room list passes them through) and kept
-       current by /api/quote as they change dates, party size or add-ons — so
-       there is never a moment where the form asks for money without saying how
-       much, and no JavaScript is needed to see a figure. #}
-    <div class="quote-box" id="quote_box" {{ 'hidden' if not initial_quote }}>
-      {% if initial_quote and not initial_quote.available %}
-      <p class="quote-unavailable" id="quote_reason">{{ initial_quote.reason }}</p>
-      {% else %}
-      <p class="quote-unavailable" id="quote_reason" hidden></p>
-      {% endif %}
-      <div id="quote_lines">
-        {% if initial_quote and initial_quote.available %}
-          {% for line in initial_quote.lines %}
-          <div class="quote-line">
-            <span>{{ line.label }}</span>
-            <span>{{ '−€%.2f'|format(-line.amount) if line.amount < 0 else '€%.2f'|format(line.amount) }}</span>
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">01</span> Your dates</h2>
+          <div class="g-row">
+            <p class="g-field">
+              <label for="arrival_date">Arrival</label>
+              <input type="date" id="arrival_date" name="arrival_date" value="{{ arrival }}" required>
+            </p>
+            <p class="g-field">
+              <label for="departure_date">Departure</label>
+              <input type="date" id="departure_date" name="departure_date" value="{{ departure }}" required>
+              <span class="g-hint" id="nights_hint" aria-live="polite"></span>
+            </p>
           </div>
-          {% endfor %}
+          <p class="g-field g-field--narrow">
+            <label for="party_size">Guests</label>
+            <input type="number" id="party_size" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
+            <span class="g-hint">Up to {{ room['max_occupancy'] }} in this room.</span>
+          </p>
+        </section>
+
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">02</span> Who is coming</h2>
+          <p class="g-field">
+            <label for="guest_name">Your name</label>
+            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required>
+          </p>
+          <div class="g-row">
+            <p class="g-field">
+              <label for="guest_email">Email</label>
+              <input type="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
+            </p>
+            <p class="g-field">
+              <label for="guest_phone">Phone <span class="g-opt">optional</span></label>
+              <input type="tel" id="guest_phone" name="guest_phone" autocomplete="tel" value="{{ prefill_phone }}">
+            </p>
+          </div>
+        </section>
+
+        {% if extras %}
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">03</span> Add to your stay</h2>
+          <ul class="g-extras">
+            {% for e in extras %}
+            <li>
+              <label class="g-check">
+                <input type="checkbox" name="extras" value="{{ e['id'] }}">
+                <span class="g-check__t">
+                  <b>{{ e['name'] }}</b>
+                  {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
+                </span>
+                <span class="g-fig">€{{ '%.2f'|format(e['price']) }}</span>
+              </label>
+            </li>
+            {% endfor %}
+          </ul>
+          <p class="g-hint">Added to your request. The château confirms availability and the final total.</p>
+        </section>
         {% endif %}
+
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
+          <p class="g-field">
+            <label for="special_requests">Dietary needs, occasion, arrival time, questions</label>
+            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions..."></textarea>
+            <span class="g-hint">Send dietary requirements early and they are designed into the menu rather than worked around on the night.</span>
+          </p>
+          <p class="g-field g-field--narrow">
+            <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
+            <span class="g-promo">
+              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters">
+              <button type="button" id="promo_apply_btn">Apply</button>
+            </span>
+            <span class="g-hint" id="promo_result" aria-live="polite"></span>
+          </p>
+        </section>
+
       </div>
-      <div class="quote-total" id="quote_total_row" {{ 'hidden' if not (initial_quote and initial_quote.available) }}>
-        <span>Total</span>
-        <span id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available else '' }}</span>
-      </div>
-      <p class="upload-hint" id="quote_note">
-        {% if initial_quote and initial_quote.available and initial_quote.per_night %}
-        €{{ '%.2f'|format(initial_quote.per_night) }} a night average over {{ initial_quote.nights }} night{{ '' if initial_quote.nights == 1 else 's' }}.
-        {% endif %}
-      </p>
+
+      <aside class="g-aside">
+        <div class="g-dossier">
+          <p class="g-dossier__k">Your request</p>
+          <p class="g-dossier__room">{{ room['name'] }}</p>
+          <dl class="g-dossier__l">
+            <div><dt>Arrival</dt><dd data-mirror="arrival_date">—</dd></div>
+            <div><dt>Departure</dt><dd data-mirror="departure_date">—</dd></div>
+            <div><dt>Nights</dt><dd data-nights>—</dd></div>
+            <div><dt>Guests</dt><dd data-mirror="party_size">—</dd></div>
+          </dl>
+
+          {# The price, before they commit. Rendered server-side when dates
+             arrive from the room list, then kept current by /api/quote as they
+             change dates, guests, add-ons or code. Figures always come from the
+             server — a seasonal rate can make nights within one stay cost
+             different amounts, so adding up in the browser would eventually
+             disagree with the card charge. #}
+          <div class="g-quote" id="quote_box" {{ 'hidden' if not initial_quote }}>
+            <p class="g-quote__warn" id="quote_reason"
+               {{ '' if initial_quote and not initial_quote.available else 'hidden' }}>
+              {{ initial_quote.reason if initial_quote and not initial_quote.available }}
+            </p>
+            <dl class="g-quote__l" id="quote_lines">
+              {% if initial_quote and initial_quote.available %}
+                {% for line in initial_quote.lines %}
+                <div><dt>{{ line.label }}</dt><dd class="g-fig">€{{ '%.2f'|format(line.amount) }}</dd></div>
+                {% endfor %}
+              {% endif %}
+            </dl>
+            <p class="g-quote__total" id="quote_total_row"
+               {{ '' if initial_quote and initial_quote.available else 'hidden' }}>
+              <span>Total</span>
+              <span class="g-fig" id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available }}</span>
+            </p>
+            <p class="g-hint" id="quote_note">
+              {% if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '%.2f'|format(initial_quote.per_night) }} a night average.{% endif %}
+            </p>
+          </div>
+
+          <label class="g-terms">
+            <input type="checkbox" name="agree_terms" required>
+            <span>I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">Terms &amp; Conditions</a></span>
+          </label>
+
+          {% if stripe_enabled and room['price_per_night'] %}
+          <button type="submit" class="g-btn g-submit">Pay &amp; request to book</button>
+          <p class="g-foot-note">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your booking.</p>
+          {% else %}
+          <button type="submit" class="g-btn g-submit">Request to book</button>
+          <p class="g-foot-note">This is a booking request, not an instant confirmation — the château will review and confirm it. Your dates are held in the meantime. You'll get a reference code and a link on the next page — save it, since that's how you'll check your booking's status.</p>
+          {% endif %}
+        </div>
+      </aside>
     </div>
-
-    <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
-      <input type="checkbox" name="agree_terms" required>
-      I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" style="color:var(--steel);">Terms &amp; Conditions</a>
-    </label>
-
-    {% if stripe_enabled and room['price_per_night'] %}
-    <button type="submit" class="btn-primary btn-block">Pay &amp; Request to Book</button>
-    <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your booking.</p>
-    {% else %}
-    <button type="submit" class="btn-primary btn-block">Request to Book</button>
-    <p class="upload-hint" style="margin-top:10px;">This is a booking request, not an instant confirmation — the château will review and confirm it. Your dates are held in the meantime. You'll get a reference code and a link on the next page — save it, since that's how you'll check your booking's status.</p>
-    {% endif %}
   </form>
 </div>
 
@@ -131,84 +190,89 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     .then(function(r) { return r.json(); })
     .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
     .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
-  refreshQuote();
 });
 
-// Keep the price panel honest as the guest changes anything. The figures come
-// from the server, never from arithmetic here — the browser adding up nightly
-// rates is how a quote ends up disagreeing with the card charge, since a
-// seasonal rate override can make nights within one stay cost different amounts.
 (function () {
-  var box = document.getElementById('quote_box');
-  if (!box) return;
-  var money = function (n) { return '€' + Number(n).toFixed(2); };
-  var pending;
+  var f = document.querySelector('form[method="post"]');
+  if (!f) return;
+  var arrive = f.querySelector('#arrival_date'), depart = f.querySelector('#departure_date');
+  var party = f.querySelector('#party_size'), hint = f.querySelector('#nights_hint');
+  var minN = {{ room['min_nights'] or 1 }};
+  arrive.min = new Date().toISOString().slice(0,10);
 
-  window.refreshQuote = function () {
-    var arrival = document.querySelector('[name="arrival_date"]').value;
-    var departure = document.querySelector('[name="departure_date"]').value;
-    if (!arrival || !departure) { box.hidden = true; return; }
+  function nights(){ if(!arrive.value||!depart.value) return null;
+    return Math.round((new Date(depart.value)-new Date(arrive.value))/86400000); }
 
-    var params = new URLSearchParams();
-    params.set('room_id', '{{ room["id"] }}');
-    params.set('arrival', arrival);
-    params.set('departure', departure);
-    var party = document.querySelector('[name="party_size"]');
-    if (party && party.value) params.set('party_size', party.value);
-    var promo = document.getElementById('promo_code');
-    if (promo && promo.value.trim()) params.set('promo', promo.value.trim());
-    document.querySelectorAll('[name="extras"]:checked').forEach(function (cb) {
-      params.append('extras', cb.value);
+  function sync(){
+    if (arrive.value){
+      var n=new Date(arrive.value); n.setDate(n.getDate()+1);
+      depart.min=n.toISOString().slice(0,10);
+      if (depart.value && depart.value<=arrive.value) depart.value='';
+    }
+    var nt=nights();
+    if(nt===null){ hint.textContent=''; hint.classList.remove('is-warn'); }
+    else if(nt<minN){ hint.textContent='Minimum stay is '+minN+' nights.'; hint.classList.add('is-warn'); }
+    else { hint.textContent=nt+(nt===1?' night':' nights'); hint.classList.remove('is-warn'); }
+    f.querySelectorAll('[data-mirror]').forEach(function(el){
+      var src=f.querySelector('#'+el.getAttribute('data-mirror'));
+      el.textContent = src && src.value ? src.value : '—';
     });
+    var nEl=f.querySelector('[data-nights]'); if(nEl) nEl.textContent = nt===null?'—':nt;
+  }
+  [arrive,depart,party].forEach(function(el){ el.addEventListener('change',sync); el.addEventListener('input',sync); });
 
+  // The price. Server-computed, debounced, and it leaves the last good figures
+  // on screen if a request fails rather than blanking the panel mid-decision.
+  var box=document.getElementById('quote_box'), pending;
+  function money(n){ return '€'+Number(n).toFixed(2); }
+  function refreshQuote(){
+    if(!box) return;
+    if(!arrive.value||!depart.value){ box.hidden=true; return; }
+    var q=new URLSearchParams();
+    q.set('room_id','{{ room["id"] }}');
+    q.set('arrival',arrive.value);
+    q.set('departure',depart.value);
+    if(party.value) q.set('party_size',party.value);
+    var promo=document.getElementById('promo_code');
+    if(promo&&promo.value.trim()) q.set('promo',promo.value.trim());
+    f.querySelectorAll('[name="extras"]:checked').forEach(function(cb){ q.append('extras',cb.value); });
     clearTimeout(pending);
-    pending = setTimeout(function () {
-      fetch('{{ url_for("api_quote") }}?' + params.toString())
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (q) {
-          if (!q) return;
-          box.hidden = false;
-          var reason = document.getElementById('quote_reason');
-          var lines = document.getElementById('quote_lines');
-          var totalRow = document.getElementById('quote_total_row');
-          var note = document.getElementById('quote_note');
-          lines.innerHTML = '';
-          if (!q.available) {
-            reason.textContent = q.reason || 'Not available.';
-            reason.hidden = false;
-            totalRow.hidden = true;
-            note.textContent = '';
-            return;
+    pending=setTimeout(function(){
+      fetch('{{ url_for("api_quote") }}?'+q.toString())
+        .then(function(r){ return r.ok?r.json():null; })
+        .then(function(d){
+          if(!d) return;
+          box.hidden=false;
+          var reason=document.getElementById('quote_reason');
+          var lines=document.getElementById('quote_lines');
+          var totalRow=document.getElementById('quote_total_row');
+          var note=document.getElementById('quote_note');
+          lines.innerHTML='';
+          if(!d.available){
+            reason.textContent=d.reason||'Not available.'; reason.hidden=false;
+            totalRow.hidden=true; note.textContent=''; return;
           }
-          reason.hidden = true;
-          q.lines.forEach(function (line) {
-            var row = document.createElement('div');
-            row.className = 'quote-line';
-            var left = document.createElement('span');
-            left.textContent = line.label;
-            var right = document.createElement('span');
-            right.textContent = line.amount < 0 ? '−' + money(-line.amount) : money(line.amount);
-            row.appendChild(left); row.appendChild(right);
-            lines.appendChild(row);
+          reason.hidden=true;
+          d.lines.forEach(function(line){
+            var row=document.createElement('div');
+            var dt=document.createElement('dt'); dt.textContent=line.label;
+            var dd=document.createElement('dd'); dd.className='g-fig';
+            dd.textContent=line.amount<0?'−'+money(-line.amount):money(line.amount);
+            row.appendChild(dt); row.appendChild(dd); lines.appendChild(row);
           });
-          document.getElementById('quote_total').textContent = money(q.total);
-          totalRow.hidden = false;
-          note.textContent = q.per_night
-            ? money(q.per_night) + ' a night average over ' + q.nights +
-              (q.nights === 1 ? ' night.' : ' nights.')
-            : '';
+          document.getElementById('quote_total').textContent=money(d.total);
+          totalRow.hidden=false;
+          note.textContent=d.per_night?money(d.per_night)+' a night average.':'';
         })
-        .catch(function () { /* leave whatever was last shown rather than blanking it */ });
-    }, 250);
-  };
+        .catch(function(){});
+    },250);
+  }
+  [arrive,depart,party].forEach(function(el){ el.addEventListener('change',refreshQuote); });
+  f.querySelectorAll('[name="extras"]').forEach(function(cb){ cb.addEventListener('change',refreshQuote); });
+  var applyBtn=document.getElementById('promo_apply_btn');
+  if(applyBtn) applyBtn.addEventListener('click',refreshQuote);
 
-  ['arrival_date', 'departure_date', 'party_size'].forEach(function (name) {
-    var el = document.querySelector('[name="' + name + '"]');
-    if (el) el.addEventListener('change', window.refreshQuote);
-  });
-  document.querySelectorAll('[name="extras"]').forEach(function (cb) {
-    cb.addEventListener('change', window.refreshQuote);
-  });
+  sync();
 })();
 </script>
 
