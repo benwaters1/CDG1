@@ -1112,6 +1112,23 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Individual payments received against a stay. bookings.amount_paid is
+        -- the running total; this is what made it up. A stay can be paid more
+        -- than once -- a deposit, then a balance, then a night added later --
+        -- so a single stripe_session_id column on bookings cannot record them.
+        -- The UNIQUE session id is what makes recording idempotent: Stripe
+        -- retries webhooks and guests reload the success page, and crediting
+        -- the same payment twice would send somebody home believing they had
+        -- paid when they had not.
+        CREATE TABLE IF NOT EXISTS booking_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+            amount REAL NOT NULL,
+            method TEXT NOT NULL DEFAULT 'stripe',
+            stripe_session_id TEXT UNIQUE,
+            created_at TEXT NOT NULL
+        );
+
         -- Training, tickets and certificates a staff member holds. Separate
         -- from `documents` (which is a filing cabinet): these have an issuer
         -- and expire, and in French hospitality some of them are legally
@@ -6528,6 +6545,107 @@ def record_booking_payment(conn, booking_id, amount, reference=None):
             "UPDATE bookings SET stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ?) "
             "WHERE id = ?", (reference, booking_id))
     return bill
+
+
+def start_booking_stripe_payment(conn, booking_id):
+    """Checkout URL for whatever is still owed on a stay, or None.
+
+    Workshop guests have been able to settle online since the start; room
+    guests could only be told "we'll take this on arrival", even after adding
+    an extra or a night to their own booking. That leaves the château carrying
+    every stay to the door and a guest who wants to pay unable to.
+
+    The amount comes from booking_bill() at the moment the guest clicks, not
+    from total_price — a stay that gained an extra, lost a night or took a
+    part payment has to charge what is actually left.
+    """
+    if not stripe_enabled():
+        return None
+    bill = booking_bill(conn, booking_id)
+    if not bill:
+        return None
+    booking = bill["booking"]
+    if booking["status"] in ("declined", "cancelled") or bill["owed"] <= 0:
+        return None
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"{booking['room_name']} ({booking['reference_code']})"},
+                    "unit_amount": int(round(bill["owed"] * 100)),
+                },
+                "quantity": 1,
+            }],
+            customer_email=booking["guest_email"],
+            success_url=url_for("booking_stripe_success", manage_token=booking["manage_token"],
+                                _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=url_for("manage_booking", manage_token=booking["manage_token"], _external=True),
+            metadata={"booking_id": str(booking_id), "kind": "room_balance"},
+        )
+    except Exception:
+        return None
+    return checkout_session.url
+
+
+def mark_booking_payment_paid(conn, session):
+    """Record a room-stay payment, once, whichever of the success redirect or
+    the webhook arrives first.
+
+    Stripe retries webhooks and the guest may reload the success page, so the
+    same Checkout Session can arrive several times. The session id is written
+    into a payments row and checked first — recording twice would take the
+    money off what they owe twice and send them home thinking they had paid.
+    """
+    meta = smeta(session)
+    if meta.get("kind") != "room_balance":
+        return
+    booking_id = meta.get("booking_id")
+    if not booking_id:
+        return
+    booking_id = int(booking_id)
+    session_id = session["id"]
+    already = conn.execute(
+        "SELECT 1 FROM booking_payments WHERE stripe_session_id = ?", (session_id,)).fetchone()
+    if already:
+        return
+    amount = (sval(session, "amount_total") or 0) / 100
+    if amount <= 0:
+        return
+    try:
+        conn.execute(
+            """INSERT INTO booking_payments (booking_id, amount, method, stripe_session_id, created_at)
+               VALUES (?, ?, 'stripe', ?, ?)""",
+            (booking_id, round(amount, 2), session_id, datetime.now(timezone.utc).isoformat()))
+    except sqlite3.IntegrityError:
+        # The success redirect and the webhook can be in flight at the same
+        # moment and both clear the check above. The UNIQUE session id is the
+        # real guarantee; losing the race is the correct outcome, not an error
+        # the guest should see as a 500 immediately after paying.
+        return
+    record_booking_payment(conn, booking_id, amount, reference=sval(session, "payment_intent"))
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    # Commit before the receipt goes out. With no email provider configured
+    # send_email falls back to email_outbox on its own connection, which cannot
+    # take a write lock while this transaction is open — the same way a
+    # workshop deposit receipt was being lost to "database is locked".
+    conn.commit()
+    if booking:
+        bill = booking_bill(conn, booking_id)
+        send_email(
+            booking["guest_email"],
+            f"Payment received — {booking['room_name']}",
+            f"Hi {booking['guest_name']},\n\n"
+            f"We've received €{amount:.2f} for your stay ({booking['reference_code']}).\n"
+            + (f"Still to pay: €{bill['owed']:.2f}.\n" if bill and bill["owed"] > 0
+               else "Your stay is now paid in full.\n")
+            + f"\n— Château de Gudanes",
+        )
 
 
 # How a tab can be settled. An iPad in a browser cannot read a card by itself,
@@ -14110,6 +14228,12 @@ def stripe_webhook():
                 ).fetchone()
                 if not existing and sval(session, "payment_status") == "paid":
                     create_restaurant_booking_from_stripe_session(conn, session)
+            elif meta.get("kind") == "room_balance":
+                # Must be matched explicitly: the fall-through below CREATES a
+                # booking from the session, so a guest paying off an existing
+                # stay would get a second, duplicate booking out of it.
+                if sval(session, "payment_status") == "paid":
+                    mark_booking_payment_paid(conn, session)
             else:
                 existing = conn.execute(
                     "SELECT id FROM bookings WHERE stripe_session_id = ?", (session["id"],)
@@ -14165,6 +14289,44 @@ def guest_checkin(manage_token):
 
 def booking_has_transfer(booking):
     return "transfer" in (booking["extras_summary"] or "").lower()
+
+
+@app.route("/book/pay/<manage_token>")
+def booking_pay(manage_token):
+    """Let a guest settle what is outstanding on their stay."""
+    conn = get_db()
+    booking = conn.execute("SELECT id FROM bookings WHERE manage_token = ?", (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    checkout_url = start_booking_stripe_payment(conn, booking["id"])
+    conn.close()
+    if not checkout_url:
+        # Stripe off, nothing owed, or the booking is cancelled. Say so rather
+        # than showing an error — none of those is the guest's mistake.
+        flash("There's nothing to pay online at the moment — please contact the château.", "error")
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+    return redirect(checkout_url, code=303)
+
+
+@app.route("/book/stripe-success")
+def booking_stripe_success():
+    manage_token = request.args.get("manage_token", "")
+    session_id = request.args.get("session_id", "").strip()
+    if not stripe_enabled() or not session_id or not manage_token:
+        abort(404)
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception:
+        abort(404)
+    if sval(session, "payment_status") == "paid":
+        conn = get_db()
+        mark_booking_payment_paid(conn, session)
+        conn.close()
+        flash("Payment received, thank you.", "success")
+    else:
+        flash("That payment wasn't completed.", "error")
+    return redirect(url_for("manage_booking", manage_token=manage_token))
 
 
 @app.route("/book/manage/<manage_token>", methods=["GET", "POST"])
@@ -14520,6 +14682,7 @@ def manage_booking(manage_token):
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
         dinner_available=dinner_available, bill=bill, addable=addable,
+        stripe_enabled=stripe_enabled(),
     )
 
 
