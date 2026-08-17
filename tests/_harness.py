@@ -162,8 +162,8 @@ def clients():
     """Logged-in test clients: (owner, employee)."""
     ensure_employee()
     conn = db()
-    owner = conn.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
-    emp = conn.execute("SELECT id FROM users WHERE role='employee' LIMIT 1").fetchone()
+    owner = conn.execute("SELECT id, name FROM users WHERE role='owner' LIMIT 1").fetchone()
+    emp = conn.execute("SELECT id, name FROM users WHERE role='employee' LIMIT 1").fetchone()
     conn.close()
     if not owner:
         raise RuntimeError("no owner in the test database")

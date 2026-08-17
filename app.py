@@ -140,7 +140,8 @@ from calendar import monthrange
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, send_from_directory, abort, jsonify
+    session, flash, send_from_directory, abort, jsonify,
+    has_request_context,
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -1673,6 +1674,52 @@ def init_db():
             sent_at TEXT
         );
 
+        -- Staff messaging. Announcements were the only way to say anything to
+        -- the team, and they go one way only: the owner posts, nobody replies.
+        -- This is the missing half.
+        --
+        -- Two kinds of channel. 'area' channels are open to every member of
+        -- staff and are fixed (kitchen, housekeeping and so on) so a message
+        -- always has an obvious home. 'dm' channels are private to their
+        -- members. One table rather than two, because the read-state and unread
+        -- arithmetic are identical for both and duplicating that is how the two
+        -- drift apart.
+        CREATE TABLE IF NOT EXISTS chat_channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'area' CHECK(kind IN ('area','dm')),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        -- Only populated for DMs. An area channel deliberately has no member
+        -- rows: everyone is in it, and materialising that would mean a row per
+        -- new employee, or silently leaving them out of the kitchen channel.
+        CREATE TABLE IF NOT EXISTS chat_members (
+            channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            PRIMARY KEY (channel_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- How far each person has read in each channel. The message id rather
+        -- than a timestamp, so unread counts cannot be thrown off by clock skew
+        -- and a message posted while someone was reading is not marked as seen.
+        CREATE TABLE IF NOT EXISTS chat_reads (
+            channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            last_read_message_id INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (channel_id, user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS workshop_waitlist (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER NOT NULL REFERENCES workshop_sessions(id) ON DELETE CASCADE,
@@ -2574,6 +2621,15 @@ def init_db():
             conn.execute(
                 "INSERT INTO email_templates (template_key, label, subject, body, updated_at) VALUES (?, ?, ?, ?, ?)",
                 (template_key, label, subject, body, None),
+            )
+    conn.commit()
+
+    for slug, name, order in DEFAULT_CHAT_CHANNELS:
+        if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
+            conn.execute(
+                """INSERT INTO chat_channels (slug, name, kind, sort_order, created_at)
+                   VALUES (?, ?, 'area', ?, ?)""",
+                (slug, name, order, datetime.now(timezone.utc).isoformat()),
             )
     conn.commit()
 
@@ -3928,6 +3984,140 @@ def guests_in_residence(conn, today):
     """Just the stays covering today -- the common case for every 'who's here'
     panel across the app."""
     return [s for s in stays_with_status(conn, today) if s["stay_status"] == "current"]
+
+
+# The channels every château has, seeded so a message always has an obvious
+# home. Fixed rather than user-created on purpose: ad-hoc channels in a team of
+# a dozen produce five near-duplicates and then nobody knows where to post.
+DEFAULT_CHAT_CHANNELS = [
+    ("everyone", "Everyone", 0),
+    ("kitchen", "Kitchen", 1),
+    ("housekeeping", "Housekeeping", 2),
+    ("front-of-house", "Front of house", 3),
+    ("maintenance", "Maintenance", 4),
+    ("grounds", "Garden & grounds", 5),
+]
+
+
+def dm_channel_for(conn, user_a, user_b):
+    """The private channel between two people, created on first use.
+
+    Keyed on the sorted pair so opening it from either side finds the same
+    channel — without that, two people messaging each other simultaneously end
+    up with two separate threads and each sees half the conversation.
+    """
+    low, high = sorted((int(user_a), int(user_b)))
+    slug = f"dm-{low}-{high}"
+    row = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    if row:
+        return row
+    names = {r["id"]: r["name"] for r in conn.execute(
+        "SELECT id, name FROM users WHERE id IN (?, ?)", (low, high)).fetchall()}
+    conn.execute(
+        """INSERT INTO chat_channels (slug, name, kind, sort_order, created_at)
+           VALUES (?, ?, 'dm', 0, ?)""",
+        (slug, " & ".join(names.get(i, "?") for i in (low, high)),
+         datetime.now(timezone.utc).isoformat()),
+    )
+    channel = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    conn.executemany(
+        "INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?, ?)",
+        [(channel["id"], low), (channel["id"], high)])
+    conn.commit()
+    return channel
+
+
+def can_read_channel(conn, channel, user):
+    """Area channels are open to all staff; a DM is only for its members."""
+    if channel["kind"] == "area":
+        return True
+    return conn.execute(
+        "SELECT 1 FROM chat_members WHERE channel_id = ? AND user_id = ?",
+        (channel["id"], user["id"]),
+    ).fetchone() is not None
+
+
+def chat_channel_list(conn, user):
+    """Every channel this person can see, newest activity first, with unread
+    counts. One query per kind rather than per channel, so the sidebar does not
+    get slower as the history grows."""
+    areas = conn.execute(
+        "SELECT * FROM chat_channels WHERE kind = 'area' ORDER BY sort_order, name").fetchall()
+    dms = conn.execute(
+        """SELECT c.* FROM chat_channels c
+           JOIN chat_members m ON m.channel_id = c.id
+           WHERE c.kind = 'dm' AND m.user_id = ?""", (user["id"],)).fetchall()
+
+    reads = {r["channel_id"]: r["last_read_message_id"] for r in conn.execute(
+        "SELECT channel_id, last_read_message_id FROM chat_reads WHERE user_id = ?",
+        (user["id"],)).fetchall()}
+    latest = {r["channel_id"]: r for r in conn.execute(
+        """SELECT channel_id, MAX(id) AS last_id, MAX(created_at) AS last_at,
+                  COUNT(*) AS total
+           FROM chat_messages GROUP BY channel_id""").fetchall()}
+
+    out = []
+    for channel in list(areas) + list(dms):
+        stats = latest.get(channel["id"])
+        last_id = stats["last_id"] if stats else 0
+        unread = conn.execute(
+            """SELECT COUNT(*) AS c FROM chat_messages
+               WHERE channel_id = ? AND id > ? AND (user_id IS NULL OR user_id != ?)""",
+            (channel["id"], reads.get(channel["id"], 0), user["id"]),
+        ).fetchone()["c"]
+        preview = conn.execute(
+            """SELECT m.body, u.name FROM chat_messages m
+               LEFT JOIN users u ON u.id = m.user_id
+               WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT 1""",
+            (channel["id"],)).fetchone()
+        out.append({
+            "id": channel["id"], "slug": channel["slug"], "name": channel["name"],
+            "kind": channel["kind"], "unread": unread, "last_id": last_id,
+            "last_at": stats["last_at"] if stats else None,
+            "preview": (" ".join(preview["body"].split())[:60] if preview else None),
+            "preview_from": (preview["name"] if preview else None),
+        })
+    # Anything unread first, then most recently active. Someone opening this
+    # wants the thing they have not seen, not an alphabetical list.
+    out.sort(key=lambda c: (c["unread"] == 0, -(c["last_id"] or 0), c["name"]))
+    return out
+
+
+def chat_unread_total(conn, user):
+    """For the badge in the navigation."""
+    return sum(c["unread"] for c in chat_channel_list(conn, user))
+
+
+def notify_chat_mentions(conn, channel, message_id, body, author):
+    """Notify anyone named with @ in the message, and everyone in a DM.
+
+    Without this a channel is only useful to whoever happens to be looking at
+    it. A DM notifies unconditionally — that is what makes it a DM rather than
+    a note left on a shelf.
+    """
+    recipients = set()
+    if channel["kind"] == "dm":
+        recipients |= {r["user_id"] for r in conn.execute(
+            "SELECT user_id FROM chat_members WHERE channel_id = ?", (channel["id"],)).fetchall()}
+    else:
+        handles = {h.lower() for h in re.findall(r"@([\w'-]+)", body or "")}
+        if handles:
+            for row in conn.execute(
+                    "SELECT id, name FROM users WHERE status = 'active'").fetchall():
+                first = (row["name"] or "").split(" ")[0].lower()
+                if first in handles or (row["name"] or "").lower() in handles:
+                    recipients.add(row["id"])
+    recipients.discard(author["id"])
+
+    link = url_for("chat_channel", slug=channel["slug"]) if has_request_context() \
+        else f"/chat/{channel['slug']}"
+    for user_id in recipients:
+        send_notification(
+            conn, user_id, "chat",
+            f"{author['name']} in {channel['name']}" if channel["kind"] == "area"
+            else f"{author['name']} messaged you",
+            body=" ".join((body or "").split())[:120], link=link,
+        )
 
 
 def guest_recognition_cards(conn, today, viewer_role="employee"):
@@ -7243,11 +7433,18 @@ def inject_user():
     pending_workshop_count = None
     pending_events_count = None
     open_email_flags_count = None
+    chat_unread_count = None
     if user:
         conn = get_db()
         unread_notifications_count = conn.execute(
             "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (user["id"],)
         ).fetchone()[0]
+        # For every member of staff, not just the owner — the badge is the only
+        # reason anyone opens a chat app they were not already in.
+        try:
+            chat_unread_count = chat_unread_total(conn, user) or None
+        except sqlite3.Error:
+            chat_unread_count = None      # pre-migration database
         vapid_public_key = get_vapid_public_key(conn)
         if user["role"] == "owner":
             # Must match what /admin/approvals actually lists, or the sidebar
@@ -7285,6 +7482,7 @@ def inject_user():
         "pending_workshop_count": pending_workshop_count,
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
+        "chat_unread_count": chat_unread_count,
         # Constants the forms need. Exposed here rather than passed through
         # every render_template call, so a new form can't quietly render an
         # empty dropdown because one route forgot to include them.
@@ -19843,6 +20041,105 @@ def new_task():
     conn.close()
     flash("Task added.", "success")
     return redirect(request.referrer or url_for("admin_tasks"))
+
+
+@app.route("/chat")
+@login_required
+def chat_home():
+    """The channel list. Unread first."""
+    user = current_user()
+    conn = get_db()
+    channels = chat_channel_list(conn, user)
+    people = conn.execute(
+        """SELECT id, name, job_role FROM users
+           WHERE status = 'active' AND id != ? ORDER BY name""", (user["id"],)).fetchall()
+    conn.close()
+    return render_template("chat_home.html", channels=channels, people=people)
+
+
+@app.route("/chat/<slug>")
+@login_required
+def chat_channel(slug):
+    user = current_user()
+    conn = get_db()
+    channel = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    if not channel:
+        conn.close()
+        abort(404)
+    if not can_read_channel(conn, channel, user):
+        conn.close()
+        abort(403)
+
+    messages = conn.execute(
+        """SELECT m.*, u.name AS author, u.job_role FROM chat_messages m
+           LEFT JOIN users u ON u.id = m.user_id
+           WHERE m.channel_id = ? ORDER BY m.id LIMIT 300""", (channel["id"],)).fetchall()
+    # Mark read on open. Doing it here rather than on scroll keeps the badge
+    # honest: the alternative is a channel that stays bold after you have read it.
+    if messages:
+        conn.execute(
+            """INSERT INTO chat_reads (channel_id, user_id, last_read_message_id)
+               VALUES (?, ?, ?)
+               ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_message_id = ?""",
+            (channel["id"], user["id"], messages[-1]["id"], messages[-1]["id"]))
+        conn.commit()
+    channels = chat_channel_list(conn, user)
+    conn.close()
+    return render_template("chat_channel.html", channel=channel, messages=messages,
+                           channels=channels)
+
+
+@app.route("/chat/<slug>/post", methods=["POST"])
+@login_required
+def chat_post(slug):
+    user = current_user()
+    body = request.form.get("body", "").strip()
+    conn = get_db()
+    channel = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    if not channel:
+        conn.close()
+        abort(404)
+    if not can_read_channel(conn, channel, user):
+        conn.close()
+        abort(403)
+    if not body:
+        conn.close()
+        return redirect(url_for("chat_channel", slug=slug))
+
+    cur = conn.execute(
+        """INSERT INTO chat_messages (channel_id, user_id, body, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (channel["id"], user["id"], body[:4000], datetime.now(timezone.utc).isoformat()))
+    message_id = cur.lastrowid
+    # Your own message counts as read, or your channel shows unread to you.
+    conn.execute(
+        """INSERT INTO chat_reads (channel_id, user_id, last_read_message_id)
+           VALUES (?, ?, ?)
+           ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_message_id = ?""",
+        (channel["id"], user["id"], message_id, message_id))
+    conn.commit()
+    notify_chat_mentions(conn, channel, message_id, body, user)
+    conn.commit()
+    conn.close()
+    return redirect(url_for("chat_channel", slug=slug))
+
+
+@app.route("/chat/with/<int:user_id>")
+@login_required
+def chat_with(user_id):
+    """Open (or start) a direct message with one person."""
+    user = current_user()
+    if user_id == user["id"]:
+        return redirect(url_for("chat_home"))
+    conn = get_db()
+    other = conn.execute(
+        "SELECT id FROM users WHERE id = ? AND status = 'active'", (user_id,)).fetchone()
+    if not other:
+        conn.close()
+        abort(404)
+    channel = dm_channel_for(conn, user["id"], user_id)
+    conn.close()
+    return redirect(url_for("chat_channel", slug=channel["slug"]))
 
 
 @app.route("/today")

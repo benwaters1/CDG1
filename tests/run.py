@@ -16,6 +16,7 @@ import _harness  # noqa: F401  — sets GUDANES_DB_PATH before app is imported
 SUITES = [
     "test_routes",
     "test_staff_today",
+    "test_chat",
     "test_workflows",
     "test_operations",
     "test_hr_compliance",

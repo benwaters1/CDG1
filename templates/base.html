@@ -142,6 +142,9 @@
        staff actually has when they open this on a phone — who is in the house
        and what am I meant to be doing — where Home answers the owner's. #}
     <a href="{{ url_for('staff_today') }}" class="{{ 'active' if request.endpoint=='staff_today' }}">{{ icon('home') }}Today</a>
+    {# Chat sits high, and for both roles. It is the one page here people are
+       meant to open unprompted, and a message nobody sees is worse than none. #}
+    <a href="{{ url_for('chat_home') }}" class="{{ 'active' if request.endpoint in ['chat_home','chat_channel','chat_with'] }}">{{ icon('contacts') }}Chat{% if chat_unread_count %} ({{ chat_unread_count }}){% endif %}</a>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
 
     {% if user['role'] == 'owner' %}

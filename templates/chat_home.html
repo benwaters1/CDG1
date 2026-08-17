@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Chat{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Chat</h1>
+</div>
+
+<h2 class="section-heading">Channels</h2>
+<div class="chat-list">
+  {% for c in channels if c.kind == 'area' %}
+  <a href="{{ url_for('chat_channel', slug=c.slug) }}"
+     class="chat-row {{ 'chat-row-unread' if c.unread }}">
+    <span class="chat-row-main">
+      <span class="chat-row-name">{{ c.name }}</span>
+      <span class="chat-row-preview">
+        {%- if c.preview %}{{ c.preview_from }}: {{ c.preview }}
+        {%- else %}No messages yet{% endif -%}
+      </span>
+    </span>
+    {% if c.unread %}<span class="chat-badge">{{ c.unread }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+
+{% set dms = channels | selectattr('kind', 'equalto', 'dm') | list %}
+{% if dms %}
+<h2 class="section-heading">Direct messages</h2>
+<div class="chat-list">
+  {% for c in dms %}
+  <a href="{{ url_for('chat_channel', slug=c.slug) }}"
+     class="chat-row {{ 'chat-row-unread' if c.unread }}">
+    <span class="chat-row-main">
+      <span class="chat-row-name">{{ c.name }}</span>
+      <span class="chat-row-preview">
+        {%- if c.preview %}{{ c.preview_from }}: {{ c.preview }}
+        {%- else %}No messages yet{% endif -%}
+      </span>
+    </span>
+    {% if c.unread %}<span class="chat-badge">{{ c.unread }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Message someone</h2>
+{% if not people %}
+  <div class="empty-state">Nobody else on the team yet.</div>
+{% else %}
+<div class="chat-list">
+  {% for p in people %}
+  <a href="{{ url_for('chat_with', user_id=p['id']) }}" class="chat-row">
+    <span class="chat-row-main">
+      <span class="chat-row-name">{{ p['name'] }}</span>
+      {% if p['job_role'] %}<span class="chat-row-preview">{{ p['job_role'] }}</span>{% endif %}
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
