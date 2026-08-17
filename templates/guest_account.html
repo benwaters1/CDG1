@@ -1,0 +1,219 @@
+{% extends "public_base.html" %}
+{% block title %}Your account{% endblock %}
+{% block content %}
+
+<div class="account">
+  <div class="account-head">
+    <div>
+      <h1 style="margin:0;">Your bookings</h1>
+      <p class="upload-hint" style="margin:4px 0 0;">{{ email }}</p>
+    </div>
+    <a href="{{ url_for('book_rooms') }}" class="btn-mini">Book another stay</a>
+  </div>
+
+  {% set nothing = not (data.rooms or data.dinners or data.workshops or data.events) %}
+  {% if nothing %}
+  <div class="empty-state">
+    Nothing here yet. <a href="{{ url_for('book_rooms') }}">Look at what's available</a>.
+  </div>
+  {% endif %}
+
+  <!-- ---------------- stays ---------------- -->
+  {% if data.rooms %}
+  <h2 class="section-heading">Stays</h2>
+  {% for b in data.rooms %}
+  {% set upcoming = b['departure_date'] >= today %}
+  <div class="account-card {{ 'is-past' if not upcoming }}">
+    <div class="account-card-head">
+      <div>
+        <strong>{{ b['room_name'] }}</strong>
+        <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
+        {% if not upcoming %}<span class="mini-status status-inactive">past</span>{% endif %}
+      </div>
+      <span class="upload-hint">{{ b['reference_code'] }}</span>
+    </div>
+    <p class="upload-hint" style="margin:6px 0;">
+      {{ b['arrival_date'] }} → {{ b['departure_date'] }}
+      · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
+      {%- if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+    </p>
+
+    <div class="account-actions">
+      <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}" class="btn-mini">
+        {{ 'Manage' if upcoming else 'View' }}
+      </a>
+      <a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Your bill</a>
+      {% if upcoming %}
+      <a href="{{ url_for('booking_calendar_ics', manage_token=b['manage_token']) }}" class="small-link">Add to calendar</a>
+      {% endif %}
+    </div>
+
+    {% if upcoming and b['status'] == 'confirmed' %}
+    {# Adding to a stay you already have should not mean starting a new booking. #}
+    <details class="account-add">
+      <summary>Add something to this stay</summary>
+      <div class="account-add-body">
+        {% if restaurant_open %}
+        <p class="upload-hint">
+          <a href="{{ url_for('restaurant_info') }}">Book dinner</a> during your stay — tables are
+          limited, so earlier is better.
+        </p>
+        {% endif %}
+        {% if extras %}
+        <p class="field-label" style="margin-top:8px;">Extras we can arrange</p>
+        <ul class="account-extras">
+          {% for e in extras %}
+          <li>
+            <span>{{ e['name'] }}</span>
+            <span class="upload-hint">
+              {% if e['price'] %}€{{ '%.2f'|format(e['price']) }}{% endif %}
+              {%- if e['lead_time_days'] %} · {{ e['lead_time_days'] }} days' notice{% endif %}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="upload-hint">
+          Tell us on the <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
+          and we'll add it to your bill.
+        </p>
+        {% endif %}
+      </div>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ---------------- workshops ---------------- -->
+  {% if data.workshops %}
+  <h2 class="section-heading">Workshops</h2>
+  {% for w in data.workshops %}
+  {% set upcoming = (w['end_date'] or w['start_date']) >= today %}
+  <div class="account-card {{ 'is-past' if not upcoming }}">
+    <div class="account-card-head">
+      <div>
+        <strong>{{ w['workshop_title'] }}</strong>
+        <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
+      </div>
+      <span class="upload-hint">{{ w['reference_code'] }}</span>
+    </div>
+    <p class="upload-hint" style="margin:6px 0;">
+      {{ w['start_date'] }} → {{ w['end_date'] }}
+      · {{ w['party_size'] }} place{{ '' if w['party_size'] == 1 else 's' }}
+    </p>
+
+    {% if upcoming %}
+    {# Workshops need more from a guest than a room does — dietary needs, who
+       they're sharing with, anything medical the instructor should know. If
+       that's missing it's chased by hand, so it's asked for here plainly. #}
+    {% set missing = [] %}
+    {% if not w['dietary_notes'] %}{% set _ = missing.append('dietary requirements') %}{% endif %}
+    {% if w['party_size'] > 1 and not w['other_guest_names'] %}{% set _ = missing.append('who else is coming') %}{% endif %}
+    {% if not w['medical_notes'] %}{% set _ = missing.append('anything medical we should know') %}{% endif %}
+    {% if missing %}
+    <div class="account-needs">
+      <strong>We still need a few things</strong>
+      <p class="upload-hint" style="margin:4px 0 8px;">{{ missing|join(', ')|capitalize }}.</p>
+      <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="btn-mini">
+        Add your details
+      </a>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <div class="account-actions">
+      <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="btn-mini">
+        {{ 'Manage' if upcoming else 'View' }}
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ---------------- dinners ---------------- -->
+  {% if data.dinners %}
+  <h2 class="section-heading">Dinners</h2>
+  {% for d in data.dinners %}
+  <div class="account-card {{ 'is-past' if d['dinner_date'] < today }}">
+    <div class="account-card-head">
+      <div>
+        <strong>{{ d['dinner_date'] }}</strong>
+        <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
+      </div>
+      <span class="upload-hint">{{ d['reference_code'] }}</span>
+    </div>
+    <p class="upload-hint" style="margin:6px 0;">
+      Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '%.2f'|format(d['total_price']) }}{% endif %}
+    </p>
+    <div class="account-actions">
+      <a href="{{ url_for('restaurant_manage', manage_token=d['manage_token']) }}" class="btn-mini">
+        {{ 'Manage' if d['dinner_date'] >= today else 'View' }}
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ---------------- events ---------------- -->
+  {% if data.events %}
+  <h2 class="section-heading">Event enquiries</h2>
+  {% for e in data.events %}
+  <div class="account-card">
+    <div class="account-card-head">
+      <div>
+        <strong>{{ e['event_type']|capitalize }}</strong>
+        <span class="mini-status status-{{ 'confirmed' if e['status'] == 'confirmed' else 'pending' }}">{{ e['status'] }}</span>
+      </div>
+      <span class="upload-hint">{{ e['reference_code'] }}</span>
+    </div>
+    <p class="upload-hint" style="margin:6px 0;">
+      {{ e['preferred_date'] }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
+    </p>
+    <div class="account-actions">
+      <a href="{{ url_for('event_manage', manage_token=e['manage_token']) }}" class="btn-mini">Manage</a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ---------------- the app ---------------- -->
+  <h2 class="section-heading">Keep this on your phone</h2>
+  <div class="account-card">
+    <p class="upload-hint" style="margin-top:0;">
+      This page works as an app — no download, no store. On <strong>iPhone</strong>, tap Share then
+      “Add to Home Screen”. On <strong>Android</strong>, tap the menu then “Install app”. It opens
+      straight to your bookings.
+    </p>
+  </div>
+
+  <p class="upload-hint" style="margin-top:18px;">
+    This link is yours and expires {{ expires[:10] }}. If it stops working,
+    <a href="{{ url_for('guest_account_request') }}">ask for a new one</a>.
+    Please don't forward it — it opens your bookings.
+  </p>
+</div>
+
+<style>
+.account{ max-width:820px; margin:0 auto; }
+.account-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap; }
+.account-card{
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:11px;
+  padding:16px 18px; margin-bottom:12px;
+}
+.account-card.is-past{ opacity:.66; }
+.account-card-head{ display:flex; justify-content:space-between; gap:14px; align-items:baseline; flex-wrap:wrap; }
+.account-actions{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.account-needs{
+  background:var(--status-warn-bg); border-radius:8px; padding:11px 13px; margin-top:10px;
+}
+.account-add{ margin-top:12px; border-top:1px solid var(--parchment-line); padding-top:10px; }
+.account-add summary{ cursor:pointer; font-size:13px; color:var(--steel); }
+.account-add-body{ padding-top:8px; }
+.account-extras{ list-style:none; padding:0; margin:6px 0; }
+.account-extras li{
+  display:flex; justify-content:space-between; gap:12px; padding:6px 0;
+  border-bottom:1px dashed var(--parchment-line); font-size:13.5px;
+}
+</style>
+
+{% endblock %}

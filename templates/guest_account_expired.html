@@ -1,0 +1,16 @@
+{% extends "public_base.html" %}
+{% block title %}Link expired{% endblock %}
+{% block content %}
+
+<div style="max-width:460px; margin:0 auto;">
+  <h1>That link has expired</h1>
+  <p class="upload-hint">
+    Account links last 48 hours, so an old email can't be used to open your bookings later.
+    Ask for a fresh one and it'll arrive in a moment.
+  </p>
+  <a href="{{ url_for('guest_account_request') }}" class="btn-primary" style="display:inline-block;">
+    Send me a new link
+  </a>
+</div>
+
+{% endblock %}

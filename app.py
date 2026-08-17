@@ -1662,6 +1662,26 @@ def init_db():
         -- here. `account_class` is the first digit, which in the French plan
         -- comptable says what the account is FOR: 6 = expenses, 7 = revenue.
         -- That is what turns 1,500 rows into a usable picker.
+        -- A guest's way into their own account.
+        --
+        -- There is no guest password by design. To show someone EVERY booking
+        -- on an email address, that address has to be proved — otherwise
+        -- typing a stranger's email would list their stays. So: they ask, we
+        -- email a one-time link, and the link is the proof.
+        --
+        -- Short-lived and single-use. A booking's own manage_token stays valid
+        -- indefinitely because it only ever exposes that one booking; this
+        -- exposes everything, so it is held to a higher standard.
+        CREATE TABLE IF NOT EXISTS guest_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            requested_ip TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS pennylane_accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pennylane_id INTEGER,
@@ -2599,6 +2619,8 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_template ON campaign_sends(template_id)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_unsub ON campaign_sends(unsubscribe_token)",
         "CREATE INDEX IF NOT EXISTS idx_pennylane_accounts_class ON pennylane_accounts(account_class, number)",
+        "CREATE INDEX IF NOT EXISTS idx_guest_sessions_token ON guest_sessions(token)",
+        "CREATE INDEX IF NOT EXISTS idx_guest_sessions_email ON guest_sessions(email, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_expenses_pennylane ON expenses(pennylane_invoice_id)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_occurred ON incidents(occurred_at)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)",
@@ -11550,6 +11572,125 @@ def apply_invoice(expense_id):
     flash(f"{applied} line{'' if applied == 1 else 's'} added to stock." if applied
           else "Nothing was ticked, so nothing changed.", "success" if applied else "error")
     return redirect(url_for("admin_stock"))
+
+
+# ---------------------------------------------------------------------------
+# The guest's account.
+#
+# Everything they have with the château on one page: stays, dinners, workshops,
+# events. No password — they prove the email owns the bookings by receiving a
+# link at it. Every action from here still runs through the SAME routes as the
+# per-booking manage pages, so there is one implementation of "cancel" and one
+# of "add an extra", not two that drift apart.
+# ---------------------------------------------------------------------------
+
+GUEST_SESSION_HOURS = 48
+
+
+def guest_account_bookings(conn, email):
+    """Everything this address has with the château, newest first."""
+    e = (email or "").strip().lower()
+    rooms = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE LOWER(bookings.guest_email) = ? AND bookings.status != 'declined'
+           ORDER BY bookings.arrival_date DESC""", (e,)).fetchall()
+    dinners = conn.execute(
+        """SELECT * FROM restaurant_bookings WHERE LOWER(guest_email) = ?
+           AND status != 'declined' ORDER BY dinner_date DESC""", (e,)).fetchall()
+    workshops = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                  workshop_sessions.start_date, workshop_sessions.end_date
+           FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE LOWER(workshop_bookings.guest_email) = ?
+             AND workshop_bookings.status != 'declined'
+           ORDER BY workshop_sessions.start_date DESC""", (e,)).fetchall()
+    events = conn.execute(
+        """SELECT * FROM event_inquiries WHERE LOWER(contact_email) = ?
+           ORDER BY preferred_date DESC""", (e,)).fetchall()
+    return {"rooms": rooms, "dinners": dinners, "workshops": workshops, "events": events}
+
+
+@app.route("/my-account", methods=["GET", "POST"])
+def guest_account_request():
+    """Ask for a link to your account.
+
+    Deliberately gives the SAME answer whether or not the address has bookings.
+    Telling a stranger "no bookings found" turns this into a way of asking
+    whether someone has stayed at the château, which is not ours to answer.
+    """
+    sent = False
+    if request.method == "POST":
+        email = (request.form.get("email", "") or "").strip().lower()
+        conn = get_db()
+        if rate_limited(conn, "guest_account_link", 5):
+            conn.commit()
+            conn.close()
+            flash("Too many requests just now — try again shortly.", "error")
+            return render_template("guest_account_request.html", sent=False)
+        if EMAIL_RE.match(email):
+            data = guest_account_bookings(conn, email)
+            if any(data.values()):
+                token = secrets.token_urlsafe(32)
+                now = datetime.now(timezone.utc)
+                conn.execute(
+                    """INSERT INTO guest_sessions (email, token, created_at, expires_at, requested_ip)
+                       VALUES (?,?,?,?,?)""",
+                    (email, token, now.isoformat(),
+                     (now + timedelta(hours=GUEST_SESSION_HOURS)).isoformat(),
+                     (request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:64]))
+                link = url_for("guest_account", token=token, _external=True)
+                send_email(
+                    email, "Your Château de Gudanes bookings",
+                    f"Here is the link to everything you have booked with us:\n\n{link}\n\n"
+                    f"It works for the next {GUEST_SESSION_HOURS} hours. If you didn't ask "
+                    "for this, you can ignore it — nothing has changed.")
+        conn.commit()
+        conn.close()
+        sent = True          # same answer either way
+    return render_template("guest_account_request.html", sent=sent)
+
+
+def _valid_guest_session(conn, token):
+    row = conn.execute(
+        "SELECT * FROM guest_sessions WHERE token = ?", (token,)).fetchone()
+    if not row:
+        return None
+    if row["expires_at"] < datetime.now(timezone.utc).isoformat():
+        return None
+    return row
+
+
+@app.route("/my-account/<token>")
+def guest_account(token):
+    conn = get_db()
+    session_row = _valid_guest_session(conn, token)
+    if not session_row:
+        conn.close()
+        return render_template("guest_account_expired.html"), 404
+    # Mark first use, but keep the link working for the rest of its life — a
+    # guest will open it, wander off, and come back. Single-use-on-first-click
+    # would just generate support calls.
+    if not session_row["used_at"]:
+        conn.execute("UPDATE guest_sessions SET used_at = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), session_row["id"]))
+        conn.commit()
+
+    data = guest_account_bookings(conn, session_row["email"])
+    today = datetime.now(timezone.utc).date().isoformat()
+    extras = conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
+           ORDER BY category, sort_order, name""").fetchall()
+    restaurant_settings = get_restaurant_settings(conn)
+    conn.close()
+    return render_template(
+        "guest_account.html", email=session_row["email"], token=token,
+        data=data, today=today, extras=extras,
+        extra_categories=EXTRA_CATEGORIES,
+        restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
+        expires=session_row["expires_at"])
 
 
 @app.route("/booking/<manage_token>/statement")
