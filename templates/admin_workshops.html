@@ -73,6 +73,26 @@
       </div>
     {% endif %}
 
+    {% set past_rows = past_by_workshop.get(w['id'], []) %}
+    {% if past_rows %}
+    <details style="margin-top:10px;">
+      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Past sessions ({{ past_rows|length }})</summary>
+      <div class="doc-list" style="margin-top:6px;">
+        {% for row in past_rows %}
+        {% set s = row.session %}
+        <div class="doc-row">
+          <span style="flex:1;">
+            {{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}
+            · {{ row.attended }}/{{ s['capacity'] }} attended
+            {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
+          </span>
+          <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
+
     <form method="post" action="{{ url_for('new_workshop_session', workshop_id=w['id']) }}" class="upload-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="field-row-2">

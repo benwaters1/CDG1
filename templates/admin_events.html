@@ -5,9 +5,13 @@
 
 <div class="page-head">
   <h1>Events</h1>
-  <a href="{{ url_for('export_events_csv') }}" class="btn-mini">Export CSV</a>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('events_info') }}" class="btn-ghost">Public page</a>
+    <a href="{{ url_for('export_events_csv') }}" class="btn-ghost">Export CSV</a>
+    <button type="button" class="btn-primary" style="margin-top:0;" onclick="toggleAddEvent()">+ Add event</button>
+  </div>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">One-off venue-hire inquiries — weddings, photoshoots, corporate offsites. Every event is bespoke, so this is a follow-up-and-quote queue rather than an instant-book calendar.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">One-off venue hire — weddings, photoshoots, corporate offsites. Every event is bespoke, so this is a follow-up-and-quote queue rather than an instant-book calendar. Enquiries arriving by phone or email go in here too.</p>
 
 <div class="stat-tiles">
   <div class="stat-tile">
@@ -18,6 +22,76 @@
     <span class="stat-tile-icon stat-tile-icon-success">{{ icon('megaphone', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value">{{ confirmed_count }}</span><span class="stat-tile-label">Confirmed events</span></span>
   </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ upcoming|length }}</span><span class="stat-tile-label">Upcoming &amp; undated</span></span>
+  </div>
+</div>
+
+{# Owner-side intake. Until this existed the only way an event could be
+   recorded was a guest filling in the public form, so a phone enquiry meant
+   impersonating them. Email is optional here for exactly that reason. #}
+<div class="detail-card" id="add-event-form" style="display:none; margin-bottom:22px;">
+  <h3 style="margin-top:0;">Add an event</h3>
+  <form method="post" action="{{ url_for('new_event_inquiry') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Event type</label>
+        <select name="event_type" required>
+          {% for t in event_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Status</label>
+        <select name="status">
+          {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
+          <option value="{{ s }}">{{ s|capitalize }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Contact name</label>
+        <input type="text" name="contact_name" required placeholder="Who's organising it">
+      </div>
+      <div>
+        <label class="field-label">Email (optional)</label>
+        <input type="email" name="contact_email" placeholder="Leave blank for a phone enquiry">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Phone</label>
+        <input type="text" name="contact_phone">
+      </div>
+      <div>
+        <label class="field-label">Expected guests</label>
+        <input type="number" name="guest_count" min="1">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Preferred date</label>
+        <input type="date" name="preferred_date">
+      </div>
+      <div>
+        <label class="field-label">Alternate date</label>
+        <input type="date" name="alternate_date">
+      </div>
+    </div>
+    <label class="field-label">Quoted price (€)</label>
+    <input type="number" name="quoted_price" step="0.01" min="0" style="max-width:180px;">
+
+    <label class="field-label">What they've asked for</label>
+    <textarea name="message" rows="2" placeholder="Marquee on the south lawn, 80 seated, band until midnight..."></textarea>
+
+    <label class="field-label">Private note</label>
+    <input type="text" name="owner_note" placeholder="Only you see this">
+
+    <button type="submit" class="btn-primary">Add event</button>
+  </form>
 </div>
 
 <form method="get" class="search-bar">
@@ -34,51 +108,84 @@
   {% if status_filter %}<a href="{{ url_for('admin_events') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
 </form>
 
-{% if not inquiries %}
-  <div class="empty-state">{% if status_filter %}No inquiries match that filter.{% else %}No event inquiries yet.{% endif %}</div>
-{% else %}
-  {% for e in inquiries %}
-  <div class="expense-card">
-    <div class="expense-head">
-      <div>
-        <strong>{{ e['contact_name'] }}</strong> — {{ e['event_type']|capitalize }}
-        <span class="mini-status status-{{ e['status'] }}" style="margin-left:8px;">{{ e['status'] }}</span>
-      </div>
-      <span class="upload-hint">{{ e['reference_code'] }}</span>
+{% macro event_card(e) %}
+<div class="expense-card">
+  <div class="expense-head">
+    <div>
+      <strong>{{ e['contact_name'] }}</strong> — {{ e['event_type']|capitalize }}
+      <span class="mini-status status-{{ e['status'] }}" style="margin-left:8px;">{{ e['status'] }}</span>
+      {% if e['preferred_date'] and e['preferred_date'] < today.isoformat() %}
+      <span class="mini-status status-inactive" style="margin-left:4px;">past</span>
+      {% endif %}
     </div>
-    <p class="manual-body">
-      {% if e['preferred_date'] %}Preferred: {{ e['preferred_date'] }}{% endif %}
-      {% if e['alternate_date'] %} · Alternate: {{ e['alternate_date'] }}{% endif %}
-      {% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
-      {% if e['quoted_price'] %} · Quoted €{{ '%.2f'|format(e['quoted_price']) }}{% endif %}
-    </p>
-    <p class="upload-hint">{{ e['contact_email'] }}{% if e['contact_phone'] %} · {{ e['contact_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
-    {% if e['message'] %}<p class="upload-hint">Message: {{ e['message'] }}</p>{% endif %}
-    {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
-    <p class="upload-hint">Submitted {{ e['created_at'][:10] }}{% if e['decided_at'] %} · Decided {{ e['decided_at'][:10] }}{% endif %}</p>
-
-    <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div>
-        <label class="field-label">Status</label>
-        <select name="status">
-          {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
-          <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="field-label">Quoted price (€)</label>
-        <input type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
-      </div>
-      <div style="flex:2 1 200px;">
-        <label class="field-label">Owner note</label>
-        <input type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">
-      </div>
-      <button type="submit" class="btn-mini">Save</button>
-    </form>
+    <span class="upload-hint">{{ e['reference_code'] }}</span>
   </div>
-  {% endfor %}
+  <p class="manual-body">
+    {% if e['preferred_date'] %}Preferred: {{ e['preferred_date'] }}{% else %}No date set yet{% endif %}
+    {%- if e['alternate_date'] %} · Alternate: {{ e['alternate_date'] }}{% endif %}
+    {%- if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
+    {%- if e['quoted_price'] %} · Quoted €{{ '%.2f'|format(e['quoted_price']) }}{% endif %}
+  </p>
+  <p class="upload-hint">
+    {{ e['contact_email'] or 'no email' }}{% if e['contact_phone'] %} · {{ e['contact_phone'] }}{% endif %}
+    {%- if e['contact_email'] %} · <a href="{{ url_for('guest_booking_history', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">full history</a>{% endif %}
+  </p>
+  {% if e['message'] %}<p class="upload-hint">Asked for: {{ e['message'] }}</p>{% endif %}
+  {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
+  <p class="upload-hint">Added {{ e['created_at'][:10] }}{% if e['decided_at'] %} · Decided {{ e['decided_at'][:10] }}{% endif %}</p>
+
+  <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="field-label">Status</label>
+      <select name="status">
+        {% for s in ['new','contacted','quoted','confirmed','declined','cancelled'] %}
+        <option value="{{ s }}" {{ 'selected' if e['status'] == s }}>{{ s|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Quoted price (€)</label>
+      <input type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
+    </div>
+    <div style="flex:2 1 200px;">
+      <label class="field-label">Owner note</label>
+      <input type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">
+    </div>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+</div>
+{% endmacro %}
+
+{% if not inquiries %}
+  <div class="empty-state">{% if status_filter %}No inquiries match that filter.{% else %}No events yet — add one above, or wait for the public enquiry form.{% endif %}</div>
+{% else %}
+
+  <h2 class="section-heading" style="margin-top:0;">Upcoming &amp; undated{% if upcoming %} — {{ upcoming|length }}{% endif %}</h2>
+  {% if not upcoming %}
+    <div class="empty-state">Nothing upcoming.</div>
+  {% else %}
+    {% for e in upcoming %}{{ event_card(e) }}{% endfor %}
+  {% endif %}
+
+  {% if past %}
+  <details style="margin-top:26px;">
+    <summary class="section-heading" style="cursor:pointer; display:inline-block;">Past events ({{ past|length }})</summary>
+    <div style="margin-top:12px;">
+      {% for e in past %}{{ event_card(e) }}{% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
 {% endif %}
+
+<script>
+function toggleAddEvent() {
+  var el = document.getElementById('add-event-form');
+  var opening = el.style.display === 'none';
+  el.style.display = opening ? '' : 'none';
+  if (opening) el.querySelector('input[name="contact_name"]').focus();
+}
+</script>
 
 {% endblock %}

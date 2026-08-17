@@ -709,6 +709,7 @@ def init_db():
             mailbox TEXT NOT NULL UNIQUE,
             label TEXT,
             default_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            route_to_on_shift INTEGER NOT NULL DEFAULT 0,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -1495,6 +1496,8 @@ def init_db():
         ("email_flags_reply_detail_note", "ALTER TABLE email_flags ADD COLUMN reply_detail_note TEXT"),
         ("email_flags_last_reply_checked_id", "ALTER TABLE email_flags ADD COLUMN last_reply_checked_id TEXT"),
         ("email_flags_mailbox", "ALTER TABLE email_flags ADD COLUMN mailbox TEXT"),
+        ("email_flags_first_reply_at", "ALTER TABLE email_flags ADD COLUMN first_reply_at TEXT"),
+        ("mailbox_routing_on_shift", "ALTER TABLE mailbox_routing ADD COLUMN route_to_on_shift INTEGER NOT NULL DEFAULT 0"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -8902,10 +8905,92 @@ def admin_events():
     new_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'new'").fetchone()["c"]
     confirmed_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed'").fetchone()["c"]
     conn.close()
+
+    # Split by whether the event has actually happened yet. Previously one
+    # flat list mixed a wedding from two years ago in with next month's, and
+    # because it sorted on created_at the oldest history could sit above the
+    # work still to do. An enquiry with no date yet is still live work, so it
+    # groups with upcoming rather than being treated as past.
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    upcoming, past = [], []
+    for r in inquiries:
+        day = r["preferred_date"] or ""
+        (past if (day and day < today_iso) else upcoming).append(r)
+    upcoming.sort(key=lambda r: (r["status"] != "new", r["preferred_date"] or "9999-99-99"))
+    past.sort(key=lambda r: r["preferred_date"] or "", reverse=True)
+
     return render_template(
-        "admin_events.html", inquiries=inquiries, status_filter=status_filter,
+        "admin_events.html", inquiries=inquiries, upcoming=upcoming, past=past,
+        status_filter=status_filter, today=datetime.now(timezone.utc).date(),
         new_count=new_count, confirmed_count=confirmed_count, event_types=EVENT_TYPES,
     )
+
+
+@app.route("/admin/events/new", methods=["POST"])
+@owner_required
+def new_event_inquiry():
+    """Add an event the owner took by phone, email or in person.
+
+    Until now the only INSERT into event_inquiries was the public /events
+    form, so an enquiry that arrived any other way could only be recorded by
+    filling in the guest-facing form pretending to be the guest. Most venue
+    enquiries arrive by phone.
+    """
+    event_type = request.form.get("event_type", "").strip()
+    contact_name = request.form.get("contact_name", "").strip()
+    contact_email = request.form.get("contact_email", "").strip().lower()
+    contact_phone = request.form.get("contact_phone", "").strip()
+    preferred_date = request.form.get("preferred_date", "").strip()
+    alternate_date = request.form.get("alternate_date", "").strip()
+    guest_count_raw = request.form.get("guest_count", "").strip()
+    message = request.form.get("message", "").strip()[:2000]
+    owner_note = request.form.get("owner_note", "").strip()[:2000]
+    status = request.form.get("status", "new").strip()
+    quoted_price_raw = request.form.get("quoted_price", "").strip()
+
+    if event_type not in EVENT_TYPES:
+        flash("Choose an event type.", "error")
+        return redirect(url_for("admin_events"))
+    if not contact_name:
+        flash("A contact name is required.", "error")
+        return redirect(url_for("admin_events"))
+    # Email is optional here (a phone enquiry may not have one) but must be
+    # valid if given, since the guest-facing emails key off it.
+    if contact_email and not EMAIL_RE.match(contact_email):
+        flash("That email address doesn't look right.", "error")
+        return redirect(url_for("admin_events"))
+    if status not in ("new", "contacted", "quoted", "confirmed", "declined", "cancelled"):
+        status = "new"
+
+    try:
+        quoted_price = float(quoted_price_raw) if quoted_price_raw else None
+    except ValueError:
+        quoted_price = None
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_db()
+    try:
+        conn.execute(
+            """INSERT INTO event_inquiries (reference_code, manage_token, event_type, contact_name,
+               contact_email, contact_phone, preferred_date, alternate_date, guest_count, message,
+               status, quoted_price, owner_note, created_at, decided_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            # contact_email is NOT NULL, so a phone enquiry stores an empty
+            # string rather than NULL. Deliberately not a placeholder address:
+            # a fake email would pollute guest history and could be mailed.
+            (make_event_reference_code(), secrets.token_urlsafe(24), event_type, contact_name,
+             contact_email, contact_phone or None, preferred_date or None,
+             alternate_date or None, int(guest_count_raw) if guest_count_raw.isdigit() else None,
+             message or None, status, quoted_price, owner_note or None, now,
+             now if status in ("confirmed", "declined") else None),
+        )
+        conn.commit()
+    finally:
+        # Without this, an insert that raises leaves the connection open and
+        # the next write fails with "database is locked".
+        conn.close()
+    flash(f"{contact_name}'s {event_type} added.", "success")
+    return redirect(url_for("admin_events"))
 
 
 @app.route("/admin/events/<int:inquiry_id>/update", methods=["POST"])
@@ -11284,7 +11369,9 @@ def admin_bookings():
     all_bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id
-           ORDER BY (bookings.status = 'pending') DESC, bookings.arrival_date"""
+           ORDER BY (bookings.status = 'pending') DESC,
+                    (bookings.departure_date < date('now')) ASC,
+                    bookings.arrival_date"""
     ).fetchall()
 
     bookings = all_bookings
@@ -12022,7 +12109,10 @@ def admin_restaurant():
     if status_filter:
         query += " WHERE status = ?"
         params.append(status_filter)
-    query += " ORDER BY dinner_date, created_at"
+    # Past dinners sorted to the top under a plain dinner_date ASC, so the
+    # first thing on screen was the oldest history. Still-relevant service
+    # first, history after it, each in sensible order.
+    query += " ORDER BY (dinner_date < date('now')) ASC, dinner_date, created_at"
     reservations = conn.execute(query, params).fetchall()
 
     pending_count = conn.execute("SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'").fetchone()["c"]
@@ -12926,24 +13016,40 @@ def admin_workshops():
     workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
     today = datetime.now(timezone.utc).date()
     total_rooms = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
-    sessions_by_workshop = {}
+    # Sessions used to be filtered to end_date >= today, so a workshop that had
+    # already run vanished from the admin page entirely — no way to see who
+    # attended or what it took. Past sessions are now loaded too and split out
+    # below, with attendance so the history is worth having. The PUBLIC
+    # workshops page still shows upcoming only, which is correct there.
+    sessions_by_workshop, past_by_workshop = {}, {}
     for w in workshops:
         sessions = conn.execute(
-            "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND end_date >= ? ORDER BY start_date",
-            (w["id"], today.isoformat()),
+            "SELECT * FROM workshop_sessions WHERE workshop_id = ? ORDER BY start_date",
+            (w["id"],),
         ).fetchall()
-        rows = []
+        rows, past_rows = [], []
         for s in sessions:
             rooms_assigned = conn.execute(
                 """SELECT COUNT(DISTINCT assigned_room_id) AS c FROM workshop_bookings
                    WHERE session_id = ? AND status IN ('pending', 'confirmed') AND assigned_room_id IS NOT NULL""",
                 (s["id"],),
             ).fetchone()["c"]
-            rows.append({
+            entry = {
                 "session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"]),
                 "rooms_assigned": rooms_assigned,
-            })
+            }
+            if (s["end_date"] or s["start_date"]) >= today.isoformat():
+                rows.append(entry)
+            else:
+                entry["attended"] = conn.execute(
+                    """SELECT COALESCE(SUM(party_size), 0) AS c FROM workshop_bookings
+                       WHERE session_id = ? AND status = 'confirmed'""",
+                    (s["id"],),
+                ).fetchone()["c"]
+                past_rows.append(entry)
+        past_rows.reverse()  # most recent first
         sessions_by_workshop[w["id"]] = rows
+        past_by_workshop[w["id"]] = past_rows
     instructors = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     custom_fields_by_workshop = {}
     for row in conn.execute("SELECT * FROM workshop_custom_fields ORDER BY sort_order").fetchall():
@@ -12951,6 +13057,7 @@ def admin_workshops():
     conn.close()
     return render_template(
         "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
+        past_by_workshop=past_by_workshop,
         instructors=instructors, today=today, total_rooms=total_rooms,
         custom_fields_by_workshop=custom_fields_by_workshop,
     )
@@ -16396,6 +16503,105 @@ def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
     return body.get("value", []) if body else []
 
 
+def resolve_inbox_owner(conn, mb):
+    """Who should pick this one up right now.
+
+    An inbox can be pinned to a person, or set to follow whoever is actually
+    on shift — which is what you want for something like restaurant@, where
+    "the person handling it" is whoever is working tonight rather than a fixed
+    name. Falls back through: someone on shift -> the inbox's named owner ->
+    nobody (which the caller turns into the château owner).
+
+    Also skips anyone who is on approved leave or recorded absent today, so
+    mail doesn't get assigned into a void while they're away.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    away = {
+        r["user_id"] for r in conn.execute(
+            """SELECT user_id FROM leave_requests
+               WHERE status = 'approved' AND start_date <= ? AND end_date >= ?
+               UNION
+               SELECT user_id FROM absences WHERE start_date <= ? AND end_date >= ?""",
+            (today, today, today, today),
+        ).fetchall()
+    }
+
+    if mb["route_to_on_shift"]:
+        on_shift = conn.execute(
+            """SELECT time_entries.user_id FROM time_entries
+               JOIN users ON users.id = time_entries.user_id
+               WHERE time_entries.clock_out_at IS NULL AND users.status = 'active'
+               ORDER BY time_entries.clock_in_at"""
+        ).fetchall()
+        for row in on_shift:
+            if row["user_id"] not in away:
+                return row["user_id"]
+
+    default_id = mb["default_user_id"]
+    if default_id and default_id not in away:
+        return default_id
+    return None
+
+
+def cross_inbox_duplicates(conn):
+    """Senders who have open flags in more than one inbox.
+
+    The failure this catches: a guest emails bookings@ and experience@ about
+    the same trip, two different people answer separately, and the guest gets
+    two different answers. Nobody notices because each inbox looks fine on its
+    own.
+    """
+    rows = conn.execute(
+        """SELECT LOWER(from_address) AS sender,
+                  COUNT(DISTINCT mailbox) AS inbox_count,
+                  COUNT(*) AS flag_count,
+                  GROUP_CONCAT(DISTINCT mailbox) AS inboxes,
+                  MAX(from_name) AS from_name
+           FROM email_flags
+           WHERE status = 'open' AND mailbox IS NOT NULL
+             AND from_address IS NOT NULL AND from_address != ''
+           GROUP BY LOWER(from_address)
+           HAVING inbox_count > 1
+           ORDER BY inbox_count DESC, flag_count DESC"""
+    ).fetchall()
+    return [dict(r, inboxes=(r["inboxes"] or "").split(",")) for r in rows]
+
+
+def inbox_response_stats(conn, since_days=30):
+    """Average and worst first-response time per inbox, plus how many are
+    still waiting. Measured from when the message arrived to when a reply
+    actually went out, so it reflects the guest's experience rather than how
+    quickly a flag was ticked off."""
+    since = (datetime.now(timezone.utc) - timedelta(days=since_days)).isoformat()
+    rows = conn.execute(
+        """SELECT mailbox, received_at, first_reply_at, status
+           FROM email_flags
+           WHERE mailbox IS NOT NULL AND received_at >= ?""",
+        (since,),
+    ).fetchall()
+    by_box = {}
+    for r in rows:
+        stat = by_box.setdefault(r["mailbox"], {"mailbox": r["mailbox"], "hours": [], "waiting": 0})
+        if r["first_reply_at"]:
+            start, end = parse_datetime_iso(r["received_at"]), parse_datetime_iso(r["first_reply_at"])
+            if start and end and end > start:
+                stat["hours"].append((end - start).total_seconds() / 3600)
+        elif r["status"] == "open":
+            stat["waiting"] += 1
+    out = []
+    for stat in by_box.values():
+        hours = stat["hours"]
+        out.append({
+            "mailbox": stat["mailbox"],
+            "replied": len(hours),
+            "waiting": stat["waiting"],
+            "avg_hours": round(sum(hours) / len(hours), 1) if hours else None,
+            "worst_hours": round(max(hours), 1) if hours else None,
+        })
+    out.sort(key=lambda s: (s["avg_hours"] is None, -(s["avg_hours"] or 0)))
+    return out
+
+
 def monitored_mailboxes(conn):
     """Which inboxes to scan, and who owns each. Seeds itself from the
     MS_GRAPH_MAILBOXES env var so adding an inbox is a config change, then
@@ -16809,7 +17015,10 @@ def run_email_inbox_scan_job(conn):
     # or a reply in one inbox would silently mark another's email answered.
     for mb in mailboxes:
         mailbox = mb["mailbox"]
-        default_user_id = mb["default_user_id"]
+        # Resolved per scan, not per config: for an inbox set to follow the
+        # rota this is whoever is clocked in right now, skipping anyone on
+        # leave or recorded absent.
+        default_user_id = resolve_inbox_owner(conn, mb)
         # conversationId -> latest sent message, for both the "was this answered
         # in time" check and re-running the conflict guesser against what the
         # reply itself actually says (a reply can quote a stale price even when
@@ -16831,13 +17040,19 @@ def run_email_inbox_scan_job(conn):
 
             existing = conn.execute(
                 "SELECT id, status, last_reply_checked_id, reply_price_conflict, reply_availability_conflict, "
-                "reply_detail_note FROM email_flags WHERE graph_message_id = ?", (message_id,)
+                "reply_detail_note, first_reply_at FROM email_flags WHERE graph_message_id = ?", (message_id,)
             ).fetchone()
             if existing and existing["status"] != "open":
                 continue  # a human already resolved/dismissed this one — don't resurrect it
 
             conv_id = msg.get("conversationId")
             last_reply = reply_map.get(conv_id)
+            # When a reply went out AFTER this message arrived, that's the
+            # first response -- recorded once so response-time stats reflect
+            # the guest's actual wait, not how fast a flag was ticked off.
+            first_reply_at = existing["first_reply_at"] if (existing and existing["first_reply_at"]) else None
+            if not first_reply_at and last_reply and last_reply > received_at:
+                first_reply_at = last_reply
             received_dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
             unanswered = bool((not last_reply or last_reply < received_at) and (now - received_dt) > timedelta(hours=unanswered_hours))
 
@@ -16881,8 +17096,8 @@ def run_email_inbox_scan_job(conn):
                     conn.execute(
                         "UPDATE email_flags SET unanswered=0, price_conflict=0, availability_conflict=0, "
                         "reply_price_conflict=0, reply_availability_conflict=0, last_reply_checked_id=?, "
-                        "updated_at=? WHERE id=?",
-                        (checked_reply_id, now_iso, existing["id"]),
+                        "first_reply_at=COALESCE(first_reply_at, ?), updated_at=? WHERE id=?",
+                        (checked_reply_id, first_reply_at, now_iso, existing["id"]),
                     )
                 continue
             flagged += 1
@@ -16902,6 +17117,7 @@ def run_email_inbox_scan_job(conn):
                 reply_note_val,
                 checked_reply_id,
                 mailbox,
+                first_reply_at,
             )
             if existing:
                 conn.execute(
@@ -16909,7 +17125,7 @@ def run_email_inbox_scan_job(conn):
                        web_link=?, received_at=?, unanswered=?, price_conflict=?, availability_conflict=?,
                        conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
                        reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
-                       mailbox=?, updated_at=? WHERE id=?""",
+                       mailbox=?, first_reply_at=?, updated_at=? WHERE id=?""",
                     common + (now_iso, existing["id"]),
                 )
             else:
@@ -16918,8 +17134,8 @@ def run_email_inbox_scan_job(conn):
                        preview, web_link, received_at, unanswered, price_conflict, availability_conflict,
                        conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
                        reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
-                       mailbox, assigned_to_user_id, status, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
+                       mailbox, first_reply_at, assigned_to_user_id, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
                     (message_id,) + common + (default_user_id, now_iso, now_iso),
                 )
                 # A brand-new flag, not just an update to one already on the board —
@@ -17176,14 +17392,20 @@ def admin_inbox_flags():
     conn = get_db()
     status_filter = request.args.get("status", "open")
     kind_filter = request.args.get("kind", "all")
+    mailbox_filter = request.args.get("mailbox", "all")
     query = (
-        "SELECT email_flags.*, users.name AS assigned_to_name FROM email_flags "
-        "LEFT JOIN users ON users.id = email_flags.assigned_to_user_id WHERE 1=1"
+        "SELECT email_flags.*, users.name AS assigned_to_name, "
+        "mailbox_routing.label AS mailbox_label FROM email_flags "
+        "LEFT JOIN users ON users.id = email_flags.assigned_to_user_id "
+        "LEFT JOIN mailbox_routing ON mailbox_routing.mailbox = email_flags.mailbox WHERE 1=1"
     )
     params = []
     if status_filter != "all":
         query += " AND email_flags.status = ?"
         params.append(status_filter)
+    if mailbox_filter != "all":
+        query += " AND email_flags.mailbox = ?"
+        params.append(mailbox_filter)
     if kind_filter == "unanswered":
         query += " AND email_flags.unanswered = 1"
     elif kind_filter == "conflict":
@@ -17199,11 +17421,43 @@ def admin_inbox_flags():
            FROM email_flags"""
     ).fetchone()
     employees = conn.execute("SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    mailboxes = monitored_mailboxes(conn)
+    # Open flags per inbox, so it's obvious at a glance which area is behind.
+    per_mailbox = {
+        r["mailbox"]: r["c"] for r in conn.execute(
+            "SELECT mailbox, COUNT(*) AS c FROM email_flags WHERE status = 'open' AND mailbox IS NOT NULL GROUP BY mailbox"
+        ).fetchall()
+    }
+    duplicates = cross_inbox_duplicates(conn)
+    response_stats = inbox_response_stats(conn)
     conn.close()
     return render_template(
         "admin_inbox_flags.html", flags=flags, status_filter=status_filter, kind_filter=kind_filter,
-        counts=counts, graph_enabled=graph_enabled(), mailbox=MS_GRAPH_MAILBOX, employees=employees,
+        counts=counts, graph_enabled=graph_enabled(), employees=employees,
+        mailboxes=mailboxes, mailbox_filter=mailbox_filter, per_mailbox=per_mailbox,
+        duplicates=duplicates, response_stats=response_stats,
+        mailbox=MS_GRAPH_MAILBOX,
     )
+
+
+@app.route("/admin/inbox-flags/routing", methods=["POST"])
+@owner_required
+def update_mailbox_routing():
+    """Set who owns each inbox. New flags in that inbox are assigned to them
+    automatically, which is the point of having an inbox per area."""
+    conn = get_db()
+    for mb in conn.execute("SELECT id, mailbox FROM mailbox_routing").fetchall():
+        raw = request.form.get(f"default_user_{mb['id']}", "").strip()
+        label = request.form.get(f"label_{mb['id']}", "").strip() or None
+        conn.execute(
+            "UPDATE mailbox_routing SET default_user_id = ?, label = ?, route_to_on_shift = ? WHERE id = ?",
+            (int(raw) if raw.isdigit() else None, label,
+             1 if request.form.get(f"on_shift_{mb['id']}") else 0, mb["id"]),
+        )
+    conn.commit()
+    conn.close()
+    flash("Inbox routing updated.", "success")
+    return redirect(url_for("admin_inbox_flags"))
 
 
 @app.route("/admin/inbox-flags/status.json")
