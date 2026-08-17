@@ -12146,6 +12146,111 @@ def unsubscribe_push():
 # their lawyer) can set, so it's left as a placeholder rather than guessed.
 # ---------------------------------------------------------------------------
 
+CATALOGUE_ROOM_FIELDS = [
+    "name", "description", "max_occupancy", "price_per_night", "active",
+    "sort_order", "amenities", "min_nights", "max_adults", "max_children",
+    "size_sqm", "bed_setup", "bathroom", "outlook", "floor",
+]
+CATALOGUE_EXTRA_FIELDS = [
+    "name", "price", "active", "sort_order", "category", "description",
+    "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos",
+]
+
+
+@app.route("/management/import-catalogue", methods=["GET", "POST"])
+@owner_required
+def import_catalogue():
+    """Load rooms and add-ons from a file exported off another installation.
+
+    The live database is a different database from the one on somebody's laptop,
+    so a room set up there does not exist here. This copies the catalogue over
+    rather than making anyone retype it.
+
+    Deliberately narrow: rooms and add-ons only. It will not touch guests,
+    bookings, staff, payments or settings, and it never deletes anything — the
+    worst a bad file can do is add a room you then deactivate.
+    """
+    if request.method == "GET":
+        conn = get_db()
+        counts = {
+            "rooms": conn.execute("SELECT COUNT(*) AS c FROM rooms").fetchone()["c"],
+            "extras": conn.execute("SELECT COUNT(*) AS c FROM extras").fetchone()["c"],
+        }
+        conn.close()
+        return render_template("import_catalogue.html", counts=counts)
+
+    upload = request.files.get("catalogue")
+    if not upload or not upload.filename:
+        flash("Choose the catalogue.json file first.", "error")
+        return redirect(url_for("import_catalogue"))
+    try:
+        data = json.loads(upload.read().decode("utf-8"))
+    except Exception as e:
+        flash(f"That file isn't readable as JSON: {e}", "error")
+        return redirect(url_for("import_catalogue"))
+    if not isinstance(data, dict) or not isinstance(data.get("rooms"), list):
+        flash("That doesn't look like a catalogue export.", "error")
+        return redirect(url_for("import_catalogue"))
+
+    dry_run = request.form.get("dry_run") == "on"
+    conn = get_db()
+    room_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+    extra_cols = {r["name"] for r in conn.execute("PRAGMA table_info(extras)").fetchall()}
+    added, updated = [], []
+
+    def upsert(table, fields, available, row, extra_values=None):
+        """Match on name so importing the same file twice updates rather than
+        duplicating. Nothing is ever deleted."""
+        name = (row.get("name") or "").strip()
+        if not name:
+            return None
+        use = [f for f in fields if f in available and f in row]
+        existing = conn.execute(
+            f"SELECT id FROM {table} WHERE name = ?", (name,)).fetchone()
+        if existing:
+            if not dry_run and use:
+                conn.execute(
+                    f"UPDATE {table} SET {', '.join(f'{f} = ?' for f in use)} WHERE id = ?",
+                    [row[f] for f in use] + [existing["id"]])
+            return "updated"
+        cols, vals = list(use), [row[f] for f in use]
+        for key, value in (extra_values or {}).items():
+            if key in available:
+                cols.append(key)
+                vals.append(value)
+        if not dry_run:
+            conn.execute(
+                f"INSERT INTO {table} ({', '.join(cols)}) "
+                f"VALUES ({', '.join('?' * len(cols))})", vals)
+        return "added"
+
+    for row in data.get("rooms", []):
+        # A fresh export_token per installation: it is this site's secret for the
+        # room's calendar feed, not something to copy between databases.
+        outcome = upsert("rooms", CATALOGUE_ROOM_FIELDS, room_cols, row,
+                         {"export_token": secrets.token_urlsafe(20)})
+        if outcome:
+            (added if outcome == "added" else updated).append(f"room {row.get('name')}")
+    for row in data.get("extras", []):
+        outcome = upsert("extras", CATALOGUE_EXTRA_FIELDS, extra_cols, row)
+        if outcome:
+            (added if outcome == "added" else updated).append(f"add-on {row.get('name')}")
+
+    if dry_run:
+        conn.rollback()
+        conn.close()
+        flash(f"Dry run — nothing saved. Would add {len(added)} and update "
+              f"{len(updated)}: " + "; ".join(added + updated)[:300], "success")
+        return redirect(url_for("import_catalogue"))
+
+    log_audit(conn, "catalogue_imported",
+              details=f"{len(added)} added, {len(updated)} updated")
+    conn.commit()
+    conn.close()
+    flash(f"Imported — {len(added)} added, {len(updated)} updated.", "success")
+    return redirect(url_for("admin_rooms"))
+
+
 @app.route("/restoration")
 def restoration_page():
     """A public page about the restoration. Static copy, no data behind it."""

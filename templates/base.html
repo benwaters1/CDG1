@@ -300,6 +300,7 @@
         <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
         <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
         <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
+        <a href="{{ url_for('import_catalogue') }}" class="{{ 'active' if request.endpoint=='import_catalogue' }}">{{ icon('folder') }}Import Catalogue</a>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
       </div>
     </div>
