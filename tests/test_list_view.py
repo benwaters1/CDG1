@@ -21,6 +21,8 @@ TOOLBAR_PAGES = [
     "/admin/audit-log",
     "/contacts",
     "/admin/stock",
+    "/management/recurring-costs",
+    "/admin/promo-codes",
 ]
 
 
@@ -215,6 +217,30 @@ def _seed_for_toolbar_pages():
                     conn.execute(
                         """INSERT INTO stock_movements (stock_item_id, delta, reason, created_at)
                            VALUES (?, ?, 'opening', ?)""", (cur.lastrowid, qty, now))
+        if not conn.execute("SELECT 1 FROM recurring_costs LIMIT 1").fetchone():
+            for label, amount, freq, cat, due, code in [
+                    ("Test electricity", 480, "monthly", "Utilities", "2020-01-01", "6061"),
+                    ("Test insurance", 5200, "annual", "Insurance", "2030-11-01", ""),
+                    ("Test internet", 60, "monthly", "Utilities", "2030-09-05", "6262")]:
+                conn.execute(
+                    """INSERT INTO recurring_costs (label, amount, frequency, category,
+                       next_due_date, active, created_at, ledger_code)
+                       VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                    (label, amount, freq, cat, due, now, code))
+        # Deliberately one of each state: active-but-expired, used up, and off.
+        # A promo list where all four look alike proves nothing about the
+        # classification that separates them.
+        if not conn.execute("SELECT 1 FROM promo_codes LIMIT 1").fetchone():
+            for code, active, until, used, cap in [
+                    ("TESTLIVE", 1, "2099-12-31", 4, None),
+                    ("TESTGONE", 1, "2020-01-31", 9, None),
+                    ("TESTFULL", 1, None, 5, 5),
+                    ("TESTOFF", 0, None, 0, None)]:
+                conn.execute(
+                    """INSERT INTO promo_codes (code, discount_type, discount_value, applies_to,
+                       active, valid_until, redemption_count, max_redemptions, created_at)
+                       VALUES (?, 'percent', 10, 'all', ?, ?, ?, ?, ?)""",
+                    (code, active, until, used, cap, now))
         conn.commit()
     finally:
         conn.close()

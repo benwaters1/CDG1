@@ -3763,6 +3763,12 @@ def sort_option(key, label, keyfn, *, reverse=False):
     return {"key": key, "label": label, "keyfn": keyfn, "reverse": reverse}
 
 
+def _iso_plus_days(iso_date, days):
+    """A date string N days on. Facets compare dates as text, and a plain
+    string comparison is only right if both sides are ISO."""
+    return (date.fromisoformat(iso_date) + timedelta(days=days)).isoformat()
+
+
 def _searchable(row, fields):
     parts = []
     for f in fields:
@@ -17700,7 +17706,53 @@ def admin_promo_codes():
     conn = get_db()
     codes = conn.execute("SELECT * FROM promo_codes ORDER BY active DESC, created_at DESC").fetchall()
     conn.close()
-    return render_template("admin_promo_codes.html", codes=codes, applies_to_options=PROMO_APPLIES_TO)
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def usable(c):
+        """Whether a guest could actually use this code right now.
+
+        The `active` flag alone is not the answer, and reading it as if it
+        were is how a code that expired in March sits at the top of the list
+        looking live. Expired, not started, and used up are all "off" — but
+        they are off for different reasons, and each has a different fix.
+        """
+        if not c["active"]:
+            return "Switched off"
+        if c["valid_until"] and c["valid_until"] < today:
+            return "Expired"
+        if c["valid_from"] and c["valid_from"] > today:
+            return "Not started yet"
+        if c["max_redemptions"] and (c["redemption_count"] or 0) >= c["max_redemptions"]:
+            return "Used up"
+        return "Live"
+
+    lv = list_view(
+        codes, request.args,
+        search=["code", "description"],
+        search_hint="Search code or description",
+        facets=[
+            facet("state", "Usable now", usable,
+                  order=["Live", "Not started yet", "Expired", "Used up", "Switched off"]),
+            facet("applies", "Applies to", lambda c: c["applies_to"],
+                  labels={"all": "Anything", "room": "Rooms", "restaurant": "Restaurant",
+                          "workshop": "Workshops"},
+                  order=PROMO_APPLIES_TO),
+            facet("kind", "Discount",
+                  lambda c: "Percentage off" if c["discount_type"] == "percent" else "Fixed amount"),
+            facet("used", "Take-up",
+                  lambda c: "Never used" if not (c["redemption_count"] or 0) else "Has been used",
+                  order=["Never used", "Has been used"]),
+        ],
+        sorts=[
+            sort_option("used", "Most redeemed", lambda c: c["redemption_count"] or 0, reverse=True),
+            sort_option("ending", "Expiring soonest", lambda c: c["valid_until"] or "9999"),
+            sort_option("code", "Code", lambda c: (c["code"] or "").lower()),
+            sort_option("new", "Newest", lambda c: c["created_at"] or "", reverse=True),
+        ],
+        default_sort="used",
+    )
+    return render_template("admin_promo_codes.html", codes=lv["rows"], lv=lv,
+                           applies_to_options=PROMO_APPLIES_TO)
 
 
 def _parse_promo_form():
@@ -19067,8 +19119,50 @@ def management_recurring_costs():
         c["amount"] if c["frequency"] == "monthly" else c["amount"] / 12
         for c in costs if c["active"]
     ), 2)
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    def due(c):
+        if not c["active"]:
+            return None
+        d = c["next_due_date"]
+        if not d:
+            return "No date set"
+        if d < today:
+            return "Overdue"
+        return "Due within 30 days" if d <= _iso_plus_days(today, 30) else "Later"
+
+    lv = list_view(
+        costs, request.args,
+        search=["label", "category", "notes", "ledger_code"],
+        search_hint="Search label, category, note or account code",
+        facets=[
+            facet("state", "Status", lambda c: "Live" if c["active"] else "Stopped",
+                  order=["Live", "Stopped"]),
+            # What is about to be taken out of the account is a different
+            # question from what it is for, and only one of them is urgent.
+            facet("due", "Next payment", due,
+                  order=["Overdue", "Due within 30 days", "Later", "No date set"]),
+            facet("category", "Category", lambda c: (c["category"] or "").strip() or None,
+                  limit=10),
+            facet("frequency", "How often", lambda c: (c["frequency"] or "").strip() or None),
+            facet("coded", "Account code",
+                  lambda c: "Coded" if (c["ledger_code"] or "").strip() else "Not coded yet",
+                  order=["Not coded yet", "Coded"]),
+        ],
+        sorts=[
+            sort_option("cost", "Most expensive a year",
+                        lambda c: c["amount"] * (12 if c["frequency"] == "monthly" else 1),
+                        reverse=True),
+            sort_option("due", "Next payment first", lambda c: c["next_due_date"] or "9999"),
+            sort_option("label", "Name", lambda c: (c["label"] or "").lower()),
+            sort_option("category", "Category",
+                        lambda c: ((c["category"] or "").lower(), (c["label"] or "").lower())),
+        ],
+        default_sort="cost",
+    )
     return render_template(
-        "management_recurring_costs.html", costs=costs, monthly_equivalent=monthly_equivalent,
+        "management_recurring_costs.html", costs=lv["rows"], lv=lv,
+        monthly_equivalent=monthly_equivalent,
     )
 
 

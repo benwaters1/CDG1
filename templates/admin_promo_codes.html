@@ -72,8 +72,17 @@
   </form>
 </div>
 
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
 {% if not codes %}
-  <div class="empty-state">No promo codes yet.</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      No code matches that.
+      <a href="{{ url_for('admin_promo_codes') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No promo codes yet.
+    {% endif %}
+  </div>
 {% else %}
   {% for c in codes %}
   <div class="expense-card">
