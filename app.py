@@ -2832,6 +2832,28 @@ def init_db():
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
 
+    # The workshops, on the same first-run-only basis. Inactive and unpriced:
+    # a made-up price on a real product is worse than an empty page, so they
+    # stay off the public list until somebody sets one.
+    real_workshops = conn.execute(
+        "SELECT COUNT(*) AS c FROM workshops WHERE title NOT LIKE '%Test%'").fetchone()["c"]
+    if not real_workshops:
+        ws_cols = {c["name"] for c in conn.execute("PRAGMA table_info(workshops)").fetchall()}
+        for workshop in DEFAULT_WORKSHOPS:
+            fields = {k: v for k, v in workshop.items() if k in ws_cols}
+            fields.update({"active": 0, "price_per_person": 0,
+                           "default_capacity": 10,
+                           "created_at": datetime.now(timezone.utc).isoformat()})
+            if "deposit_percent" in ws_cols:
+                fields["deposit_percent"] = 30
+            fields = {k: v for k, v in fields.items() if k in ws_cols}
+            conn.execute(
+                f"INSERT INTO workshops ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+        conn.commit()
+        print(f"Seeded {len(DEFAULT_WORKSHOPS)} workshops, inactive — set a price "
+              f"and dates under Workshops, then activate.")
+
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
             conn.execute(
@@ -4448,6 +4470,29 @@ DEFAULT_ROOMS = [
 DEFAULT_EXTRAS = [
     {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
 ]
+
+# The five things the château runs: three stays by length, and the two seasonal
+# ateliers. Seeded INACTIVE with no price, because a price invented here would be
+# a wrong price shown to a real guest. Set the price and add dates under
+# Workshops, then activate — the public page lists nothing until then.
+DEFAULT_WORKSHOPS = [
+    {"title": "Three Nights at Gudanes", "nights": 3, "sort_order": 0,
+     "description": "Three nights at the château — the shortest stay that still "
+                    "leaves time to settle into the rhythm of the place."},
+    {"title": "Five Nights at Gudanes", "nights": 5, "sort_order": 1,
+     "description": "Five nights, long enough to fall into the pattern of the "
+                    "house and the valley around it."},
+    {"title": "Seven Nights at Gudanes", "nights": 7, "sort_order": 2,
+     "description": "A full week at the château, from one end of the working "
+                    "week to the other."},
+    {"title": "Autumn Atelier", "nights": 5, "sort_order": 3,
+     "description": "An atelier held as the valley turns — the season the "
+                    "restoration is at its most visible."},
+    {"title": "Winter Atelier", "nights": 5, "sort_order": 4,
+     "description": "A winter atelier: shorter days, longer evenings around the "
+                    "table, and the mountains under snow."},
+]
+
 
 DEFAULT_ACCESS_PRESETS = [
     ("owner", "Owner", "Everything, including settings, payroll and the vault.",
