@@ -177,4 +177,14 @@
 {% endif %}
 </div>
 
+
+{# The bill. A guest who paid deserves to see what for, and a business guest
+   needs it to reclaim their VAT — it was previously reachable only if you
+   guessed the URL. #}
+<p style="margin-top:14px;">
+  <a href="{{ url_for('booking_statement', manage_token=booking['manage_token']) }}" class="btn-mini">
+    View your bill
+  </a>
+</p>
+
 {% endblock %}
