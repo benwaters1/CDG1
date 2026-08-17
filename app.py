@@ -15309,6 +15309,64 @@ def workshop_subtotal(workshop, party_size, occupancy_type="double"):
     return round((price + supplement) * party_size, 2), supplement
 
 
+def rooms_needed(occupancy_type, party_size):
+    """How many rooms a party of this size takes at this occupancy.
+
+    The château has a fixed number of rooms, and a session's capacity counts
+    heads, not rooms — so ten guests sharing need five rooms and ten guests
+    each wanting their own need ten. Since the single supplement made a private
+    room something a guest deliberately buys, the difference has to be counted.
+    """
+    party = max(int(party_size or 0), 0)
+    if not party:
+        return 0
+    if occupancy_type == "solo":
+        return party
+    per_room = 3 if occupancy_type == "triple" else 2
+    return -(-party // per_room)          # ceiling division
+
+
+def bookable_room_count(conn):
+    return conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+
+
+def session_rooms_used(conn, session_id, exclude_id=None):
+    """Rooms already spoken for on a session, from the occupancy each party chose."""
+    query = """SELECT occupancy_type, party_size FROM workshop_bookings
+               WHERE session_id = ? AND status IN ('pending', 'confirmed')"""
+    params = [session_id]
+    if exclude_id:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    return sum(rooms_needed(r["occupancy_type"], r["party_size"])
+               for r in conn.execute(query, params).fetchall())
+
+
+def session_room_error(conn, session_id, occupancy_type, party_size, exclude_id=None):
+    """None if this party still fits in the rooms the château has, else why not.
+
+    A workshop takes over the whole house, so every active room is available to
+    it — no need to ask which. Public forms only: staff putting somebody in by
+    hand may know about a sofa bed, a late cancellation, or a guest happy to
+    share at the last minute.
+    """
+    total = bookable_room_count(conn)
+    if not total:
+        return None                        # no rooms recorded — nothing to enforce
+    used = session_rooms_used(conn, session_id, exclude_id)
+    want = rooms_needed(occupancy_type, party_size)
+    if used + want <= total:
+        return None
+    left = max(total - used, 0)
+    if occupancy_type == "solo":
+        return (f"A room to yourself needs one room per guest, and only "
+                f"{left} {'is' if left == 1 else 'are'} left for these dates. "
+                f"Choose a shared room, or contact the château and we'll see what we can do.")
+    return (f"Only {left} room{'' if left == 1 else 's'} {'is' if left == 1 else 'are'} "
+            f"left for these dates, and a party of {party_size} sharing needs {want}. "
+            f"Please contact the château directly.")
+
+
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,
                              notes, occupancy_type="double", requested_roommate=None, dietary_notes=None,
                              medical_notes=None, special_occasion=None, booking_id=None, promo_code=None):
@@ -15897,12 +15955,26 @@ def workshop_register(session_id):
         (session_row["workshop_id"],),
     ).fetchall()
 
+    # Everything the page needs regardless of which way the request goes. This
+    # template is rendered from three places below, and passing each value by
+    # hand is how one of them ends up missing a variable that the other two
+    # have — so they are gathered once and splatted into all three.
+    rooms_left = max(bookable_room_count(conn) - session_rooms_used(conn, session_id), 0)
+    page = {
+        "session": session_row,
+        "custom_fields": custom_fields,
+        "rooms_left": rooms_left,
+        # Don't offer a private room the château cannot give: the same reason
+        # a taken night is not clickable on the booking calendar.
+        "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+    }
+
     if request.method == "POST":
         if rate_limited(conn, "register_workshop", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
             flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("workshop_register.html", session=session_row, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False, custom_fields=custom_fields)
+            return render_template("workshop_register.html", **page, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False)
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
@@ -15943,6 +16015,11 @@ def workshop_register(session_id):
             session_end = parse_date(session_row["end_date"])
             error = house_capacity_error(
                 conn, start_date, session_end + timedelta(days=1), party_size)
+            # Heads fitting is not the same as rooms fitting: since a private
+            # room is now something a guest pays extra for, we must not sell
+            # one the château hasn't got.
+            if not error:
+                error = session_room_error(conn, session_id, occupancy_type, party_size)
 
         custom_values = {}
         if not error:
@@ -15958,9 +16035,9 @@ def workshop_register(session_id):
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
             return render_template(
-                "workshop_register.html", session=session_row,
+                "workshop_register.html", **page,
                 prefill_name=guest_name, prefill_email=guest_email, prefill_phone=guest_phone,
-                prefill_party_size=party_size_raw, fully_booked=fully_booked, custom_fields=custom_fields,
+                prefill_party_size=party_size_raw, fully_booked=fully_booked,
             )
 
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (session_row["workshop_id"],)).fetchone()
@@ -16004,10 +16081,10 @@ def workshop_register(session_id):
 
     conn.close()
     return render_template(
-        "workshop_register.html", session=session_row,
+        "workshop_register.html", **page,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        fully_booked=False, custom_fields=custom_fields,
+        fully_booked=False,
     )
 
 

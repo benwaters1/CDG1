@@ -28,9 +28,17 @@
     <label class="field-label">Room arrangement</label>
     <select name="occupancy_type" id="occupancy_type">
       <option value="double">Double (shared room, one bed) — included</option>
-      <option value="solo">Solo (private room, if available){% if supplement %} — €{{ '%.0f'|format(supplement) }} per person extra{% endif %}</option>
+      {# Not offered at all once the rooms are gone — a private room is now
+         something the guest pays extra for, so it must not be selectable
+         when there is none left to give. #}
+      {% if solo_possible %}
+      <option value="solo">Solo (private room){% if supplement %} — €{{ '%.0f'|format(supplement) }} per person extra{% endif %}</option>
+      {% endif %}
       <option value="triple">Triple occupancy — included</option>
     </select>
+    {% if not solo_possible %}
+    <p class="upload-hint" style="margin-top:4px;">Every room for these dates is taken, so we can only offer shared occupancy — do contact the château if you need a room to yourself.</p>
+    {% endif %}
     {% if session['price_per_person'] %}
     <p class="upload-hint" id="occupancy_total" style="margin-top:4px;"></p>
     {% endif %}

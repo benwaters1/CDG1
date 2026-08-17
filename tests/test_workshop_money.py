@@ -63,6 +63,7 @@ def _cleanup():
     conn.execute("DELETE FROM workshop_booking_guests WHERE workshop_booking_id IN "
                  f"(SELECT id FROM workshop_bookings WHERE {where})", args)
     conn.execute(f"DELETE FROM workshop_bookings WHERE {where}", args)
+    conn.execute("DELETE FROM rooms WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM email_outbox WHERE subject LIKE '%Deposit received%'")
@@ -235,6 +236,7 @@ def run():
     #
     # Every figure below goes through the real code path, because the fault this
     # guards against is a quote and a charge computed in two different places.
+    _ensure_rooms(10)   # these checks are about the money, not about space
     conn = db()
     wid = conn.execute("SELECT id FROM workshops WHERE title = ?",
                        (f"{TAG} Watercolour",)).fetchone()["id"]
@@ -325,6 +327,61 @@ def run():
     s.check("with no supplement set, a solo room is free rather than an error",
             unset == 900.0, detail=f"got {unset}")
 
+    s.section("Rooms are counted, not just heads")
+    # A session's capacity counts people. The château has a fixed number of
+    # rooms, and since a private room is now something a guest pays extra for,
+    # selling one that does not exist is the expensive mistake.
+    for occupancy, party, want, label in (
+        ("solo", 1, 1, "one guest alone takes one room"),
+        ("solo", 3, 3, "three who each want their own take three"),
+        ("double", 2, 1, "a couple sharing take one"),
+        ("double", 5, 3, "five sharing need three rooms, not two and a half"),
+        ("triple", 6, 2, "six at triple occupancy take two"),
+        ("triple", 7, 3, "seven at triple occupancy still need a third"),
+    ):
+        got = m.rooms_needed(occupancy, party)
+        s.check(f"{label} ({want})", got == want, detail=f"got {got}")
+
+    conn = db()
+    total_rooms = m.bookable_room_count(conn)
+    used = m.session_rooms_used(conn, session_row["id"])
+    conn.close()
+    s.check("rooms already used on the session are counted from the bookings made above",
+            used >= 1, detail=f"got {used} used of {total_rooms}")
+
+    # Fill the house, then ask for a private room.
+    conn = db()
+    conn.execute(
+        """INSERT INTO workshop_bookings (session_id, guest_name, guest_email, party_size,
+           status, occupancy_type, reference_code, manage_token, created_at)
+           VALUES (?, ?, ?, ?, 'confirmed', 'solo', ?, ?, ?)""",
+        (session_row["id"], f"{TAG} hog", f"{TAG.lower()}hog@example.invalid",
+         max(total_rooms, 1) * 2, f"{TAG}HOG", f"tok{TAG}HOG", _harness.datetime_now()))
+    conn.commit()
+    blocked = m.session_room_error(conn, session_row["id"], "solo", 1)
+    shared_ok = m.session_room_error(conn, session_row["id"], "double", 2)
+    conn.close()
+    s.check("with every room taken, another private room is refused", blocked is not None,
+            detail=f"got {blocked!r}")
+    s.check("and the refusal explains it in rooms, not seats",
+            blocked and "room" in blocked.lower(), detail=f"got {blocked!r}")
+    # Sharing is still refused too once there is physically nowhere to put them,
+    # which is the same limit seen from the other side.
+    s.check("sharing is refused too when no room is left at all", shared_ok is not None,
+            detail=f"got {shared_ok!r}")
+
+    # And the form stops offering it, rather than refusing after the fact.
+    pub_page = m.app.test_client().get(f"/workshops/register/{session_row['id']}").get_data(as_text=True)
+    s.check("the form no longer offers a private room it cannot give",
+            'value="solo"' not in pub_page, detail="solo still selectable")
+    s.check("and says why", "only offer shared occupancy" in pub_page,
+            detail="no explanation on the page")
+
+    conn = db()
+    conn.execute("DELETE FROM workshop_bookings WHERE reference_code = ?", (f"{TAG}HOG",))
+    conn.commit()
+    conn.close()
+
     s.section("A payment for something else is ignored")
     conn = db()
     with m.app.test_request_context():
@@ -341,6 +398,25 @@ def run():
 
     _cleanup()
     return s
+
+
+def _ensure_rooms(n):
+    """n spare bookable rooms.
+
+    The test database is a copy of the dev one, which holds a single room — so
+    without this the château is effectively one room and every solo request is
+    refused for lack of space. That refusal is correct (and tested for its own
+    sake below), but it is not what the money checks are about.
+    """
+    conn = db()
+    have = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+    for i in range(max(n - have, 0)):
+        conn.execute(
+            """INSERT INTO rooms (name, export_token, active, max_occupancy, price_per_night,
+               sort_order) VALUES (?, ?, 1, 2, 200.0, 900)""",
+            (f"{TAG} Spare {i}", _harness.secrets_token()))
+    conn.commit()
+    conn.close()
 
 
 def _setup2():
