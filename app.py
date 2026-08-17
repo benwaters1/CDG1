@@ -2806,6 +2806,32 @@ def init_db():
             )
     conn.commit()
 
+    # The rooms, but only into a database that has none. Deliberately not
+    # matched per-name like the email templates: a room deleted on purpose must
+    # stay deleted, and a price edited in the admin must not be reset by the next
+    # deploy. A first-run bootstrap, nothing more.
+    if not conn.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
+        room_cols = {c["name"] for c in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+        for room in DEFAULT_ROOMS:
+            fields = {k: v for k, v in room.items() if k in room_cols}
+            fields["active"] = 1
+            fields["export_token"] = secrets.token_urlsafe(20)
+            conn.execute(
+                f"INSERT INTO rooms ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+        extra_cols = {c["name"] for c in conn.execute("PRAGMA table_info(extras)").fetchall()}
+        for extra in DEFAULT_EXTRAS:
+            if conn.execute("SELECT 1 FROM extras WHERE name = ?",
+                            (extra["name"],)).fetchone():
+                continue
+            fields = {k: v for k, v in extra.items() if k in extra_cols}
+            fields["active"] = 1
+            conn.execute(
+                f"INSERT INTO extras ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+        conn.commit()
+        print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
             conn.execute(
@@ -4367,6 +4393,62 @@ def guests_in_residence(conn, today):
 # The channels every château has, seeded so a message always has an obvious
 # home. Fixed rather than user-created on purpose: ad-hoc channels in a team of
 # a dozen produce five near-duplicates and then nobody knows where to post.
+# The château's rooms. Seeded only when the rooms table is completely empty,
+# so this bootstraps a new installation and never resurrects a room somebody
+# has deliberately deleted, nor overwrites edits made in the admin.
+DEFAULT_ROOMS = [
+    {
+        "name": "King Room with Mountain View",
+        "price_per_night": 400.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 0,
+        "max_adults": 2,
+        "max_children": 0,
+        "description": "A serene room dressed in a king bed, where windows open onto sweeping mountain views.",
+    },
+    {
+        "name": "Family Suite with Mountain View",
+        "price_per_night": 675.0,
+        "max_occupancy": 5,
+        "min_nights": 1,
+        "sort_order": 1,
+        "max_children": 0,
+        "description": "A gracious 140 sq m suite spread across two bedrooms, pairing a queen bed for the adults with double beds for up to three children.",
+    },
+    {
+        "name": "Double with Shared Bathroom",
+        "price_per_night": 220.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 2,
+        "max_children": 0,
+        "description": "An intimate double room, quietly charming in its simplicity, with its bathroom shared with one neighbouring room.",
+    },
+    {
+        "name": "Twin/Double with Shared Bathroom",
+        "price_per_night": 240.0,
+        "max_occupancy": 3,
+        "min_nights": 1,
+        "sort_order": 3,
+        "max_children": 0,
+        "description": "A graceful room with a twin or double bedding arrangement, bathroom shared with one neighbouring room.",
+    },
+    {
+        "name": "Suite with Mountain View",
+        "price_per_night": 450.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 4,
+        "max_children": 0,
+        "description": "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
+    },
+]
+
+DEFAULT_EXTRAS = [
+    {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
+]
+
 DEFAULT_ACCESS_PRESETS = [
     ("owner", "Owner", "Everything, including settings, payroll and the vault.",
      "*", True, 0),
