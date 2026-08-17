@@ -26,6 +26,7 @@ SUITES = [
     "test_menu_day",
     "test_menu_read",
     "test_formule",
+    "test_beverage_pours",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",

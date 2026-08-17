@@ -1809,3 +1809,14 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 /* ------------------------- formule on the printed bill -------------------- */
 .receipt-formule{ margin-bottom:10px; }
 .receipt-line.is-formule-head{ font-weight:600; }
+
+/* Pours nested under the wine they come from. */
+.pour-list{ display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.pour-chip{
+  display:inline-flex; flex-direction:column; gap:1px;
+  background:var(--parchment); border:1px solid var(--parchment-line);
+  border-radius:7px; padding:5px 9px; font-size:12.5px;
+}
+.pour-chip small{ font-size:10.5px; color:var(--steel); }
+.pour-add{ margin-top:8px; }
+.pour-add summary{ cursor:pointer; font-size:12.5px; color:var(--steel); }

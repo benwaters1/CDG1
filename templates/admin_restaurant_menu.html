@@ -58,6 +58,49 @@
       {% if i['allergens'] %}
       <span class="upload-hint">Contains: {% for a in i['allergens'].split(',') %}{{ allergens.get(a, a) }}{{ ', ' if not loop.last }}{% endfor %}</span>
       {% endif %}
+
+      {% set my_pours = pours.get(i['id'], []) %}
+      {% if my_pours %}
+      {# The wine itself is not sellable once it has pours — it has no size.
+         Each of these is, and each depletes a computed fraction of the bottle. #}
+      <div class="pour-list">
+        {% for pr in my_pours %}
+        <span class="pour-chip">
+          {{ serve_sizes.get(pr['serve_size'], pr['serve_size']) }}
+          {%- if pr['serve_volume_ml'] %} · {{ pr['serve_volume_ml']|round(0)|int }}ml{% endif %}
+          · €{{ '%.2f'|format(pr['price'] or 0) }}
+          <small>takes {{ '%.3f'|format(pr['stock_qty_per_unit'] or 0) }} of a bottle</small>
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if i['container_ml'] %}
+      <details class="pour-add">
+        <summary>Add a serve size</summary>
+        <form method="post" action="{{ url_for('add_menu_pour', item_id=i['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="refund-fields">
+            <div>
+              <label class="field-label">Size</label>
+              <select name="serve_size">
+                {% for k, v in serve_sizes.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label class="field-label">Volume (ml)</label>
+              <input type="text" name="serve_volume_ml" inputmode="decimal" placeholder="150">
+              <span class="field-hint">Required for wine — the card must show it.</span>
+            </div>
+            <div>
+              <label class="field-label">Price (€)</label>
+              <input type="text" name="price" inputmode="decimal" placeholder="9.00">
+            </div>
+          </div>
+          <button type="submit" class="btn-mini" style="margin-top:8px;">Add pour</button>
+        </form>
+      </details>
+      {% endif %}
     </div>
 
     <form method="post" action="{{ url_for('edit_menu_item', item_id=i['id']) }}"

@@ -2369,6 +2369,22 @@ def init_db():
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_orders_receipt "
          "ON pos_orders(receipt_number) WHERE receipt_number IS NOT NULL"),
 
+        # ---- Beverage pours: glass, carafe, bottle, from one stock ---------
+        ("menu_items_parent",
+         "ALTER TABLE menu_items ADD COLUMN parent_item_id INTEGER "
+         "REFERENCES menu_items(id) ON DELETE CASCADE"),
+        ("menu_items_serve_size", "ALTER TABLE menu_items ADD COLUMN serve_size TEXT"),
+        ("menu_items_serve_volume", "ALTER TABLE menu_items ADD COLUMN serve_volume_ml REAL"),
+        # Only meaningful on the parent: the bottle's own volume, so a pour's
+        # depletion can be computed rather than typed.
+        ("menu_items_container_ml", "ALTER TABLE menu_items ADD COLUMN container_ml REAL"),
+        # Defaults to 0, not the ~15% trade yield actually loses (tasting,
+        # spillage, corked bottles) — a silent default would inflate every
+        # depletion figure without the owner ever choosing that. The form
+        # shows 15 as a hint; nothing is assumed until they set it.
+        ("menu_items_pour_loss",
+         "ALTER TABLE menu_items ADD COLUMN pour_loss_percent REAL NOT NULL DEFAULT 0"),
+
         # ---- The set menu (formule) ----------------------------------------
         # One row per COVER, not per table — choices differ per person, and
         # split-by-seat payment already exists.
@@ -6145,6 +6161,74 @@ def menu_vat_rate(conn, item):
     return tax_rate(conn, "vat_alcohol" if course in ALCOHOL_COURSES else "vat_food")
 
 
+# ---------------------------------------------------------------------------
+# Beverage pours: glass, carafe, half-bottle, bottle, out of one stock.
+#
+# Forty wines sold two ways was eighty menu_items rows before this — one price
+# to change per pour size, and eighty places for a price to drift out of step
+# with the bottle it comes from. The wine itself is the PARENT and holds the
+# stock link; each pour is a CHILD that only holds its own size and price.
+# What it depletes is computed from the two, never typed, because a typed
+# number silently stops matching the bottle the moment either changes.
+# ---------------------------------------------------------------------------
+
+# The trade yield off a standard 75cl bottle is 5 glasses at 150ml, not 6 —
+# and 15-20% is lost to tasting, spillage, corked or oxidised bottles. Pour
+# depletion that ignores loss understates consumption on every bottle opened.
+STANDARD_POUR_LOSS_HINT = 15
+
+SERVE_SIZES = {
+    "glass": "Glass", "carafe": "Carafe", "half_bottle": "Half bottle",
+    "bottle": "Bottle", "double": "Double",
+}
+
+
+def pour_stock_qty(serve_volume_ml, container_ml, pour_loss_percent=0):
+    """How much of the parent bottle one pour actually takes.
+
+    A 150ml glass off a 750ml bottle is not 0.20 of it — the loss the trade
+    actually sees (tasting, spillage, a corked bottle) means it is closer to
+    0.235. Computed here so correcting the loss percentage moves every pour
+    of that wine at once, rather than needing eighty numbers retyped.
+    """
+    if not serve_volume_ml or not container_ml:
+        return 1.0
+    loss = max(0.0, min(90.0, pour_loss_percent or 0)) / 100.0
+    return round((serve_volume_ml / container_ml) / max(0.01, 1 - loss), 4)
+
+
+def add_beverage_pour(conn, parent_id, *, serve_size, serve_volume_ml, price,
+                      user_id=None):
+    """Add one pour size to a wine already on the standing list.
+
+    The parent supplies the stock link and the bottle volume; the child
+    supplies only its own size and price. Course, allergens and VAT are
+    inherited — a glass of a red is still a red.
+    """
+    parent = conn.execute("SELECT * FROM menu_items WHERE id = ?", (parent_id,)).fetchone()
+    if not parent:
+        return None
+    qty = pour_stock_qty(serve_volume_ml, parent["container_ml"], parent["pour_loss_percent"])
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO menu_items (name, category, course, price, active, available,
+           sold_in_pos, always_available, allergens, vat_rate, stock_item_id,
+           stock_qty_per_unit, parent_item_id, serve_size, serve_volume_ml, sort_order,
+           created_at)
+           VALUES (?,?,?,?,1,1,1,?,?,?,?,?,?,?,?,?,?)""",
+        (f"{parent['name']} — {SERVE_SIZES.get(serve_size, serve_size)}", parent["category"],
+         parent["course"], price, parent["always_available"], parent["allergens"],
+         parent["vat_rate"], parent["stock_item_id"], qty, parent_id, serve_size,
+         serve_volume_ml, parent["sort_order"] or 0, now))
+    return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def beverage_pours_for(conn, parent_id):
+    return conn.execute(
+        "SELECT * FROM menu_items WHERE parent_item_id = ? ORDER BY serve_volume_ml",
+        (parent_id,)).fetchall()
+
+
 def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=True):
     """What the till can sell, grouped by course in service order.
 
@@ -6184,6 +6268,11 @@ def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=T
     standing = conn.execute(
         """SELECT * FROM menu_items WHERE active = 1 AND sold_in_pos = 1
            AND (? = 0 OR always_available = 1)
+           -- A wine with pours (glass, bottle...) is not itself a sellable
+           -- button — it has no size. Only its children, and anything with
+           -- no children at all, are offered.
+           AND id NOT IN (SELECT DISTINCT parent_item_id FROM menu_items
+                          WHERE parent_item_id IS NOT NULL)
            ORDER BY sort_order, name""", (1 if card else 0,)).fetchall()
     for r in standing:
         if not include_unavailable and not r["available"]:
@@ -19840,11 +19929,18 @@ def admin_restaurant_menu():
     stock_items = conn.execute(
         "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name").fetchall()
     rates = {i["id"]: menu_vat_rate(conn, i) for i in items}
+    pours = {}
+    for i in items:
+        if i["parent_item_id"]:
+            pours.setdefault(i["parent_item_id"], []).append(i)
     conn.close()
 
     off = [i for i in items if not i["available"]]
+    # A pour is shown nested under its wine, not as its own row in the list —
+    # it has no independent identity worth searching or filtering on.
+    top_level = [i for i in items if not i["parent_item_id"]]
     lv = list_view(
-        items, request.args,
+        top_level, request.args,
         search=["name", "description", "allergens", "dietary_tags"],
         search_hint="Search dish, description or allergen",
         facets=[
@@ -19879,7 +19975,56 @@ def admin_restaurant_menu():
     return render_template(
         "admin_restaurant_menu.html", by_course=by_course, lv=lv, off=off,
         courses=MENU_COURSES, allergens=ALLERGENS, stock_items=stock_items,
-        vat_rates=rates)
+        vat_rates=rates, pours=pours, serve_sizes=SERVE_SIZES,
+        pour_loss_hint=STANDARD_POUR_LOSS_HINT)
+
+
+@app.route("/admin/restaurant/menu/<int:item_id>/pour", methods=["POST"])
+@owner_required
+def add_menu_pour(item_id):
+    """Add a serve size — glass, carafe, half-bottle — to a wine.
+
+    The parent supplies the stock link and the bottle volume; this supplies
+    only the size and the price. What it depletes is computed from the two,
+    which is the whole reason forty wines sold two ways is no longer eighty
+    hand-maintained rows.
+    """
+    serve_size = request.form.get("serve_size", "")
+    if serve_size not in SERVE_SIZES:
+        abort(400)
+
+    def number(field):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    volume, price = number("serve_volume_ml"), number("price")
+    conn = get_db()
+    parent = conn.execute("SELECT * FROM menu_items WHERE id = ?", (item_id,)).fetchone()
+    if not parent:
+        conn.close()
+        abort(404)
+    # arrêté du 27 mars 1987: wine by the glass, in a pichet or a carafe must
+    # show its volume. Refused rather than saved half-right, because the
+    # printed card is generated from this and would carry the omission.
+    if (parent["course"] or "") == "wine" and not volume:
+        conn.close()
+        flash("Wine by the glass or carafe has to show its volume — French law "
+              "requires it on the card.", "error")
+        return redirect(url_for("admin_restaurant_menu"))
+    if not parent["container_ml"]:
+        conn.close()
+        flash(f"Set the bottle size on {parent['name']} first, or a pour can't know "
+              "how much of it it takes.", "error")
+        return redirect(url_for("admin_restaurant_menu"))
+    add_beverage_pour(conn, item_id, serve_size=serve_size, serve_volume_ml=volume,
+                      price=price or 0, user_id=session.get("user_id"))
+    conn.commit()
+    conn.close()
+    flash(f"{SERVE_SIZES[serve_size]} added to {parent['name']}.", "success")
+    return redirect(url_for("admin_restaurant_menu"))
 
 
 @app.route("/admin/restaurant/menu/new", methods=["POST"])
@@ -19927,6 +20072,16 @@ def new_menu_item():
         vat = None
     sold_in_pos = 1 if request.form.get("sold_in_pos") else 0
 
+    def _bev(field):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    container_ml = _bev("container_ml")
+    pour_loss = _bev("pour_loss_percent") or 0
+
     conn = get_db()
     max_order = conn.execute(
         "SELECT COALESCE(MAX(sort_order), -1) AS m FROM menu_items WHERE course = ?", (course,)
@@ -19934,11 +20089,11 @@ def new_menu_item():
     conn.execute(
         """INSERT INTO menu_items (name, description, category, course, dietary_tags, allergens,
            price, vat_rate, prep_minutes, stock_item_id, stock_qty_per_unit, sold_in_pos,
-           available, sort_order, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)""",
+           container_ml, pour_loss_percent, available, sort_order, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)""",
         (name, description or None, category, course, dietary_tags or None, allergens or None,
-         price, vat, prep, stock_item_id, stock_qty, sold_in_pos, max_order + 1,
-         datetime.now(timezone.utc).isoformat()),
+         price, vat, prep, stock_item_id, stock_qty, sold_in_pos, container_ml, pour_loss,
+         max_order + 1, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()
@@ -19991,14 +20146,37 @@ def edit_menu_item(item_id):
     except ValueError:
         vat = None
 
+    def _bev(field, fallback=None):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else fallback
+        except ValueError:
+            return fallback
+
+    # Fall back to what the row already holds, so a form that omits these
+    # fields does not silently unset a bottle size and leave every pour of
+    # that wine depleting a whole unit.
+    container_ml = _bev("container_ml", item["container_ml"])
+    pour_loss = _bev("pour_loss_percent", item["pour_loss_percent"]) or 0
+
     conn.execute(
         """UPDATE menu_items SET name=?, description=?, category=?, course=?, dietary_tags=?,
            allergens=?, price=?, vat_rate=?, prep_minutes=?, stock_item_id=?,
-           stock_qty_per_unit=?, sold_in_pos=? WHERE id=?""",
+           stock_qty_per_unit=?, sold_in_pos=?, container_ml=?, pour_loss_percent=?
+           WHERE id=?""",
         (name, description or None, category, course, dietary_tags or None,
          allergens or None, price, vat, prep, stock_item_id, stock_qty,
-         1 if request.form.get("sold_in_pos") else 0, item_id),
+         1 if request.form.get("sold_in_pos") else 0, container_ml, pour_loss, item_id),
     )
+    # Changing the bottle size or the loss has to move every pour of that wine
+    # at once — that is the entire point of computing depletion rather than
+    # typing it into eighty rows.
+    for pour in conn.execute("SELECT * FROM menu_items WHERE parent_item_id = ?",
+                             (item_id,)).fetchall():
+        conn.execute(
+            "UPDATE menu_items SET stock_item_id = ?, stock_qty_per_unit = ? WHERE id = ?",
+            (stock_item_id,
+             pour_stock_qty(pour["serve_volume_ml"], container_ml, pour_loss), pour["id"]))
     conn.commit()
     conn.close()
     flash("Menu item updated.", "success")

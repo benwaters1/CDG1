@@ -52,7 +52,25 @@
     <label class="field-label">How much per serving</label>
     <input type="text" name="stock_qty_per_unit" inputmode="decimal"
            value="{{ item['stock_qty_per_unit'] if item else 1 }}">
-    <span class="field-hint">A glass of wine might be 0.15 of a bottle.</span>
+    <span class="field-hint">1 = one whole stock unit. For wine sold by the glass,
+      set the bottle size below instead and let each pour work it out.</span>
+  </div>
+  <div>
+    <label class="field-label">Bottle size (ml)</label>
+    <input type="text" name="container_ml" inputmode="decimal" placeholder="750"
+           value="{{ item['container_ml'] if item and item['container_ml'] else '' }}">
+    <span class="field-hint">Set this on the wine, then add glass and bottle pours to it.</span>
+  </div>
+  <div>
+    <label class="field-label">Pour loss (%)</label>
+    <input type="text" name="pour_loss_percent" inputmode="decimal"
+           placeholder="{{ pour_loss_hint if pour_loss_hint is defined else 15 }}"
+           value="{{ item['pour_loss_percent'] if item and item['pour_loss_percent'] else '' }}">
+    {# The trade gets 5 x 150ml from a 75cl bottle, not 6 — tasting, spillage,
+       corked and oxidised bottles. Left at 0 unless set, because assuming a
+       loss nobody chose would inflate every depletion figure. #}
+    <span class="field-hint">The trade typically loses 15–20% to tasting, spillage
+      and corked bottles. Left at 0 until you set it.</span>
   </div>
   <div>
     <label class="field-label">Dietary (free text)</label>
