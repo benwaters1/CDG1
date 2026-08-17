@@ -6624,6 +6624,39 @@ def link_dish_to_catalogue(conn, dish_name):
 
 POS_REGISTER_ID = os.environ.get("POS_REGISTER_ID", "CAISSE-1")
 
+# A service does not end at midnight. The last table of Tuesday's dinner is
+# still Tuesday's, whether it settles at 23:50 or at half past one.
+#
+# Everything here stores UTC, so the day boundary was falling at UTC midnight —
+# 02:00 in a French summer, 01:00 in winter. That is not a decision anybody
+# made, and past it a single service split across two days: the late tables
+# landed on tomorrow's takings, tomorrow's closure, and went looking for
+# tomorrow's menu. Five in the morning is the ordinary hospitality convention
+# and is far enough past any service to be safe.
+POS_SERVICE_ROLLOVER_HOUR = int(os.environ.get("POS_SERVICE_ROLLOVER_HOUR", "5"))
+
+
+def service_day(when=None):
+    """The date a moment belongs to for the restaurant's purposes.
+
+    Local time, then wound back past the rollover — so 01:30 on Wednesday is
+    still Tuesday's service, and 10:00 on Wednesday is Wednesday's.
+    """
+    when = when or datetime.now(timezone.utc)
+    if isinstance(when, str):
+        when = parse_datetime_iso(when)
+        if not when:
+            return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    local = when.astimezone(LOCAL_TZ)
+    return (local - timedelta(hours=POS_SERVICE_ROLLOVER_HOUR)).date()
+
+
+def service_day_iso(when=None):
+    day = service_day(when)
+    return day.isoformat() if day else None
+
 # The events worth journalling: anything that moves money or changes the bill.
 # Kitchen state (ready, served) is deliberately absent — it is not a financial
 # event, and a journal that logs everything is one nobody reads.
@@ -6761,10 +6794,16 @@ def pos_close_period(conn, kind, period, user_id=None):
         return existing, False
 
     start, end = pos_period_bounds(kind, period)
-    orders = conn.execute(
+    # Bucketed by service day, the same as the payments below and the same as
+    # pos_day_report — a closure whose tickets and takings are counted two
+    # different ways is a closure that will not reconcile.
+    orders = [o for o in conn.execute(
         """SELECT * FROM pos_orders
-           WHERE status = 'paid' AND date(COALESCE(closed_at, opened_at)) BETWEEN ? AND ?""",
+           WHERE status = 'paid'
+             AND date(COALESCE(closed_at, opened_at))
+                 BETWEEN date(?, '-1 day') AND date(?, '+1 day')""",
         (start, end)).fetchall()
+        if start <= (service_day_iso(o["closed_at"] or o["opened_at"]) or "") <= end]
 
     gross = discount = service = 0.0
     covers = 0
@@ -6780,9 +6819,16 @@ def pos_close_period(conn, kind, period, user_id=None):
             for k in ("gross", "vat", "net"):
                 acc[k] = round(acc[k] + b[k], 2)
 
-    methods = {r["method"]: round(r["t"], 2) for r in conn.execute(
-        """SELECT method, COALESCE(SUM(amount), 0) AS t FROM pos_payments
-           WHERE date(created_at) BETWEEN ? AND ? GROUP BY method""", (start, end)).fetchall()}
+    # Payments are bucketed by the same service day as the tabs, or the
+    # closure's takings and its tickets disagree for every late table.
+    methods = {}
+    for r in conn.execute(
+            """SELECT method, amount, created_at FROM pos_payments
+               WHERE date(created_at) BETWEEN date(?, '-1 day') AND date(?, '+1 day')""",
+            (start, end)).fetchall():
+        on = service_day_iso(r["created_at"])
+        if on and start <= on <= end:
+            methods[r["method"]] = round(methods.get(r["method"], 0) + (r["amount"] or 0), 2)
     taken = round(sum(methods.values()), 2)
 
     first_seq = conn.execute(
@@ -6973,9 +7019,17 @@ def pos_day_report(conn, on_date):
     orders = conn.execute(
         # Settled tabs only. A merged one holds nothing and would count its
         # covers a second time.
+        #
+        # Fetched a day either side and then filtered on the service day,
+        # because the boundary is 05:00 local and moves with daylight saving —
+        # SQL date() over a UTC column cannot express that.
         """SELECT * FROM pos_orders
-           WHERE date(COALESCE(closed_at, opened_at)) = ? AND status = 'paid'
-           ORDER BY closed_at""", (day,)).fetchall()
+           WHERE status = 'paid'
+             AND date(COALESCE(closed_at, opened_at))
+                 BETWEEN date(?, '-1 day') AND date(?, '+1 day')
+           ORDER BY closed_at""", (day, day)).fetchall()
+    orders = [o for o in orders
+              if service_day_iso(o["closed_at"] or o["opened_at"]) == day]
     by_method, gross, vat, covers, service, discounts = {}, 0.0, 0.0, 0, 0.0, 0.0
     for o in orders:
         bill = pos_bill(conn, o["id"])
@@ -11522,7 +11576,9 @@ def pos_home():
     food, which has ordered nothing yet, and which is ready for its bill.
     """
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    # The service's own day, not the calendar's — at one in the morning the
+    # floor is still working tonight's covers and tonight's bookings.
+    today = service_day()
     orders = conn.execute(
         "SELECT pos_orders.*, users.name AS opened_by FROM pos_orders "
         "LEFT JOIN users ON users.id = pos_orders.opened_by_user_id "
@@ -12336,7 +12392,7 @@ def pos_day():
     changed what yesterday had taken, and a cash-up that answers differently
     on Tuesday than it did on Monday is not a cash-up.
     """
-    on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    on = parse_date(request.args.get("date", "")) or service_day()
     conn = get_db()
     closure = pos_closure_for(conn, "day", on.isoformat())
     report = pos_day_report(conn, on)
@@ -12374,8 +12430,8 @@ def pos_day():
 @owner_required
 def pos_close_day():
     """Close the day off. After this the figure cannot move."""
-    on = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
-    if on >= datetime.now(timezone.utc).date() and request.form.get("confirm") != "yes":
+    on = parse_date(request.form.get("date", "")) or service_day()
+    if on >= service_day() and request.form.get("confirm") != "yes":
         flash("That day isn't over. Tick the box if you really mean to close it now.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
     conn = get_db()
