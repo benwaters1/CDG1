@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ menu['title'] or menu['service_date'] }}{% endblock %}
+{% block content %}
+
+{#
+  The A4 card, printed from the same save that fed the till. Re-keying the card
+  into a separate document is the commonest reason these systems get abandoned,
+  so one entry produces both.
+
+  The mentions at the foot are not decoration: the arrêté du 27 mars 1987
+  requires prices to be shown service compris, and whether drink is included.
+#}
+
+<div class="card-print">
+  <div class="card-head">
+    <p class="card-eyebrow">Château de Gudanes</p>
+    <h1>{{ menu['formule_label'] or menu['title'] or 'La Table' }}</h1>
+    <p class="card-date">{{ menu['service_date'] }}</p>
+    {% if menu['formule_price'] %}
+    <p class="card-price">{{ '%.2f'|format(menu['formule_price'])|replace('.', ',') }} €</p>
+    {% endif %}
+  </div>
+
+  {% for course, label in courses.items() %}
+  {% set on_card = dishes.get(course, []) %}
+  {% if on_card %}
+  <div class="card-course">
+    <h2>{{ label }}</h2>
+    {% for d in on_card %}
+    <div class="card-dish">
+      <p class="card-dish-name">
+        {{ d['name'] }}
+        {%- if d['supplement'] %} <span class="card-supp">supplément {{ '%.2f'|format(d['supplement'])|replace('.', ',') }} €</span>{% endif %}
+        {%- if d['carte_price'] and not menu['formule_price'] %} <span class="card-dish-price">{{ '%.2f'|format(d['carte_price'])|replace('.', ',') }} €</span>{% endif %}
+      </p>
+      {% if d['description'] %}<p class="card-dish-desc">{{ d['description'] }}</p>{% endif %}
+      {% if d['allergens'] %}
+      <p class="card-dish-allergens">{% for a in d['allergens'].split(',') %}{{ allergens.get(a, a) }}{{ ' · ' if not loop.last }}{% endfor %}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% if wines %}
+  <div class="card-course">
+    <h2>La cave</h2>
+    {% for w in wines %}
+    <div class="card-dish">
+      <p class="card-dish-name">
+        {{ w['name'] }}
+        <span class="card-dish-price">{{ '%.2f'|format(w['price'] or 0)|replace('.', ',') }} €</span>
+      </p>
+      {% if w['description'] %}<p class="card-dish-desc">{{ w['description'] }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <p class="card-foot">
+    Prix nets, service compris. Boisson non comprise sauf mention contraire.<br>
+    Nos plats peuvent contenir des allergènes — merci de nous signaler toute intolérance.
+  </p>
+
+  <button type="button" class="btn-primary card-print-btn" onclick="window.print()">Print</button>
+</div>
+
+<style>
+.card-print{
+  max-width:600px; margin:0 auto; background:var(--surface);
+  border:1px solid var(--parchment-line); border-radius:10px; padding:44px 52px;
+}
+.card-head{ text-align:center; margin-bottom:30px; }
+.card-eyebrow{
+  font-size:11px; letter-spacing:.22em; text-transform:uppercase;
+  color:var(--steel); margin:0 0 10px;
+}
+.card-head h1{ margin:0 0 6px; font-size:26px; }
+.card-date{ font-size:12.5px; color:var(--steel); margin:0; }
+.card-price{ font-size:19px; margin:12px 0 0; }
+.card-course{ margin-bottom:26px; }
+.card-course h2{
+  font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--steel);
+  text-align:center; margin:0 0 14px; padding-bottom:6px;
+  border-bottom:1px solid var(--parchment-line);
+}
+.card-dish{ margin-bottom:14px; text-align:center; }
+.card-dish-name{ margin:0; font-size:15.5px; line-height:1.45; }
+.card-dish-price{ color:var(--steel); }
+.card-supp{ font-size:12px; color:var(--steel); }
+.card-dish-desc{ margin:2px 0 0; font-size:13px; color:var(--steel); font-style:italic; }
+.card-dish-allergens{
+  margin:3px 0 0; font-size:10.5px; letter-spacing:.05em; text-transform:uppercase;
+  color:var(--steel); opacity:.8;
+}
+.card-foot{
+  margin-top:32px; padding-top:14px; border-top:1px solid var(--parchment-line);
+  font-size:10.5px; color:var(--steel); text-align:center; line-height:1.7;
+}
+@media print{
+  .g-top, .page-head, .card-print-btn, nav, header, footer{ display:none !important; }
+  .card-print{ border:none; max-width:none; padding:0; }
+}
+</style>
+
+{% endblock %}

@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Card — {{ on.strftime('%d %B') }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Tonight's card</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <a href="{{ url_for('menu_day', date=prev_day.isoformat(), service=service) }}" class="btn-mini">‹ {{ prev_day.strftime('%a %d') }}</a>
+    <strong>{{ on.strftime('%A %d %B') }}</strong>
+    <a href="{{ url_for('menu_day', date=next_day.isoformat(), service=service) }}" class="btn-mini">{{ next_day.strftime('%a %d') }} ›</a>
+    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">Standing list</a>
+    <a href="{{ url_for('pos_home') }}" class="btn-ghost">Service</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The card for one date. Published once and kept, so what you served on any night has an answer
+  and tomorrow's card doesn't overwrite tonight's. Wines and drinks live on the
+  <a href="{{ url_for('admin_restaurant_menu') }}">standing list</a> ({{ standing }} item{{ '' if standing == 1 else 's' }})
+  and appear automatically under whatever is on.
+</p>
+
+{% if not menu %}
+  <div class="empty-state" style="margin-bottom:18px;">
+    Nothing for {{ on.strftime('%d %B') }} yet.
+    {% if recent %}Start one below, or copy a recent card.{% else %}Start one below.{% endif %}
+  </div>
+
+  <form method="post" action="{{ url_for('new_menu_day') }}" class="detail-card" style="max-width:680px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="date" value="{{ on.isoformat() }}">
+    <input type="hidden" name="service" value="{{ service }}">
+    <h3 style="margin-top:0;">Start the card</h3>
+    <div class="refund-fields">
+      <div><label class="field-label">Title (optional)</label><input type="text" name="title" placeholder="Menu du {{ on.strftime('%d %B') }}"></div>
+      <div><label class="field-label">Set menu name</label><input type="text" name="formule_label" placeholder="Menu Dégustation"></div>
+      <div><label class="field-label">Set price (€)</label><input type="text" name="formule_price" inputmode="decimal" placeholder="65"></div>
+    </div>
+    <p class="field-hint">Leave the price blank if tonight is à la carte.</p>
+    <button type="submit" class="btn-primary" style="margin-top:8px;">Start</button>
+  </form>
+
+  {% if recent %}
+  <h2 class="section-heading">Or copy a recent card</h2>
+  <div class="doc-list" style="max-width:680px;">
+    {% for r in recent %}
+    <div class="doc-row">
+      <span style="flex:1;">
+        <strong>{{ r['service_date'] }}</strong>
+        {% if r['title'] %} — {{ r['title'] }}{% endif %}
+        {% if r['formule_price'] %}<span class="upload-hint"> · €{{ '%.2f'|format(r['formule_price']) }}</span>{% endif %}
+      </span>
+      <form method="post" action="{{ url_for('copy_menu_day', menu_id=r['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="to" value="{{ on.isoformat() }}">
+        <button type="submit" class="btn-mini">Copy to {{ on.strftime('%d %b') }}</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+{% else %}
+
+  <div class="menu-status {{ 'is-live' if menu['status'] == 'published' }}">
+    {% if menu['status'] == 'published' %}
+      <strong>Live on the POS</strong> — published {{ local_datetime_str(menu['published_at']) }}.
+      Changing it now means copying it to a new draft; the card that was served stays as it was.
+    {% else %}
+      <strong>Draft — not on the POS yet.</strong> The floor still sees the last published card
+      until you publish this one.
+    {% endif %}
+  </div>
+
+  <form method="post" action="{{ url_for('edit_menu_day', menu_id=menu['id']) }}"
+        class="detail-card" style="max-width:760px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div><label class="field-label">Title</label><input type="text" name="title" value="{{ menu['title'] or '' }}"></div>
+      <div><label class="field-label">Set menu name</label><input type="text" name="formule_label" value="{{ menu['formule_label'] or '' }}" placeholder="Menu Dégustation"></div>
+      <div><label class="field-label">Set price (€)</label><input type="text" name="formule_price" inputmode="decimal" value="{{ '%.2f'|format(menu['formule_price']) if menu['formule_price'] else '' }}"></div>
+      <div style="grid-column:1 / -1;"><label class="field-label">Note for the floor</label><input type="text" name="notes" value="{{ menu['notes'] or '' }}"></div>
+    </div>
+    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+      <button type="submit" class="btn-mini" {{ 'disabled' if menu['status'] == 'published' }}>Save</button>
+      <a href="{{ url_for('print_menu_day', menu_id=menu['id']) }}" class="btn-ghost" target="_blank">Print the card</a>
+      {% if menu['status'] != 'published' %}
+      <button type="submit" class="btn-primary" style="margin-top:0;"
+              formaction="{{ url_for('publish_menu_day', menu_id=menu['id']) }}" formnovalidate>
+        Publish to the POS
+      </button>
+      {% endif %}
+    </div>
+  </form>
+
+  {% for course, label in courses.items() %}
+  {% set on_card = dishes.get(course, []) %}
+  {% if on_card or menu['status'] != 'published' %}
+  <h2 class="section-heading">{{ label }}</h2>
+  {% if on_card %}
+  <div class="doc-list" style="max-width:860px;">
+    {% for d in on_card %}
+    <div class="doc-row {{ 'is-off' if not d['available'] }}" style="align-items:flex-start; flex-direction:column; gap:3px;">
+      <div style="display:flex; width:100%; gap:10px; align-items:baseline; flex-wrap:wrap;">
+        <strong style="flex:1;">{{ d['name'] }}</strong>
+        {% if d['carte_price'] %}<span>€{{ '%.2f'|format(d['carte_price']) }}</span>{% endif %}
+        {% if d['supplement'] %}<span class="mini-status status-pending">+€{{ '%.2f'|format(d['supplement']) }}</span>{% endif %}
+        {% if not d['in_formule'] %}<span class="mini-status status-inactive">à la carte only</span>{% endif %}
+        {% if not d['available'] %}<span class="mini-status status-declined">off{% if d['unavailable_note'] %} — {{ d['unavailable_note'] }}{% endif %}</span>{% endif %}
+        {% if d['menu_item_id'] %}<span class="upload-hint" title="Served before — its sales history carries over">seen before</span>{% endif %}
+        <form method="post" action="{{ url_for('menu_dish_availability', dish_id=d['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if d['available'] %}<input type="text" name="note" placeholder="why" style="width:110px; margin:0;">{% endif %}
+          <button type="submit" class="btn-mini">{{ 'Back on' if not d['available'] else '86' }}</button>
+        </form>
+        {% if menu['status'] != 'published' %}
+        <form method="post" action="{{ url_for('delete_menu_dish', dish_id=d['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="doc-delete">×</button>
+        </form>
+        {% endif %}
+      </div>
+      {% if d['description'] %}<span class="upload-hint">{{ d['description'] }}</span>{% endif %}
+      {% if d['allergens'] %}
+      <span class="upload-hint">Contains: {% for a in d['allergens'].split(',') %}{{ allergens.get(a, a) }}{{ ', ' if not loop.last }}{% endfor %}</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if menu['status'] != 'published' %}
+  <form method="post" action="{{ url_for('add_menu_dish', menu_id=menu['id']) }}"
+        class="dish-add" style="max-width:860px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="course" value="{{ course }}">
+    <div class="refund-fields">
+      <div style="grid-column:1 / -1;"><label class="field-label">Dish</label><input type="text" name="name" placeholder="Truite de l'Ariège, beurre noisette"></div>
+      <div style="grid-column:1 / -1;"><label class="field-label">Description</label><input type="text" name="description"></div>
+      <div><label class="field-label">À la carte (€)</label><input type="text" name="carte_price" inputmode="decimal"></div>
+      <div><label class="field-label">Supplement (€)</label><input type="text" name="supplement" inputmode="decimal" placeholder="0"></div>
+      <div>
+        <label class="field-label">In the set menu</label>
+        <label style="display:flex; gap:7px; align-items:center; font-size:14px;">
+          <input type="checkbox" name="carte_only" value="1"> À la carte only
+        </label>
+      </div>
+    </div>
+    <p class="field-label" style="margin-top:10px;">Allergens</p>
+    <div class="amenity-grid">
+      {% for key, alabel in allergens.items() %}
+      <label class="amenity"><input type="checkbox" name="allergens" value="{{ key }}"> {{ alabel }}</label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:10px;">Add to {{ label|lower }}</button>
+  </form>
+  {% endif %}
+  {% endif %}
+  {% endfor %}
+
+  <h2 class="section-heading">Copy this card forward</h2>
+  <form method="post" action="{{ url_for('copy_menu_day', menu_id=menu['id']) }}" class="search-bar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="field-label">To</label>
+      <input type="date" name="to" value="{{ next_day.isoformat() }}">
+    </div>
+    <button type="submit" class="btn-mini">Copy as a draft</button>
+  </form>
+{% endif %}
+
+<style>
+.menu-status{
+  background:var(--parchment); border-left:4px solid var(--steel);
+  border-radius:8px; padding:10px 14px; margin:0 0 16px; font-size:13.5px; line-height:1.6;
+}
+.menu-status.is-live{ border-left-color:var(--gold-soft); }
+.doc-row.is-off{ opacity:.6; }
+.dish-add{
+  background:var(--surface); border:1px dashed var(--parchment-line);
+  border-radius:11px; padding:14px 16px; margin-bottom:18px;
+}
+</style>
+
+{% endblock %}

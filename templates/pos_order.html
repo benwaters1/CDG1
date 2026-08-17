@@ -80,7 +80,10 @@
         {% set out = (level is not none and level <= 0) or not m['available'] %}
         <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}" class="till-cell">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="menu_item_id" value="{{ m['id'] }}">
+          {# A dish off tonight's card, or an item from the standing list —
+             the till does not care which, but the line has to record it. #}
+          {% if m['menu_dish_id'] %}<input type="hidden" name="menu_dish_id" value="{{ m['menu_dish_id'] }}">{% endif %}
+          <input type="hidden" name="menu_item_id" value="{{ m['id'] or '' }}">
           <input type="hidden" name="seat_number" class="seat-input" value="">
           {# The note rides with the next tap, exactly as the seat does. Without
              this the only way to say "no butter" was the off-menu form, which

@@ -2256,6 +2256,64 @@ def init_db():
         ("pos_orders_reopened_at", "ALTER TABLE pos_orders ADD COLUMN reopened_at TEXT"),
         ("pos_orders_deposit_credit", "ALTER TABLE pos_orders ADD COLUMN deposit_credit REAL NOT NULL DEFAULT 0"),
 
+        # ---- Dated menus ---------------------------------------------------
+        ("menus", """CREATE TABLE IF NOT EXISTS menus (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            service_date TEXT NOT NULL,
+            service TEXT NOT NULL DEFAULT 'dinner' CHECK(service IN ('lunch','dinner')),
+            title TEXT,
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK(status IN ('draft','published','archived')),
+            formule_price REAL,
+            formule_label TEXT,
+            source TEXT NOT NULL DEFAULT 'manual'
+                CHECK(source IN ('manual','pdf','template','paste','copy')),
+            source_file TEXT,
+            notes TEXT,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            published_at TEXT
+        )"""),
+        ("menus_date_idx",
+         "CREATE INDEX IF NOT EXISTS idx_menus_date ON menus(service_date, service, status)"),
+
+        # A dish on one night's card. `menu_item_id` links back to the standing
+        # catalogue when the dish recurs, so "Truite des Pyrénées" accumulates
+        # real sales history across every summer rather than becoming a new
+        # thing each night. A one-off exists only here.
+        ("menu_dishes", """CREATE TABLE IF NOT EXISTS menu_dishes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_id INTEGER NOT NULL REFERENCES menus(id) ON DELETE CASCADE,
+            course TEXT NOT NULL DEFAULT 'main',
+            menu_item_id INTEGER REFERENCES menu_items(id) ON DELETE SET NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            allergens TEXT,
+            carte_price REAL,
+            supplement REAL NOT NULL DEFAULT 0,
+            in_formule INTEGER NOT NULL DEFAULT 1,
+            available INTEGER NOT NULL DEFAULT 1,
+            unavailable_note TEXT,
+            vat_rate REAL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )"""),
+        ("menu_dishes_menu_idx",
+         "CREATE INDEX IF NOT EXISTS idx_menu_dishes_menu ON menu_dishes(menu_id, course)"),
+
+        # Wines and drinks change far less often than the food, so they live in
+        # the standing catalogue and are merged under whatever card is on
+        # tonight. This is the flag that says so.
+        ("menu_items_always_available",
+         "ALTER TABLE menu_items ADD COLUMN always_available INTEGER NOT NULL DEFAULT 0"),
+
+        # Which night a tab belongs to. A tab opened at 23:50 and settled at
+        # 00:10 belongs to the service it started in, not to two of them.
+        ("pos_orders_service_date", "ALTER TABLE pos_orders ADD COLUMN service_date TEXT"),
+        ("pos_lines_menu_dish_id",
+         "ALTER TABLE pos_order_lines ADD COLUMN menu_dish_id INTEGER "
+         "REFERENCES menu_dishes(id) ON DELETE SET NULL"),
+
         # ---- The journal and the closures ---------------------------------
         # Append-only, hash-chained. Every row carries the hash of the row
         # before it, so altering or removing anything historic stops the chain
@@ -6065,20 +6123,52 @@ def menu_vat_rate(conn, item):
     return tax_rate(conn, "vat_alcohol" if course in ALCOHOL_COURSES else "vat_food")
 
 
-def pos_menu(conn, *, include_unavailable=True):
-    """The sellable menu, grouped by course in service order.
+def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=True):
+    """What the till can sell, grouped by course in service order.
 
-    Items the kitchen has 86'd stay in the list rather than vanishing — a
-    waiter needs to see that the duck is off, not be quietly unable to find it.
+    Two sources merged: tonight's dated card for the food, and the standing
+    catalogue for everything that does not change nightly — wine, drinks,
+    coffee. If no card is published for the date, the standing catalogue is
+    still sellable, so a night with no menu entered is a thin till rather than
+    an empty one.
+
+    Dishes the kitchen has 86'd stay in the list rather than vanishing — a
+    waiter needs to see that the duck is off, not be quietly unable to find it
+    and assume they have misremembered.
     """
-    rows = conn.execute(
-        """SELECT * FROM menu_items WHERE active = 1 AND sold_in_pos = 1
-           ORDER BY sort_order, name""").fetchall()
     grouped = {}
-    for r in rows:
+    card = menu_for_date(conn, service_date, service) if service_date else None
+
+    if card:
+        for course, dishes in menu_dishes_for(
+                conn, card["id"], include_unavailable=include_unavailable).items():
+            # Shaped like a menu_items row so the till template does not have
+            # to know which of the two it is looking at.
+            for d in dishes:
+                grouped.setdefault(course, []).append({
+                    "id": d["menu_item_id"], "menu_dish_id": d["id"], "name": d["name"],
+                    "description": d["description"], "price": d["carte_price"] or 0,
+                    "course": course, "allergens": d["allergens"],
+                    "available": d["available"], "unavailable_note": d["unavailable_note"],
+                    "vat_rate": d["vat_rate"], "stock_item_id": None,
+                    "stock_qty_per_unit": 1, "from_card": True,
+                    "supplement": d["supplement"],
+                })
+
+    # With a card up, the standing list contributes only what genuinely stands
+    # — the wine, the drinks, the coffee. Without one, it contributes
+    # everything, so a night nobody entered a menu for is a thin till rather
+    # than an empty one.
+    standing = conn.execute(
+        """SELECT * FROM menu_items WHERE active = 1 AND sold_in_pos = 1
+           AND (? = 0 OR always_available = 1)
+           ORDER BY sort_order, name""", (1 if card else 0,)).fetchall()
+    for r in standing:
         if not include_unavailable and not r["available"]:
             continue
-        grouped.setdefault(r["course"] or "main", []).append(r)
+        grouped.setdefault(r["course"] or "main", []).append(dict(
+            r, menu_dish_id=None, from_card=False, supplement=0))
+
     return {c: grouped[c] for c in COURSE_ORDER if c in grouped}
 
 
@@ -6140,6 +6230,123 @@ def pos_bill(conn, order_id):
         "unsent": [l for l in live if l["state"] == "new"],
         "covers": order["covers"] or 1,
     }
+
+
+# ---------------------------------------------------------------------------
+# Dated menus.
+#
+# The standing catalogue holds what recurs — wine, drinks, the dishes that come
+# back. Tonight's card is a dated menu, published once and never edited after,
+# so "what did we serve on 10 August" has an answer and tomorrow's card does
+# not destroy tonight's.
+# ---------------------------------------------------------------------------
+
+def menu_for_date(conn, service_date, service="dinner"):
+    """The published card for a service, or None.
+
+    Drafts are deliberately invisible here: a half-finished card must never
+    reach the till, and the floor should see last night's rather than a
+    partial one.
+    """
+    if hasattr(service_date, "isoformat"):
+        service_date = service_date.isoformat()
+    return conn.execute(
+        """SELECT * FROM menus WHERE service_date = ? AND service = ? AND status = 'published'
+           ORDER BY published_at DESC LIMIT 1""", (service_date, service)).fetchone()
+
+
+def menu_dishes_for(conn, menu_id, *, include_unavailable=True):
+    """Tonight's dishes, grouped by course in service order.
+
+    A dish the kitchen has taken off stays in the list rather than vanishing —
+    a waiter needs to see that the duck is off, not be quietly unable to find
+    it and assume they have misremembered.
+    """
+    rows = conn.execute(
+        "SELECT * FROM menu_dishes WHERE menu_id = ? ORDER BY sort_order, id",
+        (menu_id,)).fetchall()
+    grouped = {}
+    for r in rows:
+        if not include_unavailable and not r["available"]:
+            continue
+        grouped.setdefault(r["course"] or "main", []).append(r)
+    return {c: grouped[c] for c in COURSE_ORDER if c in grouped}
+
+
+def menu_dish_vat(conn, dish):
+    """A dish's VAT: its own if set, otherwise the rate for its course."""
+    if dish["vat_rate"] is not None:
+        return float(dish["vat_rate"])
+    return tax_rate(conn, "vat_alcohol"
+                    if (dish["course"] or "main") in ALCOHOL_COURSES else "vat_food")
+
+
+def publish_menu(conn, menu_id, user_id=None):
+    """Put a card live for its date.
+
+    Supersedes any card already published for that service rather than
+    deleting it — the old one becomes `archived`, so the question of what was
+    actually served that night keeps its answer even after a re-issue.
+    """
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE menus SET status = 'archived' WHERE service_date = ? AND service = ?
+           AND status = 'published' AND id != ?""",
+        (menu["service_date"], menu["service"], menu_id))
+    conn.execute("UPDATE menus SET status = 'published', published_at = ? WHERE id = ?",
+                 (now, menu_id))
+    log_audit(conn, "menu_published", target=f"{menu['service_date']} {menu['service']}",
+              details=menu["title"] or "")
+    return conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+
+
+def copy_menu(conn, menu_id, to_date, service=None, user_id=None):
+    """Yesterday's card, as a draft for another date.
+
+    In practice most of a château card repeats, so this is the fastest path
+    most nights and needs no AI at all.
+    """
+    src = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not src:
+        return None
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO menus (service_date, service, title, status, formule_price,
+           formule_label, source, notes, created_by_user_id, created_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, 'copy', ?, ?, ?)""",
+        (to_date, service or src["service"], src["title"], src["formule_price"],
+         src["formule_label"], src["notes"], user_id, now))
+    new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    for d in conn.execute("SELECT * FROM menu_dishes WHERE menu_id = ? ORDER BY sort_order, id",
+                          (menu_id,)).fetchall():
+        conn.execute(
+            """INSERT INTO menu_dishes (menu_id, course, menu_item_id, name, description,
+               allergens, carte_price, supplement, in_formule, available, vat_rate,
+               sort_order, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,1,?,?,?)""",
+            (new_id, d["course"], d["menu_item_id"], d["name"], d["description"],
+             d["allergens"], d["carte_price"], d["supplement"], d["in_formule"],
+             d["vat_rate"], d["sort_order"], now))
+    return new_id
+
+
+def link_dish_to_catalogue(conn, dish_name):
+    """Find the standing-catalogue row for a dish that has been served before.
+
+    Matched on the name, case- and space-insensitively. Deliberately exact
+    rather than fuzzy: linking "Truite meunière" to "Truite fumée" would merge
+    two dishes' sales history, and getting that wrong is worse than not
+    linking at all.
+    """
+    cleaned = " ".join((dish_name or "").split()).lower()
+    if not cleaned:
+        return None
+    row = conn.execute(
+        "SELECT id FROM menu_items WHERE LOWER(TRIM(name)) = ? LIMIT 1", (cleaned,)).fetchone()
+    return row["id"] if row else None
 
 
 # ---------------------------------------------------------------------------
@@ -6605,6 +6812,45 @@ def pos_add_menu_line(conn, order_id, item, quantity=1, *, notes=None, seat=None
         "line_id": line_id, "name": item["name"], "quantity": quantity,
         "unit_price": item["price"] or 0, "vat_rate": menu_vat_rate(conn, item),
         "course": item["course"] or "main", "seat": seat,
+    }, order_id=order_id, user_id=user_id)
+    return line_id
+
+
+def pos_add_card_line(conn, order_id, dish, quantity=1, *, notes=None, seat=None,
+                      user_id=None):
+    """Ring a dish off tonight's card.
+
+    Keeps `menu_dish_id`, so the sold line points at the exact dish as it was
+    written that night — the price, the description and the allergens survive
+    tomorrow's card replacing this one. Where the dish is also in the standing
+    catalogue, `menu_item_id` carries too, so its sales history stays
+    continuous across seasons.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    price = dish["carte_price"] or 0
+    conn.execute(
+        """INSERT INTO pos_order_lines (order_id, menu_item_id, menu_dish_id, name, unit_price,
+           quantity, notes, course, seat_number, state, vat_rate, added_by_user_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,'new',?,?,?)""",
+        (order_id, dish["menu_item_id"], dish["id"], dish["name"], price, quantity, notes,
+         dish["course"] or "main", seat, menu_dish_vat(conn, dish), user_id, now))
+    line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    # A supplement is its own line: it is what appears on a real French
+    # addition, and it is the only shape that gets taxed independently.
+    if dish["supplement"]:
+        conn.execute(
+            """INSERT INTO pos_order_lines (order_id, menu_dish_id, name, unit_price, quantity,
+               course, seat_number, state, vat_rate, added_by_user_id, created_at)
+               VALUES (?,?,?,?,?,?,?,'new',?,?,?)""",
+            (order_id, dish["id"], f"Supplément — {dish['name']}", dish["supplement"],
+             quantity, dish["course"] or "main", seat, menu_dish_vat(conn, dish), user_id, now))
+
+    pos_journal_append(conn, "line_added", {
+        "line_id": line_id, "name": dish["name"], "quantity": quantity,
+        "unit_price": price, "vat_rate": menu_dish_vat(conn, dish),
+        "course": dish["course"] or "main", "seat": seat, "menu_dish_id": dish["id"],
+        "supplement": dish["supplement"] or 0,
     }, order_id=order_id, user_id=user_id)
     return line_id
 
@@ -10904,9 +11150,12 @@ def pos_open_tab():
     deposit = round(booking["deposit_amount"] or 0, 2) if booking else 0
     conn.execute(
         """INSERT INTO pos_orders (table_label, covers, restaurant_booking_id, status,
-           service_state, deposit_credit, opened_by_user_id, opened_at)
-           VALUES (?, ?, ?, 'open', 'seated', ?, ?, ?)""",
+           service_state, deposit_credit, service_date, opened_by_user_id, opened_at)
+           VALUES (?, ?, ?, 'open', 'seated', ?, ?, ?, ?)""",
         (label, covers, booking["id"] if booking else None, deposit,
+         # The night it belongs to, fixed at open. A tab started at 23:50 and
+         # settled at 00:10 belongs to one service, not two.
+         datetime.now(timezone.utc).date().isoformat(),
          session.get("user_id"), datetime.now(timezone.utc).isoformat()))
     order_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
     conn.commit()
@@ -10924,10 +11173,15 @@ def pos_order(order_id):
     if not bill:
         conn.close()
         abort(404)
-    menu = pos_menu(conn)
-    rates = {i["id"]: menu_vat_rate(conn, i) for items in menu.values() for i in items}
+    menu = pos_menu(conn, service_date=bill["order"]["service_date"])
+    rates = {}
+    for items in menu.values():
+        for i in items:
+            key = i["menu_dish_id"] or i["id"]
+            if key is not None:
+                rates[key] = menu_vat_rate(conn, i)
     stock = stock_levels(conn, [i["stock_item_id"] for items in menu.values()
-                                for i in items if i["stock_item_id"]])
+                                for i in items if i.get("stock_item_id")])
     context = pos_table_context(conn, bill["order"])
     in_house = conn.execute(
         """SELECT id, guest_name, reference_code, room_id FROM bookings
@@ -10973,7 +11227,24 @@ def pos_add_item(order_id):
     except ValueError:
         quantity = 1
 
-    if menu_item_id.isdigit():
+    menu_dish_id = (request.form.get("menu_dish_id", "") or "").strip()
+    if menu_dish_id.isdigit():
+        # A dish off tonight's card. Priced and taxed from the card, and the
+        # line keeps a pointer to the exact dish so "what did table 6 eat on
+        # the 10th" survives tomorrow's menu replacing this one.
+        dish = conn.execute("SELECT * FROM menu_dishes WHERE id = ?", (menu_dish_id,)).fetchone()
+        if not dish:
+            conn.close()
+            abort(404)
+        if not dish["available"]:
+            conn.close()
+            flash(f"{dish['name']} is off tonight"
+                  + (f" — {dish['unavailable_note']}" if dish["unavailable_note"] else "") + ".",
+                  "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        pos_add_card_line(conn, order_id, dish, quantity, notes=notes, seat=seat,
+                          user_id=session.get("user_id"))
+    elif menu_item_id.isdigit():
         item = conn.execute("SELECT * FROM menu_items WHERE id = ?", (menu_item_id,)).fetchone()
         if not item:
             conn.close()
@@ -19451,6 +19722,267 @@ def edit_menu_item(item_id):
     conn.close()
     flash("Menu item updated.", "success")
     return redirect(url_for("admin_restaurant_menu"))
+
+
+@app.route("/admin/restaurant/menu/day")
+@owner_required
+def menu_day():
+    """Tonight's card: build it, publish it, print it.
+
+    Defaults to today, but the whole point is that it is dated — so yesterday
+    is still there, and tomorrow can be prepared in the afternoon.
+    """
+    on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    service = request.args.get("service", "dinner")
+    if service not in ("lunch", "dinner"):
+        service = "dinner"
+    conn = get_db()
+    menu = conn.execute(
+        """SELECT * FROM menus WHERE service_date = ? AND service = ? AND status != 'archived'
+           ORDER BY (status = 'draft') DESC, id DESC LIMIT 1""",
+        (on.isoformat(), service)).fetchone()
+    dishes = menu_dishes_for(conn, menu["id"]) if menu else {}
+    # What was on recently, to copy from. Most of a château card repeats.
+    recent = conn.execute(
+        """SELECT * FROM menus WHERE status = 'published' AND service_date < ?
+           ORDER BY service_date DESC LIMIT 8""", (on.isoformat(),)).fetchall()
+    standing = conn.execute(
+        """SELECT COUNT(*) AS c FROM menu_items
+           WHERE active = 1 AND sold_in_pos = 1 AND always_available = 1""").fetchone()["c"]
+    conn.close()
+    return render_template(
+        "menu_day.html", menu=menu, dishes=dishes, on=on, service=service,
+        courses=MENU_COURSES, allergens=ALLERGENS, recent=recent, standing=standing,
+        prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
+
+
+@app.route("/admin/restaurant/menu/day/new", methods=["POST"])
+@owner_required
+def new_menu_day():
+    on = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
+    service = request.form.get("service", "dinner")
+    if service not in ("lunch", "dinner"):
+        service = "dinner"
+    conn = get_db()
+    existing = conn.execute(
+        """SELECT id FROM menus WHERE service_date = ? AND service = ? AND status = 'draft'""",
+        (on.isoformat(), service)).fetchone()
+    if existing:
+        conn.close()
+        return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+    price = (request.form.get("formule_price", "") or "").strip().replace(",", ".")
+    try:
+        price = float(price) if price else None
+    except ValueError:
+        price = None
+    conn.execute(
+        """INSERT INTO menus (service_date, service, title, status, formule_price,
+           formule_label, source, created_by_user_id, created_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, 'manual', ?, ?)""",
+        (on.isoformat(), service,
+         (request.form.get("title", "") or "").strip() or None, price,
+         (request.form.get("formule_label", "") or "").strip() or None,
+         session.get("user_id"), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/edit", methods=["POST"])
+@owner_required
+def edit_menu_day(menu_id):
+    """Title, set price, notes. Refused once published — a card that changes
+    after service is the thing dated menus exist to prevent."""
+    conn = get_db()
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu:
+        conn.close()
+        abort(404)
+    if menu["status"] == "published":
+        conn.close()
+        flash("That card is published. Copy it to a new draft to change it.", "error")
+        return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+    price = (request.form.get("formule_price", "") or "").strip().replace(",", ".")
+    try:
+        price = float(price) if price else None
+    except ValueError:
+        price = None
+    conn.execute(
+        """UPDATE menus SET title = ?, formule_price = ?, formule_label = ?, notes = ?
+           WHERE id = ?""",
+        ((request.form.get("title", "") or "").strip() or None, price,
+         (request.form.get("formule_label", "") or "").strip() or None,
+         (request.form.get("notes", "") or "").strip() or None, menu_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/dish", methods=["POST"])
+@owner_required
+def add_menu_dish(menu_id):
+    name = (request.form.get("name", "") or "").strip()
+    conn = get_db()
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu:
+        conn.close()
+        abort(404)
+    if not name:
+        conn.close()
+        flash("Give the dish a name.", "error")
+        return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+    course = request.form.get("course", "main")
+    if course not in MENU_COURSES:
+        course = "main"
+
+    def money(field):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    order = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) AS m FROM menu_dishes WHERE menu_id = ?",
+        (menu_id,)).fetchone()["m"]
+    conn.execute(
+        """INSERT INTO menu_dishes (menu_id, course, menu_item_id, name, description, allergens,
+           carte_price, supplement, in_formule, available, sort_order, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,1,?,?)""",
+        (menu_id, course,
+         # Linked to the standing catalogue when the dish has been served
+         # before, so its sales history stays continuous across seasons.
+         link_dish_to_catalogue(conn, name), name,
+         (request.form.get("description", "") or "").strip() or None,
+         ",".join(a for a in request.form.getlist("allergens") if a in ALLERGENS) or None,
+         money("carte_price"), money("supplement") or 0,
+         0 if request.form.get("carte_only") else 1,
+         order + 1, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+
+
+@app.route("/admin/restaurant/menu/dish/<int:dish_id>/delete", methods=["POST"])
+@owner_required
+def delete_menu_dish(dish_id):
+    conn = get_db()
+    dish = conn.execute(
+        "SELECT menu_dishes.*, menus.service_date, menus.service, menus.status "
+        "FROM menu_dishes JOIN menus ON menus.id = menu_dishes.menu_id "
+        "WHERE menu_dishes.id = ?", (dish_id,)).fetchone()
+    if not dish:
+        conn.close()
+        abort(404)
+    if dish["status"] == "published":
+        conn.close()
+        flash("That card is published — take the dish off instead of deleting it.", "error")
+        return redirect(url_for("menu_day", date=dish["service_date"], service=dish["service"]))
+    conn.execute("DELETE FROM menu_dishes WHERE id = ?", (dish_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("menu_day", date=dish["service_date"], service=dish["service"]))
+
+
+@app.route("/admin/restaurant/menu/dish/<int:dish_id>/availability", methods=["POST"])
+@login_required
+def menu_dish_availability(dish_id):
+    """86 a dish on tonight's card.
+
+    Staff, not owner-only: it is the chef who knows the sole has run out, and
+    it has to be one tap mid-service. Scoped to tonight, so taking something
+    off now leaves tomorrow's card alone — which the old flat menu could not do.
+    """
+    conn = get_db()
+    dish = conn.execute(
+        "SELECT menu_dishes.*, menus.service_date, menus.service "
+        "FROM menu_dishes JOIN menus ON menus.id = menu_dishes.menu_id "
+        "WHERE menu_dishes.id = ?", (dish_id,)).fetchone()
+    if not dish:
+        conn.close()
+        abort(404)
+    going_off = bool(dish["available"])
+    note = (request.form.get("note", "") or "").strip() or None
+    conn.execute("UPDATE menu_dishes SET available = ?, unavailable_note = ? WHERE id = ?",
+                 (0 if going_off else 1, note if going_off else None, dish_id))
+    if going_off:
+        # The floor hears it now rather than when a table orders it.
+        owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+        if owner:
+            send_notification(conn, owner["id"], "menu", f"{dish['name']} is off",
+                              note or "Taken off tonight's card.", link="/pos")
+    conn.commit()
+    conn.close()
+    flash(f"{dish['name']} is {'off' if going_off else 'back on'}.", "success")
+    # Back where they came from, and for staff that must not be the card
+    # builder — it is owner-only, so a chef 86ing the sole would have landed
+    # on a 403 for doing exactly the thing they are meant to do.
+    if request.referrer:
+        return redirect(request.referrer)
+    if (current_user() or {})["role"] == "owner":
+        return redirect(url_for("menu_day", date=dish["service_date"], service=dish["service"]))
+    return redirect(url_for("pos_home"))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/publish", methods=["POST"])
+@owner_required
+def publish_menu_day(menu_id):
+    conn = get_db()
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu:
+        conn.close()
+        abort(404)
+    count = conn.execute("SELECT COUNT(*) AS c FROM menu_dishes WHERE menu_id = ?",
+                         (menu_id,)).fetchone()["c"]
+    if not count:
+        conn.close()
+        flash("Nothing on the card yet.", "error")
+        return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+    publish_menu(conn, menu_id, session.get("user_id"))
+    conn.commit()
+    conn.close()
+    flash(f"Published — {count} dish{'' if count == 1 else 'es'} live on the POS.", "success")
+    return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/copy", methods=["POST"])
+@owner_required
+def copy_menu_day(menu_id):
+    to = parse_date(request.form.get("to", "")) or (datetime.now(timezone.utc).date()
+                                                    + timedelta(days=1))
+    conn = get_db()
+    new_id = copy_menu(conn, menu_id, to.isoformat(), user_id=session.get("user_id"))
+    if not new_id:
+        conn.close()
+        abort(404)
+    service = conn.execute("SELECT service FROM menus WHERE id = ?", (new_id,)).fetchone()["service"]
+    conn.commit()
+    conn.close()
+    flash(f"Copied to {to.isoformat()} as a draft — change what's different and publish.",
+          "success")
+    return redirect(url_for("menu_day", date=to.isoformat(), service=service))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/print")
+@owner_required
+def print_menu_day(menu_id):
+    """The A4 card, from the same save that fed the till.
+
+    One entry producing both is the point: re-keying the card into a second
+    document is the commonest reason these systems get abandoned.
+    """
+    conn = get_db()
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu:
+        conn.close()
+        abort(404)
+    dishes = menu_dishes_for(conn, menu_id, include_unavailable=False)
+    wines = conn.execute(
+        """SELECT * FROM menu_items WHERE active = 1 AND always_available = 1
+           AND course IN ('wine', 'aperitif') ORDER BY course, sort_order, name""").fetchall()
+    conn.close()
+    return render_template("menu_print.html", menu=menu, dishes=dishes, wines=wines,
+                           courses=MENU_COURSES, allergens=ALLERGENS)
 
 
 @app.route("/admin/restaurant/menu/<int:item_id>/availability", methods=["POST"])
