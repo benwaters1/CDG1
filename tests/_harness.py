@@ -64,6 +64,20 @@ import app as m  # noqa: E402  — must follow the env setup above
 m.app.config["WTF_CSRF_ENABLED"] = False
 m.STRIPE_SECRET_KEY = ""
 
+# On a machine with no database — a fresh clone, or CI — there is nothing to
+# copy, and importing app.py does not create the schema: init_db() only runs
+# under `python app.py` or wsgi.py. Without this, eight of nine suites died on
+# "no such table: users", which would make the suite useless as a gate on
+# exactly the checkout a deploy is built from.
+#
+# Nothing above may open a connection first. init_db() decides whether to seed
+# the owner account from whether the file exists, and sqlite3.connect CREATES
+# it — so a single probe query beforehand makes a fresh database look
+# established, and the suite then dies on "no owner in the test database".
+# Idempotent either way, and on a copied database it usefully applies any
+# migration that copy predates.
+m.init_db()
+
 assert m.DB_PATH == SCRATCH_DB, (
     f"tests would have run against {m.DB_PATH} — refusing. "
     "The GUDANES_DB_PATH override in app.py is missing or was overwritten."
@@ -85,8 +99,68 @@ def flashes(response):
             for x in re.findall(r'class="flash flash-\w+">(.*?)</div>', html, re.S)]
 
 
+def ensure_employee():
+    """An employee to act as, created if the database has none.
+
+    A fresh database seeds only the owner, so on CI — or any clean clone —
+    every suite that needs a second person had nothing to use and crashed.
+    Borrowing whatever employee happens to exist is also how suites end up
+    depending on each other's leftovers.
+    """
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT id, name FROM users WHERE role='employee' ORDER BY id LIMIT 1").fetchone()
+        if row:
+            return row
+        from werkzeug.security import generate_password_hash
+        conn.execute(
+            """INSERT INTO users (email, password_hash, role, name, job_role, status, created_at)
+               VALUES (?, ?, 'employee', 'Test Employee', 'General', 'active', ?)""",
+            ("test.employee@example.invalid",
+             generate_password_hash(secrets_token()), datetime_now()),
+        )
+        conn.commit()
+        return conn.execute(
+            "SELECT id, name FROM users WHERE email = 'test.employee@example.invalid'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def ensure_room():
+    """A bookable room, created if the database has none."""
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT id, name FROM rooms WHERE active=1 ORDER BY id LIMIT 1").fetchone()
+        if row:
+            return row
+        # rooms has no created_at — it is not a log, it is a catalogue.
+        conn.execute(
+            """INSERT INTO rooms (name, export_token, active, max_occupancy,
+               price_per_night, sort_order) VALUES (?, ?, 1, 4, 250.0, 99)""",
+            ("Test Room", secrets_token()),
+        )
+        conn.commit()
+        return conn.execute("SELECT id, name FROM rooms WHERE name='Test Room'").fetchone()
+    finally:
+        conn.close()
+
+
+def secrets_token():
+    import secrets
+    return secrets.token_urlsafe(16)
+
+
+def datetime_now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
+
+
 def clients():
     """Logged-in test clients: (owner, employee)."""
+    ensure_employee()
     conn = db()
     owner = conn.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
     emp = conn.execute("SELECT id FROM users WHERE role='employee' LIMIT 1").fetchone()

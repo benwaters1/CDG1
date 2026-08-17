@@ -1,0 +1,54 @@
+# Runs the test suite on every push and pull request.
+#
+# The point is that this repository deploys to a live business system, and until
+# now nothing checked anything before it went out. Two people (or agents) commit
+# here, sometimes to the same file, and a broken push reached guests. The suite
+# takes about fifteen seconds on a clean checkout, so there is no reason not to.
+#
+# It needs no database and no secrets: tests/_harness.py builds a throwaway one
+# and creates its own fixtures, so this runs on a bare clone exactly as it does
+# on a laptop.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the suite
+        run: python tests/run.py
+
+      # A quick check that the production entry point actually boots, which is
+      # the failure that would otherwise only appear on the live site: creating
+      # the database and starting the automation loop happen in wsgi.py, not in
+      # app.py's __main__ block, and a WSGI server never runs the latter.
+      - name: Check the production entry point boots
+        env:
+          GUDANES_DB_PATH: /tmp/ci_boot_check/gudanes_hr.db
+          GUDANES_NO_AUTOMATION: "1"
+          FLASK_SECRET_KEY: ci-boot-check-only
+        run: |
+          mkdir -p /tmp/ci_boot_check
+          python -c "
+          import wsgi
+          client = wsgi.app.test_client()
+          for path in ('/login', '/book', '/workshops', '/restaurant', '/terms'):
+              code = client.get(path).status_code
+              assert code == 200, f'{path} returned {code}'
+              print(f'  {path} OK')
+          print('production entry point boots and serves')
+          "

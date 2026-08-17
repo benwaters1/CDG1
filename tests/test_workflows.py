@@ -8,7 +8,7 @@ Everything created is tagged ZZWF and deleted at the end.
 """
 from datetime import datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, ensure_room
 import _harness
 
 m = _harness.m
@@ -26,13 +26,8 @@ def run():
     oc, ec, owner, emp = clients()
     pub = m.app.test_client()
 
-    conn = db()
-    room = conn.execute("SELECT id, name FROM rooms WHERE active=1 LIMIT 1").fetchone()
-    conn.close()
-    if not room or not emp:
-        s.check("a room and an employee exist to test with", False,
-                detail="test database has no active room or no employee")
-        return s
+    # Created if absent, so this runs on a clean clone as well as here.
+    room = ensure_room()
 
     s.section("Room booking: public request, owner confirms")
     pub.post(f"/book/{room['id']}", data={

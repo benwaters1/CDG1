@@ -12,7 +12,7 @@ done, which took three taps to tick something off a checklist.
 """
 from datetime import datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, ensure_room
 import _harness
 
 m = _harness.m
@@ -25,13 +25,8 @@ def run():
     today = datetime.now(timezone.utc).date()
     now = datetime.now(timezone.utc).isoformat()
 
+    room = ensure_room()["id"]
     conn = db()
-    rooms = conn.execute("SELECT id FROM rooms LIMIT 2").fetchall()
-    if not rooms:
-        conn.close()
-        s.check("a room exists to test with", False)
-        return s
-    room = rooms[0]["id"]
 
     conn.execute("""INSERT INTO guests (name, email, created_at, dietary_notes,
                     preferences, vip, name_pronunciation) VALUES (?,?,?,?,?,?,?)""",
