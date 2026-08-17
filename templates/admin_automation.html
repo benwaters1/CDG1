@@ -100,6 +100,18 @@
       </div>
     </div>
 
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
+        <input type="checkbox" name="automation_backup_email_enabled" {{ 'checked' if settings['automation_backup_email_enabled'] == '1' }}>
+        Automated backup email
+      </label>
+      <p class="upload-hint" style="margin-top:4px;">Emails a full backup (database, uploaded documents and room photos) to the owner on a schedule, so a lost or corrupted Railway volume isn't the only copy. Falls back to the database alone if the full backup is too large to email. Same content as Admin → Backup, just sent automatically.</p>
+      <div style="margin-top:6px; max-width:220px;">
+        <label class="field-label">Backup interval (hours)</label>
+        <input type="number" name="automation_backup_interval_hours" min="1" step="1" value="{{ settings['automation_backup_interval_hours'] }}">
+      </div>
+    </div>
+
   </div>
 
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
