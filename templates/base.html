@@ -147,10 +147,14 @@
     <a href="{{ url_for('chat_home') }}" class="{{ 'active' if request.endpoint in ['chat_home','chat_channel','chat_with'] }}">{{ icon('contacts') }}Chat{% if chat_unread_count %} ({{ chat_unread_count }}){% endif %}</a>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
 
-    {% if user['role'] == 'owner' %}
+    {# Each group appears only if its area is granted. A person with partial
+       access sees their part of the menu and nothing else, rather than a
+       list of links that refuse them. #}
+    {% if user_areas %}
     <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
     <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>
 
+    {% if may('guests') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in guests_endpoints }}">
       <a href="{{ url_for('guests') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in guests_endpoints }}">{{ icon('guests') }}Guests</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Guests submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -165,7 +169,9 @@
         <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('team') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in team_endpoints }}">
       <a href="{{ url_for('directory') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in team_endpoints }}">{{ icon('employee') }}Team</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Team submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -180,10 +186,12 @@
         <a href="{{ url_for('admin_incidents') }}" class="{{ 'active' if request.endpoint=='admin_incidents' }}">{{ icon('wrench') }}Incidents</a>
       </div>
     </div>
+    {% endif %}
 
     {# Everything about when people work, split out of the seventeen-item
        Employee menu. Who someone is and when they're on are different
        questions, asked at different times. #}
+    {% if may('rota') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in rota_endpoints }}">
       <a href="{{ url_for('admin_tasks') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in rota_endpoints }}">{{ icon('shifts') }}Rotas &amp; Tasks</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Rotas submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -195,7 +203,9 @@
         <a href="{{ url_for('admin_leave') }}" class="{{ 'active' if request.endpoint=='admin_leave' }}">{{ icon('leave') }}Time Off</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('estate') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in estate_endpoints }}">
       <a href="{{ url_for('room_issues') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in estate_endpoints }}">{{ icon('wrench') }}Estate</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Estate submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -209,7 +219,9 @@
         <a href="{{ url_for('manual') }}" class="{{ 'active' if request.endpoint=='manual' }}">{{ icon('manual') }}Manual</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('comms') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in comms_endpoints }}">
       <a href="{{ url_for('announcements') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in comms_endpoints }}">{{ icon('megaphone') }}Comms</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Comms submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -221,7 +233,9 @@
         <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('financial') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in financial_endpoints }}">
       <a href="{{ url_for('admin_approvals') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in financial_endpoints }}">{{ icon('financial') }}Financial</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Financial submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -235,6 +249,8 @@
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
       </div>
     </div>
+    {% endif %}
+    {% if may('restaurant') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] }}">
       <a href="{{ url_for('admin_restaurant') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Restaurant submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -246,7 +262,9 @@
         <a href="{{ url_for('admin_restaurant_settings') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_settings' }}">{{ icon('management') }}Settings</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('workshops') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv','admin_workshop_feedback','toggle_workshop_feedback_featured','export_workshop_feedback_csv'] }}">
       <a href="{{ url_for('admin_workshops') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv','admin_workshop_feedback','toggle_workshop_feedback_featured','export_workshop_feedback_csv'] }}">{{ icon('workshop') }}Workshops{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Workshops submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -257,14 +275,16 @@
         <a href="{{ url_for('admin_workshop_feedback') }}" class="{{ 'active' if request.endpoint=='admin_workshop_feedback' }}">{{ icon('contacts') }}Feedback</a>
       </div>
     </div>
+    {% endif %}
 
-    <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] }}">{{ icon('restaurant') }}Till</a>
-    <a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>
+{% if may('till') %}<a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] }}">{{ icon('restaurant') }}Till</a>{% endif %}
+{% if may('events') %}<a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>{% endif %}
 
     {# Settings and permanent records — last, because it is the group you need
        least often. It used to sit fourth while holding the fleet, the keys and
        the inbox, all of which are daily tools and now live under Estate and
        Comms. Sixteen items down to ten. #}
+    {% if may('management') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in management_endpoints }}">
       <a href="{{ url_for('management') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in management_endpoints }}">{{ icon('management') }}Management</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -277,10 +297,12 @@
         <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
         <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
         <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
+        <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
         <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
       </div>
     </div>
+    {% endif %}
 
 
     {% else %}

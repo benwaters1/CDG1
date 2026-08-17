@@ -1481,3 +1481,11 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 .chat-compose{ display:flex; gap:9px; align-items:flex-end; }
 .chat-compose textarea{ flex:1; min-width:0; resize:vertical; }
 .chat-compose button{ flex-shrink:0; }
+
+/* Area checkboxes on the access page — two columns where there is room, so the
+   eleven areas read as one list rather than a long scroll. */
+.access-grid{
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:8px 18px;
+}
+.access-grid .checkbox-row{ align-items:flex-start; }
+.access-grid .upload-hint{ display:block; }

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Access levels{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Access levels</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Who can see which parts of the app. Set the level once, then give it to people — you don't tick boxes per person.</p>
+
+<div class="flash flash-success" style="margin-bottom:18px;">
+  <strong>Everyone can always see</strong> Today, Chat, their own shifts, timesheet, leave, expenses and the team list. The areas below are the <em>admin</em> parts on top of that.
+</div>
+
+<h2 class="section-heading">Levels</h2>
+{% for p in presets %}
+<details class="refund-box" style="margin-bottom:12px;" {{ 'open' if p['description'] and 'STARTING POINT' in p['description'] }}>
+  <summary>
+    <strong>{{ p['name'] }}</strong>
+    {% if p['is_full_access'] %}
+      <span class="mini-status status-approved">everything</span>
+    {% else %}
+      <span class="mini-role">
+        {{ (p['areas'] or '').split(',') | select | list | length }} of {{ access_areas | length }} areas
+      </span>
+    {% endif %}
+    {% if counts.get(p['slug']) %}<span class="mini-role">· {{ counts[p['slug']] }} {{ 'person' if counts[p['slug']] == 1 else 'people' }}</span>{% endif %}
+  </summary>
+
+  {% if p['description'] %}
+  <p class="upload-hint" style="margin:6px 0 10px;">{{ p['description'] }}</p>
+  {% endif %}
+
+  {% if p['is_full_access'] %}
+    <p class="upload-hint">This one can't be reduced. It's the way back in if another level is set wrong.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('save_access_preset', slug=p['slug']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set granted = (p['areas'] or '').split(',') %}
+    <div class="access-grid">
+      {% for key, title in access_areas %}
+      <label class="checkbox-row">
+        <input type="checkbox" name="areas" value="{{ key }}" {{ 'checked' if key in granted }}>
+        <span>
+          {{ title }}
+          <span class="upload-hint">{{ page_counts[key] }} pages</span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="refund-fields" style="margin-top:12px;">
+      <div>
+        <label class="field-label">Name</label>
+        <input type="text" name="name" value="{{ p['name'] }}" required>
+      </div>
+      <div>
+        <label class="field-label">What this is for</label>
+        <input type="text" name="description" value="{{ p['description'] or '' }}"
+               placeholder="e.g. runs the restaurant, no access to payroll">
+      </div>
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:12px;">Save {{ p['name'] }}</button>
+  </form>
+  {% endif %}
+</details>
+{% endfor %}
+
+<h2 class="section-heading">People</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Name</th><th>Job</th><th>Login</th><th>Level</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for person in people %}
+      <tr>
+        <td>
+          {{ person['name'] }}
+          {% if person['status'] != 'active' %}<span class="mini-status status-inactive">{{ person['status'] }}</span>{% endif %}
+        </td>
+        <td>{{ person['job_role'] or '—' }}</td>
+        <td><span class="upload-hint">{{ person['email'] }}</span></td>
+        <td>
+          {% if person['access_preset'] %}
+            {{ person['access_preset'] }}
+          {% else %}
+            <span class="upload-hint">default for {{ person['role'] }}</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('assign_access_preset') }}" class="filter-bar">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="user_id" value="{{ person['id'] }}">
+            <select name="access_preset" aria-label="Access level for {{ person['name'] }}">
+              <option value="">Default for their role</option>
+              {% for p in presets %}
+              <option value="{{ p['slug'] }}" {{ 'selected' if person['access_preset'] == p['slug'] }}>{{ p['name'] }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn-mini">Set</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="upload-hint" style="margin-top:14px;">
+  Changing someone's level takes effect the next time they load a page — they don't need to log out.
+  Nobody can be left as the only full-access account and then reduced; there's no email set up to send a password reset.
+</p>
+
+{% endblock %}

@@ -1674,6 +1674,30 @@ def init_db():
             sent_at TEXT
         );
 
+        -- Who can see which parts of the business.
+        --
+        -- Before this there were two levels: the owner saw all 302 admin pages
+        -- and an employee saw almost none. Fine for two people, and wrong the
+        -- moment somebody runs the restaurant but has no business reading
+        -- payroll, or keeps the books but does not need the guest register.
+        --
+        -- A preset is a named bundle of areas rather than a per-page checklist.
+        -- Three hundred tick-boxes is not something anyone will maintain, and a
+        -- half-ticked list is how a person ends up able to refund a booking but
+        -- unable to see it.
+        CREATE TABLE IF NOT EXISTS access_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            -- comma-separated area keys from NAV_AREAS, or '*' for everything
+            areas TEXT NOT NULL DEFAULT '',
+            is_full_access INTEGER NOT NULL DEFAULT 0,
+            built_in INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
         -- Staff messaging. Announcements were the only way to say anything to
         -- the team, and they go one way only: the owner posts, nobody replies.
         -- This is the missing half.
@@ -2181,6 +2205,11 @@ def init_db():
         # text on purpose — "EE-fa oh-SULL-i-van" is more use to a person than
         # any phonetic alphabet.
         ("guest_name_pronunciation", "ALTER TABLE guests ADD COLUMN name_pronunciation TEXT"),
+        # Which access preset a person has. NULL means fall back to their role,
+        # so every existing account keeps exactly the access it had until
+        # somebody deliberately changes it — a permissions migration that
+        # silently widens or narrows access is the one you cannot undo quietly.
+        ("users_access_preset", "ALTER TABLE users ADD COLUMN access_preset TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -2624,6 +2653,17 @@ def init_db():
             )
     conn.commit()
 
+    for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
+        if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
+            conn.execute(
+                """INSERT INTO access_presets (slug, name, description, areas,
+                   is_full_access, built_in, sort_order, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                (slug, name, description, areas, 1 if full else 0, order,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+    conn.commit()
+
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
             conn.execute(
@@ -2709,13 +2749,209 @@ def login_required(view):
     return wrapped
 
 
+# Which part of the business each admin page belongs to.
+#
+# Generated from the navigation groups, and used for two things: drawing the
+# menu, and deciding what a member of staff with partial access may open.
+# One map rather than two, because a page visible in the menu but forbidden
+# when clicked — or reachable but hidden — is the worst of both.
+#
+# Anything NOT listed here is owner-only by default. New pages are therefore
+# private until somebody decides otherwise, which is the safe direction.
+NAV_AREAS = {
+    "guests": [
+        "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
+        "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
+        "delete_breakfast_item", "delete_ical_source", "delete_room_block",
+        "delete_vehicle_transfer", "edit_booking", "edit_breakfast_item", "edit_guest",
+        "edit_room", "export_feedback_csv", "export_waitlist_csv", "guest_booking_history",
+        "guests", "new_breakfast_item", "new_guest", "new_ical_source", "new_room",
+        "new_room_block", "new_vehicle_transfer", "sync_ical_source_now",
+        "toggle_breakfast_item", "toggle_breakfast_stock", "update_waitlist_status",
+        "vehicle_transfers_page"
+    ],
+    "team": [
+        "absence_return_to_work", "admin_compliance", "admin_hr", "admin_hr_notes",
+        "admin_incidents", "ask_hr", "candidates", "delete_candidate",
+        "delete_certification", "delete_check_in_note", "delete_employee",
+        "delete_equipment_item", "delete_offboarding_item", "delete_onboarding_item",
+        "delete_role_requirement", "directory", "edit_candidate", "edit_employee",
+        "edit_own_contact_info", "equipment_overview", "export_candidates_csv",
+        "export_equipment_csv", "export_pay_history_csv", "export_payroll_csv",
+        "export_team_csv", "handle_hr_note", "new_absence", "new_candidate",
+        "new_certification", "new_check_in_note", "new_employee", "new_equipment_item",
+        "new_incident", "new_offboarding_item", "new_onboarding_item",
+        "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
+        "share_performance_review", "toggle_employee_status", "toggle_equipment_returned",
+        "toggle_offboarding_item", "toggle_onboarding_item", "update_candidate_status",
+        "update_incident"
+    ],
+    "rota": [
+        "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
+        "admin_timesheets", "complete_task", "copy_previous_week_shifts", "decide_leave",
+        "decide_shift_swap", "delete_shift", "delete_task", "dismiss_timesheet_correction",
+        "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
+        "export_timesheets_csv", "export_timesheets_summary_csv", "flag_timesheet_entry",
+        "my_shifts", "new_shift", "new_task", "repair_time_entry", "reschedule_task",
+        "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task"
+    ],
+    "estate": [
+        "admin_access", "admin_assets", "asset_photo", "checkin_vehicle", "checkout_vehicle",
+        "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
+        "delete_room_issue", "delete_shopping_item", "delete_vehicle",
+        "delete_vehicle_maintenance", "edit_contact", "edit_manual_section", "edit_vehicle",
+        "export_assets_csv", "export_room_issues_csv", "export_vehicles_csv",
+        "issue_access_item", "log_vehicle_service", "management_vehicles", "manual",
+        "new_access_item", "new_asset", "new_contact", "new_manual_section", "new_room_issue",
+        "new_shopping_item", "new_vehicle", "new_vehicle_maintenance", "reopen_room_issue",
+        "resolve_room_issue", "resolve_vehicle_maintenance", "return_access_item",
+        "room_issues", "shopping_list", "toggle_shopping_item", "toggle_vehicle_cleanliness",
+        "toggle_vehicle_fuel", "update_asset"
+    ],
+    "comms": [
+        "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
+        "admin_inbox_flags_status", "announcements", "delete_announcement",
+        "delete_campaign_template", "discard_email_outbox", "edit_announcement",
+        "edit_campaign_template", "edit_email_template", "management_email_templates",
+        "management_social", "new_announcement", "new_campaign_template",
+        "restore_email_template", "send_campaign_template", "send_email_outbox"
+    ],
+    "financial": [
+        "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
+        "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
+        "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
+        "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
+        "export_refunds_csv", "export_report_csv", "management_bank_details",
+        "management_financials", "management_recurring_costs", "new_bank_details",
+        "new_recurring_cost", "regenerate_supplier_link", "toggle_recurring_cost"
+    ],
+    "restaurant": [
+        "admin_extras", "admin_restaurant", "admin_restaurant_settings",
+        "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
+        "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
+        "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
+        "update_restaurant_waitlist_status"
+    ],
+    "workshops": [
+        "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
+        "admin_workshops", "cancel_workshop_registration_admin",
+        "confirm_workshop_registration", "decline_workshop_registration", "delete_workshop",
+        "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
+        "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
+        "new_workshop_session", "toggle_workshop_feedback_featured",
+        "update_workshop_waitlist_status"
+    ],
+    "till": [
+        "pos_add_item", "pos_home", "pos_open_tab", "pos_order", "pos_pay_link",
+        "pos_settle_tab", "pos_void_item"
+    ],
+    "events": [
+        "admin_events", "export_events_csv", "update_event_inquiry"
+    ],
+    "payroll": [
+        "admin_payroll", "export_payroll_csv"
+    ],
+    "management": [
+        "admin_automation", "admin_deposit_rules", "admin_outlook_addin", "admin_promo_codes",
+        "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
+        "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
+        "download_company_document", "edit_company_document", "edit_insurance_policy",
+        "edit_vault_entry", "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
+        "export_vendors_csv", "management", "management_company_info", "management_documents",
+        "management_insurance", "management_vault", "new_insurance_policy", "new_vault_entry",
+        "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
+        "update_automation_settings", "upload_company_document", "vendors",
+        "view_company_document"
+    ],
+}
+
+AREA_TITLES = {
+    "guests": "Guests",
+    "team": "Team",
+    "rota": "Rotas & Tasks",
+    "estate": "Estate",
+    "comms": "Comms",
+    "financial": "Financial",
+    "restaurant": "Restaurant",
+    "workshops": "Workshops",
+    "till": "Till",
+    "events": "Events",
+    "payroll": "Payroll",
+    "management": "Management",
+}
+
+# Named access levels. (slug, name, description, areas, is_full_access, order)
+#
+# The three named ones are seeded because the owner asked for them by name, but
+# their scopes are a GUESS — nobody told me what Ben, Jasmine and Karina
+# actually do. Each says so in its description, and all of them are editable, so
+# the wrong guess costs one visit to the access page rather than a migration.
+
+
+ENDPOINT_AREA = {ep: area for area, eps in NAV_AREAS.items() for ep in eps}
+
+
+def user_access(user):
+    """The set of areas this person may reach, or {"*"} for everything.
+
+    Deliberately conservative in every unclear case:
+
+    - no preset set        -> role decides, exactly as before this existed, so
+                              no existing account silently gained or lost access
+    - preset missing       -> treat as no access rather than as full access
+    - endpoint unmapped    -> owner-only (handled by the caller)
+
+    Getting this backwards is the one bug here that matters: a default-allow
+    would hand payroll to whoever asked first.
+    """
+    if not user:
+        return set()
+    preset_slug = None
+    try:
+        preset_slug = user["access_preset"]
+    except (KeyError, IndexError):
+        preset_slug = None          # pre-migration row
+
+    if not preset_slug:
+        return {"*"} if user["role"] == "owner" else set()
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT areas, is_full_access FROM access_presets WHERE slug = ?",
+            (preset_slug,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        # A preset that has been deleted must not become a skeleton key.
+        return {"*"} if user["role"] == "owner" else set()
+    if row["is_full_access"] or (row["areas"] or "").strip() == "*":
+        return {"*"}
+    return {a.strip() for a in (row["areas"] or "").split(",") if a.strip()}
+
+
+def can_reach(user, endpoint):
+    """Whether this person may open this endpoint."""
+    areas = user_access(user)
+    if "*" in areas:
+        return True
+    area = ENDPOINT_AREA.get(endpoint)
+    # Unmapped pages stay owner-only. New admin pages are therefore private
+    # until somebody puts them in an area, which is the safe direction to fail.
+    if area is None:
+        return False
+    return area in areas
+
+
 def owner_required(view):
+    """Admin pages. Full owners pass; anyone with a preset passes only for the
+    areas that preset grants; everybody else is refused, as before."""
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = current_user()
         if not user:
             return redirect(url_for("login"))
-        if user["role"] != "owner":
+        if not can_reach(user, request.endpoint):
             abort(403)
         return view(*args, **kwargs)
     return wrapped
@@ -3989,6 +4225,28 @@ def guests_in_residence(conn, today):
 # The channels every château has, seeded so a message always has an obvious
 # home. Fixed rather than user-created on purpose: ad-hoc channels in a team of
 # a dozen produce five near-duplicates and then nobody knows where to post.
+DEFAULT_ACCESS_PRESETS = [
+    ("owner", "Owner", "Everything, including settings, payroll and the vault.",
+     "*", True, 0),
+    ("manager", "Manager",
+     "Runs the place day to day. Everything except settings, the vault and the audit log.",
+     "guests,team,rota,estate,comms,financial,payroll,restaurant,workshops,till,events", False, 1),
+    ("employee", "Employee",
+     "Today, chat, their own shifts, timesheet, leave and expenses. No admin pages.",
+     "", False, 9),
+    # --- Named, and guessed. Edit to match the job. ---
+    ("ben", "Ben",
+     "STARTING POINT — guessed, please edit. Operations and money, not settings.",
+     "guests,team,rota,estate,comms,financial,payroll,restaurant,workshops,till,events", False, 2),
+    ("jasmine", "Jasmine",
+     "STARTING POINT — guessed, please edit. Guest-facing: bookings, restaurant, events, guest email.",
+     "guests,restaurant,events,comms,till", False, 3),
+    ("karina", "Karina",
+     "STARTING POINT — guessed, please edit. The team and the house: staff, rotas, estate.",
+     "team,rota,estate", False, 4),
+]
+
+
 DEFAULT_CHAT_CHANNELS = [
     ("everyone", "Everyone", 0),
     ("kitchen", "Kitchen", 1),
@@ -7434,6 +7692,18 @@ def inject_user():
     pending_events_count = None
     open_email_flags_count = None
     chat_unread_count = None
+    areas = user_access(user)
+
+    def may(area):
+        """For the navigation: show a group only if its pages can be opened.
+
+        The menu and owner_required read the same map, so a visible link always
+        works and a working page is always findable. Deriving one from the other
+        is what stops them drifting into 'greyed out for no reason' or 'clicked
+        it and got 403'.
+        """
+        return "*" in areas or area in areas
+
     if user:
         conn = get_db()
         unread_notifications_count = conn.execute(
@@ -7483,6 +7753,7 @@ def inject_user():
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
+        "may": may, "user_areas": areas, "area_titles": AREA_TITLES,
         # Constants the forms need. Exposed here rather than passed through
         # every render_template call, so a new form can't quietly render an
         # empty dropdown because one route forgot to include them.
@@ -20041,6 +20312,104 @@ def new_task():
     conn.close()
     flash("Task added.", "success")
     return redirect(request.referrer or url_for("admin_tasks"))
+
+
+@app.route("/admin/access-levels")
+@owner_required
+def admin_access_levels():
+    """Who can see what. Levels down one side, people down the other."""
+    conn = get_db()
+    presets = conn.execute(
+        "SELECT * FROM access_presets ORDER BY sort_order, name").fetchall()
+    people = conn.execute(
+        """SELECT id, name, email, role, job_role, status, access_preset
+           FROM users ORDER BY role != 'owner', name""").fetchall()
+    counts = {}
+    for row in conn.execute(
+            "SELECT access_preset AS p, COUNT(*) AS c FROM users GROUP BY access_preset").fetchall():
+        counts[row["p"]] = row["c"]
+    conn.close()
+    return render_template(
+        "admin_access_levels.html", presets=presets, people=people, counts=counts,
+        access_areas=[(key, AREA_TITLES[key]) for key in NAV_AREAS],
+        page_counts={key: len(eps) for key, eps in NAV_AREAS.items()})
+
+
+@app.route("/admin/access-levels/<slug>/save", methods=["POST"])
+@owner_required
+def save_access_preset(slug):
+    conn = get_db()
+    preset = conn.execute("SELECT * FROM access_presets WHERE slug = ?", (slug,)).fetchone()
+    if not preset:
+        conn.close()
+        abort(404)
+    if preset["is_full_access"]:
+        conn.close()
+        flash("The Owner level always has everything — that is what makes it the "
+              "way back in if another level is set wrong.", "error")
+        return redirect(url_for("admin_access_levels"))
+
+    granted = [a for a in request.form.getlist("areas") if a in NAV_AREAS]
+    conn.execute(
+        "UPDATE access_presets SET areas = ?, name = ?, description = ? WHERE slug = ?",
+        (",".join(granted), request.form.get("name", "").strip() or preset["name"],
+         request.form.get("description", "").strip() or None, slug))
+    log_audit(conn, "access_preset_saved", target=slug, details=",".join(granted) or "nothing")
+    conn.commit()
+    conn.close()
+    flash(f"Saved. {len(granted)} area{'' if len(granted) == 1 else 's'} allowed.", "success")
+    return redirect(url_for("admin_access_levels"))
+
+
+@app.route("/admin/access-levels/assign", methods=["POST"])
+@owner_required
+def assign_access_preset():
+    """Give one person an access level.
+
+    Refuses to remove the last full-access account. Locking yourself out of a
+    system with no email configured — so no password reset — means editing the
+    database by hand to get back in.
+    """
+    user_id = request.form.get("user_id", "")
+    slug = request.form.get("access_preset", "").strip()
+    if not user_id.isdigit():
+        abort(400)
+    conn = get_db()
+    person = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+    if slug and not conn.execute(
+            "SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
+        conn.close()
+        abort(400)
+
+    full_slugs = [r["slug"] for r in conn.execute(
+        "SELECT slug FROM access_presets WHERE is_full_access = 1").fetchall()]
+    had_full = person["role"] == "owner" or person["access_preset"] in full_slugs
+    if had_full and slug not in full_slugs:
+        marks = ",".join("?" * len(full_slugs)) or "''"
+        remaining = conn.execute(
+            f"""SELECT COUNT(*) AS c FROM users
+                WHERE id != ? AND status = 'active'
+                  AND (role = 'owner' OR access_preset IN ({marks}))""",
+            (person["id"], *full_slugs)).fetchone()["c"]
+        if not remaining:
+            conn.close()
+            flash("That would leave nobody with full access, and there is no email "
+                  "configured to send a password reset. Give someone else full "
+                  "access first.", "error")
+            return redirect(url_for("admin_access_levels"))
+
+    conn.execute("UPDATE users SET access_preset = ? WHERE id = ?",
+                 (slug or None, person["id"]))
+    log_audit(conn, "access_assigned", target=person["name"], details=slug or "(role default)")
+    conn.commit()
+    conn.close()
+    flash(f"{person['name']} now has "
+          + (f"the {slug} access level." if slug else "the default for their role."),
+          "success")
+    return redirect(url_for("admin_access_levels"))
 
 
 @app.route("/chat")
