@@ -1771,3 +1771,41 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   border-radius:8px; padding:11px 14px; margin:0 0 16px;
   font-size:13.5px; line-height:1.6;
 }
+
+
+/* ------------------------------- the set menu ---------------------------- */
+.formule-panel{
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:11px; padding:14px 16px; margin-bottom:14px;
+}
+.formule-open{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.formule-grid{ display:flex; flex-direction:column; gap:8px; }
+.formule-row{
+  display:flex; gap:8px; align-items:flex-start; flex-wrap:wrap;
+  border-left:3px solid var(--parchment-line); padding-left:10px;
+}
+.formule-row.is-complete{ border-left-color:var(--gold-soft); }
+.formule-seat{ font-size:12.5px; color:var(--steel); min-width:76px; padding-top:8px; }
+.formule-cell{ position:relative; }
+.formule-cell summary{
+  cursor:pointer; list-style:none; font-size:13.5px; padding:6px 11px;
+  border:1px solid var(--parchment-line); border-radius:8px; background:var(--parchment);
+  min-height:36px; display:flex; align-items:center;
+}
+.formule-cell.is-chosen summary{ background:var(--surface); border-color:var(--gold-soft); }
+.formule-cell-body{
+  position:absolute; top:100%; left:0; z-index:5; margin-top:4px; min-width:220px;
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:9px;
+  padding:6px; box-shadow:0 6px 18px rgba(0,0,0,.12); display:flex; flex-direction:column; gap:3px;
+}
+.formule-choice{
+  text-align:left; border:none; background:none; padding:7px 9px; border-radius:6px;
+  cursor:pointer; font-size:13.5px; display:flex; flex-direction:column; gap:1px; width:100%;
+}
+.formule-choice:hover{ background:var(--parchment); }
+.formule-supp{ font-size:11.5px; color:var(--steel); }
+.formule-allerg{ font-size:10.5px; color:var(--steel); text-transform:uppercase; letter-spacing:.03em; }
+
+/* ------------------------- formule on the printed bill -------------------- */
+.receipt-formule{ margin-bottom:10px; }
+.receipt-line.is-formule-head{ font-weight:600; }

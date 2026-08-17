@@ -2369,6 +2369,28 @@ def init_db():
          "CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_orders_receipt "
          "ON pos_orders(receipt_number) WHERE receipt_number IS NOT NULL"),
 
+        # ---- The set menu (formule) ----------------------------------------
+        # One row per COVER, not per table — choices differ per person, and
+        # split-by-seat payment already exists.
+        ("pos_order_formules", """CREATE TABLE IF NOT EXISTS pos_order_formules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL REFERENCES pos_orders(id) ON DELETE CASCADE,
+            menu_id INTEGER REFERENCES menus(id) ON DELETE SET NULL,
+            label TEXT NOT NULL,
+            price REAL NOT NULL,
+            seat_number INTEGER,
+            voided INTEGER NOT NULL DEFAULT 0,
+            added_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        )"""),
+        ("pos_order_formules_order_idx",
+         "CREATE INDEX IF NOT EXISTS idx_pos_formules_order ON pos_order_formules(order_id)"),
+        ("pos_lines_formule_id",
+         "ALTER TABLE pos_order_lines ADD COLUMN formule_id INTEGER "
+         "REFERENCES pos_order_formules(id) ON DELETE SET NULL"),
+        ("pos_lines_is_supplement",
+         "ALTER TABLE pos_order_lines ADD COLUMN is_supplement INTEGER NOT NULL DEFAULT 0"),
+
         # Splitting a bill means a tab can take more than one payment. One row
         # per payment, so "three cards and the rest on the room" is expressible
         # and adds up.
@@ -6585,7 +6607,11 @@ def pos_send_to_kitchen(conn, order_id, user_id=None, course=None):
     ticket, which is how a kitchen ends up plating four of everything.
     """
     now = datetime.now(timezone.utc).isoformat()
-    sql = "SELECT * FROM pos_order_lines WHERE order_id = ? AND voided = 0 AND state = 'new'"
+    # A placeholder ("— Dessert à choisir —") is never sent: it is not a dish,
+    # it is a gap waiting for one. Sending it would put "to choose" on a
+    # kitchen ticket.
+    sql = ("SELECT * FROM pos_order_lines WHERE order_id = ? AND voided = 0 AND state = 'new' "
+           "AND (formule_id IS NULL OR menu_dish_id IS NOT NULL)")
     params = [order_id]
     if course:
         sql += " AND course = ?"
@@ -6784,6 +6810,187 @@ def pos_add_line(conn, order_id, extra, quantity=1, *, unit_price=None,
              f"{quantity} x {name}", user_id, datetime.now(timezone.utc).isoformat()),
         )
     return line_id
+
+
+# ---------------------------------------------------------------------------
+# The set menu (formule).
+#
+# BOFiP BOI-TVA-LIQ-30-20-10-20 §80 requires a menu price to be ventilated so
+# the alcoholic fraction carries 20% and the food 10%. One flat line at one
+# rate is a reassessment waiting to happen — worked out below, it understates
+# VAT by roughly 0.54 EUR per cover on a typical 65 EUR menu.
+#
+# The formule row itself contributes NOTHING to the total. The dish lines
+# carry the whole price, split in proportion to what each would cost on its
+# own, so pos_bill needs no change at all — it was already per-line.
+# ---------------------------------------------------------------------------
+
+def allocate_formule_price(price, bases):
+    """Split a set-menu price across its dishes, in proportion to what each
+    would cost on its own.
+
+    `bases` is [(key, carte_price), ...]. Returns {key: amount}, summing to
+    exactly `price` — a one-cent drift on every table is a till that never
+    reconciles. The residual cent goes to the line with the LARGEST base, so
+    it never lands on a 20% line by accident and does not move depending on
+    which course the guest picked first.
+    """
+    total_base = sum(b for _k, b in bases) or 1
+    shares = {k: round(price * b / total_base, 2) for k, b in bases}
+    drift = round(price - sum(shares.values()), 2)
+    if drift and bases:
+        biggest = max(bases, key=lambda kb: kb[1])[0]
+        shares[biggest] = round(shares[biggest] + drift, 2)
+    return shares
+
+
+def reallocate_formule(conn, formule_id):
+    """Recompute one cover's split across EVERY course, chosen or not.
+
+    The allocation must always cover the full set of lines, or the total
+    stops summing to the menu price the moment one dish is chosen and the
+    others are still placeholders. An unchosen course's base is the average
+    carte price of that course's dishes on tonight's menu — a stable estimate
+    that does not drift each time this runs, unlike using the placeholder's
+    own last-allocated price as its next base would.
+    """
+    formule = conn.execute("SELECT * FROM pos_order_formules WHERE id = ?",
+                           (formule_id,)).fetchone()
+    if not formule:
+        return
+    lines = conn.execute(
+        "SELECT * FROM pos_order_lines WHERE formule_id = ? AND voided = 0 AND is_supplement = 0",
+        (formule_id,)).fetchall()
+    if not lines:
+        return
+    bases = []
+    for l in lines:
+        base = None
+        if l["menu_dish_id"] is not None:
+            dish = conn.execute("SELECT carte_price FROM menu_dishes WHERE id = ?",
+                                (l["menu_dish_id"],)).fetchone()
+            base = dish["carte_price"] if dish and dish["carte_price"] else None
+        if base is None:
+            avg = conn.execute(
+                """SELECT AVG(carte_price) AS a FROM menu_dishes
+                   WHERE menu_id = ? AND course = ? AND carte_price IS NOT NULL""",
+                (formule["menu_id"], l["course"])).fetchone()["a"]
+            base = avg or (formule["price"] / len(lines))
+        bases.append((l["id"], base))
+    shares = allocate_formule_price(formule["price"], bases)
+    for line_id, amount in shares.items():
+        conn.execute("UPDATE pos_order_lines SET unit_price = ? WHERE id = ?",
+                     (amount, line_id))
+
+
+def pos_open_formule(conn, order_id, menu, covers, *, user_id=None):
+    """Start the set menu for a table: one row per cover, each with a
+    placeholder for every course the menu includes.
+
+    At order time the dessert choice usually does not exist yet — a system
+    demanding every choice up front gets fought by the floor and abandoned.
+    The placeholder is a real line from the start, priced at an even split, so
+    the bill is always correct even mid-choice.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    dish_courses = [r["course"] for r in conn.execute(
+        "SELECT DISTINCT course FROM menu_dishes WHERE menu_id = ? AND in_formule = 1",
+        (menu["id"],)).fetchall()]
+    dish_courses = [c for c in COURSE_ORDER if c in dish_courses] or ["main"]
+    even_share = round((menu["formule_price"] or 0) / max(1, len(dish_courses)), 2)
+    formule_ids = []
+    for seat in range(1, covers + 1):
+        conn.execute(
+            """INSERT INTO pos_order_formules (order_id, menu_id, label, price, seat_number,
+               added_by_user_id, created_at) VALUES (?,?,?,?,?,?,?)""",
+            (order_id, menu["id"], menu["formule_label"] or "Menu", menu["formule_price"] or 0,
+             seat, user_id, now))
+        formule_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        formule_ids.append(formule_id)
+        for course in dish_courses:
+            label = MENU_COURSES.get(course, course)
+            # The course is already known before a dish is picked, so a wine
+            # placeholder must carry the alcohol rate from the start — not the
+            # food rate every placeholder was getting regardless of course.
+            placeholder_rate = tax_rate(conn, "vat_alcohol" if course in ALCOHOL_COURSES
+                                        else "vat_food")
+            conn.execute(
+                """INSERT INTO pos_order_lines (order_id, formule_id, name, unit_price, quantity,
+                   course, seat_number, state, vat_rate, added_by_user_id, created_at)
+                   VALUES (?,?,?,?,1,?,?,'new',?,?,?)""",
+                (order_id, formule_id, f"— {label} à choisir —", even_share, course, seat,
+                 placeholder_rate, user_id, now))
+    pos_journal_append(conn, "line_added",
+                       {"formule": menu["formule_label"], "price": menu["formule_price"],
+                        "covers": covers}, order_id=order_id, user_id=user_id)
+    return formule_ids
+
+
+def pos_choose_formule_dish(conn, line_id, dish_id, *, notes=None, user_id=None):
+    """Fill a placeholder with the dish actually chosen.
+
+    A supplement is added as a SEPARATE line, excluded from the allocation
+    base, so the formule's own components still sum to exactly its price —
+    the supplement is genuinely additional consideration, taxed on its own.
+    """
+    line = conn.execute("SELECT * FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
+    dish = conn.execute("SELECT * FROM menu_dishes WHERE id = ?", (dish_id,)).fetchone()
+    if not line or not dish or not line["formule_id"]:
+        return False
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE pos_order_lines SET name = ?, menu_dish_id = ?, menu_item_id = ?,
+           vat_rate = ?, notes = ? WHERE id = ?""",
+        (dish["name"], dish["id"], dish["menu_item_id"], menu_dish_vat(conn, dish),
+         notes, line_id))
+    if dish["menu_item_id"]:
+        # A formule dish carries no stock link of its own — only the standing
+        # catalogue row does, when the dish recurs. Deplete through it exactly
+        # as an ordinary card sale would, or a dish sold inside a set menu
+        # would never draw down stock at all.
+        catalogue_item = conn.execute(
+            "SELECT stock_item_id, stock_qty_per_unit FROM menu_items WHERE id = ?",
+            (dish["menu_item_id"],)).fetchone()
+        if catalogue_item and catalogue_item["stock_item_id"]:
+            conn.execute(
+                """INSERT INTO stock_movements (stock_item_id, delta, reason, pos_line_id,
+                   note, created_by_user_id, created_at) VALUES (?,?,'sale',?,?,?,?)""",
+                (catalogue_item["stock_item_id"],
+                 -abs(catalogue_item["stock_qty_per_unit"] or 1), line_id,
+                 f"1 x {dish['name']} (menu)", user_id, now))
+    if dish["supplement"]:
+        conn.execute(
+            """INSERT INTO pos_order_lines (order_id, formule_id, menu_dish_id, name, unit_price,
+               quantity, course, seat_number, state, vat_rate, is_supplement,
+               added_by_user_id, created_at)
+               VALUES (?,?,?,?,?,1,?,?,'new',?,1,?,?)""",
+            (line["order_id"], line["formule_id"], dish["id"], f"Supplément — {dish['name']}",
+             dish["supplement"], dish["course"], line["seat_number"],
+             menu_dish_vat(conn, dish), user_id, now))
+    reallocate_formule(conn, line["formule_id"])
+    pos_journal_append(conn, "line_added",
+                       {"line_id": line_id, "chose": dish["name"], "supplement": dish["supplement"] or 0},
+                       order_id=line["order_id"], user_id=user_id)
+    return True
+
+
+def pos_formules_for(conn, order_id):
+    """Every cover's formule, its lines grouped, and whether it is complete —
+    for the seat x course grid on the till."""
+    formules = conn.execute(
+        "SELECT * FROM pos_order_formules WHERE order_id = ? AND voided = 0 ORDER BY seat_number",
+        (order_id,)).fetchall()
+    out = []
+    for f in formules:
+        lines = conn.execute(
+            "SELECT * FROM pos_order_lines WHERE formule_id = ? AND voided = 0 ORDER BY id",
+            (f["id"],)).fetchall()
+        chosen = [l for l in lines if not l["is_supplement"]]
+        out.append({
+            "formule": f, "lines": lines,
+            "complete": all(l["menu_dish_id"] for l in chosen),
+        })
+    return out
 
 
 def pos_add_menu_line(conn, order_id, item, quantity=1, *, notes=None, seat=None,
@@ -11196,6 +11403,14 @@ def pos_order(order_id):
     other_tables = conn.execute(
         "SELECT id, table_label FROM pos_orders WHERE status = 'open' AND id != ? ORDER BY table_label",
         (order_id,)).fetchall()
+    # The set menu for tonight, if there is one — the panel only shows when a
+    # published card actually carries a price.
+    card = menu_for_date(conn, bill["order"]["service_date"]) if bill["order"]["service_date"] else None
+    formule_menu = card if (card and card["formule_price"]) else None
+    formules = pos_formules_for(conn, order_id)
+    formule_choices = {}
+    if formule_menu:
+        formule_choices = menu_dishes_for(conn, formule_menu["id"], include_unavailable=False)
     conn.close()
     return render_template(
         "pos_order.html", bill=bill, order=bill["order"], lines=bill["lines"],
@@ -11204,7 +11419,8 @@ def pos_order(order_id):
         context=context, in_house=in_house, payments=payments,
         payment_methods=POS_PAYMENT_METHODS, void_reasons=POS_VOID_REASONS,
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
-        allergens=ALLERGENS, other_tables=other_tables)
+        allergens=ALLERGENS, other_tables=other_tables,
+        formule_menu=formule_menu, formules=formules, formule_choices=formule_choices)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])
@@ -11284,6 +11500,63 @@ def pos_add_item(order_id):
     conn.commit()
     conn.close()
     return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/formule", methods=["POST"])
+@login_required
+def pos_open_formule_route(order_id):
+    """Start the set menu for this table: one row per cover, each a
+    placeholder for every course."""
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    if conn.execute("SELECT 1 FROM pos_order_formules WHERE order_id = ? AND voided = 0",
+                    (order_id,)).fetchone():
+        conn.close()
+        flash("The set menu is already open on this table.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    menu = menu_for_date(conn, order["service_date"]) if order["service_date"] else None
+    if not menu or not menu["formule_price"]:
+        conn.close()
+        flash("No set menu is published for tonight.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    try:
+        covers = max(1, int(request.form.get("covers", order["covers"] or 1)))
+    except ValueError:
+        covers = order["covers"] or 1
+    pos_open_formule(conn, order_id, menu, covers, user_id=session.get("user_id"))
+    conn.commit()
+    conn.close()
+    flash(f"{menu['formule_label'] or 'Set menu'} opened for {covers} cover{'' if covers == 1 else 's'}.",
+          "success")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/formule-line/<int:line_id>/choose", methods=["POST"])
+@login_required
+def pos_choose_formule_dish_route(line_id):
+    """Fill one placeholder with the dish the guest actually chose."""
+    dish_id = (request.form.get("menu_dish_id", "") or "").strip()
+    conn = get_db()
+    line = conn.execute("SELECT * FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
+    if not line or not line["formule_id"]:
+        conn.close()
+        abort(404)
+    if not dish_id.isdigit():
+        conn.close()
+        flash("Choose a dish for that course.", "error")
+        return redirect(url_for("pos_order", order_id=line["order_id"]))
+    ok = pos_choose_formule_dish(conn, line_id, int(dish_id),
+                                 notes=(request.form.get("notes", "") or "").strip() or None,
+                                 user_id=session.get("user_id"))
+    conn.commit()
+    conn.close()
+    if not ok:
+        flash("Couldn't set that choice.", "error")
+    return redirect(url_for("pos_order", order_id=line["order_id"]))
 
 
 @app.route("/pos/<int:order_id>/send", methods=["POST"])
@@ -11634,9 +11907,17 @@ def pos_receipt(order_id):
     context = pos_table_context(conn, bill["order"])
     payments = conn.execute(
         "SELECT * FROM pos_payments WHERE order_id = ? ORDER BY id", (order_id,)).fetchall()
+    # A cover on the set menu shows as one line with its dishes beneath, muted
+    # — that is what a ventilated French addition actually looks like, and it
+    # satisfies arrêté 83-50/A art. 1 (the itemised note) without printing one
+    # blended line the ventilation requirement would not survive.
+    formules = pos_formules_for(conn, order_id)
+    formule_line_ids = {l["id"] for f in formules for l in f["lines"]}
+    a_la_carte = pos_lines_by_course(
+        [l for l in bill["live"] if l["id"] not in formule_line_ids])
     conn.close()
     return render_template("pos_receipt.html", bill=bill, order=bill["order"],
-                           by_course=pos_lines_by_course(bill["live"]), context=context,
+                           by_course=a_la_carte, formules=formules, context=context,
                            payments=payments, courses=MENU_COURSES,
                            payment_methods=POS_PAYMENT_METHODS)
 

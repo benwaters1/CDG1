@@ -52,6 +52,58 @@
   </div>
   {% endif %}
 
+  {% if formule_menu %}
+  <!-- ============================ set menu ============================ -->
+  <div class="formule-panel">
+    {% if not formules %}
+    <form method="post" action="{{ url_for('pos_open_formule_route', order_id=order['id']) }}"
+          class="formule-open">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <span>
+        <strong>{{ formule_menu['formule_label'] or 'Set menu' }}</strong>
+        · €{{ '%.2f'|format(formule_menu['formule_price']) }}
+      </span>
+      <input type="number" name="covers" min="1" value="{{ order['covers'] or 1 }}" style="width:70px; margin:0;">
+      <button type="submit" class="btn-mini">Open for the table</button>
+    </form>
+    {% else %}
+    <p class="field-label" style="margin:0 0 8px;">
+      {{ formule_menu['formule_label'] or 'Set menu' }} — tap a course to choose
+    </p>
+    {# Rows = seats, columns = courses. Placeholders read "à choisir" until
+       tapped — at order time the dessert choice usually does not exist yet,
+       and a system demanding it up front gets fought by the floor. #}
+    <div class="formule-grid">
+      {% for f in formules %}
+      <div class="formule-row {{ 'is-complete' if f.complete }}">
+        <span class="formule-seat">Couvert {{ f.formule['seat_number'] }}</span>
+        {% for l in f.lines if not l['is_supplement'] %}
+        <details class="formule-cell {{ 'is-chosen' if l['menu_dish_id'] }}">
+          <summary>
+            {% if l['menu_dish_id'] %}{{ l['name'] }}{% else %}{{ courses.get(l['course'], l['course']) }} à choisir{% endif %}
+          </summary>
+          <div class="formule-cell-body">
+            {% for d in formule_choices.get(l['course'], []) %}
+            <form method="post" action="{{ url_for('pos_choose_formule_dish_route', line_id=l['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="menu_dish_id" value="{{ d['id'] }}">
+              <button type="submit" class="formule-choice">
+                {{ d['name'] }}
+                {% if d['supplement'] %}<span class="formule-supp">+€{{ '%.2f'|format(d['supplement']) }}</span>{% endif %}
+                {% if d['allergens'] %}<span class="formule-allerg">{% for a in d['allergens'].split(',') %}{{ allergens.get(a, a) }}{{ ' · ' if not loop.last }}{% endfor %}</span>{% endif %}
+              </button>
+            </form>
+            {% endfor %}
+          </div>
+        </details>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <div class="till-body">
 
     <!-- ======================= courses + menu ======================= -->

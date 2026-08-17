@@ -23,6 +23,27 @@
   </div>
   {% if context %}<p class="receipt-guest">{{ context.booking['guest_name'] }}</p>{% endif %}
 
+  {% for f in formules %}
+  {% set live = f.lines|rejectattr('voided')|list %}
+  {% if live %}
+  {# The component allocations are shown, muted, beneath the formule subtotal
+     in bold — the ventilation BOFiP requires is on the bill, satisfying the
+     itemised-note rule without one blended line that would not survive it. #}
+  <div class="receipt-formule">
+    <div class="receipt-line is-formule-head">
+      <span>{{ f.formule['label'] }} — couvert {{ f.formule['seat_number'] }}</span>
+      <span>€{{ '%.2f'|format(f.formule['price']) }}</span>
+    </div>
+    {% for l in live %}
+    <div class="receipt-line is-small">
+      <span>{{ l['name'] }}{% if l['is_supplement'] %} (supplément){% endif %}</span>
+      <span>€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+
   {% for course, lines in by_course.items() %}
   <p class="receipt-course">{{ courses.get(course, course) }}</p>
   {% for l in lines %}
