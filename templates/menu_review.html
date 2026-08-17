@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ menu['service_date'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Check what was read</h1>
+  <a href="{{ url_for('menu_day', date=menu['service_date'], service=menu['service']) }}" class="btn-ghost">Back</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Nothing here is live. Every field can be changed before it goes anywhere near the till —
+  this reads whatever was on the card, it does not decide what is right.
+</p>
+
+{% if unsure %}
+<div class="alert-band">
+  <strong>{{ unsure }} dish{{ '' if unsure == 1 else 'es' }} worth a second look</strong> —
+  no price read, no allergens listed, or nothing legible. Flagged at the top.
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('apply_menu_review', menu_id=menu['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="detail-card" style="max-width:680px;">
+    <h3 style="margin-top:0;">The card</h3>
+    <div class="refund-fields">
+      <div><label class="field-label">Title</label><input type="text" name="title" value="{{ menu['title'] or '' }}"></div>
+      <div><label class="field-label">Set menu name</label><input type="text" name="formule_label" value="{{ menu['formule_label'] or '' }}"></div>
+      <div><label class="field-label">Set price (€)</label><input type="text" name="formule_price" inputmode="decimal" value="{{ '%.2f'|format(menu['formule_price']) if menu['formule_price'] else '' }}"></div>
+    </div>
+  </div>
+
+  {% for d, why in flagged %}
+  <div class="review-dish {{ 'needs-look' if why }}">
+    {% if why %}<span class="review-flag">{{ why }}</span>{% endif %}
+    <div class="refund-fields">
+      <div style="grid-column:1 / -1;">
+        <label class="field-label">Dish</label>
+        <input type="text" name="name-{{ d['id'] }}" value="{{ d['name'] }}">
+      </div>
+      <div style="grid-column:1 / -1;">
+        <label class="field-label">Description</label>
+        <input type="text" name="description-{{ d['id'] }}" value="{{ d['description'] or '' }}">
+      </div>
+      <div>
+        <label class="field-label">Course</label>
+        <select name="course-{{ d['id'] }}">
+          {% for k, v in courses.items() %}
+          <option value="{{ k }}" {{ 'selected' if d['course'] == k }}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div><label class="field-label">À la carte (€)</label><input type="text" name="carte_price-{{ d['id'] }}" inputmode="decimal" value="{{ '%.2f'|format(d['carte_price']) if d['carte_price'] else '' }}"></div>
+      <div><label class="field-label">Supplement (€)</label><input type="text" name="supplement-{{ d['id'] }}" inputmode="decimal" value="{{ '%.2f'|format(d['supplement']) if d['supplement'] else '' }}"></div>
+      <div>
+        <label class="field-label" style="display:flex; align-items:center; gap:7px;">
+          <input type="checkbox" name="drop-{{ d['id'] }}"> Not on this card
+        </label>
+      </div>
+    </div>
+    <p class="field-label" style="margin-top:10px;">Allergens</p>
+    <div class="amenity-grid">
+      {% set chosen = (d['allergens'] or '').split(',') %}
+      {% for key, alabel in allergens.items() %}
+      <label class="amenity">
+        <input type="checkbox" name="allergens-{{ d['id'] }}" value="{{ key }}" {{ 'checked' if key in chosen }}>
+        {{ alabel }}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="review-actions">
+    <button type="submit" class="btn-mini">Save as a draft</button>
+    <button type="submit" name="publish" value="1" class="btn-primary" style="margin-top:0;">
+      Looks right — publish to the POS
+    </button>
+  </div>
+</form>
+
+<style>
+.review-dish{
+  background:var(--surface); border:1px solid var(--parchment-line);
+  border-radius:11px; padding:14px 16px; margin-bottom:12px; max-width:680px;
+}
+.review-dish.needs-look{ border-color:var(--danger); }
+.review-flag{
+  display:inline-block; font-size:11.5px; font-weight:600; color:var(--danger);
+  background:var(--status-danger-bg); border-radius:6px; padding:2px 8px; margin-bottom:8px;
+}
+.review-actions{ display:flex; gap:10px; margin-top:16px; }
+</style>
+
+{% endblock %}

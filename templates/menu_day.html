@@ -39,6 +39,41 @@
     <button type="submit" class="btn-primary" style="margin-top:8px;">Start</button>
   </form>
 
+  <h2 class="section-heading">Or read it in</h2>
+  {# Three ways in, one review screen — a photo of the printed template, a PDF
+     from a supplier, or pasted text. Whatever comes back is corrected before
+     anything reaches the till. #}
+  <form method="post" action="{{ url_for('read_menu_upload') }}" enctype="multipart/form-data"
+        class="detail-card" style="max-width:680px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="date" value="{{ on.isoformat() }}">
+    <input type="hidden" name="service" value="{{ service }}">
+    <label class="field-label">Photo or PDF of the card</label>
+    <input type="file" name="card" accept="application/pdf,image/*">
+    <p class="field-hint">
+      Works best with the <a href="{{ url_for('menu_template_sheet', date=on.isoformat()) }}">printable template</a> —
+      write on it, photograph it, upload the photo.
+    </p>
+    <button type="submit" class="btn-mini" style="margin-top:8px;">Read the file</button>
+  </form>
+
+  <form method="post" action="{{ url_for('read_menu_upload') }}"
+        class="detail-card" style="max-width:680px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="date" value="{{ on.isoformat() }}">
+    <input type="hidden" name="service" value="{{ service }}">
+    <label class="field-label">Or paste the card as text</label>
+    <textarea name="pasted" rows="8" placeholder="MENU — 65 €
+ENTRÉES
+Velouté de cèpes | châtaignes grillées | milk, celery
+PLATS
+Filet de bœuf gascon | +12 € | pommes fondantes
+DESSERTS
+Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
+    <p class="field-hint">One dish per line: name, then description, then allergens, separated by |. — 12 € for a price, +12 € for a supplement.</p>
+    <button type="submit" class="btn-mini" style="margin-top:8px;">Read the text</button>
+  </form>
+
   {% if recent %}
   <h2 class="section-heading">Or copy a recent card</h2>
   <div class="doc-list" style="max-width:680px;">

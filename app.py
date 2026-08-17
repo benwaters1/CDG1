@@ -19963,6 +19963,172 @@ def copy_menu_day(menu_id):
     return redirect(url_for("menu_day", date=to.isoformat(), service=service))
 
 
+@app.route("/admin/restaurant/menu/read", methods=["POST"])
+@owner_required
+def read_menu_upload():
+    """Take a PDF, a photograph or pasted text and produce a draft to correct.
+
+    Every path lands on the same review screen, because a second parser with
+    its own edge cases would drift from this one within a week.
+    """
+    on = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
+    service = request.form.get("service", "dinner")
+    if service not in ("lunch", "dinner"):
+        service = "dinner"
+    pasted = (request.form.get("pasted", "") or "").strip()
+    upload = request.files.get("card")
+
+    extracted, source, source_file = None, "paste", None
+    if upload and upload.filename:
+        raw = upload.read()
+        if len(raw) > 12 * 1024 * 1024:
+            flash("That file is over 12MB — a photo of one page should be far smaller.", "error")
+            return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+        # A photograph is as welcome as a PDF: the chef writes on the template
+        # sheet and takes a picture of it, which is the whole point of shipping
+        # the sheet.
+        pdf_bytes = ensure_pdf(raw, upload.mimetype, title=upload.filename)
+        if not pdf_bytes:
+            flash("Couldn't read that file — a PDF or a photo (JPG, PNG) works.", "error")
+            return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+        source, source_file = "pdf", upload.filename
+        extracted = read_menu_card(pdf_bytes=pdf_bytes, filename=upload.filename)
+        if extracted is None and not claude_configured():
+            flash("Reading a file needs the AI key set up. Type the card, or paste it "
+                  "in the box — that still works without it.", "error")
+            return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+    elif pasted:
+        extracted = read_menu_card(text=pasted)
+        if extracted is None:
+            # The poor relation, and deliberately so — but it means the
+            # pipeline has no single point of failure.
+            extracted = parse_menu_text(pasted)
+            source = "paste"
+    else:
+        flash("Choose a file or paste the card in.", "error")
+        return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+
+    if not extracted:
+        flash("Nothing readable came back. Type the card in instead — it takes a minute "
+              "and it is always going to work.", "error")
+        return redirect(url_for("menu_day", date=on.isoformat(), service=service))
+
+    conn = get_db()
+    menu_id = build_menu_draft(conn, extracted, service_date=on.isoformat(), service=service,
+                               source=source, source_file=source_file,
+                               user_id=session.get("user_id"))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("review_menu_draft", menu_id=menu_id))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/review")
+@owner_required
+def review_menu_draft(menu_id):
+    """Check what was read before it goes anywhere near the till.
+
+    Ordered worst-first: anything the reader was unsure of, anything with no
+    price, and anything with no allergens listed comes to the top, because
+    those are the three that cost money or cause harm if they are wrong.
+    """
+    conn = get_db()
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu:
+        conn.close()
+        abort(404)
+    dishes = conn.execute(
+        "SELECT * FROM menu_dishes WHERE menu_id = ? ORDER BY sort_order, id",
+        (menu_id,)).fetchall()
+    conn.close()
+
+    def needs_a_look(d):
+        if not (d["name"] or "").strip():
+            return "No name read"
+        if menu["formule_price"] is None and not d["carte_price"]:
+            return "No price read"
+        if not d["allergens"]:
+            return "No allergens listed"
+        return None
+
+    flagged = [(d, needs_a_look(d)) for d in dishes]
+    flagged.sort(key=lambda pair: (pair[1] is None, pair[0]["sort_order"]))
+    return render_template("menu_review.html", menu=menu, flagged=flagged,
+                           courses=MENU_COURSES, allergens=ALLERGENS,
+                           unsure=sum(1 for _d, why in flagged if why))
+
+
+@app.route("/admin/restaurant/menu/day/<int:menu_id>/apply", methods=["POST"])
+@owner_required
+def apply_menu_review(menu_id):
+    """Save the corrections. Every field is editable — the reader proposes."""
+    conn = get_db()
+    menu = conn.execute("SELECT * FROM menus WHERE id = ?", (menu_id,)).fetchone()
+    if not menu or menu["status"] == "published":
+        conn.close()
+        abort(404)
+
+    def money(raw):
+        raw = (raw or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    conn.execute("UPDATE menus SET title = ?, formule_label = ?, formule_price = ? WHERE id = ?",
+                 ((request.form.get("title", "") or "").strip() or None,
+                  (request.form.get("formule_label", "") or "").strip() or None,
+                  money(request.form.get("formule_price")), menu_id))
+
+    for d in conn.execute("SELECT id FROM menu_dishes WHERE menu_id = ?", (menu_id,)).fetchall():
+        did = d["id"]
+        if request.form.get(f"drop-{did}"):
+            conn.execute("DELETE FROM menu_dishes WHERE id = ?", (did,))
+            continue
+        name = (request.form.get(f"name-{did}", "") or "").strip()
+        if not name:
+            # A dish with its name deleted is a dish being removed.
+            conn.execute("DELETE FROM menu_dishes WHERE id = ?", (did,))
+            continue
+        course = request.form.get(f"course-{did}", "main")
+        if course not in MENU_COURSES:
+            course = "main"
+        allergens = ",".join(a for a in request.form.getlist(f"allergens-{did}")
+                             if a in ALLERGENS)
+        conn.execute(
+            """UPDATE menu_dishes SET name = ?, description = ?, course = ?, allergens = ?,
+               carte_price = ?, supplement = ?, menu_item_id = ? WHERE id = ?""",
+            (name, (request.form.get(f"description-{did}", "") or "").strip() or None,
+             course, allergens or None, money(request.form.get(f"carte_price-{did}")),
+             money(request.form.get(f"supplement-{did}")) or 0,
+             link_dish_to_catalogue(conn, name), did))
+
+    left = conn.execute("SELECT COUNT(*) AS c FROM menu_dishes WHERE menu_id = ?",
+                        (menu_id,)).fetchone()["c"]
+    if request.form.get("publish") and left:
+        publish_menu(conn, menu_id, session.get("user_id"))
+        conn.commit()
+        conn.close()
+        flash(f"Published — {left} dish{'' if left == 1 else 'es'} live on the POS.", "success")
+        return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+    conn.commit()
+    conn.close()
+    flash("Saved as a draft.", "success")
+    return redirect(url_for("menu_day", date=menu["service_date"], service=menu["service"]))
+
+
+@app.route("/admin/restaurant/menu/template")
+@owner_required
+def menu_template_sheet():
+    """The A4 sheet the chef writes tonight's card on.
+
+    Shipping our own layout is the point: when the sheet came from us, the
+    reading is close to exact, which is the difference between a review that
+    takes thirty seconds and one that is quicker to bypass.
+    """
+    on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    return render_template("menu_template.html", on=on, courses=MENU_COURSES)
+
+
 @app.route("/admin/restaurant/menu/day/<int:menu_id>/print")
 @owner_required
 def print_menu_day(menu_id):
@@ -26365,6 +26531,240 @@ def read_invoice_with_claude(pdf_bytes, filename, stock_items):
     if not parsed or not parsed.get("lines"):
         return None
     return parsed
+
+
+MENU_CARD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": ["string", "null"],
+                  "description": "The card's own title if it has one"},
+        "service_date": {"type": ["string", "null"],
+                         "description": "YYYY-MM-DD if a date is printed, else null"},
+        "formule_label": {"type": ["string", "null"],
+                          "description": "Name of the set menu, e.g. Menu Degustation"},
+        "formule_price": {"type": ["number", "null"],
+                          "description": "The single set price if the card has one"},
+        "dishes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": ["string", "null"]},
+                    "course": {"type": "string",
+                               "enum": list(MENU_COURSES) + ["other"]},
+                    "carte_price": {"type": ["number", "null"],
+                                    "description": "Its own price, null inside a set menu"},
+                    "supplement": {"type": ["number", "null"],
+                                   "description": "Extra charge inside a set menu, e.g. +12"},
+                    "allergens": {"type": "array",
+                                  "items": {"type": "string", "enum": list(ALLERGENS)}},
+                    "confidence": {"type": "string", "enum": ["high", "low"]},
+                },
+                "required": ["name", "course", "confidence"],
+                "additionalProperties": False,
+            },
+        },
+        "notes": {"type": ["string", "null"],
+                  "description": "Anything on the card that is not a dish"},
+    },
+    "required": ["dishes"],
+    "additionalProperties": False,
+}
+
+
+MENU_READ_SYSTEM = (
+    "You read restaurant menu cards for a chateau in the French Pyrenees and "
+    "extract the dishes so they can be put on the till. Rules, in order of "
+    "importance:\n"
+    "1. Only report what is written. Never invent a dish, a price or an "
+    "allergen. Return null for anything absent rather than guessing.\n"
+    "2. Keep the wording exactly as printed, including French. Do not "
+    "translate, tidy, expand abbreviations or correct spelling — the card is "
+    "what the guest reads and the chef wrote it that way on purpose.\n"
+    "3. A price attached to one dish is `carte_price`. A single price for the "
+    "whole card is `formule_price`, and dishes under it have no price of their "
+    "own. A price written with a plus sign (+12, supplement 12) is a "
+    "`supplement`, not a carte price — that distinction changes what the guest "
+    "is charged.\n"
+    "4. Only list an allergen where the card states it or the dish name makes "
+    "it certain — noix means nuts, fromage means milk. Never infer from a "
+    "cooking method or a guess at the recipe. A missed allergen is a hazard; "
+    "an invented one takes a dish off the menu for no reason.\n"
+    "5. Course headings on the card decide the course. Entrees are starters, "
+    "plats are mains, and if a dish sits under no heading use 'other' rather "
+    "than picking one.\n"
+    "6. Mark 'high' only where the line is unambiguous. Anything blurred, "
+    "handwritten, cut off or ambiguous is 'low' — the owner reviews every line "
+    "before it goes live, and flagging doubt is what makes that review quick."
+)
+
+
+def read_menu_card(*, pdf_bytes=None, filename=None, text=None):
+    """Extract a card from a PDF, a photograph or pasted text.
+
+    Returns the parsed dict or None. On any failure the owner types the card
+    by hand — the daily builder exists precisely so this can fail safely, and
+    a half-read menu presented as fact would be worse than no reading at all.
+    """
+    if not claude_configured():
+        return None
+    if not pdf_bytes and not (text or "").strip():
+        return None
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    content = []
+    if pdf_bytes:
+        content.append({
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf",
+                       "data": base64.standard_b64encode(pdf_bytes).decode("ascii")},
+            "title": filename or "menu.pdf",
+        })
+    if text and text.strip():
+        content.append({"type": "text",
+                        "text": f"The card, as typed:\n\n{text.strip()}"})
+    content.append({"type": "text", "text":
+                    "Extract every dish on this card, with its course, any price, "
+                    "any supplement, and only the allergens actually stated."})
+    try:
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=8192, system=MENU_READ_SYSTEM,
+            output_config={"format": {"type": "json_schema", "schema": MENU_CARD_SCHEMA}},
+            messages=[{"role": "user", "content": content}],
+        )
+    except Exception as e:
+        print(f"[claude] menu read failed: {e}")
+        return None
+    if getattr(response, "stop_reason", None) == "refusal":
+        return None
+    parsed = getattr(response, "parsed_output", None)
+    if not parsed or not parsed.get("dishes"):
+        return None
+    return parsed
+
+
+def parse_menu_text(text):
+    """The fallback when Claude is not configured.
+
+    Deliberately the poor relation: `Name | description | allergens`, with
+    course headings on their own line, `— 12 €` for a carte price and `+12 €`
+    for a supplement. Every line comes back 'low' confidence, because a split
+    on pipes knows nothing about what it read.
+
+    It exists so the pipeline has no single point of failure, not because it
+    is good.
+    """
+    heading_to_course = {}
+    for key, label in MENU_COURSES.items():
+        heading_to_course[label.lower()] = key
+        heading_to_course[key] = key
+    # The French words a chef actually writes at the top of a section.
+    heading_to_course.update({
+        "entrees": "starter", "entrées": "starter", "entree": "starter",
+        "plats": "main", "plat": "main", "desserts": "dessert", "dessert": "dessert",
+        "fromages": "cheese", "fromage": "cheese", "apéritifs": "aperitif",
+        "aperitifs": "aperitif", "vins": "wine", "boissons": "drink",
+        "accompagnements": "side", "cafe": "coffee", "café": "coffee",
+    })
+
+    # The euro sign is required, and the LAST match wins. Without both, the 17
+    # in "MENU — 17 août — 65 €" becomes the price of the menu.
+    def priced(chunk):
+        found = re.findall(r"(\d+(?:[.,]\d{1,2})?)\s*€", chunk or "")
+        return float(found[-1].replace(",", ".")) if found else None
+
+    def supplement_in(chunk):
+        found = re.search(r"\+\s*(\d+(?:[.,]\d{1,2})?)\s*€?", chunk or "")
+        return float(found.group(1).replace(",", ".")) if found else None
+
+    def carte_in(chunk):
+        found = re.search(r"[—–-]\s*(\d+(?:[.,]\d{1,2})?)\s*€", chunk or "")
+        return float(found.group(1).replace(",", ".")) if found else None
+
+    out = {"title": None, "service_date": None, "formule_label": None,
+           "formule_price": None, "dishes": [], "notes": None}
+    course = "main"
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        bare = line.lower().strip(" :-—")
+        if bare in heading_to_course:
+            course = heading_to_course[bare]
+            continue
+        # A title line carrying the set price: "MENU — 17 août 2026 — 65 €"
+        if "|" not in line and re.search(r"\d+\s*€", line) and len(line.split()) <= 10:
+            out["formule_label"] = out["formule_label"] or line.split("—")[0].strip() or None
+            out["formule_price"] = out["formule_price"] or priced(line)
+            continue
+
+        parts = [x.strip() for x in line.split("|")]
+        # A price can be written in any field — chefs put "+12 €" on its own,
+        # or tack it onto the dish name. Look everywhere, then drop whichever
+        # field was nothing but the price.
+        supplement = next((supplement_in(x) for x in parts if supplement_in(x)), None)
+        carte = next((carte_in(x) for x in parts if carte_in(x)), None)
+        if carte is None and supplement is None and len(parts) > 1:
+            carte = priced(parts[1]) if re.fullmatch(r"[^a-zA-Z]*", parts[1] or "x") else None
+
+        name = parts[0]
+        for pattern in (r"\+\s*\d+(?:[.,]\d{1,2})?\s*€?", r"[—–-]\s*\d+(?:[.,]\d{1,2})?\s*€"):
+            name = re.sub(pattern, "", name)
+        name = name.strip(" —–-")
+        if not name:
+            continue
+
+        # Whatever is left that reads as prose is the description; a field that
+        # was only ever a price is not one.
+        body = [x for x in parts[1:] if x and re.search(r"[a-zA-Zà-ÿ]", x)]
+        allergens, description = [], None
+        for chunk in body:
+            found = [a.strip().lower() for a in re.split(r"[,;]", chunk)
+                     if a.strip().lower() in ALLERGENS]
+            if found and len(found) == len([a for a in re.split(r"[,;]", chunk) if a.strip()]):
+                allergens = found
+            elif description is None:
+                description = chunk
+
+        out["dishes"].append({
+            "name": name, "description": description, "course": course,
+            "carte_price": carte, "supplement": supplement,
+            "allergens": allergens, "confidence": "low",
+        })
+    return out if out["dishes"] else None
+
+
+def build_menu_draft(conn, extracted, *, service_date, service="dinner", source="pdf",
+                     source_file=None, user_id=None):
+    """Turn an extraction into a draft card. Never published — it is reviewed.
+
+    Every input path lands here, so the PDF, the photograph, the template sheet
+    and the paste box all produce the same thing and are corrected on the same
+    screen.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    price = extracted.get("formule_price")
+    conn.execute(
+        """INSERT INTO menus (service_date, service, title, status, formule_price,
+           formule_label, source, source_file, notes, created_by_user_id, created_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)""",
+        (service_date, service, extracted.get("title"), price,
+         extracted.get("formule_label"), source, source_file,
+         extracted.get("notes"), user_id, now))
+    menu_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    for i, d in enumerate(extracted.get("dishes") or []):
+        course = d.get("course") or "main"
+        if course not in MENU_COURSES:
+            course = "main"
+        allergens = ",".join(a for a in (d.get("allergens") or []) if a in ALLERGENS)
+        conn.execute(
+            """INSERT INTO menu_dishes (menu_id, course, menu_item_id, name, description,
+               allergens, carte_price, supplement, in_formule, available, sort_order, created_at)
+               VALUES (?,?,?,?,?,?,?,?,1,1,?,?)""",
+            (menu_id, course, link_dish_to_catalogue(conn, d.get("name")),
+             (d.get("name") or "").strip(), d.get("description"), allergens or None,
+             d.get("carte_price"), d.get("supplement") or 0, i, now))
+    return menu_id
 
 
 def draft_reply_with_claude(context, compose_text):

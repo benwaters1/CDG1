@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Menu template{% endblock %}
+{% block content %}
+
+{#
+  A blank A4 sheet, printed and written on, then photographed back in through
+  the paste box or the upload button on the day builder. Shipping our own
+  layout is the point: because we control it, the reading back is near-exact,
+  which is the difference between a review that takes thirty seconds and one
+  quicker to skip.
+#}
+
+<div class="page-head no-print">
+  <h1>Menu template</h1>
+  <a href="{{ url_for('menu_day', date=on.isoformat()) }}" class="btn-ghost">Back to the card</a>
+</div>
+<p class="pay-disclaimer no-print" style="margin-top:-10px;">
+  Print this, write tonight's card on it, then photograph it and upload the photo on the
+  day builder — it reads back onto the till.
+</p>
+
+<div class="sheet">
+  <p class="sheet-eyebrow">Château de Gudanes — La Table</p>
+  <div class="sheet-line-row">
+    <span class="sheet-field">Date : ______________________</span>
+    <span class="sheet-field">Menu : ______________________</span>
+    <span class="sheet-field">Prix : __________ €</span>
+  </div>
+
+  {% for course, label in courses.items() %}
+  <div class="sheet-course">
+    <h2>{{ label }}</h2>
+    {% for _ in range(3) %}
+    <div class="sheet-dish">
+      <span class="sheet-dish-line"></span>
+      <span class="sheet-price">______ €</span>
+    </div>
+    <div class="sheet-allergen-line">Allergènes : ________________________________</div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <p class="sheet-hint">
+    Une ligne par plat. "+" devant un prix = supplément dans le menu. Notez les allergènes
+    connus à côté de chaque plat — laissez vide si aucun.
+  </p>
+</div>
+
+<button type="button" class="btn-primary no-print" style="margin-top:16px;" onclick="window.print()">Print</button>
+
+<style>
+.sheet{
+  max-width:640px; margin:0 auto; background:var(--surface);
+  border:1px solid var(--parchment-line); border-radius:10px; padding:36px 44px;
+}
+.sheet-eyebrow{
+  font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--steel);
+  text-align:center; margin:0 0 20px;
+}
+.sheet-line-row{ display:flex; flex-direction:column; gap:10px; margin-bottom:26px; font-size:14px; }
+.sheet-field{ border-bottom:1px solid var(--parchment-line); padding-bottom:4px; }
+.sheet-course{ margin-bottom:22px; }
+.sheet-course h2{
+  font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--steel);
+  border-bottom:1px solid var(--parchment-line); padding-bottom:5px; margin:0 0 12px;
+}
+.sheet-dish{ display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+.sheet-dish-line{ flex:1; border-bottom:1px dotted var(--parchment-line); height:22px; }
+.sheet-price{ font-size:13px; color:var(--steel); white-space:nowrap; }
+.sheet-allergen-line{ font-size:11px; color:var(--steel); margin:0 0 14px; }
+.sheet-hint{ font-size:11px; color:var(--steel); font-style:italic; margin-top:20px; }
+@media print{
+  .no-print, .g-top, nav, header, footer{ display:none !important; }
+  .sheet{ border:none; max-width:none; padding:0; }
+}
+</style>
+
+{% endblock %}
