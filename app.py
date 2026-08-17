@@ -216,6 +216,8 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_email_scan_lookback_days": "14",
     "automation_stale_shift_enabled": "1",
     "automation_stale_shift_hours": "14",
+    "automation_backup_email_enabled": "1",
+    "automation_backup_interval_hours": "24",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
@@ -8057,7 +8059,8 @@ def dashboard():
             "SELECT COUNT(*) AS c FROM waitlist_entries WHERE status IN ('open', 'contacted')"
         ).fetchone()["c"]
         last_backup = conn.execute(
-            "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' ORDER BY created_at DESC LIMIT 1"
+            "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
+            "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_backup_at = last_backup["created_at"] if last_backup else None
         backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
@@ -15269,7 +15272,8 @@ def build_owner_digest(conn):
         "SELECT COUNT(*) AS c FROM waitlist_entries WHERE status IN ('open', 'contacted')"
     ).fetchone()["c"]
     last_backup = conn.execute(
-        "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' ORDER BY created_at DESC LIMIT 1"
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
+        "ORDER BY created_at DESC LIMIT 1"
     ).fetchone()
     last_backup_at = last_backup["created_at"] if last_backup else None
     backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
@@ -20230,7 +20234,7 @@ def readiness_checks(conn):
         "the footer currently omits it.")
 
     last_backup = conn.execute(
-        "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' "
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
         "ORDER BY id DESC LIMIT 1").fetchone()
     days = None
     if last_backup:
@@ -20286,14 +20290,11 @@ def admin_readiness():
                            blockers=blockers, warnings=warnings)
 
 
-@app.route("/admin/backup")
-@owner_required
-def download_backup():
-    audit_conn = get_db()
-    log_audit(audit_conn, "backup_downloaded")
-    audit_conn.commit()
-    audit_conn.close()
-
+def build_backup_zip(include_media=True):
+    """A zip of the database, and optionally the uploaded documents and room
+    photos alongside it. Shared by the owner's manual download and the
+    automated email job, so there is exactly one place that knows what a
+    backup contains."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         tmp_db_path = os.path.join(BASE_DIR, f"_backup_tmp_{secrets.token_hex(6)}.db")
@@ -20308,19 +20309,116 @@ def download_backup():
             if os.path.exists(tmp_db_path):
                 os.remove(tmp_db_path)
 
-        for folder, arc_prefix in ((UPLOAD_DIR, "uploads"), (ROOM_PHOTO_DIR, "room_photos")):
-            for root, _dirs, files in os.walk(folder):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    rel = os.path.relpath(full, folder)
-                    zf.write(full, os.path.join(arc_prefix, rel))
+        if include_media:
+            for folder, arc_prefix in ((UPLOAD_DIR, "uploads"), (ROOM_PHOTO_DIR, "room_photos")):
+                for root, _dirs, files in os.walk(folder):
+                    for fname in files:
+                        full = os.path.join(root, fname)
+                        rel = os.path.relpath(full, folder)
+                        zf.write(full, os.path.join(arc_prefix, rel))
+    return buf.getvalue()
 
-    buf.seek(0)
+
+@app.route("/admin/backup")
+@owner_required
+def download_backup():
+    audit_conn = get_db()
+    log_audit(audit_conn, "backup_downloaded")
+    audit_conn.commit()
+    audit_conn.close()
+
+    zip_bytes = build_backup_zip(include_media=True)
     filename = f"gudanes-backup-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.zip"
     return app.response_class(
-        buf.getvalue(), mimetype="application/zip",
+        zip_bytes, mimetype="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# A backup email lands in a real inbox outside Railway entirely, which is the
+# point — the volume and the mailbox fail independently. Most providers cap
+# an incoming message around 25MB; this stays well under that even after
+# base64 inflates it by roughly a third.
+BACKUP_EMAIL_MAX_BYTES = 15 * 1024 * 1024
+
+
+def send_backup_email(to_address, zip_bytes, filename, note=""):
+    """Emails one backup zip as an attachment.
+
+    Deliberately separate from send_email(): that function is on the
+    critical path for every guest-facing message and only knows how to
+    attach an .ics file. Backups are lower-stakes to get wrong (a failed
+    send just tries again next tick) and don't belong sharing a code path
+    with a booking confirmation."""
+    if not to_address:
+        return False, "no owner email configured"
+    if resend_enabled():
+        payload = {
+            "from": RESEND_FROM, "to": [to_address],
+            "subject": "Château de Gudanes — automated backup",
+            "text": note or "Attached: a full backup of the database and uploaded files.",
+            "attachments": [{
+                "filename": filename,
+                "content": base64.b64encode(zip_bytes).decode("ascii"),
+            }],
+        }
+        try:
+            req = Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(req, timeout=30) as resp:
+                resp.read()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    if not email_enabled():
+        return False, "no email provider configured"
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = "Château de Gudanes — automated backup"
+        msg["From"] = SMTP_FROM
+        msg["To"] = to_address
+        msg.set_content(note or "Attached: a full backup of the database and uploaded files.")
+        msg.add_attachment(zip_bytes, maintype="application", subtype="zip", filename=filename)
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def run_backup_email_job(conn):
+    """Emails a backup zip to the owner on a schedule, so a lost or
+    corrupted Railway volume isn't the only copy. Falls back to the
+    database alone if the full zip (with uploads and room photos) is too
+    big to email — a smaller backup that actually arrives beats a bigger
+    one that a mail provider silently drops."""
+    to_address = owner_email(conn)
+    if not to_address:
+        return "no owner email configured"
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    zip_bytes = build_backup_zip(include_media=True)
+    note = ""
+    if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
+        zip_bytes = build_backup_zip(include_media=False)
+        note = ("The database is attached, but uploaded documents and room photos were "
+                "left out this time because the full backup was too large to email. "
+                "Use Admin → Backup to download everything, including media.")
+        if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
+            return f"skipped — even the database alone is {len(zip_bytes) // (1024 * 1024)}MB, too large to email"
+    filename = f"gudanes-backup-{date_str}.zip"
+    ok, error = send_backup_email(to_address, zip_bytes, filename, note)
+    if ok:
+        log_audit(conn, "backup_auto_sent")
+        conn.commit()
+        return f"sent to {to_address} ({len(zip_bytes) // 1024}KB){' (database only)' if note else ''}"
+    return f"send failed: {error}"
 
 
 # ---------------------------------------------------------------------------
@@ -22549,6 +22647,7 @@ AUTOMATION_JOBS = [
     ("email_inbox_scan", "automation_email_scan_enabled", None, 900, run_email_inbox_scan_job),
     ("hr_escalation", "automation_hr_escalation_enabled", None, 21600, run_hr_escalation_job),
     ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
+    ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
 ]
 
 
@@ -22629,6 +22728,7 @@ AUTOMATION_JOB_LABELS = {
     "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",
     "hr_escalation": "HR chase-ups (overdue approvals, reviews, certificates)",
     "campaign_triggers": "Automated guest emails (before arrival, after departure)",
+    "backup_email": "Automated backup email (database + uploads, to the owner)",
 }
 
 
@@ -22660,6 +22760,7 @@ def update_automation_settings():
         "automation_hr_escalation_enabled": "1" if request.form.get("automation_hr_escalation_enabled") else "0",
         "automation_campaign_triggers_enabled": "1" if request.form.get("automation_campaign_triggers_enabled") else "0",
         "automation_stale_shift_enabled": "1" if request.form.get("automation_stale_shift_enabled") else "0",
+        "automation_backup_email_enabled": "1" if request.form.get("automation_backup_email_enabled") else "0",
     }
     interval_raw = request.form.get("automation_ical_sync_interval_hours", "").strip()
     try:
@@ -22684,6 +22785,11 @@ def update_automation_settings():
         updates["automation_stale_shift_hours"] = str(max(1, float(stale_hours_raw)))
     except ValueError:
         updates["automation_stale_shift_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_stale_shift_hours"]
+    backup_interval_raw = request.form.get("automation_backup_interval_hours", "").strip()
+    try:
+        updates["automation_backup_interval_hours"] = str(max(1, float(backup_interval_raw)))
+    except ValueError:
+        updates["automation_backup_interval_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_backup_interval_hours"]
 
     for key, value in updates.items():
         conn.execute("UPDATE app_settings SET value = ? WHERE key = ?", (value, key))
@@ -22722,6 +22828,8 @@ def run_automation_job_now(job_name):
             except (TypeError, ValueError):
                 stale_hours = 14
             result = run_stale_shift_cleanup_job(conn, stale_hours)
+        elif job_name == "backup_email":
+            result = run_backup_email_job(conn)
         else:
             conn.close()
             abort(404)
