@@ -5628,6 +5628,76 @@ def house_capacity_error(conn, start, end, additional_guests):
             f"go over. Please call the château directly and we'll see what we can do.")
 
 
+def unavailable_nights(conn, room_id, start, end):
+    """{'YYYY-MM-DD': 'why'} for every night in [start, end) a guest cannot have.
+
+    The same sources is_range_available refuses on, resolved one night at a
+    time so a calendar can grey them out instead of letting someone fill in a
+    whole form and only then be told no. is_range_available stays the actual
+    gate — this is what the guest sees, not what decides.
+
+    The two must agree on the boundaries, which are not the same for every
+    source, so they are spelled out rather than assumed:
+
+      - a booking holds arrival..departure-1 (the checkout morning is free,
+        standard hotel convention)
+      - a workshop holds start..end INCLUSIVE — is_range_available refuses an
+        arrival on the session's end_date, because the guests are still in the
+        house that morning
+      - an event holds its single day
+    """
+    out = {}
+
+    def hold(first, last, reason):
+        """Mark every night from first to last inclusive."""
+        if not first or not last:
+            return
+        day = max(first, start)
+        stop = min(last, end - timedelta(days=1))
+        while day <= stop:
+            out.setdefault(day.isoformat(), reason)
+            day += timedelta(days=1)
+
+    for row in conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
+           WHERE room_id = ? AND status IN ('pending', 'confirmed')""", (room_id,)).fetchall():
+        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+        if b_start and b_end:
+            hold(b_start, b_end - timedelta(days=1), "Already booked")
+
+    for table, reason in (("blocked_dates", "Booked on another channel"),
+                          ("room_blocks", "Not available")):
+        for row in conn.execute(
+            f"SELECT start_date, end_date FROM {table} WHERE room_id = ?", (room_id,)).fetchall():
+            b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+            if b_start and b_end:
+                hold(b_start, b_end - timedelta(days=1), reason)
+
+    for row in conn.execute(
+        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
+           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""
+    ).fetchall():
+        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+        hold(w_start, w_end, f"Held for {row['title']}")
+
+    for row in conn.execute(
+        """SELECT preferred_date, event_type FROM event_inquiries
+           WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
+        e_date = parse_date(row["preferred_date"])
+        hold(e_date, e_date, f"Held for a private {row['event_type'] or 'event'}")
+
+    # And the legal ceiling: a night already holding the maximum has no room
+    # for even one more guest, whatever this particular room's own state is.
+    cap = house_guest_capacity(conn)
+    day = start
+    while day < end:
+        iso = day.isoformat()
+        if iso not in out and peak_guests_in_house(conn, day, day + timedelta(days=1)) >= cap:
+            out[iso] = "The château is full"
+        day += timedelta(days=1)
+    return out
+
+
 def matching_waitlist_entries(conn, arrival_iso, departure_iso):
     """Open/contacted waitlist entries whose desired range overlaps the
     given dates — not room-specific, since a waitlist request is for
@@ -13348,6 +13418,48 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
     return quote
 
 
+@app.route("/api/availability/<int:room_id>")
+def api_availability(room_id):
+    """Which nights this room cannot be had, so the calendar can grey them out.
+
+    Public and read-only, like /api/quote beside it. It exposes only what a
+    guest would learn anyway by trying dates one at a time — that a night is
+    taken, and roughly why — never who has it.
+    """
+    conn = get_db()
+    if rate_limited(conn, "api_availability", 120):
+        conn.commit()
+        conn.close()
+        return jsonify(error="Too many requests — try again shortly."), 429
+    conn.commit()
+
+    room = conn.execute("SELECT id, min_nights, max_occupancy FROM rooms WHERE id = ? AND active = 1",
+                        (room_id,)).fetchone()
+    if not room:
+        conn.close()
+        abort(404)
+
+    today = datetime.now(timezone.utc).date()
+    start = parse_date(request.args.get("from", "")) or today
+    start = max(start, today)          # the past is never bookable
+    try:
+        months = min(max(int(request.args.get("months", 12)), 1), 24)
+    except ValueError:
+        months = 12
+    end = start + timedelta(days=months * 31)
+
+    nights = unavailable_nights(conn, room_id, start, end)
+    conn.close()
+    return jsonify(
+        room_id=room_id,
+        first=start.isoformat(),
+        last=(end - timedelta(days=1)).isoformat(),
+        min_nights=room["min_nights"] or 1,
+        max_occupancy=room["max_occupancy"],
+        unavailable=nights,
+    )
+
+
 @app.route("/api/quote")
 def api_quote():
     """Price a stay without committing to it. Public, like the form it serves.
@@ -15197,6 +15309,64 @@ def workshop_subtotal(workshop, party_size, occupancy_type="double"):
     return round((price + supplement) * party_size, 2), supplement
 
 
+def rooms_needed(occupancy_type, party_size):
+    """How many rooms a party of this size takes at this occupancy.
+
+    The château has a fixed number of rooms, and a session's capacity counts
+    heads, not rooms — so ten guests sharing need five rooms and ten guests
+    each wanting their own need ten. Since the single supplement made a private
+    room something a guest deliberately buys, the difference has to be counted.
+    """
+    party = max(int(party_size or 0), 0)
+    if not party:
+        return 0
+    if occupancy_type == "solo":
+        return party
+    per_room = 3 if occupancy_type == "triple" else 2
+    return -(-party // per_room)          # ceiling division
+
+
+def bookable_room_count(conn):
+    return conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+
+
+def session_rooms_used(conn, session_id, exclude_id=None):
+    """Rooms already spoken for on a session, from the occupancy each party chose."""
+    query = """SELECT occupancy_type, party_size FROM workshop_bookings
+               WHERE session_id = ? AND status IN ('pending', 'confirmed')"""
+    params = [session_id]
+    if exclude_id:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    return sum(rooms_needed(r["occupancy_type"], r["party_size"])
+               for r in conn.execute(query, params).fetchall())
+
+
+def session_room_error(conn, session_id, occupancy_type, party_size, exclude_id=None):
+    """None if this party still fits in the rooms the château has, else why not.
+
+    A workshop takes over the whole house, so every active room is available to
+    it — no need to ask which. Public forms only: staff putting somebody in by
+    hand may know about a sofa bed, a late cancellation, or a guest happy to
+    share at the last minute.
+    """
+    total = bookable_room_count(conn)
+    if not total:
+        return None                        # no rooms recorded — nothing to enforce
+    used = session_rooms_used(conn, session_id, exclude_id)
+    want = rooms_needed(occupancy_type, party_size)
+    if used + want <= total:
+        return None
+    left = max(total - used, 0)
+    if occupancy_type == "solo":
+        return (f"A room to yourself needs one room per guest, and only "
+                f"{left} {'is' if left == 1 else 'are'} left for these dates. "
+                f"Choose a shared room, or contact the château and we'll see what we can do.")
+    return (f"Only {left} room{'' if left == 1 else 's'} {'is' if left == 1 else 'are'} "
+            f"left for these dates, and a party of {party_size} sharing needs {want}. "
+            f"Please contact the château directly.")
+
+
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,
                              notes, occupancy_type="double", requested_roommate=None, dietary_notes=None,
                              medical_notes=None, special_occasion=None, booking_id=None, promo_code=None):
@@ -15785,12 +15955,26 @@ def workshop_register(session_id):
         (session_row["workshop_id"],),
     ).fetchall()
 
+    # Everything the page needs regardless of which way the request goes. This
+    # template is rendered from three places below, and passing each value by
+    # hand is how one of them ends up missing a variable that the other two
+    # have — so they are gathered once and splatted into all three.
+    rooms_left = max(bookable_room_count(conn) - session_rooms_used(conn, session_id), 0)
+    page = {
+        "session": session_row,
+        "custom_fields": custom_fields,
+        "rooms_left": rooms_left,
+        # Don't offer a private room the château cannot give: the same reason
+        # a taken night is not clickable on the booking calendar.
+        "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+    }
+
     if request.method == "POST":
         if rate_limited(conn, "register_workshop", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
             flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("workshop_register.html", session=session_row, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False, custom_fields=custom_fields)
+            return render_template("workshop_register.html", **page, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False)
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
@@ -15831,6 +16015,11 @@ def workshop_register(session_id):
             session_end = parse_date(session_row["end_date"])
             error = house_capacity_error(
                 conn, start_date, session_end + timedelta(days=1), party_size)
+            # Heads fitting is not the same as rooms fitting: since a private
+            # room is now something a guest pays extra for, we must not sell
+            # one the château hasn't got.
+            if not error:
+                error = session_room_error(conn, session_id, occupancy_type, party_size)
 
         custom_values = {}
         if not error:
@@ -15846,9 +16035,9 @@ def workshop_register(session_id):
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
             return render_template(
-                "workshop_register.html", session=session_row,
+                "workshop_register.html", **page,
                 prefill_name=guest_name, prefill_email=guest_email, prefill_phone=guest_phone,
-                prefill_party_size=party_size_raw, fully_booked=fully_booked, custom_fields=custom_fields,
+                prefill_party_size=party_size_raw, fully_booked=fully_booked,
             )
 
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (session_row["workshop_id"],)).fetchone()
@@ -15892,10 +16081,10 @@ def workshop_register(session_id):
 
     conn.close()
     return render_template(
-        "workshop_register.html", session=session_row,
+        "workshop_register.html", **page,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        fully_booked=False, custom_fields=custom_fields,
+        fully_booked=False,
     )
 
 
