@@ -199,6 +199,8 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
     "automation_email_scan_enabled": "1",
+    "automation_hr_escalation_enabled": "1",
+    "automation_campaign_triggers_enabled": "1",
     "automation_email_unanswered_hours": "24",
     "automation_email_scan_lookback_days": "14",
     "automation_stale_shift_enabled": "1",
@@ -704,6 +706,36 @@ def init_db():
         -- list in code: the owner can add an inbox and point it at whoever
         -- handles that area, and flagged mail routes itself on arrival
         -- instead of waiting to be triaged by hand.
+        -- How long each kind of HR item may sit before someone is chased, and
+        -- how long before it goes over their head. One row per item type,
+        -- editable by the owner -- an unsigned contract is not the same
+        -- urgency as an expired food-hygiene certificate.
+        CREATE TABLE IF NOT EXISTS hr_escalation_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_type TEXT NOT NULL UNIQUE,
+            sla_days REAL NOT NULL DEFAULT 3,
+            escalate_after_days REAL NOT NULL DEFAULT 7,
+            active INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        );
+
+        -- The state of a single outstanding HR item as it ages. Separate from
+        -- the source tables so nothing has to grow escalation columns, and so
+        -- a reminder fires once rather than every time the job runs.
+        CREATE TABLE IF NOT EXISTS hr_escalations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_type TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            subject_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            summary TEXT,
+            due_at TEXT,
+            first_seen_at TEXT NOT NULL,
+            reminded_at TEXT,
+            escalated_at TEXT,
+            resolved_at TEXT,
+            UNIQUE(item_type, item_id)
+        );
+
         CREATE TABLE IF NOT EXISTS mailbox_routing (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mailbox TEXT NOT NULL UNIQUE,
@@ -1081,6 +1113,53 @@ def init_db():
             subject TEXT NOT NULL,
             body TEXT NOT NULL,
             updated_at TEXT
+        );
+
+        -- Owner-written email templates for campaigns and announcements, as
+        -- opposed to `email_templates` above which holds the fixed system
+        -- messages (booking confirmed, balance due). These are created and
+        -- named by the owner, grouped by area, and reused.
+        CREATE TABLE IF NOT EXISTS campaign_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            area TEXT NOT NULL DEFAULT 'general',
+            category TEXT,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            -- Optional automation: send this many days before/after a guest's
+            -- arrival or departure instead of being sent by hand.
+            trigger_event TEXT CHECK(trigger_event IN ('arrival','departure','workshop_start')),
+            trigger_offset_days INTEGER,
+            trigger_active INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        );
+
+        -- Every campaign send, one row per recipient. This is the record of
+        -- who was emailed what, and the thing that stops an automated
+        -- template mailing the same guest the same message twice.
+        CREATE TABLE IF NOT EXISTS campaign_sends (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER REFERENCES campaign_templates(id) ON DELETE SET NULL,
+            template_name TEXT,
+            recipient_email TEXT NOT NULL,
+            recipient_name TEXT,
+            subject TEXT,
+            status TEXT NOT NULL DEFAULT 'sent' CHECK(status IN ('sent','failed','skipped','test')),
+            detail TEXT,
+            dedupe_key TEXT,
+            sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Guests who have asked not to receive campaign email. Checked on
+        -- every bulk and automated send; transactional mail (their own
+        -- booking confirmation) is unaffected.
+        CREATE TABLE IF NOT EXISTS email_optouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            reason TEXT,
+            created_at TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS workshop_waitlist (
@@ -1615,6 +1694,39 @@ def init_db():
         conn.commit()
     except sqlite3.Error as e:
         print(f"[init_db] could not create unique guest-email index: {e}")
+
+    # One paid Stripe Checkout session must never produce two bookings.
+    #
+    # Both the guest's success redirect and Stripe's webhook create the
+    # booking — by design, so the booking still lands if the guest closes the
+    # browser. Each did SELECT-then-INSERT on stripe_session_id, which is a
+    # race: the two fire at essentially the same moment, both can find nothing,
+    # and both insert. Verified against this schema — two bookings sharing one
+    # session id were accepted. That is one payment, two bookings, and a room
+    # consumed twice. Stripe also retries webhooks, which widens the window.
+    #
+    # A partial unique index makes it impossible rather than unlikely; the
+    # inserting code catches the IntegrityError and returns the row that won.
+    # Workshops are already safe by construction — they UPDATE an existing row
+    # guarded by "AND deposit_paid_at IS NULL", so a replayed webhook updates
+    # zero rows. They get an index too, on their own column names, for the same
+    # guarantee at the schema level.
+    for table, column in (
+        ("bookings", "stripe_session_id"),
+        ("restaurant_bookings", "stripe_session_id"),
+        ("workshop_bookings", "deposit_stripe_session_id"),
+        ("workshop_bookings", "balance_stripe_session_id"),
+    ):
+        try:
+            conn.execute(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{table}_{column} "
+                f"ON {table}({column}) WHERE {column} IS NOT NULL"
+            )
+            conn.commit()
+        except sqlite3.Error as e:
+            # Pre-existing duplicates would block this — surface it rather than
+            # failing startup, since the app is still usable without it.
+            print(f"[init_db] could not create unique index {table}.{column}: {e}")
 
     # tasks.assigned_to_user_id used to be NOT NULL; SQLite can't relax a
     # column constraint in place, so databases from before priority/room_note
@@ -2810,6 +2922,316 @@ def parse_datetime_iso(value):
         return None
 
 
+PERIOD_CHOICES = ("day", "week", "month", "year")
+
+
+def resolve_period(period=None, anchor=None, today=None):
+    """The date window every dashboard and report works in.
+
+    One helper so "this week" means the same thing everywhere — Monday-start,
+    and the end is EXCLUSIVE so a query is always `>= start AND < end` with no
+    off-by-one on the final day. Also hands back the previous/next anchors so
+    a page can offer arrows without recomputing the calendar itself.
+    """
+    today = today or datetime.now(timezone.utc).date()
+    period = (period or "month").lower()
+    if period not in PERIOD_CHOICES:
+        period = "month"
+    anchor = (parse_date(anchor) if isinstance(anchor, str) else anchor) or today
+
+    if period == "day":
+        start = anchor
+        end = start + timedelta(days=1)
+        label = start.strftime("%A %d %B %Y")
+        prev_anchor, next_anchor = start - timedelta(days=1), start + timedelta(days=1)
+    elif period == "week":
+        start = anchor - timedelta(days=anchor.weekday())
+        end = start + timedelta(days=7)
+        label = f"Week of {start.strftime('%d %B %Y')}"
+        prev_anchor, next_anchor = start - timedelta(days=7), start + timedelta(days=7)
+    elif period == "year":
+        start = date(anchor.year, 1, 1)
+        end = date(anchor.year + 1, 1, 1)
+        label = str(anchor.year)
+        prev_anchor, next_anchor = date(anchor.year - 1, 1, 1), date(anchor.year + 1, 1, 1)
+    else:
+        start = anchor.replace(day=1)
+        end = date(start.year + 1, 1, 1) if start.month == 12 else date(start.year, start.month + 1, 1)
+        label = start.strftime("%B %Y")
+        prev_anchor = (start - timedelta(days=1)).replace(day=1)
+        next_anchor = end
+
+    # The equivalent window immediately before this one, for "vs last period".
+    span = (end - start)
+    prev_start = start - span if period in ("day", "week") else prev_anchor
+    prev_end = start
+    return {
+        "period": period, "start": start, "end": end, "label": label,
+        "start_iso": start.isoformat(), "end_iso": end.isoformat(),
+        "anchor": anchor, "anchor_iso": anchor.isoformat(),
+        "prev_anchor": prev_anchor.isoformat(), "next_anchor": next_anchor.isoformat(),
+        "prev_start_iso": prev_start.isoformat(), "prev_end_iso": prev_end.isoformat(),
+        "is_current": start <= today < end,
+    }
+
+
+def period_from_request():
+    """The window a page should show, taken from ?period= and ?date=."""
+    return resolve_period(request.args.get("period"), request.args.get("date"))
+
+
+# ---------------------------------------------------------------------------
+# Section overviews.
+#
+# Every category in the nav now opens on a headline band instead of dropping
+# straight into a sub-page, so the first thing on screen answers "how is this
+# part of the house doing" before you go hunting for it. Each builder returns
+# a plain list of cells so `_overview_band.html` can render any section without
+# knowing anything about it, and every builder takes the same `period` dict so
+# "this week" means the same thing in Guests as it does in Financial.
+# ---------------------------------------------------------------------------
+
+def overview_cell(label, value, sub=None, alert=False, hint=None, delta=None, endpoint=None):
+    """One figure in an overview band.
+
+    `alert` turns the cell red — reserve it for things that need a decision,
+    not merely for large numbers. `delta` is the change against the previous
+    equivalent window, already signed. `endpoint` is a route NAME, resolved by
+    the template, so these builders stay plain functions that can be called
+    (and tested) without a request context.
+    """
+    return {"label": label, "value": value, "sub": sub, "alert": bool(alert),
+            "hint": hint, "delta": delta, "endpoint": endpoint}
+
+
+def euro(value):
+    """Money as it is written everywhere else in the app."""
+    value = value or 0
+    return f"{'−' if value < 0 else ''}€{abs(value):,.0f}"
+
+
+def guests_overview(conn, period, today):
+    """Rooms over the chosen window, plus who is physically here right now."""
+    occ = report_occupancy(conn, period)
+    iso = today.isoformat()
+    in_house = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM bookings
+           WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
+        (iso, iso),
+    ).fetchone()["c"]
+    pending = conn.execute(
+        "SELECT COUNT(*) AS c FROM bookings WHERE status = 'pending'"
+    ).fetchone()["c"]
+    return [
+        overview_cell("In residence now", in_house, hint="people, not rooms"),
+        overview_cell("Arrivals", occ["arrivals"]),
+        overview_cell("Departures", occ["departures"]),
+        overview_cell("Occupancy", occ["occupancy"], sub="%"),
+        overview_cell("Room revenue", euro(occ["revenue"])),
+        overview_cell("Awaiting a decision", pending, alert=pending),
+    ]
+
+
+def employee_overview(conn, period, today):
+    """The team over the chosen window. Deliberately separate from the HR page,
+    which answers the compliance questions; this answers "who is working"."""
+    hours = conn.execute(
+        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
+           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+             AND clock_in_at >= ? AND clock_in_at < ?""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchone()["h"]
+    prev_hours = conn.execute(
+        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
+           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+             AND clock_in_at >= ? AND clock_in_at < ?""",
+        (period["prev_start_iso"], period["prev_end_iso"]),
+    ).fetchone()["h"]
+    active = conn.execute(
+        "SELECT COUNT(*) AS c FROM users WHERE role = 'employee' AND status = 'active'"
+    ).fetchone()["c"]
+    on_shift = conn.execute(
+        "SELECT COUNT(*) AS c FROM time_entries WHERE clock_out_at IS NULL"
+    ).fetchone()["c"]
+    on_leave = conn.execute(
+        """SELECT COUNT(*) AS c FROM leave_requests
+           WHERE status = 'approved' AND start_date <= ? AND end_date >= ?""",
+        (today.isoformat(), today.isoformat()),
+    ).fetchone()["c"]
+    unclaimed = conn.execute(
+        """SELECT COUNT(*) AS c FROM users
+           WHERE role = 'employee' AND status = 'active' AND NOT account_claimed"""
+    ).fetchone()["c"]
+    open_tasks = conn.execute(
+        "SELECT COUNT(*) AS c FROM tasks WHERE status != 'done'"
+    ).fetchone()["c"]
+    # Entries whose clock-out precedes their clock-in are excluded from the
+    # hours above (they used to drag the total negative). Excluding them
+    # quietly would just move the problem, so they are counted and shown.
+    broken = conn.execute(
+        """SELECT COUNT(*) AS c FROM time_entries
+           WHERE clock_out_at IS NOT NULL AND clock_out_at < clock_in_at"""
+    ).fetchone()["c"]
+    delta = round(hours - prev_hours, 1)
+    cells = [
+        overview_cell("Active team", active),
+        overview_cell("On shift now", on_shift),
+        overview_cell("Hours worked", round(hours, 1), sub="h",
+                      delta=delta if prev_hours else None),
+        overview_cell("On leave today", on_leave),
+        overview_cell("Open tasks", open_tasks),
+        overview_cell("Accounts unclaimed", unclaimed, alert=unclaimed),
+    ]
+    if broken:
+        cells.append(overview_cell(
+            "Impossible shifts", broken, alert=True, hint="clocked out before in",
+            endpoint="admin_timesheets"))
+    return cells
+
+
+def financial_overview(conn, period, today):
+    """Money over the chosen window, and what is still waiting on the owner."""
+    now = financial_month_summary(conn, period["start"], period["end"])
+    prev = financial_month_summary(
+        conn, parse_date(period["prev_start_iso"]), parse_date(period["prev_end_iso"]))
+    pending = conn.execute(
+        """SELECT (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending')
+                + (SELECT COUNT(*) FROM expenses WHERE status = 'pending')
+                + (SELECT COUNT(*) FROM timesheet_corrections WHERE status = 'pending') AS c"""
+    ).fetchone()["c"]
+    rev_delta = _pct_change(now["revenue"], prev["revenue"])
+    return [
+        overview_cell("Revenue", euro(now["revenue"]),
+                      delta=f"{rev_delta:+g}%" if rev_delta is not None else None),
+        overview_cell("Expenses", euro(now["expenses_total"])),
+        overview_cell("Refunds issued", euro(now["refunds_total"]),
+                      alert=now["refunds_total"]),
+        overview_cell("Net", euro(now["net"]), alert=now["net"] < 0),
+        overview_cell("Awaiting a decision", pending, alert=pending),
+    ]
+
+
+def restaurant_overview(conn, period, today):
+    """Service over the chosen window — covers rather than reservations, since
+    covers are what the kitchen actually has to cook for."""
+    row = conn.execute(
+        """SELECT COUNT(*) AS reservations,
+                  COALESCE(SUM(party_size), 0) AS covers,
+                  COALESCE(SUM(total_price), 0) AS revenue
+           FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date >= ? AND dinner_date < ?""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchone()
+    prev_covers = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS covers FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date >= ? AND dinner_date < ?""",
+        (period["prev_start_iso"], period["prev_end_iso"]),
+    ).fetchone()["covers"]
+    refunded = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
+           WHERE category = 'restaurant' AND created_at >= ? AND created_at < ?""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchone()["t"]
+    pending = conn.execute(
+        "SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'"
+    ).fetchone()["c"]
+    no_shows = conn.execute(
+        """SELECT COUNT(*) AS c FROM restaurant_bookings
+           WHERE no_show_at IS NOT NULL AND dinner_date >= ? AND dinner_date < ?""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchone()["c"]
+    return [
+        overview_cell("Covers", row["covers"],
+                      delta=row["covers"] - prev_covers if prev_covers else None),
+        overview_cell("Reservations", row["reservations"]),
+        overview_cell("Revenue", euro((row["revenue"] or 0) - refunded),
+                      hint="net of refunds"),
+        overview_cell("Awaiting a decision", pending, alert=pending),
+        overview_cell("No-shows", no_shows, alert=no_shows),
+    ]
+
+
+def workshops_overview(conn, period, today):
+    """Sessions that run inside the window, and how full they are."""
+    sessions = conn.execute(
+        """SELECT id, capacity FROM workshop_sessions
+           WHERE start_date < ? AND end_date >= ?""",
+        (period["end_iso"], period["start_iso"]),
+    ).fetchall()
+    session_ids = [s["id"] for s in sessions]
+    capacity = sum(s["capacity"] or 0 for s in sessions)
+    seats, revenue = 0, 0.0
+    if session_ids:
+        marks = ",".join("?" * len(session_ids))
+        row = conn.execute(
+            f"""SELECT COALESCE(SUM(party_size), 0) AS seats,
+                       COALESCE(SUM(total_price), 0) AS revenue
+                FROM workshop_bookings
+                WHERE status = 'confirmed' AND session_id IN ({marks})""",
+            session_ids,
+        ).fetchone()
+        seats, revenue = row["seats"], row["revenue"] or 0.0
+    refunded = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
+           WHERE category = 'workshop' AND created_at >= ? AND created_at < ?""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchone()["t"]
+    pending = conn.execute(
+        "SELECT COUNT(*) AS c FROM workshop_bookings WHERE status = 'pending'"
+    ).fetchone()["c"]
+    fill = round(seats / capacity * 100, 1) if capacity else 0
+    return [
+        overview_cell("Sessions running", len(sessions)),
+        overview_cell("Seats sold", seats),
+        overview_cell("Seats free", max(0, capacity - seats)),
+        overview_cell("Full", fill, sub="%"),
+        overview_cell("Revenue", euro(revenue - refunded), hint="net of refunds"),
+        overview_cell("Awaiting a decision", pending, alert=pending),
+    ]
+
+
+def management_overview(conn, period, today):
+    """Management holds records rather than transactions, so this band is
+    condition-driven — what has expired or is about to — rather than a count of
+    the window's activity, which would always read zero."""
+    soon = (today + timedelta(days=60)).isoformat()
+    iso = today.isoformat()
+    insurance = conn.execute(
+        """SELECT COUNT(*) AS c FROM insurance_policies
+           WHERE expiry_date IS NOT NULL AND expiry_date < ?""", (soon,),
+    ).fetchone()["c"]
+    documents = conn.execute(
+        """SELECT COUNT(*) AS c FROM company_documents
+           WHERE expiry_date IS NOT NULL AND expiry_date < ?""", (soon,),
+    ).fetchone()["c"]
+    vehicles_due = conn.execute(
+        """SELECT COUNT(*) AS c FROM vehicles
+           WHERE (next_service_due IS NOT NULL AND next_service_due < ?)
+              OR fuel_level = 'low'""", (soon,),
+    ).fetchone()["c"]
+    vehicle_faults = conn.execute(
+        "SELECT COUNT(*) AS c FROM vehicle_maintenance WHERE status = 'open'"
+    ).fetchone()["c"]
+    flags = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_flags WHERE status = 'open'"
+    ).fetchone()["c"]
+    recurring = conn.execute(
+        "SELECT COALESCE(SUM(CASE WHEN frequency = 'annual' THEN amount / 12.0"
+        "                         ELSE amount END), 0) AS t"
+        "  FROM recurring_costs WHERE active = 1"
+    ).fetchone()["t"]
+    return [
+        overview_cell("Insurance expiring", insurance, alert=insurance,
+                      hint="within 60 days"),
+        overview_cell("Documents expiring", documents, alert=documents,
+                      hint="within 60 days"),
+        overview_cell("Vehicles needing attention", vehicles_due, alert=vehicles_due),
+        overview_cell("Open vehicle faults", vehicle_faults, alert=vehicle_faults),
+        overview_cell("Open inbox flags", flags, alert=flags),
+        overview_cell("Recurring costs", euro(recurring), sub="/mo"),
+    ]
+
+
 def stays_with_status(conn, today, statuses=("confirmed",)):
     """Every stay, derived from `bookings` -- the single source of truth for who
     is physically at the château. Replaces the old `guests`-table register, which
@@ -3954,6 +4376,230 @@ MAX_CONSECUTIVE_DAYS_WORKED = 6
 MAX_WEEKLY_HOURS = 48
 
 
+# Every kind of HR item that can sit waiting on somebody, in one place.
+#   actor  — who has to do something: "owner" (approve/act) or "subject" (the
+#            employee themselves, e.g. acknowledging their own review)
+#   sla    — days before that person is reminded
+#   escalate — days before it goes over their head to the owner
+#
+# Deliberately data rather than nine hand-written checks: adding a tenth kind
+# of HR item should be one entry here plus one query, not another bespoke
+# reminder scattered through the codebase.
+HR_ACTION_TYPES = {
+    "leave_request":       {"label": "Leave request awaiting a decision", "actor": "owner",   "sla": 3,  "escalate": 7},
+    "expense":             {"label": "Expense awaiting approval",          "actor": "owner",   "sla": 5,  "escalate": 14},
+    "timesheet_correction":{"label": "Timesheet correction to review",     "actor": "owner",   "sla": 3,  "escalate": 7},
+    "hr_note":             {"label": "Ask HR message unanswered",          "actor": "owner",   "sla": 2,  "escalate": 5},
+    "review_unacknowledged":{"label": "Review shared but not acknowledged","actor": "subject", "sla": 7,  "escalate": 21},
+    "review_overdue":      {"label": "No performance review in 12 months", "actor": "owner",   "sla": 30, "escalate": 60},
+    "return_to_work":      {"label": "Return-to-work not completed",       "actor": "owner",   "sla": 5,  "escalate": 14},
+    "certification_expiry":{"label": "Certification expiring or expired",  "actor": "owner",   "sla": 30, "escalate": 60},
+    "document_expiry":     {"label": "Employee document expiring",         "actor": "owner",   "sla": 30, "escalate": 60},
+}
+
+
+def hr_escalation_rules(conn):
+    """Per-type thresholds, seeded from the defaults above on first use so the
+    owner can tune them without touching code."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    known = {r["item_type"] for r in conn.execute("SELECT item_type FROM hr_escalation_rules").fetchall()}
+    for item_type, cfg in HR_ACTION_TYPES.items():
+        if item_type not in known:
+            conn.execute(
+                """INSERT OR IGNORE INTO hr_escalation_rules
+                   (item_type, sla_days, escalate_after_days, active, updated_at)
+                   VALUES (?, ?, ?, 1, ?)""",
+                (item_type, cfg["sla"], cfg["escalate"], now_iso),
+            )
+    conn.commit()
+    return {r["item_type"]: r for r in conn.execute("SELECT * FROM hr_escalation_rules").fetchall()}
+
+
+def collect_hr_actions(conn, today):
+    """Everything across HR currently waiting on somebody, in one shape:
+    {type, item_id, subject_user_id, summary, since, link}.
+
+    `since` is when the clock started — the date the thing became somebody's
+    problem, not when it was noticed.
+    """
+    iso = today.isoformat()
+    out = []
+
+    def add(t, item_id, user_id, summary, since, link):
+        out.append({"type": t, "item_id": str(item_id), "subject_user_id": user_id,
+                    "summary": summary, "since": since, "link": link})
+
+    for r in conn.execute(
+        """SELECT leave_requests.*, users.name AS n FROM leave_requests
+           JOIN users ON users.id = leave_requests.user_id WHERE leave_requests.status = 'pending'"""
+    ).fetchall():
+        add("leave_request", r["id"], r["user_id"],
+            f"{r['n']} — {r['start_date']} to {r['end_date']}", (r["requested_at"] or "")[:10], "/admin/approvals")
+
+    for r in conn.execute(
+        """SELECT expenses.*, users.name AS n FROM expenses
+           LEFT JOIN users ON users.id = expenses.submitted_by_user_id WHERE expenses.status = 'pending'"""
+    ).fetchall():
+        add("expense", r["id"], r["submitted_by_user_id"],
+            f"{r['n'] or r['vendor_name'] or 'Unknown'} — €{r['amount']:.2f}", (r["submitted_at"] or "")[:10], "/admin/approvals")
+
+    for r in conn.execute(
+        """SELECT timesheet_corrections.*, users.name AS n FROM timesheet_corrections
+           JOIN users ON users.id = timesheet_corrections.user_id WHERE timesheet_corrections.status = 'pending'"""
+    ).fetchall():
+        add("timesheet_correction", r["id"], r["user_id"],
+            f"{r['n']} — {(r['note'] or '')[:50]}", (r["created_at"] or "")[:10], "/admin/timesheet-corrections")
+
+    try:
+        for r in conn.execute(
+            """SELECT hr_notes.*, users.name AS n FROM hr_notes
+               JOIN users ON users.id = hr_notes.user_id WHERE hr_notes.status = 'open'"""
+        ).fetchall():
+            add("hr_note", r["id"], r["user_id"], f"{r['n']} — {(r['body'] or '')[:50]}",
+                (r["created_at"] or "")[:10], "/admin/hr-notes")
+    except sqlite3.OperationalError:
+        pass
+
+    for r in conn.execute(
+        """SELECT performance_reviews.*, users.name AS n FROM performance_reviews
+           JOIN users ON users.id = performance_reviews.user_id
+           WHERE performance_reviews.status = 'shared'"""
+    ).fetchall():
+        add("review_unacknowledged", r["id"], r["user_id"], f"{r['n']} — review of {r['review_date']}",
+            (r["shared_at"] or r["review_date"] or "")[:10], "/admin/hr")
+
+    year_ago = (today - timedelta(days=365)).isoformat()
+    for r in conn.execute(
+        """SELECT users.id, users.name, users.start_date FROM users
+           WHERE users.role = 'employee' AND users.status = 'active'
+             AND users.id NOT IN (SELECT user_id FROM performance_reviews WHERE review_date >= ?)""",
+        (year_ago,),
+    ).fetchall():
+        # Clock starts a year after they joined, not the day they joined.
+        started = parse_date(r["start_date"]) if r["start_date"] else None
+        since = ((started + timedelta(days=365)).isoformat() if started else year_ago)
+        if since <= iso:
+            add("review_overdue", r["id"], r["id"], r["name"], since, "/admin/hr")
+
+    for r in conn.execute(
+        """SELECT absences.*, users.name AS n FROM absences
+           JOIN users ON users.id = absences.user_id
+           WHERE absences.return_to_work_done_at IS NULL AND absences.end_date <= ?
+             AND absences.kind IN ('sick','unauthorised')""",
+        (iso,),
+    ).fetchall():
+        add("return_to_work", r["id"], r["user_id"], f"{r['n']} — back since {r['end_date']}",
+            r["end_date"], "/admin/hr")
+
+    horizon = (today + timedelta(days=CERT_EXPIRY_WARNING_DAYS)).isoformat()
+    for r in conn.execute(
+        """SELECT certifications.*, users.name AS n FROM certifications
+           JOIN users ON users.id = certifications.user_id
+           WHERE certifications.expiry_date IS NOT NULL AND certifications.expiry_date <= ?
+             AND users.status = 'active'""",
+        (horizon,),
+    ).fetchall():
+        add("certification_expiry", r["id"], r["user_id"],
+            f"{r['n']} — {r['name']}{' (required)' if r['required'] else ''}, expires {r['expiry_date']}",
+            r["expiry_date"], "/admin/hr")
+
+    for r in conn.execute(
+        """SELECT documents.*, users.name AS n FROM documents
+           JOIN users ON users.id = documents.user_id
+           WHERE documents.expiry_date IS NOT NULL AND documents.expiry_date <= ?
+             AND users.status = 'active'""",
+        (horizon,),
+    ).fetchall():
+        add("document_expiry", r["id"], r["user_id"],
+            f"{r['n']} — {r['title']}, expires {r['expiry_date']}", r["expiry_date"], f"/directory/{r['user_id']}")
+
+    return out
+
+
+def run_hr_escalation_job(conn):
+    """Age every outstanding HR item, remind whoever owes the action, and
+    escalate to the owner if it keeps sitting there.
+
+    The point is that assigning something isn't the same as it being done.
+    Reminders fire once and escalations fire once, so this is a prompt rather
+    than a daily nag, and anything that gets dealt with is closed off
+    automatically rather than needing to be dismissed by hand.
+    """
+    today = datetime.now(timezone.utc).date()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rules = hr_escalation_rules(conn)
+    owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+    if not owner_row:
+        return "no owner account"
+    owner_id = owner_row["id"]
+
+    actions = collect_hr_actions(conn, today)
+    live_keys = {(a["type"], a["item_id"]) for a in actions}
+
+    # Anything previously outstanding that no longer is has been dealt with.
+    closed = 0
+    for row in conn.execute(
+        "SELECT id, item_type, item_id FROM hr_escalations WHERE resolved_at IS NULL"
+    ).fetchall():
+        if (row["item_type"], row["item_id"]) not in live_keys:
+            conn.execute("UPDATE hr_escalations SET resolved_at = ? WHERE id = ?", (now_iso, row["id"]))
+            closed += 1
+
+    reminded = escalated = 0
+    for a in actions:
+        cfg = HR_ACTION_TYPES.get(a["type"])
+        rule = rules.get(a["type"])
+        if not cfg or not rule or not rule["active"]:
+            continue
+        since = parse_date((a["since"] or "")[:10]) or today
+        age_days = (today - since).days
+
+        existing = conn.execute(
+            "SELECT * FROM hr_escalations WHERE item_type = ? AND item_id = ?",
+            (a["type"], a["item_id"]),
+        ).fetchone()
+        if not existing:
+            conn.execute(
+                """INSERT INTO hr_escalations (item_type, item_id, subject_user_id, summary,
+                   due_at, first_seen_at) VALUES (?, ?, ?, ?, ?, ?)""",
+                (a["type"], a["item_id"], a["subject_user_id"], a["summary"],
+                 (since + timedelta(days=rule["sla_days"])).isoformat(), now_iso),
+            )
+            existing = conn.execute(
+                "SELECT * FROM hr_escalations WHERE item_type = ? AND item_id = ?",
+                (a["type"], a["item_id"]),
+            ).fetchone()
+        elif existing["resolved_at"]:
+            # came back (e.g. a certificate renewed then expired again)
+            conn.execute("UPDATE hr_escalations SET resolved_at = NULL, reminded_at = NULL, "
+                         "escalated_at = NULL WHERE id = ?", (existing["id"],))
+            existing = conn.execute("SELECT * FROM hr_escalations WHERE id = ?", (existing["id"],)).fetchone()
+
+        # who owes the action
+        target = owner_id if cfg["actor"] == "owner" else (a["subject_user_id"] or owner_id)
+
+        if age_days >= rule["escalate_after_days"] and not existing["escalated_at"]:
+            send_notification(
+                conn, owner_id, "hr_escalation",
+                f"Overdue {age_days}d: {cfg['label']}",
+                body=f"{a['summary']} — still outstanding after {age_days} days.", link=a["link"],
+            )
+            conn.execute("UPDATE hr_escalations SET escalated_at = ? WHERE id = ?", (now_iso, existing["id"]))
+            escalated += 1
+        elif age_days >= rule["sla_days"] and not existing["reminded_at"]:
+            send_notification(
+                conn, target, "hr_reminder",
+                f"{cfg['label']} ({age_days}d)",
+                body=a["summary"], link=a["link"],
+            )
+            conn.execute("UPDATE hr_escalations SET reminded_at = ? WHERE id = ?", (now_iso, existing["id"]))
+            reminded += 1
+
+    conn.commit()
+    return (f"{len(actions)} HR item(s) outstanding, {reminded} reminded, "
+            f"{escalated} escalated, {closed} closed")
+
+
 def expiring_certifications(conn, today, within_days=CERT_EXPIRY_WARNING_DAYS):
     """Certifications already expired or expiring soon, worst first. `required`
     ones sort above the nice-to-haves because those are the ones that stop
@@ -4119,6 +4765,459 @@ def working_time_violations(conn, from_date, to_date):
 
     violations.sort(key=lambda v: (v["on_date"], v["employee_name"]))
     return violations
+
+
+# ---------------------------------------------------------------------------
+# Reports. Deliberately a small set: four that answer questions the owner
+# actually asks, each honouring the shared period window, rather than a
+# sprawl of variations nobody reads.
+# ---------------------------------------------------------------------------
+
+REPORT_TYPES = {
+    "financial": {"label": "Financial", "blurb": "Revenue by area, refunds, expenses and what's left."},
+    "occupancy": {"label": "Occupancy & bookings", "blurb": "Nights sold, how full the château was, and the average nightly rate."},
+    "labour": {"label": "Labour", "blurb": "Hours and estimated cost per person, and labour as a share of revenue."},
+    "guest": {"label": "Guests", "blurb": "New versus returning, who spends most, and how they rated the stay."},
+}
+
+
+def _pct_change(current, previous):
+    """Percentage movement, or None when there's no baseline to compare to —
+    'up 100%' from zero is noise, not information."""
+    if not previous:
+        return None
+    return round((current - previous) / abs(previous) * 100, 1)
+
+
+def report_financial(conn, period):
+    start, end = period["start"], period["end"]
+    prev_start = parse_date(period["prev_start_iso"])
+    prev_end = parse_date(period["prev_end_iso"])
+    now = financial_month_summary(conn, start, end)
+    prev = financial_month_summary(conn, prev_start, prev_end)
+    rows = [
+        ("Rooms", now["room_revenue"], prev["room_revenue"]),
+        ("Restaurant", now["restaurant_revenue"], prev["restaurant_revenue"]),
+        ("Workshops", now["workshop_revenue"], prev["workshop_revenue"]),
+        ("Events", now["event_revenue"], prev["event_revenue"]),
+    ]
+    return {
+        "summary": now, "previous": prev,
+        "revenue_rows": [
+            {"label": l, "value": v, "prev": p, "change": _pct_change(v, p)} for l, v, p in rows
+        ],
+        "totals": [
+            {"label": "Revenue", "value": now["revenue"], "prev": prev["revenue"],
+             "change": _pct_change(now["revenue"], prev["revenue"])},
+            {"label": "Refunds issued", "value": -now["refunds_total"], "prev": -prev["refunds_total"],
+             "change": _pct_change(now["refunds_total"], prev["refunds_total"])},
+            {"label": "Expenses", "value": -now["expenses_total"], "prev": -prev["expenses_total"],
+             "change": _pct_change(now["expenses_total"], prev["expenses_total"])},
+            {"label": "Net", "value": now["net"], "prev": prev["net"],
+             "change": _pct_change(now["net"], prev["net"])},
+        ],
+        "csv": [{"metric": l, "amount": v, "previous": p} for l, v, p in rows],
+    }
+
+
+def report_occupancy(conn, period):
+    start, end = period["start"], period["end"]
+    nights = max(1, (end - start).days)
+    rooms_total = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+
+    by_date = occupied_rooms_by_date(conn, start, end)
+    booked_nights = sum(by_date.values())
+    capacity = rooms_total * nights
+    occupancy = round(booked_nights / capacity * 100, 1) if capacity else 0
+
+    stays = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed'
+             AND bookings.arrival_date < ? AND bookings.departure_date >= ?""",
+        (end.isoformat(), start.isoformat()),
+    ).fetchall()
+    room_nights = {}
+    revenue = 0.0
+    for b in stays:
+        a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not (a and d):
+            continue
+        overlap = (min(d, end) - max(a, start)).days
+        if overlap <= 0:
+            continue
+        total_nights = max(1, (d - a).days)
+        # Revenue apportioned across the nights that fall inside this window,
+        # so a stay spanning a month boundary isn't counted twice.
+        revenue += (b["total_price"] or 0) * overlap / total_nights
+        room_nights[b["room_name"]] = room_nights.get(b["room_name"], 0) + overlap
+
+    arrivals = conn.execute(
+        "SELECT COUNT(*) AS c FROM bookings WHERE status='confirmed' AND arrival_date >= ? AND arrival_date < ?",
+        (start.isoformat(), end.isoformat())).fetchone()["c"]
+    departures = conn.execute(
+        "SELECT COUNT(*) AS c FROM bookings WHERE status='confirmed' AND departure_date >= ? AND departure_date < ?",
+        (start.isoformat(), end.isoformat())).fetchone()["c"]
+
+    return {
+        "nights_in_period": nights, "rooms_total": rooms_total,
+        "booked_nights": booked_nights, "capacity": capacity, "occupancy": occupancy,
+        "revenue": round(revenue, 2),
+        "adr": round(revenue / booked_nights, 2) if booked_nights else None,
+        "arrivals": arrivals, "departures": departures,
+        "by_room": sorted(
+            [{"room": r, "nights": n, "occupancy": round(n / nights * 100, 1)}
+             for r, n in room_nights.items()],
+            key=lambda x: -x["nights"]),
+        "csv": [{"room": r, "nights": n} for r, n in sorted(room_nights.items())],
+    }
+
+
+def report_labour(conn, period):
+    rows = conn.execute(
+        """SELECT users.id, users.name, users.pay_rate, users.pay_type,
+                  COALESCE(SUM((julianday(time_entries.clock_out_at)
+                                - julianday(time_entries.clock_in_at)) * 24), 0) AS hours,
+                  COUNT(time_entries.id) AS shifts
+           FROM users LEFT JOIN time_entries
+             ON time_entries.user_id = users.id
+            AND time_entries.clock_out_at IS NOT NULL
+            AND time_entries.clock_out_at > time_entries.clock_in_at
+            AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
+           WHERE users.role = 'employee'
+           GROUP BY users.id HAVING hours > 0
+           ORDER BY hours DESC""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchall()
+    people, total_hours, total_cost, unpriced = [], 0.0, 0.0, 0
+    for r in rows:
+        hours = round(r["hours"], 1)
+        cost = estimated_hourly_cost(hours, r["pay_rate"], r["pay_type"])
+        total_hours += hours
+        if cost is None:
+            unpriced += 1
+        else:
+            total_cost += cost
+        people.append({"name": r["name"], "hours": hours, "shifts": r["shifts"], "cost": cost})
+
+    fin = financial_month_summary(conn, period["start"], period["end"])
+    revenue = fin["revenue"]
+    return {
+        "people": people,
+        "total_hours": round(total_hours, 1),
+        "total_cost": round(total_cost, 2),
+        "unpriced": unpriced,
+        "revenue": revenue,
+        "labour_pct": round(total_cost / revenue * 100, 1) if revenue > 0 else None,
+        "csv": [{"employee": p["name"], "hours": p["hours"], "shifts": p["shifts"],
+                 "estimated_cost": p["cost"]} for p in people],
+    }
+
+
+def report_guest(conn, period):
+    start_iso, end_iso = period["start_iso"], period["end_iso"]
+    bookings = conn.execute(
+        """SELECT guest_email, guest_name, total_price, arrival_date FROM bookings
+           WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (start_iso, end_iso),
+    ).fetchall()
+
+    # "Returning" means they had a confirmed stay that started before this one.
+    new_count = returning_count = 0
+    spend = {}
+    for b in bookings:
+        email = (b["guest_email"] or "").lower()
+        prior = conn.execute(
+            """SELECT COUNT(*) AS c FROM bookings
+               WHERE LOWER(guest_email) = ? AND status = 'confirmed' AND arrival_date < ?""",
+            (email, b["arrival_date"]),
+        ).fetchone()["c"] if email else 0
+        if prior:
+            returning_count += 1
+        else:
+            new_count += 1
+        if email:
+            e = spend.setdefault(email, {"name": b["guest_name"], "total": 0.0, "stays": 0})
+            e["total"] += b["total_price"] or 0
+            e["stays"] += 1
+
+    feedback = conn.execute(
+        """SELECT COUNT(*) AS c, AVG(rating) AS avg_rating FROM guest_feedback
+           WHERE submitted_at >= ? AND submitted_at < ?""",
+        (start_iso, end_iso),
+    ).fetchone()
+    top = sorted(
+        [{"email": k, "name": v["name"], "total": round(v["total"], 2), "stays": v["stays"]}
+         for k, v in spend.items()],
+        key=lambda x: -x["total"])[:10]
+
+    return {
+        "bookings": len(bookings), "new": new_count, "returning": returning_count,
+        "returning_pct": round(returning_count / len(bookings) * 100, 1) if bookings else None,
+        "feedback_count": feedback["c"] or 0,
+        "feedback_avg": round(feedback["avg_rating"], 1) if feedback["avg_rating"] is not None else None,
+        "top_guests": top,
+        "csv": [{"guest": g["name"], "email": g["email"], "stays": g["stays"],
+                 "total_spend": g["total"]} for g in top],
+    }
+
+
+REPORT_BUILDERS = {
+    "financial": report_financial,
+    "occupancy": report_occupancy,
+    "labour": report_labour,
+    "guest": report_guest,
+}
+
+
+CAMPAIGN_AREAS = ["general", "rooms", "restaurant", "workshops", "events", "marketing"]
+CAMPAIGN_SEGMENTS = {
+    "room": "Past room guests",
+    "restaurant": "Past dinner guests",
+    "workshop": "Past workshop guests",
+    "profiles": "All guest profiles",
+}
+
+
+@app.route("/admin/emails")
+@owner_required
+def admin_emails():
+    conn = get_db()
+    templates = conn.execute(
+        "SELECT * FROM campaign_templates ORDER BY area, name").fetchall()
+    recent = conn.execute(
+        """SELECT template_name, subject, COUNT(*) AS recipients,
+                  SUM(CASE WHEN status='sent' THEN 1 ELSE 0 END) AS sent,
+                  SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,
+                  MAX(created_at) AS at
+           FROM campaign_sends WHERE status != 'test'
+           GROUP BY template_name, subject, substr(created_at, 1, 16)
+           ORDER BY at DESC LIMIT 25"""
+    ).fetchall()
+    optouts = conn.execute("SELECT COUNT(*) AS c FROM email_optouts").fetchone()["c"]
+    conn.close()
+    return render_template("admin_emails.html", templates=templates, recent=recent,
+                           areas=CAMPAIGN_AREAS, optouts=optouts,
+                           email_configured=bool(RESEND_API_KEY or SMTP_HOST))
+
+
+@app.route("/admin/emails/new", methods=["POST"])
+@owner_required
+def new_campaign_template():
+    name = request.form.get("name", "").strip()
+    subject = request.form.get("subject", "").strip()
+    if not name or not subject:
+        flash("A template needs a name and a subject.", "error")
+        return redirect(url_for("admin_emails"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO campaign_templates (name, area, category, subject, body, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (name, request.form.get("area", "general"),
+         request.form.get("category", "").strip() or None,
+         subject, request.form.get("body", "").strip(),
+         datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    new_id = conn.execute("SELECT id FROM campaign_templates ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    conn.close()
+    flash(f"Template “{name}” created.", "success")
+    return redirect(url_for("edit_campaign_template", template_id=new_id))
+
+
+@app.route("/admin/emails/<int:template_id>", methods=["GET", "POST"])
+@owner_required
+def edit_campaign_template(template_id):
+    conn = get_db()
+    template = conn.execute(
+        "SELECT * FROM campaign_templates WHERE id = ?", (template_id,)).fetchone()
+    if not template:
+        conn.close()
+        abort(404)
+
+    if request.method == "POST":
+        offset_raw = request.form.get("trigger_offset_days", "").strip()
+        trigger = request.form.get("trigger_event", "").strip() or None
+        conn.execute(
+            """UPDATE campaign_templates SET name=?, area=?, category=?, subject=?, body=?,
+               trigger_event=?, trigger_offset_days=?, trigger_active=?, updated_at=?
+               WHERE id=?""",
+            (request.form.get("name", "").strip() or template["name"],
+             request.form.get("area", "general"),
+             request.form.get("category", "").strip() or None,
+             request.form.get("subject", "").strip() or template["subject"],
+             request.form.get("body", ""),
+             trigger,
+             int(offset_raw) if offset_raw.lstrip("-").isdigit() else None,
+             1 if (request.form.get("trigger_active") and trigger) else 0,
+             datetime.now(timezone.utc).isoformat(), template_id),
+        )
+        conn.commit()
+        conn.close()
+        flash("Template saved.", "success")
+        return redirect(url_for("edit_campaign_template", template_id=template_id))
+
+    # Preview against a real guest where possible, so merge tags are shown
+    # filled with something recognisable rather than placeholder noise.
+    sample = conn.execute(
+        """SELECT guest_name AS n, guest_email AS e FROM bookings
+           WHERE status='confirmed' AND guest_email IS NOT NULL ORDER BY id DESC LIMIT 1"""
+    ).fetchone()
+    ctx = campaign_context_for(sample["n"] if sample else "Isabelle Fontaine",
+                               sample["e"] if sample else "guest@example.com")
+    preview_subject, preview_body = render_campaign(template["subject"], template["body"], ctx)
+
+    audience_counts = {
+        key: len(campaign_audience(conn, [key])) for key in CAMPAIGN_SEGMENTS
+    }
+    sends = conn.execute(
+        """SELECT * FROM campaign_sends WHERE template_id = ?
+           ORDER BY created_at DESC LIMIT 20""", (template_id,)).fetchall()
+    conn.close()
+    return render_template(
+        "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS,
+        segments=CAMPAIGN_SEGMENTS, audience_counts=audience_counts,
+        merge_fields=CAMPAIGN_MERGE_FIELDS, preview_subject=preview_subject,
+        preview_body=preview_body, sends=sends,
+        email_configured=bool(RESEND_API_KEY or SMTP_HOST),
+    )
+
+
+@app.route("/admin/emails/<int:template_id>/delete", methods=["POST"])
+@owner_required
+def delete_campaign_template(template_id):
+    conn = get_db()
+    conn.execute("DELETE FROM campaign_templates WHERE id = ?", (template_id,))
+    conn.commit()
+    conn.close()
+    flash("Template deleted. Its send history is kept.", "success")
+    return redirect(url_for("admin_emails"))
+
+
+@app.route("/admin/emails/<int:template_id>/send", methods=["POST"])
+@owner_required
+def send_campaign_template(template_id):
+    """Send a campaign. Deliberately two-step: a test send goes only to the
+    owner, and the real send needs the recipient count typed back, because
+    this is the one action here that can't be undone."""
+    conn = get_db()
+    template = conn.execute(
+        "SELECT * FROM campaign_templates WHERE id = ?", (template_id,)).fetchone()
+    if not template:
+        conn.close()
+        abort(404)
+
+    segments = request.form.getlist("segments")
+    months_raw = request.form.get("since_months", "").strip()
+    since_iso = None
+    if months_raw.isdigit() and int(months_raw) > 0:
+        since_iso = (datetime.now(timezone.utc).date()
+                     - timedelta(days=30 * int(months_raw))).isoformat()
+
+    user = current_user()
+    if request.form.get("mode") == "test":
+        owner_email = user["email"]
+        result = send_campaign(conn, template, {owner_email: user["name"]}, user["id"], as_test=True)
+        conn.close()
+        flash(f"Test sent to {owner_email}." if result["sent"]
+              else "Test send failed — check the email settings.",
+              "success" if result["sent"] else "error")
+        return redirect(url_for("edit_campaign_template", template_id=template_id))
+
+    if not segments:
+        conn.close()
+        flash("Choose at least one audience.", "error")
+        return redirect(url_for("edit_campaign_template", template_id=template_id))
+
+    audience = campaign_audience(conn, segments, since_iso)
+    typed = request.form.get("confirm_count", "").strip()
+    if typed != str(len(audience)):
+        conn.close()
+        flash(f"Type {len(audience)} into the confirm box to send to {len(audience)} "
+              f"recipient{'' if len(audience) == 1 else 's'}.", "error")
+        return redirect(url_for("edit_campaign_template", template_id=template_id))
+
+    result = send_campaign(conn, template, audience, user["id"])
+    log_audit(conn, "campaign_sent", target=template["name"],
+              details=f"{result['sent']} sent, {result['failed']} failed")
+    conn.commit()
+    conn.close()
+    flash(f"Sent to {result['sent']} recipient(s)"
+          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          "success" if not result["failed"] else "error")
+    return redirect(url_for("edit_campaign_template", template_id=template_id))
+
+
+@app.route("/admin/emails/optout", methods=["POST"])
+@owner_required
+def add_email_optout():
+    email = request.form.get("email", "").strip().lower()
+    if not email:
+        flash("Enter an email address.", "error")
+        return redirect(url_for("admin_emails"))
+    conn = get_db()
+    conn.execute(
+        "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
+        (email, request.form.get("reason", "").strip() or None,
+         datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    flash(f"{email} will no longer receive campaign email.", "success")
+    return redirect(url_for("admin_emails"))
+
+
+@app.route("/admin/reports")
+@owner_required
+def admin_reports():
+    period = period_from_request()
+    conn = get_db()
+    # A headline figure per report so the index is useful on its own rather
+    # than being a list of links.
+    fin = report_financial(conn, period)
+    occ = report_occupancy(conn, period)
+    lab = report_labour(conn, period)
+    gue = report_guest(conn, period)
+    conn.close()
+    headlines = {
+        "financial": f"€{fin['summary']['net']:,.0f} net",
+        "occupancy": f"{occ['occupancy']}% full",
+        "labour": (f"{lab['labour_pct']}% of revenue" if lab["labour_pct"] is not None
+                   else f"{lab['total_hours']}h"),
+        "guest": (f"{gue['returning_pct']}% returning" if gue["returning_pct"] is not None
+                  else f"{gue['bookings']} bookings"),
+    }
+    return render_template("admin_reports.html", period=period,
+                           report_types=REPORT_TYPES, headlines=headlines)
+
+
+@app.route("/admin/reports/<slug>")
+@owner_required
+def admin_report(slug):
+    if slug not in REPORT_BUILDERS:
+        abort(404)
+    period = period_from_request()
+    conn = get_db()
+    data = REPORT_BUILDERS[slug](conn, period)
+    conn.close()
+    return render_template(f"report_{slug}.html", period=period, data=data,
+                           meta=REPORT_TYPES[slug], slug=slug, report_types=REPORT_TYPES)
+
+
+@app.route("/admin/reports/<slug>/export.csv")
+@owner_required
+def export_report_csv(slug):
+    if slug not in REPORT_BUILDERS:
+        abort(404)
+    period = period_from_request()
+    conn = get_db()
+    data = REPORT_BUILDERS[slug](conn, period)
+    conn.close()
+    rows = data.get("csv") or []
+    if not rows:
+        rows = [{"note": "no data in this period"}]
+    return csv_response(list(rows[0].keys()), rows,
+                        f"{slug}-{period['start_iso']}-to-{period['end_iso']}.csv")
 
 
 def ical_escape(text):
@@ -5348,7 +6447,10 @@ def directory():
     status_filter = request.args.get("status", "").strip()
     q = request.args.get("q", "").strip()
 
+    period = period_from_request()
+    overview = None
     if user["role"] == "owner":
+        overview = employee_overview(conn, period, datetime.now(timezone.utc).date())
         employees = conn.execute(
             "SELECT * FROM users WHERE role = 'employee' ORDER BY status, name"
         ).fetchall()
@@ -5366,14 +6468,6 @@ def directory():
     }
     conn.close()
 
-    # Counted before the filters below so the tiles describe the whole team,
-    # not whichever subset is currently on screen.
-    team_counts = {
-        "active": sum(1 for e in employees if e["status"] == "active"),
-        "on_shift": sum(1 for e in employees if e["id"] in on_shift_ids),
-        "unclaimed": sum(1 for e in employees if not e["account_claimed"]),
-    }
-
     if status_filter:
         employees = [e for e in employees if e["status"] == status_filter]
     if q:
@@ -5385,7 +6479,7 @@ def directory():
 
     return render_template(
         "directory.html", employees=employees, status_filter=status_filter, q=q, on_shift_ids=on_shift_ids,
-        team_counts=team_counts,
+        overview=overview, period=period,
     )
 
 
@@ -5999,9 +7093,47 @@ def delete_check_in_note(user_id, note_id):
 def admin_hr():
     conn = get_db()
     today = datetime.now(timezone.utc).date()
+    period = period_from_request()
     employees = conn.execute(
         "SELECT * FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name"
     ).fetchall()
+
+    # Overview band: how the team looks over the chosen window, rather than
+    # opening straight onto sub-sections.
+    hours_row = conn.execute(
+        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
+           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+             AND clock_in_at >= ? AND clock_in_at < ?""",
+        (period["start_iso"], period["end_iso"]),
+    ).fetchone()
+    prev_hours_row = conn.execute(
+        """SELECT COALESCE(SUM((julianday(clock_out_at) - julianday(clock_in_at)) * 24), 0) AS h
+           FROM time_entries WHERE clock_out_at IS NOT NULL AND clock_out_at > clock_in_at
+             AND clock_in_at >= ? AND clock_in_at < ?""",
+        (period["prev_start_iso"], period["prev_end_iso"]),
+    ).fetchone()
+    absence_days = conn.execute(
+        """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
+           FROM absences WHERE start_date < ? AND end_date >= ?""",
+        (period["end_iso"], period["start_iso"], period["end_iso"], period["start_iso"]),
+    ).fetchone()
+    leave_taken = conn.execute(
+        """SELECT COUNT(*) AS c FROM leave_requests
+           WHERE status = 'approved' AND start_date < ? AND end_date >= ?""",
+        (period["end_iso"], period["start_iso"]),
+    ).fetchone()["c"]
+    on_shift_now = conn.execute(
+        "SELECT COUNT(*) AS c FROM time_entries WHERE clock_out_at IS NULL"
+    ).fetchone()["c"]
+
+    hr_overview = {
+        "headcount": len(employees),
+        "on_shift": on_shift_now,
+        "hours": round(hours_row["h"], 1),
+        "hours_prev": round(prev_hours_row["h"], 1),
+        "absence_days": int(absence_days["d"] or 0),
+        "leave_periods": leave_taken,
+    }
 
     certs_expiring = expiring_certifications(conn, today)
     all_certs = conn.execute(
@@ -6042,9 +7174,40 @@ def admin_hr():
     ).fetchall()}
     review_due = [e for e in employees if e["id"] not in reviewed_ids]
 
+    # Live chase-up board: everything waiting on someone, oldest first, with
+    # whatever state the escalation engine has recorded against it.
+    rules = hr_escalation_rules(conn)
+    tracked = {
+        (r["item_type"], r["item_id"]): r for r in conn.execute(
+            "SELECT * FROM hr_escalations WHERE resolved_at IS NULL").fetchall()
+    }
+    hr_actions = []
+    for a in collect_hr_actions(conn, today):
+        cfg = HR_ACTION_TYPES.get(a["type"], {})
+        rule = rules.get(a["type"])
+        since = parse_date((a["since"] or "")[:10]) or today
+        age = (today - since).days
+        state = tracked.get((a["type"], a["item_id"]))
+        hr_actions.append({
+            **a,
+            "label": cfg.get("label", a["type"]),
+            "actor": cfg.get("actor", "owner"),
+            "age_days": age,
+            "sla_days": rule["sla_days"] if rule else None,
+            "overdue": bool(rule and age >= rule["sla_days"]),
+            "escalated": bool(state and state["escalated_at"]),
+            "reminded": bool(state and state["reminded_at"]),
+        })
+    hr_actions.sort(key=lambda x: -x["age_days"])
+    hr_overdue_count = sum(1 for a in hr_actions if a["overdue"])
+
     conn.close()
     return render_template(
         "admin_hr.html", today=today, employees=employees,
+        period=period, hr_overview=hr_overview,
+        hr_actions=hr_actions, hr_overdue_count=hr_overdue_count,
+        hr_rules=sorted(rules.values(), key=lambda r: r["item_type"]),
+        hr_action_types=HR_ACTION_TYPES,
         certs_expiring=certs_expiring, all_certs=all_certs,
         availability_clashes=availability_clashes, week_ahead=week_ahead,
         absences=absences, bradford=bradford, violations=violations,
@@ -6052,6 +7215,43 @@ def admin_hr():
         rest_hours=MIN_REST_HOURS_BETWEEN_SHIFTS,
         max_days=MAX_CONSECUTIVE_DAYS_WORKED, max_weekly=MAX_WEEKLY_HOURS,
     )
+
+
+@app.route("/admin/hr/escalation-rules", methods=["POST"])
+@owner_required
+def update_hr_escalation_rules():
+    """Tune how long each kind of HR item may sit before someone is chased,
+    and how long before it goes over their head."""
+    conn = get_db()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for rule in conn.execute("SELECT id, item_type FROM hr_escalation_rules").fetchall():
+        sla = _positive_float(request.form.get(f"sla_{rule['id']}"), None)
+        esc = _positive_float(request.form.get(f"esc_{rule['id']}"), None)
+        if sla is None or esc is None:
+            continue
+        # Escalating before the first reminder makes no sense; keep it sane
+        # rather than silently producing an escalation nobody was warned about.
+        if esc < sla:
+            esc = sla
+        conn.execute(
+            """UPDATE hr_escalation_rules SET sla_days = ?, escalate_after_days = ?,
+               active = ?, updated_at = ? WHERE id = ?""",
+            (sla, esc, 1 if request.form.get(f"active_{rule['id']}") else 0, now_iso, rule["id"]),
+        )
+    conn.commit()
+    conn.close()
+    flash("Chase-up thresholds updated.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/admin/hr/run-escalation", methods=["POST"])
+@owner_required
+def run_hr_escalation_now():
+    conn = get_db()
+    result = run_hr_escalation_job(conn)
+    conn.close()
+    flash(f"Chase-up run: {result}", "success")
+    return redirect(url_for("admin_hr"))
 
 
 @app.route("/admin/hr/certifications/new", methods=["POST"])
@@ -6597,16 +7797,33 @@ def resolve_timesheet_correction(correction_id):
     ).fetchone()
     clock_in_time = request.form.get("clock_in_time", "").strip()
     clock_out_time = request.form.get("clock_out_time", "").strip()
-    if clock_in_time:
-        conn.execute(
-            "UPDATE time_entries SET clock_in_at = ? WHERE id = ?",
-            (local_time_input_to_utc_iso(entry["clock_in_at"], clock_in_time), entry["id"]),
-        )
+
+    # Work the new pair out in full before writing either, so a correction can
+    # never leave the entry with a clock-out before its clock-in — that used to
+    # be accepted silently and then showed up as NEGATIVE hours in every total
+    # that summed this table.
+    new_in = (local_time_input_to_utc_iso(entry["clock_in_at"], clock_in_time)
+              if clock_in_time else entry["clock_in_at"])
+    new_out = entry["clock_out_at"]
     if clock_out_time:
-        base_for_out = entry["clock_out_at"] or entry["clock_in_at"]
+        new_out = local_time_input_to_utc_iso(entry["clock_out_at"] or entry["clock_in_at"], clock_out_time)
+        # A clock-out time-of-day earlier than the clock-in almost always means
+        # a shift that ran past midnight (22:00 → 02:00), not a mistake, so roll
+        # it to the next day rather than refusing an ordinary night shift.
+        if parse_datetime_iso(new_out) < parse_datetime_iso(new_in):
+            new_out = (parse_datetime_iso(new_out) + timedelta(days=1)).isoformat()
+
+    if new_out and parse_datetime_iso(new_out) < parse_datetime_iso(new_in):
+        conn.close()
+        flash("That would end the shift before it started — check the times.", "error")
+        return redirect(url_for("admin_timesheet_corrections"))
+
+    if clock_in_time:
+        conn.execute("UPDATE time_entries SET clock_in_at = ? WHERE id = ?", (new_in, entry["id"]))
+    if clock_out_time:
         conn.execute(
             "UPDATE time_entries SET clock_out_at = ?, auto_closed = 0 WHERE id = ?",
-            (local_time_input_to_utc_iso(base_for_out, clock_out_time), entry["id"]),
+            (new_out, entry["id"]),
         )
     conn.execute(
         "UPDATE timesheet_corrections SET status = 'resolved', resolved_at = ? WHERE id = ?",
@@ -7396,6 +8613,11 @@ def guests():
     q = request.args.get("q", "").strip()
     conn = get_db()
     today = datetime.now(timezone.utc).date()
+    period = period_from_request()
+    # Owner only: the band carries revenue and occupancy, which is not a
+    # colleague's business. Employees still get the who-is-here lists below.
+    is_owner = (current_user() or {})["role"] == "owner"
+    overview = guests_overview(conn, period, today) if is_owner else None
 
     stays = stays_with_status(conn, today)
     in_residence = [s for s in stays if s["stay_status"] == "current"]
@@ -7429,6 +8651,7 @@ def guests():
     return render_template(
         "guests.html", in_residence=in_residence, upcoming=upcoming,
         profiles=profiles, stay_counts=stay_counts, q=q,
+        overview=overview, period=period,
     )
 
 
@@ -8278,7 +9501,15 @@ def stripe_success():
         flash("That payment wasn't completed, so no booking was made.", "error")
         return redirect(url_for("book_rooms"))
 
-    manage_token = create_booking_from_stripe_session(conn, session)
+    try:
+        manage_token = create_booking_from_stripe_session(conn, session)
+    except sqlite3.IntegrityError:
+        # The webhook won the race and created it a moment ago. Show the guest
+        # their booking rather than an error — they have paid either way.
+        row = conn.execute(
+            "SELECT manage_token FROM bookings WHERE stripe_session_id = ?", (session_id,)
+        ).fetchone()
+        manage_token = row["manage_token"] if row else None
     conn.close()
     if not manage_token:
         flash("Payment went through, but we couldn't create the booking automatically — contact the château directly with your payment reference.", "error")
@@ -8315,22 +9546,35 @@ def stripe_webhook():
         session = event["data"]["object"]
         meta = session.get("metadata") or {}
         conn = get_db()
-        if meta.get("kind") in ("workshop_deposit", "workshop_balance"):
-            if session.get("payment_status") == "paid":
-                mark_workshop_payment_paid(conn, session)
-        elif meta.get("kind") == "restaurant":
-            existing = conn.execute(
-                "SELECT id FROM restaurant_bookings WHERE stripe_session_id = ?", (session["id"],)
-            ).fetchone()
-            if not existing and session.get("payment_status") == "paid":
-                create_restaurant_booking_from_stripe_session(conn, session)
-        else:
-            existing = conn.execute(
-                "SELECT id FROM bookings WHERE stripe_session_id = ?", (session["id"],)
-            ).fetchone()
-            if not existing and session.get("payment_status") == "paid":
-                create_booking_from_stripe_session(conn, session)
-        conn.close()
+        try:
+            if meta.get("kind") in ("workshop_deposit", "workshop_balance"):
+                if session.get("payment_status") == "paid":
+                    mark_workshop_payment_paid(conn, session)
+            elif meta.get("kind") == "restaurant":
+                existing = conn.execute(
+                    "SELECT id FROM restaurant_bookings WHERE stripe_session_id = ?", (session["id"],)
+                ).fetchone()
+                if not existing and session.get("payment_status") == "paid":
+                    create_restaurant_booking_from_stripe_session(conn, session)
+            else:
+                existing = conn.execute(
+                    "SELECT id FROM bookings WHERE stripe_session_id = ?", (session["id"],)
+                ).fetchone()
+                if not existing and session.get("payment_status") == "paid":
+                    create_booking_from_stripe_session(conn, session)
+        except sqlite3.IntegrityError:
+            # The guest's success redirect got there first. Nothing to do —
+            # the booking exists, and this is the outcome we want.
+            pass
+        except Exception as e:
+            # Never leave the connection open on the way out: a leaked handle
+            # made the next write fail with "database is locked". Re-raise so
+            # Stripe sees a 500 and retries, which is the correct behaviour
+            # for a payment we may not have recorded.
+            print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
 
     return jsonify(received=True), 200
 
@@ -9593,7 +10837,14 @@ def restaurant_stripe_success():
         flash("That payment wasn't completed, so no reservation was made.", "error")
         return redirect(url_for("restaurant_book"))
 
-    manage_token = create_restaurant_booking_from_stripe_session(conn, session)
+    try:
+        manage_token = create_restaurant_booking_from_stripe_session(conn, session)
+    except sqlite3.IntegrityError:
+        # Webhook won the race; show the guest the reservation it created.
+        row = conn.execute(
+            "SELECT manage_token FROM restaurant_bookings WHERE stripe_session_id = ?", (session_id,)
+        ).fetchone()
+        manage_token = row["manage_token"] if row else None
     conn.close()
     if not manage_token:
         flash("Payment went through, but we couldn't create the reservation automatically — contact the château directly with your payment reference.", "error")
@@ -9798,6 +11049,158 @@ def render_email_template(conn, template_key, context):
     except (KeyError, IndexError):
         body = row["body"]
     return subject, body
+
+
+# The fields a campaign template can use. Kept to things we can reliably fill
+# for any recipient — a merge tag that silently comes out blank is worse than
+# not offering it.
+CAMPAIGN_MERGE_FIELDS = {
+    "first_name": "The guest's first name",
+    "full_name": "Their full name",
+    "email": "Their email address",
+    "chateau": "Château de Gudanes",
+}
+
+
+def render_campaign(subject, body, context):
+    """Fill {{merge_tags}} in a campaign template.
+
+    Uses {{double braces}} rather than Python's {single} formatting because
+    campaign copy is full of ordinary punctuation and prose — a stray brace or
+    a price like {50} shouldn't blow up a send to two hundred people. Unknown
+    tags are left visible rather than silently emptied, so a typo is obvious
+    in the preview instead of arriving as a blank in someone's inbox.
+    """
+    def fill(text):
+        if not text:
+            return ""
+        def sub(match):
+            key = match.group(1).strip()
+            value = context.get(key)
+            return str(value) if value not in (None, "") else match.group(0)
+        return re.sub(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", sub, text)
+    return fill(subject), fill(body)
+
+
+def campaign_context_for(name, email):
+    full = (name or "").strip()
+    return {
+        "first_name": full.split()[0] if full else "there",
+        "full_name": full or email,
+        "email": email,
+        "chateau": "Château de Gudanes",
+    }
+
+
+def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False):
+    """Who a campaign would go to: {email: name}, de-duplicated.
+
+    Builds on the existing segment logic, then removes anyone who has opted
+    out. A guest with a stay AND a dinner is emailed once, not twice.
+    """
+    recipients = dict(promo_blast_recipients(conn, segments, since_date_iso))
+    if "profiles" in segments:
+        for row in conn.execute(
+            "SELECT email, name FROM guests WHERE email IS NOT NULL AND TRIM(email) != ''"
+        ).fetchall():
+            recipients.setdefault(row["email"], row["name"])
+
+    recipients = {(e or "").strip().lower(): n for e, n in recipients.items() if e and e.strip()}
+    if not include_optouts:
+        opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+        recipients = {e: n for e, n in recipients.items() if e not in opted_out}
+    return recipients
+
+
+def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=False):
+    """Send one campaign to a set of recipients, logging every one.
+
+    `dedupe_key` makes an automated send idempotent — the same template for the
+    same guest and the same trigger date won't go twice however often the job
+    runs. Failures are recorded rather than raised so one bad address doesn't
+    abandon the rest of the send half-way through.
+
+    `as_test` still really sends (a test email that doesn't arrive proves
+    nothing) but logs the row as a test, so trying a template on yourself
+    doesn't show up in the send history as if guests had been mailed.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    sent = failed = skipped = 0
+    for email, name in recipients.items():
+        key = f"{dedupe_key}:{email}" if dedupe_key else None
+        if key and conn.execute(
+            "SELECT 1 FROM campaign_sends WHERE dedupe_key = ?", (key,)
+        ).fetchone():
+            skipped += 1
+            continue
+        subject, body = render_campaign(template["subject"], template["body"],
+                                        campaign_context_for(name, email))
+        try:
+            ok = send_email(email, subject, body)
+            status = ("test" if as_test else "sent") if ok is not False else "failed"
+            detail = None if status != "failed" else "send_email reported a failure"
+        except Exception as e:
+            status, detail = "failed", str(e)[:200]
+        conn.execute(
+            """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
+               recipient_name, subject, status, detail, dedupe_key, sent_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (template["id"], template["name"], email, name, subject, status, detail,
+             key, user_id, now_iso),
+        )
+        if status in ("sent", "test"):
+            sent += 1
+        elif status == "failed":
+            failed += 1
+    conn.commit()
+    return {"sent": sent, "failed": failed, "skipped": skipped, "total": len(recipients)}
+
+
+def run_campaign_triggers_job(conn):
+    """Send any template set to fire relative to a guest's arrival, departure
+    or workshop start. Idempotent via the dedupe key, so a guest gets each
+    automated message exactly once no matter how often this runs."""
+    today = datetime.now(timezone.utc).date()
+    templates = conn.execute(
+        """SELECT * FROM campaign_templates
+           WHERE trigger_active = 1 AND trigger_event IS NOT NULL"""
+    ).fetchall()
+    if not templates:
+        return "no active triggers"
+
+    opted_out = {r["email"] for r in conn.execute("SELECT email FROM email_optouts").fetchall()}
+    total = 0
+    for t in templates:
+        offset = t["trigger_offset_days"] or 0
+        # Negative offset = before the event, positive = after.
+        target = (today - timedelta(days=offset)).isoformat()
+        if t["trigger_event"] == "arrival":
+            rows = conn.execute(
+                "SELECT guest_email AS e, guest_name AS n FROM bookings "
+                "WHERE status='confirmed' AND arrival_date = ?", (target,)).fetchall()
+        elif t["trigger_event"] == "departure":
+            rows = conn.execute(
+                "SELECT guest_email AS e, guest_name AS n FROM bookings "
+                "WHERE status='confirmed' AND departure_date = ?", (target,)).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT workshop_bookings.guest_email AS e, workshop_bookings.guest_name AS n
+                   FROM workshop_bookings JOIN workshop_sessions
+                     ON workshop_sessions.id = workshop_bookings.session_id
+                   WHERE workshop_bookings.status='confirmed'
+                     AND workshop_bookings.do_not_email = 0
+                     AND workshop_sessions.start_date = ?""", (target,)).fetchall()
+
+        audience = {
+            (r["e"] or "").strip().lower(): r["n"] for r in rows
+            if r["e"] and (r["e"] or "").strip().lower() not in opted_out
+        }
+        if not audience:
+            continue
+        result = send_campaign(conn, t, audience, user_id=None,
+                               dedupe_key=f"trigger:{t['id']}:{target}")
+        total += result["sent"]
+    return f"{total} automated email(s) sent"
 
 
 def log_workshop_message(conn, booking_id, subject, recipient, status):
@@ -12184,6 +13587,8 @@ def restaurant_profit_share(conn, year, month):
 @owner_required
 def admin_restaurant():
     conn = get_db()
+    period = period_from_request()
+    overview = restaurant_overview(conn, period, datetime.now(timezone.utc).date())
     status_filter = request.args.get("status", "")
     query = "SELECT * FROM restaurant_bookings"
     params = []
@@ -12243,6 +13648,7 @@ def admin_restaurant():
         employees=employees, today=today, profit=profit, prev_month=prev_month, next_month=next_month,
         shifts_by_date=shifts_by_date, no_show_count=no_show_count,
         refunded_by_reservation=refunded_by_reservation,
+        overview=overview, period=period,
     )
 
 
@@ -13096,6 +14502,8 @@ def admin_workshops():
     conn = get_db()
     workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
     today = datetime.now(timezone.utc).date()
+    period = period_from_request()
+    overview = workshops_overview(conn, period, today)
     total_rooms = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
     # Sessions used to be filtered to end_date >= today, so a workshop that had
     # already run vanished from the admin page entirely — no way to see who
@@ -13135,12 +14543,20 @@ def admin_workshops():
     custom_fields_by_workshop = {}
     for row in conn.execute("SELECT * FROM workshop_custom_fields ORDER BY sort_order").fetchall():
         custom_fields_by_workshop.setdefault(row["workshop_id"], []).append(row)
+    # Totalled here rather than in the template: the old version accumulated
+    # inside a Jinja {% for %}, where a {% set %} doesn't escape the loop, so
+    # both figures always came out as zero however many sessions were listed.
+    upcoming_rows = [r for rows in sessions_by_workshop.values() for r in rows]
+    upcoming_count = len(upcoming_rows)
+    spots_remaining = sum(r["remaining"] for r in upcoming_rows)
     conn.close()
     return render_template(
         "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
         past_by_workshop=past_by_workshop,
         instructors=instructors, today=today, total_rooms=total_rooms,
         custom_fields_by_workshop=custom_fields_by_workshop,
+        overview=overview, period=period,
+        upcoming_count=upcoming_count, spots_remaining=spots_remaining,
     )
 
 
@@ -13904,6 +15320,8 @@ def management():
     vehicle_count = conn.execute("SELECT COUNT(*) AS c FROM vehicles").fetchone()["c"]
     company_info_set = conn.execute("SELECT 1 FROM company_info WHERE id = 1").fetchone() is not None
     today = datetime.now(timezone.utc).date()
+    period = period_from_request()
+    overview = management_overview(conn, period, today)
     current_financials = financial_month_summary(
         conn, today.replace(day=1),
         date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
@@ -13923,6 +15341,7 @@ def management():
         vehicle_count=vehicle_count, restaurant_pending_count=restaurant_pending_count,
         restaurant_enabled=bool(restaurant_settings and restaurant_settings["enabled"]),
         social_scheduled_count=social_scheduled_count,
+        overview=overview, period=period,
     )
 
 
@@ -16237,6 +17656,8 @@ def cancel_leave_request(request_id):
 @owner_required
 def admin_approvals():
     conn = get_db()
+    period = period_from_request()
+    overview = financial_overview(conn, period, datetime.now(timezone.utc).date())
     leave = conn.execute(
         """SELECT leave_requests.*, users.name AS employee_name FROM leave_requests
            JOIN users ON users.id = leave_requests.user_id
@@ -16265,7 +17686,8 @@ def admin_approvals():
         + [{"kind": "correction", "sort_at": r["created_at"], "row": r} for r in corrections]
     )
     queue.sort(key=lambda item: item["sort_at"] or "")
-    return render_template("admin_approvals.html", queue=queue)
+    return render_template("admin_approvals.html", queue=queue,
+                           overview=overview, period=period)
 
 
 @app.route("/admin/approvals/bulk", methods=["POST"])
@@ -16585,6 +18007,9 @@ def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
 
 
 def _positive_float(raw, fallback):
+    """A positive number from a form field, or `fallback` if it's blank or
+    nonsense. Callers pass fallback=None when they need to tell the two
+    apart rather than silently substituting a default."""
     try:
         value = float((raw or "").strip())
         return value if value > 0 else fallback
@@ -17380,6 +18805,8 @@ AUTOMATION_JOBS = [
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
     ("email_inbox_scan", "automation_email_scan_enabled", None, 900, run_email_inbox_scan_job),
+    ("hr_escalation", "automation_hr_escalation_enabled", None, 21600, run_hr_escalation_job),
+    ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
 ]
 
 
@@ -17458,6 +18885,8 @@ AUTOMATION_JOB_LABELS = {
     "workshop_feedback_request": "Workshop feedback requests",
     "email_inbox_scan": "Inbox scan (unanswered + pricing/availability flags)",
     "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",
+    "hr_escalation": "HR chase-ups (overdue approvals, reviews, certificates)",
+    "campaign_triggers": "Automated guest emails (before arrival, after departure)",
 }
 
 
@@ -17486,6 +18915,8 @@ def update_automation_settings():
         "automation_waitlist_autonotify_enabled": "1" if request.form.get("automation_waitlist_autonotify_enabled") else "0",
         "automation_workshop_feedback_enabled": "1" if request.form.get("automation_workshop_feedback_enabled") else "0",
         "automation_email_scan_enabled": "1" if request.form.get("automation_email_scan_enabled") else "0",
+        "automation_hr_escalation_enabled": "1" if request.form.get("automation_hr_escalation_enabled") else "0",
+        "automation_campaign_triggers_enabled": "1" if request.form.get("automation_campaign_triggers_enabled") else "0",
         "automation_stale_shift_enabled": "1" if request.form.get("automation_stale_shift_enabled") else "0",
     }
     interval_raw = request.form.get("automation_ical_sync_interval_hours", "").strip()
