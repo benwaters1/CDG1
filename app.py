@@ -268,13 +268,26 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
 # Microsoft Graph — read-only inbox monitoring for the "Inbox Flags" admin
 # page (unanswered-email + pricing/availability-conflict detection). Needs
 # an Azure AD app registration with an Application-type Mail.Read
-# permission, admin-consented, and ideally scoped to just MS_GRAPH_MAILBOX
-# via an Exchange Online ApplicationAccessPolicy — see DEPLOY.md. Unset by
-# default, same no-op-until-configured pattern as Resend/SMTP above.
+# permission, admin-consented, and scoped to just the mailboxes below via an
+# Exchange Online ApplicationAccessPolicy — see DEPLOY.md. Unset by default,
+# same no-op-until-configured pattern as Resend/SMTP above.
 MS_GRAPH_TENANT_ID = os.environ.get("MS_GRAPH_TENANT_ID")
 MS_GRAPH_CLIENT_ID = os.environ.get("MS_GRAPH_CLIENT_ID")
 MS_GRAPH_CLIENT_SECRET = os.environ.get("MS_GRAPH_CLIENT_SECRET")
-MS_GRAPH_MAILBOX = os.environ.get("MS_GRAPH_MAILBOX")
+
+# The château runs one inbox per business area (restaurant, bookings,
+# experience, ...), and that list grows. MS_GRAPH_MAILBOXES takes any number,
+# comma-separated. MS_GRAPH_MAILBOX (singular) is still honoured so an
+# existing single-mailbox deployment keeps working untouched.
+def _parse_mailboxes(raw):
+    return [m.strip().lower() for m in (raw or "").replace(";", ",").split(",") if m.strip()]
+
+
+MS_GRAPH_MAILBOXES = _parse_mailboxes(
+    os.environ.get("MS_GRAPH_MAILBOXES") or os.environ.get("MS_GRAPH_MAILBOX")
+)
+# Kept for anything still referring to "the" mailbox; it is simply the first.
+MS_GRAPH_MAILBOX = MS_GRAPH_MAILBOXES[0] if MS_GRAPH_MAILBOXES else None
 SMTP_FROM = os.environ.get("SMTP_FROM") or SMTP_USERNAME
 
 # AI-assisted reply drafting in the Outlook add-in — unset by default, same
@@ -686,6 +699,20 @@ def init_db():
         -- and expire, and in French hospitality some of them are legally
         -- required to be current -- food hygiene for anyone near the kitchen,
         -- first aid, a licence for whoever drives the guest transfers.
+        -- One row per monitored inbox. The château runs an inbox per business
+        -- area and that list grows, so this is a table rather than a fixed
+        -- list in code: the owner can add an inbox and point it at whoever
+        -- handles that area, and flagged mail routes itself on arrival
+        -- instead of waiting to be triaged by hand.
+        CREATE TABLE IF NOT EXISTS mailbox_routing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mailbox TEXT NOT NULL UNIQUE,
+            label TEXT,
+            default_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS certifications (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1467,6 +1494,7 @@ def init_db():
         ("email_flags_reply_availability_conflict", "ALTER TABLE email_flags ADD COLUMN reply_availability_conflict INTEGER NOT NULL DEFAULT 0"),
         ("email_flags_reply_detail_note", "ALTER TABLE email_flags ADD COLUMN reply_detail_note TEXT"),
         ("email_flags_last_reply_checked_id", "ALTER TABLE email_flags ADD COLUMN last_reply_checked_id TEXT"),
+        ("email_flags_mailbox", "ALTER TABLE email_flags ADD COLUMN mailbox TEXT"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -1832,6 +1860,7 @@ def init_db():
         # table scan per row.
         "CREATE INDEX IF NOT EXISTS idx_refunds_category_booking ON refunds(category, booking_id)",
         "CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON refunds(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_email_flags_mailbox ON email_flags(mailbox)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_expiry ON certifications(expiry_date)",
         "CREATE INDEX IF NOT EXISTS idx_availability_rules_user_id ON availability_rules(user_id)",
@@ -16288,7 +16317,7 @@ _graph_token_cache = {"token": None, "expires_at": 0.0}
 
 
 def graph_enabled():
-    return bool(MS_GRAPH_TENANT_ID and MS_GRAPH_CLIENT_ID and MS_GRAPH_CLIENT_SECRET and MS_GRAPH_MAILBOX)
+    return bool(MS_GRAPH_TENANT_ID and MS_GRAPH_CLIENT_ID and MS_GRAPH_CLIENT_SECRET and MS_GRAPH_MAILBOXES)
 
 
 def get_graph_token():
@@ -16341,15 +16370,22 @@ def graph_get(path, token, params=None):
         return None
 
 
-def fetch_graph_messages(token, folder, since_iso, top=100):
-    """Every message in the given well-known folder ('inbox' or
-    'sentitems') of MS_GRAPH_MAILBOX on/after since_iso, newest first. Only
-    pulls the fields the scan actually needs — Graph counts request size
-    against throttling limits, so no point asking for the full HTML body
-    of every message in a multi-week window."""
+def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
+    """Every message in the given well-known folder ('inbox' or 'sentitems')
+    of one mailbox, on/after since_iso, newest first. Only pulls the fields
+    the scan actually needs — Graph counts request size against throttling
+    limits, so no point asking for the full HTML body of every message in a
+    multi-week window.
+
+    `mailbox` defaults to the first configured one purely so existing
+    single-mailbox callers keep working; the scan passes it explicitly.
+    """
+    mailbox = mailbox or MS_GRAPH_MAILBOX
+    if not mailbox:
+        return []
     date_field = "sentDateTime" if folder == "sentitems" else "receivedDateTime"
     body = graph_get(
-        f"/users/{MS_GRAPH_MAILBOX}/mailFolders/{folder}/messages", token,
+        f"/users/{mailbox}/mailFolders/{folder}/messages", token,
         params={
             "$select": "id,conversationId,receivedDateTime,sentDateTime,from,subject,bodyPreview,webLink",
             "$filter": f"{date_field} ge {since_iso}",
@@ -16358,6 +16394,32 @@ def fetch_graph_messages(token, folder, since_iso, top=100):
         },
     )
     return body.get("value", []) if body else []
+
+
+def monitored_mailboxes(conn):
+    """Which inboxes to scan, and who owns each. Seeds itself from the
+    MS_GRAPH_MAILBOXES env var so adding an inbox is a config change, then
+    lets the owner set a default assignee per inbox in the admin UI.
+
+    Returns [{mailbox, label, default_user_id}] for active inboxes only.
+    """
+    known = {r["mailbox"] for r in conn.execute("SELECT mailbox FROM mailbox_routing").fetchall()}
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for mb in MS_GRAPH_MAILBOXES:
+        if mb not in known:
+            # Label defaults to the local part -- "restaurant@..." -> "Restaurant"
+            label = mb.split("@")[0].replace(".", " ").replace("-", " ").title()
+            conn.execute(
+                "INSERT OR IGNORE INTO mailbox_routing (mailbox, label, active, created_at) VALUES (?, ?, 1, ?)",
+                (mb, label, now_iso),
+            )
+    if MS_GRAPH_MAILBOXES:
+        conn.commit()
+    return conn.execute(
+        """SELECT mailbox_routing.*, users.name AS default_user_name
+           FROM mailbox_routing LEFT JOIN users ON users.id = mailbox_routing.default_user_id
+           WHERE mailbox_routing.active = 1 ORDER BY mailbox_routing.mailbox"""
+    ).fetchall()
 
 
 _MONEY_RE = re.compile(
@@ -16735,131 +16797,146 @@ def run_email_inbox_scan_job(conn):
     now_iso = now.isoformat()
     since_iso = (now - timedelta(days=lookback_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # conversationId -> latest sent message, for both the "was this answered
-    # in time" check and re-running the conflict guesser against what the
-    # reply itself actually says (a reply can quote a stale price even when
-    # the guest's own message never mentioned one).
-    reply_map = {}
-    reply_by_conversation = {}
-    for sent in fetch_graph_messages(token, "sentitems", since_iso, top=200):
-        conv_id, sent_at = sent.get("conversationId"), sent.get("sentDateTime")
-        if conv_id and sent_at and (conv_id not in reply_map or sent_at > reply_map[conv_id]):
-            reply_map[conv_id] = sent_at
-            reply_by_conversation[conv_id] = sent
-    inbox_messages = fetch_graph_messages(token, "inbox", since_iso, top=200)
+    mailboxes = monitored_mailboxes(conn)
+    if not mailboxes:
+        return "no mailboxes configured"
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
-
     seen = flagged = 0
-    for msg in inbox_messages:
-        message_id = msg.get("id")
-        received_at = msg.get("receivedDateTime")
-        if not message_id or not received_at:
-            continue
-        seen += 1
 
-        existing = conn.execute(
-            "SELECT id, status, last_reply_checked_id, reply_price_conflict, reply_availability_conflict, "
-            "reply_detail_note FROM email_flags WHERE graph_message_id = ?", (message_id,)
-        ).fetchone()
-        if existing and existing["status"] != "open":
-            continue  # a human already resolved/dismissed this one — don't resurrect it
+    # One inbox per business area, so scan each in turn. Everything below is
+    # per-mailbox: a conversation in restaurant@ is unrelated to one in
+    # bookings@, so the sent-items reply map must not be shared between them
+    # or a reply in one inbox would silently mark another's email answered.
+    for mb in mailboxes:
+        mailbox = mb["mailbox"]
+        default_user_id = mb["default_user_id"]
+        # conversationId -> latest sent message, for both the "was this answered
+        # in time" check and re-running the conflict guesser against what the
+        # reply itself actually says (a reply can quote a stale price even when
+        # the guest's own message never mentioned one).
+        reply_map = {}
+        reply_by_conversation = {}
+        for sent in fetch_graph_messages(token, "sentitems", since_iso, top=200, mailbox=mailbox):
+            conv_id, sent_at = sent.get("conversationId"), sent.get("sentDateTime")
+            if conv_id and sent_at and (conv_id not in reply_map or sent_at > reply_map[conv_id]):
+                reply_map[conv_id] = sent_at
+                reply_by_conversation[conv_id] = sent
+        inbox_messages = fetch_graph_messages(token, "inbox", since_iso, top=200, mailbox=mailbox)
+        for msg in inbox_messages:
+            message_id = msg.get("id")
+            received_at = msg.get("receivedDateTime")
+            if not message_id or not received_at:
+                continue
+            seen += 1
 
-        conv_id = msg.get("conversationId")
-        last_reply = reply_map.get(conv_id)
-        received_dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
-        unanswered = bool((not last_reply or last_reply < received_at) and (now - received_dt) > timedelta(hours=unanswered_hours))
+            existing = conn.execute(
+                "SELECT id, status, last_reply_checked_id, reply_price_conflict, reply_availability_conflict, "
+                "reply_detail_note FROM email_flags WHERE graph_message_id = ?", (message_id,)
+            ).fetchone()
+            if existing and existing["status"] != "open":
+                continue  # a human already resolved/dismissed this one — don't resurrect it
 
-        from_info = (msg.get("from") or {}).get("emailAddress") or {}
-        from_address = from_info.get("address", "")
-        from_name = from_info.get("name", "")
-        subject = msg.get("subject") or ""
-        preview = msg.get("bodyPreview") or ""
-        conflict = guess_email_conflict(conn, from_address, subject, preview, received_at)
+            conv_id = msg.get("conversationId")
+            last_reply = reply_map.get(conv_id)
+            received_dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
+            unanswered = bool((not last_reply or last_reply < received_at) and (now - received_dt) > timedelta(hours=unanswered_hours))
 
-        # Only re-run the conflict check when a genuinely new reply has gone
-        # out since the last tick (tracked by the reply's own Graph id) —
-        # otherwise the same reply gets re-scored every tick forever. But
-        # "nothing new to check" must not be confused with "no conflict":
-        # carry the previous verdict forward so a real finding doesn't get
-        # silently cleared on the very next scan just because there was
-        # nothing new to re-derive it from.
-        reply = reply_by_conversation.get(conv_id)
-        already_checked_reply_id = existing["last_reply_checked_id"] if existing else None
-        if reply and reply.get("id") != already_checked_reply_id:
-            reply_conflict = guess_email_conflict(
-                conn, from_address, reply.get("subject") or subject,
-                reply.get("bodyPreview") or "", reply.get("sentDateTime") or now_iso,
+            from_info = (msg.get("from") or {}).get("emailAddress") or {}
+            from_address = from_info.get("address", "")
+            from_name = from_info.get("name", "")
+            subject = msg.get("subject") or ""
+            preview = msg.get("bodyPreview") or ""
+            conflict = guess_email_conflict(conn, from_address, subject, preview, received_at)
+
+            # Only re-run the conflict check when a genuinely new reply has gone
+            # out since the last tick (tracked by the reply's own Graph id) —
+            # otherwise the same reply gets re-scored every tick forever. But
+            # "nothing new to check" must not be confused with "no conflict":
+            # carry the previous verdict forward so a real finding doesn't get
+            # silently cleared on the very next scan just because there was
+            # nothing new to re-derive it from.
+            reply = reply_by_conversation.get(conv_id)
+            already_checked_reply_id = existing["last_reply_checked_id"] if existing else None
+            if reply and reply.get("id") != already_checked_reply_id:
+                reply_conflict = guess_email_conflict(
+                    conn, from_address, reply.get("subject") or subject,
+                    reply.get("bodyPreview") or "", reply.get("sentDateTime") or now_iso,
+                )
+                reply_price_conflict_val = bool(reply_conflict and reply_conflict["price_conflict"])
+                reply_availability_conflict_val = bool(reply_conflict and reply_conflict["availability_conflict"])
+                reply_note_val = reply_conflict["note"] if reply_conflict else None
+            elif existing:
+                reply_price_conflict_val = bool(existing["reply_price_conflict"])
+                reply_availability_conflict_val = bool(existing["reply_availability_conflict"])
+                reply_note_val = existing["reply_detail_note"]
+            else:
+                reply_price_conflict_val = reply_availability_conflict_val = False
+                reply_note_val = None
+            checked_reply_id = reply["id"] if reply else already_checked_reply_id
+
+            if not unanswered and not conflict and not reply_price_conflict_val and not reply_availability_conflict_val:
+                if existing:
+                    # a real reply went out (or a conflict resolved itself) since the last
+                    # scan — clear the flag automatically rather than leaving it stale.
+                    conn.execute(
+                        "UPDATE email_flags SET unanswered=0, price_conflict=0, availability_conflict=0, "
+                        "reply_price_conflict=0, reply_availability_conflict=0, last_reply_checked_id=?, "
+                        "updated_at=? WHERE id=?",
+                        (checked_reply_id, now_iso, existing["id"]),
+                    )
+                continue
+            flagged += 1
+
+            common = (
+                conv_id, from_name, from_address, subject, preview[:500], msg.get("webLink"), received_at,
+                int(unanswered),
+                int(bool(conflict and conflict["price_conflict"])),
+                int(bool(conflict and conflict["availability_conflict"])),
+                conflict["category"] if conflict else None,
+                conflict["extracted_price"] if conflict else None,
+                conflict["computed_price"] if conflict else None,
+                conflict["extracted_dates"] if conflict else None,
+                conflict["note"] if conflict else None,
+                int(reply_price_conflict_val),
+                int(reply_availability_conflict_val),
+                reply_note_val,
+                checked_reply_id,
+                mailbox,
             )
-            reply_price_conflict_val = bool(reply_conflict and reply_conflict["price_conflict"])
-            reply_availability_conflict_val = bool(reply_conflict and reply_conflict["availability_conflict"])
-            reply_note_val = reply_conflict["note"] if reply_conflict else None
-        elif existing:
-            reply_price_conflict_val = bool(existing["reply_price_conflict"])
-            reply_availability_conflict_val = bool(existing["reply_availability_conflict"])
-            reply_note_val = existing["reply_detail_note"]
-        else:
-            reply_price_conflict_val = reply_availability_conflict_val = False
-            reply_note_val = None
-        checked_reply_id = reply["id"] if reply else already_checked_reply_id
-
-        if not unanswered and not conflict and not reply_price_conflict_val and not reply_availability_conflict_val:
             if existing:
-                # a real reply went out (or a conflict resolved itself) since the last
-                # scan — clear the flag automatically rather than leaving it stale.
                 conn.execute(
-                    "UPDATE email_flags SET unanswered=0, price_conflict=0, availability_conflict=0, "
-                    "reply_price_conflict=0, reply_availability_conflict=0, last_reply_checked_id=?, "
-                    "updated_at=? WHERE id=?",
-                    (checked_reply_id, now_iso, existing["id"]),
+                    """UPDATE email_flags SET conversation_id=?, from_name=?, from_address=?, subject=?, preview=?,
+                       web_link=?, received_at=?, unanswered=?, price_conflict=?, availability_conflict=?,
+                       conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
+                       reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
+                       mailbox=?, updated_at=? WHERE id=?""",
+                    common + (now_iso, existing["id"]),
                 )
-            continue
-        flagged += 1
-
-        common = (
-            conv_id, from_name, from_address, subject, preview[:500], msg.get("webLink"), received_at,
-            int(unanswered),
-            int(bool(conflict and conflict["price_conflict"])),
-            int(bool(conflict and conflict["availability_conflict"])),
-            conflict["category"] if conflict else None,
-            conflict["extracted_price"] if conflict else None,
-            conflict["computed_price"] if conflict else None,
-            conflict["extracted_dates"] if conflict else None,
-            conflict["note"] if conflict else None,
-            int(reply_price_conflict_val),
-            int(reply_availability_conflict_val),
-            reply_note_val,
-            checked_reply_id,
-        )
-        if existing:
-            conn.execute(
-                """UPDATE email_flags SET conversation_id=?, from_name=?, from_address=?, subject=?, preview=?,
-                   web_link=?, received_at=?, unanswered=?, price_conflict=?, availability_conflict=?,
-                   conflict_category=?, extracted_price=?, computed_price=?, extracted_dates=?, detail_note=?,
-                   reply_price_conflict=?, reply_availability_conflict=?, reply_detail_note=?, last_reply_checked_id=?,
-                   updated_at=? WHERE id=?""",
-                common + (now_iso, existing["id"]),
-            )
-        else:
-            conn.execute(
-                """INSERT INTO email_flags (graph_message_id, conversation_id, from_name, from_address, subject,
-                   preview, web_link, received_at, unanswered, price_conflict, availability_conflict,
-                   conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
-                   reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
-                   status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
-                (message_id,) + common + (now_iso, now_iso),
-            )
-            # A brand-new flag, not just an update to one already on the board —
-            # this is the "pops up on your screen" half of the triage board,
-            # reusing the same notification/web-push path task assignments use.
-            if owner_row:
-                what = "reply" if (reply_price_conflict_val or reply_availability_conflict_val) else ("email" if conflict else "unanswered email")
-                send_notification(
-                    conn, owner_row["id"], "inbox_flag_new", f"Flagged {what}: {subject or '(no subject)'}",
-                    body=f"From {from_name or from_address or 'unknown sender'}", link="/admin/inbox-flags",
+            else:
+                conn.execute(
+                    """INSERT INTO email_flags (graph_message_id, conversation_id, from_name, from_address, subject,
+                       preview, web_link, received_at, unanswered, price_conflict, availability_conflict,
+                       conflict_category, extracted_price, computed_price, extracted_dates, detail_note,
+                       reply_price_conflict, reply_availability_conflict, reply_detail_note, last_reply_checked_id,
+                       mailbox, assigned_to_user_id, status, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)""",
+                    (message_id,) + common + (default_user_id, now_iso, now_iso),
                 )
+                # A brand-new flag, not just an update to one already on the board —
+                # this is the "pops up on your screen" half of the triage board,
+                # reusing the same notification/web-push path task assignments use.
+                # Route it to whoever owns that inbox; fall back to the owner
+                # when an inbox has nobody assigned to it yet.
+                notify_user_id = default_user_id or (owner_row["id"] if owner_row else None)
+                if notify_user_id:
+                    what = "reply" if (reply_price_conflict_val or reply_availability_conflict_val) else ("email" if conflict else "unanswered email")
+                    send_notification(
+                        conn, notify_user_id, "inbox_flag_new",
+                        f"[{mb['label'] or mailbox}] Flagged {what}: {subject or '(no subject)'}",
+                        body=f"From {from_name or from_address or 'unknown sender'}", link="/admin/inbox-flags",
+                    )
     conn.commit()
-    return f"scanned {seen} message(s), {flagged} flagged"
+    return f"scanned {seen} message(s) across {len(mailboxes)} mailbox(es), {flagged} flagged"
 
 
 def run_stale_shift_cleanup_job(conn, hours_threshold):
@@ -17499,11 +17576,19 @@ if __name__ == "__main__":
                 os.chmod(key_path, 0o600)
         except OSError:
             pass  # unwritable disk: fall back to the per-process key
-    # Werkzeug's reloader (debug=True) re-executes this module in a child
-    # process with WERKZEUG_RUN_MAIN set — starting the thread only there
-    # (or when the reloader isn't in play at all) keeps a single automation
-    # loop per running server instead of one per reloader generation.
-    if not DEBUG_MODE or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+    # Auto-restart on Python edits, WITHOUT the interactive debugger.
+    # Templates already hot-reload above, but a change to app.py needed a
+    # manual restart — and because base.html is shared, a newly-added route
+    # meant EVERY page 500'd with a BuildError until you remembered to do it.
+    # use_reloader is independent of debug: this gives the restart without
+    # exposing the werkzeug console. Opt out with FLASK_NO_RELOAD=1.
+    use_reloader = os.environ.get("FLASK_NO_RELOAD", "0") != "1"
+
+    # Werkzeug's reloader re-executes this module in a child process with
+    # WERKZEUG_RUN_MAIN set — starting the thread only there (or when the
+    # reloader isn't in play at all) keeps a single automation loop per
+    # running server instead of one per reloader generation.
+    if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
         threading.Thread(target=automation_loop, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE, threaded=True)
+    app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE, use_reloader=use_reloader, threaded=True)
