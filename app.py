@@ -2162,6 +2162,10 @@ def init_db():
         # type, floor area, view, bathroom and breakfast all at once — so none
         # of it could be filtered, displayed properly, or checked against a
         # party. Each of those now has its own home.
+        # What a transfer is FOR. Airport runs, ski shuttles and station trips
+        # need different lead times and different cars; one undifferentiated
+        # "transfer" hid that.
+        ("vehicle_transfers_type", "ALTER TABLE vehicle_transfers ADD COLUMN transfer_type TEXT DEFAULT 'airport'"),
         ("rooms_max_adults", "ALTER TABLE rooms ADD COLUMN max_adults INTEGER"),
         ("rooms_max_children", "ALTER TABLE rooms ADD COLUMN max_children INTEGER NOT NULL DEFAULT 0"),
         ("rooms_size_sqm", "ALTER TABLE rooms ADD COLUMN size_sqm REAL"),
