@@ -1,12 +1,34 @@
 {% extends "public_base.html" %}
 {% block title %}Home{% endblock %}
+{% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
 <section class="g-hero">
-<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg" alt="Château de Gudanes">
-<div class="g-hero__wash"></div>
-<div class="g-hero__in"><h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1></div>
+  <video class="g-hero__video" autoplay muted loop playsinline
+         poster="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg">
+    <source src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}" type="video/mp4">
+  </video>
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1>
+    <p class="g-hero__lede">A rare invitation: stay inside a world-renowned restoration project, within a building still evolving, unmodernised, and utterly unlike anywhere else.</p>
+  </div>
+  <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
+  </button>
 </section>
+
+<script>
+(function(){
+  var btn = document.getElementById('g-hero-pause');
+  var vid = document.querySelector('.g-hero__video');
+  if(!btn || !vid) return;
+  btn.addEventListener('click', function(){
+    if (vid.paused){ vid.play(); btn.setAttribute('aria-label','Pause video'); }
+    else { vid.pause(); btn.setAttribute('aria-label','Play video'); }
+  });
+})();
+</script>
 
 <section class="g-sec"><div class="g-wrap">
 <h2 class="g-h2" style="font-size:clamp(34px,5vw,56px); margin-bottom:32px">Bienvenue</h2>

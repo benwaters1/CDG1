@@ -829,3 +829,156 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 }
 
 .g-quote__warn{ margin:0; font-size:.9rem; font-weight:600; color:#b3271e; }
+
+/* ==========================================================================
+   NAVIGATION PANEL — full Ritz Paris reference match: icon+label primary
+   group, a photographic feature item, chevron-marked secondary links, then
+   a footer tier with newsletter, socials, a link grid and legal links.
+   ========================================================================== */
+.g-navbtn{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; background: none; border: 0; cursor: pointer;
+  margin-right: var(--s3); flex: none; z-index: 61; position: relative;
+  color: var(--ink);
+}
+.g-navbtn__bars{ display: flex; flex-direction: column; gap: 5px; width: 20px; }
+.g-navbtn__bars span{ display: block; height: 1.5px; background: currentColor; }
+body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
+
+.g-panel-overlay{
+  position: fixed; inset: 0; z-index: 58;
+  background: rgba(20,19,15,.45);
+  opacity: 0; visibility: hidden; transition: opacity .25s ease;
+}
+.g-panel-overlay.is-open{ opacity: 1; visibility: visible; }
+
+.g-navwrap{
+  position: fixed; top: 0; left: 0; bottom: 0; z-index: 59;
+  width: min(24rem, 88vw); background: var(--sand);
+  transform: translateX(-100%); transition: transform .3s ease;
+  overflow-y: auto; box-shadow: 20px 0 50px rgba(0,0,0,.12);
+  display: flex; flex-direction: column;
+}
+.g-navwrap.is-open{ transform: translateX(0); }
+.g-navwrap__inner{ padding: var(--s8) var(--s6) var(--s6); flex: 0 0 auto; }
+.g-navwrap__close{
+  position: absolute; top: var(--s5); right: var(--s5);
+  width: 44px; height: 44px; background: none; border: 0;
+  font-size: 26px; line-height: 1; color: var(--ink-faint); cursor: pointer;
+}
+.g-navwrap__group{
+  font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--ink-faint);
+  margin: var(--s7) 0 var(--s3); font-weight: 400;
+}
+.g-navwrap__group:first-child{ margin-top: 0; }
+.g-navwrap__item{
+  display: flex; align-items: center; gap: var(--s4);
+  min-height: 48px; padding: var(--s2) 0;
+  font-family: var(--serif); font-size: 16px; color: var(--ink);
+  text-decoration: none;
+}
+.g-navwrap__item svg{ width: 22px; height: 22px; flex: none; color: var(--blue-deep); }
+.g-navwrap__item:hover{ color: var(--blue-deep); }
+
+.g-navwrap__item--sm{
+  font-size: 14.5px; min-height: 44px; justify-content: space-between;
+  color: var(--ink-soft);
+}
+.g-navwrap__chev{ width: 16px; height: 16px; color: var(--ink-faint); flex: none; }
+.g-navwrap__item--sm:hover{ color: var(--blue-deep); }
+.g-navwrap__item--sm:hover .g-navwrap__chev{ color: var(--blue-deep); }
+
+.g-navwrap__item--plain{
+  font-family: var(--mono); font-size: 12px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ink-soft); min-height: 44px;
+}
+.g-navwrap__divider{ border-top: 1px solid var(--line); margin: var(--s6) 0; }
+
+/* The one photographic feature — the château's own symmetrical façade. */
+.g-navwrap__feature{
+  display: block; text-decoration: none; margin-bottom: var(--s5);
+  border: 1px solid var(--line);
+}
+.g-navwrap__feature img{ width: 100%; height: 8.5rem; object-fit: cover; display: block; }
+.g-navwrap__feature span{ display: block; padding: var(--s4); }
+.g-navwrap__feature b{
+  display: block; font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ink);
+}
+.g-navwrap__feature em{
+  display: block; font-style: italic; font-size: 12.5px; color: var(--ink-faint); margin-top: 2px;
+}
+.g-navwrap__feature:hover b{ color: var(--blue-deep); }
+
+/* ---- Footer tier: newsletter, social row, link grid, address, legal ---- */
+.g-navwrap__foot{
+  flex: 1 0 auto; padding: var(--s7) var(--s6) var(--s6); background: var(--sand-2);
+  border-top: 1px solid var(--line);
+  font-size: 13.5px; color: var(--ink-faint); line-height: 1.7;
+}
+.g-navwrap__foot-h{
+  font-family: var(--serif); font-size: 16px; font-weight: 600; color: var(--ink);
+  margin: 0 0 var(--s4);
+}
+.g-navwrap__news{
+  display: flex; align-items: center; gap: var(--s3);
+  border-bottom: 1px solid var(--line); padding-bottom: var(--s3); margin-bottom: var(--s6);
+}
+.g-navwrap__news input{
+  flex: 1; border: 0; background: none; font-family: var(--serif);
+  font-size: 15px; color: var(--ink); min-height: 44px; padding: 0;
+}
+.g-navwrap__news input::placeholder{ color: var(--ink-faint); }
+.g-navwrap__news button{
+  background: none; border: 0; color: var(--ink); cursor: pointer;
+  width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; flex: none;
+}
+
+.g-navwrap__social{ display: flex; gap: var(--s4); margin-bottom: var(--s6); }
+.g-navwrap__social a{
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--line); color: var(--ink);
+  display: flex; align-items: center; justify-content: center;
+}
+.g-navwrap__social a:hover{ color: var(--blue-deep); border-color: var(--blue-deep); }
+.g-navwrap__social svg{ width: 18px; height: 18px; }
+
+.g-navwrap__linkgrid{
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s5);
+  margin-bottom: var(--s2);
+}
+.g-navwrap__linkgrid a{
+  color: var(--ink-soft); text-decoration: none; font-size: 14px;
+  min-height: 44px; display: flex; align-items: center;
+}
+.g-navwrap__linkgrid a:hover{ color: var(--blue-deep); }
+
+.g-navwrap__addr{ margin: 0 0 var(--s2); }
+.g-navwrap__foot a{ color: var(--ink-soft); display: inline-flex; align-items: center; min-height: 44px; }
+
+.g-navwrap__legal{
+  display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4);
+  margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.g-navwrap__legal a{ color: var(--ink-faint); min-height: 44px; display: inline-flex; align-items: center; }
+.g-navwrap__legal a:hover{ color: var(--blue-deep); }
+
+@media (max-width: 30rem){ .g-navwrap{ width: 100vw; } }
+
+/* ==========================================================================
+   HERO VIDEO — full-bleed looping background, pause control.
+   ========================================================================== */
+.g .g-hero__video{
+  width: 100%; height: clamp(22rem, 78vh, 46rem); object-fit: cover;
+  display: block; position: absolute; inset: 0;
+}
+.g-hero__pause{
+  position: absolute; bottom: var(--s6); right: var(--s6); z-index: 3;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.55); background: rgba(0,0,0,.15);
+  color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.g-hero__lede{
+  color: #EAE4DC; max-width: 40rem; font-size: 17px; line-height: 1.6; margin: var(--s4) 0 0;
+}
