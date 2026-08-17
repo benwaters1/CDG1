@@ -129,7 +129,8 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
         {% elif c.untracked %}
           <span class="upload-hint">not counted — served from the kitchen, not a tracked stock line</span>
         {% elif c.short_by %}
-          <span class="mini-status status-declined">{{ c.portions }} of {{ capacity.covers }} — {{ c.short_by }} short</span>
+          <span class="mini-status status-declined">{{ c.portions }} of {{ c.still_to_come }} — {{ c.short_by }} short</span>
+          {% if c.served %}<span class="upload-hint">{{ c.served }} already gone out</span>{% endif %}
           {% if c.first_out %}
           <span class="upload-hint">{{ c.first_out.name }} goes first ({{ c.first_out.portions }} left)</span>
           {% endif %}

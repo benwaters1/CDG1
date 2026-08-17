@@ -11,6 +11,27 @@
   Refreshes itself every 20 seconds.
 </p>
 
+{# 86ing gets decided here, not on the card page the chef read this afternoon.
+   Only shortfalls appear — a pass covered in reassurance is a pass nobody
+   reads. Covers already served are off the demand side, so this counts down
+   through the night rather than shouting about a dish that already went out. #}
+{% if short %}
+<div class="pass-short">
+  <strong>Running short</strong>
+  {% for c in short %}
+  <span class="pass-short-row">
+    {{ courses.get(c.course, c.course) }} —
+    {% if c.all_off %}everything off
+    {% else %}{{ c.portions }} left, {{ c.still_to_come }} still to come{% endif %}
+    {%- if c.first_out %} · {{ c.first_out.name }} goes first ({{ c.first_out.portions }}){% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    From the stock ledger against confirmed bookings. Walk-ins are not in it.
+  </span>
+</div>
+{% endif %}
+
 {% if not tickets %}
   <div class="empty-state">Nothing on. Tickets appear here the moment the floor sends an order.</div>
 {% else %}

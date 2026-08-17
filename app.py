@@ -6556,6 +6556,18 @@ def card_capacity(conn, menu_id, service_date, service="dinner"):
         """SELECT COALESCE(SUM(party_size), 0) AS n FROM restaurant_bookings
            WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL""",
         (service_date,)).fetchone()["n"] or 0
+    # Covers that have already had this course do not need a portion of it kept
+    # back. Without this the figure only makes sense before service starts —
+    # stock falls as dishes go out while the covers booked stay at fourteen,
+    # and by nine the pass is being warned about a shortfall it already ate.
+    served = {r["course"]: r["n"] for r in conn.execute(
+        """SELECT pos_order_lines.course AS course,
+                  COALESCE(SUM(pos_order_lines.quantity), 0) AS n
+             FROM pos_order_lines
+             JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+            WHERE pos_orders.service_date = ? AND pos_orders.status != 'void'
+              AND pos_order_lines.voided = 0
+            GROUP BY pos_order_lines.course""", (service_date,)).fetchall()}
     dishes = conn.execute(
         """SELECT menu_dishes.*, menu_items.stock_item_id, menu_items.stock_qty_per_unit,
                   stock_items.name AS stock_name, stock_items.unit AS stock_unit
@@ -6599,7 +6611,10 @@ def card_capacity(conn, menu_id, service_date, service="dinner"):
         if not c:
             continue
         servable = c["dishes"] and not all(d["off"] for d in c["dishes"])
-        c["short_by"] = 0 if (c["untracked"] or not covers) else max(0, covers - c["portions"])
+        c["served"] = int(served.get(key, 0))
+        c["still_to_come"] = max(0, covers - c["served"])
+        c["short_by"] = (0 if (c["untracked"] or not covers)
+                         else max(0, c["still_to_come"] - c["portions"]))
         c["all_off"] = bool(c["dishes"]) and not servable
         # Worth naming the dish that goes first, because that is the decision:
         # not "the mains are tight" but "there are six pigeon and fourteen booked".
@@ -12479,8 +12494,15 @@ def pos_kitchen():
             (t["booking_id"],)).fetchone() if t["booking_id"] else None
         t["guest"] = ctx["guest_name"] if ctx else None
         t["dietary"] = (ctx["dietary_notes"] or "").strip() if ctx else ""
+    # The pass is where 86ing actually gets decided, so the shortfall belongs
+    # here and not only on the card page the chef looked at this afternoon.
+    today = service_day()
+    card = menu_for_date(conn, today)
+    capacity = card_capacity(conn, card["id"], today) if card else None
+    short = capacity["short"] if capacity else []
     conn.close()
-    return render_template("pos_kitchen.html", tickets=tickets, courses=MENU_COURSES)
+    return render_template("pos_kitchen.html", tickets=tickets, courses=MENU_COURSES,
+                           capacity=capacity, short=short)
 
 
 @app.route("/pos/day")

@@ -203,6 +203,41 @@ def run():
     conn.execute("UPDATE menu_dishes SET available = 1 WHERE menu_id = ?", (menu_id,))
     conn.commit()
 
+    s.section("Covers that have already eaten are not still owed a portion")
+    # Stock falls as dishes go out. If the demand side stayed at fourteen all
+    # night the pass would be warned, at nine, about a shortfall it already ate.
+    conn.execute(
+        """INSERT INTO pos_orders (table_label, covers, status, service_state,
+             service_date, opened_at) VALUES (?, 4, 'open', 'main', ?, ?)""",
+        (TAG + "T1", tonight, datetime.now(timezone.utc).isoformat()))
+    oid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    for _i in range(4):
+        conn.execute(
+            """INSERT INTO pos_order_lines (order_id, name, unit_price, quantity, course,
+                 state, vat_rate, created_at) VALUES (?, ?, 28, 1, 'main', 'served', 10, ?)""",
+            (oid, TAG + "Pigeon", datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    cap = m.card_capacity(conn, menu_id, tonight)
+    mains = next(c for c in cap["courses"] if c["course"] == "main")
+    s.check("four mains have gone out", mains["served"] == 4, detail=str(mains["served"]))
+    s.check("so ten covers are still owed one", mains["still_to_come"] == 10,
+            detail=str(mains["still_to_come"]))
+    # Ten portions left, ten covers still to come. Measured against all fourteen
+    # this would read four short, and the pass would be chasing a dish that is
+    # already accounted for.
+    s.check("and the shortfall is measured against those, not all fourteen",
+            mains["short_by"] == 0, detail=str(mains["short_by"]))
+
+    conn.execute("UPDATE pos_order_lines SET voided = 1 WHERE order_id = ?", (oid,))
+    conn.commit()
+    mains = next(c for c in m.card_capacity(conn, menu_id, tonight)["courses"]
+                 if c["course"] == "main")
+    s.check("voiding them puts the covers back", mains["still_to_come"] == 14,
+            detail=str(mains["still_to_come"]))
+    conn.execute("DELETE FROM pos_order_lines WHERE order_id = ?", (oid,))
+    conn.execute("DELETE FROM pos_orders WHERE id = ?", (oid,))
+    conn.commit()
+
     s.section("On the page the chef actually looks at")
     r = oc.get(f"/admin/restaurant/menu/day?date={tonight}&service=dinner")
     s.check("the card page opens", r.status_code == 200, detail=str(r.status_code))
@@ -210,6 +245,21 @@ def run():
     s.check("and the shortfall named", b"short" in r.data)
     s.check("and the dish that goes first",
             (TAG + "Pigeon").encode() in r.data)
+
+    s.section("And on the pass, where 86ing is actually decided")
+    r = oc.get("/pos/kitchen")
+    s.check("the pass opens", r.status_code == 200, detail=str(r.status_code))
+    s.check("with the shortfall on it", b"Running short" in r.data)
+    s.check("naming the dish that goes first", (TAG + "Pigeon").encode() in r.data)
+
+    # Nothing short must say nothing. A pass covered in reassurance is a pass
+    # nobody reads, and then the one real warning is invisible.
+    conn.execute("UPDATE stock_movements SET delta = 200 WHERE stock_item_id = ? "
+                 "AND reason = 'opening'", (pigeon,))
+    conn.commit()
+    r = oc.get("/pos/kitchen")
+    s.check("plenty of everything says nothing at all",
+            b"Running short" not in r.data)
 
     # Tomorrow has the same card but no bookings, so no panel at all.
     conn.execute("UPDATE menus SET service_date = ? WHERE id = ?", (_iso(1), menu_id))

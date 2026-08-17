@@ -1700,6 +1700,15 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .floor-expected-table{ margin:0; }
 
 /* ------------------------------- the pass -------------------------------- */
+/* Only ever shown when something is genuinely short, so it can afford to sit
+   above the tickets and be loud about it. */
+.pass-short{
+  display:flex; flex-direction:column; gap:4px;
+  background:var(--surface); border:1px solid var(--danger);
+  border-left:5px solid var(--danger); border-radius:11px;
+  padding:11px 14px; margin-bottom:14px;
+}
+.pass-short-row{ font-size:14.5px; font-variant-numeric:tabular-nums; }
 .pass{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
 .ticket{
   background:var(--surface); border:1px solid var(--parchment-line);
