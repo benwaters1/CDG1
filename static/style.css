@@ -319,6 +319,15 @@ body.staff-shell .sidebar-toggle{ color:var(--ink-soft); }
 }
 
 .page-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:10px; }
+/* The action group beside a page title is written inline as
+   `style="display:flex; gap:10px"` in around seventy templates, none of which
+   set flex-wrap — so on a phone the buttons could not wrap and ran off the
+   right edge, dragging the whole document with them (Booking Requests was
+   631px wide inside a 375px screen). Targeting the child here fixes every one
+   of them at once, and works despite the inline styles because none of them
+   declare flex-wrap. */
+.page-head > div{ flex-wrap:wrap; min-width:0; }
+.page-head > div > *{ flex-shrink:0; }
 .page-head h1{ font-family:'Playfair Display', serif; font-size:26px; color:var(--chestnut-deep); margin:0; }
 body.staff-shell .page-head h1{ color:var(--ivory); }
 .section-heading{ font-family:'Playfair Display', serif; font-size:18px; color:var(--chestnut-deep); margin:30px 0 14px 0; }
