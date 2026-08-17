@@ -57,7 +57,7 @@
       <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
       {% endif %}
       <a href="{{ url_for('change_password') }}" class="small-link">Password</a>
-      <a href="{{ url_for('logout') }}" class="small-link">Log out</a>
+      <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">Log out</a>
     </div>
   </div>
 </header>
@@ -105,7 +105,7 @@
        'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
        'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
        'log_vehicle_service','new_vehicle_maintenance','resolve_vehicle_maintenance','delete_vehicle_maintenance',
-       'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv',
+       'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','all_transfers','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv',
        'admin_automation','update_automation_settings','run_automation_job_now','admin_inbox_flags','admin_inbox_flags_status',
        'admin_outlook_addin','management_email_templates','management_social','admin_promo_codes','admin_deposit_rules','promo_code_blast'] %}
   <nav class="nav">
@@ -170,6 +170,7 @@
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
         <a href="{{ url_for('management_vehicles') }}" class="{{ 'active' if request.endpoint=='management_vehicles' }}">{{ icon('car') }}Vehicles</a>
+        <a href="{{ url_for('all_transfers') }}" class="{{ 'active' if request.endpoint=='all_transfers' }}">{{ icon('truck') }}Transfers</a>
         <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
         <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
@@ -208,6 +209,7 @@
 
     {% else %}
     <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
+    <a href="{{ url_for('all_transfers') }}" class="{{ 'active' if request.endpoint=='all_transfers' }}">{{ icon('truck') }}Transfers</a>
     <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint=='guests' }}">{{ icon('guests') }}Guests</a>
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
@@ -319,6 +321,35 @@ if ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in
   }).then(function(existing) {
     if (!existing) document.getElementById('push-prompt').style.display = 'flex';
   }).catch(function() {});
+}
+
+// Logging out must also detach this browser's push subscription. On a shared
+// device (a staff tablet in the office) it otherwise keeps delivering the
+// previous user's notifications to whoever picks it up next. Navigates
+// regardless of whether the unsubscribe succeeds — never trap someone in a
+// session because a push call failed.
+function unsubscribeThenLogout(ev) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return true;
+  ev.preventDefault();
+  var href = document.getElementById('logout-link').href;
+  var done = false;
+  var go = function() { if (!done) { done = true; window.location = href; } };
+  setTimeout(go, 1200);   // don't hang the logout on a slow push service
+  navigator.serviceWorker.ready
+    .then(function(reg) { return reg.pushManager.getSubscription(); })
+    .then(function(sub) {
+      if (!sub) return null;
+      var endpoint = sub.endpoint;
+      return sub.unsubscribe().then(function() {
+        return fetch('/notifications/unsubscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: endpoint }),
+        });
+      });
+    })
+    .then(go)
+    .catch(go);
+  return false;
 }
 
 function pollUnreadNotifications() {

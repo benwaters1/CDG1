@@ -33,6 +33,24 @@
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
     </div>
+    {% elif item['kind'] == 'correction' %}
+    {# Deliberately has no bulk checkbox: "approve everything" shouldn't
+       silently rewrite timesheets, which is a pay record. #}
+    <div class="expense-head">
+      <div>
+        <span class="mini-status status-pending" style="margin-right:8px;">Timesheet</span>
+        <strong>{{ r['employee_name'] }}</strong> — correction requested
+      </div>
+    </div>
+    {% if r['note'] %}<p class="manual-body">{{ r['note'] }}</p>{% endif %}
+    <p class="upload-hint">
+      {% if r['clock_in_at'] %}Logged {{ local_datetime_str(r['clock_in_at']) }}{% if r['clock_out_at'] %} → {{ local_datetime_str(r['clock_out_at']) }}{% else %} → still open{% endif %} · {% endif %}
+      Raised {{ r['created_at'][:10] }} · <a href="{{ url_for('admin_timesheet_corrections') }}" style="color:inherit;">all corrections</a>
+    </p>
+    <div class="expense-actions">
+      <form method="post" action="{{ url_for('resolve_timesheet_correction', correction_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark resolved</button></form>
+      <form method="post" action="{{ url_for('dismiss_timesheet_correction', correction_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Dismiss</button></form>
+    </div>
     {% else %}
     <div class="expense-head">
       <div>

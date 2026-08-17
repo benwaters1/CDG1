@@ -4589,9 +4589,12 @@ def inject_user():
         ).fetchone()[0]
         vapid_public_key = get_vapid_public_key(conn)
         if user["role"] == "owner":
+            # Must match what /admin/approvals actually lists, or the sidebar
+            # badge and the page disagree about how much is waiting.
             pending_approvals_count = conn.execute(
                 "SELECT (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending') "
-                "+ (SELECT COUNT(*) FROM expenses WHERE status = 'pending')"
+                "+ (SELECT COUNT(*) FROM expenses WHERE status = 'pending') "
+                "+ (SELECT COUNT(*) FROM timesheet_corrections WHERE status = 'pending')"
             ).fetchone()[0]
             open_hr_notes_count = conn.execute(
                 "SELECT COUNT(*) FROM hr_notes WHERE status = 'open'"
@@ -14660,6 +14663,48 @@ def checkin_vehicle(vehicle_id):
     return redirect(url_for("management_vehicles"))
 
 
+@app.route("/transfers")
+@login_required
+def all_transfers():
+    """Every scheduled pickup/dropoff across the whole fleet, on one page.
+
+    Transfers were only ever visible per-vehicle, so answering "who's driving
+    the airport run today" meant opening each vehicle in turn. Drivers are
+    ordinary staff, so this is login_required rather than owner-only — an
+    employee needs to see the run they've been assigned. Creating and deleting
+    transfers stays owner-only on the per-vehicle page.
+    """
+    today = datetime.now(timezone.utc).date()
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT vehicle_transfers.*, vehicles.name AS vehicle_name,
+                  users.name AS driver_name
+           FROM vehicle_transfers
+           JOIN vehicles ON vehicles.id = vehicle_transfers.vehicle_id
+           LEFT JOIN users ON users.id = vehicle_transfers.driver_user_id
+           ORDER BY vehicle_transfers.scheduled_at"""
+    ).fetchall()
+    conn.close()
+
+    today_iso = today.isoformat()
+    upcoming, todays, past = [], [], []
+    for r in rows:
+        day = (r["scheduled_at"] or "")[:10]
+        if day == today_iso:
+            todays.append(r)
+        elif day > today_iso:
+            upcoming.append(r)
+        else:
+            past.append(r)
+    past.reverse()  # most recent first
+
+    return render_template(
+        "all_transfers.html", todays=todays, upcoming=upcoming, past=past[:20],
+        today=today, unassigned=sum(1 for r in rows if not r["driver_user_id"]
+                                    and (r["scheduled_at"] or "")[:10] >= today_iso),
+    )
+
+
 @app.route("/management/vehicles/<int:vehicle_id>/transfers")
 @owner_required
 def vehicle_transfers_page(vehicle_id):
@@ -15985,10 +16030,22 @@ def admin_approvals():
            LEFT JOIN users ON users.id = expenses.submitted_by_user_id
            WHERE expenses.status = 'pending'"""
     ).fetchall()
+    # Timesheet corrections are a third thing an employee submits and waits on
+    # a decision for, but they lived in their own page, so "Approvals" wasn't
+    # actually the list of everything awaiting the owner.
+    corrections = conn.execute(
+        """SELECT timesheet_corrections.*, users.name AS employee_name,
+                  time_entries.clock_in_at, time_entries.clock_out_at
+           FROM timesheet_corrections
+           JOIN users ON users.id = timesheet_corrections.user_id
+           LEFT JOIN time_entries ON time_entries.id = timesheet_corrections.time_entry_id
+           WHERE timesheet_corrections.status = 'pending'"""
+    ).fetchall()
     conn.close()
     queue = (
         [{"kind": "leave", "sort_at": r["requested_at"], "row": r} for r in leave]
         + [{"kind": "expense", "sort_at": r["submitted_at"], "row": r} for r in expenses]
+        + [{"kind": "correction", "sort_at": r["created_at"], "row": r} for r in corrections]
     )
     queue.sort(key=lambda item: item["sort_at"] or "")
     return render_template("admin_approvals.html", queue=queue)
