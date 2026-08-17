@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}The pass{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>The pass</h1>
+  <a href="{{ url_for('pos_home') }}" class="btn-ghost">Floor</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every ticket the kitchen has been sent, oldest first, with the clock running on it.
+  Refreshes itself every 20 seconds.
+</p>
+
+{% if not tickets %}
+  <div class="empty-state">Nothing on. Tickets appear here the moment the floor sends an order.</div>
+{% else %}
+<div class="pass">
+  {% for t in tickets %}
+  {# The number in the corner is the whole point of a pass. A ticket with no
+     clock on it is how a table waits forty minutes and nobody notices. #}
+  <div class="ticket {{ 'is-late' if t.waiting_minutes and t.waiting_minutes >= 25 }}
+              {{ 'is-warn' if t.waiting_minutes and 15 <= t.waiting_minutes < 25 }}">
+    <div class="ticket-head">
+      <span class="ticket-table">{{ t.table_label }}</span>
+      <span class="ticket-clock">{{ t.waiting_minutes if t.waiting_minutes is not none else '—' }}<small>min</small></span>
+    </div>
+    <div class="ticket-meta">
+      {{ t.covers }} cover{{ '' if t.covers == 1 else 's' }}
+      {%- if t.guest %} · {{ t.guest }}{% endif %}
+    </div>
+    {% if t.dietary %}
+    <div class="ticket-allergy">{{ t.dietary }}</div>
+    {% endif %}
+
+    {% for course, lines in t.by_course.items() %}
+    <p class="ticket-course">{{ courses.get(course, course) }}</p>
+    {% for l in lines %}
+    <div class="ticket-line {{ 'is-ready' if l['state'] == 'ready' }}">
+      <span class="ticket-qty">{{ l['quantity'] }}</span>
+      <span class="ticket-name">
+        {{ l['name'] }}
+        {% if l['seat_number'] %}<small>seat {{ l['seat_number'] }}</small>{% endif %}
+        {% if l['notes'] %}<em>{{ l['notes'] }}</em>{% endif %}
+      </span>
+      <form method="post" action="{{ url_for('pos_line_state', line_id=l['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="state" value="{{ 'served' if l['state'] == 'ready' else 'ready' }}">
+        <button type="submit" class="ticket-tick">
+          {{ 'Away' if l['state'] == 'ready' else 'Ready' }}
+        </button>
+      </form>
+    </div>
+    {% endfor %}
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+// A pass is looked at, not clicked. Reload rather than poll — no state is
+// held on this page, so there is nothing to lose.
+setTimeout(function () { window.location.reload(); }, 20000);
+</script>
+
+{% endblock %}

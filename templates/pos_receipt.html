@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Bill — {{ order['table_label'] }}{% endblock %}
+{% block content %}
+
+{#
+  The bill as a guest receives it. A French bill has to show VAT by rate rather
+  than one blended figure, so this lists each rate separately. It prints from
+  the browser — the iPad has no till roll, and a page that prints beats one
+  that cannot.
+#}
+
+<div class="receipt">
+  <div class="receipt-head">
+    <h1>Château de Gudanes</h1>
+    <p>2 Route de Beille · Château-Verdun, Ariège 09310 · France</p>
+    <p>La Table du Château</p>
+  </div>
+
+  <div class="receipt-meta">
+    <span>{{ order['table_label'] }}</span>
+    <span>{{ order['covers'] }} cover{{ '' if order['covers'] == 1 else 's' }}</span>
+    <span>{{ local_datetime_str(order['closed_at'] or order['opened_at']) }}</span>
+  </div>
+  {% if context %}<p class="receipt-guest">{{ context.booking['guest_name'] }}</p>{% endif %}
+
+  {% for course, lines in by_course.items() %}
+  <p class="receipt-course">{{ courses.get(course, course) }}</p>
+  {% for l in lines %}
+  <div class="receipt-line">
+    <span>{{ l['quantity'] }} × {{ l['name'] }}{% if l['seat_number'] %} <small>(seat {{ l['seat_number'] }})</small>{% endif %}</span>
+    <span>€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
+  </div>
+  {% endfor %}
+  {% endfor %}
+
+  <div class="receipt-totals">
+    <div class="receipt-line"><span>Sous-total</span><span>€{{ '%.2f'|format(bill.gross) }}</span></div>
+    {% if bill.discount %}
+    <div class="receipt-line"><span>Remise{% if order['discount_reason'] %} — {{ order['discount_reason'] }}{% endif %}</span><span>−€{{ '%.2f'|format(bill.discount) }}</span></div>
+    {% endif %}
+    {% if bill.service %}
+    <div class="receipt-line"><span>Service</span><span>€{{ '%.2f'|format(bill.service) }}</span></div>
+    {% endif %}
+    {% if bill.deposit %}
+    <div class="receipt-line"><span>Acompte déjà versé</span><span>−€{{ '%.2f'|format(bill.deposit) }}</span></div>
+    {% endif %}
+    <div class="receipt-line is-total"><span>Total TTC</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+
+    <p class="receipt-vat-head">Dont TVA</p>
+    {% for rate, b in bill.vat_by_rate.items() %}
+    <div class="receipt-line is-small">
+      <span>TVA {{ rate|round(0)|int }}% (HT €{{ '%.2f'|format(b.net) }})</span>
+      <span>€{{ '%.2f'|format(b.vat) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if payments %}
+  <div class="receipt-totals">
+    {% for pay in payments %}
+    <div class="receipt-line is-small">
+      <span>{{ payment_methods.get(pay['method'], pay['method']) }}</span>
+      <span>€{{ '%.2f'|format(pay['amount']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <p class="receipt-foot">Merci — nous espérons vous revoir.</p>
+  <button type="button" class="btn-primary receipt-print" onclick="window.print()">Print</button>
+</div>
+
+{% endblock %}

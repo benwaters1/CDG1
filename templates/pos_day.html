@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Cash up{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Cash up</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('pos_day', date=prev_day.isoformat()) }}" class="btn-mini">‹ {{ prev_day.strftime('%a %d') }}</a>
+    <strong>{{ on.strftime('%A %d %B') }}</strong>
+    <a href="{{ url_for('pos_day', date=next_day.isoformat()) }}" class="btn-mini">{{ next_day.strftime('%a %d') }} ›</a>
+  </div>
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not report.orders %}
+  <div class="empty-state">Nothing settled on this day.</div>
+{% else %}
+
+<h2 class="section-heading">Takings by method</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Method</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      {% for method, amount in report.by_method.items() %}
+      <tr>
+        <td>{{ payment_methods.get(method, method) }}</td>
+        <td class="num">€{{ '%.2f'|format(amount) }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td><strong>Total taken</strong></td>
+        <td class="num"><strong>€{{ '%.2f'|format(report.taken) }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% if (report.taken - report.gross + report.discounts - report.service)|abs > 0.01 %}
+{# Takings and the till's own figure must agree. If they do not, say so
+   rather than showing two numbers and letting somebody notice later. #}
+<div class="alert-band">
+  Takings (€{{ '%.2f'|format(report.taken) }}) do not match the tabs
+  (€{{ '%.2f'|format(report.gross - report.discounts + report.service) }}).
+  A tab was probably settled without a payment recorded against it.
+</div>
+{% endif %}
+
+<h2 class="section-heading">VAT within the day</h2>
+<p class="pay-disclaimer" style="margin-top:-6px;">
+  Prices are TTC, so this is the VAT contained in what was taken, not added to it.
+  Food 10%, alcohol 20% — the rates on the Tax page.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Gross</th><th class="num">Service</th><th class="num">Discounts</th><th class="num">VAT within</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>€{{ '%.2f'|format(report.gross) }}</td>
+        <td class="num">€{{ '%.2f'|format(report.service) }}</td>
+        <td class="num">€{{ '%.2f'|format(report.discounts) }}</td>
+        <td class="num">€{{ '%.2f'|format(report.vat) }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">Tabs</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Table</th><th class="num">Covers</th><th class="num">Total</th><th>Method</th><th>Closed</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for o in report.orders %}
+      <tr>
+        <td>{{ o['table_label'] }}</td>
+        <td class="num">{{ o['covers'] }}</td>
+        <td class="num">€{{ '%.2f'|format(o['settled_total'] or 0) }}</td>
+        <td class="upload-hint">{{ payment_methods.get(o['payment_method'], o['payment_method'] or '—') }}</td>
+        <td class="upload-hint">{{ local_time_str(o['closed_at']) if o['closed_at'] }}</td>
+        <td><a href="{{ url_for('pos_order', order_id=o['id']) }}" class="small-link">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

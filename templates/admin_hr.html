@@ -191,6 +191,16 @@
 {# ---------------- Certifications ---------------- #}
 <h2 class="section-heading">Certifications &amp; training</h2>
 {% if certs_expiring %}
+{% set rostered = certs_expiring|selectattr('required')|selectattr('shifts_after')|list %}
+{% if rostered %}
+{# The ones that stop being paperwork: a required certificate that runs out
+   while the person is already on the rota past that date. #}
+<div class="alert-band">
+  <strong>{{ rostered|length }} required certificate{{ '' if rostered|length == 1 else 's' }}
+  {{ 'runs' if rostered|length == 1 else 'run' }} out before shifts already booked.</strong>
+  Either renew it or take those shifts off the rota.
+</div>
+{% endif %}
 <div class="flash flash-error" style="margin-bottom:14px;">
   {{ certs_expiring|length }} certification{{ '' if certs_expiring|length == 1 else 's' }} expired or expiring within 60 days.
 </div>
@@ -203,6 +213,12 @@
       {% else %}expires in {{ c['days_left'] }} day{{ '' if c['days_left'] == 1 else 's' }}{% endif %}
       · {{ c['expiry_date'] }}
     </span>
+    {% if c['shifts_after'] %}
+    <span class="mini-status status-declined">
+      {{ c['shifts_after'] }} shift{{ '' if c['shifts_after'] == 1 else 's' }} booked after it
+      {%- if c['first_shift_after'] %}, from {{ c['first_shift_after'] }}{% endif %}
+    </span>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

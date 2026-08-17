@@ -3,110 +3,86 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Menu</h1>
-  <a href="{{ url_for('admin_restaurant') }}" class="btn-mini">Back to reservations</a>
+  <h1>The menu</h1>
+  <a href="{{ url_for('pos_home') }}" class="btn-ghost">Service</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Shown to prospective guests on the public dinner page. Turn a dish off to hide it without losing the entry.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What the POS sells. A dish carries its course (service fires by course), its allergens
+  (so the pass sees them without anyone remembering), and its VAT — food 10%, alcohol 20%,
+  taken from the Tax page unless you set it here.
+</p>
 
-<div class="detail-card" style="max-width:640px; margin-bottom:22px;">
-  <h3 style="margin-top:0;">Add a dish</h3>
-  <form method="post" action="{{ url_for('new_menu_item') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field-row-2">
-      <div>
-        <label class="field-label">Name</label>
-        <input type="text" name="name" required>
-      </div>
-      <div>
-        <label class="field-label">Category</label>
-        <select name="category">
-          {% for c in categories %}
-          <option value="{{ c }}">{{ c|capitalize }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <label class="field-label">Description (optional)</label>
-    <textarea name="description" rows="2" placeholder="Ingredients, preparation, what makes it worth ordering"></textarea>
-    <div class="field-row-2">
-      <div>
-        <label class="field-label">Dietary tags (optional)</label>
-        <input type="text" name="dietary_tags" placeholder="Vegetarian, gluten-free...">
-      </div>
-      <div>
-        <label class="field-label">Price (€, optional)</label>
-        <input type="number" name="price" step="0.01" min="0" placeholder="Leave blank if included in the set price">
-      </div>
-    </div>
-    <button type="submit" class="btn-primary" style="margin-top:10px;">Add dish</button>
-  </form>
+{% if off %}
+{# Off tonight is the first thing a waiter needs and the last thing an
+   alphabetical menu tells them. #}
+<div class="alert-band">
+  <strong>Off tonight:</strong>
+  {% for i in off %}{{ i['name'] }}{% if i['unavailable_note'] %} ({{ i['unavailable_note'] }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}.
+  They are greyed out on the POS so nobody can sell them.
 </div>
+{% endif %}
 
-{% for category in categories %}
-{% set items = items_by_category.get(category, []) %}
-<h2 class="section-heading">{{ category|capitalize }}s</h2>
-{% if not items %}
-  <div class="empty-state">No {{ category }}s yet.</div>
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
+{% if not by_course %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that. <a href="{{ url_for('admin_restaurant_menu') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No dishes yet. Add the first one below and it appears on the POS immediately.
+    {% endif %}
+  </div>
 {% else %}
-  {% for item in items %}
-  <div class="expense-card">
-    <div class="expense-head">
-      <div>
-        <strong>{{ item['name'] }}</strong>
-        {% if item['price'] %}<span class="upload-hint">€{{ '%.2f'|format(item['price']) }}</span>{% endif %}
-        <span class="mini-status {{ 'status-active' if item['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'on menu' if item['active'] else 'hidden' }}</span>
+  {% for course, items in by_course.items() %}
+  <h2 class="section-heading">{{ courses.get(course, course) }}</h2>
+  <div class="doc-list">
+    {% for i in items %}
+    <div class="doc-row" style="align-items:flex-start; flex-direction:column; gap:4px;">
+      <div style="display:flex; width:100%; gap:10px; align-items:baseline; flex-wrap:wrap;">
+        <strong style="flex:1;">{{ i['name'] }}</strong>
+        <span>€{{ '%.2f'|format(i['price'] or 0) }}</span>
+        <span class="upload-hint">TVA {{ vat_rates.get(i['id'], 0)|round(0)|int }}%</span>
+        {% if not i['available'] %}<span class="mini-status status-declined">off</span>{% endif %}
+        {% if not i['sold_in_pos'] %}<span class="mini-status status-inactive">not on POS</span>{% endif %}
+        <span class="small-link" style="color:var(--steel); cursor:pointer;"
+              onclick="toggleMenuEdit({{ i['id'] }})">Edit</span>
+        {# 86'ing is a staff action, not an owner one: it is the chef who knows
+           the duck has run out, and it has to be one tap mid-service. #}
+        <form method="post" action="{{ url_for('menu_item_availability', item_id=i['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if i['available'] %}<input type="text" name="note" placeholder="why (optional)" style="width:130px; margin:0;">{% endif %}
+          <button type="submit" class="btn-mini">{{ 'Put back on' if not i['available'] else '86 it' }}</button>
+        </form>
       </div>
+      {% if i['description'] %}<span class="upload-hint">{{ i['description'] }}</span>{% endif %}
+      {% if i['allergens'] %}
+      <span class="upload-hint">Contains: {% for a in i['allergens'].split(',') %}{{ allergens.get(a, a) }}{{ ', ' if not loop.last }}{% endfor %}</span>
+      {% endif %}
     </div>
-    {% if item['description'] %}<p class="manual-body">{{ item['description'] }}</p>{% endif %}
-    {% if item['dietary_tags'] %}<p class="upload-hint">{{ item['dietary_tags'] }}</p>{% endif %}
 
-    <details style="margin-top:8px;">
-      <summary class="small-link" style="color:var(--steel); cursor:pointer; font-size:13px;">Edit</summary>
-      <form method="post" action="{{ url_for('edit_menu_item', item_id=item['id']) }}" style="margin-top:10px;">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="field-row-2">
-          <div>
-            <label class="field-label">Name</label>
-            <input type="text" name="name" value="{{ item['name'] }}" required>
-          </div>
-          <div>
-            <label class="field-label">Category</label>
-            <select name="category">
-              {% for c in categories %}
-              <option value="{{ c }}" {{ 'selected' if c == item['category'] }}>{{ c|capitalize }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        <label class="field-label">Description</label>
-        <textarea name="description" rows="2">{{ item['description'] or '' }}</textarea>
-        <div class="field-row-2">
-          <div>
-            <label class="field-label">Dietary tags</label>
-            <input type="text" name="dietary_tags" value="{{ item['dietary_tags'] or '' }}">
-          </div>
-          <div>
-            <label class="field-label">Price (€)</label>
-            <input type="number" name="price" step="0.01" min="0" value="{{ item['price'] if item['price'] is not none else '' }}">
-          </div>
-        </div>
-        <button type="submit" class="btn-mini" style="margin-top:8px;">Save</button>
-      </form>
-    </details>
-
-    <div class="expense-actions">
-      <form method="post" action="{{ url_for('toggle_menu_item', item_id=item['id']) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-mini">{{ 'Hide' if item['active'] else 'Show' }}</button>
-      </form>
-      <form method="post" action="{{ url_for('delete_menu_item', item_id=item['id']) }}" onsubmit="return confirm('Remove this dish permanently?');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-mini btn-mini-danger">Delete</button>
-      </form>
-    </div>
+    <form method="post" action="{{ url_for('edit_menu_item', item_id=i['id']) }}"
+          id="edit-menu-{{ i['id'] }}" class="detail-card" style="display:none; margin-bottom:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% with item = i %}{% include "_menu_fields.html" %}{% endwith %}
+      <button type="submit" class="btn-mini" style="margin-top:10px;">Save</button>
+    </form>
+    {% endfor %}
   </div>
   {% endfor %}
 {% endif %}
-{% endfor %}
+
+<h2 class="section-heading">Add a dish</h2>
+<form method="post" action="{{ url_for('new_menu_item') }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% with item = None %}{% include "_menu_fields.html" %}{% endwith %}
+  <button type="submit" class="btn-mini" style="margin-top:10px;">Add to the menu</button>
+</form>
+
+<script>
+function toggleMenuEdit(id) {
+  var f = document.getElementById('edit-menu-' + id);
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+</script>
 
 {% endblock %}

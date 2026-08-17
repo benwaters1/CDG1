@@ -229,7 +229,7 @@
       </div>
     </div>
 
-    <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] }}">{{ icon('restaurant') }}Till</a>
+    <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] }}">{{ icon('restaurant') }}Restaurant POS</a>
     <a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>
 
     {% else %}
@@ -238,7 +238,7 @@
     <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint=='guests' }}">{{ icon('guests') }}Guests</a>
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
-    <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order'] }}">{{ icon('restaurant') }}Till</a>
+    <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order'] }}">{{ icon('restaurant') }}Restaurant POS</a>
     <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar','my_availability','my_reviews'] }}">
       <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar','my_availability','my_reviews'] }}">{{ icon('employee') }}Employee</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>

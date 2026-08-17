@@ -1,0 +1,83 @@
+{#
+  Every field a dish has, shared by the add and edit forms so they cannot drift
+  apart — the old page edited four columns of the eighteen the table holds.
+  `item` is the row being edited, or None when adding.
+#}
+<div class="refund-fields">
+  <div style="grid-column:1 / -1;">
+    <label class="field-label">Dish</label>
+    <input type="text" name="name" value="{{ item['name'] if item else '' }}" required
+           placeholder="e.g. Truite de l'Ariège, beurre noisette">
+  </div>
+  <div style="grid-column:1 / -1;">
+    <label class="field-label">Description — what the guest reads</label>
+    <input type="text" name="description" value="{{ item['description'] if item else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Course</label>
+    <select name="course">
+      {% for k, v in courses.items() %}
+      <option value="{{ k }}" {{ 'selected' if item and item['course'] == k }}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Price (€)</label>
+    <input type="text" name="price" inputmode="decimal"
+           value="{{ '%.2f'|format(item['price']) if item and item['price'] else '' }}">
+  </div>
+  <div>
+    <label class="field-label">VAT %</label>
+    <input type="text" name="vat_rate" inputmode="decimal" placeholder="from the Tax page"
+           value="{{ item['vat_rate'] if item and item['vat_rate'] is not none else '' }}">
+    <span class="field-hint">Blank means 10% food, 20% for apéritifs, wine and digestifs.</span>
+  </div>
+  <div>
+    <label class="field-label">Minutes to cook</label>
+    <input type="number" name="prep_minutes" min="0"
+           value="{{ item['prep_minutes'] if item and item['prep_minutes'] else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Comes out of stock</label>
+    <select name="stock_item_id">
+      <option value="">— nothing tracked —</option>
+      {% for st in stock_items %}
+      <option value="{{ st['id'] }}" {{ 'selected' if item and item['stock_item_id'] == st['id'] }}>
+        {{ st['name'] }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">How much per serving</label>
+    <input type="text" name="stock_qty_per_unit" inputmode="decimal"
+           value="{{ item['stock_qty_per_unit'] if item else 1 }}">
+    <span class="field-hint">A glass of wine might be 0.15 of a bottle.</span>
+  </div>
+  <div>
+    <label class="field-label">Dietary (free text)</label>
+    <input type="text" name="dietary_tags" value="{{ item['dietary_tags'] if item else '' }}"
+           placeholder="vegetarian, vegan">
+  </div>
+  <div>
+    <label class="field-label">Sell on the POS</label>
+    <label style="display:flex; gap:7px; align-items:center; font-size:14px;">
+      <input type="checkbox" name="sold_in_pos" value="1"
+             {{ 'checked' if not item or item['sold_in_pos'] }}>
+      Appears as a button on the till
+    </label>
+  </div>
+</div>
+
+<p class="field-label" style="margin-top:12px;">Allergens — these show on the pass</p>
+{# The fourteen EU allergens as ticks, not a free-text box. A kitchen at speed
+   cannot act on prose, and "nut" typed three different ways is unsearchable. #}
+<div class="amenity-grid">
+  {% set chosen = (item['allergens'] or '').split(',') if item else [] %}
+  {% for key, label in allergens.items() %}
+  <label class="amenity">
+    <input type="checkbox" name="allergens" value="{{ key }}" {{ 'checked' if key in chosen }}>
+    {{ label }}
+  </label>
+  {% endfor %}
+</div>

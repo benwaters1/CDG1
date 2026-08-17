@@ -8,10 +8,22 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Levels are added up from every movement rather than stored as a number, so what you see is always
-  exactly what the history says. Selling a champagne at the till takes one out automatically.
+  exactly what the history says. Selling a champagne on the POS takes one out automatically.
 </p>
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% set short = data.rows|selectattr('after_promises', 'lt', 0)|list %}
+{% if short %}
+{# Promised and not there is a different alarm from low. Somebody has already
+   been told yes, so this is a phone call, not a shopping list. #}
+<div class="alert-band">
+  <strong>Already promised more than we hold:</strong>
+  {% for r in short %}{{ r.item['name'] }} — {{ r.level|round(1) }} in stock,
+    {{ r.promised|round(1) }} promised{{ '; ' if not loop.last }}{% endfor %}.
+  <a href="{{ url_for('admin_stock', state="Short of what's promised") }}">Just these</a>
+</div>
+{% endif %}
 
 {% if data.low %}
 <div class="flash flash-error" style="margin-bottom:16px;">
@@ -79,7 +91,13 @@
         <td class="upload-hint">{{ r.item['location'] or '—' }}</td>
         <td class="num">
           <strong>{{ r.level|round(1) }}</strong> <span class="upload-hint">{{ r.item['unit'] }}</span>
-          {% if r.is_low %}<div class="mini-status status-declined">low</div>{% endif %}
+          {% if r.promised %}
+          {# A level on its own cannot say "is this enough". This can. #}
+          <div class="upload-hint">{{ r.promised|round(1) }} promised</div>
+          {% endif %}
+          {% if r.after_promises < 0 %}
+          <div class="mini-status status-declined">{{ (-r.after_promises)|round(1) }} short</div>
+          {% elif r.is_low %}<div class="mini-status status-pending">low</div>{% endif %}
         </td>
         <td class="num upload-hint">{{ r.item['reorder_level']|round(0)|int }}</td>
         <td>

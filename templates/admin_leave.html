@@ -60,6 +60,19 @@
       reassign them if this is approved.
     </p>
     {% endif %}
+    {% set on_then = impact.get(r['id']) %}
+    {% if on_then and (on_then.notes or on_then.others_away) %}
+    {# What the house is doing that week. Approving leave is a staffing
+       decision, and it was being made with none of the staffing information. #}
+    <div class="whats-on {{ 'is-busy' if on_then.busy }}">
+      <strong>That week:</strong>
+      {% if on_then.notes %}{{ on_then.notes|join(' · ') }}{% else %}nothing booked{% endif %}
+      {% if on_then.others_away %}
+      <div style="margin-top:5px;">Already away: {{ on_then.others_away|join(', ') }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% if r['status'] == 'pending' %}
     <div class="expense-actions">
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>

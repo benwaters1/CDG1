@@ -2211,6 +2211,70 @@ def init_db():
         ("extras_max_qty", "ALTER TABLE extras ADD COLUMN max_qty INTEGER"),
         ("extras_guest_bookable", "ALTER TABLE extras ADD COLUMN guest_bookable INTEGER NOT NULL DEFAULT 1"),
         ("extras_sold_in_pos", "ALTER TABLE extras ADD COLUMN sold_in_pos INTEGER NOT NULL DEFAULT 0"),
+        # ---- The restaurant menu, and what a service actually needs -------
+        # `menu_items` existed and the till never touched it, so the food was
+        # not on the till at all. A dish needs a course (service fires by
+        # course, not alphabetically), a VAT rate (food 10, alcohol 20 — the
+        # app computes that everywhere else and the till ignored it), and a
+        # way to be taken off for the night without deleting it.
+        ("menu_items_course", "ALTER TABLE menu_items ADD COLUMN course TEXT DEFAULT 'main'"),
+        ("menu_items_vat_rate", "ALTER TABLE menu_items ADD COLUMN vat_rate REAL"),
+        ("menu_items_allergens", "ALTER TABLE menu_items ADD COLUMN allergens TEXT"),
+        ("menu_items_available", "ALTER TABLE menu_items ADD COLUMN available INTEGER NOT NULL DEFAULT 1"),
+        ("menu_items_unavailable_note", "ALTER TABLE menu_items ADD COLUMN unavailable_note TEXT"),
+        ("menu_items_prep_minutes", "ALTER TABLE menu_items ADD COLUMN prep_minutes INTEGER"),
+        ("menu_items_stock_item_id", "ALTER TABLE menu_items ADD COLUMN stock_item_id INTEGER REFERENCES stock_items(id) ON DELETE SET NULL"),
+        ("menu_items_stock_qty", "ALTER TABLE menu_items ADD COLUMN stock_qty_per_unit REAL NOT NULL DEFAULT 1"),
+        ("menu_items_sold_in_pos", "ALTER TABLE menu_items ADD COLUMN sold_in_pos INTEGER NOT NULL DEFAULT 1"),
+
+        # A line has to know which course it is, whose seat it belongs to, and
+        # whether the kitchen has actually been told about it. Without the last
+        # one the till is a calculator: things sat on a tab and nobody cooked.
+        ("pos_lines_menu_item_id", "ALTER TABLE pos_order_lines ADD COLUMN menu_item_id INTEGER REFERENCES menu_items(id) ON DELETE SET NULL"),
+        ("pos_lines_course", "ALTER TABLE pos_order_lines ADD COLUMN course TEXT"),
+        ("pos_lines_seat", "ALTER TABLE pos_order_lines ADD COLUMN seat_number INTEGER"),
+        ("pos_lines_state", "ALTER TABLE pos_order_lines ADD COLUMN state TEXT NOT NULL DEFAULT 'new'"),
+        ("pos_lines_sent_at", "ALTER TABLE pos_order_lines ADD COLUMN sent_at TEXT"),
+        ("pos_lines_ready_at", "ALTER TABLE pos_order_lines ADD COLUMN ready_at TEXT"),
+        ("pos_lines_served_at", "ALTER TABLE pos_order_lines ADD COLUMN served_at TEXT"),
+        ("pos_lines_vat_rate", "ALTER TABLE pos_order_lines ADD COLUMN vat_rate REAL"),
+        # A void with no reason and no name on it is the oldest hole in any
+        # till. Both are recorded, and the audit log gets a copy.
+        ("pos_lines_void_reason", "ALTER TABLE pos_order_lines ADD COLUMN void_reason TEXT"),
+        ("pos_lines_voided_by", "ALTER TABLE pos_order_lines ADD COLUMN voided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"),
+        ("pos_lines_voided_at", "ALTER TABLE pos_order_lines ADD COLUMN voided_at TEXT"),
+
+        # Where a table is in its service, so the floor can be read at a
+        # glance instead of opening every tab in turn.
+        ("pos_orders_service_state", "ALTER TABLE pos_orders ADD COLUMN service_state TEXT NOT NULL DEFAULT 'seated'"),
+        ("pos_orders_service_charge", "ALTER TABLE pos_orders ADD COLUMN service_charge REAL NOT NULL DEFAULT 0"),
+        ("pos_orders_discount_amount", "ALTER TABLE pos_orders ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0"),
+        ("pos_orders_discount_reason", "ALTER TABLE pos_orders ADD COLUMN discount_reason TEXT"),
+        ("pos_orders_merged_into", "ALTER TABLE pos_orders ADD COLUMN merged_into_order_id INTEGER REFERENCES pos_orders(id) ON DELETE SET NULL"),
+        ("pos_orders_reopened_at", "ALTER TABLE pos_orders ADD COLUMN reopened_at TEXT"),
+        ("pos_orders_deposit_credit", "ALTER TABLE pos_orders ADD COLUMN deposit_credit REAL NOT NULL DEFAULT 0"),
+
+        # Splitting a bill means a tab can take more than one payment. One row
+        # per payment, so "three cards and the rest on the room" is expressible
+        # and adds up.
+        ("pos_payments", """CREATE TABLE IF NOT EXISTS pos_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL REFERENCES pos_orders(id) ON DELETE CASCADE,
+            amount REAL NOT NULL,
+            method TEXT NOT NULL,
+            reference TEXT,
+            covers_line_ids TEXT,
+            seat_numbers TEXT,
+            room_booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            stripe_session_id TEXT,
+            taken_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        )"""),
+        ("pos_payments_order_idx",
+         "CREATE INDEX IF NOT EXISTS idx_pos_payments_order ON pos_payments(order_id)"),
+        ("pos_lines_state_idx",
+         "CREATE INDEX IF NOT EXISTS idx_pos_lines_state ON pos_order_lines(state, order_id)"),
+
         # A POS line depletes stock exactly as a guest extra does; the ledger
         # needs to point back at whichever caused the movement.
         ("stock_movements_pos_line", "ALTER TABLE stock_movements ADD COLUMN pos_line_id INTEGER REFERENCES pos_order_lines(id) ON DELETE SET NULL"),
@@ -3864,6 +3928,190 @@ def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
         "sort": active_sort if chosen_sort else "",
         "chosen": chosen,
         "filtered": bool(q or chosen),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Consequences.
+#
+# Every one of these joins two facts the app already held separately. A flag on
+# its own is only ever "true"; what makes it urgent is what it collides with.
+# Low fuel matters more when there is an airport run at six; a broken shower
+# matters more when somebody is arriving into that room on Friday.
+#
+# Each returns plain data with the reason included, so whatever shows it —
+# a task, a notification, a warning above a button — can say WHY rather than
+# just louder.
+# ---------------------------------------------------------------------------
+
+def room_arrivals_soon(conn, room_id, within_days=10):
+    """Confirmed arrivals into one room, soonest first.
+
+    A maintenance list sorted by date treats "the lamp in a room nobody is in
+    until March" and "no hot water, guests Friday" as the same job.
+    """
+    today = datetime.now(timezone.utc).date()
+    return conn.execute(
+        """SELECT id, reference_code, guest_name, arrival_date, party_size, manage_token
+           FROM bookings
+           WHERE room_id = ? AND status = 'confirmed'
+             AND arrival_date >= ? AND arrival_date <= ?
+           ORDER BY arrival_date""",
+        (room_id, today.isoformat(), (today + timedelta(days=within_days)).isoformat()),
+    ).fetchall()
+
+
+def arrivals_by_room(conn, room_ids, within_days=10):
+    """{room_id: the next confirmed arrival} for a whole list, in one query."""
+    room_ids = [r for r in set(room_ids) if r]
+    if not room_ids:
+        return {}
+    today = datetime.now(timezone.utc).date()
+    marks = ",".join("?" * len(room_ids))
+    rows = conn.execute(
+        f"""SELECT room_id, guest_name, arrival_date, party_size FROM bookings
+            WHERE room_id IN ({marks}) AND status = 'confirmed'
+              AND arrival_date >= ? AND arrival_date <= ?
+            ORDER BY arrival_date""",
+        room_ids + [today.isoformat(), (today + timedelta(days=within_days)).isoformat()],
+    ).fetchall()
+    out = {}
+    for r in rows:
+        out.setdefault(r["room_id"], r)     # ORDER BY means the first is the soonest
+    return out
+
+
+def days_until(iso_date):
+    """Whole days from today to an ISO date. Negative if it has passed."""
+    try:
+        return (date.fromisoformat(iso_date[:10]) - datetime.now(timezone.utc).date()).days
+    except (TypeError, ValueError):
+        return None
+
+
+def in_words(days):
+    """'today', 'tomorrow', 'in 4 days' — how a person would say it."""
+    if days is None:
+        return ""
+    if days < 0:
+        return f"{abs(days)} days ago"
+    return {0: "today", 1: "tomorrow"}.get(days, f"in {days} days")
+
+
+def committed_stock(conn, item_ids, within_days=14):
+    """{stock_item_id: how much is already promised to guests}.
+
+    A reorder level answers "is this low?". It cannot answer "is this enough?",
+    which is the question that matters — two bottles is plenty until three
+    guests have ordered champagne on arrival and there is a dinner on Saturday.
+    Only confirmed lines count; a cancelled extra is not a promise.
+    """
+    item_ids = [i for i in set(item_ids) if i]
+    if not item_ids:
+        return {}
+    today = datetime.now(timezone.utc).date()
+    marks = ",".join("?" * len(item_ids))
+    rows = conn.execute(
+        f"""SELECT extras.stock_item_id AS item_id,
+                   COALESCE(SUM(booking_extras.quantity *
+                                COALESCE(extras.stock_qty_per_unit, 1)), 0) AS qty
+            FROM booking_extras
+            JOIN extras ON extras.id = booking_extras.extra_id
+            WHERE extras.stock_item_id IN ({marks})
+              AND booking_extras.status = 'confirmed'
+              AND COALESCE(booking_extras.scheduled_for, date(booking_extras.created_at))
+                  BETWEEN ? AND ?
+            GROUP BY extras.stock_item_id""",
+        item_ids + [today.isoformat(), (today + timedelta(days=within_days)).isoformat()],
+    ).fetchall()
+    return {r["item_id"]: r["qty"] for r in rows if r["qty"]}
+
+
+def away_on(conn, user_id, on_date):
+    """Why somebody is not available on a date, or None.
+
+    Approved leave and recorded sickness both count: a task due on a day the
+    person is in Toulouse or in bed will not get done, and finding that out
+    when it is overdue is finding out too late.
+    """
+    if not user_id or not on_date:
+        return None
+    leave = conn.execute(
+        """SELECT leave_type, start_date, end_date FROM leave_requests
+           WHERE user_id = ? AND status = 'approved'
+             AND start_date <= ? AND end_date >= ?""",
+        (user_id, on_date, on_date)).fetchone()
+    if leave:
+        return f"on {leave['leave_type'] or 'leave'} until {leave['end_date']}"
+    absent = conn.execute(
+        """SELECT kind, end_date FROM absences
+           WHERE user_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)""",
+        (user_id, on_date, on_date)).fetchone()
+    if absent:
+        return (f"off {absent['kind'] or 'sick'}"
+                + (f" until {absent['end_date']}" if absent["end_date"] else ""))
+    return None
+
+
+def leave_impact(conn, start_date, end_date, exclude_user_id=None):
+    """What is actually happening in the week somebody wants off.
+
+    A leave request is a date range with a name on it, and approving one is a
+    staffing decision made with none of the staffing information. This puts
+    what is booked, and who else is already away, next to the button.
+    """
+    arrivals = conn.execute(
+        """SELECT COUNT(*) AS n, COALESCE(SUM(party_size), 0) AS guests FROM bookings
+           WHERE status = 'confirmed' AND arrival_date BETWEEN ? AND ?""",
+        (start_date, end_date)).fetchone()
+    in_house = conn.execute(
+        """SELECT COUNT(*) AS n FROM bookings
+           WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date >= ?""",
+        (end_date, start_date)).fetchone()["n"]
+    dinners = conn.execute(
+        """SELECT COUNT(*) AS n, COALESCE(SUM(party_size), 0) AS covers
+           FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date BETWEEN ? AND ?""",
+        (start_date, end_date)).fetchone()
+    sessions = conn.execute(
+        """SELECT workshops.title, workshop_sessions.start_date
+           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_sessions.start_date <= ? AND
+                 COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?
+           ORDER BY workshop_sessions.start_date""",
+        (end_date, start_date)).fetchall()
+    others = conn.execute(
+        """SELECT users.name, leave_requests.start_date, leave_requests.end_date
+           FROM leave_requests JOIN users ON users.id = leave_requests.user_id
+           WHERE leave_requests.status = 'approved'
+             AND leave_requests.start_date <= ? AND leave_requests.end_date >= ?
+             AND leave_requests.user_id != COALESCE(?, -1)
+           ORDER BY leave_requests.start_date""",
+        (end_date, start_date, exclude_user_id)).fetchall()
+    transfers = conn.execute(
+        """SELECT COUNT(*) AS n FROM vehicle_transfers
+           WHERE date(scheduled_at) BETWEEN ? AND ?""",
+        (start_date, end_date)).fetchone()["n"]
+
+    notes = []
+    if arrivals["n"]:
+        notes.append(f"{arrivals['n']} arrival{'' if arrivals['n'] == 1 else 's'} "
+                     f"({arrivals['guests']} guests)")
+    if in_house:
+        notes.append(f"{in_house} stay{'' if in_house == 1 else 's'} in the house")
+    if dinners["n"]:
+        notes.append(f"{dinners['n']} dinner{'' if dinners['n'] == 1 else 's'} "
+                     f"({dinners['covers']} covers)")
+    for x in sessions:
+        notes.append(f"workshop: {x['title']} from {x['start_date']}")
+    if transfers:
+        notes.append(f"{transfers} transfer{'' if transfers == 1 else 's'} booked")
+    return {
+        "notes": notes,
+        "others_away": [f"{o['name']} ({o['start_date']} to {o['end_date']})" for o in others],
+        # Busy is a judgement, so this stops short of making it: it says what
+        # is on and who else is out, and lets the person deciding decide.
+        "busy": bool(notes) and (arrivals["n"] + dinners["n"] + len(sessions)) >= 3,
     }
 
 
@@ -5689,6 +5937,306 @@ POS_PAYMENT_METHODS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# The restaurant menu.
+#
+# `menu_items` existed and the till never touched it — the POS sold from
+# `extras`, which is champagne and ski transfers. So the food was not on the
+# till. A dish needs a course, because service fires by course and not
+# alphabetically; a VAT rate, because food is 10% and alcohol 20% and the rest
+# of this app already knows that; and a way to come off for the night.
+# ---------------------------------------------------------------------------
+
+MENU_COURSES = {
+    "aperitif": "Apéritifs",
+    "starter": "Entrées",
+    "main": "Plats",
+    "side": "Accompagnements",
+    "cheese": "Fromages",
+    "dessert": "Desserts",
+    "wine": "Vins",
+    "drink": "Boissons",
+    "coffee": "Café & digestifs",
+}
+# The order the kitchen and the floor actually work in.
+COURSE_ORDER = list(MENU_COURSES)
+
+# Drink courses are 20% in France; food is 10%. A single rate would be wrong on
+# roughly half of a restaurant's turnover.
+ALCOHOL_COURSES = {"aperitif", "wine", "coffee"}
+
+# The fourteen EU allergens, because a "dietary tags" free-text box is not
+# something a kitchen can act on at speed.
+ALLERGENS = {
+    "gluten": "Gluten", "crustaceans": "Crustacés", "eggs": "Œufs", "fish": "Poisson",
+    "peanuts": "Arachides", "soy": "Soja", "milk": "Lait", "nuts": "Fruits à coque",
+    "celery": "Céleri", "mustard": "Moutarde", "sesame": "Sésame",
+    "sulphites": "Sulfites", "lupin": "Lupin", "molluscs": "Mollusques",
+}
+
+POS_LINE_STATES = {
+    "new": "Not sent",
+    "sent": "With the kitchen",
+    "ready": "Ready on the pass",
+    "served": "Served",
+}
+
+POS_SERVICE_STATES = {
+    "seated": "Seated",
+    "ordered": "Ordered",
+    "starters": "Starters away",
+    "mains": "Mains away",
+    "dessert": "Dessert",
+    "bill": "Bill dropped",
+}
+
+POS_VOID_REASONS = [
+    "Rung up in error", "Guest changed their mind", "Sent back — wrong dish",
+    "Sent back — not right", "Kitchen ran out", "Comped by the house",
+]
+
+
+def menu_vat_rate(conn, item):
+    """The VAT a dish carries: its own if set, otherwise 20% for anything
+    alcoholic and the food rate for everything else."""
+    keys = item.keys() if hasattr(item, "keys") else item
+    if "vat_rate" in keys and item["vat_rate"] is not None:
+        return float(item["vat_rate"])
+    course = (item["course"] if "course" in keys else None) or "main"
+    # Reuses the rates the owner set on the Tax page rather than a second
+    # hardcoded copy — the accountant changes them in one place.
+    return tax_rate(conn, "vat_alcohol" if course in ALCOHOL_COURSES else "vat_food")
+
+
+def pos_menu(conn, *, include_unavailable=True):
+    """The sellable menu, grouped by course in service order.
+
+    Items the kitchen has 86'd stay in the list rather than vanishing — a
+    waiter needs to see that the duck is off, not be quietly unable to find it.
+    """
+    rows = conn.execute(
+        """SELECT * FROM menu_items WHERE active = 1 AND sold_in_pos = 1
+           ORDER BY sort_order, name""").fetchall()
+    grouped = {}
+    for r in rows:
+        if not include_unavailable and not r["available"]:
+            continue
+        grouped.setdefault(r["course"] or "main", []).append(r)
+    return {c: grouped[c] for c in COURSE_ORDER if c in grouped}
+
+
+def pos_bill(conn, order_id):
+    """Everything the bill needs, worked out once.
+
+    Splits VAT by rate because the app charges 10% on food and 20% on drink,
+    and a bill that shows one blended number is not a document a French
+    restaurant can hand over. Deposits already taken on the reservation are
+    credited here, so a table that paid to book is not charged for it twice —
+    which the old till did.
+    """
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        return None
+    lines = conn.execute(
+        "SELECT * FROM pos_order_lines WHERE order_id = ? ORDER BY id", (order_id,)).fetchall()
+    live = [l for l in lines if not l["voided"]]
+
+    gross = round(sum((l["unit_price"] or 0) * (l["quantity"] or 0) for l in live), 2)
+    discount = round(order["discount_amount"] or 0, 2)
+    service = round(order["service_charge"] or 0, 2)
+    deposit = round(order["deposit_credit"] or 0, 2)
+
+    # VAT is extracted from the gross (French prices are TTC), per rate.
+    by_rate = {}
+    for l in live:
+        rate = l["vat_rate"] if l["vat_rate"] is not None else 0
+        amount = (l["unit_price"] or 0) * (l["quantity"] or 0)
+        b = by_rate.setdefault(float(rate), {"gross": 0.0, "vat": 0.0, "net": 0.0})
+        b["gross"] += amount
+    for rate, b in by_rate.items():
+        b["gross"] = round(b["gross"], 2)
+        b["vat"] = round(b["gross"] - b["gross"] / (1 + rate / 100), 2) if rate else 0.0
+        b["net"] = round(b["gross"] - b["vat"], 2)
+
+    paid = round(conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS t FROM pos_payments WHERE order_id = ?",
+        (order_id,)).fetchone()["t"], 2)
+    total = round(max(0.0, gross - discount + service - deposit), 2)
+    return {
+        "order": order, "lines": lines, "live": live,
+        "gross": gross, "discount": discount, "service": service, "deposit": deposit,
+        "vat_by_rate": dict(sorted(by_rate.items())),
+        "vat_total": round(sum(b["vat"] for b in by_rate.values()), 2),
+        "total": total, "paid": paid, "outstanding": round(total - paid, 2),
+        "unsent": [l for l in live if l["state"] == "new"],
+        "covers": order["covers"] or 1,
+    }
+
+
+def pos_lines_by_course(lines):
+    """Lines grouped the way the kitchen reads them."""
+    grouped = {}
+    for l in lines:
+        grouped.setdefault(l["course"] or "main", []).append(l)
+    return {c: grouped[c] for c in COURSE_ORDER if c in grouped} | {
+        c: v for c, v in grouped.items() if c not in COURSE_ORDER}
+
+
+def pos_send_to_kitchen(conn, order_id, user_id=None, course=None):
+    """Tell the kitchen. This is the thing a till exists to do.
+
+    Everything before this was a calculator: items sat on a tab and nobody
+    cooked them. Only unsent lines go — sending twice must not duplicate a
+    ticket, which is how a kitchen ends up plating four of everything.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    sql = "SELECT * FROM pos_order_lines WHERE order_id = ? AND voided = 0 AND state = 'new'"
+    params = [order_id]
+    if course:
+        sql += " AND course = ?"
+        params.append(course)
+    lines = conn.execute(sql, params).fetchall()
+    if not lines:
+        return []
+    conn.execute(
+        f"UPDATE pos_order_lines SET state = 'sent', sent_at = ? WHERE id IN "
+        f"({','.join('?' * len(lines))})", [now] + [l["id"] for l in lines])
+    conn.execute(
+        "UPDATE pos_orders SET service_state = 'ordered' WHERE id = ? AND service_state = 'seated'",
+        (order_id,))
+    return lines
+
+
+def pos_table_context(conn, order):
+    """Who is at this table and what the kitchen must not give them.
+
+    The reservation already held the guest's name, their allergies and whether
+    they had paid a deposit. The till knew none of it, so a nut allergy taken
+    at booking never reached the pass and a deposit already taken was about to
+    be charged again.
+    """
+    if not order["restaurant_booking_id"]:
+        return None
+    b = conn.execute("SELECT * FROM restaurant_bookings WHERE id = ?",
+                     (order["restaurant_booking_id"],)).fetchone()
+    if not b:
+        return None
+    return {
+        "booking": b,
+        "dietary": (b["dietary_notes"] or "").strip(),
+        "deposit_paid": round(b["deposit_amount"] or 0, 2),
+        "previous_no_shows": prior_no_shows(conn, [b["guest_email"]]).get(
+            (b["guest_email"] or "").lower(), 0),
+    }
+
+
+def pos_open_tickets(conn):
+    """What the kitchen has been told about and not yet finished, oldest first.
+
+    Grouped by table so a ticket reads as a ticket, and carrying how long it
+    has been standing — a pass with no clock on it is how a table waits forty
+    minutes and nobody notices.
+    """
+    rows = conn.execute(
+        """SELECT pos_order_lines.*, pos_orders.table_label, pos_orders.covers,
+                  pos_orders.restaurant_booking_id
+           FROM pos_order_lines
+           JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+           WHERE pos_order_lines.voided = 0 AND pos_order_lines.state IN ('sent', 'ready')
+             AND pos_orders.status = 'open'
+           ORDER BY pos_order_lines.sent_at""").fetchall()
+    tickets = {}
+    for r in rows:
+        t = tickets.setdefault(r["order_id"], {
+            "order_id": r["order_id"], "table_label": r["table_label"],
+            "covers": r["covers"], "sent_at": r["sent_at"], "lines": [],
+            "booking_id": r["restaurant_booking_id"],
+        })
+        t["lines"].append(r)
+        if (r["sent_at"] or "") < (t["sent_at"] or "9999"):
+            t["sent_at"] = r["sent_at"]
+    out = sorted(tickets.values(), key=lambda t: t["sent_at"] or "")
+    for t in out:
+        t["waiting_minutes"] = minutes_since(t["sent_at"])
+        t["by_course"] = pos_lines_by_course(t["lines"])
+    return out
+
+
+def minutes_since(iso_stamp):
+    """Whole minutes since a timestamp, or None. Used on the pass, where the
+    number on the ticket is the whole point."""
+    try:
+        started = parse_datetime_iso(iso_stamp)
+        return max(0, int((datetime.now(timezone.utc) - started).total_seconds() // 60))
+    except Exception:
+        return None
+
+
+def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids=None,
+                     seats=None, room_booking_id=None, stripe_session_id=None,
+                     user_id=None):
+    """Record one payment against a tab. A tab may take several.
+
+    That is what splitting a bill is: three cards and the rest on the room is
+    three rows, and they add up. The old till took one payment and closed, so
+    a split table had to be rung up as separate tabs and the covers count was
+    wrong for the rest of time.
+    """
+    conn.execute(
+        """INSERT INTO pos_payments (order_id, amount, method, reference, covers_line_ids,
+           seat_numbers, room_booking_id, stripe_session_id, taken_by_user_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (order_id, round(float(amount), 2), method, reference,
+         ",".join(str(i) for i in (line_ids or [])) or None,
+         ",".join(str(i) for i in (seats or [])) or None,
+         room_booking_id, stripe_session_id, user_id,
+         datetime.now(timezone.utc).isoformat()))
+    return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def pos_day_report(conn, on_date):
+    """The end-of-day figures: takings by method, VAT owed, covers, average spend.
+
+    A restaurant cashes up every night. Without this the day's takings only
+    existed as a pile of closed tabs nobody could total.
+    """
+    day = on_date.isoformat() if hasattr(on_date, "isoformat") else str(on_date)
+    orders = conn.execute(
+        # Settled tabs only. A merged one holds nothing and would count its
+        # covers a second time.
+        """SELECT * FROM pos_orders
+           WHERE date(COALESCE(closed_at, opened_at)) = ? AND status = 'paid'
+           ORDER BY closed_at""", (day,)).fetchall()
+    by_method, gross, vat, covers, service, discounts = {}, 0.0, 0.0, 0, 0.0, 0.0
+    for o in orders:
+        bill = pos_bill(conn, o["id"])
+        gross += bill["gross"]
+        vat += bill["vat_total"]
+        service += bill["service"]
+        discounts += bill["discount"]
+        covers += bill["covers"]
+        payments = conn.execute(
+            "SELECT method, COALESCE(SUM(amount), 0) AS t FROM pos_payments "
+            "WHERE order_id = ? GROUP BY method", (o["id"],)).fetchall()
+        if payments:
+            for pay in payments:
+                by_method[pay["method"]] = round(
+                    by_method.get(pay["method"], 0) + pay["t"], 2)
+        elif o["payment_method"]:
+            # Tabs closed before split payments existed carry the method on the
+            # order itself; counting only pos_payments would lose the day.
+            by_method[o["payment_method"]] = round(
+                by_method.get(o["payment_method"], 0) + (o["settled_total"] or 0), 2)
+    taken = round(sum(by_method.values()), 2)
+    return {
+        "date": day, "orders": orders, "tabs": len(orders), "covers": covers,
+        "gross": round(gross, 2), "vat": round(vat, 2), "service": round(service, 2),
+        "discounts": round(discounts, 2), "by_method": by_method, "taken": taken,
+        "average_per_cover": round(gross / covers, 2) if covers else 0,
+        "average_per_tab": round(gross / len(orders), 2) if orders else 0,
+    }
+
+
 def pos_order_lines(conn, order_id, include_voided=False):
     sql = "SELECT * FROM pos_order_lines WHERE order_id = ?"
     if not include_voided:
@@ -5732,6 +6280,31 @@ def pos_add_line(conn, order_id, extra, quantity=1, *, unit_price=None,
             (stock_item_id, -abs(per_unit * quantity), line_id,
              f"{quantity} x {name}", user_id, datetime.now(timezone.utc).isoformat()),
         )
+    return line_id
+
+
+def pos_add_menu_line(conn, order_id, item, quantity=1, *, notes=None, seat=None,
+                      user_id=None):
+    """Ring a dish onto a tab.
+
+    Carries its course, its seat and its VAT rate at the moment it was sold —
+    rates change, and a bill reprinted next year must still show what was
+    actually charged. Depletes stock the same way a bar sale does.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO pos_order_lines (order_id, menu_item_id, name, unit_price, quantity,
+           notes, course, seat_number, state, vat_rate, added_by_user_id, created_at)
+           VALUES (?,?,?,?,?,?,?,?,'new',?,?,?)""",
+        (order_id, item["id"], item["name"], item["price"] or 0, quantity, notes,
+         item["course"] or "main", seat, menu_vat_rate(conn, item), user_id, now))
+    line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    if item["stock_item_id"] and (item["stock_qty_per_unit"] or 0):
+        conn.execute(
+            """INSERT INTO stock_movements (stock_item_id, delta, reason, pos_line_id,
+               note, created_by_user_id, created_at) VALUES (?,?,'sale',?,?,?,?)""",
+            (item["stock_item_id"], -abs(item["stock_qty_per_unit"] * quantity), line_id,
+             f"{quantity} x {item['name']}", user_id, now))
     return line_id
 
 
@@ -6195,7 +6768,25 @@ def expiring_certifications(conn, today, within_days=CERT_EXPIRY_WARNING_DAYS):
     for r in rows:
         expiry = parse_date(r["expiry_date"])
         days_left = (expiry - today).days if expiry else None
-        out.append(dict(r, days_left=days_left, expired=days_left is not None and days_left < 0))
+        # An expiry date on its own is a diary note. An expiry date with shifts
+        # already booked on the other side of it is a rota that will not be
+        # legal — and nobody finds that out until the day.
+        after = conn.execute(
+            """SELECT COUNT(*) AS n, MIN(shift_date) AS first FROM shifts
+               WHERE user_id = ? AND shift_date > ?""",
+            (r["user_id"], r["expiry_date"])).fetchone()
+        dinners = conn.execute(
+            """SELECT COUNT(*) AS n, MIN(dinner_date) AS first FROM restaurant_shifts
+               WHERE user_id = ? AND dinner_date > ?""",
+            (r["user_id"], r["expiry_date"])).fetchone()
+        firsts = [d for d in (after["first"], dinners["first"]) if d]
+        out.append(dict(
+            r, days_left=days_left, expired=days_left is not None and days_left < 0,
+            shifts_after=(after["n"] or 0) + (dinners["n"] or 0),
+            first_shift_after=min(firsts) if firsts else None,
+        ))
+    # Rostered-past-expiry first: that is the one that stops being paperwork.
+    out.sort(key=lambda c: (not (c["required"] and c["shifts_after"]), c["expiry_date"] or ""))
     return out
 
 
@@ -9785,17 +10376,34 @@ def admin_stock():
            LEFT JOIN users ON users.id = stock_movements.created_by_user_id
            ORDER BY stock_movements.id DESC LIMIT 40"""
     ).fetchall()
+    # What is already promised to guests. A reorder level answers "is this
+    # low?" — it cannot answer "is this enough?", which is the question that
+    # matters. Two bottles is plenty until three guests have ordered champagne
+    # on arrival.
+    promised = committed_stock(conn, [r["item"]["id"] for r in data["rows"]])
     conn.close()
+    for r in data["rows"]:
+        r["promised"] = promised.get(r["item"]["id"], 0)
+        r["after_promises"] = r["level"] - r["promised"]
+    short = [r for r in data["rows"] if r["after_promises"] < 0]
+
     overview = [
         overview_cell("Items tracked", data["count"]),
+        overview_cell("Short of what's promised", len(short), alert=len(short),
+                      hint="already sold to a guest"),
         overview_cell("Need reordering", len(data["low"]), alert=len(data["low"])),
         overview_cell("Stock value", euro(data["value"]), hint="at cost"),
     ]
     vendor_names = {v["id"]: v["name"] for v in vendors}
 
     def level_state(r):
+        # Ordered by how bad it is. "Short of what's promised" outranks
+        # "running low": one is a forecast, the other is a guest who has
+        # already been told yes.
         if r["level"] <= 0:
             return "Out"
+        if r["after_promises"] < 0:
+            return "Short of what's promised"
         return "Running low" if r["is_low"] else "In stock"
 
     lv = list_view(
@@ -9806,7 +10414,8 @@ def admin_stock():
         facets=[
             # "Out" first: an empty shelf is a different problem from a low one,
             # and on a list sorted by name they look identical.
-            facet("state", "Level", level_state, order=["Out", "Running low", "In stock"]),
+            facet("state", "Level", level_state,
+                  order=["Out", "Short of what's promised", "Running low", "In stock"]),
             facet("category", "Category",
                   lambda r: STOCK_CATEGORIES.get(r["item"]["category"], r["item"]["category"])),
             facet("supplier", "Supplier",
@@ -9815,8 +10424,10 @@ def admin_stock():
                   limit=8),
         ],
         sorts=[
+            # Shortest against real promises first — that is the one somebody
+            # has already been told yes about.
             sort_option("urgent", "Most short first",
-                        lambda r: (r["short_by"], -r["level"]), reverse=True),
+                        lambda r: (-r["after_promises"], r["short_by"]), reverse=True),
             sort_option("name", "Name", lambda r: (r["item"]["name"] or "").lower()),
             sort_option("value", "Most valuable",
                         lambda r: r["level"] * (r["item"]["unit_cost"] or 0), reverse=True),
@@ -9910,54 +10521,97 @@ def move_stock(item_id):
 @app.route("/pos")
 @login_required
 def pos_home():
+    """The floor. Every table, where it is in its service, and what it owes.
+
+    A pass at this used to be a list of tabs with a total on each. What a
+    section actually needs to know is which table has been waiting longest for
+    food, which has ordered nothing yet, and which is ready for its bill.
+    """
     conn = get_db()
     today = datetime.now(timezone.utc).date()
-    open_orders = conn.execute(
-        """SELECT pos_orders.*, users.name AS opened_by
-           FROM pos_orders LEFT JOIN users ON users.id = pos_orders.opened_by_user_id
-           WHERE pos_orders.status = 'open' ORDER BY pos_orders.opened_at"""
-    ).fetchall()
-    totals = {o["id"]: pos_order_total(conn, o["id"]) for o in open_orders}
-    settled = conn.execute(
-        """SELECT COUNT(*) AS n, COALESCE(SUM(settled_total), 0) AS t FROM pos_orders
-           WHERE status IN ('paid','charged_to_room') AND closed_at >= ?""",
-        (today.isoformat(),),
-    ).fetchone()
-    tonight = conn.execute(
-        """SELECT COALESCE(SUM(party_size), 0) AS covers FROM restaurant_bookings
-           WHERE status = 'confirmed' AND dinner_date = ?""", (today.isoformat(),)
-    ).fetchone()["covers"]
+    orders = conn.execute(
+        "SELECT pos_orders.*, users.name AS opened_by FROM pos_orders "
+        "LEFT JOIN users ON users.id = pos_orders.opened_by_user_id "
+        "WHERE pos_orders.status = 'open' ORDER BY pos_orders.opened_at").fetchall()
+
+    tables = []
+    for o in orders:
+        bill = pos_bill(conn, o["id"])
+        waiting = conn.execute(
+            """SELECT MIN(sent_at) AS since FROM pos_order_lines
+               WHERE order_id = ? AND voided = 0 AND state = 'sent'""", (o["id"],)).fetchone()
+        ctx = pos_table_context(conn, o)
+        tables.append({
+            "order": o, "total": bill["total"], "unsent": len(bill["unsent"]),
+            "waiting_minutes": minutes_since(waiting["since"]) if waiting["since"] else None,
+            "sitting_minutes": minutes_since(o["opened_at"]),
+            "guest": ctx["booking"]["guest_name"] if ctx else None,
+            "dietary": ctx["dietary"] if ctx else "",
+            "state": o["service_state"] or "seated",
+        })
+
+    # Tonight's reservations that have not been sat yet — so a table can be
+    # opened against its booking, and the allergy taken at booking travels
+    # with it instead of being retyped or forgotten.
+    seated_ids = {o["restaurant_booking_id"] for o in orders if o["restaurant_booking_id"]}
+    expected = [b for b in conn.execute(
+        """SELECT * FROM restaurant_bookings
+           WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL
+           ORDER BY guest_name""", (today.isoformat(),)).fetchall()
+        if b["id"] not in seated_ids]
+
+    report = pos_day_report(conn, today)
+    settled_today = report["taken"]
     conn.close()
+
     overview = [
-        overview_cell("Tabs open", len(open_orders)),
-        overview_cell("On open tabs", euro(sum(totals.values()))),
-        overview_cell("Settled today", euro(settled["t"]), hint=f"{settled['n']} tabs"),
-        overview_cell("Covers booked", tonight),
+        overview_cell("Open tables", len(orders)),
+        overview_cell("Covers sitting", sum(t["order"]["covers"] or 0 for t in tables)),
+        overview_cell("On open tabs", euro(sum(t["total"] for t in tables))),
+        overview_cell("Taken today", euro(settled_today), endpoint="pos_day"),
+        overview_cell("Still to arrive", len(expected)),
     ]
-    return render_template("pos_home.html", orders=open_orders, totals=totals,
-                           overview=overview, today=today)
+    return render_template(
+        "pos_home.html", tables=tables, expected=expected, overview=overview,
+        today=today, service_states=POS_SERVICE_STATES)
 
 
 @app.route("/pos/open", methods=["POST"])
 @login_required
 def pos_open_tab():
-    label = request.form.get("table_label", "").strip()
-    if not label:
-        flash("Give the table a name or number.", "error")
-        return redirect(url_for("pos_home"))
-    covers_raw = request.form.get("covers", "").strip()
-    res_raw = request.form.get("restaurant_booking_id", "").strip()
+    label = (request.form.get("table_label", "") or "").strip()
+    booking_id = (request.form.get("restaurant_booking_id", "") or "").strip()
+    try:
+        covers = max(1, int(request.form.get("covers", "2") or 2))
+    except ValueError:
+        covers = 2
     conn = get_db()
+    booking = None
+    if booking_id.isdigit():
+        booking = conn.execute("SELECT * FROM restaurant_bookings WHERE id = ?",
+                               (booking_id,)).fetchone()
+        if booking:
+            covers = booking["party_size"] or covers
+            label = label or booking["guest_name"]
+    if not label:
+        conn.close()
+        flash("Give the table a name or pick a reservation.", "error")
+        return redirect(url_for("pos_home"))
+    # A deposit already taken at booking is credited to the tab, so a table
+    # that paid to reserve is not charged for it twice. The old till had no
+    # idea a deposit existed.
+    deposit = round(booking["deposit_amount"] or 0, 2) if booking else 0
     conn.execute(
-        """INSERT INTO pos_orders (table_label, covers, restaurant_booking_id,
-           opened_by_user_id, opened_at) VALUES (?,?,?,?,?)""",
-        (label, int(covers_raw) if covers_raw.isdigit() else 1,
-         int(res_raw) if res_raw.isdigit() else None,
-         (current_user() or {})["id"], datetime.now(timezone.utc).isoformat()),
-    )
+        """INSERT INTO pos_orders (table_label, covers, restaurant_booking_id, status,
+           service_state, deposit_credit, opened_by_user_id, opened_at)
+           VALUES (?, ?, ?, 'open', 'seated', ?, ?, ?)""",
+        (label, covers, booking["id"] if booking else None, deposit,
+         session.get("user_id"), datetime.now(timezone.utc).isoformat()))
     order_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
     conn.commit()
     conn.close()
+    if deposit:
+        flash(f"Table open. €{deposit:.2f} deposit already paid has been credited.", "success")
     return redirect(url_for("pos_order", order_id=order_id))
 
 
@@ -9965,105 +10619,452 @@ def pos_open_tab():
 @login_required
 def pos_order(order_id):
     conn = get_db()
-    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
-    if not order:
+    bill = pos_bill(conn, order_id)
+    if not bill:
         conn.close()
         abort(404)
-    lines = pos_order_lines(conn, order_id, include_voided=True)
-    total = pos_order_total(conn, order_id)
-    menu = conn.execute(
-        """SELECT * FROM extras WHERE active = 1 AND sold_in_pos = 1
-           ORDER BY category, sort_order, name"""
-    ).fetchall()
-    by_category = {}
-    for m in menu:
-        by_category.setdefault(m["category"] or "other", []).append(m)
-    # Only stays that are actually here can be charged to a room.
-    today = datetime.now(timezone.utc).date().isoformat()
+    menu = pos_menu(conn)
+    rates = {i["id"]: menu_vat_rate(conn, i) for items in menu.values() for i in items}
+    stock = stock_levels(conn, [i["stock_item_id"] for items in menu.values()
+                                for i in items if i["stock_item_id"]])
+    context = pos_table_context(conn, bill["order"])
     in_house = conn.execute(
-        """SELECT id, guest_name, reference_code FROM bookings
-           WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?
-           ORDER BY guest_name""", (today, today)).fetchall()
-    stock = stock_levels(conn, [m["stock_item_id"] for m in menu if m["stock_item_id"]])
+        """SELECT id, guest_name, reference_code, room_id FROM bookings
+           WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date >= ?
+           ORDER BY guest_name""",
+        (datetime.now(timezone.utc).date().isoformat(),
+         datetime.now(timezone.utc).date().isoformat())).fetchall()
+    payments = conn.execute(
+        """SELECT pos_payments.*, users.name AS taken_by FROM pos_payments
+           LEFT JOIN users ON users.id = pos_payments.taken_by_user_id
+           WHERE order_id = ? ORDER BY id""", (order_id,)).fetchall()
+    other_tables = conn.execute(
+        "SELECT id, table_label FROM pos_orders WHERE status = 'open' AND id != ? ORDER BY table_label",
+        (order_id,)).fetchall()
     conn.close()
-    return render_template("pos_order.html", order=order, lines=lines, total=total,
-                           by_category=by_category, in_house=in_house,
-                           extra_categories=EXTRA_CATEGORIES,
-                           payment_methods=POS_PAYMENT_METHODS, stock=stock)
+    return render_template(
+        "pos_order.html", bill=bill, order=bill["order"], lines=bill["lines"],
+        menu=menu, courses=MENU_COURSES, vat_rates=rates, stock=stock,
+        by_course=pos_lines_by_course([l for l in bill["lines"] if not l["voided"]]),
+        context=context, in_house=in_house, payments=payments,
+        payment_methods=POS_PAYMENT_METHODS, void_reasons=POS_VOID_REASONS,
+        line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
+        allergens=ALLERGENS, other_tables=other_tables)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])
 @login_required
 def pos_add_item(order_id):
     conn = get_db()
-    order = conn.execute(
-        "SELECT status FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
     if not order or order["status"] != "open":
         conn.close()
         flash("That tab is closed.", "error")
         return redirect(url_for("pos_home"))
-    qty_raw = request.form.get("quantity", "1").strip()
-    qty = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
-    extra_raw = request.form.get("extra_id", "").strip()
-    user_id = (current_user() or {})["id"]
 
-    if extra_raw.isdigit():
-        extra = conn.execute("SELECT * FROM extras WHERE id = ?", (int(extra_raw),)).fetchone()
+    menu_item_id = (request.form.get("menu_item_id", "") or "").strip()
+    extra_id = (request.form.get("extra_id", "") or "").strip()
+    notes = (request.form.get("notes", "") or "").strip() or None
+    seat = (request.form.get("seat_number", "") or "").strip()
+    seat = int(seat) if seat.isdigit() else None
+    try:
+        quantity = max(1, int(request.form.get("quantity", "1") or 1))
+    except ValueError:
+        quantity = 1
+
+    if menu_item_id.isdigit():
+        item = conn.execute("SELECT * FROM menu_items WHERE id = ?", (menu_item_id,)).fetchone()
+        if not item:
+            conn.close()
+            abort(404)
+        if not item["available"]:
+            conn.close()
+            flash(f"{item['name']} is off tonight"
+                  + (f" — {item['unavailable_note']}" if item["unavailable_note"] else "") + ".",
+                  "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        pos_add_menu_line(conn, order_id, item, quantity, notes=notes, seat=seat,
+                          user_id=session.get("user_id"))
+    elif extra_id.isdigit():
+        extra = conn.execute("SELECT * FROM extras WHERE id = ?", (extra_id,)).fetchone()
         if not extra:
             conn.close()
             abort(404)
-        pos_add_line(conn, order_id, extra, qty, notes=request.form.get("notes", "").strip() or None,
-                     user_id=user_id)
+        line_id = pos_add_line(conn, order_id, extra, quantity, notes=notes,
+                               user_id=session.get("user_id"))
+        conn.execute("UPDATE pos_order_lines SET course = 'drink', seat_number = ?, vat_rate = ? "
+                     "WHERE id = ?", (seat, tax_rate(conn, "vat_extras"), line_id))
     else:
-        name = request.form.get("name", "").strip()
-        raw = (request.form.get("unit_price", "") or "").strip().replace(",", ".")
-        try:
-            price = round(float(raw), 2) if raw else 0.0
-        except ValueError:
-            price = 0.0
+        name = (request.form.get("name", "") or "").strip()
         if not name:
             conn.close()
             flash("Give the item a name.", "error")
             return redirect(url_for("pos_order", order_id=order_id))
-        pos_add_line(conn, order_id, name, qty, unit_price=price,
-                     notes=request.form.get("notes", "").strip() or None, user_id=user_id)
+        try:
+            price = float((request.form.get("unit_price", "0") or "0").replace(",", "."))
+        except ValueError:
+            price = 0.0
+        line_id = pos_add_line(conn, order_id, name, quantity, unit_price=price,
+                               notes=notes, user_id=session.get("user_id"))
+        conn.execute(
+            "UPDATE pos_order_lines SET course = ?, seat_number = ?, vat_rate = ? WHERE id = ?",
+            (request.form.get("course", "main"), seat, tax_rate(conn, "vat_food"), line_id))
     conn.commit()
     conn.close()
     return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/send", methods=["POST"])
+@login_required
+def pos_send(order_id):
+    """Tell the kitchen. The thing a till exists to do, and the thing this one
+    could not do at all — items sat on a tab and nobody cooked them."""
+    course = (request.form.get("course", "") or "").strip() or None
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    sent = pos_send_to_kitchen(conn, order_id, session.get("user_id"), course=course)
+    conn.commit()
+    conn.close()
+    if not sent:
+        flash("Nothing new to send — everything on this tab is already with the kitchen.",
+              "error")
+    else:
+        flash(f"{len(sent)} item{'' if len(sent) == 1 else 's'} sent to the kitchen.", "success")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/line/<int:line_id>/state", methods=["POST"])
+@login_required
+def pos_line_state(line_id):
+    """Move one line along: ready on the pass, or served."""
+    state = request.form.get("state", "")
+    if state not in POS_LINE_STATES:
+        abort(400)
+    stamp = {"ready": "ready_at", "served": "served_at", "sent": "sent_at"}.get(state)
+    conn = get_db()
+    line = conn.execute("SELECT * FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
+    if not line:
+        conn.close()
+        abort(404)
+    now = datetime.now(timezone.utc).isoformat()
+    if stamp:
+        conn.execute(f"UPDATE pos_order_lines SET state = ?, {stamp} = ? WHERE id = ?",
+                     (state, now, line_id))
+    else:
+        conn.execute("UPDATE pos_order_lines SET state = ? WHERE id = ?", (state, line_id))
+    conn.commit()
+    conn.close()
+    return redirect(request.referrer or url_for("pos_order", order_id=line["order_id"]))
+
+
+@app.route("/pos/<int:order_id>/service-state", methods=["POST"])
+@login_required
+def pos_service_state(order_id):
+    state = request.form.get("service_state", "")
+    if state not in POS_SERVICE_STATES:
+        abort(400)
+    conn = get_db()
+    conn.execute("UPDATE pos_orders SET service_state = ? WHERE id = ?", (state, order_id))
+    conn.commit()
+    conn.close()
+    return redirect(request.referrer or url_for("pos_order", order_id=order_id))
 
 
 @app.route("/pos/line/<int:line_id>/void", methods=["POST"])
 @login_required
 def pos_void_item(line_id):
+    """Void a line, with a reason and a name against it.
+
+    A void with neither is the oldest hole in any till: it is how stock walks
+    out of a building and the numbers still balance. The reason is required,
+    it goes in the audit log, and anything already sent to the kitchen is
+    called out separately because that one has been cooked.
+    """
+    reason = (request.form.get("reason", "") or "").strip()
     conn = get_db()
-    line = conn.execute("SELECT order_id FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
+    line = conn.execute("SELECT * FROM pos_order_lines WHERE id = ?", (line_id,)).fetchone()
     if not line:
         conn.close()
         abort(404)
-    pos_void_line(conn, line_id, (current_user() or {})["id"])
+    if not reason:
+        conn.close()
+        flash("Say why it is being voided — it goes on the record.", "error")
+        return redirect(url_for("pos_order", order_id=line["order_id"]))
+    was_sent = line["state"] in ("sent", "ready", "served")
+    pos_void_line(conn, line_id, session.get("user_id"))
+    conn.execute(
+        "UPDATE pos_order_lines SET void_reason = ?, voided_by_user_id = ?, voided_at = ? "
+        "WHERE id = ?", (reason, session.get("user_id"),
+                         datetime.now(timezone.utc).isoformat(), line_id))
+    log_audit(conn, "pos_line_voided", target=line["name"],
+              details=f"€{(line['unit_price'] or 0) * line['quantity']:.2f} — {reason}"
+                      + (" (already sent to the kitchen)" if was_sent else ""))
     conn.commit()
-    order_id = line["order_id"]
+    conn.close()
+    if was_sent:
+        flash("Voided — but the kitchen had already been sent it. Tell them.", "error")
+    else:
+        flash("Voided.", "success")
+    return redirect(url_for("pos_order", order_id=line["order_id"]))
+
+
+@app.route("/pos/<int:order_id>/adjust", methods=["POST"])
+@login_required
+def pos_adjust(order_id):
+    """Service charge and discounts, both with a reason on the discount."""
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+
+    def money(field):
+        try:
+            return max(0.0, round(float((request.form.get(field, "0") or "0").replace(",", ".")), 2))
+        except ValueError:
+            return 0.0
+
+    kind = request.form.get("kind", "")
+    if kind == "discount":
+        amount, reason = money("amount"), (request.form.get("reason", "") or "").strip()
+        percent = (request.form.get("percent", "") or "").strip()
+        if percent:
+            try:
+                gross = pos_bill(conn, order_id)["gross"]
+                amount = round(gross * float(percent) / 100, 2)
+            except ValueError:
+                pass
+        if amount and not reason:
+            conn.close()
+            flash("A discount needs a reason — it is money off the takings.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        conn.execute("UPDATE pos_orders SET discount_amount = ?, discount_reason = ? WHERE id = ?",
+                     (amount, reason or None, order_id))
+        if amount:
+            log_audit(conn, "pos_discount", target=order["table_label"],
+                      details=f"€{amount:.2f} — {reason}")
+    elif kind == "service":
+        percent = (request.form.get("percent", "") or "").strip()
+        amount = money("amount")
+        if percent:
+            try:
+                amount = round(pos_bill(conn, order_id)["gross"] * float(percent) / 100, 2)
+            except ValueError:
+                pass
+        conn.execute("UPDATE pos_orders SET service_charge = ? WHERE id = ?", (amount, order_id))
+    elif kind == "covers":
+        try:
+            conn.execute("UPDATE pos_orders SET covers = ? WHERE id = ?",
+                         (max(1, int(request.form.get("covers", "1"))), order_id))
+        except ValueError:
+            pass
+    conn.commit()
     conn.close()
     return redirect(url_for("pos_order", order_id=order_id))
 
 
-@app.route("/pos/<int:order_id>/settle", methods=["POST"])
+@app.route("/pos/<int:order_id>/move", methods=["POST"])
 @login_required
-def pos_settle_tab(order_id):
-    method = request.form.get("method", "")
-    room_raw = request.form.get("room_booking_id", "").strip()
+def pos_move_table(order_id):
+    """Rename a table, or merge it into another.
+
+    A party moving from the terrace to inside, or two tables becoming one, is
+    ordinary. Without this it means re-ringing the whole order.
+    """
     conn = get_db()
-    ok, message = pos_settle(
-        conn, order_id, method,
-        room_booking_id=int(room_raw) if room_raw.isdigit() else None,
-        reference=request.form.get("reference", "").strip() or None,
-        user_id=(current_user() or {})["id"])
-    if ok:
-        log_audit(conn, "pos_tab_settled", f"tab #{order_id}", f"{method}: {message}")
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        abort(404)
+    target = (request.form.get("merge_into", "") or "").strip()
+    if target.isdigit():
+        into = conn.execute("SELECT * FROM pos_orders WHERE id = ? AND status = 'open'",
+                            (target,)).fetchone()
+        if not into:
+            conn.close()
+            flash("That table isn't open.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        conn.execute("UPDATE pos_order_lines SET order_id = ? WHERE order_id = ?",
+                     (into["id"], order_id))
+        conn.execute(
+            # 'void' rather than a new status: the schema constrains this
+            # column, and a merged tab genuinely holds nothing — every line
+            # moved. merged_into_order_id says where they went.
+            """UPDATE pos_orders SET status = 'void', merged_into_order_id = ?, closed_at = ?
+               WHERE id = ?""", (into["id"], datetime.now(timezone.utc).isoformat(), order_id))
+        conn.execute("UPDATE pos_orders SET covers = covers + ?, deposit_credit = deposit_credit + ? "
+                     "WHERE id = ?", (order["covers"] or 0, order["deposit_credit"] or 0, into["id"]))
+        conn.commit()
+        conn.close()
+        flash(f"Merged into {into['table_label']}.", "success")
+        return redirect(url_for("pos_order", order_id=into["id"]))
+
+    label = (request.form.get("table_label", "") or "").strip()
+    if label:
+        conn.execute("UPDATE pos_orders SET table_label = ? WHERE id = ?", (label, order_id))
         conn.commit()
     conn.close()
-    flash(message, "success" if ok else "error")
-    return redirect(url_for("pos_home") if ok else url_for("pos_order", order_id=order_id))
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/pay", methods=["POST"])
+@login_required
+def pos_take_payment_route(order_id):
+    """Take a payment — all of it, or part of it.
+
+    Part of it is the point: a tab can take several, which is what splitting a
+    bill is. The tab closes only when nothing is left outstanding.
+    """
+    method = request.form.get("method", "")
+    if method not in POS_PAYMENT_METHODS:
+        abort(400)
+    conn = get_db()
+    bill = pos_bill(conn, order_id)
+    if not bill or bill["order"]["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+
+    raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+    try:
+        amount = round(float(raw), 2) if raw else bill["outstanding"]
+    except ValueError:
+        amount = bill["outstanding"]
+    seats = [x for x in request.form.getlist("seat") if x]
+    if seats:
+        # Paying for particular seats: total exactly those lines.
+        amount = round(sum((l["unit_price"] or 0) * (l["quantity"] or 0) for l in bill["live"]
+                           if str(l["seat_number"]) in seats), 2)
+    if method == "comp":
+        amount = bill["outstanding"]
+    if amount <= 0 and method != "comp":
+        conn.close()
+        flash("Nothing left to pay on this tab.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    if amount > bill["outstanding"] + 0.01:
+        conn.close()
+        flash(f"That's more than the €{bill['outstanding']:.2f} outstanding.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+
+    room_booking_id = None
+    if method == "room":
+        rb = (request.form.get("room_booking_id", "") or "").strip()
+        if not rb.isdigit():
+            conn.close()
+            flash("Choose which guest's room it goes on.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        room_booking_id = int(rb)
+        # Onto their bill by name, so the guest can see what they had rather
+        # than one lump called "restaurant".
+        for l in bill["live"]:
+            add_booking_extra(conn, "room", room_booking_id, l["name"], l["quantity"],
+                              unit_price=l["unit_price"], user_id=session.get("user_id"),
+                              notes=f"Table {bill['order']['table_label']}")
+
+    pos_take_payment(conn, order_id, amount, method,
+                     reference=(request.form.get("reference", "") or "").strip() or None,
+                     seats=seats, room_booking_id=room_booking_id,
+                     user_id=session.get("user_id"))
+    after = pos_bill(conn, order_id)
+    if after["outstanding"] <= 0.01:
+        conn.execute(
+            """UPDATE pos_orders SET status = 'paid', settled_total = ?, payment_method = ?,
+               closed_at = ? WHERE id = ?""",
+            (after["total"], method, datetime.now(timezone.utc).isoformat(), order_id))
+        log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
+                  details=f"€{after['total']:.2f}")
+    conn.commit()
+    conn.close()
+    if after["outstanding"] > 0.01:
+        flash(f"€{amount:.2f} taken. €{after['outstanding']:.2f} still to pay.", "success")
+        return redirect(url_for("pos_order", order_id=order_id))
+    flash(f"Settled — €{after['total']:.2f}.", "success")
+    return redirect(url_for("pos_home"))
+
+
+@app.route("/pos/<int:order_id>/reopen", methods=["POST"])
+@owner_required
+def pos_reopen(order_id):
+    """Reopen a settled tab. Mistakes happen mid-service and the alternative
+    is a second tab that makes the covers count wrong forever."""
+    conn = get_db()
+    conn.execute(
+        """UPDATE pos_orders SET status = 'open', closed_at = NULL, reopened_at = ?
+           WHERE id = ? AND status = 'paid'""",
+        (datetime.now(timezone.utc).isoformat(), order_id))
+    log_audit(conn, "pos_tab_reopened", target=str(order_id))
+    conn.commit()
+    conn.close()
+    flash("Reopened.", "success")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/receipt")
+@login_required
+def pos_receipt(order_id):
+    """The bill as a guest receives it, and as the taxman expects it.
+
+    A French bill has to show VAT by rate, not one blended figure, and the
+    château's SIRET and address. It prints from the browser — the iPad has no
+    till roll, and a page that prints is worth more than one that cannot.
+    """
+    conn = get_db()
+    bill = pos_bill(conn, order_id)
+    if not bill:
+        conn.close()
+        abort(404)
+    context = pos_table_context(conn, bill["order"])
+    payments = conn.execute(
+        "SELECT * FROM pos_payments WHERE order_id = ? ORDER BY id", (order_id,)).fetchall()
+    conn.close()
+    return render_template("pos_receipt.html", bill=bill, order=bill["order"],
+                           by_course=pos_lines_by_course(bill["live"]), context=context,
+                           payments=payments, courses=MENU_COURSES,
+                           payment_methods=POS_PAYMENT_METHODS)
+
+
+@app.route("/pos/kitchen")
+@login_required
+def pos_kitchen():
+    """The pass. Every ticket the kitchen has been sent, oldest first, with the
+    clock running on it — because a ticket with no clock is how a table waits
+    forty minutes and nobody notices."""
+    conn = get_db()
+    tickets = pos_open_tickets(conn)
+    for t in tickets:
+        ctx = conn.execute(
+            "SELECT guest_name, dietary_notes FROM restaurant_bookings WHERE id = ?",
+            (t["booking_id"],)).fetchone() if t["booking_id"] else None
+        t["guest"] = ctx["guest_name"] if ctx else None
+        t["dietary"] = (ctx["dietary_notes"] or "").strip() if ctx else ""
+    conn.close()
+    return render_template("pos_kitchen.html", tickets=tickets, courses=MENU_COURSES)
+
+
+@app.route("/pos/day")
+@owner_required
+def pos_day():
+    """Cash up. Takings by method, VAT owed, covers and average spend."""
+    on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    conn = get_db()
+    report = pos_day_report(conn, on)
+    conn.close()
+    overview = [
+        overview_cell("Taken", euro(report["taken"])),
+        overview_cell("Covers", report["covers"]),
+        overview_cell("Average per cover", euro(report["average_per_cover"])),
+        overview_cell("VAT within that", euro(report["vat"])),
+        overview_cell("Discounts given", euro(report["discounts"]),
+                      alert=report["discounts"] > 0),
+    ]
+    return render_template("pos_day.html", report=report, overview=overview, on=on,
+                           payment_methods=POS_PAYMENT_METHODS,
+                           prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
 
 
 @app.route("/pos/<int:order_id>/pay-link", methods=["POST"])
@@ -10076,32 +11077,32 @@ def pos_pay_link(order_id):
     nothing but the iPad.
     """
     conn = get_db()
-    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
-    if not order or order["status"] != "open":
+    bill = pos_bill(conn, order_id)
+    if not bill or bill["order"]["status"] != "open":
         conn.close()
         flash("That tab is closed.", "error")
         return redirect(url_for("pos_home"))
-    total = pos_order_total(conn, order_id)
-    if total <= 0:
+    if bill["outstanding"] <= 0:
         conn.close()
-        flash("Nothing to charge yet.", "error")
+        flash("Nothing left to charge on this tab.", "error")
         return redirect(url_for("pos_order", order_id=order_id))
     if not stripe_enabled():
         conn.close()
         flash("Card payment isn't connected — take cash, or charge it to a room.", "error")
         return redirect(url_for("pos_order", order_id=order_id))
-    lines = pos_order_lines(conn, order_id)
     try:
-        session = stripe.checkout.Session.create(
+        session_obj = stripe.checkout.Session.create(
             mode="payment",
             line_items=[{
                 "price_data": {
                     "currency": "eur",
-                    "product_data": {"name": f"{l['name']}"},
-                    "unit_amount": int(round((l["unit_price"] or 0) * 100)),
+                    "product_data": {"name": f"Table {bill['order']['table_label']}"},
+                    # One line for whatever is outstanding: after a part
+                    # payment the individual lines no longer add up to it.
+                    "unit_amount": int(round(bill["outstanding"] * 100)),
                 },
-                "quantity": l["quantity"],
-            } for l in lines],
+                "quantity": 1,
+            }],
             success_url=url_for("pos_order", order_id=order_id, paid=1, _external=True),
             cancel_url=url_for("pos_order", order_id=order_id, _external=True),
             metadata={"kind": "pos", "pos_order_id": str(order_id)},
@@ -10111,10 +11112,12 @@ def pos_pay_link(order_id):
         flash(f"Couldn't create the payment link: {e}", "error")
         return redirect(url_for("pos_order", order_id=order_id))
     conn.execute("UPDATE pos_orders SET stripe_session_id = ? WHERE id = ?",
-                 (session.id, order_id))
+                 (session_obj.id, order_id))
     conn.commit()
     conn.close()
-    return redirect(session.url, code=303)
+    # Named session_obj, not session: Flask's own `session` is in scope here
+    # and shadowing it is how a login quietly breaks.
+    return redirect(session_obj.url, code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -15392,6 +16395,9 @@ def room_issues():
     rooms_affected = conn.execute(
         "SELECT COUNT(DISTINCT room_id) AS c FROM room_issues WHERE status = 'open'"
     ).fetchone()["c"]
+    # Who is walking into each of these rooms, and when. One query for the
+    # whole page, and before the connection closes.
+    arrivals = arrivals_by_room(conn, [i["room_id"] for i in issues if i["status"] == "open"])
     conn.close()
 
     today = datetime.now(timezone.utc).date().isoformat()
@@ -15411,28 +16417,48 @@ def room_issues():
             return "Open a while"
         return "Open over a fortnight"
 
+    def guest_coming(i):
+        if i["status"] != "open":
+            return None
+        a = arrivals.get(i["room_id"])
+        if not a:
+            return None
+        days = days_until(a["arrival_date"])
+        return "Guest arriving this week" if (days or 99) <= 7 else "Guest arriving soon"
+
     lv = list_view(
         issues, request.args,
         search=["title", "description", "room_name", "reported_by_name"],
         search_hint="Search fault, room or who reported it",
         facets=[
+            # First, because it is the only one that has a date attached to it.
+            facet("arriving", "Someone coming", guest_coming,
+                  order=["Guest arriving this week", "Guest arriving soon"]),
             facet("age", "How long open", age,
                   order=["Open over a fortnight", "Open a while", "Just raised"]),
             facet("room", "Room", lambda i: i["room_name"], limit=10),
             facet("who", "Reported by", lambda i: i["reported_by_name"], limit=8),
         ],
         sorts=[
+            # Default: whoever is arriving soonest into a broken room comes
+            # first. Longest-open is a fair second, but a fault nobody is
+            # about to meet is not the most urgent thing on the list.
+            sort_option("arriving", "Guest arriving soonest",
+                        lambda i: (arrivals[i["room_id"]]["arrival_date"]
+                                   if i["room_id"] in arrivals and i["status"] == "open"
+                                   else "9999", i["created_at"] or "")),
             sort_option("oldest", "Longest open first", lambda i: i["created_at"] or ""),
             sort_option("recent", "Newest first", lambda i: i["created_at"] or "", reverse=True),
             sort_option("room", "Room",
                         lambda i: ((i["room_name"] or "").lower(), i["created_at"] or "")),
         ],
-        default_sort="oldest",
+        default_sort="arriving",
     )
     return render_template(
         "room_issues.html", issues=lv["rows"], lv=lv, rooms=rooms,
         status_filter=status_filter, employees=employees, counts=counts,
-        rooms_affected=rooms_affected,
+        rooms_affected=rooms_affected, arrivals=arrivals, days_until=days_until,
+        in_words=in_words,
     )
 
 
@@ -15469,15 +16495,48 @@ def new_room_issue():
         "INSERT INTO room_issues (room_id, reported_by_user_id, title, description, status, created_at) VALUES (?,?,?,?,'open',?)",
         (room_id, user["id"], title, description, now),
     )
+    # A fault in an empty room and a fault in a room somebody arrives into on
+    # Friday are the same row in the database and completely different jobs.
+    # The app knows both dates; it just never put them next to each other.
+    arrival = room_arrivals_soon(conn, room_id)[:1]
+    arrival = arrival[0] if arrival else None
+    urgency, when = "", ""
+    if arrival:
+        when = in_words(days_until(arrival["arrival_date"]))
+        urgency = (f" {arrival['guest_name']} arrives {when} "
+                   f"({arrival['arrival_date']}, {arrival['party_size']} guests).")
+
     task_note = ""
     if assigned_to.isdigit() and room:
         conn.execute(
-            """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority, due_date, created_at)
-               VALUES (?, ?, ?, 'normal', ?, ?)""",
+            """INSERT INTO tasks (assigned_to_user_id, title, room_note, notes, priority,
+               due_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (int(assigned_to), f"{room['name']}: {title}", description or None,
-             datetime.now(timezone.utc).date().isoformat(), now),
+             # What is wrong goes in the room note; why it cannot wait goes in
+             # the task's own notes, so whoever picks it up sees the deadline
+             # rather than having to work it out.
+             urgency.strip() or None,
+             "high" if arrival else "normal",
+             # Due before they walk in, not "today" regardless.
+             arrival["arrival_date"] if arrival else datetime.now(timezone.utc).date().isoformat(),
+             now),
         )
         task_note = " Task assigned."
+        if arrival:
+            task_note = f" Task assigned as high priority — {arrival['guest_name']} arrives {when}."
+        away = away_on(conn, int(assigned_to), datetime.now(timezone.utc).date().isoformat())
+        if away:
+            person = conn.execute("SELECT name FROM users WHERE id = ?",
+                                  (int(assigned_to),)).fetchone()
+            task_note += (f" Note: {person['name'] if person else 'they'} is {away} — "
+                          "it may need somebody else.")
+    if arrival and room:
+        owner = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+        if owner and owner["id"] != user["id"]:
+            send_notification(
+                conn, owner["id"], "room_issue",
+                f"{room['name']} has a fault and a guest arrives {when}",
+                f"{title}.{urgency}", link="/room-issues")
     conn.commit()
     conn.close()
     flash("Issue reported." + task_note, "success")
@@ -16002,11 +17061,11 @@ def admin_extras():
             # a price list entry, not a thing for sale — and until you can see
             # which is which, that is invisible.
             facet("where", "Can be ordered",
-                  lambda e: ("Online and at the till" if e["guest_bookable"] and e["sold_in_pos"]
+                  lambda e: ("Online and on the POS" if e["guest_bookable"] and e["sold_in_pos"]
                              else "Guests online" if e["guest_bookable"]
-                             else "At the till only" if e["sold_in_pos"]
+                             else "On the POS only" if e["sold_in_pos"]
                              else "Staff arrange it"),
-                  order=["Online and at the till", "Guests online", "At the till only",
+                  order=["Online and on the POS", "Guests online", "On the POS only",
                          "Staff arrange it"]),
             facet("stock", "Stock",
                   lambda e: "Comes out of stock" if e["stock_item_id"] else "Not stock-tracked",
@@ -17732,12 +18791,51 @@ MENU_CATEGORIES = ["starter", "main", "dessert", "drink"]
 @owner_required
 def admin_restaurant_menu():
     conn = get_db()
-    items = conn.execute("SELECT * FROM menu_items ORDER BY category, sort_order, name").fetchall()
-    items_by_category = {c: [] for c in MENU_CATEGORIES}
-    for item in items:
-        items_by_category.setdefault(item["category"], []).append(item)
+    items = conn.execute(
+        "SELECT * FROM menu_items ORDER BY sort_order, name").fetchall()
+    stock_items = conn.execute(
+        "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name").fetchall()
+    rates = {i["id"]: menu_vat_rate(conn, i) for i in items}
     conn.close()
-    return render_template("admin_restaurant_menu.html", items_by_category=items_by_category, categories=MENU_CATEGORIES)
+
+    off = [i for i in items if not i["available"]]
+    lv = list_view(
+        items, request.args,
+        search=["name", "description", "allergens", "dietary_tags"],
+        search_hint="Search dish, description or allergen",
+        facets=[
+            # A dish that is off tonight is the first thing a waiter needs to
+            # know and the last thing an alphabetical list tells them.
+            facet("state", "Tonight",
+                  lambda i: "Off" if not i["available"] else ("On" if i["active"] else "Hidden"),
+                  order=["Off", "On", "Hidden"]),
+            facet("course", "Course", lambda i: MENU_COURSES.get(i["course"], i["course"] or "Plats"),
+                  order=list(MENU_COURSES.values())),
+            facet("till", "On the POS",
+                  lambda i: "Sold on the POS" if i["sold_in_pos"] else "Not on the POS",
+                  order=["Sold on the POS", "Not on the POS"]),
+            facet("allergen", "Contains",
+                  lambda i: (i["allergens"] or "").split(",")[0].strip() or None, limit=8),
+        ],
+        sorts=[
+            sort_option("course", "Course order",
+                        lambda i: (COURSE_ORDER.index(i["course"])
+                                   if i["course"] in COURSE_ORDER else 99,
+                                   i["sort_order"] or 0, (i["name"] or "").lower())),
+            sort_option("name", "Name", lambda i: (i["name"] or "").lower()),
+            sort_option("price", "Dearest first", lambda i: i["price"] or 0, reverse=True),
+        ],
+        default_sort="course",
+    )
+    by_course = {}
+    for i in lv["rows"]:
+        by_course.setdefault(i["course"] or "main", []).append(i)
+    by_course = {c: by_course[c] for c in COURSE_ORDER if c in by_course} | {
+        c: v for c, v in by_course.items() if c not in COURSE_ORDER}
+    return render_template(
+        "admin_restaurant_menu.html", by_course=by_course, lv=lv, off=off,
+        courses=MENU_COURSES, allergens=ALLERGENS, stock_items=stock_items,
+        vat_rates=rates)
 
 
 @app.route("/admin/restaurant/menu/new", methods=["POST"])
@@ -17759,14 +18857,39 @@ def new_menu_item():
     except ValueError:
         price = None
 
+    course = request.form.get("course", "main").strip()
+    if course not in MENU_COURSES:
+        course = "main"
+    allergens = ",".join(a for a in request.form.getlist("allergens") if a in ALLERGENS)
+    stock_item_id = (request.form.get("stock_item_id", "") or "").strip()
+    stock_item_id = int(stock_item_id) if stock_item_id.isdigit() else None
+    try:
+        stock_qty = float((request.form.get("stock_qty_per_unit", "1") or "1").replace(",", "."))
+    except ValueError:
+        stock_qty = 1.0
+    try:
+        prep = int(request.form.get("prep_minutes", "") or 0) or None
+    except ValueError:
+        prep = None
+    vat_raw = (request.form.get("vat_rate", "") or "").strip().replace(",", ".")
+    try:
+        vat = float(vat_raw) if vat_raw else None
+    except ValueError:
+        vat = None
+    sold_in_pos = 1 if request.form.get("sold_in_pos") else 0
+
     conn = get_db()
     max_order = conn.execute(
-        "SELECT COALESCE(MAX(sort_order), -1) AS m FROM menu_items WHERE category = ?", (category,)
+        "SELECT COALESCE(MAX(sort_order), -1) AS m FROM menu_items WHERE course = ?", (course,)
     ).fetchone()["m"]
     conn.execute(
-        """INSERT INTO menu_items (name, description, category, dietary_tags, price, sort_order, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (name, description or None, category, dietary_tags or None, price, max_order + 1, datetime.now(timezone.utc).isoformat()),
+        """INSERT INTO menu_items (name, description, category, course, dietary_tags, allergens,
+           price, vat_rate, prep_minutes, stock_item_id, stock_qty_per_unit, sold_in_pos,
+           available, sort_order, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)""",
+        (name, description or None, category, course, dietary_tags or None, allergens or None,
+         price, vat, prep, stock_item_id, stock_qty, sold_in_pos, max_order + 1,
+         datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()
@@ -17798,15 +18921,68 @@ def edit_menu_item(item_id):
         price = float(price_raw) if price_raw else None
     except ValueError:
         price = None
+    course = request.form.get("course", item["course"] or "main").strip()
+    if course not in MENU_COURSES:
+        course = item["course"] or "main"
+    allergens = ",".join(a for a in request.form.getlist("allergens") if a in ALLERGENS)
+    stock_item_id = (request.form.get("stock_item_id", "") or "").strip()
+    stock_item_id = int(stock_item_id) if stock_item_id.isdigit() else None
+    try:
+        stock_qty = float((request.form.get("stock_qty_per_unit", "1") or "1").replace(",", "."))
+    except ValueError:
+        stock_qty = 1.0
+    try:
+        prep = int(request.form.get("prep_minutes", "") or 0) or None
+    except ValueError:
+        prep = None
+    vat_raw = (request.form.get("vat_rate", "") or "").strip().replace(",", ".")
+    try:
+        vat = float(vat_raw) if vat_raw else None
+    except ValueError:
+        vat = None
 
     conn.execute(
-        "UPDATE menu_items SET name=?, description=?, category=?, dietary_tags=?, price=? WHERE id=?",
-        (name, description or None, category, dietary_tags or None, price, item_id),
+        """UPDATE menu_items SET name=?, description=?, category=?, course=?, dietary_tags=?,
+           allergens=?, price=?, vat_rate=?, prep_minutes=?, stock_item_id=?,
+           stock_qty_per_unit=?, sold_in_pos=? WHERE id=?""",
+        (name, description or None, category, course, dietary_tags or None,
+         allergens or None, price, vat, prep, stock_item_id, stock_qty,
+         1 if request.form.get("sold_in_pos") else 0, item_id),
     )
     conn.commit()
     conn.close()
     flash("Menu item updated.", "success")
     return redirect(url_for("admin_restaurant_menu"))
+
+
+@app.route("/admin/restaurant/menu/<int:item_id>/availability", methods=["POST"])
+@login_required
+def menu_item_availability(item_id):
+    """86 a dish, or put it back.
+
+    Staff, not owner-only: it is the chef who knows the duck has run out, and
+    an item that vanishes from the till the moment it runs out is the single
+    thing that stops a waiter selling something the kitchen cannot make.
+    """
+    conn = get_db()
+    item = conn.execute("SELECT * FROM menu_items WHERE id = ?", (item_id,)).fetchone()
+    if not item:
+        conn.close()
+        abort(404)
+    now_off = bool(item["available"])
+    note = (request.form.get("note", "") or "").strip() or None
+    conn.execute("UPDATE menu_items SET available = ?, unavailable_note = ? WHERE id = ?",
+                 (0 if now_off else 1, note if now_off else None, item_id))
+    if now_off:
+        # The floor has to hear it, not discover it when a table orders.
+        for row in conn.execute(
+                "SELECT id FROM users WHERE status = 'active'").fetchall():
+            send_notification(conn, row["id"], "menu", f"{item['name']} is off",
+                              note or "The kitchen has taken it off tonight.", link="/pos")
+    conn.commit()
+    conn.close()
+    flash(f"{item['name']} is {'off' if now_off else 'back on'}.", "success")
+    return redirect(request.referrer or url_for("admin_restaurant_menu"))
 
 
 @app.route("/admin/restaurant/menu/<int:item_id>/toggle", methods=["POST"])
@@ -21147,9 +22323,19 @@ def new_task():
         (int(assigned_to), title, notes or None, room_note or None, priority, due_date or None,
          datetime.now(timezone.utc).isoformat(), repeat_weekly, origin),
     )
+    # A task due on a day the person is in Toulouse or in bed does not get
+    # done, and finding that out when it is overdue is finding out too late.
+    # Said, not blocked: sometimes you assign it knowing they're back by then.
+    away = away_on(conn, int(assigned_to),
+                   due_date or datetime.now(timezone.utc).date().isoformat())
+    person = conn.execute("SELECT name FROM users WHERE id = ?", (int(assigned_to),)).fetchone()
     conn.commit()
     conn.close()
-    flash("Task added.", "success")
+    if away:
+        flash(f"Task added — but {person['name'] if person else 'they'} is {away}. "
+              "It may need somebody else.", "error")
+    else:
+        flash("Task added.", "success")
     return redirect(request.referrer or url_for("admin_tasks"))
 
 
@@ -22040,6 +23226,13 @@ def admin_leave():
         ).fetchall()
         if clashing_tasks:
             task_conflicts[r["id"]] = clashing_tasks
+    # What the house is actually doing that week. Approving leave is a
+    # staffing decision, and it was being made with none of the staffing
+    # information — their own shifts, but not the twenty-cover dinner, the
+    # workshop, or the fact that two other people are already off.
+    # Only for the ones still to decide; the rest is history.
+    impact = {r["id"]: leave_impact(conn, r["start_date"], r["end_date"], r["user_id"])
+              for r in requests_ if r["status"] == "pending"}
     balances = {
         u["id"]: leave_balance(conn, u["id"], u["annual_leave_days"])
         for u in conn.execute("SELECT id, annual_leave_days FROM users WHERE role = 'employee'").fetchall()
@@ -22047,7 +23240,7 @@ def admin_leave():
     conn.close()
     return render_template(
         "admin_leave.html", requests=requests_, conflicts=conflicts, task_conflicts=task_conflicts,
-        balances=balances,
+        balances=balances, impact=impact,
     )
 
 
@@ -23535,7 +24728,7 @@ REVENUE_STREAMS = {
     "workshops": "Workshops",
     "events": "Events & weddings",
     "extras": "Extras (champagne, transfers…)",
-    "pos": "Till / bar",
+    "pos": "Restaurant POS / bar",
 }
 
 # Not every bill is handled the same way. This is the distinction that stops a

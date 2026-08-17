@@ -63,6 +63,16 @@
         {% endif %}
       </div>
       {% if issue['description'] %}<span class="upload-hint">{{ issue['description'] }}</span>{% endif %}
+      {% set coming = arrivals.get(issue['room_id']) if issue['status'] == 'open' else None %}
+      {% if coming %}
+      {# The deadline this fault actually has. Without it the list is sorted by
+         when somebody noticed, not by when it stops being fixable. #}
+      {% set days = days_until(coming['arrival_date']) %}
+      <span class="issue-deadline {{ 'is-urgent' if days is not none and days <= 7 }}">
+        {{ coming['guest_name'] }} arrives {{ in_words(days) }} —
+        {{ coming['arrival_date'] }}, {{ coming['party_size'] }} guest{{ '' if coming['party_size'] == 1 else 's' }}
+      </span>
+      {% endif %}
       <span class="upload-hint">Reported by {{ issue['reported_by_name'] or 'Former employee' }} · {{ issue['created_at'][:10] }}{% if issue['resolved_at'] %} · Resolved {{ issue['resolved_at'][:10] }}{% endif %}</span>
     </div>
     {% endfor %}

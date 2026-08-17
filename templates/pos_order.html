@@ -1,131 +1,376 @@
 {% extends "base.html" %}
-{% block title %}Table {{ order['table_label'] }}{% endblock %}
+{% block title %}{{ order['table_label'] }}{% endblock %}
 {% block content %}
 
-<div class="page-head">
-  <h1>Table {{ order['table_label'] }}</h1>
-  <a href="{{ url_for('pos_home') }}" class="btn-ghost">All tabs</a>
-</div>
+{#
+  The till. Three columns on an iPad: courses down the left, the menu grid in
+  the middle, the order on the right. Everything is one tap — a waiter standing
+  at a table does not scroll and does not type.
+#}
 
-{% if order['status'] != 'open' %}
-<div class="flash flash-success" style="margin-bottom:16px;">
-  Settled — €{{ '%.2f'|format(order['settled_total'] or 0) }}
-  {% if order['payment_method'] %}({{ payment_methods.get(order['payment_method'], order['payment_method'])|lower }}){% endif %}
-  {% if order['closed_at'] %} at {{ local_time_str(order['closed_at']) }}{% endif %}.
-</div>
-{% endif %}
+<div class="till">
 
-<div class="pos-layout">
-
-  <div class="pos-menu">
-    <h2 class="section-heading" style="margin-top:0;">Add to the tab</h2>
-    {% if not by_category %}
-      <div class="empty-state">
-        Nothing is marked as sold at the till yet — tick “sell at the till” on an item in
-        <a href="{{ url_for('admin_extras') }}">Extras</a>, or ring something up by hand below.
-      </div>
-    {% endif %}
-    {% for cat, items in by_category.items() %}
-    <p class="field-label" style="margin-top:14px;">{{ extra_categories.get(cat, cat) }}</p>
-    <div class="pos-grid">
-      {% for m in items %}
-      {% set level = stock.get(m['stock_item_id']) if m['stock_item_id'] else None %}
-      <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}">
+  <!-- ============================= header ============================= -->
+  <div class="till-head">
+    <div class="till-head-left">
+      <a href="{{ url_for('pos_home') }}" class="till-back">‹ Floor</a>
+      <h1>{{ order['table_label'] }}</h1>
+      <span class="till-covers">{{ order['covers'] }} cover{{ '' if order['covers'] == 1 else 's' }}</span>
+      {% if context %}<span class="till-guest">{{ context.booking['guest_name'] }}</span>{% endif %}
+    </div>
+    <div class="till-head-right">
+      {% for key, label in service_states.items() %}
+      <form method="post" action="{{ url_for('pos_service_state', order_id=order['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="extra_id" value="{{ m['id'] }}">
-        <button type="submit" class="pos-item {{ 'pos-item-out' if level is not none and level <= 0 }}"
-                {{ 'disabled' if order['status'] != 'open' }}>
-          <span class="pos-item-name">{{ m['name'] }}</span>
-          <span class="pos-item-price">€{{ '%.2f'|format(m['price'] or 0) }}</span>
-          {% if level is not none %}
-          <span class="pos-item-stock">{{ level|round(0)|int }} left</span>
-          {% endif %}
-        </button>
+        <input type="hidden" name="service_state" value="{{ key }}">
+        <button type="submit" class="till-state {{ 'is-on' if order['service_state'] == key }}">{{ label }}</button>
       </form>
       {% endfor %}
     </div>
-    {% endfor %}
-
-    {% if order['status'] == 'open' %}
-    <details class="refund-box" style="margin-top:18px;">
-      <summary>Something not on the list</summary>
-      <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <div class="refund-fields">
-          <div><label class="field-label">Item</label><input type="text" name="name" required></div>
-          <div><label class="field-label">Price (€)</label><input type="text" name="unit_price" inputmode="decimal" placeholder="0.00"></div>
-          <div><label class="field-label">Quantity</label><input type="number" name="quantity" min="1" value="1"></div>
-        </div>
-        <button type="submit" class="btn-mini">Add</button>
-      </form>
-    </details>
-    {% endif %}
   </div>
 
-  <div class="pos-bill">
-    <h2 class="section-heading" style="margin-top:0;">The bill</h2>
-    {% if not lines %}
-      <div class="empty-state">Nothing on this tab yet.</div>
-    {% else %}
-    <div class="task-list">
-      {% for l in lines %}
-      <div class="task-row {{ 'task-done' if l['voided'] }}">
-        <span class="task-title" style="flex:1;">
-          {{ l['quantity'] }} × {{ l['name'] }}
-          {% if l['notes'] %}<span class="upload-hint">{{ l['notes'] }}</span>{% endif %}
-        </span>
-        <span class="room-price">€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
-        {% if not l['voided'] and order['status'] == 'open' %}
-        <form method="post" action="{{ url_for('pos_void_item', line_id=l['id']) }}">
+  {% if context and context.dietary %}
+  {# Taken at booking, and until now it never reached the pass. #}
+  <div class="till-allergy">
+    <strong>Allergies / dietary — {{ context.booking['guest_name'] }}:</strong> {{ context.dietary }}
+  </div>
+  {% endif %}
+  {% if context and context.previous_no_shows > 1 %}
+  <div class="till-allergy">This address has not turned up {{ context.previous_no_shows }} times before.</div>
+  {% endif %}
+
+  {% if order['status'] != 'open' %}
+  <div class="flash flash-success" style="margin-bottom:14px;">
+    Settled — €{{ '%.2f'|format(order['settled_total'] or 0) }}
+    {% if order['closed_at'] %}at {{ local_time_str(order['closed_at']) }}{% endif %}.
+    {% if user['role'] == 'owner' %}
+    <form method="post" action="{{ url_for('pos_reopen', order_id=order['id']) }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">Reopen</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="till-body">
+
+    <!-- ======================= courses + menu ======================= -->
+    <div class="till-menu">
+      {% if not menu %}
+      <div class="empty-state">
+        There is no menu yet.
+        <a href="{{ url_for('admin_restaurant_menu') }}">Build the menu</a> — dishes, courses and prices —
+        and they appear here as buttons.
+      </div>
+      {% else %}
+      <div class="till-courses">
+        {% for course, items in menu.items() %}
+        <button type="button" class="till-course {{ 'is-on' if loop.first }}"
+                data-course="{{ course }}" onclick="showCourse('{{ course }}')">
+          {{ courses.get(course, course) }}
+          <span class="till-course-n">{{ items|length }}</span>
+        </button>
+        {% endfor %}
+      </div>
+
+      {% for course, items in menu.items() %}
+      <div class="till-grid" id="course-{{ course }}" {{ 'hidden' if not loop.first }}>
+        {% for m in items %}
+        {% set level = stock.get(m['stock_item_id']) if m['stock_item_id'] else None %}
+        {% set out = (level is not none and level <= 0) or not m['available'] %}
+        <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}" class="till-cell">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn-text-danger" title="Void this line">×</button>
+          <input type="hidden" name="menu_item_id" value="{{ m['id'] }}">
+          <input type="hidden" name="seat_number" class="seat-input" value="">
+          <button type="submit" class="till-item {{ 'is-out' if out }}"
+                  {{ 'disabled' if out or order['status'] != 'open' }}>
+            <span class="till-item-name">{{ m['name'] }}</span>
+            <span class="till-item-price">€{{ '%.2f'|format(m['price'] or 0) }}</span>
+            {% if not m['available'] %}
+            <span class="till-item-flag">off{% if m['unavailable_note'] %} — {{ m['unavailable_note'] }}{% endif %}</span>
+            {% elif level is not none %}
+            <span class="till-item-flag">{{ level|round(0)|int }} left</span>
+            {% endif %}
+            {% if m['allergens'] %}<span class="till-item-allergen">{{ m['allergens'] }}</span>{% endif %}
+          </button>
+        </form>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      {% if order['status'] == 'open' %}
+      <div class="till-seat-bar">
+        <span class="field-label" style="margin:0;">Seat</span>
+        <button type="button" class="till-seat is-on" data-seat="" onclick="pickSeat(this, '')">Table</button>
+        {% for n in range(1, (order['covers'] or 1) + 1) %}
+        <button type="button" class="till-seat" data-seat="{{ n }}" onclick="pickSeat(this, '{{ n }}')">{{ n }}</button>
+        {% endfor %}
+        <span class="upload-hint">Pick a seat and the next item goes on it — that's how you serve without asking.</span>
+      </div>
+
+      <details class="till-manual">
+        <summary>Something not on the menu</summary>
+        <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="refund-fields">
+            <div><label class="field-label">Item</label><input type="text" name="name" required></div>
+            <div><label class="field-label">Price (€)</label><input type="text" name="unit_price" inputmode="decimal" placeholder="0.00"></div>
+            <div><label class="field-label">Quantity</label><input type="number" name="quantity" min="1" value="1"></div>
+            <div>
+              <label class="field-label">Course</label>
+              <select name="course">
+                {% for k, v in courses.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+              </select>
+            </div>
+            <div><label class="field-label">Note for the kitchen</label><input type="text" name="notes" placeholder="no garlic"></div>
+          </div>
+          <button type="submit" class="btn-mini">Add</button>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+
+    <!-- ========================== the order ========================== -->
+    <div class="till-order">
+      <div class="till-order-head">
+        <h2>Order</h2>
+        {% if bill.unsent %}
+        <form method="post" action="{{ url_for('pos_send', order_id=order['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="till-send">Send {{ bill.unsent|length }} to kitchen</button>
         </form>
         {% endif %}
       </div>
-      {% endfor %}
-    </div>
-    <div class="pos-total">
-      <span>Total</span>
-      <strong>€{{ '%.2f'|format(total) }}</strong>
-    </div>
-    {% endif %}
 
-    {% if order['status'] == 'open' and lines %}
-    <h2 class="section-heading">Settle</h2>
-
-    {% if in_house %}
-    <form method="post" action="{{ url_for('pos_settle_tab', order_id=order['id']) }}" class="detail-card">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="method" value="room">
-      <label class="field-label">Charge to a room</label>
-      <select name="room_booking_id" required>
-        <option value="">— choose the guest —</option>
-        {% for b in in_house %}
-        <option value="{{ b['id'] }}">{{ b['guest_name'] }} — {{ b['reference_code'] }}</option>
+      {% if not bill.live %}
+      <div class="empty-state">Nothing ordered yet.</div>
+      {% else %}
+      {% for course, lines_in in by_course.items() %}
+      <div class="till-course-block">
+        <div class="till-course-row">
+          <span>{{ courses.get(course, course) }}</span>
+          {% set unsent_here = lines_in|selectattr('state', 'equalto', 'new')|list %}
+          {% if unsent_here and order['status'] == 'open' %}
+          {# Fire one course at a time — starters now, mains when they're ready. #}
+          <form method="post" action="{{ url_for('pos_send', order_id=order['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="course" value="{{ course }}">
+            <button type="submit" class="btn-mini">Fire {{ unsent_here|length }}</button>
+          </form>
+          {% endif %}
+        </div>
+        {% for l in lines_in %}
+        <div class="till-line state-{{ l['state'] }}">
+          <span class="till-line-qty">{{ l['quantity'] }}</span>
+          <span class="till-line-body">
+            <span class="till-line-name">{{ l['name'] }}</span>
+            {% if l['seat_number'] %}<span class="till-seat-tag">seat {{ l['seat_number'] }}</span>{% endif %}
+            {% if l['notes'] %}<span class="till-line-note">{{ l['notes'] }}</span>{% endif %}
+            <span class="till-line-state">{{ line_states.get(l['state'], l['state']) }}</span>
+          </span>
+          <span class="till-line-price">€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
+          {% if order['status'] == 'open' %}
+          <details class="till-void">
+            <summary>×</summary>
+            <form method="post" action="{{ url_for('pos_void_item', line_id=l['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <p class="field-label" style="margin-top:0;">Why?</p>
+              {% for reason in void_reasons %}
+              <button type="submit" name="reason" value="{{ reason }}" class="btn-mini">{{ reason }}</button>
+              {% endfor %}
+            </form>
+          </details>
+          {% endif %}
+        </div>
         {% endfor %}
-      </select>
-      <p class="upload-hint">Each item goes onto their bill by name, so they can see what they had.</p>
-      <button type="submit" class="btn-primary" style="margin-top:8px;">Charge €{{ '%.2f'|format(total) }} to the room</button>
-    </form>
-    {% endif %}
-
-    <form method="post" action="{{ url_for('pos_pay_link', order_id=order['id']) }}" style="margin-bottom:10px;">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-primary" style="width:100%;">Card — open a payment page</button>
-      <p class="upload-hint">Opens Stripe on this device, or hand the iPad over. No card reader needed.</p>
-    </form>
-
-    <form method="post" action="{{ url_for('pos_settle_tab', order_id=order['id']) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button type="submit" name="method" value="cash" class="btn-mini">Cash</button>
-        <button type="submit" name="method" value="card_terminal" class="btn-mini">Card on the terminal</button>
-        <button type="submit" name="method" value="comp" class="btn-mini btn-mini-danger"
-                onclick="return confirm('Close this tab with nothing charged?');">On the house</button>
       </div>
-    </form>
-    {% endif %}
+      {% endfor %}
+
+      {% set voided = lines|selectattr('voided')|list %}
+      {% if voided %}
+      <details class="till-voided">
+        <summary>{{ voided|length }} voided</summary>
+        {% for l in voided %}
+        <p class="upload-hint">{{ l['quantity'] }} × {{ l['name'] }} — {{ l['void_reason'] or 'no reason given' }}</p>
+        {% endfor %}
+      </details>
+      {% endif %}
+
+      <!-- ============================ bill ============================ -->
+      <div class="till-totals">
+        <div class="till-total-row"><span>Subtotal</span><span>€{{ '%.2f'|format(bill.gross) }}</span></div>
+        {% if bill.discount %}
+        <div class="till-total-row is-off">
+          <span>Discount{% if order['discount_reason'] %} — {{ order['discount_reason'] }}{% endif %}</span>
+          <span>−€{{ '%.2f'|format(bill.discount) }}</span>
+        </div>
+        {% endif %}
+        {% if bill.service %}
+        <div class="till-total-row"><span>Service</span><span>€{{ '%.2f'|format(bill.service) }}</span></div>
+        {% endif %}
+        {% if bill.deposit %}
+        <div class="till-total-row is-off">
+          <span>Deposit already paid</span><span>−€{{ '%.2f'|format(bill.deposit) }}</span>
+        </div>
+        {% endif %}
+        {% for rate, b in bill.vat_by_rate.items() %}
+        {# Food is 10% and drink 20% in France. One blended number is not a
+           document a restaurant can hand over. #}
+        <div class="till-total-row is-vat">
+          <span>of which VAT {{ rate|round(0)|int }}%</span><span>€{{ '%.2f'|format(b.vat) }}</span>
+        </div>
+        {% endfor %}
+        <div class="till-total-row is-total"><span>Total</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+        {% if bill.paid %}
+        <div class="till-total-row"><span>Paid so far</span><span>€{{ '%.2f'|format(bill.paid) }}</span></div>
+        <div class="till-total-row is-total"><span>Outstanding</span><span>€{{ '%.2f'|format(bill.outstanding) }}</span></div>
+        {% endif %}
+      </div>
+
+      {% if payments %}
+      <div class="till-payments">
+        {% for pay in payments %}
+        <p class="upload-hint">
+          €{{ '%.2f'|format(pay['amount']) }} · {{ payment_methods.get(pay['method'], pay['method']) }}
+          {%- if pay['seat_numbers'] %} · seats {{ pay['seat_numbers'] }}{% endif %}
+          {%- if pay['taken_by'] %} · {{ pay['taken_by'].split()[0] }}{% endif %}
+        </p>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if order['status'] == 'open' and bill.live %}
+      <div class="till-actions">
+        <a href="{{ url_for('pos_receipt', order_id=order['id']) }}" class="btn-ghost" target="_blank">Print bill</a>
+        <details class="till-adjust">
+          <summary>Discount / service</summary>
+          <form method="post" action="{{ url_for('pos_adjust', order_id=order['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="kind" value="discount">
+            <div class="refund-fields">
+              <div><label class="field-label">% off</label><input type="text" name="percent" inputmode="decimal" placeholder="10"></div>
+              <div><label class="field-label">or € off</label><input type="text" name="amount" inputmode="decimal" placeholder="0.00"></div>
+              <div><label class="field-label">Reason (required)</label><input type="text" name="reason" placeholder="Long wait for mains"></div>
+            </div>
+            <button type="submit" class="btn-mini">Apply discount</button>
+          </form>
+          <form method="post" action="{{ url_for('pos_adjust', order_id=order['id']) }}" style="margin-top:10px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="kind" value="service">
+            <div class="refund-fields">
+              <div><label class="field-label">Service %</label><input type="text" name="percent" inputmode="decimal" placeholder="10"></div>
+              <div><label class="field-label">or €</label><input type="text" name="amount" inputmode="decimal" placeholder="0.00"></div>
+            </div>
+            <button type="submit" class="btn-mini">Add service</button>
+          </form>
+        </details>
+
+        <details class="till-adjust">
+          <summary>Move or merge</summary>
+          <form method="post" action="{{ url_for('pos_move_table', order_id=order['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field-label">Rename this table</label>
+            <input type="text" name="table_label" value="{{ order['table_label'] }}">
+            <button type="submit" class="btn-mini" style="margin-top:8px;">Rename</button>
+          </form>
+          {% if other_tables %}
+          <form method="post" action="{{ url_for('pos_move_table', order_id=order['id']) }}" style="margin-top:10px;"
+                onsubmit="return confirm('Move every item on this tab onto that table?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label class="field-label">Merge into</label>
+            <select name="merge_into">
+              {% for t in other_tables %}<option value="{{ t['id'] }}">{{ t['table_label'] }}</option>{% endfor %}
+            </select>
+            <button type="submit" class="btn-mini" style="margin-top:8px;">Merge</button>
+          </form>
+          {% endif %}
+        </details>
+      </div>
+
+      <!-- ============================ pay ============================ -->
+      <h2 class="section-heading">Pay</h2>
+
+      {% set seats_used = bill.live|map(attribute='seat_number')|select|unique|list|sort %}
+      {% if seats_used|length > 1 %}
+      {# Splitting a bill: a tab can take several payments and they add up. #}
+      <details class="till-adjust">
+        <summary>Split by seat</summary>
+        <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <p class="field-label">Seats paying now</p>
+          <div class="till-seat-picks">
+            {% for n in seats_used %}
+            <label class="till-seat-pick"><input type="checkbox" name="seat" value="{{ n }}"> {{ n }}</label>
+            {% endfor %}
+          </div>
+          <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+            <button type="submit" name="method" value="cash" class="btn-mini">Cash</button>
+            <button type="submit" name="method" value="card_terminal" class="btn-mini">Card</button>
+          </div>
+        </form>
+      </details>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}"
+            class="till-pay-part">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field-label">Part payment (€) — leave blank for the lot</label>
+        <input type="text" name="amount" inputmode="decimal" placeholder="{{ '%.2f'|format(bill.outstanding) }}">
+        <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+          <button type="submit" name="method" value="cash" class="btn-primary" style="margin-top:0;">Cash</button>
+          <button type="submit" name="method" value="card_terminal" class="btn-primary" style="margin-top:0;">Card on terminal</button>
+        </div>
+      </form>
+
+      <form method="post" action="{{ url_for('pos_pay_link', order_id=order['id']) }}" style="margin-top:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-primary" style="width:100%;">Card — payment page / QR</button>
+      </form>
+
+      {% if in_house %}
+      <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}"
+            class="till-room-charge">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="method" value="room">
+        <label class="field-label">Charge to a room</label>
+        <select name="room_booking_id" required>
+          <option value="">— which guest —</option>
+          {% for b in in_house %}
+          <option value="{{ b['id'] }}">{{ b['guest_name'] }} — {{ b['reference_code'] }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-mini" style="margin-top:8px;">Charge €{{ '%.2f'|format(bill.outstanding) }} to the room</button>
+      </form>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}" style="margin-top:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" name="method" value="comp" class="btn-text-danger"
+                onclick="return confirm('Close this tab with nothing charged?');">On the house</button>
+      </form>
+      {% endif %}
+      {% endif %}
+    </div>
   </div>
 </div>
+
+<script>
+function showCourse(course) {
+  document.querySelectorAll('.till-grid').forEach(function (g) {
+    g.hidden = g.id !== 'course-' + course;
+  });
+  document.querySelectorAll('.till-course').forEach(function (b) {
+    b.classList.toggle('is-on', b.dataset.course === course);
+  });
+}
+// The seat picked here rides along with the next item added, so a waiter taps
+// a seat once and then just taps dishes.
+function pickSeat(button, seat) {
+  document.querySelectorAll('.till-seat').forEach(function (b) { b.classList.remove('is-on'); });
+  button.classList.add('is-on');
+  document.querySelectorAll('.seat-input').forEach(function (i) { i.value = seat; });
+}
+</script>
 
 {% endblock %}
