@@ -14751,9 +14751,14 @@ def manage_booking(manage_token):
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            AND category = 'room' ORDER BY sort_order, name""").fetchall()
         if (e["lead_time_days"] or 0) <= max(days_until, 0)]
+    # Minted on first sight rather than up front, so a link only exists for
+    # someone who has actually been here. Written before the connection closes.
+    portal_token = guest_portal_token(conn, booking["guest_email"])
+    conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
         dinner_available=dinner_available, bill=bill, addable=addable,
@@ -18015,6 +18020,86 @@ def admin_bookings():
     )
 
 
+def guest_portal_token(conn, email):
+    """The guest's own standing link, minted once and kept.
+
+    Every other guest link in this app is per-booking: a stay, a registration
+    and a dinner each carry their own manage token, so somebody who has been
+    three times is holding three unrelated URLs and no way to see themselves.
+    This is the one address that is *them* — the account behind the email,
+    with no password to forget.
+
+    Keyed on the guests profile, which is already one row per person (see the
+    find-or-create in confirm_booking_by_id). Returns None when there is no
+    profile yet: a link nobody could reach is not worth minting.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    row = conn.execute("SELECT id, portal_token FROM guests WHERE email = ? COLLATE NOCASE",
+                       (email,)).fetchone()
+    if not row:
+        return None
+    if row["portal_token"]:
+        return row["portal_token"]
+    token = secrets.token_urlsafe(24)
+    conn.execute("UPDATE guests SET portal_token = ? WHERE id = ?", (token, row["id"]))
+    return token
+
+
+def guest_portal_contents(conn, email):
+    """Everything of this guest's, in the order they would look for it.
+
+    Deliberately the same sources the owner's history page reads, so the two
+    cannot disagree about what a guest has — minus the parts that are the
+    château's business rather than theirs: promo redemptions, lifetime spend,
+    owner notes.
+    """
+    stays = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.guest_email = ? COLLATE NOCASE
+             AND bookings.status IN ('pending', 'confirmed')
+           ORDER BY bookings.arrival_date DESC""", (email,)).fetchall()
+    dinners = conn.execute(
+        """SELECT * FROM restaurant_bookings
+           WHERE guest_email = ? COLLATE NOCASE AND status IN ('pending', 'confirmed')
+           ORDER BY dinner_date DESC""", (email,)).fetchall()
+    ateliers = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                  workshop_sessions.start_date, workshop_sessions.end_date
+           FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_bookings.guest_email = ? COLLATE NOCASE
+             AND workshop_bookings.status IN ('pending', 'confirmed')
+           ORDER BY workshop_sessions.start_date DESC""", (email,)).fetchall()
+    return stays, dinners, ateliers
+
+
+@app.route("/my/<token>")
+def guest_portal(token):
+    """One link, everything of theirs. No password — the token is the secret,
+    exactly as it is for the per-booking manage links this sits above."""
+    conn = get_db()
+    profile = conn.execute("SELECT * FROM guests WHERE portal_token = ?", (token,)).fetchone()
+    if not profile:
+        conn.close()
+        abort(404)
+    stays, dinners, ateliers = guest_portal_contents(conn, profile["email"])
+    bills = {}
+    for stay in stays:
+        bill = booking_bill(conn, stay["id"])
+        if bill and bill["owed"] > 0:
+            bills[stay["id"]] = bill
+    conn.close()
+    return render_template(
+        "guest_portal.html", profile=profile, stays=stays, dinners=dinners,
+        ateliers=ateliers, bills=bills,
+        today=datetime.now(timezone.utc).date().isoformat(),
+    )
+
+
 @app.route("/admin/bookings/guest/<email>")
 @owner_required
 def guest_booking_history(email):
@@ -18046,6 +18131,9 @@ def guest_booking_history(email):
         (email,),
     ).fetchall()
     profile = conn.execute("SELECT * FROM guests WHERE email = ?", (email,)).fetchone()
+    # So the owner can send a guest their own link when they ask for one.
+    portal_token = guest_portal_token(conn, email)
+    conn.commit()
     conn.close()
     # A profile with no activity yet is still a legitimate page to open.
     if not bookings and not dinners and not workshop_regs and not events and not profile:
@@ -18057,7 +18145,7 @@ def guest_booking_history(email):
     return render_template(
         "guest_booking_history.html", email=email, profile=profile, bookings=bookings, dinners=dinners,
         workshop_regs=workshop_regs, events=events, promo_redemptions=promo_redemptions,
-        lifetime_spend=lifetime_spend,
+        lifetime_spend=lifetime_spend, portal_token=portal_token,
     )
 
 

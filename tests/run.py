@@ -22,6 +22,7 @@ SUITES = [
     "test_booking_quote",
     "test_booking_bill",
     "test_booking_payment",
+    "test_guest_portal",
     "test_house_capacity",
     "test_availability_calendar",
     "test_workshop_money",
