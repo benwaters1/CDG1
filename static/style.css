@@ -862,7 +862,22 @@ body.staff-shell .cal-month-label{ font-family:'Inter',sans-serif; font-weight:7
 }
 .period-choices, .period-nav{ display:flex; align-items:center; gap:6px; }
 .period-label{ font-size:14px; font-weight:600; color:var(--ink); min-width:11ch; text-align:center; }
+/* Must out-specify `body.staff-shell .btn-mini` (0,2,1) — exactly the trap
+   that made .btn-mini-danger invisible. Without this, the SELECTED item in
+   the period selector, the inbox-mailbox filter, incidents and refunds
+   rendered byte-identical to the unselected ones, so nothing showed which
+   filter was active. Verified against computed styles. */
 .btn-mini-active{ background:var(--gold); color:var(--chestnut-deep); border-color:var(--gold); }
+body.staff-shell .btn-mini.btn-mini-active{
+  background:var(--gold); color:var(--chestnut-deep); border-color:var(--gold); font-weight:700;
+}
+body.staff-shell .btn-mini.btn-mini-active:hover{
+  background:var(--gold); color:var(--chestnut-deep); border-color:var(--gold);
+}
+
+/* A row of filter buttons — used on inbox flags and refunds, previously with
+   no layout at all, so the buttons ran together with default inline spacing. */
+.filter-bar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 
 /* ---------- Section overview band ----------
    The summary that sits at the top of a section before its sub-pages, so a
