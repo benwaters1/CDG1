@@ -2832,6 +2832,26 @@ def init_db():
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
 
+    # The rooms were seeded by an earlier deploy without their facilities, so the
+    # seed above will not run again to add them. Fill the tags in where they are
+    # still blank, and bring the description up to the published one only where it
+    # still reads exactly as first seeded. Both conditions mean the same thing:
+    # touch nothing anybody has edited in the admin.
+    room_cols = {c["name"] for c in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+    if "amenities" in room_cols:
+        for room in DEFAULT_ROOMS:
+            if room.get("amenities"):
+                conn.execute(
+                    """UPDATE rooms SET amenities = ?
+                       WHERE name = ? AND COALESCE(TRIM(amenities), '') = ''""",
+                    (room["amenities"], room["name"]))
+            previous = PREVIOUS_ROOM_DESCRIPTIONS.get(room["name"])
+            if previous and room.get("description"):
+                conn.execute(
+                    "UPDATE rooms SET description = ? WHERE name = ? AND TRIM(description) = ?",
+                    (room["description"], room["name"], previous))
+        conn.commit()
+
     # The ateliers, with their real prices and dates. Two passes:
     #
     #  - a fresh database gets all five created
@@ -2853,10 +2873,47 @@ def init_db():
         conn.execute(f"DELETE FROM workshops WHERE id IN ({marks})", ids)
         conn.commit()
 
-    real_workshops = conn.execute(
-        "SELECT COUNT(*) AS c FROM workshops WHERE title NOT LIKE '%Test%'").fetchone()["c"]
-    if not real_workshops:
+    # Retire the five by-season ateliers an earlier deploy seeded, now that the
+    # published programme is the three real ones. Same conservatism as above and
+    # then some: the price must still be the seeded one (so the row is untouched)
+    # and nothing may be registered against it. A booked atelier is somebody's
+    # holiday; it stays, and the owner can retire it by hand.
+    for title, seeded_price in SUPERSEDED_WORKSHOPS:
+        row = conn.execute(
+            "SELECT id FROM workshops WHERE title = ? AND ABS(COALESCE(price_per_person, 0) - ?) < 0.01",
+            (title, seeded_price)).fetchone()
+        if not row:
+            continue
+        booked = conn.execute(
+            """SELECT COUNT(*) AS c FROM workshop_bookings
+               WHERE session_id IN (SELECT id FROM workshop_sessions WHERE workshop_id = ?)""",
+            (row["id"],)).fetchone()["c"]
+        if booked:
+            print(f"Kept '{title}' — {booked} registration(s) against it.")
+            continue
+        conn.execute("DELETE FROM workshop_sessions WHERE workshop_id = ?", (row["id"],))
+        conn.execute("DELETE FROM workshops WHERE id = ?", (row["id"],))
+        conn.commit()
+
+    # Create the published programme once, tracked by a marker rather than by
+    # asking whether the workshops table is empty.
+    #
+    # Emptiness was the old test, and it is wrong here: the retirement above
+    # deliberately leaves a superseded atelier in place if a guest is registered
+    # against it, and an emptiness test would then read that single leftover row
+    # as "the programme already exists" and never create the real three. That is
+    # exactly what happened the first time this was written.
+    #
+    # The marker keeps the property the old test was protecting, too: an atelier
+    # the owner later deletes stays deleted, because the seed does not run twice.
+    already_seeded = conn.execute(
+        "SELECT 1 FROM app_settings WHERE key = 'published_ateliers_seeded'").fetchone()
+    if not already_seeded:
+        created = 0
         for workshop in DEFAULT_WORKSHOPS:
+            if conn.execute("SELECT 1 FROM workshops WHERE title = ?",
+                            (workshop["title"],)).fetchone():
+                continue
             fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
             fields.update({"active": 1, "default_capacity": 10,
                            "created_at": datetime.now(timezone.utc).isoformat()})
@@ -2872,9 +2929,12 @@ def init_db():
                     """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
                        capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
                     (new_id, start, end, datetime.now(timezone.utc).isoformat()))
+            created += 1
+        conn.execute(
+            "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('published_ateliers_seeded', '1')")
         conn.commit()
-        print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
-              f"prices and dates.")
+        if created:
+            print(f"Seeded {created} atelier(s) with their published prices and dates.")
 
     # The five were seeded by an earlier deploy without this note, so the seed
     # above will not run again to add it. Fill it in where it is still blank,
@@ -4453,6 +4513,11 @@ def guests_in_residence(conn, today):
 # The château's rooms. Seeded only when the rooms table is completely empty,
 # so this bootstraps a new installation and never resurrects a room somebody
 # has deliberately deleted, nor overwrites edits made in the admin.
+# `amenities` is a comma-separated list because that is what the room card
+# renders as tags, one <li> per comma. Bed, capacity, size, outlook and bathroom
+# in that order, so the five cards read down the page consistently. The facts are
+# the ones published on the Stay Now page rather than inferred from the name —
+# which matters most for the King Room, listed there with an emperor bed.
 DEFAULT_ROOMS = [
     {
         "name": "King Room with Mountain View",
@@ -4462,7 +4527,8 @@ DEFAULT_ROOMS = [
         "sort_order": 0,
         "max_adults": 2,
         "max_children": 0,
-        "description": "A serene room dressed in a king bed, where windows open onto sweeping mountain views.",
+        "amenities": "Emperor bed, Sleeps 2, 38 m², Mountain view, Private bathroom",
+        "description": "A serene room dressed in a king bed, where windows open onto sweeping mountain views — an intimate retreat carrying the château's history in every detail.",
     },
     {
         "name": "Family Suite with Mountain View",
@@ -4471,7 +4537,8 @@ DEFAULT_ROOMS = [
         "min_nights": 1,
         "sort_order": 1,
         "max_children": 0,
-        "description": "A gracious 140 sq m suite spread across two bedrooms, pairing a queen bed for the adults with double beds for up to three children.",
+        "amenities": "Queen and double beds, 2 adults and 3 children, 140 m², Mountain view, Private bathroom",
+        "description": "A gracious 140 m² spread across two bedrooms, pairing a queen bed for the adults with double beds for up to three children, each room opening onto its own view across the estate and mountains beyond.",
     },
     {
         "name": "Double with Shared Bathroom",
@@ -4480,6 +4547,7 @@ DEFAULT_ROOMS = [
         "min_nights": 1,
         "sort_order": 2,
         "max_children": 0,
+        "amenities": "Double bed, Sleeps 2, 20 m², Shared bathroom",
         "description": "An intimate double room, quietly charming in its simplicity, with its bathroom shared with one neighbouring room.",
     },
     {
@@ -4489,7 +4557,8 @@ DEFAULT_ROOMS = [
         "min_nights": 1,
         "sort_order": 3,
         "max_children": 0,
-        "description": "A graceful room with a twin or double bedding arrangement, bathroom shared with one neighbouring room.",
+        "amenities": "Twin or double, 2 adults and 1 child, 25 m², Shared bathroom",
+        "description": "A graceful room arranged with twin or double bedding, well suited to companions travelling together, its bathroom shared with one neighbouring room.",
     },
     {
         "name": "Suite with Mountain View",
@@ -4498,48 +4567,70 @@ DEFAULT_ROOMS = [
         "min_nights": 1,
         "sort_order": 4,
         "max_children": 0,
-        "description": "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
+        "amenities": "Emperor bed, Sleeps 2, 70 m², Mountain view, Private bathroom",
+        "description": "A generous 70 m² suite with sweeping mountain views and the château's history held in every corner — sit in comfort by the fireplace watching the view, a refined retreat for those wishing to linger a little longer.",
     },
 ]
+
+# What the five rooms were seeded with before the Stay Now facts were added. A
+# room whose description still reads exactly like this has never been edited in
+# the admin, so replacing it loses nobody's work. Anything else is left alone.
+PREVIOUS_ROOM_DESCRIPTIONS = {
+    "King Room with Mountain View":
+        "A serene room dressed in a king bed, where windows open onto sweeping mountain views.",
+    "Family Suite with Mountain View":
+        "A gracious 140 sq m suite spread across two bedrooms, pairing a queen bed for the adults with double beds for up to three children.",
+    "Twin/Double with Shared Bathroom":
+        "A graceful room with a twin or double bedding arrangement, bathroom shared with one neighbouring room.",
+    "Suite with Mountain View":
+        "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
+}
 
 DEFAULT_EXTRAS = [
     {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
 ]
 
-# The ateliers, taken from chateaugudanes.com. Prices and dates are the ones
-# published there; the names are the real product names rather than the
-# by-duration shorthand.
+# What every atelier includes, as published. Held once rather than repeated per
+# workshop: it is the same list for all three, and three copies would drift.
+WORKSHOP_INCLUSIONS = (
+    "Per person, sharing a room (triple available). Daily chef-prepared meals with "
+    "regional specialities. Unlimited château beverages. All scheduled activities. "
+    "Tennis, pickleball, pool and Wi-Fi. Laundry facilities. Toulouse transfers at "
+    "designated times. The opportunity to take part in fresco restoration."
+)
+
+# The three ateliers, as published on the château's own site: prices per person,
+# durations and every session date.
 #
 # Confirmed by the owner: these are per person, sharing a room — which is what
 # price_per_person means here, so a party of two is charged twice the figure.
 # Recorded in `inclusions` as well, because a solo traveller reading "per person"
 # needs to know a shared room is what the price assumes.
+#
+# Nights are not a column: a session's start and end dates carry the duration,
+# so 6–9 June is the three-night stay and nothing can contradict it.
 DEFAULT_WORKSHOPS = [
-    {"title": "Autumn Atelier 2026", "price_per_person": 2600.0, "sort_order": 0,
-     "inclusions": "Per person, sharing a room.",
-     "sessions": [("2026-10-23", "2026-10-27")],
-     "description": "Four nights as the valley turns, the season the restoration "
-                    "is at its most visible."},
-    {"title": "Noël Atelier 2026", "price_per_person": 3200.0, "sort_order": 1,
-     "inclusions": "Per person, sharing a room.",
-     "sessions": [("2026-12-05", "2026-12-09")],
-     "description": "Four nights at the château in December — shorter days, "
-                    "longer evenings around the table."},
-    {"title": "Cooking in the Cuisine 2027", "price_per_person": 3800.0, "sort_order": 2,
-     "inclusions": "Per person, sharing a room.",
-     "sessions": [("2027-06-25", "2027-06-30")],
-     "description": "Five nights in the château kitchen, cooking what the valley "
-                    "and the markets give us."},
-    {"title": "Antique & French Finds 2027", "price_per_person": 2800.0, "sort_order": 3,
-     "inclusions": "Per person, sharing a room.",
-     "sessions": [("2027-07-03", "2027-07-06")],
-     "description": "Three nights among the brocantes and antique dealers of the "
-                    "Ariège and beyond. A second date follows in late July."},
-    {"title": "Summer Starry Nights 2027", "price_per_person": 4800.0, "sort_order": 4,
-     "inclusions": "Per person, sharing a room.",
-     "sessions": [("2027-07-10", "2027-07-17")],
-     "description": "A full week at the château in high summer, under the "
-                    "clearest skies of the year."},
+    {"title": "The Long Weekender", "price_per_person": 2400.0, "sort_order": 0,
+     "inclusions": WORKSHOP_INCLUSIONS,
+     "sessions": [("2026-06-06", "2026-06-09"), ("2026-07-04", "2026-07-07"),
+                  ("2026-08-01", "2026-08-04")],
+     "description": "Bric-à-brac and brocante hunting through the region's best "
+                    "antique markets, a private tour of a neighbouring château, "
+                    "and long, laissez-faire days spent wandering village and "
+                    "vide-greniers."},
+    {"title": "Cooking in the Cuisine", "price_per_person": 3900.0, "sort_order": 1,
+     "inclusions": WORKSHOP_INCLUSIONS,
+     "sessions": [("2026-06-12", "2026-06-17"), ("2026-07-10", "2026-07-15")],
+     "description": "Hands-on classes and live demonstrations in the château's own "
+                    "kitchens, market mornings for seasonal produce, and evenings "
+                    "spent eating what you've made — from 18th-century recipes to "
+                    "modern French classics."},
+    {"title": "Seven Starry Nights", "price_per_person": 4500.0, "sort_order": 2,
+     "inclusions": WORKSHOP_INCLUSIONS,
+     "sessions": [("2026-06-20", "2026-06-27")],
+     "description": "Help restore the château's 18th-century frescoes, join cooking "
+                    "classes in between, hike and canoe the Ariège, and explore "
+                    "medieval towns, caves and neighbouring châteaux."},
 ]
 
 # The placeholder titles this file used before the real ones were known. Rows
@@ -4548,6 +4639,21 @@ DEFAULT_WORKSHOPS = [
 PLACEHOLDER_WORKSHOP_TITLES = [
     "Three Nights at Gudanes", "Five Nights at Gudanes", "Seven Nights at Gudanes",
     "Autumn Atelier", "Winter Atelier",
+]
+
+# The five by-season ateliers a previous deploy seeded, with the price each was
+# seeded at. The published programme is the three above instead: different
+# names, prices, durations and dates. These are superseded rather than merely
+# stale, so they are removed — but only where the price still matches what was
+# seeded, which is the evidence nobody has edited the row, and only where no
+# guest has registered against it. An edited or booked atelier is somebody's
+# work or somebody's holiday, and a deploy must not delete either.
+SUPERSEDED_WORKSHOPS = [
+    ("Autumn Atelier 2026", 2600.0),
+    ("Noël Atelier 2026", 3200.0),
+    ("Cooking in the Cuisine 2027", 3800.0),
+    ("Antique & French Finds 2027", 2800.0),
+    ("Summer Starry Nights 2027", 4800.0),
 ]
 
 
