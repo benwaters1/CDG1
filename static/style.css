@@ -1489,3 +1489,22 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
 }
 .access-grid .checkbox-row{ align-items:flex-start; }
 .access-grid .upload-hint{ display:block; }
+
+/* The price panel on the booking form. A guest should never be asked to commit
+   without seeing the figure, and this used to say only "€250 / night". */
+.quote-box{
+  margin-top:16px; padding:13px 15px; border:1px solid var(--gold);
+  border-radius:11px; background:var(--status-warn-bg);
+}
+.quote-line{
+  display:flex; justify-content:space-between; gap:14px; font-size:13.5px;
+  padding:3px 0; color:var(--ink);
+}
+.quote-total{
+  display:flex; justify-content:space-between; gap:14px; margin-top:7px;
+  padding-top:8px; border-top:1px solid var(--gold);
+  font-family:'Playfair Display', serif; font-size:18px; font-weight:700;
+  color:var(--chestnut-deep);
+}
+.quote-unavailable{ margin:0; font-size:13.5px; color:var(--danger); font-weight:600; }
+.quote-box .upload-hint{ margin:6px 0 0; }

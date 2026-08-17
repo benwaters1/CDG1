@@ -71,6 +71,38 @@
     </div>
     <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
 
+    {# The price, before they commit to anything. Rendered server-side when the
+       dates arrive with them (the room list passes them through) and kept
+       current by /api/quote as they change dates, party size or add-ons — so
+       there is never a moment where the form asks for money without saying how
+       much, and no JavaScript is needed to see a figure. #}
+    <div class="quote-box" id="quote_box" {{ 'hidden' if not initial_quote }}>
+      {% if initial_quote and not initial_quote.available %}
+      <p class="quote-unavailable" id="quote_reason">{{ initial_quote.reason }}</p>
+      {% else %}
+      <p class="quote-unavailable" id="quote_reason" hidden></p>
+      {% endif %}
+      <div id="quote_lines">
+        {% if initial_quote and initial_quote.available %}
+          {% for line in initial_quote.lines %}
+          <div class="quote-line">
+            <span>{{ line.label }}</span>
+            <span>{{ '−€%.2f'|format(-line.amount) if line.amount < 0 else '€%.2f'|format(line.amount) }}</span>
+          </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+      <div class="quote-total" id="quote_total_row" {{ 'hidden' if not (initial_quote and initial_quote.available) }}>
+        <span>Total</span>
+        <span id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available else '' }}</span>
+      </div>
+      <p class="upload-hint" id="quote_note">
+        {% if initial_quote and initial_quote.available and initial_quote.per_night %}
+        €{{ '%.2f'|format(initial_quote.per_night) }} a night average over {{ initial_quote.nights }} night{{ '' if initial_quote.nights == 1 else 's' }}.
+        {% endif %}
+      </p>
+    </div>
+
     <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
       <input type="checkbox" name="agree_terms" required>
       I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" style="color:var(--steel);">Terms &amp; Conditions</a>
@@ -99,7 +131,85 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     .then(function(r) { return r.json(); })
     .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
     .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
+  refreshQuote();
 });
+
+// Keep the price panel honest as the guest changes anything. The figures come
+// from the server, never from arithmetic here — the browser adding up nightly
+// rates is how a quote ends up disagreeing with the card charge, since a
+// seasonal rate override can make nights within one stay cost different amounts.
+(function () {
+  var box = document.getElementById('quote_box');
+  if (!box) return;
+  var money = function (n) { return '€' + Number(n).toFixed(2); };
+  var pending;
+
+  window.refreshQuote = function () {
+    var arrival = document.querySelector('[name="arrival_date"]').value;
+    var departure = document.querySelector('[name="departure_date"]').value;
+    if (!arrival || !departure) { box.hidden = true; return; }
+
+    var params = new URLSearchParams();
+    params.set('room_id', '{{ room["id"] }}');
+    params.set('arrival', arrival);
+    params.set('departure', departure);
+    var party = document.querySelector('[name="party_size"]');
+    if (party && party.value) params.set('party_size', party.value);
+    var promo = document.getElementById('promo_code');
+    if (promo && promo.value.trim()) params.set('promo', promo.value.trim());
+    document.querySelectorAll('[name="extras"]:checked').forEach(function (cb) {
+      params.append('extras', cb.value);
+    });
+
+    clearTimeout(pending);
+    pending = setTimeout(function () {
+      fetch('{{ url_for("api_quote") }}?' + params.toString())
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (q) {
+          if (!q) return;
+          box.hidden = false;
+          var reason = document.getElementById('quote_reason');
+          var lines = document.getElementById('quote_lines');
+          var totalRow = document.getElementById('quote_total_row');
+          var note = document.getElementById('quote_note');
+          lines.innerHTML = '';
+          if (!q.available) {
+            reason.textContent = q.reason || 'Not available.';
+            reason.hidden = false;
+            totalRow.hidden = true;
+            note.textContent = '';
+            return;
+          }
+          reason.hidden = true;
+          q.lines.forEach(function (line) {
+            var row = document.createElement('div');
+            row.className = 'quote-line';
+            var left = document.createElement('span');
+            left.textContent = line.label;
+            var right = document.createElement('span');
+            right.textContent = line.amount < 0 ? '−' + money(-line.amount) : money(line.amount);
+            row.appendChild(left); row.appendChild(right);
+            lines.appendChild(row);
+          });
+          document.getElementById('quote_total').textContent = money(q.total);
+          totalRow.hidden = false;
+          note.textContent = q.per_night
+            ? money(q.per_night) + ' a night average over ' + q.nights +
+              (q.nights === 1 ? ' night.' : ' nights.')
+            : '';
+        })
+        .catch(function () { /* leave whatever was last shown rather than blanking it */ });
+    }, 250);
+  };
+
+  ['arrival_date', 'departure_date', 'party_size'].forEach(function (name) {
+    var el = document.querySelector('[name="' + name + '"]');
+    if (el) el.addEventListener('change', window.refreshQuote);
+  });
+  document.querySelectorAll('[name="extras"]').forEach(function (cb) {
+    cb.addEventListener('change', window.refreshQuote);
+  });
+})();
 </script>
 
 {% endblock %}

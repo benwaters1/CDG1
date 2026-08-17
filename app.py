@@ -12386,6 +12386,106 @@ def api_validate_promo_code():
     })
 
 
+def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code="",
+                     party_size=None):
+    """What this stay costs, itemised.
+
+    Uses the same functions that charge for it — compute_room_total for the
+    room, validate_promo_code for the discount — because a quote calculated
+    separately from the charge is one that will eventually disagree with the
+    charge, and the guest will be right. validate_promo_code only reads, so
+    quoting cannot burn a code.
+
+    Also answers "can I have these dates at all", so the guest finds out before
+    filling the form in rather than on submit.
+    """
+    nights = (departure - arrival).days if (arrival and departure) else 0
+    quote = {"nights": nights, "available": True, "reason": None, "lines": [],
+             "room_total": 0.0, "extras_total": 0.0, "discount": 0.0,
+             "promo_error": None, "total": 0.0, "per_night": None}
+
+    if nights < 1:
+        quote.update(available=False, reason="Departure must be after arrival.")
+        return quote
+    if room["min_nights"] and nights < room["min_nights"]:
+        quote.update(available=False,
+                     reason=f"This room has a {room['min_nights']}-night minimum, "
+                            f"and you have chosen {nights}.")
+        return quote
+    if party_size and room["max_occupancy"] and party_size > room["max_occupancy"]:
+        quote.update(available=False,
+                     reason=f"This room sleeps up to {room['max_occupancy']}.")
+        return quote
+    if not is_range_available(conn, room["id"], arrival, departure)[0]:
+        quote.update(available=False, reason="Those dates are no longer free.")
+        return quote
+
+    quote["room_total"] = compute_room_total(conn, room, arrival, departure)
+    quote["per_night"] = round(quote["room_total"] / nights, 2) if nights else None
+    quote["lines"].append({
+        "label": f"{room['name']} — {nights} night{'' if nights == 1 else 's'}",
+        "amount": quote["room_total"]})
+
+    # Mirrors the booking form's own query: every active extra, by id. Filtering
+    # differently here would price a line the form let them tick, or vice versa.
+    ids = [i for i in extra_ids if isinstance(i, int)]
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for extra in conn.execute(
+                f"SELECT * FROM extras WHERE active = 1 AND id IN ({marks})",
+                tuple(ids)).fetchall():
+            price = round(extra["price"] or 0, 2)
+            quote["extras_total"] += price
+            quote["lines"].append({"label": extra["name"], "amount": price})
+    quote["extras_total"] = round(quote["extras_total"], 2)
+
+    subtotal = round(quote["room_total"] + quote["extras_total"], 2)
+    if promo_code:
+        promo, discount, error = validate_promo_code(conn, promo_code, "room", subtotal)
+        if promo:
+            quote["discount"] = round(discount, 2)
+            quote["lines"].append({"label": f"Promo code {promo['code']}",
+                                   "amount": -quote["discount"]})
+        else:
+            quote["promo_error"] = error
+    quote["total"] = round(subtotal - quote["discount"], 2)
+    return quote
+
+
+@app.route("/api/quote")
+def api_quote():
+    """Price a stay without committing to it. Public, like the form it serves.
+
+    Read-only, and rate-limited on the same reasoning as the promo preview: it
+    is an unauthenticated endpoint that runs a handful of queries.
+    """
+    conn = get_db()
+    if rate_limited(conn, "api_quote", 120):
+        conn.commit()
+        conn.close()
+        return jsonify(error="Too many requests — try again shortly."), 429
+    conn.commit()
+    try:
+        room_id = request.args.get("room_id", "")
+        arrival = parse_date(request.args.get("arrival", ""))
+        departure = parse_date(request.args.get("departure", ""))
+        if not room_id.isdigit() or not arrival or not departure:
+            return jsonify(error="need room_id, arrival and departure"), 400
+        room = conn.execute(
+            "SELECT * FROM rooms WHERE id = ? AND active = 1", (int(room_id),)).fetchone()
+        if not room:
+            return jsonify(error="no such room"), 404
+        party_raw = request.args.get("party_size", "")
+        quote = build_stay_quote(
+            conn, room, arrival, departure,
+            [int(i) for i in request.args.getlist("extras") if i.isdigit()],
+            request.args.get("promo", "").strip(),
+            int(party_raw) if party_raw.isdigit() else None)
+    finally:
+        conn.close()
+    return jsonify(quote)
+
+
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
 def book_room(room_id):
     conn = get_db()
@@ -12533,11 +12633,23 @@ def book_room(room_id):
     prefill_email = request.args.get("email", "")
     prefill_phone = request.args.get("phone", "")
     prefill_party_size = request.args.get("party_size", "")
+
+    # Priced server-side when the guest arrives with dates already chosen, which
+    # they usually do — the room list carries them through. The same figures are
+    # then kept current by /api/quote as they change anything, so the page is
+    # never silent about the price and never needs JavaScript to show one.
+    initial_quote = None
+    arrival_d, departure_d = parse_date(arrival_raw), parse_date(departure_raw)
+    if arrival_d and departure_d:
+        initial_quote = build_stay_quote(
+            conn, room, arrival_d, departure_d,
+            party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None)
     conn.close()
     return render_template(
         "book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras,
         stripe_enabled=stripe_enabled(), prefill_name=prefill_name, prefill_email=prefill_email,
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
+        initial_quote=initial_quote,
     )
 
 

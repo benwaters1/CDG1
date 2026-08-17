@@ -18,6 +18,7 @@ SUITES = [
     "test_staff_today",
     "test_chat",
     "test_access_levels",
+    "test_booking_quote",
     "test_workflows",
     "test_operations",
     "test_hr_compliance",
