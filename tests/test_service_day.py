@@ -138,6 +138,65 @@ def run():
             opened["service_date"] == m.service_day_iso(),
             detail=f"{opened['service_date']} vs {m.service_day_iso()}")
 
+    s.section("The window the journal is read through")
+    # The cash-up page lists journal events beside the figures. The figures run
+    # to five in the morning; a list bucketed by UTC date did not, so the last
+    # hour of service was missing from the page meant to explain it.
+    lo, hi = m.service_day_window("2026-08-18")
+    s.check("starts at five in the morning, local",
+            lo == _utc("2026-08-18 05:00").isoformat(), detail=str(lo))
+    s.check("and runs to five the next morning",
+            hi == _utc("2026-08-19 05:00").isoformat(), detail=str(hi))
+    late_iso = _utc("2026-08-19 02:30").isoformat()
+    s.check("half past two the next morning is inside it", lo <= late_iso < hi,
+            detail=f"{lo} <= {late_iso} < {hi}")
+    s.check("half past two the morning after is not",
+            not (lo <= _utc("2026-08-20 02:30").isoformat() < hi))
+    s.check("and neither is the afternoon before",
+            not (lo <= _utc("2026-08-18 03:00").isoformat() < hi))
+
+    # Every service day must tile: no gap, no overlap, including the two nights
+    # the clocks move.
+    for day, hours in [("2026-08-18", 24), ("2026-03-28", 23), ("2026-10-24", 25)]:
+        a, b = m.service_day_window(day)
+        nxt_a, _nxt_b = m.service_day_window(m._iso_plus_days(day, 1))
+        span = ((datetime.fromisoformat(b) - datetime.fromisoformat(a))
+                .total_seconds() / 3600)
+        s.check(f"{day} is {hours} hours long", span == hours, detail=f"{span}h")
+        s.check(f"{day} ends exactly where the next begins", b == nxt_a,
+                detail=f"{b} vs {nxt_a}")
+
+    s.check("a junk date gives no window, not a crash",
+            m.service_day_window("not a date") == (None, None))
+
+    s.section("Tonight's card is the one being served")
+    # At 02:00 the chef opening the menu page wants the card on the pass, not
+    # an empty tomorrow. Testing that at whatever o'clock the suite happens to
+    # run would prove nothing — for most of the day the two dates agree. So
+    # push the rollover past now, which makes the service day yesterday, and
+    # the page has to follow it rather than the calendar.
+    original_hour = m.POS_SERVICE_ROLLOVER_HOUR
+    try:
+        m.POS_SERVICE_ROLLOVER_HOUR = 23
+        wanted = m.service_day_iso()
+        calendar_today = datetime.now(timezone.utc).astimezone(PARIS).date().isoformat()
+        s.check("the two dates genuinely differ, so this proves something",
+                wanted != calendar_today, detail=f"{wanted} vs {calendar_today}")
+        r = oc.get("/admin/restaurant/menu/day")
+        s.check("the menu page opens", r.status_code == 200, detail=str(r.status_code))
+        # The date the forms on the page post back — the page's own idea of
+        # which night it is, not just any date mentioned on it.
+        s.check("on the service day, not the calendar day",
+                f'name="date" value="{wanted}"'.encode() in r.data
+                and f'name="date" value="{calendar_today}"'.encode() not in r.data,
+                detail=f"expected {wanted}, not {calendar_today}")
+        r = oc.get("/admin/restaurant/menu/template")
+        s.check("and so does the blank sheet the chef writes on",
+                r.status_code == 200 and wanted.encode() in r.data,
+                detail=str(r.status_code))
+    finally:
+        m.POS_SERVICE_ROLLOVER_HOUR = original_hour
+
     _cleanup(conn)
     conn.close()
     return s

@@ -6657,6 +6657,29 @@ def service_day_iso(when=None):
     day = service_day(when)
     return day.isoformat() if day else None
 
+
+def service_day_window(day):
+    """The UTC instants a service day starts and ends at, as stored strings.
+
+    Rows that carry a service_date can be filtered on it directly. Rows that
+    only carry a timestamp — the journal is the one that matters — need the
+    window, or the list stops at UTC midnight while the figures above it run
+    to five in the morning, and the two disagree on the same page.
+
+    Built from local wall-clock times so the two days a year the clocks change
+    give a 23- or 25-hour window rather than a gap or an overlap.
+    """
+    if isinstance(day, str):
+        day = parse_date(day)
+    if not day:
+        return None, None
+    h = POS_SERVICE_ROLLOVER_HOUR
+    nxt = day + timedelta(days=1)
+    start = datetime(day.year, day.month, day.day, h, tzinfo=LOCAL_TZ)
+    end = datetime(nxt.year, nxt.month, nxt.day, h, tzinfo=LOCAL_TZ)
+    return (start.astimezone(timezone.utc).isoformat(),
+            end.astimezone(timezone.utc).isoformat())
+
 # The events worth journalling: anything that moves money or changes the bill.
 # Kitchen state (ready, served) is deliberately absent — it is not a financial
 # event, and a journal that logs everything is one nobody reads.
@@ -12407,9 +12430,13 @@ def pos_day():
                       average_per_cover=round(closure["gross_total"] / closure["covers"], 2)
                       if closure["covers"] else 0)
     chain = pos_journal_verify(conn)
+    # The window, not date(occurred_at) — the figures above run to five in the
+    # morning, so a list that stopped at UTC midnight left the last hour of
+    # service off the page it is meant to explain.
+    win_from, win_to = service_day_window(on)
     events = conn.execute(
-        """SELECT * FROM pos_journal WHERE date(occurred_at) = ?
-           ORDER BY sequence DESC LIMIT 60""", (on.isoformat(),)).fetchall()
+        """SELECT * FROM pos_journal WHERE occurred_at >= ? AND occurred_at < ?
+           ORDER BY sequence DESC LIMIT 60""", (win_from, win_to)).fetchall()
     conn.close()
     overview = [
         overview_cell("Taken", euro(report["taken"])),
@@ -20681,7 +20708,7 @@ def menu_history():
                   (SELECT GROUP_CONCAT(name, ' · ') FROM menu_dishes
                     WHERE menu_id = menus.id) AS dish_names
            FROM menus ORDER BY service_date DESC, id DESC LIMIT 400""").fetchall()
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = service_day_iso()
 
     def when(m):
         if m["service_date"] > today:
@@ -20734,10 +20761,11 @@ def menu_history():
 def menu_day():
     """Tonight's card: build it, publish it, print it.
 
-    Defaults to today, but the whole point is that it is dated — so yesterday
-    is still there, and tomorrow can be prepared in the afternoon.
+    Defaults to tonight's service, not to the calendar date — at two in the
+    morning the chef wanting the card in front of them wants the one being
+    served, not an empty tomorrow.
     """
-    on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    on = parse_date(request.args.get("date", "")) or service_day()
     service = request.args.get("service", "dinner")
     if service not in ("lunch", "dinner"):
         service = "dinner"
@@ -21130,7 +21158,7 @@ def menu_template_sheet():
     reading is close to exact, which is the difference between a review that
     takes thirty seconds and one that is quicker to bypass.
     """
-    on = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    on = parse_date(request.args.get("date", "")) or service_day()
     return render_template("menu_template.html", on=on, courses=MENU_COURSES)
 
 
