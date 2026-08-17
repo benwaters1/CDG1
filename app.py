@@ -447,6 +447,20 @@ SMTP_FROM = os.environ.get("SMTP_FROM") or SMTP_USERNAME
 # whatever credential runs the assistant that built this app.
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
+# Pennylane — the château's accounting platform. A Company API token from
+# Pennylane's own settings, not an OAuth app: this is one business talking to
+# its own books. Unset by default, and every call is a no-op that says so.
+PENNYLANE_API_TOKEN = os.environ.get("PENNYLANE_API_TOKEN")
+PENNYLANE_API_BASE = os.environ.get(
+    "PENNYLANE_API_BASE", "https://app.pennylane.com/api/external/v2")
+
+# A network scanner speaking eSCL — the protocol behind AirPrint scanning,
+# which most modern multifunction printers support. This is the printer's own
+# address on the local network (e.g. http://192.168.1.50): the SERVER talks to
+# it, so the app has to be able to reach it. Fine when running at the château;
+# impossible from a cloud host, which is what the camera path is for.
+SCANNER_URL = (os.environ.get("SCANNER_URL") or "").rstrip("/")
+
 # Payments — unset until you add a real Stripe account's keys as
 # environment variables. Until then, booking stays a request-only flow
 # with no payment step, exactly as it's worked so far.
@@ -1640,6 +1654,23 @@ def init_db():
             UNIQUE(job_role, requirement, requirement_type)
         );
 
+        -- A local copy of Pennylane's chart of accounts.
+        --
+        -- The real chart is ~1,500 accounts, most of them per-guest customer
+        -- accounts in class 4. Fetching that on every page load would be slow
+        -- and would break whenever their API is down, so it is synced and kept
+        -- here. `account_class` is the first digit, which in the French plan
+        -- comptable says what the account is FOR: 6 = expenses, 7 = revenue.
+        -- That is what turns 1,500 rows into a usable picker.
+        CREATE TABLE IF NOT EXISTS pennylane_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pennylane_id INTEGER,
+            number TEXT NOT NULL UNIQUE,
+            label TEXT NOT NULL DEFAULT '',
+            account_class TEXT NOT NULL DEFAULT '',
+            synced_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS email_optouts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL UNIQUE,
@@ -2107,6 +2138,19 @@ def init_db():
         # (a secret-key HMAC would not, since FLASK_SECRET_KEY is random when
         # unset).
         ("campaign_sends_unsubscribe_token", "ALTER TABLE campaign_sends ADD COLUMN unsubscribe_token TEXT"),
+        # Pennylane account codes on every kind of cost, so a thing is
+        # classified once — here — and never re-sorted at the other end.
+        ("stock_items_ledger_code", "ALTER TABLE stock_items ADD COLUMN ledger_code TEXT"),
+        ("recurring_costs_ledger_code", "ALTER TABLE recurring_costs ADD COLUMN ledger_code TEXT"),
+        ("expenses_ledger_code", "ALTER TABLE expenses ADD COLUMN ledger_code TEXT"),
+        # Where a cost ended up in Pennylane, so it is never sent twice.
+        ("expenses_pennylane_id", "ALTER TABLE expenses ADD COLUMN pennylane_invoice_id TEXT"),
+        ("expenses_pennylane_at", "ALTER TABLE expenses ADD COLUMN pennylane_synced_at TEXT"),
+        ("expenses_pennylane_error", "ALTER TABLE expenses ADD COLUMN pennylane_error TEXT"),
+        # Which KIND of document this is — they are not handled alike. A bill
+        # already paid is usually in Pennylane from the bank feed and must be
+        # matched, not sent again, or the cost is counted twice.
+        ("expenses_doc_type", "ALTER TABLE expenses ADD COLUMN doc_type TEXT DEFAULT 'bill_to_pay'"),
         # Employment terms. `start_date` alone couldn't express a fixed-term
         # contract or a trial period, and both carry hard deadlines in France:
         # a trial period that lapses un-actioned confirms the employee, and a
@@ -2532,6 +2576,8 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_dedupe ON campaign_sends(dedupe_key)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_template ON campaign_sends(template_id)",
         "CREATE INDEX IF NOT EXISTS idx_campaign_sends_unsub ON campaign_sends(unsubscribe_token)",
+        "CREATE INDEX IF NOT EXISTS idx_pennylane_accounts_class ON pennylane_accounts(account_class, number)",
+        "CREATE INDEX IF NOT EXISTS idx_expenses_pennylane ON expenses(pennylane_invoice_id)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_occurred ON incidents(occurred_at)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_affected ON incidents(affected_user_id)",
@@ -22191,6 +22237,224 @@ def gather_reply_context(conn, recipient_email):
         "guest_history": guest_lookup_by_email(conn, recipient_email) if recipient_email else None,
         "current_offerings": current_offerings_snapshot(conn),
     }
+
+
+# ---------------------------------------------------------------------------
+# Pennylane — pushing a cost, with its document, into the château's accounting.
+#
+# The point is that nothing is classified twice. A cost is entered once here,
+# carries its account code, and lands in Pennylane with the paperwork attached.
+# Every function returns (ok, payload_or_message) and never raises: an
+# accounting integration that takes the app down because someone else's API is
+# having a bad afternoon is worse than one that says "couldn't send, try later".
+# ---------------------------------------------------------------------------
+
+def pennylane_configured():
+    return bool(PENNYLANE_API_TOKEN)
+
+
+def _multipart_body(field_name, filename, file_bytes, content_type):
+    """Encode one file as multipart/form-data.
+
+    Hand-rolled because this app deliberately has no `requests` dependency —
+    every other outbound call is stdlib urllib, and adding a library for one
+    upload is not worth the deployment surface.
+    """
+    boundary = "----gudanes" + secrets.token_hex(16)
+    crlf = b"\r\n"
+    return b"".join([
+        b"--", boundary.encode(), crlf,
+        f'Content-Disposition: form-data; name="{field_name}"; filename="{filename}"'.encode(), crlf,
+        f"Content-Type: {content_type}".encode(), crlf, crlf,
+        file_bytes, crlf,
+        b"--", boundary.encode(), b"--", crlf,
+    ]), f"multipart/form-data; boundary={boundary}"
+
+
+def _pennylane_request(method, path, *, json_body=None, file=None, params=None, timeout=45):
+    if not pennylane_configured():
+        return False, "Pennylane isn't connected."
+    url = f"{PENNYLANE_API_BASE}{path}"
+    if params:
+        url += "?" + urlencode(params)
+    headers = {"Authorization": f"Bearer {PENNYLANE_API_TOKEN}", "Accept": "application/json"}
+    data = None
+    if file is not None:
+        filename, file_bytes, content_type = file
+        data, ctype = _multipart_body("file", filename, file_bytes, content_type)
+        headers["Content-Type"] = ctype
+    elif json_body is not None:
+        data = json.dumps(json_body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    try:
+        with urlopen(Request(url, data=data, headers=headers, method=method), timeout=timeout) as resp:
+            raw = resp.read()
+    except HTTPError as e:
+        # Pennylane puts the useful detail in the body. Surfacing it is the
+        # difference between a fixable message and "something went wrong".
+        try:
+            detail = e.read().decode("utf-8", "replace")[:400]
+        except Exception:
+            detail = ""
+        return False, f"Pennylane refused it ({e.code}): {detail}"
+    except URLError as e:
+        return False, f"Couldn't reach Pennylane: {e.reason}"
+    except Exception as e:
+        return False, f"Couldn't reach Pennylane: {e}"
+    if not raw:
+        return True, {}
+    try:
+        return True, json.loads(raw.decode("utf-8"))
+    except ValueError:
+        return True, {}
+
+
+def pennylane_fetch_ledger_accounts(max_pages=40):
+    """Every ledger account, following Pennylane's cursor pagination.
+
+    Their 2026 API dropped `page`/`per_page` for `cursor`/`limit` and returns a
+    400 explaining so if you ask the old way. Do not "fix" this back.
+    `max_pages` is a runaway guard: the real chart is three pages.
+    """
+    out, cursor, pages = [], None, 0
+    while pages < max_pages:
+        params = {"limit": 500}
+        if cursor:
+            params["cursor"] = cursor
+        ok, payload = _pennylane_request("GET", "/ledger_accounts", params=params)
+        if not ok:
+            return (out, payload) if out else (None, payload)
+        out.extend(payload.get("items", []) if isinstance(payload, dict) else [])
+        pages += 1
+        if not (isinstance(payload, dict) and payload.get("has_more")):
+            break
+        cursor = payload.get("next_cursor")
+    return out, None
+
+
+def sync_pennylane_accounts(conn):
+    """Refresh the local copy of the chart of accounts.
+
+    Upserts rather than wiping and reloading, so a code already chosen on a
+    stock item stays valid even if a sync half-fails.
+    """
+    accounts, error = pennylane_fetch_ledger_accounts()
+    if accounts is None:
+        return False, error or "Couldn't read the chart of accounts."
+    now_iso = datetime.now(timezone.utc).isoformat()
+    n = 0
+    for a in accounts:
+        number = str(a.get("number") or a.get("code") or "").strip()
+        if not number:
+            continue
+        conn.execute(
+            """INSERT INTO pennylane_accounts (pennylane_id, number, label, account_class, synced_at)
+               VALUES (?,?,?,?,?)
+               ON CONFLICT(number) DO UPDATE SET
+                 pennylane_id = excluded.pennylane_id, label = excluded.label,
+                 account_class = excluded.account_class, synced_at = excluded.synced_at""",
+            (a.get("id"), number, (a.get("label") or a.get("name") or "")[:200], number[:1], now_iso))
+        n += 1
+    conn.commit()
+    return True, n
+
+
+def ledger_account_choices(conn, account_class="6"):
+    """Accounts for a picker, narrowed to what the field is for.
+
+    Class 6 is expenses, class 7 revenue. Without this the list is ~1,500
+    entries, most of them one-per-guest customer accounts in class 4 — not
+    something a human can pick from.
+    """
+    return conn.execute(
+        """SELECT number, label FROM pennylane_accounts
+           WHERE account_class = ? ORDER BY number""", (account_class,)).fetchall()
+
+
+def pennylane_upload_file(file_bytes, filename):
+    """Step one of two: put the document in Pennylane, get its id back.
+
+    PDFs only, so a phone photo is converted on the way (see `ensure_pdf`).
+    Pennylane rejects a PDF it has already stored, which is the real guard
+    against a double-send.
+    """
+    ok, payload = _pennylane_request(
+        "POST", "/file_attachments", file=(filename, file_bytes, "application/pdf"))
+    if not ok:
+        return False, payload
+    file_id = payload.get("id") or (payload.get("file_attachment") or {}).get("id")
+    if not file_id:
+        return False, "Pennylane accepted the file but didn't return an id."
+    return True, file_id
+
+
+def pennylane_import_supplier_invoice(*, file_attachment_id, supplier_id, date, deadline,
+                                      amount, tax, lines, invoice_number=None,
+                                      currency="EUR", external_reference=None,
+                                      transaction_reference=None):
+    """Step two: create the supplier invoice.
+
+    Amounts go as STRINGS — Pennylane checks the lines add up to the total, and
+    a float printing as 512.0000000001 fails that for no diagnosable reason.
+    """
+    def money(v):
+        return f"{round(float(v or 0), 2):.2f}"
+
+    body = {
+        "file_attachment_id": file_attachment_id, "supplier_id": supplier_id,
+        "date": date, "deadline": deadline or date, "currency": currency,
+        "currency_amount": money(amount),
+        "currency_amount_before_tax": money(float(amount or 0) - float(tax or 0)),
+        "currency_tax": money(tax), "invoice_lines": lines,
+    }
+    if invoice_number:
+        body["invoice_number"] = invoice_number
+    if external_reference:
+        body["external_reference"] = external_reference
+    if transaction_reference:
+        body["transaction_reference"] = transaction_reference
+    return _pennylane_request("POST", "/supplier_invoices/import", json_body=body)
+
+
+def pennylane_find_supplier(name):
+    """Find a supplier by name, creating one if there's no match.
+
+    Matching is exact on purpose: deciding "Caves du Sud" is the same as
+    "Caves du Sud SARL" would file costs against the wrong company, which is
+    much harder to unpick than a duplicate supplier.
+    """
+    if not name:
+        return False, "No supplier name."
+    ok, payload = _pennylane_request(
+        "GET", "/suppliers",
+        params={"filter": json.dumps([{"field": "name", "operator": "eq", "value": name}])})
+    if ok and isinstance(payload, dict) and payload.get("items"):
+        return True, payload["items"][0].get("id")
+    ok, payload = _pennylane_request("POST", "/suppliers", json_body={"name": name})
+    if not ok:
+        return False, payload
+    return True, payload.get("id")
+
+
+def ensure_pdf(data, mimetype, title="Document"):
+    """Pennylane takes PDFs only, and a phone camera gives you a JPEG.
+
+    Wraps an image in a single-page PDF. Returns (bytes, extension); on failure
+    it keeps the original rather than losing the document.
+    """
+    if (mimetype or "").lower().startswith("application/pdf") or data[:4] == b"%PDF":
+        return data, "pdf"
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(data))
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PDF", resolution=200.0)
+        return buf.getvalue(), "pdf"
+    except Exception as e:
+        print(f"[scan] couldn't convert to PDF ({e}) — keeping the original")
+        return data, (mimetype or "image/jpeg").split("/")[-1]
 
 
 def draft_reply_with_claude(context, compose_text):
