@@ -8279,15 +8279,31 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
 
 def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, departure,
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
-                    stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None):
+                    stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
+                    total_price_override=None, discount_amount_override=None):
     nights = (departure - arrival).days
-    room_total = compute_room_total(conn, room, arrival, departure)
     extras_total = sum(e["price"] for e in chosen_extras)
 
-    promo, discount_amount = None, 0.0
-    if promo_code:
-        promo, discount_amount, _ = validate_promo_code(conn, promo_code, "room", room_total)
-    total_price = (round(room_total - discount_amount, 2) + extras_total) or None
+    if total_price_override is not None:
+        # Called from the Stripe webhook path: trust the price actually quoted
+        # and charged at checkout-creation time, passed through via metadata,
+        # rather than recomputing the room total and re-validating the promo
+        # code fresh here. Recomputing lets pricing drift between checkout
+        # creation and the webhook firing — a seasonal rate edited in the
+        # admin, or the promo hitting its redemption cap from a different
+        # booking in between — silently store a total the guest never agreed
+        # to, against a card charge that already went through for the old one.
+        # Same fault and same fix as the restaurant path.
+        total_price = total_price_override or None
+        discount_amount = discount_amount_override or 0.0
+        room_total = round((total_price or 0) - extras_total + discount_amount, 2)
+        promo = find_promo_code(conn, promo_code) if promo_code else None
+    else:
+        room_total = compute_room_total(conn, room, arrival, departure)
+        promo, discount_amount = None, 0.0
+        if promo_code:
+            promo, discount_amount, _ = validate_promo_code(conn, promo_code, "room", room_total)
+        total_price = (round(room_total - discount_amount, 2) + extras_total) or None
     extras_summary = ", ".join(f"{e['name']} (€{e['price']:.2f})" for e in chosen_extras) or None
 
     reference_code = make_reference_code()
@@ -8373,6 +8389,11 @@ def create_booking_from_stripe_session(conn, session):
         chosen_extras, payment_status="paid",
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
+        # Trust what was quoted and charged, not today's prices. Absent on
+        # sessions created before this was added, in which case create_booking
+        # recomputes exactly as it always did.
+        total_price_override=float(meta["total_price"]) if meta.get("total_price") else None,
+        discount_amount_override=float(meta["discount_amount"]) if meta.get("discount_amount") else None,
     )
     # Record the amount, not just the fact. Without this the stay shows as paid
     # with nothing received against it, so adding a night later would look like
@@ -13972,6 +13993,13 @@ def book_room(room_id):
                         "special_requests": special_requests[:490],
                         "extra_ids": ",".join(str(e["id"]) for e in chosen_extras),
                         "promo_code": promo_code if discount_amount else "",
+                        # The figures the guest is being charged, right now, so
+                        # the webhook stores these rather than recomputing them
+                        # from prices that may have changed in between. These
+                        # are what the card is actually charged for: the line
+                        # items above are built from the same two numbers.
+                        "total_price": f"{grand_total:.2f}",
+                        "discount_amount": f"{discount_amount:.2f}",
                     },
                 )
             except Exception as e:

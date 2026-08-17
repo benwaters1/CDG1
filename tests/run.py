@@ -35,6 +35,7 @@ SUITES = [
     "test_exports",
     "test_destructive",
     "test_payments",
+    "test_stripe_price_drift",
     "test_terminal",
     "test_arrive",
     "test_design",
