@@ -207,6 +207,78 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_stale_shift_hours": "14",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
+
+
+_PLACEHOLDER_MARKERS = (
+    "paste", "your_", "your-", "yourkey", "changeme", "change_me", "replace",
+    "todo", "xxx", "placeholder", "_here", "example.com", "sk_test_xxx",
+)
+
+
+def _looks_like_placeholder(value):
+    """True for the scaffold text people leave in a half-filled .env.
+
+    Only used on .env values, never on real environment variables — a genuine
+    secret that happened to contain one of these words would still be honoured
+    if it came from the actual environment.
+    """
+    v = (value or "").strip().lower()
+    if not v or v in ("<>", "()", "-", "none", "null"):
+        return True
+    if v.startswith("<") and v.endswith(">"):
+        return True
+    return any(marker in v for marker in _PLACEHOLDER_MARKERS)
+
+
+def _load_dotenv():
+    """Read a local .env file into the environment, if one exists.
+
+    Every secret this app takes (Stripe, Resend/SMTP, Microsoft Graph,
+    Anthropic, the vault key) came only from real environment variables,
+    which on Windows means `setx` + restarting every shell, and the value
+    then sits in the user registry readable by any process you run. A
+    gitignored file next to the app is easier to manage and easier to
+    revoke — delete the line, restart, gone.
+
+    Deliberately does NOT overwrite anything already set, so a real
+    environment variable (Railway, systemd) always wins over the file, and
+    production behaviour is unchanged. No dependency: the format here is
+    just KEY=value, one per line, # for comments.
+
+    Placeholder values are skipped. Every `*_enabled()` check in this file is
+    a plain truthiness test, so a scaffolded `STRIPE_SECRET_KEY=PASTE_YOUR_KEY`
+    made the app believe Stripe was live: the booking page then offered card
+    payment and the guest hit an error at checkout, instead of falling back to
+    pay-on-arrival as it does when the key is genuinely absent.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    skipped = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key, value = key.strip(), value.strip().strip('"').strip("'")
+                if not key or key in os.environ:
+                    continue
+                if _looks_like_placeholder(value):
+                    skipped.append(key)
+                    continue
+                os.environ[key] = value
+        if skipped:
+            # Named, not silent: "why is Stripe off when I filled in the .env"
+            # is a miserable thing to debug from no output at all.
+            print(f"[config] ignoring placeholder value(s) in .env: {', '.join(skipped)}")
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        print(f"[config] could not read .env: {e}")
+
+
+_load_dotenv()
+
 # Everything is stored in UTC; this is only for displaying clock in/out times
 # in the château's own local time (handles the CET/CEST switch automatically).
 LOCAL_TZ = ZoneInfo(os.environ.get("LOCAL_TZ", "Europe/Paris"))
@@ -356,6 +428,51 @@ VAULT_ENCRYPTION_KEY = os.environ.get("VAULT_ENCRYPTION_KEY", "")
 
 def stripe_enabled():
     return bool(STRIPE_SECRET_KEY)
+
+
+def sval(obj, key, default=None):
+    """Read a field off a Stripe object.
+
+    stripe-python's StripeObject does NOT implement .get() — its __getattr__
+    turns a .get("x") call into a lookup for a FIELD named "get", which
+    raises AttributeError. Every payment-completion path here used .get(),
+    so both the webhook and the guest's success redirect raised a 500 the
+    moment a real Stripe object reached them: the guest paid, saw an error,
+    and no booking was recorded. Verified directly against stripe 15.4.0.
+
+    Bracket access works on StripeObject and on plain dicts, so this is safe
+    for both (webhook payloads arrive as StripeObject, some test paths as
+    dicts).
+    """
+    try:
+        value = obj[key]
+    except (KeyError, TypeError, AttributeError):
+        return default
+    return default if value is None else value
+
+
+def smeta(session):
+    """A Stripe session's metadata as a PLAIN dict.
+
+    metadata comes back as a nested StripeObject, which has the same missing
+    .get() problem as the session itself — and every caller here treats it
+    like a dict (meta.get("kind"), meta.get("promo_code")...). Converting
+    once at the boundary keeps those call sites correct and readable.
+
+    Neither dict(obj) nor dict(obj.items()) work on a StripeObject; only
+    .to_dict() does. Falls back to dict() so plain-dict payloads (tests,
+    older SDKs) still work.
+    """
+    meta = sval(session, "metadata") or {}
+    if hasattr(meta, "to_dict"):
+        try:
+            return meta.to_dict()
+        except Exception:
+            pass
+    try:
+        return dict(meta)
+    except Exception:
+        return {}
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
@@ -1590,6 +1707,12 @@ def init_db():
         # A wedding runs across days; preferred_date alone couldn't express that.
         ("event_end_date", "ALTER TABLE event_inquiries ADD COLUMN end_date TEXT"),
         ("event_spaces", "ALTER TABLE event_inquiries ADD COLUMN spaces TEXT"),
+        # Per-send unsubscribe key. Stored on the send rather than derived from
+        # the address so the link carries no email in the URL and can't be
+        # guessed for someone else, and so it keeps working across restarts
+        # (a secret-key HMAC would not, since FLASK_SECRET_KEY is random when
+        # unset).
+        ("campaign_sends_unsubscribe_token", "ALTER TABLE campaign_sends ADD COLUMN unsubscribe_token TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -1982,6 +2105,12 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_refunds_category_booking ON refunds(category, booking_id)",
         "CREATE INDEX IF NOT EXISTS idx_refunds_created_at ON refunds(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_email_flags_mailbox ON email_flags(mailbox)",
+        # campaign_sends gains a row per email sent, forever. The dedupe key is
+        # looked up once PER RECIPIENT on every automated send, so without this
+        # a 500-guest send is 500 full scans of an ever-growing table.
+        "CREATE INDEX IF NOT EXISTS idx_campaign_sends_dedupe ON campaign_sends(dedupe_key)",
+        "CREATE INDEX IF NOT EXISTS idx_campaign_sends_template ON campaign_sends(template_id)",
+        "CREATE INDEX IF NOT EXISTS idx_campaign_sends_unsub ON campaign_sends(unsubscribe_token)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_user_id ON certifications(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_certifications_expiry ON certifications(expiry_date)",
         "CREATE INDEX IF NOT EXISTS idx_availability_rules_user_id ON availability_rules(user_id)",
@@ -2246,6 +2375,55 @@ def net_hours(entry, conn=None):
     if owns_conn:
         conn.close()
     return max(0.0, round(gross - break_minutes / 60, 2))
+
+
+def labour_hours_by_person(conn, start_iso, end_iso):
+    """Worked hours per employee in a window, minus completed breaks.
+
+    THE one definition of "hours worked" for costing. It used to exist twice —
+    financial_month_summary rounded each entry to 2dp and costed entry by
+    entry, while the labour report rounded each person to 1dp and costed once —
+    so the two put different numbers on the same shifts. Employees only: the
+    owner's own clocked time is drawings, not a wage bill.
+    """
+    return conn.execute(
+        """SELECT users.id, users.name, users.pay_rate, users.pay_type,
+                  COALESCE(SUM(
+                      (julianday(time_entries.clock_out_at)
+                       - julianday(time_entries.clock_in_at)) * 24
+                      - COALESCE((SELECT SUM((julianday(breaks.end_at)
+                                              - julianday(breaks.start_at)) * 24)
+                                  FROM breaks
+                                  WHERE breaks.time_entry_id = time_entries.id
+                                    AND breaks.end_at IS NOT NULL), 0)
+                  ), 0) AS hours,
+                  COUNT(time_entries.id) AS shifts
+           FROM users LEFT JOIN time_entries
+             ON time_entries.user_id = users.id
+            AND time_entries.clock_out_at IS NOT NULL
+            AND time_entries.clock_out_at > time_entries.clock_in_at
+            AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
+           WHERE users.role = 'employee'
+           GROUP BY users.id HAVING hours > 0
+           ORDER BY hours DESC""",
+        (start_iso, end_iso),
+    ).fetchall()
+
+
+def estimated_labour_cost(conn, start_iso, end_iso):
+    """Estimated wage bill for a window. Returns (cost, hours, unpriced) where
+    cost is None when nobody on the clock has a usable hourly rate — so the UI
+    can say "not estimated" rather than showing a confident zero."""
+    total_cost, total_hours, unpriced, priced_any = 0.0, 0.0, 0, False
+    for r in labour_hours_by_person(conn, start_iso, end_iso):
+        total_hours += r["hours"]
+        cost = estimated_hourly_cost(r["hours"], r["pay_rate"], r["pay_type"])
+        if cost is None:
+            unpriced += 1
+        else:
+            total_cost += cost
+            priced_any = True
+    return (round(total_cost, 2) if priced_any else None), round(total_hours, 1), unpriced
 
 
 def estimated_hourly_cost(hours, pay_rate, pay_type):
@@ -2740,6 +2918,12 @@ def financial_month_summary(conn, month_start, month_end):
     event_refunds = refunds_by_category.get("event", 0)
     refunds_total = room_refunds + restaurant_refunds + workshop_refunds + event_refunds
 
+    # Kept before the refunds come off, so a report can show the honest
+    # waterfall (took X, gave back Y, spent Z, left with N). Reporting only the
+    # net figure NEXT TO a separate refunds line made the row look as though
+    # refunds were still to be deducted, and the four numbers didn't add up.
+    revenue_gross = room_revenue + restaurant_revenue + workshop_revenue + event_revenue
+
     room_revenue -= room_refunds
     restaurant_revenue -= restaurant_refunds
     workshop_revenue -= workshop_refunds
@@ -2759,26 +2943,14 @@ def financial_month_summary(conn, month_start, month_end):
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
 
-    entries = conn.execute(
-        """SELECT time_entries.*, users.pay_rate, users.pay_type FROM time_entries
-           JOIN users ON users.id = time_entries.user_id
-           WHERE time_entries.clock_out_at IS NOT NULL
-           AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?""",
-        (month_start.isoformat(), month_end.isoformat()),
-    ).fetchall()
-    labour_cost = 0.0
-    any_labour_estimate = False
-    for e in entries:
-        cost = estimated_hourly_cost(net_hours(e, conn), e["pay_rate"], e["pay_type"])
-        if cost is not None:
-            labour_cost += cost
-            any_labour_estimate = True
-    labour_cost = round(labour_cost, 2) if any_labour_estimate else None
+    labour_cost, _labour_hours, _unpriced = estimated_labour_cost(
+        conn, month_start.isoformat(), month_end.isoformat())
 
     expenses_total = round(staff_expenses + supplier_expenses, 2)
     net = round(revenue - expenses_total - (labour_cost or 0), 2)
     return {
-        "month": month_start, "revenue": round(revenue, 2), "room_revenue": round(room_revenue, 2),
+        "month": month_start, "revenue": round(revenue, 2),
+        "revenue_gross": round(revenue_gross, 2), "room_revenue": round(room_revenue, 2),
         "restaurant_revenue": round(restaurant_revenue, 2), "workshop_revenue": round(workshop_revenue, 2),
         "event_revenue": round(event_revenue, 2), "staff_expenses": round(staff_expenses, 2),
         "supplier_expenses": round(supplier_expenses, 2), "expenses_total": expenses_total,
@@ -3099,13 +3271,18 @@ def financial_overview(conn, period, today):
                 + (SELECT COUNT(*) FROM expenses WHERE status = 'pending')
                 + (SELECT COUNT(*) FROM timesheet_corrections WHERE status = 'pending') AS c"""
     ).fetchone()["c"]
-    rev_delta = _pct_change(now["revenue"], prev["revenue"])
+    rev_delta = _pct_change(now["revenue_gross"], prev["revenue_gross"])
+    # Gross, so that revenue − refunds − expenses − labour reaches net on
+    # screen. Showing the net-of-refunds figure beside a refunds line made it
+    # look as though the refunds still had to come off.
     return [
-        overview_cell("Revenue", euro(now["revenue"]),
+        overview_cell("Revenue", euro(now["revenue_gross"]), hint="before refunds",
                       delta=f"{rev_delta:+g}%" if rev_delta is not None else None),
-        overview_cell("Expenses", euro(now["expenses_total"])),
         overview_cell("Refunds issued", euro(now["refunds_total"]),
                       alert=now["refunds_total"]),
+        overview_cell("Expenses", euro(now["expenses_total"])),
+        overview_cell("Labour", euro(now["labour_cost"] or 0),
+                      hint="estimate" if now["labour_cost"] is not None else "no rates on file"),
         overview_cell("Net", euro(now["net"]), alert=now["net"] < 0),
         overview_cell("Awaiting a decision", pending, alert=pending),
     ]
@@ -4806,13 +4983,22 @@ def report_financial(conn, period):
         "revenue_rows": [
             {"label": l, "value": v, "prev": p, "change": _pct_change(v, p)} for l, v, p in rows
         ],
+        # A waterfall that actually reconciles: gross − refunds − expenses −
+        # labour = net, exactly. The old row showed the NET-of-refunds revenue
+        # beside a separate refunds line (so refunds read as deducted twice)
+        # and omitted labour entirely, even though `net` subtracts it — the
+        # four figures could not be added up to reach the fifth.
         "totals": [
-            {"label": "Revenue", "value": now["revenue"], "prev": prev["revenue"],
-             "change": _pct_change(now["revenue"], prev["revenue"])},
+            {"label": "Revenue", "value": now["revenue_gross"], "prev": prev["revenue_gross"],
+             "change": _pct_change(now["revenue_gross"], prev["revenue_gross"])},
             {"label": "Refunds issued", "value": -now["refunds_total"], "prev": -prev["refunds_total"],
              "change": _pct_change(now["refunds_total"], prev["refunds_total"])},
             {"label": "Expenses", "value": -now["expenses_total"], "prev": -prev["expenses_total"],
              "change": _pct_change(now["expenses_total"], prev["expenses_total"])},
+            {"label": "Labour (est.)", "value": -(now["labour_cost"] or 0),
+             "prev": -(prev["labour_cost"] or 0),
+             "change": _pct_change(now["labour_cost"] or 0, prev["labour_cost"] or 0),
+             "estimated": now["labour_cost"] is None},
             {"label": "Net", "value": now["net"], "prev": prev["net"],
              "change": _pct_change(now["net"], prev["net"])},
         ],
@@ -4859,10 +5045,22 @@ def report_occupancy(conn, period):
         "SELECT COUNT(*) AS c FROM bookings WHERE status='confirmed' AND departure_date >= ? AND departure_date < ?",
         (start.isoformat(), end.isoformat())).fetchone()["c"]
 
+    # Room refunds issued inside this window. Without this, the occupancy
+    # report showed a room revenue the financial report contradicted for the
+    # very same month — and the ADR was derived from the overstated figure.
+    room_refunds = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
+           WHERE category = 'room' AND created_at >= ? AND created_at < ?""",
+        (start.isoformat(), end.isoformat())).fetchone()["t"]
+    revenue_gross = revenue
+    revenue = revenue - room_refunds
+
     return {
         "nights_in_period": nights, "rooms_total": rooms_total,
         "booked_nights": booked_nights, "capacity": capacity, "occupancy": occupancy,
-        "revenue": round(revenue, 2),
+        "revenue": round(revenue, 2), "revenue_gross": round(revenue_gross, 2),
+        "refunds": round(room_refunds, 2),
+        # ADR is what a night actually earned, so it follows the net figure.
         "adr": round(revenue / booked_nights, 2) if booked_nights else None,
         "arrivals": arrivals, "departures": departures,
         "by_room": sorted(
@@ -4874,38 +5072,25 @@ def report_occupancy(conn, period):
 
 
 def report_labour(conn, period):
-    rows = conn.execute(
-        """SELECT users.id, users.name, users.pay_rate, users.pay_type,
-                  COALESCE(SUM((julianday(time_entries.clock_out_at)
-                                - julianday(time_entries.clock_in_at)) * 24), 0) AS hours,
-                  COUNT(time_entries.id) AS shifts
-           FROM users LEFT JOIN time_entries
-             ON time_entries.user_id = users.id
-            AND time_entries.clock_out_at IS NOT NULL
-            AND time_entries.clock_out_at > time_entries.clock_in_at
-            AND time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?
-           WHERE users.role = 'employee'
-           GROUP BY users.id HAVING hours > 0
-           ORDER BY hours DESC""",
-        (period["start_iso"], period["end_iso"]),
-    ).fetchall()
-    people, total_hours, total_cost, unpriced = [], 0.0, 0.0, 0
-    for r in rows:
-        hours = round(r["hours"], 1)
-        cost = estimated_hourly_cost(hours, r["pay_rate"], r["pay_type"])
-        total_hours += hours
-        if cost is None:
-            unpriced += 1
-        else:
-            total_cost += cost
-        people.append({"name": r["name"], "hours": hours, "shifts": r["shifts"], "cost": cost})
+    # Same helper the financial summary costs labour with, so the two pages
+    # cannot disagree about the same shifts.
+    rows = labour_hours_by_person(conn, period["start_iso"], period["end_iso"])
+    people = [
+        {"name": r["name"], "hours": round(r["hours"], 1), "shifts": r["shifts"],
+         "cost": (lambda c: round(c, 2) if c is not None else None)(
+             estimated_hourly_cost(r["hours"], r["pay_rate"], r["pay_type"]))}
+        for r in rows
+    ]
+    total_cost, total_hours, unpriced = estimated_labour_cost(
+        conn, period["start_iso"], period["end_iso"])
+    total_cost = total_cost or 0.0
 
     fin = financial_month_summary(conn, period["start"], period["end"])
     revenue = fin["revenue"]
     return {
         "people": people,
-        "total_hours": round(total_hours, 1),
-        "total_cost": round(total_cost, 2),
+        "total_hours": total_hours,
+        "total_cost": total_cost,
         "unpriced": unpriced,
         "revenue": revenue,
         "labour_pct": round(total_cost / revenue * 100, 1) if revenue > 0 else None,
@@ -5146,6 +5331,51 @@ def send_campaign_template(template_id):
           + (f", {result['failed']} failed" if result["failed"] else "") + ".",
           "success" if not result["failed"] else "error")
     return redirect(url_for("edit_campaign_template", template_id=template_id))
+
+
+@app.route("/unsubscribe/<token>", methods=["GET", "POST"])
+@csrf.exempt
+def campaign_unsubscribe(token):
+    """The guest's own way out of campaign email.
+
+    No login: the token IS the credential, and it's per-send and random, so it
+    identifies one recipient without ever putting their address in the URL and
+    can't be walked to reach anybody else. GET only shows the page — mail
+    clients and link scanners routinely fetch every URL in a message, so
+    unsubscribing on GET would silently opt people out who never clicked.
+    The POST does the work.
+
+    CSRF-exempt because the recipient arrives from their inbox with no session;
+    the worst a forged POST can do is unsubscribe someone from marketing email,
+    which is the safe direction and reversible by the owner.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT recipient_email, recipient_name FROM campaign_sends WHERE unsubscribe_token = ?",
+        (token,),
+    ).fetchone()
+    if not row:
+        conn.close()
+        return render_template("unsubscribe.html", state="unknown"), 404
+
+    email = (row["recipient_email"] or "").strip().lower()
+    if request.method == "POST":
+        conn.execute(
+            "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
+            (email, "Unsubscribed from a campaign email",
+             datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        conn.close()
+        return render_template("unsubscribe.html", state="done", email=email)
+
+    already = conn.execute(
+        "SELECT 1 FROM email_optouts WHERE email = ?", (email,)
+    ).fetchone() is not None
+    conn.close()
+    return render_template("unsubscribe.html",
+                           state="already" if already else "confirm",
+                           email=email, name=row["recipient_name"], token=token)
 
 
 @app.route("/admin/emails/optout", methods=["POST"])
@@ -5491,7 +5721,7 @@ def create_booking_from_stripe_session(conn, session):
     metadata. Used by both the success redirect and the webhook — whichever
     fires first creates it, the other finds it already exists via
     stripe_session_id and does nothing."""
-    meta = session["metadata"]
+    meta = smeta(session)
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (int(meta["room_id"]),)).fetchone()
     if not room:
         print(f"[stripe] room {meta.get('room_id')} missing for paid session {session['id']} — not creating booking")
@@ -5509,7 +5739,7 @@ def create_booking_from_stripe_session(conn, session):
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
         chosen_extras, payment_status="paid",
-        stripe_session_id=session["id"], stripe_payment_intent_id=session.get("payment_intent"),
+        stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
     )
     if not available:
@@ -9353,6 +9583,13 @@ def book_room(room_id):
             error = "Enter a valid email address."
         elif not arrival or not departure:
             error = "Choose valid arrival and departure dates."
+        elif arrival < datetime.now(timezone.utc).date():
+            # The public form had no past-date guard, so anyone could POST an
+            # arrival months gone. Those rows then sat in the bookings table
+            # skewing occupancy and revenue for a period already closed, and
+            # nothing on the admin side flagged them as impossible. The
+            # restaurant and workshop forms already refused this.
+            error = "Choose an arrival date in the future."
         elif not party_size or party_size < 1:
             error = "Party size is required."
         elif party_size > room["max_occupancy"]:
@@ -9496,7 +9733,7 @@ def stripe_success():
         conn.close()
         abort(404)
 
-    if session.get("payment_status") != "paid":
+    if sval(session, "payment_status") != "paid":
         conn.close()
         flash("That payment wasn't completed, so no booking was made.", "error")
         return redirect(url_for("book_rooms"))
@@ -9544,23 +9781,23 @@ def stripe_webhook():
 
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        meta = session.get("metadata") or {}
+        meta = smeta(session)
         conn = get_db()
         try:
             if meta.get("kind") in ("workshop_deposit", "workshop_balance"):
-                if session.get("payment_status") == "paid":
+                if sval(session, "payment_status") == "paid":
                     mark_workshop_payment_paid(conn, session)
             elif meta.get("kind") == "restaurant":
                 existing = conn.execute(
                     "SELECT id FROM restaurant_bookings WHERE stripe_session_id = ?", (session["id"],)
                 ).fetchone()
-                if not existing and session.get("payment_status") == "paid":
+                if not existing and sval(session, "payment_status") == "paid":
                     create_restaurant_booking_from_stripe_session(conn, session)
             else:
                 existing = conn.execute(
                     "SELECT id FROM bookings WHERE stripe_session_id = ?", (session["id"],)
                 ).fetchone()
-                if not existing and session.get("payment_status") == "paid":
+                if not existing and sval(session, "payment_status") == "paid":
                     create_booking_from_stripe_session(conn, session)
         except sqlite3.IntegrityError:
             # The guest's success redirect got there first. Nothing to do —
@@ -10073,6 +10310,18 @@ def submit_event_inquiry():
         error = "Name and email are required."
     elif not EMAIL_RE.match(contact_email):
         error = "Enter a valid email address."
+    # preferred_date/alternate_date used to be stored as whatever string was
+    # posted — never parsed. A junk value then sat in a date column that the
+    # financial and calendar queries compare with `>= ? AND < ?`, where it
+    # silently matches nothing instead of erroring.
+    for label, raw in (("preferred", preferred_date), ("alternate", alternate_date)):
+        if error or not raw:
+            continue
+        parsed = parse_date(raw)
+        if not parsed:
+            error = f"Enter a valid {label} date, or leave it blank."
+        elif parsed < datetime.now(timezone.utc).date():
+            error = f"The {label} date has already passed."
     if error:
         conn.commit()  # persist the rate-limit log entry even on a validation error
         conn.close()
@@ -10610,7 +10859,7 @@ def create_restaurant_booking_from_stripe_session(conn, session):
     Session's metadata — used by both the success redirect and the webhook,
     whichever fires first. Mirrors create_booking_from_stripe_session's
     pay-then-create shape for rooms."""
-    meta = session["metadata"]
+    meta = smeta(session)
     dinner_date = meta["dinner_date"]
     party_size = int(meta["party_size"])
     remaining = restaurant_remaining_capacity(conn, dinner_date)
@@ -10618,14 +10867,14 @@ def create_restaurant_booking_from_stripe_session(conn, session):
         conn, meta["guest_name"], meta["guest_email"], meta.get("guest_phone") or None,
         dinner_date, party_size, meta.get("dietary_notes", ""),
         payment_status="paid", stripe_session_id=session["id"],
-        stripe_payment_intent_id=session.get("payment_intent"),
+        stripe_payment_intent_id=sval(session, "payment_intent"),
         total_price_override=float(meta["total_price"]) if meta.get("total_price") else None,
         discount_amount_override=float(meta["discount_amount"]) if meta.get("discount_amount") else None,
         promo_code=meta.get("promo_code") or None,
         # The real amount Stripe actually charged, straight from the session
         # — more trustworthy than recomputing from deposit_percent at
         # webhook time, since that setting could have changed in between.
-        deposit_amount=(session["amount_total"] / 100) if session.get("amount_total") else None,
+        deposit_amount=(session["amount_total"] / 100) if sval(session, "amount_total") else None,
     )
     if remaining < party_size:
         # Money has already changed hands, so the reservation is still
@@ -10832,7 +11081,7 @@ def restaurant_stripe_success():
         conn.close()
         abort(404)
 
-    if session.get("payment_status") != "paid":
+    if sval(session, "payment_status") != "paid":
         conn.close()
         flash("That payment wasn't completed, so no reservation was made.", "error")
         return redirect(url_for("restaurant_book"))
@@ -11112,6 +11361,39 @@ def campaign_audience(conn, segments, since_date_iso=None, include_optouts=False
     return recipients
 
 
+def campaign_unsubscribe_footer(conn, token):
+    """The unsubscribe line appended to every campaign message.
+
+    Marketing mail to people in the EU has to offer a working way out and to
+    identify the sender by postal address; a bulk send without either also
+    lands in spam folders. Only campaign and automated mail gets this — a
+    guest's own booking confirmation is transactional and must keep arriving
+    whatever their marketing preference.
+
+    The address comes from Company Info rather than a constant, so it is the
+    one the owner actually maintains; it is simply omitted while unset rather
+    than shipping a placeholder to guests.
+    """
+    try:
+        link = url_for("campaign_unsubscribe", token=token, _external=True)
+    except RuntimeError:
+        # No request context — the trigger job runs from the scheduler.
+        link = f"{PUBLIC_BASE_URL or ''}/unsubscribe/{token}"
+    row = conn.execute(
+        "SELECT legal_name, registered_address FROM company_info WHERE id = 1"
+    ).fetchone()
+    who = "Château de Gudanes"
+    if row and (row["registered_address"] or "").strip():
+        who += " · " + " ".join((row["registered_address"] or "").split())
+    return (
+        "\n\n—\n"
+        f"{who}\n"
+        f"Prefer not to receive these? Unsubscribe: {link}\n"
+        "This only affects announcements and offers — you'll still get emails "
+        "about your own bookings."
+    )
+
+
 def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=False):
     """Send one campaign to a set of recipients, logging every one.
 
@@ -11135,6 +11417,12 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=
             continue
         subject, body = render_campaign(template["subject"], template["body"],
                                         campaign_context_for(name, email))
+        # Every marketing message carries its own unsubscribe key. Written
+        # BEFORE the send so the link in the email is always one that resolves —
+        # a footer pointing at a row that doesn't exist yet would 404 for anyone
+        # quick off the mark.
+        unsub_token = secrets.token_urlsafe(24)
+        body = body + campaign_unsubscribe_footer(conn, unsub_token)
         try:
             ok = send_email(email, subject, body)
             status = ("test" if as_test else "sent") if ok is not False else "failed"
@@ -11143,10 +11431,11 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=
             status, detail = "failed", str(e)[:200]
         conn.execute(
             """INSERT INTO campaign_sends (template_id, template_name, recipient_email,
-               recipient_name, subject, status, detail, dedupe_key, sent_by_user_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               recipient_name, subject, status, detail, dedupe_key, sent_by_user_id,
+               created_at, unsubscribe_token)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (template["id"], template["name"], email, name, subject, status, detail,
-             key, user_id, now_iso),
+             key, user_id, now_iso, unsub_token),
         )
         if status in ("sent", "test"):
             sent += 1
@@ -11314,7 +11603,7 @@ def mark_workshop_payment_paid(conn, session):
     first wins via the WHERE ...IS NULL guard, so a race just means the
     second call's UPDATE affects zero rows. Also logs the payment to the
     ledger and, for a deposit, emails a receipt."""
-    meta = session.get("metadata") or {}
+    meta = smeta(session)
     kind = meta.get("kind", "")
     booking_id = meta.get("workshop_booking_id")
     if not booking_id or kind not in ("workshop_deposit", "workshop_balance"):
@@ -11335,7 +11624,7 @@ def mark_workshop_payment_paid(conn, session):
         )
     if cur.rowcount:
         label = "Deposit" if kind == "workshop_deposit" else "Balance"
-        amount = (session.get("amount_total") or 0) / 100
+        amount = (sval(session, "amount_total") or 0) / 100
         add_workshop_transaction(conn, booking_id, "payment", f"{label} — Stripe", amount, method="stripe")
         if kind == "workshop_deposit":
             booking = conn.execute(
@@ -11361,7 +11650,7 @@ def workshop_stripe_success():
         session = stripe.checkout.Session.retrieve(session_id)
     except Exception:
         abort(404)
-    if session.get("payment_status") == "paid":
+    if sval(session, "payment_status") == "paid":
         conn = get_db()
         mark_workshop_payment_paid(conn, session)
         conn.close()
@@ -19270,7 +19559,7 @@ def draft_reply_with_claude(context, compose_text):
     return text.strip() or None
 
 
-@app.route("/api/guest-lookup", methods=["POST"])
+@app.route("/api/guest-lookup", methods=["GET", "POST"])
 @csrf.exempt
 def api_guest_lookup():
     """No-login guest lookup for the Outlook add-in — same 404-not-403
@@ -19279,7 +19568,14 @@ def api_guest_lookup():
     GET query string — a GET here would put the token in plain text in
     every server/proxy access log line on every single lookup, effectively
     handing out a permanent, unrevoked read-any-guest credential to anyone
-    who can ever read those logs."""
+    who can ever read those logs.
+
+    GET is accepted only so it can be 404'd by the same guard. Left to Flask,
+    a GET here returned 405 Method Not Allowed, which confirms the endpoint
+    exists to anyone poking at URLs — exactly what the 404 posture above is
+    meant to avoid. The token is still read from the body only, so a GET can
+    never carry a valid one.
+    """
     supplied = request.form.get("token", "")
     if not GUEST_LOOKUP_TOKEN or not hmac.compare_digest(supplied, GUEST_LOOKUP_TOKEN):
         abort(404)
@@ -19298,7 +19594,11 @@ def api_guest_lookup():
     return jsonify(result)
 
 
-@app.route("/api/check-send-conflict", methods=["POST"])
+# GET is accepted only so the token guard can 404 it — a bare 405 from
+# Flask would confirm the endpoint exists, which is what the 404
+# posture below is meant to avoid. The token is read from the body
+# only, so a GET can never carry a valid one.
+@app.route("/api/check-send-conflict", methods=["GET", "POST"])
 @csrf.exempt
 def api_check_send_conflict():
     """Send-time safety check for the Outlook add-in's Smart Alerts hook —
@@ -19335,7 +19635,11 @@ def api_check_send_conflict():
     )
 
 
-@app.route("/api/draft-reply", methods=["POST"])
+# GET is accepted only so the token guard can 404 it — a bare 405 from
+# Flask would confirm the endpoint exists, which is what the 404
+# posture below is meant to avoid. The token is read from the body
+# only, so a GET can never carry a valid one.
+@app.route("/api/draft-reply", methods=["GET", "POST"])
 @csrf.exempt
 def api_draft_reply():
     """Compose-time reply-drafting assist for the Outlook add-in — same
