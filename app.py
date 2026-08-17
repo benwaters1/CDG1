@@ -1779,6 +1779,29 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Newsletter subscribers, from the box in the public site's menu panel.
+        --
+        -- Double opt-in: a row exists from the moment somebody types their
+        -- address, but `confirmed_at` stays NULL until they click the link in
+        -- the email. Only confirmed rows are a mailing list. Anyone can type
+        -- somebody else's address into a public form, so without this the
+        -- château would be mailing people who never asked — which is both
+        -- rude and, under GDPR, not consent.
+        --
+        -- `token` is the credential in the confirmation link, exactly as
+        -- campaign_sends.unsubscribe_token is for unsubscribing: random and
+        -- per-subscriber, so the address never travels in the URL and no
+        -- token can be walked to reach anybody else.
+        CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            token TEXT NOT NULL UNIQUE,
+            source TEXT NOT NULL DEFAULT 'site',
+            confirmed_at TEXT,
+            unsubscribed_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
         -- Mail that could not be sent, kept so it can go out later.
         --
         -- Without this every undelivered message vanished into a console
@@ -7552,6 +7575,144 @@ def campaign_unsubscribe(token):
     return render_template("unsubscribe.html",
                            state="already" if already else "confirm",
                            email=email, name=row["recipient_name"], token=token)
+
+
+@app.route("/newsletter/subscribe", methods=["POST"])
+def newsletter_subscribe():
+    """The newsletter box in the public menu panel.
+
+    Deliberately says the same thing whichever branch it takes. Telling a
+    stranger "you are already subscribed" turns the box into a way to test
+    whether an address is on the château's list, which is somebody else's
+    private information; and a public form is rate-limited rather than
+    trusted, since it sends mail on an anonymous request.
+
+    Nothing here mails an unconfirmed address anything except its own
+    confirmation link, and an address on the opt-out list is never mailed
+    at all — it is recorded as pending and left alone, so an unsubscribe
+    is not silently undone by somebody re-typing the address.
+    """
+    conn = get_db()
+    if rate_limited(conn, "newsletter_subscribe", BOOKING_RATE_LIMIT_PER_HOUR):
+        conn.commit()
+        conn.close()
+        flash("Too many attempts from this connection — please try again shortly.", "error")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    email = (request.form.get("email", "") or "").strip().lower()
+    thanks = "Thank you — please check your email and click the link to confirm."
+    if not email or not EMAIL_RE.match(email):
+        conn.commit()
+        conn.close()
+        flash("Enter a valid email address.", "error")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    opted_out = conn.execute(
+        "SELECT 1 FROM email_optouts WHERE email = ?", (email,)).fetchone() is not None
+    row = conn.execute(
+        "SELECT id, token, confirmed_at FROM newsletter_subscribers WHERE email = ?",
+        (email,)).fetchone()
+
+    if row is None:
+        token = secrets.token_urlsafe(32)
+        conn.execute(
+            """INSERT INTO newsletter_subscribers (email, token, source, created_at)
+               VALUES (?, ?, 'site', ?)""", (email, token, now_iso))
+    else:
+        token = row["token"]
+
+    conn.commit()
+    # Already confirmed, or previously unsubscribed: say the same thing, send
+    # nothing. Re-sending a confirmation to a confirmed address is a way to
+    # have the château email somebody repeatedly on demand.
+    if (row and row["confirmed_at"]) or opted_out:
+        conn.close()
+        flash(thanks, "success")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    link = url_for("newsletter_confirm", token=token, _external=True)
+    send_email(
+        email, "Confirm your subscription — Château de Gudanes",
+        "Thank you for subscribing to news from Château de Gudanes.\n\n"
+        "Please confirm your address by opening this link:\n\n"
+        f"{link}\n\n"
+        "If you did not ask for this, ignore this message and nothing further "
+        "will be sent.\n",
+    )
+    conn.close()
+    flash(thanks, "success")
+    return redirect(request.referrer or url_for("preview_home"))
+
+
+@app.route("/newsletter/confirm/<token>")
+def newsletter_confirm(token):
+    """Completes the double opt-in.
+
+    A GET is right here, unlike unsubscribing: the risk of a mail client
+    pre-fetching the link is that somebody who DID ask gets subscribed,
+    which is what they asked for. The opposite default — opting people out
+    on GET — is what the campaign unsubscribe route guards against.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, email, confirmed_at FROM newsletter_subscribers WHERE token = ?",
+        (token,)).fetchone()
+    if not row:
+        conn.close()
+        return render_template("newsletter_confirmed.html", state="unknown"), 404
+    if not row["confirmed_at"]:
+        conn.execute(
+            "UPDATE newsletter_subscribers SET confirmed_at = ?, unsubscribed_at = NULL WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), row["id"]))
+        # Confirming is an explicit, deliberate opt-in, so it clears an older
+        # opt-out for the same address rather than being silently overridden.
+        conn.execute("DELETE FROM email_optouts WHERE email = ?", (row["email"],))
+        conn.commit()
+    conn.close()
+    return render_template("newsletter_confirmed.html", state="done", email=row["email"])
+
+
+@app.route("/newsletter/unsubscribe/<token>", methods=["GET", "POST"])
+@csrf.exempt
+def newsletter_unsubscribe(token):
+    """Same shape and reasoning as the campaign unsubscribe: GET shows,
+    POST acts, CSRF-exempt because the reader arrives from their inbox with
+    no session and the only reachable outcome is the safe one."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, email FROM newsletter_subscribers WHERE token = ?", (token,)).fetchone()
+    if not row:
+        conn.close()
+        return render_template("unsubscribe.html", state="unknown"), 404
+    email = row["email"]
+    if request.method == "POST":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL WHERE id = ?",
+            (now_iso, row["id"]))
+        conn.execute(
+            "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
+            (email, "Unsubscribed from the newsletter", now_iso))
+        conn.commit()
+        conn.close()
+        return render_template("unsubscribe.html", state="done", email=email)
+    conn.close()
+    return render_template("unsubscribe.html", state="confirm", email=email, token=token)
+
+
+def newsletter_recipients(conn):
+    """Confirmed subscribers who have not opted out — the actual mailing list.
+
+    The opt-out join is not redundant with unsubscribed_at: the owner can add
+    an address to email_optouts by hand, and that must suppress the newsletter
+    too, not only campaign sends.
+    """
+    return conn.execute(
+        """SELECT email FROM newsletter_subscribers
+           WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL
+             AND email NOT IN (SELECT email FROM email_optouts)
+           ORDER BY confirmed_at""").fetchall()
 
 
 @app.route("/admin/emails/optout", methods=["POST"])

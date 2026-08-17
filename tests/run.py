@@ -30,6 +30,7 @@ SUITES = [
     "test_campaign_email",
     "test_email_outbox",
     "test_email_templates",
+    "test_newsletter",
     "test_exports",
     "test_destructive",
     "test_payments",
