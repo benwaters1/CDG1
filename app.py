@@ -5505,6 +5505,22 @@ def compute_promo_discount(subtotal, promo):
     return round(max(0.0, min(discount, subtotal)), 2)
 
 
+# What a guest is told when a code exists but cannot be used, and there is
+# nothing they can do about it. Deliberately the same sentence as a code that
+# does not exist at all.
+#
+# Distinct messages made the promo field an oracle: submit a guess, and
+# "isn't recognized" versus "has expired" tells you whether you found a real
+# code. That is worth closing even though these are marketing codes rather
+# than secrets, because the field is public, unauthenticated and cheap to
+# script against.
+#
+# The exception is a minimum spend, which stays specific: it is the one
+# refusal a guest can actually act on — add a night and the code works — and
+# withholding it would make a working code look broken.
+PROMO_REFUSED = "That code isn't recognized, or can't be used on this booking."
+
+
 def validate_promo_code(conn, code, category, subtotal):
     """Checks a code against everything that could make it unusable right
     now — active, in-date, right category, under its redemption cap, meets
@@ -5513,24 +5529,55 @@ def validate_promo_code(conn, code, category, subtotal):
     'workshop'. Callers should treat a validation failure as 'no discount
     applied', not as a reason to block the booking itself — a promo code
     is a nice-to-have, not something that should stop a real booking going
-    through if it's expired or mistyped."""
+    through if it's expired or mistyped.
+
+    The error message is guest-facing and says as little as possible about
+    whether the code exists (see PROMO_REFUSED). `promo_refusal_reason` gives
+    the owner the real reason for the admin preview and the audit trail.
+    """
     promo = find_promo_code(conn, code)
     if not promo:
-        return None, 0.0, "That code isn't recognized."
+        return None, 0.0, PROMO_REFUSED
     if not promo["active"]:
-        return None, 0.0, "That code is no longer active."
+        return None, 0.0, PROMO_REFUSED
     today_iso = datetime.now(timezone.utc).date().isoformat()
     if promo["valid_from"] and today_iso < promo["valid_from"]:
-        return None, 0.0, "That code isn't active yet."
+        return None, 0.0, PROMO_REFUSED
     if promo["valid_until"] and today_iso > promo["valid_until"]:
-        return None, 0.0, "That code has expired."
+        return None, 0.0, PROMO_REFUSED
     if promo["applies_to"] != "all" and promo["applies_to"] != category:
-        return None, 0.0, "That code doesn't apply to this kind of booking."
+        return None, 0.0, PROMO_REFUSED
     if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
-        return None, 0.0, "That code has already been fully redeemed."
+        return None, 0.0, PROMO_REFUSED
     if promo["min_spend"] and subtotal < promo["min_spend"]:
         return None, 0.0, f"That code needs a minimum of €{promo['min_spend']:.2f}."
     return promo, compute_promo_discount(subtotal, promo), None
+
+
+def promo_refusal_reason(conn, code, category, subtotal):
+    """The real reason a code was refused, for the owner rather than a guest.
+
+    Same order of checks as validate_promo_code, so the two cannot disagree
+    about which rule bit. Returns None when the code is usable.
+    """
+    promo = find_promo_code(conn, code)
+    if not promo:
+        return "No such code."
+    if not promo["active"]:
+        return "The code is switched off."
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    if promo["valid_from"] and today_iso < promo["valid_from"]:
+        return f"Not valid until {promo['valid_from']}."
+    if promo["valid_until"] and today_iso > promo["valid_until"]:
+        return f"Expired on {promo['valid_until']}."
+    if promo["applies_to"] != "all" and promo["applies_to"] != category:
+        return f"Only applies to {promo['applies_to']} bookings."
+    if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
+        return (f"Fully redeemed — {promo['redemption_count']} of "
+                f"{promo['max_redemptions']} used.")
+    if promo["min_spend"] and subtotal < promo["min_spend"]:
+        return f"Below the €{promo['min_spend']:.2f} minimum spend."
+    return None
 
 
 def record_promo_redemption(conn, promo, category, booking_reference, guest_email, original_amount, discount_amount):
@@ -19040,8 +19087,19 @@ PROMO_APPLIES_TO = ["all", "room", "restaurant", "workshop"]
 def admin_promo_codes():
     conn = get_db()
     codes = conn.execute("SELECT * FROM promo_codes ORDER BY active DESC, created_at DESC").fetchall()
+    # Why each code would be refused right now, for the owner. Guests are told
+    # only that a code "isn't recognized, or can't be used" — deliberately, so
+    # the public field can't be used to discover which codes exist — so the
+    # real reason has to be visible somewhere, or "my code doesn't work" becomes
+    # unanswerable. An infinite subtotal so a minimum spend never trips: this is
+    # about the code's own state, not any one booking, and each code is judged
+    # against its own category so "only applies to room bookings" — a setting,
+    # not a fault — never shows up here as a problem.
+    status = {c["code"]: promo_refusal_reason(conn, c["code"], c["applies_to"], float("inf"))
+              for c in codes}
     conn.close()
-    return render_template("admin_promo_codes.html", codes=codes, applies_to_options=PROMO_APPLIES_TO)
+    return render_template("admin_promo_codes.html", codes=codes, status=status,
+                           applies_to_options=PROMO_APPLIES_TO)
 
 
 def _parse_promo_form():

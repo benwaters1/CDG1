@@ -36,6 +36,7 @@ SUITES = [
     "test_destructive",
     "test_payments",
     "test_stripe_price_drift",
+    "test_promo_privacy",
     "test_terminal",
     "test_arrive",
     "test_design",
