@@ -23175,6 +23175,26 @@ def admin_outlook_addin():
     )
 
 
+# ---------------------------------------------------------------------------
+# Public front-end design preview — new pages only, nothing existing touched.
+# Remove once the design is signed off and the templates go live properly.
+# ---------------------------------------------------------------------------
+
+@app.route('/preview')
+def preview_home():
+    return render_template('home.html')
+
+
+@app.route('/restoration')
+def restoration_page():
+    return render_template('restoration.html')
+
+
+@app.route('/gallery')
+def gallery_page():
+    return render_template('gallery.html', galleries=[])
+
+
 def start_background_work():
     """Start the automation loop for this process.
 

@@ -1,0 +1,51 @@
+{% extends "public_base.html" %}
+{% block title %}Gallery{% endblock %}
+{% block content %}
+
+{# Needs a route, e.g.:
+   @app.route('/gallery')
+   def gallery_page(): return render_template('gallery.html', galleries=...)
+
+   `galleries` is expected to be a list of dicts:
+     { 'title': ..., 'blurb': ..., 'cover': <url>, 'images': [<url>, ...] }
+   With nothing passed, the page still renders its headings. #}
+
+<section class="g-sec g-sec--tight">
+  <div class="g-wrap">
+    <p class="g-eyebrow">Gallery</p>
+    <h1 class="g-display">The château, <em>as it is</em></h1>
+    <p class="g-lede">Bare plaster and finished salons, the grounds in every season, and the work itself. No staging, and nothing hidden.</p>
+  </div>
+</section>
+
+<section class="g-sec g-sec--tight">
+  <div class="g-wrap">
+    {% if galleries %}
+      {% for gal in galleries %}
+      <h2 class="g-h2 g-rule">{{ gal['title'] }}</h2>
+      {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:24px;">{{ gal['blurb'] }}</p>{% endif %}
+      <div class="g-grid g-grid--3">
+        {% for img in gal['images'] %}
+        <img src="{{ img }}" alt="{{ gal['title'] }}" loading="lazy"
+             style="width:100%; height:16rem; object-fit:cover; border-radius:4px;">
+        {% endfor %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="g-empty">Photographs are being prepared. In the meantime, the most recent work is posted to
+        <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a>.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="g-sec">
+  <div class="g-wrap">
+    <div class="g-panel g-panel--dark">
+      <h2 class="g-h2">Sleep inside <em>the work</em></h2>
+      <p style="font-size:15.5px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Seven bedrooms, open to guests. Breakfast, a private tour and a guided walk of the gardens and village are included with every one.</p>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#E4D2A8; color:#23201C;">Check availability</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
