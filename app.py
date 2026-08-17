@@ -508,6 +508,128 @@ def stripe_enabled():
     return bool(STRIPE_SECRET_KEY)
 
 
+def terminal_reader_id(conn):
+    """The card reader this château sends payments to, if one is chosen."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'terminal_reader_id'").fetchone()
+    return (row["value"] or "").strip() if row else ""
+
+
+def terminal_ready(conn):
+    return bool(stripe_enabled() and terminal_reader_id(conn))
+
+
+def list_terminal_readers():
+    """Every reader registered to this Stripe account.
+
+    Returns (readers, error). Never raises: this is called to draw a settings
+    page, and Stripe being unreachable should show a message there rather than
+    take the page down.
+    """
+    if not stripe_enabled():
+        return [], "Stripe isn't connected yet."
+    try:
+        result = stripe.terminal.Reader.list(limit=50)
+    except Exception as e:
+        return [], f"Stripe wouldn't list the readers: {e}"
+    readers = []
+    for r in sval(result, "data") or []:
+        readers.append({
+            "id": sval(r, "id"),
+            "label": sval(r, "label") or sval(r, "id"),
+            "device_type": sval(r, "device_type"),
+            "status": sval(r, "status"),
+            "serial_number": sval(r, "serial_number"),
+            # Only smart readers can be driven from a server. A Bluetooth
+            # reader has no internet connection of its own, so Stripe has
+            # nothing to push a payment to.
+            "server_drivable": (sval(r, "device_type") or "").startswith(
+                ("stripe_s700", "stripe_s710", "bbpos_wisepos_e", "verifone")),
+        })
+    return readers, None
+
+
+def terminal_collect_payment(conn, order_id, total, description, reader_id):
+    """Put an amount on the reader and ask the guest to tap.
+
+    Two steps, both on Stripe's side: create a card_present PaymentIntent, then
+    hand it to the reader. Returns (payment_intent_id, error).
+
+    The intent id is stored on the tab by the caller, so pressing the button
+    twice or reloading mid-payment resumes the same charge instead of asking
+    the guest to pay again.
+    """
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=int(round(total * 100)),
+            currency="eur",
+            payment_method_types=["card_present"],
+            capture_method="automatic",
+            description=description,
+            metadata={"pos_order_id": str(order_id)},
+        )
+    except Exception as e:
+        return None, f"Couldn't start the payment: {e}"
+
+    intent_id = sval(intent, "id")
+    try:
+        stripe.terminal.Reader.process_payment_intent(
+            reader_id, payment_intent=intent_id)
+    except Exception as e:
+        # Leave the intent alone rather than cancelling it — if the reader was
+        # simply busy, the next press can hand the same intent over again.
+        return intent_id, f"The reader wouldn't take it: {e}"
+    return intent_id, None
+
+
+def terminal_payment_state(intent_id):
+    """Where a card payment has got to. Returns (state, message).
+
+    state is one of: succeeded, waiting, failed, unknown. Deliberately coarse —
+    the till only needs to know whether to close the tab, keep waiting, or show
+    a problem.
+    """
+    if not intent_id:
+        return "unknown", "No payment in progress."
+    try:
+        intent = stripe.PaymentIntent.retrieve(intent_id)
+    except Exception as e:
+        return "unknown", f"Couldn't check the payment: {e}"
+    status = sval(intent, "status") or ""
+    if status == "succeeded":
+        return "succeeded", "Paid."
+    if status in ("requires_payment_method",):
+        # This is what a decline or a cancelled tap looks like coming back.
+        last_error = sval(intent, "last_payment_error") or {}
+        reason = sval(last_error, "message") or "The card was declined or the tap was cancelled."
+        return "failed", reason
+    if status == "canceled":
+        return "failed", "The payment was cancelled."
+    if status in ("requires_confirmation", "requires_action", "processing", "requires_capture"):
+        return "waiting", "Waiting for the guest to tap."
+    return "waiting", f"Payment is {status}."
+
+
+def terminal_cancel(reader_id, intent_id):
+    """Stop asking for the card. Clears the reader, then the intent.
+
+    Both are attempted regardless of the other failing: a reader left showing
+    an amount nobody is paying is worse than an untidy error.
+    """
+    problems = []
+    if reader_id:
+        try:
+            stripe.terminal.Reader.cancel_action(reader_id)
+        except Exception as e:
+            problems.append(str(e))
+    if intent_id:
+        try:
+            stripe.PaymentIntent.cancel(intent_id)
+        except Exception as e:
+            problems.append(str(e))
+    return "; ".join(problems)
+
+
 def sval(obj, key, default=None):
     """Read a field off a Stripe object.
 
@@ -2210,6 +2332,10 @@ def init_db():
         # somebody deliberately changes it — a permissions migration that
         # silently widens or narrows access is the one you cannot undo quietly.
         ("users_access_preset", "ALTER TABLE users ADD COLUMN access_preset TEXT"),
+        # The card payment in flight on a tab. Stored so that pressing "Take
+        # card" twice, or reloading the page mid-payment, reuses the same
+        # PaymentIntent instead of asking the guest to tap for a second charge.
+        ("pos_orders_payment_intent", "ALTER TABLE pos_orders ADD COLUMN payment_intent_id TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -2826,7 +2952,7 @@ NAV_AREAS = {
         "new_recurring_cost", "regenerate_supplier_link", "toggle_recurring_cost"
     ],
     "restaurant": [
-        "admin_extras", "admin_restaurant", "admin_restaurant_settings",
+        "admin_terminal", "admin_extras", "admin_restaurant", "admin_restaurant_settings",
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
         "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
@@ -10177,11 +10303,13 @@ def pos_order(order_id):
            WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?
            ORDER BY guest_name""", (today, today)).fetchall()
     stock = stock_levels(conn, [m["stock_item_id"] for m in menu if m["stock_item_id"]])
+    reader_on = terminal_ready(conn)
     conn.close()
     return render_template("pos_order.html", order=order, lines=lines, total=total,
                            by_category=by_category, in_house=in_house,
                            extra_categories=EXTRA_CATEGORIES,
-                           payment_methods=POS_PAYMENT_METHODS, stock=stock)
+                           payment_methods=POS_PAYMENT_METHODS, stock=stock,
+                           terminal_on=reader_on)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])
@@ -10256,6 +10384,138 @@ def pos_settle_tab(order_id):
     conn.close()
     flash(message, "success" if ok else "error")
     return redirect(url_for("pos_home") if ok else url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/take-card", methods=["POST"])
+@login_required
+def pos_take_card(order_id):
+    """Put the tab's total on the card reader and wait for a tap.
+
+    The reader is driven from here — Stripe pushes the amount to it over the
+    internet — so there is no app to switch to and nothing to type twice. The
+    resulting payment settles the tab against its own reference.
+    """
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    reader = terminal_reader_id(conn)
+    if not stripe_enabled() or not reader:
+        conn.close()
+        flash("No card reader is set up — take cash, charge it to a room, or "
+              "show the QR code instead.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    total = pos_order_total(conn, order_id)
+    if total <= 0:
+        conn.close()
+        flash("Nothing to charge yet.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+
+    # Resume rather than restart. A second press must not ask the guest to tap
+    # for a second charge.
+    if order["payment_intent_id"]:
+        state, _msg = terminal_payment_state(order["payment_intent_id"])
+        if state in ("waiting", "succeeded"):
+            conn.close()
+            return redirect(url_for("pos_order", order_id=order_id))
+
+    intent_id, error = terminal_collect_payment(
+        conn, order_id, total, f"Table {order['table_label']}", reader)
+    if intent_id:
+        conn.execute("UPDATE pos_orders SET payment_intent_id = ? WHERE id = ?",
+                     (intent_id, order_id))
+        conn.commit()
+    conn.close()
+    if error:
+        flash(error, "error")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/card-status")
+@login_required
+def pos_card_status(order_id):
+    """Polled by the till while the guest is tapping.
+
+    Settles the tab itself the moment Stripe says the money arrived, so the
+    payment cannot succeed without the tab closing — the two must not be able
+    to disagree.
+    """
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify(state="unknown", message="No such tab."), 404
+    if order["status"] != "open":
+        conn.close()
+        return jsonify(state="succeeded", message="Settled.", settled=True)
+    if not order["payment_intent_id"]:
+        conn.close()
+        return jsonify(state="idle", message="")
+
+    state, message = terminal_payment_state(order["payment_intent_id"])
+    settled = False
+    if state == "succeeded":
+        ok, settle_message = pos_settle(
+            conn, order_id, "card_terminal",
+            reference=order["payment_intent_id"],
+            user_id=(current_user() or {})["id"])
+        if ok:
+            log_audit(conn, "pos_tab_settled", f"tab #{order_id}",
+                      f"card_terminal: {settle_message}")
+            conn.commit()
+            settled = True
+            message = settle_message
+    elif state == "failed":
+        # Clear the reference so the next attempt starts a fresh payment rather
+        # than polling a dead one forever.
+        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?",
+                     (order_id,))
+        conn.commit()
+    conn.close()
+    return jsonify(state=state, message=message, settled=settled)
+
+
+@app.route("/pos/<int:order_id>/cancel-card", methods=["POST"])
+@login_required
+def pos_cancel_card(order_id):
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        abort(404)
+    problems = terminal_cancel(terminal_reader_id(conn), order["payment_intent_id"])
+    conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+    flash(problems or "Card payment cancelled — the reader is clear.",
+          "error" if problems else "success")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/admin/terminal", methods=["GET", "POST"])
+@owner_required
+def admin_terminal():
+    """Choose which card reader the till talks to."""
+    conn = get_db()
+    if request.method == "POST":
+        chosen = request.form.get("reader_id", "").strip()
+        conn.execute(
+            """INSERT INTO app_settings (key, value) VALUES ('terminal_reader_id', ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (chosen,))
+        log_audit(conn, "terminal_reader_selected", target=chosen or "(none)")
+        conn.commit()
+        conn.close()
+        flash(f"Card reader set to {chosen}." if chosen
+              else "Card reader cleared — the till will offer cash and QR only.", "success")
+        return redirect(url_for("admin_terminal"))
+
+    chosen = terminal_reader_id(conn)
+    conn.close()
+    readers, error = list_terminal_readers()
+    return render_template("admin_terminal.html", readers=readers, error=error,
+                           chosen=chosen, stripe_on=stripe_enabled())
 
 
 @app.route("/pos/<int:order_id>/pay-link", methods=["POST"])

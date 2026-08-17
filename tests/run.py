@@ -29,6 +29,7 @@ SUITES = [
     "test_exports",
     "test_destructive",
     "test_payments",
+    "test_terminal",
     "test_design",
 ]
 

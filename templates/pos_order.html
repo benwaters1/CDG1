@@ -109,9 +109,62 @@
     </form>
     {% endif %}
 
+    {# The card reader, driven from here. Shown first because it is the fastest
+       way to take a card when a reader is set up: the amount appears on the
+       reader, the guest taps, and the tab closes itself. #}
+    {% if terminal_on %}
+      {% if order['payment_intent_id'] %}
+      <div class="quote-box" id="card-waiting" style="margin-bottom:10px;">
+        <p class="quote-unavailable" id="card-message" style="color:var(--ink);">
+          Waiting for the guest to tap €{{ '%.2f'|format(total) }} on the reader…
+        </p>
+        <form method="post" action="{{ url_for('pos_cancel_card', order_id=order['id']) }}"
+              style="margin-top:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini btn-mini-danger">Cancel the card payment</button>
+        </form>
+      </div>
+      <script>
+      // Poll while the guest taps. The server settles the tab the moment the
+      // money lands, so this only has to notice and reload — it never decides
+      // anything about the payment itself.
+      (function () {
+        var el = document.getElementById('card-message');
+        var tries = 0;
+        function check() {
+          if (tries++ > 120) {                       // ~4 minutes, then give up
+            el.textContent = 'Still waiting. Cancel and try again if the reader has gone to sleep.';
+            return;
+          }
+          fetch('{{ url_for("pos_card_status", order_id=order["id"]) }}')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+              if (!d) { setTimeout(check, 2000); return; }
+              if (d.settled) { window.location = '{{ url_for("pos_home") }}'; return; }
+              if (d.state === 'failed') { window.location.reload(); return; }
+              if (d.message) el.textContent = d.message;
+              setTimeout(check, 2000);
+            })
+            .catch(function () { setTimeout(check, 3000); });
+        }
+        setTimeout(check, 1500);
+      })();
+      </script>
+      {% else %}
+      <form method="post" action="{{ url_for('pos_take_card', order_id=order['id']) }}"
+            style="margin-bottom:10px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-primary" style="width:100%;">
+          Take €{{ '%.2f'|format(total) }} on the card reader
+        </button>
+        <p class="upload-hint">The amount appears on the reader — they tap, and this tab closes itself.</p>
+      </form>
+      {% endif %}
+    {% endif %}
+
     <form method="post" action="{{ url_for('pos_pay_link', order_id=order['id']) }}" style="margin-bottom:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-primary" style="width:100%;">Card — open a payment page</button>
+      <button type="submit" class="{{ 'btn-ghost' if terminal_on else 'btn-primary' }}" style="width:100%;">Card — open a payment page</button>
       <p class="upload-hint">Opens Stripe on this device, or hand the iPad over. No card reader needed.</p>
     </form>
 
