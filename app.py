@@ -2243,7 +2243,16 @@ def init_db():
         ("expenses_restaurant_related", "ALTER TABLE expenses ADD COLUMN restaurant_related INTEGER NOT NULL DEFAULT 0"),
         ("workshops_deposit_percent", "ALTER TABLE workshops ADD COLUMN deposit_percent INTEGER NOT NULL DEFAULT 30"),
         ("workshops_inclusions", "ALTER TABLE workshops ADD COLUMN inclusions TEXT"),
+        # The published price assumes a shared room, so a guest travelling alone
+        # who wants their own pays a supplement. Per person, because two people
+        # who both want single rooms take two rooms out of a house that has a
+        # fixed number of them.
+        ("workshops_single_supplement", "ALTER TABLE workshops ADD COLUMN single_supplement REAL"),
         ("workshop_bookings_occupancy_type", "ALTER TABLE workshop_bookings ADD COLUMN occupancy_type TEXT NOT NULL DEFAULT 'double'"),
+        # Frozen on the booking, like every other figure on the row: raising the
+        # workshop's supplement later must not silently re-price a registration
+        # somebody has already paid a deposit against.
+        ("workshop_bookings_single_supplement", "ALTER TABLE workshop_bookings ADD COLUMN single_supplement REAL"),
         ("workshop_bookings_requested_roommate", "ALTER TABLE workshop_bookings ADD COLUMN requested_roommate TEXT"),
         ("workshop_bookings_dietary_notes", "ALTER TABLE workshop_bookings ADD COLUMN dietary_notes TEXT"),
         ("workshop_bookings_medical_notes", "ALTER TABLE workshop_bookings ADD COLUMN medical_notes TEXT"),
@@ -15063,12 +15072,60 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     return deposit_amount, balance_amount, balance_due_date
 
 
+def parse_money(raw):
+    """A typed-in amount, or None if the box was left empty or filled with junk.
+
+    None and 0 mean different things here: None is "no supplement is charged",
+    0 is "the owner has decided it is free". Both behave the same when charging,
+    but only the first should read as unset on the form.
+    """
+    text = (raw or "").strip().replace("€", "").replace(",", ".")
+    if not text:
+        return None
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return round(value, 2) if value >= 0 else None
+
+
+def workshop_single_supplement(workshop, occupancy_type):
+    """The per-person supplement for a private room, or 0.
+
+    Only 'solo' pays it. The published price includes a shared room, so double
+    and triple occupancy are what the headline figure already covers.
+    """
+    if occupancy_type != "solo":
+        return 0.0
+    try:
+        return round(float(workshop["single_supplement"] or 0), 2)
+    except (KeyError, IndexError, TypeError, ValueError):
+        # Older databases predate the column; no supplement is the honest answer.
+        return 0.0
+
+
+def workshop_subtotal(workshop, party_size, occupancy_type="double"):
+    """(subtotal, supplement_per_person) before any promo discount.
+
+    Every place that works out what a registration costs goes through here —
+    the booking itself, the promo preview and the figure shown on the form. When
+    the deposit is calculated from one sum and the guest was quoted another, the
+    two disagree by exactly the supplement, and nobody notices until the balance
+    invoice.
+    """
+    price = workshop["price_per_person"] or 0
+    if not price:
+        return 0, 0.0
+    supplement = workshop_single_supplement(workshop, occupancy_type)
+    return round((price + supplement) * party_size, 2), supplement
+
+
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,
                              notes, occupancy_type="double", requested_roommate=None, dietary_notes=None,
                              medical_notes=None, special_occasion=None, booking_id=None, promo_code=None):
     reference_code = make_workshop_reference_code()
     manage_token = secrets.token_urlsafe(24)
-    subtotal = (workshop["price_per_person"] * party_size) if workshop["price_per_person"] else 0
+    subtotal, supplement = workshop_subtotal(workshop, party_size, occupancy_type)
 
     promo, discount_amount = None, 0.0
     if promo_code and subtotal:
@@ -15087,13 +15144,13 @@ def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email
            (session_id, reference_code, manage_token, guest_name, guest_email, guest_phone, party_size,
             notes, total_price, occupancy_type, requested_roommate, dietary_notes, medical_notes,
             special_occasion, deposit_amount, balance_amount, balance_due_date, booking_id, created_at,
-            promo_code_id, discount_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            promo_code_id, discount_amount, single_supplement)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_row["id"], reference_code, manage_token, guest_name, guest_email, guest_phone or None,
          party_size, notes or None, total_price, occupancy_type, requested_roommate or None,
          dietary_notes or None, medical_notes or None, special_occasion or None,
          deposit_amount, balance_amount, balance_due_date, booking_id, datetime.now(timezone.utc).isoformat(),
-         promo["id"] if promo else None, discount_amount or None),
+         promo["id"] if promo else None, discount_amount or None, supplement or None),
     )
     booking_row_id = conn.execute("SELECT id FROM workshop_bookings WHERE manage_token = ?", (manage_token,)).fetchone()["id"]
     # Same transaction as the booking insert -- see the room-booking path
@@ -15632,7 +15689,8 @@ def workshop_register(session_id):
     conn = get_db()
     session_row = conn.execute(
         """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person, workshops.instructor_name,
-               workshops.instructor_user_id, workshops.active, workshops.deposit_percent, workshops.inclusions
+               workshops.instructor_user_id, workshops.active, workshops.deposit_percent, workshops.inclusions,
+               workshops.single_supplement
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.id = ?""",
         (session_id,),
@@ -15710,8 +15768,11 @@ def workshop_register(session_id):
 
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (session_row["workshop_id"],)).fetchone()
         if promo_code and workshop["price_per_person"]:
+            # Same subtotal the booking will use, supplement included — a code
+            # with a minimum spend must not be judged against a smaller figure
+            # than the one the guest is actually being charged.
             promo_preview, _, promo_error = validate_promo_code(
-                conn, promo_code, "workshop", workshop["price_per_person"] * party_size
+                conn, promo_code, "workshop", workshop_subtotal(workshop, party_size, occupancy_type)[0]
             )
             if not promo_preview:
                 flash(f"Promo code not applied: {promo_error}", "error")
@@ -18748,6 +18809,7 @@ def new_workshop():
         deposit_percent_raw = request.form.get("deposit_percent", "").strip()
         inclusions = request.form.get("inclusions", "").strip()
         itinerary = request.form.get("itinerary", "").strip()
+        supplement = parse_money(request.form.get("single_supplement", ""))
 
         if not title:
             flash("Workshop title is required.", "error")
@@ -18757,15 +18819,16 @@ def new_workshop():
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
-               default_capacity, sort_order, deposit_percent, inclusions, itinerary, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
              float(price_raw) if price_raw else 0,
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else 10,
              max_order + 1,
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else 30,
-             inclusions or None, itinerary or None, datetime.now(timezone.utc).isoformat()),
+             inclusions or None, itinerary or None, supplement,
+             datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         conn.close()
@@ -18802,6 +18865,7 @@ def edit_workshop(workshop_id):
         inclusions = request.form.get("inclusions", "").strip()
         itinerary = request.form.get("itinerary", "").strip()
         active = 1 if request.form.get("active") == "on" else 0
+        supplement = parse_money(request.form.get("single_supplement", ""))
 
         if not title:
             conn.close()
@@ -18810,13 +18874,14 @@ def edit_workshop(workshop_id):
 
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
-               price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?, active=? WHERE id=?""",
+               price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
+               single_supplement=?, active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
              float(price_raw) if price_raw else 0,
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else workshop["default_capacity"],
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else workshop["deposit_percent"],
-             inclusions or None, itinerary or None, active, workshop_id),
+             inclusions or None, itinerary or None, supplement, active, workshop_id),
         )
         conn.commit()
         conn.close()
@@ -19350,7 +19415,8 @@ def export_workshop_registrations_csv():
     ).fetchall()
     conn.close()
     fieldnames = ["workshop_title", "reference_code", "guest_name", "party_names", "guest_email", "guest_phone",
-                  "start_date", "end_date", "party_size", "occupancy_type", "assigned_room_name",
+                  "start_date", "end_date", "party_size", "occupancy_type", "single_supplement",
+                  "assigned_room_name",
                   "requested_roommate", "dietary_notes", "medical_notes", "special_occasion", "status",
                   "total_price", "deposit_amount", "deposit_paid_at", "balance_amount", "balance_due_date",
                   "balance_paid_at", "notes", "created_at"]
@@ -21179,6 +21245,20 @@ def readiness_checks(conn):
         "No impossible shifts." if not broken else
         f"{broken} shift{'s' if broken != 1 else ''} end before they start — "
         "payroll export is blocked until they're fixed.")
+
+    # A supplement that has never been set is not an error — free single rooms
+    # is a legitimate choice — but it is silent, and a solo guest asking for
+    # their own room is a common enough request that nobody wants to find out
+    # they have all been given one for nothing.
+    no_supplement = conn.execute(
+        """SELECT COUNT(*) AS c FROM workshops
+           WHERE active = 1 AND COALESCE(price_per_person, 0) > 0
+             AND single_supplement IS NULL""").fetchone()["c"]
+    add("warn", "Workshops", "Single-occupancy supplement", no_supplement == 0,
+        "Set on every priced atelier." if not no_supplement else
+        f"Not set on {no_supplement} atelier{'s' if no_supplement != 1 else ''}, so a guest "
+        "asking for a room to themselves is charged nothing extra for it. Set it per "
+        "atelier under Workshops, or enter 0 to confirm single rooms really are free.")
 
     for label, token, why in (
         ("Kiosk display token", OFFICE_DISPLAY_TOKEN,

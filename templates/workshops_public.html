@@ -29,7 +29,7 @@
       <div class="g-room__body">
         <div class="g-room__head">
           <h3 class="g-room__name"><a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" style="color:inherit;text-decoration:none">{{ w['title'] }}</a></h3>
-          {% if w['price_per_person'] %}<p class="g-room__rate"><span class="g-fig">€{{ '%.0f'|format(w['price_per_person']) }}</span><span>per person</span></p>{% endif %}
+          {% if w['price_per_person'] %}<p class="g-room__rate"><span class="g-fig">€{{ '%.0f'|format(w['price_per_person']) }}</span><span>per person{% if w['single_supplement'] %}, sharing{% endif %}</span></p>{% endif %}
         </div>
         {% if w['instructor_name'] %}<p class="g-room__meta">With {{ w['instructor_name'] }}</p>{% endif %}
         {% if w['description'] %}<p class="g-room__desc">{{ w['description'][:280] }}{% if w['description']|length > 280 %}…{% endif %}</p>{% endif %}

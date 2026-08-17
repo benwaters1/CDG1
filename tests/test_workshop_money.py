@@ -53,9 +53,16 @@ def _setup():
 
 def _cleanup():
     conn = db()
+    # Bookings made through create_workshop_booking get a generated reference
+    # code, so the email address is what identifies them — matching on the code
+    # alone left them behind and the counts drifted on a second run.
+    where = "reference_code LIKE ? OR guest_email LIKE ?"
+    args = (TAG + "%", TAG.lower() + "%")
     conn.execute("DELETE FROM workshop_transactions WHERE workshop_booking_id IN "
-                 "(SELECT id FROM workshop_bookings WHERE reference_code LIKE ?)", (TAG + "%",))
-    conn.execute("DELETE FROM workshop_bookings WHERE reference_code LIKE ?", (TAG + "%",))
+                 f"(SELECT id FROM workshop_bookings WHERE {where})", args)
+    conn.execute("DELETE FROM workshop_booking_guests WHERE workshop_booking_id IN "
+                 f"(SELECT id FROM workshop_bookings WHERE {where})", args)
+    conn.execute(f"DELETE FROM workshop_bookings WHERE {where}", args)
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM workshops WHERE title LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM email_outbox WHERE subject LIKE '%Deposit received%'")
@@ -219,6 +226,104 @@ def run():
     conn.close()
     s.check("the deposit receipt is held rather than lost", receipt >= 1,
             detail=f"{receipt} rows in the outbox")
+
+    s.section("The single-occupancy supplement")
+    # The published price includes a shared room, so a guest who wants their own
+    # pays extra. Before this existed the form offered "Solo (private room)" and
+    # charged nothing for it, which is the expensive direction to be wrong in:
+    # a room is taken out of a house with a fixed number of them, for free.
+    #
+    # Every figure below goes through the real code path, because the fault this
+    # guards against is a quote and a charge computed in two different places.
+    conn = db()
+    wid = conn.execute("SELECT id FROM workshops WHERE title = ?",
+                       (f"{TAG} Watercolour",)).fetchone()["id"]
+    conn.execute("UPDATE workshops SET single_supplement = 400 WHERE id = ?", (wid,))
+    conn.commit()
+    workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (wid,)).fetchone()
+    session_row = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+               workshops.deposit_percent FROM workshop_sessions
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_sessions.notes LIKE ?""", (TAG + "%",)).fetchone()
+    conn.close()
+
+    for occupancy, party, expected, label in (
+        ("double", 1, 900.0, "one guest sharing pays the published price"),
+        ("solo", 1, 1300.0, "one guest alone pays the supplement on top"),
+        ("double", 2, 1800.0, "two sharing pay twice the published price"),
+        ("solo", 2, 2600.0, "two who each want their own room pay two supplements"),
+        ("triple", 3, 2700.0, "triple occupancy carries no supplement"),
+    ):
+        got = m.workshop_subtotal(workshop, party, occupancy)[0]
+        s.check(f"{label} (€{expected:.0f})", got == expected, detail=f"got {got}")
+
+    # The deposit is a percentage of the total, so a supplement the deposit
+    # calculation cannot see undercharges the deposit as well as the total.
+    conn = db()
+    # The confirmation email builds an external manage link, which needs a
+    # request context to know the host.
+    with m.app.test_request_context():
+        ref, token, solo_id = m.create_workshop_booking(
+            conn, session_row, workshop, f"{TAG} solo guest", f"{TAG.lower()}s@example.invalid",
+            None, 1, "", occupancy_type="solo")
+    row = conn.execute("SELECT * FROM workshop_bookings WHERE id = ?", (solo_id,)).fetchone()
+    conn.close()
+    s.check("a solo booking is charged the supplemented total",
+            row["total_price"] == 1300.0, detail=f"got {row['total_price']}")
+    s.check("the 30% deposit is taken from that total, not the bare price",
+            row["deposit_amount"] == 390.0, detail=f"got {row['deposit_amount']}")
+    s.check("and the balance is the rest of it",
+            row["balance_amount"] == 910.0, detail=f"got {row['balance_amount']}")
+    s.check("the supplement charged is recorded on the booking",
+            row["single_supplement"] == 400.0, detail=f"got {row['single_supplement']}")
+
+    # Frozen at booking. Raising the supplement must not re-price a registration
+    # somebody has already paid a deposit against.
+    conn = db()
+    conn.execute("UPDATE workshops SET single_supplement = 900 WHERE id = ?", (wid,))
+    conn.commit()
+    after = conn.execute("SELECT total_price, single_supplement FROM workshop_bookings WHERE id = ?",
+                         (solo_id,)).fetchone()
+    conn.execute("UPDATE workshops SET single_supplement = 400 WHERE id = ?", (wid,))
+    conn.commit()
+    conn.close()
+    s.check("raising the supplement later does not re-price an existing booking",
+            after["total_price"] == 1300.0 and after["single_supplement"] == 400.0,
+            detail=f"got {after['total_price']} / {after['single_supplement']}")
+
+    # A guest booking through the actual form, which is the only path that
+    # matters — the occupancy they picked has to reach the money.
+    pub = m.app.test_client()
+    page = pub.get(f"/workshops/register/{session_row['id']}").get_data(as_text=True)
+    s.check("the form shows what a private room costs", "€400" in page,
+            detail="no figure on the page")
+    r = pub.post(f"/workshops/register/{session_row['id']}", data={
+        "guest_name": f"{TAG} form guest", "guest_email": f"{TAG.lower()}f@example.invalid",
+        "party_size": "2", "occupancy_type": "solo", "notes": "",
+    }, follow_redirects=True)
+    conn = db()
+    booked = conn.execute(
+        """SELECT total_price, occupancy_type, single_supplement FROM workshop_bookings
+           WHERE guest_email = ?""", (f"{TAG.lower()}f@example.invalid",)).fetchone()
+    conn.close()
+    s.check("the registration goes through", r.status_code == 200 and booked is not None,
+            detail=f"HTTP {r.status_code}, row {booked is not None}")
+    if booked:
+        s.check("the occupancy chosen on the form reaches the charge",
+                booked["total_price"] == 2600.0,
+                detail=f"got {booked['total_price']} for {booked['occupancy_type']}")
+
+    # An atelier with no supplement set behaves as it did before: solo is free.
+    # Nothing may start erroring because a column is NULL.
+    conn = db()
+    conn.execute("UPDATE workshops SET single_supplement = NULL WHERE id = ?", (wid,))
+    conn.commit()
+    bare = conn.execute("SELECT * FROM workshops WHERE id = ?", (wid,)).fetchone()
+    conn.close()
+    unset = m.workshop_subtotal(bare, 1, "solo")[0]
+    s.check("with no supplement set, a solo room is free rather than an error",
+            unset == 900.0, detail=f"got {unset}")
 
     s.section("A payment for something else is ignored")
     conn = db()
