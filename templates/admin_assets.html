@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Asset register{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Asset register</h1>
+  <a href="{{ url_for('export_assets_csv') }}" class="btn-mini">Export for the insurer</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What the château owns — furniture, art, equipment, fixtures. Separate from staff kit and keys.
+  After a fire or a theft, this is what a claim is built from, so a photograph and where it lives
+  are worth more than a precise figure.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if summary.uninsured_significant %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>{{ summary.uninsured_significant|length }} item{{ '' if summary.uninsured_significant|length == 1 else 's' }}
+  worth €1,000 or more with no policy attached.</strong>
+  {% for a in summary.uninsured_significant[:5] %}{{ a['name'] }}{{ '; ' if not loop.last }}{% endfor %}{% if summary.uninsured_significant|length > 5 %}…{% endif %}
+</div>
+{% endif %}
+{% if summary.stale %}
+<div class="flash" style="margin-bottom:16px;">
+  {{ summary.stale|length }} professional valuation{{ '' if summary.stale|length == 1 else 's' }}
+  older than {{ 3 }} years. Insurers generally won't rely on one that old.
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:20px;">
+  <summary>Add an item</summary>
+  <form method="post" action="{{ url_for('new_asset') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">What it is</label>
+        <input type="text" name="name" required placeholder="e.g. Louis XV walnut commode">
+      </div>
+      <div>
+        <label class="field-label">Category</label>
+        <select name="category">
+          {% for k, v in asset_categories.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Where it is</label>
+        <input type="text" name="location" placeholder="e.g. Blue salon, first floor">
+      </div>
+      <div>
+        <label class="field-label">Condition</label>
+        <select name="condition">
+          {% for k, v in asset_conditions.items() %}
+          <option value="{{ k }}" {{ 'selected' if k == 'good' }}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Description</label>
+        <textarea name="description" rows="2" placeholder="Maker, marks, dimensions, distinguishing features — what would identify it if it turned up at auction."></textarea>
+      </div>
+      <div>
+        <label class="field-label">Acquired on</label>
+        <input type="date" name="acquired_on">
+      </div>
+      <div>
+        <label class="field-label">Acquired from</label>
+        <input type="text" name="acquired_from" placeholder="Dealer, auction, inherited…">
+      </div>
+      <div>
+        <label class="field-label">What it cost (€)</label>
+        <input type="text" name="purchase_price" inputmode="decimal" placeholder="0.00">
+      </div>
+      <div>
+        <label class="field-label">Value today (€)</label>
+        <input type="text" name="estimated_value" inputmode="decimal" placeholder="0.00">
+      </div>
+      <div>
+        <label class="field-label">Where that figure came from</label>
+        <select name="value_source">
+          {% for k, v in asset_value_sources.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Valued on</label>
+        <input type="date" name="valued_on">
+      </div>
+      <div>
+        <label class="field-label">Covered by</label>
+        <select name="insurance_policy_id">
+          <option value="">— no policy —</option>
+          {% for p in policies %}
+          <option value="{{ p['id'] }}">{{ p['provider'] }}{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Serial / reference</label>
+        <input type="text" name="serial_number">
+      </div>
+      <div>
+        <label class="field-label">Photograph</label>
+        <input type="file" name="photo" accept="image/*" capture="environment">
+        <span class="upload-hint">Worth more than the figure in a claim.</span>
+      </div>
+      <div class="refund-reason">
+        <label class="field-label">Notes</label>
+        <input type="text" name="notes" placeholder="Provenance, restoration history, anything an insurer would ask.">
+      </div>
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:0;">Add to the register</button>
+  </form>
+</details>
+
+{% if by_location %}
+<h2 class="section-heading">By room</h2>
+<div class="overview-band">
+  {% for l in by_location[:8] %}
+  <div class="overview-cell">
+    <div class="overview-value" style="font-size:17px;">€{{ '{:,.0f}'.format(l['v']) }}</div>
+    <div class="overview-label">{{ l['loc'] }}</div>
+    <div class="overview-hint">{{ l['n'] }} item{{ '' if l['n'] == 1 else 's' }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<form method="get" class="search-bar">
+  <div>
+    <label class="field-label">Category</label>
+    <select name="category">
+      <option value="">All</option>
+      {% for k, v in asset_categories.items() %}
+      <option value="{{ k }}" {{ 'selected' if category == k }}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Status</label>
+    <select name="status">
+      <option value="current" {{ 'selected' if show == 'current' }}>Still held</option>
+      {% for k, v in asset_statuses.items() %}
+      <option value="{{ k }}" {{ 'selected' if show == k }}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="flex:2 1 200px;">
+    <label class="field-label">Search</label>
+    <input type="text" name="q" value="{{ q }}" placeholder="Name, room, description">
+  </div>
+  <button type="submit" class="btn-mini">Filter</button>
+</form>
+
+{% if not assets %}
+  <div class="empty-state">Nothing on the register yet — add the first item above.</div>
+{% else %}
+  {% for a in assets %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <div>
+        <strong>{{ a['name'] }}</strong>
+        <span class="upload-hint">{{ asset_categories.get(a['category'], a['category']) }}{% if a['location'] %} · {{ a['location'] }}{% endif %}</span>
+        {% if a['status'] != 'held' %}
+        <span class="mini-status {{ 'status-declined' if a['status'] in ('lost','destroyed') else 'status-pending' }}">{{ asset_statuses.get(a['status']) }}</span>
+        {% endif %}
+        {% if not a['insurance_policy_id'] %}<span class="mini-status status-pending">not insured</span>{% endif %}
+      </div>
+      <span class="room-price">
+        {% if a['estimated_value'] %}€{{ '{:,.0f}'.format(a['estimated_value']) }}{% else %}<span class="upload-hint">no value</span>{% endif %}
+      </span>
+    </div>
+    <p class="upload-hint" style="margin:4px 0;">
+      {{ asset_value_sources.get(a['value_source'], a['value_source']) }}{% if a['valued_on'] %}, {{ a['valued_on'] }}{% endif %}
+      · {{ asset_conditions.get(a['condition'], a['condition']) }}
+      {% if a['insurer'] %} · covered by {{ a['insurer'] }}{% endif %}
+      {% if a['serial_number'] %} · ref {{ a['serial_number'] }}{% endif %}
+      {% if a['acquired_on'] %} · acquired {{ a['acquired_on'] }}{% if a['acquired_from'] %} from {{ a['acquired_from'] }}{% endif %}{% endif %}
+    </p>
+    {% if a['description'] %}<p class="manual-body">{{ a['description'] }}</p>{% endif %}
+    {% if a['notes'] %}<p class="upload-hint">{{ a['notes'] }}</p>{% endif %}
+    {% if a['photo_filename'] %}
+    <a href="{{ url_for('asset_photo', asset_id=a['id']) }}" target="_blank" class="small-link">View photograph</a>
+    {% endif %}
+
+    <details style="margin-top:8px;">
+      <summary class="small-link">Update</summary>
+      <form method="post" action="{{ url_for('update_asset', asset_id=a['id']) }}"
+            style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+          <label class="field-label">Status</label>
+          <select name="status">
+            {% for k, v in asset_statuses.items() %}
+            <option value="{{ k }}" {{ 'selected' if a['status'] == k }}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Value (€)</label>
+          <input type="text" name="estimated_value" inputmode="decimal"
+                 value="{{ a['estimated_value'] if a['estimated_value'] else '' }}">
+        </div>
+        <div>
+          <label class="field-label">Condition</label>
+          <select name="condition">
+            {% for k, v in asset_conditions.items() %}
+            <option value="{{ k }}" {{ 'selected' if a['condition'] == k }}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Covered by</label>
+          <select name="insurance_policy_id">
+            <option value="">— none —</option>
+            {% for p in policies %}
+            <option value="{{ p['id'] }}" {{ 'selected' if a['insurance_policy_id'] == p['id'] }}>{{ p['provider'] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="field-label">Move to</label>
+          <input type="text" name="location" placeholder="{{ a['location'] or 'room' }}">
+        </div>
+        <button type="submit" class="btn-mini">Save</button>
+      </form>
+    </details>
+  </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

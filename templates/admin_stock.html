@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Stock{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Stock</h1>
+  <a href="{{ url_for('admin_extras') }}" class="btn-ghost">Extras &amp; menu</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Levels are added up from every movement rather than stored as a number, so what you see is always
+  exactly what the history says. Selling a champagne at the till takes one out automatically.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if data.low %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Running low:</strong>
+  {% for r in data.low %}{{ r.item['name'] }} ({{ r.level|round(1) }} {{ r.item['unit'] }}){{ '; ' if not loop.last }}{% endfor %}
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:20px;">
+  <summary>Add something to track</summary>
+  <form method="post" action="{{ url_for('new_stock_item') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div><label class="field-label">Name</label><input type="text" name="name" required placeholder="e.g. Champagne — Ruinart Brut"></div>
+      <div>
+        <label class="field-label">Category</label>
+        <select name="category">
+          {% for k, v in stock_categories.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label class="field-label">Unit</label><input type="text" name="unit" value="bottle" placeholder="bottle, kg, each"></div>
+      <div><label class="field-label">How many now</label><input type="text" name="opening_qty" inputmode="decimal" placeholder="0"></div>
+      <div>
+        <label class="field-label">Tell me when it drops to</label>
+        <input type="text" name="reorder_level" inputmode="decimal" placeholder="6">
+      </div>
+      <div><label class="field-label">Cost each (€)</label><input type="text" name="unit_cost" inputmode="decimal" placeholder="0.00"></div>
+      <div>
+        <label class="field-label">Usual supplier</label>
+        <select name="vendor_id">
+          <option value="">— none —</option>
+          {% for v in vendors %}<option value="{{ v['id'] }}">{{ v['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div><label class="field-label">Where it's kept</label><input type="text" name="location" placeholder="Cellar, cold room"></div>
+    </div>
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</details>
+
+{% if not data.rows %}
+  <div class="empty-state">Nothing tracked yet. Add the things you actually run out of — champagne, coffee, linen.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Item</th><th>Where</th><th class="num">In stock</th><th class="num">Reorder at</th><th>Adjust</th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr class="{{ 'row-alert' if r.is_low }}">
+        <td>
+          <strong>{{ r.item['name'] }}</strong>
+          <div class="upload-hint">{{ stock_categories.get(r.item['category'], r.item['category']) }}</div>
+        </td>
+        <td class="upload-hint">{{ r.item['location'] or '—' }}</td>
+        <td class="num">
+          <strong>{{ r.level|round(1) }}</strong> <span class="upload-hint">{{ r.item['unit'] }}</span>
+          {% if r.is_low %}<div class="mini-status status-declined">low</div>{% endif %}
+        </td>
+        <td class="num upload-hint">{{ r.item['reorder_level']|round(0)|int }}</td>
+        <td>
+          <form method="post" action="{{ url_for('move_stock', item_id=r.item['id']) }}"
+                style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="quantity" inputmode="decimal" placeholder="qty"
+                   style="width:70px;" required>
+            <select name="reason" style="width:auto;">
+              {% for k, v in stock_reasons.items() %}
+              {% if k != 'sale' %}<option value="{{ k }}">{{ v }}</option>{% endif %}
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn-mini">Apply</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint" style="margin-top:8px;">
+  “Counted — adjusted to match” takes the number you've physically counted and records the difference,
+  so a stocktake shows you how much went missing rather than quietly overwriting it.
+</p>
+{% endif %}
+
+{% if recent %}
+<h2 class="section-heading">Recent movements</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>When</th><th>Item</th><th class="num">Change</th><th>Why</th><th>Who</th></tr></thead>
+    <tbody>
+      {% for m in recent %}
+      <tr>
+        <td class="upload-hint">{{ local_datetime_str(m['created_at']) }}</td>
+        <td>{{ m['item'] }}</td>
+        <td class="num {{ 'row-alert' if m['delta'] < 0 }}">
+          {{ '+' if m['delta'] > 0 }}{{ m['delta']|round(1) }} {{ m['unit'] }}
+        </td>
+        <td class="upload-hint">
+          {{ stock_reasons.get(m['reason'], m['reason']) }}{% if m['note'] %} — {{ m['note'] }}{% endif %}
+        </td>
+        <td class="upload-hint">{{ m['who'] or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

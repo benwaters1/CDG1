@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Table {{ order['table_label'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Table {{ order['table_label'] }}</h1>
+  <a href="{{ url_for('pos_home') }}" class="btn-ghost">All tabs</a>
+</div>
+
+{% if order['status'] != 'open' %}
+<div class="flash flash-success" style="margin-bottom:16px;">
+  Settled — €{{ '%.2f'|format(order['settled_total'] or 0) }}
+  {% if order['payment_method'] %}({{ payment_methods.get(order['payment_method'], order['payment_method'])|lower }}){% endif %}
+  {% if order['closed_at'] %} at {{ local_time_str(order['closed_at']) }}{% endif %}.
+</div>
+{% endif %}
+
+<div class="pos-layout">
+
+  <div class="pos-menu">
+    <h2 class="section-heading" style="margin-top:0;">Add to the tab</h2>
+    {% if not by_category %}
+      <div class="empty-state">
+        Nothing is marked as sold at the till yet — tick “sell at the till” on an item in
+        <a href="{{ url_for('admin_extras') }}">Extras</a>, or ring something up by hand below.
+      </div>
+    {% endif %}
+    {% for cat, items in by_category.items() %}
+    <p class="field-label" style="margin-top:14px;">{{ extra_categories.get(cat, cat) }}</p>
+    <div class="pos-grid">
+      {% for m in items %}
+      {% set level = stock.get(m['stock_item_id']) if m['stock_item_id'] else None %}
+      <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="extra_id" value="{{ m['id'] }}">
+        <button type="submit" class="pos-item {{ 'pos-item-out' if level is not none and level <= 0 }}"
+                {{ 'disabled' if order['status'] != 'open' }}>
+          <span class="pos-item-name">{{ m['name'] }}</span>
+          <span class="pos-item-price">€{{ '%.2f'|format(m['price'] or 0) }}</span>
+          {% if level is not none %}
+          <span class="pos-item-stock">{{ level|round(0)|int }} left</span>
+          {% endif %}
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    {% if order['status'] == 'open' %}
+    <details class="refund-box" style="margin-top:18px;">
+      <summary>Something not on the list</summary>
+      <form method="post" action="{{ url_for('pos_add_item', order_id=order['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="refund-fields">
+          <div><label class="field-label">Item</label><input type="text" name="name" required></div>
+          <div><label class="field-label">Price (€)</label><input type="text" name="unit_price" inputmode="decimal" placeholder="0.00"></div>
+          <div><label class="field-label">Quantity</label><input type="number" name="quantity" min="1" value="1"></div>
+        </div>
+        <button type="submit" class="btn-mini">Add</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+
+  <div class="pos-bill">
+    <h2 class="section-heading" style="margin-top:0;">The bill</h2>
+    {% if not lines %}
+      <div class="empty-state">Nothing on this tab yet.</div>
+    {% else %}
+    <div class="task-list">
+      {% for l in lines %}
+      <div class="task-row {{ 'task-done' if l['voided'] }}">
+        <span class="task-title" style="flex:1;">
+          {{ l['quantity'] }} × {{ l['name'] }}
+          {% if l['notes'] %}<span class="upload-hint">{{ l['notes'] }}</span>{% endif %}
+        </span>
+        <span class="room-price">€{{ '%.2f'|format((l['unit_price'] or 0) * l['quantity']) }}</span>
+        {% if not l['voided'] and order['status'] == 'open' %}
+        <form method="post" action="{{ url_for('pos_void_item', line_id=l['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-text-danger" title="Void this line">×</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="pos-total">
+      <span>Total</span>
+      <strong>€{{ '%.2f'|format(total) }}</strong>
+    </div>
+    {% endif %}
+
+    {% if order['status'] == 'open' and lines %}
+    <h2 class="section-heading">Settle</h2>
+
+    {% if in_house %}
+    <form method="post" action="{{ url_for('pos_settle_tab', order_id=order['id']) }}" class="detail-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="method" value="room">
+      <label class="field-label">Charge to a room</label>
+      <select name="room_booking_id" required>
+        <option value="">— choose the guest —</option>
+        {% for b in in_house %}
+        <option value="{{ b['id'] }}">{{ b['guest_name'] }} — {{ b['reference_code'] }}</option>
+        {% endfor %}
+      </select>
+      <p class="upload-hint">Each item goes onto their bill by name, so they can see what they had.</p>
+      <button type="submit" class="btn-primary" style="margin-top:8px;">Charge €{{ '%.2f'|format(total) }} to the room</button>
+    </form>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('pos_pay_link', order_id=order['id']) }}" style="margin-bottom:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-primary" style="width:100%;">Card — open a payment page</button>
+      <p class="upload-hint">Opens Stripe on this device, or hand the iPad over. No card reader needed.</p>
+    </form>
+
+    <form method="post" action="{{ url_for('pos_settle_tab', order_id=order['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="submit" name="method" value="cash" class="btn-mini">Cash</button>
+        <button type="submit" name="method" value="card_terminal" class="btn-mini">Card on the terminal</button>
+        <button type="submit" name="method" value="comp" class="btn-mini btn-mini-danger"
+                onclick="return confirm('Close this tab with nothing charged?');">On the house</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

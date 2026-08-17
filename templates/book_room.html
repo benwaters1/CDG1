@@ -57,7 +57,7 @@
     <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
       {% for e in extras %}
       <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="extras" value="{{ e['id'] }}" style="width:auto;">
+        <input type="checkbox" name="extras" value="{{ e['id'] }}">
         {{ e['name'] }} — €{{ '%.2f'|format(e['price']) }}
       </label>
       {% endfor %}
@@ -72,7 +72,7 @@
     <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
 
     <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
-      <input type="checkbox" name="agree_terms" required style="width:auto;">
+      <input type="checkbox" name="agree_terms" required>
       I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" style="color:var(--steel);">Terms &amp; Conditions</a>
     </label>
 

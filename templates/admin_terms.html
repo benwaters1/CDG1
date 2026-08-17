@@ -4,15 +4,45 @@
 
 <div class="page-head">
   <h1>Terms &amp; Conditions</h1>
-  <a href="{{ url_for('terms_page') }}" class="btn-mini">View public page</a>
+  <div style="display:flex; gap:10px;">
+    {% if not showing_shipped %}
+    <a href="{{ url_for('admin_terms', draft=1) }}" class="btn-ghost">Load the shipped draft</a>
+    {% endif %}
+    <a href="{{ url_for('terms_page') }}" class="btn-mini">View public page</a>
+  </div>
 </div>
 
-<p class="pay-disclaimer">This is shown to every guest before they can submit a booking request. It ships as a draft — have it reviewed by a lawyer before you rely on it, especially the cancellation-window bracket.</p>
+<p class="pay-disclaimer">
+  Shown to every guest before they can submit a booking request, and they have to tick to accept it.
+</p>
+
+{% if is_draft %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>These are still marked as a draft.</strong>
+  They were written to match how the château actually operates — deposits, the non-refundable policy,
+  workshops, damage to the contents — but nobody legally qualified has read them. Have a French lawyer
+  and your insurer review them, then delete the notice at the top.
+</div>
+{% endif %}
+
+{% if showing_shipped %}
+<div class="flash" style="margin-bottom:16px;">
+  You're looking at the shipped starting point, not what guests currently see.
+  Nothing changes until you press Save.
+  <a href="{{ url_for('admin_terms') }}">Discard and go back to the live text</a>.
+</div>
+{% endif %}
 
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <textarea name="text" style="min-height:420px; font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ text }}</textarea>
+  <textarea name="text" style="min-height:520px; font-family:'IBM Plex Mono', monospace; font-size:12.5px;">{{ text }}</textarea>
   <button type="submit" class="btn-primary">Save</button>
 </form>
+
+<p class="upload-hint" style="margin-top:12px;">
+  Worth checking before you publish: the cancellation section says bookings are non-refundable with
+  discretionary exceptions — that matches how refunds actually work in the app. If you change that
+  policy here, change it in practice too.
+</p>
 
 {% endblock %}

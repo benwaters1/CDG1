@@ -14,7 +14,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_housekeeping_enabled" style="width:auto;" {{ 'checked' if settings['automation_housekeeping_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_housekeeping_enabled" {{ 'checked' if settings['automation_housekeeping_enabled'] == '1' }}>
         Housekeeping sweep
       </label>
       <p class="upload-hint" style="margin-top:4px;">Auto-declines pending, unpaid room bookings the owner never acted on, and pre-generates the arrival-prep checklist for stays coming up in the next 2 days — runs every few minutes.</p>
@@ -22,7 +22,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_daily_digest_enabled" style="width:auto;" {{ 'checked' if settings['automation_daily_digest_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_daily_digest_enabled" {{ 'checked' if settings['automation_daily_digest_enabled'] == '1' }}>
         Daily owner digest email
       </label>
       <p class="upload-hint" style="margin-top:4px;">Sends the owner the same "what needs your attention" summary shown on the dashboard, roughly once every 24 hours.</p>
@@ -30,7 +30,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_ical_sync_enabled" style="width:auto;" {{ 'checked' if settings['automation_ical_sync_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_ical_sync_enabled" {{ 'checked' if settings['automation_ical_sync_enabled'] == '1' }}>
         iCal sync
       </label>
       <p class="upload-hint" style="margin-top:4px;">Pulls in bookings from every connected Airbnb/Booking.com/VRBO calendar so nothing double-books.</p>
@@ -42,7 +42,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_workshop_balance_reminder_enabled" style="width:auto;" {{ 'checked' if settings['automation_workshop_balance_reminder_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_workshop_balance_reminder_enabled" {{ 'checked' if settings['automation_workshop_balance_reminder_enabled'] == '1' }}>
         Workshop balance-due reminders
       </label>
       <p class="upload-hint" style="margin-top:4px;">Emails a confirmed workshop guest once, using the "Workshop: Balance due reminder" template, when their balance is due soon and still unpaid.</p>
@@ -54,7 +54,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_waitlist_autonotify_enabled" style="width:auto;" {{ 'checked' if settings['automation_waitlist_autonotify_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_waitlist_autonotify_enabled" {{ 'checked' if settings['automation_waitlist_autonotify_enabled'] == '1' }}>
         Auto-notify waitlists
       </label>
       <p class="upload-hint" style="margin-top:4px;">When a room, dinner reservation, or workshop registration is declined or cancelled, automatically emails any matching open waitlist entry instead of just flagging it for the owner to follow up manually.</p>
@@ -62,7 +62,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_workshop_feedback_enabled" style="width:auto;" {{ 'checked' if settings['automation_workshop_feedback_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_workshop_feedback_enabled" {{ 'checked' if settings['automation_workshop_feedback_enabled'] == '1' }}>
         Workshop feedback requests
       </label>
       <p class="upload-hint" style="margin-top:4px;">Emails a confirmed workshop guest once, using the "Workshop: Feedback request" template, the day after their session ends — mirrors the room booking's checkout-time "How was your stay?" email.</p>
@@ -70,7 +70,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_email_scan_enabled" style="width:auto;" {{ 'checked' if settings['automation_email_scan_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_email_scan_enabled" {{ 'checked' if settings['automation_email_scan_enabled'] == '1' }}>
         Inbox scan (Inbox Flags)
       </label>
       <p class="upload-hint" style="margin-top:4px;">
@@ -90,7 +90,7 @@
 
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
-        <input type="checkbox" name="automation_stale_shift_enabled" style="width:auto;" {{ 'checked' if settings['automation_stale_shift_enabled'] == '1' }}>
+        <input type="checkbox" name="automation_stale_shift_enabled" {{ 'checked' if settings['automation_stale_shift_enabled'] == '1' }}>
         Stale shift cleanup
       </label>
       <p class="upload-hint" style="margin-top:4px;">Clocking in/out is a deliberate action now, not a side effect of logging in/out — this catches the "forgot to clock out" case instead, closing a shift left open too long and notifying both the employee and the owner so it can be corrected.</p>

@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Till{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Till</h1>
+  <span class="upload-hint">{{ today.strftime('%A %d %B') }}</span>
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<h2 class="section-heading">Open tabs</h2>
+{% if not orders %}
+  <div class="empty-state">Nothing open. Start a table below.</div>
+{% else %}
+<div class="pos-grid">
+  {% for o in orders %}
+  <a href="{{ url_for('pos_order', order_id=o['id']) }}" class="pos-tile">
+    <span class="pos-tile-table">{{ o['table_label'] }}</span>
+    <span class="pos-tile-total">€{{ '%.2f'|format(totals[o['id']]) }}</span>
+    <span class="pos-tile-meta">
+      {{ o['covers'] }} cover{{ '' if o['covers'] == 1 else 's' }}
+      · opened {{ local_time_str(o['opened_at']) }}
+      {% if o['opened_by'] %}· {{ o['opened_by'].split()[0] }}{% endif %}
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Start a table</h2>
+<form method="post" action="{{ url_for('pos_open_tab') }}" class="search-bar">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label">Table</label>
+    <input type="text" name="table_label" required placeholder="e.g. 4, Terrace, Bar" autocomplete="off">
+  </div>
+  <div>
+    <label class="field-label">Covers</label>
+    <input type="number" name="covers" min="1" step="1" value="2">
+  </div>
+  <button type="submit" class="btn-primary" style="margin-top:0;">Open tab</button>
+</form>
+
+{% endblock %}

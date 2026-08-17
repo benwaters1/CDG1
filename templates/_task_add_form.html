@@ -29,11 +29,11 @@
     <input type="date" name="due_date" value="{{ sheet.anchor.isoformat() if sheet is defined else '' }}">
   </div>
   <div style="flex-direction:row; align-items:center; gap:6px; align-self:flex-end; padding-bottom:9px;">
-    <input type="checkbox" name="repeat_weekly" id="repeat_weekly" value="1" style="width:auto;">
+    <input type="checkbox" name="repeat_weekly" id="repeat_weekly" value="1">
     <label for="repeat_weekly" class="field-label" style="margin:0;">Repeat weekly</label>
   </div>
   <div style="flex-direction:row; align-items:center; gap:6px; align-self:flex-end; padding-bottom:9px;">
-    <input type="checkbox" name="guest_request" id="guest_request" value="1" style="width:auto;">
+    <input type="checkbox" name="guest_request" id="guest_request" value="1">
     <label for="guest_request" class="field-label" style="margin:0;">Guest request</label>
   </div>
   <button type="submit" class="btn-mini">+ Add task</button>

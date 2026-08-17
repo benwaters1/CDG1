@@ -30,6 +30,10 @@
       <strong>{{ first_day.strftime('%B %Y') }}</strong>
       <a href="{{ url_for('book_rooms', month=next_month) }}" class="btn-mini">Next &rarr;</a>
     </div>
+    {# A month × every room is inherently wider than a phone. It scrolls, but
+       horizontal scroll is easy to miss, and this is the first thing a guest
+       sees — so say so, on touch only. #}
+    <p class="upload-hint touch-only" style="margin:0 0 6px;">Swipe the calendar sideways for later dates.</p>
     <div style="overflow-x:auto;">
       <table class="cal-table">
         <thead>

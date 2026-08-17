@@ -12,15 +12,15 @@
   <h3 style="margin-top:0;">1. Who should get it?</h3>
   <form method="get">
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none;">
-      <input type="checkbox" name="segment" value="room" style="width:auto;" {{ 'checked' if 'room' in segments }}>
+      <input type="checkbox" name="segment" value="room" {{ 'checked' if 'room' in segments }}>
       Room guests
     </label>
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
-      <input type="checkbox" name="segment" value="restaurant" style="width:auto;" {{ 'checked' if 'restaurant' in segments }}>
+      <input type="checkbox" name="segment" value="restaurant" {{ 'checked' if 'restaurant' in segments }}>
       Dinner guests
     </label>
     <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
-      <input type="checkbox" name="segment" value="workshop" style="width:auto;" {{ 'checked' if 'workshop' in segments }}>
+      <input type="checkbox" name="segment" value="workshop" {{ 'checked' if 'workshop' in segments }}>
       Workshop attendees
     </label>
     <div style="margin-top:10px; max-width:260px;">

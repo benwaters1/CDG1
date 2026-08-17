@@ -47,7 +47,7 @@
   <p class="upload-hint" style="margin-top:6px;">When set, online payment only collects this percentage as a deposit — the rest is due at the restaurant. Guests still see the full total up front; only the online charge is reduced.</p>
 
   <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:16px;">
-    <input type="checkbox" name="enabled" style="width:auto;" {{ 'checked' if settings['enabled'] }}>
+    <input type="checkbox" name="enabled" {{ 'checked' if settings['enabled'] }}>
     Online reservations open (public booking page + guest check-in)
   </label>
   <p class="upload-hint" style="margin-top:6px;">Leave this off until the dining room is actually ready — the reservations queue and settings stay usable either way.</p>
