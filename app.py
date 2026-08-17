@@ -11251,6 +11251,307 @@ def terms_page():
     return render_template("terms.html", text=text)
 
 
+@app.route("/admin/pennylane", methods=["GET", "POST"])
+@owner_required
+def admin_pennylane():
+    """Where the château's categories meet the accountant's codes."""
+    conn = get_db()
+    if request.method == "POST":
+        for stream in REVENUE_STREAMS:
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES (?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                (f"revenue_account_{stream}", (request.form.get(f"revenue_{stream}", "") or "").strip()))
+        conn.commit()
+        conn.close()
+        flash("Account mapping saved.", "success")
+        return redirect(url_for("admin_pennylane"))
+
+    synced = conn.execute(
+        "SELECT COUNT(*) AS c, MAX(synced_at) AS at FROM pennylane_accounts").fetchone()
+    expense_accounts = ledger_account_choices(conn, "6")
+    revenue_accounts = ledger_account_choices(conn, "7")
+    mapping = {s: revenue_account_for(conn, s) for s in REVENUE_STREAMS}
+    uncoded = conn.execute(
+        """SELECT (SELECT COUNT(*) FROM stock_items WHERE active=1 AND COALESCE(ledger_code,'')='')
+                + (SELECT COUNT(*) FROM recurring_costs WHERE active=1 AND COALESCE(ledger_code,'')='') AS c"""
+    ).fetchone()["c"]
+    conn.close()
+    overview = [
+        overview_cell("Accounts synced", synced["c"], alert=not synced["c"]),
+        overview_cell("Expense codes", len(expense_accounts)),
+        overview_cell("Revenue codes", len(revenue_accounts)),
+        overview_cell("Streams mapped", sum(1 for v in mapping.values() if v),
+                      sub=f"/{len(REVENUE_STREAMS)}", alert=any(not v for v in mapping.values())),
+        overview_cell("Costs without a code", uncoded, alert=uncoded),
+    ]
+    return render_template("admin_pennylane.html", overview=overview,
+                           expense_accounts=expense_accounts, revenue_accounts=revenue_accounts,
+                           streams=REVENUE_STREAMS, mapping=mapping,
+                           synced_count=synced["c"], synced_at=synced["at"],
+                           connected=pennylane_configured())
+
+
+@app.route("/admin/pennylane/sync", methods=["POST"])
+@owner_required
+def sync_pennylane():
+    conn = get_db()
+    ok, result = sync_pennylane_accounts(conn)
+    if ok:
+        log_audit(conn, "pennylane_accounts_synced", None, f"{result} accounts")
+        conn.commit()
+    conn.close()
+    flash(f"Pulled {result} accounts from Pennylane." if ok else f"Couldn't sync: {result}",
+          "success" if ok else "error")
+    return redirect(url_for("admin_pennylane"))
+
+
+def _expense_pennylane_lines(conn, expense):
+    """The invoice lines to send.
+
+    If the invoice was read into stock, each stock line becomes an accounting
+    line on the code of the item it stocked — so the classification already
+    done here is the classification the accountant receives.
+    """
+    vat = tax_rate(conn, "vat_food") or 20.0
+    stocked = conn.execute(
+        """SELECT stock_movements.delta, stock_movements.unit_cost,
+                  stock_items.name, stock_items.ledger_code
+           FROM stock_movements JOIN stock_items ON stock_items.id = stock_movements.stock_item_id
+           WHERE stock_movements.expense_id = ? AND stock_movements.delta > 0""",
+        (expense["id"],)).fetchall()
+
+    lines, accounted = [], 0.0
+    for row in stocked:
+        if not row["unit_cost"]:
+            continue
+        net = round(row["delta"] * row["unit_cost"], 2)
+        accounted += net
+        line = {"currency_amount": f"{net:.2f}",
+                "currency_tax": f"{round(net * vat / 100, 2):.2f}",
+                "vat_rate": f"FR_{int(vat) * 10:03d}", "label": row["name"][:200]}
+        if row["ledger_code"]:
+            line["ledger_account_number"] = row["ledger_code"]
+        lines.append(line)
+
+    total = float(expense["amount"] or 0)
+    # Whatever the stock lines didn't account for goes on one balancing line —
+    # Pennylane rejects an invoice whose lines don't add up to its total.
+    remainder = round(total - round(accounted * (1 + vat / 100), 2), 2)
+    if not lines or abs(remainder) >= 0.01:
+        gross = remainder if lines else total
+        net = round(gross / (1 + vat / 100), 2)
+        line = {"currency_amount": f"{net:.2f}", "currency_tax": f"{round(gross - net, 2):.2f}",
+                "vat_rate": f"FR_{int(vat) * 10:03d}",
+                "label": (expense["description"] or "Other")[:200]}
+        if expense["ledger_code"]:
+            line["ledger_account_number"] = expense["ledger_code"]
+        lines.append(line)
+    return lines
+
+
+@app.route("/expenses/<int:expense_id>/send-to-pennylane", methods=["POST"])
+@owner_required
+def send_to_pennylane(expense_id):
+    """Push a cost, with its document, into Pennylane."""
+    conn = get_db()
+    expense = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    if not expense:
+        conn.close()
+        abort(404)
+    if expense["pennylane_invoice_id"]:
+        conn.close()
+        flash("That's already in Pennylane.", "error")
+        return redirect(url_for("expenses"))
+    if not pennylane_configured():
+        conn.close()
+        flash("Pennylane isn't connected — add PENNYLANE_API_TOKEN. See DEPLOY.md.", "error")
+        return redirect(url_for("expenses"))
+    if not expense["filename"]:
+        conn.close()
+        flash("Attach the invoice or a photo of it first.", "error")
+        return redirect(url_for("expenses"))
+    path = os.path.join(UPLOAD_DIR, expense["filename"])
+    if not os.path.exists(path):
+        conn.close()
+        flash("The file is missing from the server.", "error")
+        return redirect(url_for("expenses"))
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    guessed = "application/pdf" if expense["filename"].lower().endswith(".pdf") else "image/jpeg"
+    pdf_bytes, _ = ensure_pdf(raw, guessed, expense["vendor_name"] or "Invoice")
+
+    ok, supplier_id = pennylane_find_supplier((expense["vendor_name"] or "").strip())
+    if not ok:
+        conn.close()
+        flash(f"Couldn't set up the supplier in Pennylane: {supplier_id}", "error")
+        return redirect(url_for("expenses"))
+    ok, file_id = pennylane_upload_file(
+        pdf_bytes, f"{secure_filename(expense['vendor_name'] or 'invoice')}-{expense_id}.pdf")
+    if not ok:
+        conn.execute("UPDATE expenses SET pennylane_error = ? WHERE id = ?",
+                     (str(file_id)[:400], expense_id))
+        conn.commit()
+        conn.close()
+        flash(f"Pennylane wouldn't take the file: {file_id}", "error")
+        return redirect(url_for("expenses"))
+
+    issued = (expense["submitted_at"] or datetime.now(timezone.utc).isoformat())[:10]
+    vat = tax_rate(conn, "vat_food") or 20.0
+    total = float(expense["amount"] or 0)
+    ok, result = pennylane_import_supplier_invoice(
+        file_attachment_id=file_id, supplier_id=supplier_id, date=issued, deadline=issued,
+        amount=total, tax=round(total - total / (1 + vat / 100), 2),
+        lines=_expense_pennylane_lines(conn, expense),
+        invoice_number=(expense["description"] or "")[:60] or None,
+        external_reference=f"gudanes-expense-{expense_id}")
+    if not ok:
+        conn.execute("UPDATE expenses SET pennylane_error = ? WHERE id = ?",
+                     (str(result)[:400], expense_id))
+        conn.commit()
+        conn.close()
+        flash(f"Pennylane refused the invoice: {result}", "error")
+        return redirect(url_for("expenses"))
+
+    invoice_id = str(result.get("id") or (result.get("invoice") or {}).get("id") or "")
+    conn.execute(
+        """UPDATE expenses SET pennylane_invoice_id = ?, pennylane_synced_at = ?,
+           pennylane_error = NULL WHERE id = ?""",
+        (invoice_id, datetime.now(timezone.utc).isoformat(), expense_id))
+    log_audit(conn, "pennylane_sent", f"expense #{expense_id}",
+              f"{expense['vendor_name']} — Pennylane invoice {invoice_id}")
+    conn.commit()
+    conn.close()
+    flash("Sent to Pennylane with the document attached.", "success")
+    return redirect(url_for("expenses"))
+
+
+@app.route("/expenses/scan", methods=["POST"])
+@owner_required
+def scan_expense():
+    """Pull a page straight off the network scanner and file it as an invoice."""
+    if not scanner_configured():
+        flash("No scanner is set up. Add SCANNER_URL, or photograph it instead.", "error")
+        return redirect(url_for("expenses"))
+    reachable, info = scanner_status()
+    if not reachable:
+        flash(f"{info} Photograph it instead if you're not at the château.", "error")
+        return redirect(url_for("expenses"))
+    source = "Feeder" if request.form.get("feeder") and (info or {}).get("feeder") else "Platen"
+    ok, data, mimetype = scan_document(source=source)
+    if not ok:
+        flash(f"The scan didn't work: {data}", "error")
+        return redirect(url_for("expenses"))
+    pdf_bytes, ext = ensure_pdf(data, mimetype, "Scan")
+    stored = f"scan_{secrets.token_hex(6)}.{ext}"
+    with open(os.path.join(UPLOAD_DIR, stored), "wb") as fh:
+        fh.write(pdf_bytes)
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO expenses (kind, vendor_name, description, amount, filename, status,
+           submitted_by_user_id, submitted_at)
+           VALUES ('supplier_invoice', ?, 'Scanned — needs details', 0, ?, 'pending', ?, ?)""",
+        ((request.form.get("vendor_name", "") or "").strip() or "Scanned invoice", stored,
+         (current_user() or {})["id"], datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash("Scanned. Add the supplier and amount, then send it to Pennylane.", "success")
+    return redirect(url_for("expenses"))
+
+
+@app.route("/expenses/<int:expense_id>/read-invoice", methods=["POST"])
+@owner_required
+def read_invoice(expense_id):
+    """Read a supplier invoice PDF and propose what it delivered.
+
+    Proposes only — an invoice misread by one decimal would otherwise corrupt
+    both the stock level and its valuation, silently.
+    """
+    conn = get_db()
+    expense = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    if not expense:
+        conn.close()
+        abort(404)
+    if not expense["filename"]:
+        conn.close()
+        flash("There's no file attached to this invoice.", "error")
+        return redirect(url_for("expenses"))
+    if not expense["filename"].lower().endswith(".pdf"):
+        conn.close()
+        flash("Only PDF invoices can be read automatically — add the stock by hand.", "error")
+        return redirect(url_for("expenses"))
+    if not claude_configured():
+        conn.close()
+        flash("Invoice reading needs ANTHROPIC_API_KEY to be set — see DEPLOY.md.", "error")
+        return redirect(url_for("expenses"))
+    already = conn.execute(
+        "SELECT COUNT(*) AS c FROM stock_movements WHERE expense_id = ?", (expense_id,)).fetchone()["c"]
+    items = conn.execute("SELECT * FROM stock_items WHERE active = 1 ORDER BY name").fetchall()
+    conn.close()
+
+    path = os.path.join(UPLOAD_DIR, expense["filename"])
+    if not os.path.exists(path):
+        flash("The invoice file is missing from the server.", "error")
+        return redirect(url_for("expenses"))
+    with open(path, "rb") as fh:
+        pdf_bytes = fh.read()
+    result = read_invoice_with_claude(pdf_bytes, expense["filename"], items)
+    if not result:
+        flash("Couldn't read that invoice — add the stock by hand.", "error")
+        return redirect(url_for("expenses"))
+    by_id = {i["id"]: i for i in items}
+    for line in result["lines"]:
+        match = by_id.get(line.get("stock_item_id"))
+        line["match_name"] = match["name"] if match else None
+        line["match_unit"] = match["unit"] if match else None
+    return render_template("invoice_review.html", expense=expense, result=result,
+                           items=items, already=already)
+
+
+@app.route("/expenses/<int:expense_id>/apply-invoice", methods=["POST"])
+@owner_required
+def apply_invoice(expense_id):
+    """Book the confirmed lines into stock. Only what was ticked, at whatever
+    quantity the owner left in the form — their edit beats the suggestion."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM expenses WHERE id = ?", (expense_id,)).fetchone():
+        conn.close()
+        abort(404)
+    user_id = (current_user() or {})["id"]
+    applied = 0
+    for idx in request.form.getlist("apply"):
+        item_raw = (request.form.get(f"item_{idx}", "") or "").strip()
+        qty_raw = (request.form.get(f"qty_{idx}", "") or "").strip().replace(",", ".")
+        cost_raw = (request.form.get(f"cost_{idx}", "") or "").strip().replace(",", ".")
+        if not item_raw.isdigit():
+            continue
+        try:
+            qty = float(qty_raw)
+        except ValueError:
+            continue
+        if qty <= 0:
+            continue
+        try:
+            unit_cost = float(cost_raw) if cost_raw else None
+        except ValueError:
+            unit_cost = None
+        record_stock_movement(conn, int(item_raw), qty, "purchase", unit_cost=unit_cost,
+                              expense_id=expense_id, user_id=user_id,
+                              note=(request.form.get(f"desc_{idx}", "") or "").strip()[:120] or None)
+        # Keep the item's cost current, so the valuation reflects what was last
+        # actually paid rather than whatever was typed when it was created.
+        if unit_cost:
+            conn.execute("UPDATE stock_items SET unit_cost = ? WHERE id = ?", (unit_cost, int(item_raw)))
+        applied += 1
+    if applied:
+        log_audit(conn, "invoice_stocked", f"expense #{expense_id}", f"{applied} line(s)")
+        conn.commit()
+    conn.close()
+    flash(f"{applied} line{'' if applied == 1 else 's'} added to stock." if applied
+          else "Nothing was ticked, so nothing changed.", "success" if applied else "error")
+    return redirect(url_for("admin_stock"))
+
+
 @app.route("/booking/<manage_token>/statement")
 def booking_statement(manage_token):
     """The guest's bill.
@@ -11556,6 +11857,10 @@ def expenses():
     return render_template(
         "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
         status_filter=status_filter, q=q, totals=totals,
+        pennylane_ready=pennylane_configured(),
+        # Only offer the scan button when a scanner is configured — a button
+        # that cannot work from Perth is worse than no button.
+        scanner_ready=scanner_configured(),
     )
 
 
@@ -22802,6 +23107,173 @@ def ensure_pdf(data, mimetype, title="Document"):
     except Exception as e:
         print(f"[scan] couldn't convert to PDF ({e}) — keeping the original")
         return data, (mimetype or "image/jpeg").split("/")[-1]
+
+
+# ---------------------------------------------------------------------------
+# Scanning, straight from the printer.
+#
+# eSCL is the protocol behind AirPrint scanning; most network MFPs speak it.
+# It is ordinary HTTP, so the server can drive the scanner directly — no
+# drivers, no plugin, no app on the iPad. The catch is that the server must
+# REACH the printer, which means running on the same network.
+# ---------------------------------------------------------------------------
+
+ESCL_SCAN_REQUEST = """<?xml version="1.0" encoding="UTF-8"?>
+<scan:ScanSettings xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03"
+                   xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm">
+  <pwg:Version>2.63</pwg:Version>
+  <scan:Intent>Document</scan:Intent>
+  <pwg:InputSource>{source}</pwg:InputSource>
+  <scan:ColorMode>{color}</scan:ColorMode>
+  <scan:XResolution>{dpi}</scan:XResolution>
+  <scan:YResolution>{dpi}</scan:YResolution>
+  <pwg:DocumentFormat>{fmt}</pwg:DocumentFormat>
+</scan:ScanSettings>"""
+
+
+def scanner_configured():
+    return bool(SCANNER_URL)
+
+
+def scanner_status():
+    """Is the scanner reachable, and what can it do?
+
+    Checked before scanning so the answer is "the printer isn't answering"
+    rather than a failure at the moment someone has the document face-down.
+    """
+    if not scanner_configured():
+        return False, "No scanner address is set."
+    try:
+        with urlopen(f"{SCANNER_URL}/eSCL/ScannerStatus", timeout=5) as resp:
+            body = resp.read().decode("utf-8", "replace")
+        return True, {"feeder": "Adf" in body}
+    except Exception as e:
+        return False, f"Couldn't reach the scanner at {SCANNER_URL}: {e}"
+
+
+def scan_document(source="Platen", color="RGB24", dpi=300, want_pdf=True):
+    """Run a scan and hand back the bytes.
+
+    Tries PDF first — that is what Pennylane accepts and what an invoice should
+    be — then falls back to JPEG, which every eSCL scanner supports, and lets
+    the caller convert. Returns (ok, bytes_or_message, mimetype).
+    """
+    if not scanner_configured():
+        return False, "No scanner address is set.", None
+    last_error = "The scanner didn't return a document."
+    for fmt in (["application/pdf", "image/jpeg"] if want_pdf else ["image/jpeg"]):
+        body = ESCL_SCAN_REQUEST.format(source=source, color=color, dpi=dpi, fmt=fmt)
+        try:
+            req = Request(f"{SCANNER_URL}/eSCL/ScanJobs", data=body.encode("utf-8"),
+                          headers={"Content-Type": "text/xml"}, method="POST")
+            with urlopen(req, timeout=20) as resp:
+                job = resp.headers.get("Location")
+                code = resp.status
+        except HTTPError as e:
+            last_error = f"The scanner refused the job ({e.code})."
+            continue
+        except Exception as e:
+            return False, f"Couldn't reach the scanner: {e}", None
+        if code != 201 or not job:
+            last_error = "The scanner started a job but didn't say where."
+            continue
+        # Some devices return an absolute URL, others a path.
+        if job.startswith("/"):
+            job = f"{SCANNER_URL}{job}"
+        try:
+            # Scanning is slow: a flatbed page takes 15-20s at 300dpi.
+            with urlopen(f"{job}/NextDocument", timeout=120) as doc:
+                data = doc.read()
+                ctype = doc.headers.get("Content-Type", fmt)
+        except Exception as e:
+            return False, f"The scan started but didn't finish: {e}", None
+        if data:
+            return True, data, ctype
+    return False, last_error, None
+
+
+# The shape we ask Claude for when reading a supplier invoice. A schema rather
+# than "please reply with JSON", so the model is constrained to produce it and
+# we never parse prose.
+INVOICE_LINES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "supplier": {"type": ["string", "null"]},
+        "invoice_date": {"type": ["string", "null"], "description": "YYYY-MM-DD if shown"},
+        "invoice_total": {"type": ["number", "null"], "description": "Grand total incl. tax"},
+        "lines": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string", "description": "Exactly as printed"},
+                    "quantity": {"type": "number"},
+                    "unit": {"type": ["string", "null"]},
+                    "unit_price": {"type": ["number", "null"]},
+                    "line_total": {"type": ["number", "null"]},
+                    "stock_item_id": {"type": ["integer", "null"],
+                                      "description": "id from the stock list, or null"},
+                    "match_confidence": {"type": "string", "enum": ["high", "low", "none"]},
+                },
+                "required": ["description", "quantity", "stock_item_id", "match_confidence"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["lines"],
+    "additionalProperties": False,
+}
+
+
+def read_invoice_with_claude(pdf_bytes, filename, stock_items):
+    """Pull the line items off a supplier invoice and guess which stock each is.
+
+    Returns the parsed dict, or None on any failure — a failure must leave the
+    owner entering it by hand, never a half-read invoice presented as fact.
+    Nothing here writes to stock: the result is a SUGGESTION to be confirmed.
+    """
+    if not claude_configured():
+        return None
+    catalogue = [{"id": i["id"], "name": i["name"], "unit": i["unit"],
+                  "category": i["category"]} for i in stock_items]
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    system = (
+        "You read supplier invoices for a chateau in France and extract what was "
+        "delivered. Rules, in order of importance:\n"
+        "1. Only report what the document actually says. Never infer a quantity or "
+        "price that isn't printed; return null for anything absent.\n"
+        "2. Quantities are what was DELIVERED. If it states a case of 6 bottles, "
+        "report the unit exactly as printed and let a human decide — do not "
+        "silently multiply.\n"
+        "3. Match to the stock list only when genuinely confident. A wrong match is "
+        "far worse than no match, because it moves the wrong item's stock. Use "
+        "'high' only for an obvious match, 'low' where plausible, 'none' otherwise.\n"
+        "4. Ignore delivery charges, deposits and tax lines — they are not stock."
+    )
+    try:
+        response = client.messages.parse(
+            model="claude-opus-5", max_tokens=4096, system=system,
+            output_config={"format": {"type": "json_schema", "schema": INVOICE_LINES_SCHEMA}},
+            messages=[{"role": "user", "content": [
+                {"type": "document",
+                 "source": {"type": "base64", "media_type": "application/pdf",
+                            "data": base64.standard_b64encode(pdf_bytes).decode("ascii")},
+                 "title": filename},
+                {"type": "text",
+                 "text": ("Stock we already track (match against these ids):\n"
+                          f"{json.dumps(catalogue)}\n\n"
+                          "Extract the delivered line items from this invoice.")},
+            ]}],
+        )
+    except Exception as e:
+        print(f"[claude] invoice read failed: {e}")
+        return None
+    if getattr(response, "stop_reason", None) == "refusal":
+        return None
+    parsed = getattr(response, "parsed_output", None)
+    if not parsed or not parsed.get("lines"):
+        return None
+    return parsed
 
 
 def draft_reply_with_claude(context, compose_text):

@@ -8,6 +8,43 @@
   <a href="{{ url_for('export_expenses_csv') }}" class="btn-mini">Export CSV</a>
 </div>
 
+
+{# Getting a bill INTO the system from wherever you happen to be. The camera
+   works anywhere; the scanner only when the app can reach the printer on its
+   own network, which means being at the château. #}
+<div class="search-bar" style="align-items:flex-end;">
+  <form method="post" action="{{ url_for('submit_expense') }}" enctype="multipart/form-data"
+        style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="kind" value="supplier_invoice">
+    <div>
+      <label class="field-label">Photograph a bill</label>
+      <input type="file" name="invoice" accept="image/*,application/pdf" capture="environment">
+    </div>
+    <div>
+      <label class="field-label">Who from</label>
+      <input type="text" name="vendor_name" placeholder="Supplier">
+    </div>
+    <div>
+      <label class="field-label">Amount (€)</label>
+      <input type="text" name="amount" inputmode="decimal" placeholder="0.00" style="width:110px;">
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:0;">Add it</button>
+  </form>
+  {% if scanner_ready %}
+  <form method="post" action="{{ url_for('scan_expense') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="feeder" value="1">
+    <button type="submit" class="btn-ghost">Scan from the printer</button>
+  </form>
+  {% endif %}
+</div>
+{% if not pennylane_ready %}
+<p class="upload-hint" style="margin:-6px 0 14px;">
+  Pennylane isn't connected, so bills stay here rather than reaching your accounts.
+</p>
+{% endif %}
+
 <div class="stat-tiles">
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('approvals', 19) }}</span>
@@ -71,6 +108,25 @@
       {% if inv['filename'] %}
       {% if is_viewable(inv['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=inv['id']) }}', '{{ inv['vendor_name']|e }}')">View</button>{% endif %}
       <a href="{{ url_for('download_expense_file', expense_id=inv['id']) }}" class="small-link" style="color:var(--steel);">Download file</a>
+      {% if inv['filename'].lower().endswith('.pdf') %}
+      {# Reads the PDF and proposes what it delivered. Proposes only — nothing
+         reaches stock until it has been checked on the next screen. #}
+      <form method="post" action="{{ url_for('read_invoice', expense_id=inv['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">Read it into stock</button>
+      </form>
+      {% endif %}
+      {% if inv['pennylane_invoice_id'] %}
+      <span class="mini-status status-confirmed">in Pennylane</span>
+      {% elif pennylane_ready %}
+      <form method="post" action="{{ url_for('send_to_pennylane', expense_id=inv['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">Send to Pennylane</button>
+      </form>
+      {% endif %}
+      {% endif %}
+      {% if inv['pennylane_error'] %}
+      <span class="mini-status status-declined" title="{{ inv['pennylane_error'] }}">Pennylane rejected it</span>
       {% endif %}
       {% if inv['status'] == 'pending' %}
       <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>

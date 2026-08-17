@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Read invoice{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What this invoice delivered</h1>
+  <a href="{{ url_for('expenses') }}" class="small-link" style="color:var(--steel); align-self:center;">&larr; Invoices</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Read from <strong>{{ expense['filename'] }}</strong>{% if result.supplier %} — {{ result.supplier }}{% endif %}{% if result.invoice_date %}, {{ result.invoice_date }}{% endif %}.
+  Check it against the paper before you tick anything: this was read automatically, and a misread
+  decimal would go straight into your stock figures.
+</p>
+
+{% if already %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>This invoice has already put {{ already }} movement{{ '' if already == 1 else 's' }} into stock.</strong>
+  Applying it again will double-count. Only continue if you know the first attempt was wrong.
+</div>
+{% endif %}
+
+{% if result.invoice_total %}
+<div class="overview-band">
+  <div class="overview-cell">
+    <div class="overview-value">€{{ '{:,.2f}'.format(result.invoice_total) }}</div>
+    <div class="overview-label">Invoice total</div>
+    <div class="overview-hint">as printed</div>
+  </div>
+  <div class="overview-cell">
+    <div class="overview-value">€{{ '{:,.2f}'.format(expense['amount'] or 0) }}</div>
+    <div class="overview-label">Recorded as</div>
+    <div class="overview-hint">on this expense</div>
+  </div>
+  {% if (result.invoice_total - (expense['amount'] or 0))|abs > 0.5 %}
+  <div class="overview-cell overview-cell-alert">
+    <div class="overview-value">€{{ '{:,.2f}'.format((result.invoice_total - (expense['amount'] or 0))|abs) }}</div>
+    <div class="overview-label">Doesn't match</div>
+    <div class="overview-hint">worth checking</div>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('apply_invoice', expense_id=expense['id']) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Add</th><th>On the invoice</th><th class="num">Qty</th>
+          <th>Into which stock</th><th class="num">Cost each (€)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in result.lines %}
+        {% set i = loop.index0 %}
+        <tr>
+          <td>
+            {# Only an obvious match is pre-ticked. Anything uncertain is a
+               deliberate decision rather than something to click past. #}
+            <input type="checkbox" name="apply" value="{{ i }}"
+                   {{ 'checked' if line.match_confidence == 'high' and line.stock_item_id }}>
+          </td>
+          <td>
+            <strong>{{ line.description }}</strong>
+            <input type="hidden" name="desc_{{ i }}" value="{{ line.description }}">
+            <div class="upload-hint">
+              {% if line.unit %}{{ line.unit }}{% endif %}
+              {% if line.line_total %} · line total €{{ '%.2f'|format(line.line_total) }}{% endif %}
+              {% if line.match_confidence == 'low' %}
+                <span class="mini-status status-pending">unsure of the match</span>
+              {% elif line.match_confidence == 'none' or not line.stock_item_id %}
+                <span class="mini-status status-declined">no match — choose one</span>
+              {% endif %}
+            </div>
+          </td>
+          <td class="num">
+            <input type="text" name="qty_{{ i }}" inputmode="decimal" style="width:80px;"
+                   value="{{ line.quantity }}">
+          </td>
+          <td>
+            <select name="item_{{ i }}">
+              <option value="">— don't add this —</option>
+              {% for it in items %}
+              <option value="{{ it['id'] }}" {{ 'selected' if line.stock_item_id == it['id'] }}>
+                {{ it['name'] }} ({{ it['unit'] }})
+              </option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="num">
+            <input type="text" name="cost_{{ i }}" inputmode="decimal" style="width:90px;"
+                   value="{{ '%.2f'|format(line.unit_price) if line.unit_price else '' }}">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="upload-hint" style="margin-top:10px;">
+    Quantities go in exactly as shown. If the invoice says “6 × case of 12”, decide yourself whether
+    that's 6 or 72 in your units — it deliberately doesn't guess.
+    Anything you leave unticked is simply ignored.
+  </p>
+
+  <button type="submit" class="btn-primary">Add the ticked lines to stock</button>
+</form>
+
+{% endblock %}

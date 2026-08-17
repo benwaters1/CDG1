@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Pennylane{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Pennylane</h1>
+  {% if connected %}
+  <form method="post" action="{{ url_for('sync_pennylane') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">{{ 'Re-sync accounts' if synced_count else 'Pull the chart of accounts' }}</button>
+  </form>
+  {% endif %}
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Where the château's categories meet the accountant's codes. Set this once and everything sent to
+  Pennylane arrives already classified, instead of being sorted out again at the other end.
+</p>
+
+{% if not connected %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  Pennylane isn't connected. Add <code>PENNYLANE_API_TOKEN</code> to the server — see DEPLOY.md.
+</div>
+{% endif %}
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not synced_count %}
+<div class="flash" style="margin-bottom:16px;">
+  Nothing pulled yet. Press <strong>Pull the chart of accounts</strong> above — it fetches every
+  account once and keeps a copy here, so the pickers below are instant and still work if Pennylane
+  is unreachable.
+</div>
+{% else %}
+<p class="upload-hint" style="margin-top:-6px;">
+  {{ synced_count }} accounts, last pulled {{ local_datetime_str(synced_at)[:16] if synced_at }}.
+  Re-sync after your accountant adds a code.
+</p>
+{% endif %}
+
+<h2 class="section-heading">Where income lands</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Only revenue accounts (class 7) are offered — there are {{ revenue_accounts|length }} of them, so
+  start typing the code or the name.
+</p>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <datalist id="revenue-codes">
+    {% for a in revenue_accounts %}
+    <option value="{{ a['number'] }}">{{ a['number'] }} — {{ a['label'] }}</option>
+    {% endfor %}
+  </datalist>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Income from</th><th>Goes to account</th><th>Currently</th></tr></thead>
+      <tbody>
+        {% for key, label in streams.items() %}
+        <tr>
+          <td><strong>{{ label }}</strong></td>
+          <td>
+            <input type="text" name="revenue_{{ key }}" list="revenue-codes"
+                   value="{{ mapping[key] }}" placeholder="e.g. 706" style="width:160px;"
+                   {{ 'disabled' if not synced_count }}>
+          </td>
+          <td class="upload-hint">
+            {% if mapping[key] %}
+              {% set match = revenue_accounts|selectattr('number', 'equalto', mapping[key])|first %}
+              {{ match['label'] if match else 'not in the synced chart — check the code' }}
+            {% else %}<span class="mini-status status-pending">not set</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if synced_count %}<button type="submit" class="btn-primary">Save mapping</button>{% endif %}
+</form>
+
+<h2 class="section-heading">Where costs land</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Cost codes are set on the thing itself, so they follow it automatically:
+  <a href="{{ url_for('admin_stock') }}">stock items</a> carry the code for what they are,
+  <a href="{{ url_for('management_recurring_costs') }}">recurring costs</a> carry their own, and an
+  invoice can override both. {{ expense_accounts|length }} expense accounts are available to pick from.
+</p>
+
+<h2 class="section-heading">Kinds of document</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Not every bill is handled the same way, so each one is tagged when it arrives:
+</p>
+<div class="task-list">
+  <div class="task-row">
+    <span class="task-title" style="flex:0 0 230px;">A bill we still owe</span>
+    <span class="upload-hint" style="flex:1;">Filed in Pennylane as an unpaid supplier invoice, ready to be paid.</span>
+  </div>
+  <div class="task-row">
+    <span class="task-title" style="flex:0 0 230px;">Already paid</span>
+    <span class="upload-hint" style="flex:1;">
+      Usually already in Pennylane from the bank feed. Should be matched and completed rather than
+      sent again, or the cost is counted twice.
+    </span>
+  </div>
+  <div class="task-row">
+    <span class="task-title" style="flex:0 0 230px;">Staff expense to reimburse</span>
+    <span class="upload-hint" style="flex:1;">
+      The cost belongs to the château but the money is owed to an employee, not a supplier.
+    </span>
+  </div>
+  <div class="task-row">
+    <span class="task-title" style="flex:0 0 230px;">Receipt / small purchase</span>
+    <span class="upload-hint" style="flex:1;">Photographed on the spot; often no formal invoice exists.</span>
+  </div>
+</div>
+
+{% endblock %}
