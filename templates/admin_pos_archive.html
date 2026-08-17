@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Till archive{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Till archive</h1>
+  <a href="{{ url_for('pos_journal_page') }}" class="btn-ghost">Journal</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A year of the till as CSV, with a notice in French explaining how to verify it. Open format on
+  purpose — it has to be readable by an inspector years from now, on a machine that has never
+  heard of this app. Keep for {{ retention_years }} years (LPF art. L. 102 B).
+</p>
+
+{% if not years %}
+  <div class="empty-state">Nothing to archive yet — the journal is empty.</div>
+{% else %}
+<div class="doc-list" style="max-width:640px;">
+  {% for y in years %}
+  <div class="doc-row">
+    <span style="flex:1;"><strong>{{ y }}</strong></span>
+    <a href="{{ url_for('pos_archive', year=y) }}" class="btn-mini">Download {{ y }}</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">What's in it</h2>
+<div class="doc-list" style="max-width:760px;">
+  <div class="doc-row"><span style="flex:1;"><code>journal.csv</code></span>
+    <span class="upload-hint">Every event, in order, each carrying the hash of the one before</span></div>
+  <div class="doc-row"><span style="flex:1;"><code>clotures.csv</code></span>
+    <span class="upload-hint">Frozen daily, monthly and annual closures with VAT by rate</span></div>
+  <div class="doc-row"><span style="flex:1;"><code>tickets.csv</code></span>
+    <span class="upload-hint">Notes issued, numbered without a gap in the sequence</span></div>
+  <div class="doc-row"><span style="flex:1;"><code>lignes.csv</code></span>
+    <span class="upload-hint">Line detail: item, quantity, price, VAT rate</span></div>
+  <div class="doc-row"><span style="flex:1;"><code>notice.txt</code></span>
+    <span class="upload-hint">How to recompute the chain, in French</span></div>
+</div>
+
+{% if exports %}
+<h2 class="section-heading">Archives taken</h2>
+{# Recorded in the journal itself: an archive taken and not recorded is one
+   nobody can prove was taken. #}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th class="num">#</th><th>When</th><th>Detail</th></tr></thead>
+    <tbody>
+      {% for e in exports %}
+      <tr>
+        <td class="num">{{ e['sequence'] }}</td>
+        <td class="upload-hint">{{ local_datetime_str(e['occurred_at']) }}</td>
+        <td class="upload-hint" style="font-family:'IBM Plex Mono', monospace; font-size:11.5px;">
+          {{ e['payload'] }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

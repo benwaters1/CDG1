@@ -12389,6 +12389,134 @@ def pos_close_day():
     return redirect(url_for("pos_day", date=on.isoformat()))
 
 
+# Six years, from the close of the accounting year (LPF art. L. 102 B).
+POS_RETENTION_YEARS = 6
+
+
+def pos_archive_bundle(conn, year):
+    """A year of the till as CSV, with a notice explaining it.
+
+    Open format on purpose. The archive has to be readable by an inspector in
+    2032, on a machine that has never heard of this app — so it is CSV and a
+    plain-text notice in French, not a database file that needs the software
+    that wrote it.
+    """
+    start, end = f"{year}-01-01", f"{year}-12-31"
+    journal = conn.execute(
+        """SELECT sequence, register_id, event_type, order_id, occurred_at, user_id,
+                  payload, prev_hash, hash FROM pos_journal
+           WHERE date(occurred_at) BETWEEN ? AND ? ORDER BY sequence""",
+        (start, end)).fetchall()
+    closures = conn.execute(
+        """SELECT kind, period, first_sequence, last_sequence, gross_total, discount_total,
+                  service_total, taken_total, vat_json, by_method_json, ticket_count,
+                  covers, perpetual_total, prev_hash, hash, closed_at FROM pos_closures
+           WHERE period LIKE ? ORDER BY closed_at""", (f"{year}%",)).fetchall()
+    tickets = conn.execute(
+        """SELECT receipt_number, table_label, covers, service_date, settled_total,
+                  payment_method, opened_at, closed_at FROM pos_orders
+           WHERE receipt_number LIKE ? ORDER BY receipt_number""", (f"{year}-%",)).fetchall()
+    lines = conn.execute(
+        """SELECT pos_orders.receipt_number, pos_order_lines.name, pos_order_lines.quantity,
+                  pos_order_lines.unit_price, pos_order_lines.vat_rate, pos_order_lines.course,
+                  pos_order_lines.seat_number, pos_order_lines.voided,
+                  pos_order_lines.void_reason, pos_order_lines.package_covered
+           FROM pos_order_lines JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+           WHERE pos_orders.receipt_number LIKE ?
+           ORDER BY pos_orders.receipt_number, pos_order_lines.id""", (f"{year}-%",)).fetchall()
+
+    def sheet(rows, fields):
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: csv_safe_cell(r[k]) for k in fields})
+        return buf.getvalue()
+
+    broken = pos_journal_verify(conn)
+    notice = f"""ARCHIVE DE CAISSE — Chateau de Gudanes
+Annee : {year}
+Genere le : {datetime.now(timezone.utc).isoformat()}
+Caisse : {POS_REGISTER_ID}
+
+CONTENU
+  journal.csv    Le journal des evenements, dans l'ordre, non modifiable.
+                 Chaque ligne porte l'empreinte (hash) de la ligne precedente.
+  clotures.csv   Les clotures journalieres, mensuelles et annuelles, figees.
+  tickets.csv    Les notes emises, numerotees sans rupture de sequence.
+  lignes.csv     Le detail de chaque note : article, quantite, prix, taux de TVA.
+
+CONTROLE D'INTEGRITE
+  Le journal est chaine : hash = sha256(hash precedent | sequence | type | contenu).
+  Pour verifier, recalculer la chaine depuis la premiere ligne. Toute ligne
+  modifiee ou supprimee interrompt le calcul a partir de ce point.
+  Etat au moment de l'export : {"CHAINE VERIFIEE" if not broken else
+    f"ANOMALIE a la sequence {broken['sequence']} — {broken['problem']}"}
+
+CONSERVATION
+  A conserver six ans (LPF art. L. 102 B). Obligation d'inalterabilite,
+  securisation, conservation et archivage : CGI art. 286, I-3 bis.
+  Les prix sont exprimes TTC. La TVA est ventilee par taux dans clotures.csv.
+"""
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("notice.txt", notice)
+        zf.writestr("journal.csv", sheet(journal, [
+            "sequence", "register_id", "event_type", "order_id", "occurred_at",
+            "user_id", "payload", "prev_hash", "hash"]))
+        zf.writestr("clotures.csv", sheet(closures, [
+            "kind", "period", "first_sequence", "last_sequence", "gross_total",
+            "discount_total", "service_total", "taken_total", "vat_json",
+            "by_method_json", "ticket_count", "covers", "perpetual_total",
+            "prev_hash", "hash", "closed_at"]))
+        zf.writestr("tickets.csv", sheet(tickets, [
+            "receipt_number", "table_label", "covers", "service_date", "settled_total",
+            "payment_method", "opened_at", "closed_at"]))
+        zf.writestr("lignes.csv", sheet(lines, [
+            "receipt_number", "name", "quantity", "unit_price", "vat_rate", "course",
+            "seat_number", "voided", "void_reason", "package_covered"]))
+    return buf.getvalue(), {
+        "journal": len(journal), "closures": len(closures),
+        "tickets": len(tickets), "lines": len(lines), "chain_ok": not broken,
+    }
+
+
+@app.route("/admin/pos/archive")
+@owner_required
+def pos_archive():
+    """Download a year of the till, or see what there is to download."""
+    conn = get_db()
+    years = [r["y"] for r in conn.execute(
+        """SELECT DISTINCT strftime('%Y', occurred_at) AS y FROM pos_journal
+           WHERE occurred_at IS NOT NULL ORDER BY y DESC""").fetchall() if r["y"]]
+    wanted = (request.args.get("year", "") or "").strip()
+    if not wanted:
+        exports = conn.execute(
+            """SELECT * FROM pos_journal WHERE event_type = 'archive_exported'
+               ORDER BY sequence DESC LIMIT 20""").fetchall()
+        conn.close()
+        return render_template("admin_pos_archive.html", years=years, exports=exports,
+                               retention_years=POS_RETENTION_YEARS)
+    if not wanted.isdigit():
+        conn.close()
+        abort(400)
+
+    data, counts = pos_archive_bundle(conn, wanted)
+    # The export is itself an event: an archive taken and not recorded is one
+    # nobody can prove was taken.
+    pos_journal_append(conn, "archive_exported",
+                       {"year": wanted, **counts}, user_id=session.get("user_id"))
+    log_audit(conn, "pos_archive_exported", target=wanted,
+              details=f"{counts['journal']} journal entries, {counts['tickets']} tickets")
+    conn.commit()
+    conn.close()
+    return app.response_class(
+        data, mimetype="application/zip",
+        headers={"Content-Disposition":
+                 f'attachment; filename="caisse-{wanted}-gudanes.zip"'})
+
+
 @app.route("/admin/pos/journal")
 @owner_required
 def pos_journal_page():

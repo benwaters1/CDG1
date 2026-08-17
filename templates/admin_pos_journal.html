@@ -4,7 +4,10 @@
 
 <div class="page-head">
   <h1>Till journal</h1>
-  <a href="{{ url_for('pos_day') }}" class="btn-ghost">Cash up</a>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('pos_archive') }}" class="btn-ghost">Archive</a>
+    <a href="{{ url_for('pos_day') }}" class="btn-ghost">Cash up</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Every event that moved money or changed a bill, in order, never edited. Each entry carries a
