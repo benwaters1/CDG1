@@ -11232,6 +11232,77 @@ def terms_page():
     return render_template("terms.html", text=text)
 
 
+@app.route("/booking/<manage_token>/statement")
+def booking_statement(manage_token):
+    """The guest's bill.
+
+    Opened with the booking's own manage token, so a guest reaches it from
+    their confirmation without an account — the same way they already manage
+    the booking. A business guest needs this document to reclaim their VAT.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.manage_token = ?""", (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    statement = guest_statement(conn, booking)
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    conn.close()
+    return render_template("guest_statement.html", booking=booking, s=statement,
+                           company=company, employer=EMPLOYER_LEGAL_NAME)
+
+
+@app.route("/admin/tax", methods=["GET", "POST"])
+@owner_required
+def admin_tax():
+    """Rates in one place. They change by commune and by year, and one wrong
+    figure is charged to every guest until somebody notices."""
+    conn = get_db()
+    if request.method == "POST":
+        for key in TAX_DEFAULTS:
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES (?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                (f"tax_{key}", (request.form.get(key, "") or "").strip()))
+        log_audit(conn, "tax_settings_changed", None,
+                  f"city tax {request.form.get('city_tax_per_adult_per_night')}/night")
+        conn.commit()
+        conn.close()
+        flash("Tax settings saved.", "success")
+        return redirect(url_for("admin_tax"))
+
+    current = {k: tax_setting(conn, k) for k in TAX_DEFAULTS}
+    # What has been collected this year, so the sum owed to the commune is
+    # visible now rather than discovered at year end.
+    today = datetime.now(timezone.utc).date()
+    stays = conn.execute(
+        """SELECT party_size, guests_under_18, arrival_date, departure_date, city_tax
+           FROM bookings WHERE status = 'confirmed' AND arrival_date >= ?""",
+        (date(today.year, 1, 1).isoformat(),)).fetchall()
+    owed = 0.0
+    for b in stays:
+        if b["city_tax"]:
+            owed += b["city_tax"]
+        else:
+            a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+            nights = max(0, (d - a).days) if a and d else 0
+            amount, _, _ = compute_city_tax(conn, b["party_size"], b["guests_under_18"], nights)
+            owed += amount
+    accounts = ledger_account_choices(conn, "4")
+    conn.close()
+    overview = [
+        overview_cell("City tax", f"€{current['city_tax_per_adult_per_night']}", sub="/adult/night"),
+        overview_cell("Exempt under", current["city_tax_exempt_under_age"], sub="yrs"),
+        overview_cell("Collected this year", euro(owed), hint="owed to the commune"),
+        overview_cell("Stays counted", len(stays)),
+    ]
+    return render_template("admin_tax.html", current=current, overview=overview,
+                           accounts=accounts, owed=owed)
+
+
 @app.route("/admin/terms", methods=["GET", "POST"])
 @owner_required
 def admin_terms():
@@ -22344,6 +22415,53 @@ def vat_breakdown(lines):
     return sorted(by_rate.values(), key=lambda x: -x["rate"])
 
 
+def guest_statement(conn, booking):
+    """Everything on a guest's bill, split the way an invoice legally has to be.
+
+    Accommodation and extras carry VAT at their own rates; taxe de séjour is
+    listed separately and carries none. Figures come from what the guest was
+    actually charged, never recomputed from today's prices — a bill that
+    changes when a rate changes is not a bill.
+    """
+    arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    nights = max(0, (departure - arrival).days) if arrival and departure else 0
+
+    accommodation = round(float(booking["total_price"] or 0), 2)
+    extras = []
+    extras_gross = 0.0
+    # booking_extras only exists once the extras module is in; degrade quietly
+    # rather than break a bill because a later feature isn't there yet.
+    try:
+        extras = conn.execute(
+            """SELECT * FROM booking_extras WHERE category = 'room' AND booking_id = ?
+               AND status != 'cancelled' ORDER BY created_at""", (booking["id"],)).fetchall()
+        extras_gross = round(sum((e["unit_price"] or 0) * (e["quantity"] or 0) for e in extras), 2)
+    except sqlite3.OperationalError:
+        pass
+
+    city_tax = float(booking["city_tax"] or 0)
+    if not city_tax:
+        city_tax, _a, _r = compute_city_tax(
+            conn, booking["party_size"], booking["guests_under_18"], nights)
+    adults = max(0, int(booking["party_size"] or 0) - int(booking["guests_under_18"] or 0))
+
+    vat = vat_breakdown(
+        [(accommodation, tax_rate(conn, "vat_accommodation"))]
+        + [((e["unit_price"] or 0) * (e["quantity"] or 0), tax_rate(conn, "vat_extras"))
+           for e in extras])
+    paid = amount_paid_for(conn, "room", booking)
+    total = round(accommodation + extras_gross + city_tax, 2)
+    return {
+        "nights": nights, "adults": adults,
+        "children": int(booking["guests_under_18"] or 0),
+        "accommodation": accommodation, "extras": extras, "extras_total": extras_gross,
+        "city_tax": city_tax,
+        "city_tax_rate": tax_rate(conn, "city_tax_per_adult_per_night"),
+        "vat": vat, "total": total, "paid": paid,
+        "balance": round(total - paid, 2),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Pennylane — pushing a cost, with its document, into the château's accounting.
 #
@@ -22764,6 +22882,26 @@ def admin_outlook_addin():
         "admin_outlook_addin.html", manifest_url=url_for("outlook_addin_manifest", _external=True),
         token_configured=bool(GUEST_LOOKUP_TOKEN),
     )
+
+
+# ---------------------------------------------------------------------------
+# Public front-end design preview — new pages only, nothing existing touched.
+# Remove once the design is signed off and the templates go live properly.
+# ---------------------------------------------------------------------------
+
+@app.route('/preview')
+def preview_home():
+    return render_template('home.html')
+
+
+@app.route('/restoration')
+def restoration_page():
+    return render_template('restoration.html')
+
+
+@app.route('/gallery')
+def gallery_page():
+    return render_template('gallery.html', galleries=[])
 
 
 def start_background_work():

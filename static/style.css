@@ -1431,3 +1431,43 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
   .stat-tile-value{ color:#000 !important; }
   .section-heading{ color:#000 !important; }
 }
+
+/* ---------- Forms with structure ----------
+   A long stack of unlabelled boxes is what made these pages feel like a
+   database admin panel. Sections give a form the shape of the job it does. */
+.form-section{
+  background:var(--surface); border:1px solid var(--parchment-line); border-radius:11px;
+  padding:20px 22px; margin-bottom:16px;
+}
+.form-section-title{
+  font-family:'Playfair Display', serif; font-size:17px; font-weight:600;
+  color:var(--ink); margin:0 0 14px; padding-bottom:9px;
+  border-bottom:1px solid var(--parchment-line);
+}
+.field-hint{ display:block; font-size:11.5px; color:var(--ink-soft); margin-top:4px; }
+
+.capacity-row{ display:flex; gap:14px; flex-wrap:wrap; }
+.capacity-field{ flex:0 1 160px; }
+.capacity-field input{ font-family:'IBM Plex Mono', monospace; font-size:16px; }
+
+/* Amenities as tick-chips rather than a comma-separated sentence. */
+.amenity-group{ margin-bottom:14px; }
+.amenity-group-title{
+  display:block; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--ink-soft); margin-bottom:7px;
+}
+.amenity-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(178px, 1fr)); gap:7px; }
+.amenity{
+  display:flex; align-items:center; gap:9px; padding:9px 11px; cursor:pointer;
+  border:1px solid var(--parchment-line); border-radius:8px; background:var(--parchment);
+  font-size:13px; transition:border-color .12s ease, background .12s ease;
+}
+.amenity:hover{ border-color:var(--gold); }
+.amenity input{ margin:0; flex-shrink:0; }
+.amenity:has(input:checked){ background:var(--status-warn-bg); border-color:var(--gold); }
+.amenity:has(input:focus-visible){ box-shadow:0 0 0 3px var(--focus-ring); }
+
+/* Checkboxes and radios must never be stretched by a width rule, and must not
+   be pinned by an inline style either - an inline width:auto used to beat the
+   touch-target sizing and left the booking form's consent box 13px wide. */
+input[type="checkbox"], input[type="radio"]{ width:auto; }

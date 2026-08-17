@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Tax{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Tax</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  One wrong figure here is charged to every guest until somebody notices, so these are worth
+  checking against the commune's current rates rather than assumed.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <section class="form-section">
+    <h2 class="form-section-title">Taxe de séjour</h2>
+    <p class="field-hint" style="margin-top:-8px;">
+      Collected from the guest for the commune — <strong>not income</strong>. It shows as its own
+      line on the bill, carries no VAT, and is owed onward whether or not it was collected.
+    </p>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="city_tax_per_adult_per_night">Per adult, per night (€)</label>
+        <input type="text" inputmode="decimal" id="city_tax_per_adult_per_night"
+               name="city_tax_per_adult_per_night" value="{{ current.city_tax_per_adult_per_night }}">
+      </div>
+      <div>
+        <label class="field-label" for="city_tax_exempt_under_age">Exempt under (years)</label>
+        <input type="number" id="city_tax_exempt_under_age" name="city_tax_exempt_under_age"
+               min="0" max="25" value="{{ current.city_tax_exempt_under_age }}">
+        <span class="field-hint">The château takes children from 8, so this genuinely applies.</span>
+      </div>
+    </div>
+    <label class="field-label" style="margin-top:12px;" for="city_tax_account">Held in account</label>
+    <input type="text" id="city_tax_account" name="city_tax_account" list="liability-accounts"
+           value="{{ current.city_tax_account }}" placeholder="e.g. 447…">
+    <datalist id="liability-accounts">
+      {% for a in accounts %}<option value="{{ a['number'] }}">{{ a['number'] }} — {{ a['label'] }}</option>{% endfor %}
+    </datalist>
+    <span class="field-hint">A liability account — it's the commune's money, held until paid over.</span>
+  </section>
+
+  <section class="form-section">
+    <h2 class="form-section-title">VAT rates</h2>
+    <p class="field-hint" style="margin-top:-8px;">
+      Prices are quoted including VAT, so these decide how it's broken out on a guest's invoice and
+      what's declared. In France accommodation and restaurant food are normally 10%, alcohol 20%.
+    </p>
+    <div class="capacity-row">
+      {% for key, label in {
+           'vat_accommodation': 'Accommodation',
+           'vat_food': 'Restaurant food',
+           'vat_alcohol': 'Alcohol',
+           'vat_workshops': 'Workshops',
+           'vat_extras': 'Extras'}.items() %}
+      <div class="capacity-field">
+        <label class="field-label" for="{{ key }}">{{ label }} (%)</label>
+        <input type="text" inputmode="decimal" id="{{ key }}" name="{{ key }}" value="{{ current[key] }}">
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <button type="submit" class="btn-primary">Save</button>
+</form>
+
+<p class="upload-hint" style="margin-top:14px;">
+  €{{ '%.2f'|format(owed) }} of taxe de séjour has been collected on confirmed stays so far this
+  year. That figure is owed to the commune, not kept.
+</p>
+
+{% endblock %}

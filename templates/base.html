@@ -106,7 +106,7 @@
        'admin_reports','admin_report','export_report_csv',
        'admin_emails','new_campaign_template','edit_campaign_template','delete_campaign_template',
        'send_campaign_template','add_email_optout',
-       'management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv'] %}
+       'admin_tax','management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv'] %}
     {% set management_endpoints = ['management','management_documents','upload_company_document','edit_company_document',
        'delete_company_document','view_company_document','download_company_document',
        'management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry','management_company_info',
@@ -178,6 +178,7 @@
         <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
         <a href="{{ url_for('admin_emails') }}" class="{{ 'active' if request.endpoint in ['admin_emails','edit_campaign_template'] }}">{{ icon('contacts') }}Emails</a>
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
+        <a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
       </div>
     </div>

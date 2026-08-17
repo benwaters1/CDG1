@@ -1,0 +1,115 @@
+{% extends "public_base.html" %}
+{% block title %}Your bill — {{ booking['reference_code'] }}{% endblock %}
+{% block content %}
+
+<div class="statement">
+  <div class="statement-head">
+    <div>
+      <h1 style="margin:0;">Statement</h1>
+      <p class="upload-hint" style="margin:4px 0 0;">
+        {{ booking['reference_code'] }} · {{ booking['guest_name'] }}
+      </p>
+    </div>
+    <div style="text-align:right;">
+      <strong>{{ employer }}</strong>
+      <div class="upload-hint">
+        Château de Gudanes
+        {% if company and company['registered_address'] %}<br>{{ company['registered_address'] }}{% endif %}
+        {% if company and company['siret'] %}<br>SIRET {{ company['siret'] }}{% endif %}
+        {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <p class="upload-hint">
+    {{ booking['room_name'] }} · {{ booking['arrival_date'] }} to {{ booking['departure_date'] }}
+    · {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
+    · {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }}{% if s.children %}, {{ s.children }} under 18{% endif %}
+  </p>
+
+  <table class="data-table" style="margin-top:14px;">
+    <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Accommodation — {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}</td>
+        <td class="num">€{{ '%.2f'|format(s.accommodation) }}</td>
+      </tr>
+      {% for e in s.extras %}
+      <tr>
+        <td>{{ e['name'] }}{% if e['quantity'] > 1 %} × {{ e['quantity'] }}{% endif %}</td>
+        <td class="num">€{{ '%.2f'|format((e['unit_price'] or 0) * (e['quantity'] or 0)) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if s.vat %}
+  <p class="field-label" style="margin-top:18px;">VAT included in the above</p>
+  <table class="data-table">
+    <thead><tr><th>Rate</th><th class="num">Net</th><th class="num">VAT</th><th class="num">Gross</th></tr></thead>
+    <tbody>
+      {% for v in s.vat %}
+      <tr>
+        <td>{{ '%.1f'|format(v.rate) }}%</td>
+        <td class="num">€{{ '%.2f'|format(v.net) }}</td>
+        <td class="num">€{{ '%.2f'|format(v.vat) }}</td>
+        <td class="num">€{{ '%.2f'|format(v.gross) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if s.city_tax %}
+  {# Shown on its own, outside the VAT table, because it is collected for the
+     commune rather than earned — and French rules require it stated separately. #}
+  <table class="data-table" style="margin-top:18px;">
+    <tbody>
+      <tr>
+        <td>
+          <strong>Taxe de séjour</strong>
+          <div class="upload-hint">
+            €{{ '%.2f'|format(s.city_tax_rate) }} per adult per night ·
+            {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }} × {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
+            {%- if s.children %} · under-18s exempt{% endif %}
+            <br>Collected on behalf of the commune. Not subject to VAT.
+          </div>
+        </td>
+        <td class="num">€{{ '%.2f'|format(s.city_tax) }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endif %}
+
+  <table class="data-table" style="margin-top:18px;">
+    <tbody>
+      <tr>
+        <td><strong>Total</strong></td>
+        <td class="num"><strong>€{{ '%.2f'|format(s.total) }}</strong></td>
+      </tr>
+      {% if s.paid %}
+      <tr><td>Paid</td><td class="num">−€{{ '%.2f'|format(s.paid) }}</td></tr>
+      <tr>
+        <td><strong>{{ 'Balance due' if s.balance > 0 else 'Settled' }}</strong></td>
+        <td class="num"><strong>€{{ '%.2f'|format(s.balance if s.balance > 0 else 0) }}</strong></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <p class="upload-hint" style="margin-top:20px;">
+    Please keep this for your records. Any question about it, contact the château with your
+    reference {{ booking['reference_code'] }}.
+  </p>
+</div>
+
+<style>
+.statement{ max-width:760px; margin:0 auto; }
+.statement-head{ display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+@media print{
+  .public-footer, .public-nav{ display:none; }
+  .statement{ max-width:none; }
+}
+</style>
+
+{% endblock %}
