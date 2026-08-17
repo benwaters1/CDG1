@@ -2,50 +2,91 @@
 {% block title %}Gallery{% endblock %}
 {% block content %}
 
-{# Needs a route, e.g.:
+{# Needs a route:
    @app.route('/gallery')
-   def gallery_page(): return render_template('gallery.html', galleries=...)
+   def gallery_page(): return render_template('gallery.html', galleries=None)
+   `galleries` is optional — with nothing passed the page still renders its
+   structure and copy, and the filters still work. #}
 
-   `galleries` is expected to be a list of dicts:
-     { 'title': ..., 'blurb': ..., 'cover': <url>, 'images': [<url>, ...] }
-   With nothing passed, the page still renders its headings. #}
-
-<section class="g-sec g-sec--tight">
-  <div class="g-wrap">
-    <p class="g-eyebrow">Gallery</p>
-    <h1 class="g-display">The château, <em>as it is</em></h1>
-    <p class="g-lede">Bare plaster and finished salons, the grounds in every season, and the work itself. No staging, and nothing hidden.</p>
+<section class="g-hero">
+  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6781b42-750e-4a3b-9867-77097ae5de71/_DSC1938-2.jpg" alt="Inside Château de Gudanes">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-eyebrow">Château de Gudanes</p>
+    <h1 class="g-display">Inside the Château, As She Stands Today</h1>
   </div>
 </section>
 
-<section class="g-sec g-sec--tight">
-  <div class="g-wrap">
-    {% if galleries %}
-      {% for gal in galleries %}
-      <h2 class="g-h2 g-rule">{{ gal['title'] }}</h2>
-      {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:24px;">{{ gal['blurb'] }}</p>{% endif %}
-      <div class="g-grid g-grid--3">
-        {% for img in gal['images'] %}
-        <img src="{{ img }}" alt="{{ gal['title'] }}" loading="lazy"
-             style="width:100%; height:16rem; object-fit:cover; border-radius:4px;">
-        {% endfor %}
-      </div>
-      {% endfor %}
-    {% else %}
-      <p class="g-empty">Photographs are being prepared. In the meantime, the most recent work is posted to
-        <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a>.</p>
-    {% endif %}
-  </div>
-</section>
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-p">These are recent photographs, not archive images — the kitchen, dining rooms, bedrooms and bathrooms exactly as guests find them now. A restoration is never finished, and neither is she: each room carries the marks of eighteenth-century craftsmanship alongside the quiet, ongoing work of bringing her back to life, fresco by fresco, floorboard by floorboard.</p>
+  <p class="g-p">Everything you see below is lived-in and in use — antique beds guests sleep in tonight, a kitchen our chefs cook from this week, bathrooms fitted only where the historic fabric of the building allows it. Nothing staged, nothing borrowed. Just the château, honestly.</p>
+</div></section>
 
-<section class="g-sec">
-  <div class="g-wrap">
-    <div class="g-panel g-panel--dark">
-      <h2 class="g-h2">Stay while the <em>work continues</em></h2>
-      <p style="font-size:15.5px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Seven bedrooms, open to guests. Breakfast, a private tour and a guided walk of the gardens and village are included with every one.</p>
-      <a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#E4D2A8; color:#23201C;">Check availability</a>
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <div class="g-filters" role="group" aria-label="Filter the gallery">
+    <button type="button" class="g-filter is-on" data-cat="all">All</button>
+    <button type="button" class="g-filter" data-cat="kitchen">Kitchen</button>
+    <button type="button" class="g-filter" data-cat="dining">Dining</button>
+    <button type="button" class="g-filter" data-cat="bedrooms">Bedrooms</button>
+    <button type="button" class="g-filter" data-cat="bathrooms">Bathrooms</button>
+    <button type="button" class="g-filter" data-cat="grounds">Grounds</button>
+    <button type="button" class="g-filter" data-cat="restoration">Restoration</button>
+    <button type="button" class="g-filter" data-cat="views">The Views</button>
+  </div>
+
+  {% set sections = galleries or [
+    {'id':'kitchen','cat':'kitchen','title':'The Kitchen','sub':'Where breakfast, market produce and a very old cookbook meet',
+     'body':"The château's working kitchen is the quiet engine behind every meal — copper pans, a well-worn table, and a view onto the kitchen garden. Our chefs cook here daily using produce carried home from the Ariège's own markets: mountain cheeses, seasonal vegetables, wild mushrooms in autumn, and recipes adapted from the château's own eighteenth-century cookbook. It is a French farmhouse kitchen in spirit, however grand the house around it.",'images':[]},
+    {'id':'dining','cat':'dining','title':'The Dining Rooms','sub':'Long tables, candlelight, and a room that took years to recover',
+     'body':"The dining room was among the most damaged in the house — its ceiling gone, the panelling under later paint, the floor rotted through in places. Plaster was consolidated rather than replaced and the panelling cleaned by hand. Dinner is served here by candlelight, and the room is at its best in winter when the fire is lit.",'images':[]},
+    {'id':'bedrooms','cat':'bedrooms','title':'Les Chambres','sub':'Antique beds, monogrammed linen, and walls left as they were found',
+     'body':"Each bedroom is prepared with antique French beds, vintage monogrammed linens, heirloom furnishings and objects collected through the restoration. Beyond the windows, the mountains and valleys. The beds, the linen and the floors beneath them are new; the walls around them are as the centuries made them, and under Class I protection they stay that way.",'images':[]},
+    {'id':'bathrooms','cat':'bathrooms','title':'Les Salles de Bains','sub':'The most modern rooms in an eighteenth-century house',
+     'body':"Beautifully appointed with elegant fittings, floral wallpapers, soft towels and timeless details. As a protected monument, ensuite bathrooms are not permitted — so the bathrooms sit together, each privately allocated, each with shower, basin and WC, and one with a freestanding bath. A dedicated dressing room adjoins them, with vanities, soft lighting and mirrors for preparing at a leisurely pace.",'images':[]},
+    {'id':'grounds','cat':'grounds','title':'The Château &amp; Its Grounds','sub':'Six acres, a pool hidden in the gardens, and the parkland beyond',
+     'body':"The gardens, the parkland, the pool set among cherry and plum trees, and the tennis court secluded in the trees. Beyond the gate, the village of Les Cabannes three minutes below.",'images':[]},
+    {'id':'restoration','cat':'restoration','title':'The Restoration Story','sub':'Fresco by fresco, floorboard by floorboard',
+     'body':"Overpaint lifted by hand to reveal what was beneath. Five hundred tonnes of fallen stone cleared before the work could begin. Every intervention applied for and approved by the Monuments Historiques before a tool is lifted.",'images':[]},
+    {'id':'views','cat':'views','title':'The Views','sub':'The Pyrénées, in every season',
+     'body':"Soft spring haze, high summer light, and the deep quiet of a mountain winter. The valley shifts with the weather, and no two days look the same from the same window.",'images':[]}
+  ] %}
+
+  {% for sec in sections %}
+  <section class="g-galsec" id="{{ sec['id'] }}" data-cat="{{ sec['cat'] }}">
+    <h2 class="g-h2" style="text-align:center">{{ sec['title']|safe }}</h2>
+    <p class="g-galsub">{{ sec['sub'] }}</p>
+    <p class="g-p g-galbody">{{ sec['body'] }}</p>
+    {% if sec['images'] %}
+    <div class="g-galgrid">
+      {% for img in sec['images'] %}<img src="{{ img }}" alt="{{ sec['title'] }}" loading="lazy">{% endfor %}
     </div>
-  </div>
-</section>
+    {% else %}
+    <p class="g-empty">Photographs for this section are being prepared.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div></section>
+
+<script>
+(function () {
+  var btns = [].slice.call(document.querySelectorAll('.g-filter'));
+  var secs = [].slice.call(document.querySelectorAll('.g-galsec'));
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      btns.forEach(function (x) { x.classList.remove('is-on'); });
+      b.classList.add('is-on');
+      var cat = b.getAttribute('data-cat');
+      secs.forEach(function (s) {
+        s.style.display = (cat === 'all' || s.getAttribute('data-cat') === cat) ? '' : 'none';
+      });
+    });
+  });
+  /* Deep links from the navigation dropdown open the matching filter. */
+  if (location.hash) {
+    var m = document.querySelector('.g-filter[data-cat="' + location.hash.slice(1) + '"]');
+    if (m) m.click();
+  }
+})();
+</script>
 
 {% endblock %}

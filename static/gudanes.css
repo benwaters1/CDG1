@@ -148,8 +148,7 @@
 }
 .g-nav a:hover, .g-nav a.is-on{ color: #FFFFFF; border-bottom-color: var(--brass); }
 
-.g-navtoggle > summary{ display: none; }
-.g-navtoggle{ display: contents; }
+
 
 /* ---- Buttons ----------------------------------------------------------- */
 
@@ -432,6 +431,45 @@
 
 /* Standalone inline links (manage a booking, manage a registration). */
 .g-inline-link{ display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; }
+/* Links sitting inside running prose keep a 44px target without breaking the
+   line. Applied to any anchor in a .g-p, which is where they occur. */
+.g .g-p a{ display: inline-block; padding: 11px 0; }
+
+/* ---- Sticky booking bar -------------------------------------------------
+   The one thing the old third-party widget got right: booking always one tap
+   away, wherever you have scrolled to. A full-width bar rather than a floating
+   circle — quieter, and how serious hotel sites do it. Phones only; the header
+   handles desktop. */
+
+.g-stickybar{
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  display: none;
+  align-items: center; justify-content: space-between; gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom, 0px));
+  background: var(--blue-deep);
+  border-top: 1px solid rgba(255,255,255,.16);
+}
+.g-stickybar__t{ min-width: 0; }
+.g-stickybar__t b{
+  display: block; font-family: var(--display); font-size: 16px;
+  font-weight: 400; color: #FFFFFF; line-height: 1.2;
+}
+.g-stickybar__t span{
+  display: block; font-family: var(--mono); font-size: 10px;
+  letter-spacing: .12em; text-transform: uppercase; color: #A9C8DA; margin-top: 2px;
+}
+.g .g-stickybar__cta{
+  flex: none; min-height: 46px; padding: var(--s3) var(--s5);
+  background: #FFFFFF; color: var(--blue-deep); border-color: #FFFFFF;
+}
+.g .g-stickybar__cta:hover{ background: var(--brass); border-color: var(--brass); color: #FFFFFF; }
+
+@media (max-width: 60rem){
+  .g-stickybar{ display: flex; }
+  /* Keep the footer clear of the bar. */
+  .g-footer{ padding-bottom: calc(var(--s7) + 72px); }
+}
 
 /* ---- Misc -------------------------------------------------------------- */
 
@@ -555,6 +593,140 @@
 /* Session date buttons on a workshop. */
 .g-dates{ display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
 .g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 10.5px; }
+.g .g-book-bar__note a{ display: inline-block; padding: 12px 0; min-height: 44px; }
+
+/* ==========================================================================
+   FUNCTIONAL LAYER — logo, dropdown navigation, currency, filters
+   ========================================================================== */
+
+/* ---- Logo -------------------------------------------------------------- */
+.g-logo{ display: inline-flex; align-items: center; margin-right: auto; min-height: 44px; }
+.g .g-logo img{ height: 52px; width: auto; }
+@media (max-width: 60rem){ .g .g-logo img{ height: 40px; } }
+
+/* ---- Dropdown navigation ----------------------------------------------- */
+.g-nav__item{ position: relative; }
+.g-nav__top{
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--display); font-size: 14px;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: #D6E4EC; background: none; border: 0; cursor: pointer;
+  min-height: 44px; padding: 0; text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.g-nav__top::after{ content: '⌄'; font-size: 12px; line-height: 1; transform: translateY(-2px); }
+.g-nav__top--plain::after{ content: none; }
+.g-nav__item:hover .g-nav__top,
+.g-nav__top:focus-visible{ color: #fff; border-bottom-color: var(--brass); }
+
+.g-drop{
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  min-width: 15rem; background: #fff;
+  border: 1px solid var(--blue-line); border-top: 2px solid var(--brass);
+  padding: var(--s2) 0; margin-top: 0;
+  opacity: 0; visibility: hidden; transition: opacity .16s ease;
+  box-shadow: 0 12px 28px rgba(20,41,63,.14); z-index: 70;
+}
+.g-nav__item:hover .g-drop,
+.g-nav__item:focus-within .g-drop{ opacity: 1; visibility: visible; }
+.g-drop a{
+  display: block; padding: var(--s3) var(--s5); min-height: 44px;
+  font-family: var(--serif); font-size: 15px; letter-spacing: 0;
+  text-transform: none; color: var(--ink); text-decoration: none; white-space: nowrap;
+}
+.g-drop a:hover{ background: var(--blue-pale); color: var(--blue-mid); }
+.g-drop__note{
+  padding: var(--s2) var(--s5) var(--s3);
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+
+/* ---- Currency selector -------------------------------------------------- */
+.g-cur{ display: inline-flex; align-items: center; gap: var(--s2); }
+.g-cur select{
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+  color: #D6E4EC; background: transparent;
+  border: 1px solid rgba(255,255,255,.4); border-radius: 0;
+  padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
+}
+.g-cur select option{ color: var(--ink); background: #fff; }
+.g-approx{ font-family: var(--mono); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
+
+/* ---- Filter chips ------------------------------------------------------- */
+.g-filters{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s6); }
+.g-filter{
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  min-height: 44px; padding: var(--s3) var(--s5);
+  color: var(--blue-mid); background: transparent;
+  border: 1px solid var(--blue-line); cursor: pointer;
+  transition: background .18s ease, color .18s ease;
+}
+.g-filter:hover{ background: var(--blue-pale); }
+.g-filter.is-on{ background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
+
+/* ---- Sort / refine row -------------------------------------------------- */
+.g-refine{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4);
+  padding: var(--s4) 0; margin-bottom: var(--s6);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.g-refine label{
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.g-refine select{
+  font-family: var(--serif); font-size: 15px; color: var(--ink);
+  background: var(--white); border: 1px solid var(--line);
+  padding: var(--s2) var(--s3); min-height: 44px; border-radius: 0;
+}
+.g-refine__count{ margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+
+/* ---- Gallery sections --------------------------------------------------- */
+.g-galsec{ padding: var(--s8) 0; border-top: 1px solid var(--line); }
+.g-galsec:first-of-type{ border-top: none; padding-top: var(--s5); }
+.g-galsub{
+  text-align: center; font-style: italic; color: var(--ink-faint);
+  margin: 0 0 var(--s5); font-size: 16px;
+}
+.g-galbody{ max-width: 44rem; margin: 0 auto var(--s6); text-align: center; }
+.g-galgrid{ display: grid; gap: var(--s3); grid-template-columns: 1fr 1fr; }
+@media (min-width: 52rem){ .g-galgrid{ grid-template-columns: repeat(3, 1fr); } }
+.g .g-galgrid img{ width: 100%; height: 16rem; object-fit: cover; }
+
+
+/* ---- Navigation visibility ---------------------------------------------
+   A closed <details> hides its contents whatever CSS says, so the nav is a
+   plain wrapper toggled by a button below the breakpoint and always open
+   above it. */
+.g-navbtn{ display: none; }
+.g-navwrap{ display: contents; }
+
+@media (max-width: 68rem){
+  .g-navbtn{
+    display: inline-flex; align-items: center; gap: var(--s2);
+    order: 3; min-height: 44px; padding: 0;
+    font-family: var(--mono); font-size: 11px;
+    letter-spacing: .16em; text-transform: uppercase;
+    color: #D6E4EC; background: none; border: 0; cursor: pointer;
+  }
+  .g-navbtn::after{ content: '+'; font-size: 15px; }
+  .g-navbtn[aria-expanded="true"]::after{ content: '–'; }
+  .g-navwrap{ display: none; order: 4; width: 100%; }
+  .g-navwrap.is-open{ display: block; }
+  .g-nav{ flex-direction: column; align-items: stretch; gap: 0; padding-bottom: var(--s3); }
+  .g-nav__item{ width: 100%; }
+  .g-nav__top{ width: 100%; padding: var(--s3) 0; border-bottom: 1px solid rgba(255,255,255,.18); }
+  /* Dropdowns become inline lists on a phone — no hover to rely on. */
+  .g-drop{
+    position: static; transform: none; opacity: 1; visibility: visible;
+    min-width: 0; background: transparent; border: 0; box-shadow: none;
+    padding: 0 0 var(--s3) var(--s4);
+  }
+  .g-drop a{ color: #A9C8DA; padding: var(--s2) 0; min-height: 40px; }
+  .g-drop a:hover{ background: transparent; color: #fff; }
+  .g-drop__note{ display: none; }
+  .g-cur{ order: 2; }
+}
 
 /* ===========================================================================
    Rules the redesign did not carry over.

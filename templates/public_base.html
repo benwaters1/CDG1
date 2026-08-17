@@ -30,17 +30,62 @@
 
 <header class="g-top">
   <div class="g-top__in">
-    <a href="/" class="g-brand">Château de Gudanes<small>Ariège · Restoration</small></a>
-    <details class="g-navtoggle"><summary>Menu</summary>
+    <a href="/" class="g-logo" aria-label="Château de Gudanes">
+      <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
+    </a>
+
+    <button type="button" class="g-navbtn" aria-expanded="false" aria-controls="g-mainnav">Menu</button>
+    <div class="g-navwrap" id="g-mainnav">
       <nav class="g-nav">
-      <a href="{{ url_for('book_rooms') }}" class="{{ 'is-on' if request.endpoint in ['book_rooms','book_room'] }}">Stay</a>
-      <a href="{{ url_for('workshops_public') }}" class="{{ 'is-on' if request.endpoint in ['workshops_public','workshop_detail','workshop_register'] }}">Workshops</a>
-      <a href="{{ url_for('restaurant_info') }}" class="{{ 'is-on' if request.endpoint in ['restaurant_info','restaurant_book'] }}">La Table</a>
-      <a href="{{ url_for('events_info') }}" class="{{ 'is-on' if request.endpoint in ['events_info'] }}">Weddings &amp; Events</a>
-      <a href="/restoration">The Restoration</a>
-      <a href="/gallery">Gallery</a>
-    </nav>
-    </details>
+
+        <span class="g-nav__item">
+          <a href="{{ url_for('book_rooms') }}" class="g-nav__top">Experiences</a>
+          <span class="g-drop">
+            <span class="g-drop__note">Stay &amp; take part</span>
+            <a href="{{ url_for('book_rooms') }}">Stay the Night</a>
+            <a href="{{ url_for('workshops_public') }}">Château Workshops</a>
+            <a href="{{ url_for('restaurant_info') }}">La Table</a>
+            <a href="{{ url_for('events_info') }}">Weddings &amp; Celebrations</a>
+            <a href="{{ url_for('events_info') }}">Photoshoots &amp; Film</a>
+          </span>
+        </span>
+
+        <span class="g-nav__item">
+          <a href="/gallery" class="g-nav__top">Gallery</a>
+          <span class="g-drop">
+            <span class="g-drop__note">The château today</span>
+            <a href="/gallery#inside">Inside the Château</a>
+            <a href="/gallery#grounds">The Château &amp; Its Grounds</a>
+            <a href="/gallery#restoration">The Restoration Story</a>
+            <a href="/gallery#life">Life at the Château</a>
+            <a href="/gallery#views">The Views</a>
+          </span>
+        </span>
+
+        <span class="g-nav__item">
+          <a href="/restoration" class="g-nav__top">The Restoration</a>
+          <span class="g-drop">
+            <span class="g-drop__note">Since 2013</span>
+            <a href="/restoration">The Restoration</a>
+            <a href="/restoration#history">History</a>
+            <a href="/restoration#press">Press</a>
+          </span>
+        </span>
+
+        <a href="{{ url_for('find_booking') }}" class="g-nav__top g-nav__top--plain">Manage Booking</a>
+      </nav>
+    </div>
+
+    <span class="g-cur">
+      
+      <select id="g-currency" aria-label="Display currency">
+        <option value="EUR" selected>EUR €</option>
+        <option value="USD">USD $</option>
+        <option value="GBP">GBP £</option>
+        <option value="AUD">AUD $</option>
+      </select>
+    </span>
+
     <a href="{{ url_for('book_rooms') }}" class="g-reserve">Réserver</a>
   </div>
 </header>
@@ -97,5 +142,75 @@
   </div>
 </footer>
 
+<div class="g-stickybar">
+  <span class="g-stickybar__t">
+    <b>Stay the Night</b>
+    <span>Château de Gudanes</span>
+  </span>
+  <a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">Réserver</a>
+</div>
+
+
+
+<script>
+/* Currency display. Rates fetched once and cached for the day; everything is
+   still charged in Euros, which is stated wherever a converted figure shows. */
+(function () {
+  var sel = document.getElementById('g-currency');
+  if (!sel) return;
+  var KEY = 'gud-fx', DAY = 864e5;
+
+  function symbol(c){ return {EUR:'€', USD:'$', GBP:'£', AUD:'A$'}[c] || ''; }
+
+  function paint(rates, cur) {
+    document.querySelectorAll('[data-eur]').forEach(function (el) {
+      var eur = parseFloat(el.getAttribute('data-eur'));
+      var old = el.parentElement.querySelector('.g-approx');
+      if (old) old.remove();
+      if (cur === 'EUR' || !rates || !rates[cur]) return;
+      var v = Math.round(eur * rates[cur]);
+      var s = document.createElement('span');
+      s.className = 'g-approx';
+      s.textContent = '≈ ' + symbol(cur) + v.toLocaleString() + ' ' + cur + ' · charged in EUR';
+      el.parentElement.appendChild(s);
+    });
+  }
+
+  function withRates(cb) {
+    var cached = null;
+    try { cached = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (cached && (Date.now() - cached.t) < DAY) return cb(cached.r);
+    fetch('https://api.frankfurter.app/latest?from=EUR&to=USD,GBP,AUD')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        try { sessionStorage.setItem(KEY, JSON.stringify({t: Date.now(), r: d.rates})); } catch (e) {}
+        cb(d.rates);
+      })
+      .catch(function () { cb(null); });
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem('gud-cur'); } catch (e) {}
+  if (saved) sel.value = saved;
+
+  function apply() {
+    try { localStorage.setItem('gud-cur', sel.value); } catch (e) {}
+    withRates(function (rates) { paint(rates, sel.value); });
+  }
+  sel.addEventListener('change', apply);
+  apply();
+})();
+</script>
+<script>
+/* navbtn-toggle */
+(function(){
+  var b=document.querySelector('.g-navbtn'), w=document.getElementById('g-mainnav');
+  if(!b||!w) return;
+  b.addEventListener('click', function(){
+    var open=w.classList.toggle('is-open');
+    b.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
 </body>
 </html>
