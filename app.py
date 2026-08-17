@@ -2876,6 +2876,19 @@ def init_db():
         print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
               f"prices and dates.")
 
+    # The five were seeded by an earlier deploy without this note, so the seed
+    # above will not run again to add it. Fill it in where it is still blank,
+    # and only there: if somebody has written their own inclusions, theirs win.
+    if "inclusions" in ws_cols:
+        for workshop in DEFAULT_WORKSHOPS:
+            if not workshop.get("inclusions"):
+                continue
+            conn.execute(
+                """UPDATE workshops SET inclusions = ?
+                   WHERE title = ? AND COALESCE(TRIM(inclusions), '') = ''""",
+                (workshop["inclusions"], workshop["title"]))
+        conn.commit()
+
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
             conn.execute(
@@ -4497,28 +4510,33 @@ DEFAULT_EXTRAS = [
 # published there; the names are the real product names rather than the
 # by-duration shorthand.
 #
-# price_per_person is how this app charges, and the website does not state
-# whether these figures are per person or per stay. Read as per person here. If
-# they are per couple the totals are double what they should be, so it is worth
-# confirming before the first registration.
+# Confirmed by the owner: these are per person, sharing a room — which is what
+# price_per_person means here, so a party of two is charged twice the figure.
+# Recorded in `inclusions` as well, because a solo traveller reading "per person"
+# needs to know a shared room is what the price assumes.
 DEFAULT_WORKSHOPS = [
     {"title": "Autumn Atelier 2026", "price_per_person": 2600.0, "sort_order": 0,
+     "inclusions": "Per person, sharing a room.",
      "sessions": [("2026-10-23", "2026-10-27")],
      "description": "Four nights as the valley turns, the season the restoration "
                     "is at its most visible."},
     {"title": "Noël Atelier 2026", "price_per_person": 3200.0, "sort_order": 1,
+     "inclusions": "Per person, sharing a room.",
      "sessions": [("2026-12-05", "2026-12-09")],
      "description": "Four nights at the château in December — shorter days, "
                     "longer evenings around the table."},
     {"title": "Cooking in the Cuisine 2027", "price_per_person": 3800.0, "sort_order": 2,
+     "inclusions": "Per person, sharing a room.",
      "sessions": [("2027-06-25", "2027-06-30")],
      "description": "Five nights in the château kitchen, cooking what the valley "
                     "and the markets give us."},
     {"title": "Antique & French Finds 2027", "price_per_person": 2800.0, "sort_order": 3,
+     "inclusions": "Per person, sharing a room.",
      "sessions": [("2027-07-03", "2027-07-06")],
      "description": "Three nights among the brocantes and antique dealers of the "
                     "Ariège and beyond. A second date follows in late July."},
     {"title": "Summer Starry Nights 2027", "price_per_person": 4800.0, "sort_order": 4,
+     "inclusions": "Per person, sharing a room.",
      "sessions": [("2027-07-10", "2027-07-17")],
      "description": "A full week at the château in high summer, under the "
                     "clearest skies of the year."},
