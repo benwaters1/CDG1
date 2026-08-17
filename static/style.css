@@ -1101,6 +1101,37 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
   .cal-day{ min-height:88px; }
 }
 
+/* ---------- Data tables (reports, payroll, compliance, access, refunds) ----------
+   13 templates already used .table-wrap / .data-table but neither class had
+   ANY css, so these tables were unstyled AND unscrollable: the 8-column
+   payroll table is 531px wide and pushed the whole page sideways on a 375px
+   phone, taking the header and nav with it. The wrapper is what every older
+   table in this app uses (inline overflow-x:auto); this just names it. */
+.table-wrap{
+  overflow-x:auto;
+  border:1px solid var(--parchment-line); border-radius:12px;
+  background:var(--surface); box-shadow:var(--shadow); margin-bottom:18px;
+}
+.data-table{ border-collapse:collapse; width:100%; font-size:13px; min-width:min-content; }
+.data-table thead th{
+  text-align:left; white-space:nowrap;
+  font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;
+  color:var(--ink-soft); padding:11px 14px; border-bottom:1px solid var(--parchment-line);
+}
+.data-table td{ padding:11px 14px; border-bottom:1px solid var(--parchment-line); vertical-align:top; }
+.data-table tbody tr:last-child td{ border-bottom:none; }
+.data-table tbody tr:hover{ background:var(--status-neutral-bg); }
+/* Figures right-align and use the mono face so columns of money line up on
+   the decimal — the whole point of a financial table. */
+.data-table .num{ text-align:right; font-family:'IBM Plex Mono', monospace; white-space:nowrap; }
+.data-table tfoot td, .data-table tr.total td{ font-weight:700; border-top:2px solid var(--parchment-line); }
+.data-table .row-alert{ color:var(--danger); }
+
+@media (max-width: 760px){
+  .data-table{ font-size:12px; }
+  .data-table thead th, .data-table td{ padding:9px 10px; }
+}
+
 /* ---------- Print (today-sheet and anything else meant to be posted) ---------- */
 @media print{
   .no-print, .topbar, .sidebar, .flash-wrap{ display:none !important; }
