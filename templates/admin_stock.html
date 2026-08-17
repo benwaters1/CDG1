@@ -52,8 +52,17 @@
   </form>
 </details>
 
-{% if not data.rows %}
-  <div class="empty-state">Nothing tracked yet. Add the things you actually run out of — champagne, coffee, linen.</div>
+{% if data.rows %}{% include "_list_toolbar.html" %}{% endif %}
+
+{% if not rows %}
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nothing matches that.
+      <a href="{{ url_for('admin_stock') }}">Show all {{ lv.total }} items</a>
+    {% else %}
+      Nothing tracked yet. Add the things you actually run out of — champagne, coffee, linen.
+    {% endif %}
+  </div>
 {% else %}
 <div class="table-wrap">
   <table class="data-table">
@@ -61,7 +70,7 @@
       <tr><th>Item</th><th>Where</th><th class="num">In stock</th><th class="num">Reorder at</th><th>Adjust</th></tr>
     </thead>
     <tbody>
-      {% for r in data.rows %}
+      {% for r in rows %}
       <tr class="{{ 'row-alert' if r.is_low }}">
         <td>
           <strong>{{ r.item['name'] }}</strong>

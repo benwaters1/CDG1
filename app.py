@@ -9785,8 +9785,42 @@ def admin_stock():
         overview_cell("Need reordering", len(data["low"]), alert=len(data["low"])),
         overview_cell("Stock value", euro(data["value"]), hint="at cost"),
     ]
-    return render_template("admin_stock.html", data=data, overview=overview,
-                           vendors=vendors, recent=recent,
+    vendor_names = {v["id"]: v["name"] for v in vendors}
+
+    def level_state(r):
+        if r["level"] <= 0:
+            return "Out"
+        return "Running low" if r["is_low"] else "In stock"
+
+    lv = list_view(
+        data["rows"], request.args,
+        search=[lambda r: r["item"]["name"], lambda r: r["item"]["location"] or "",
+                lambda r: STOCK_CATEGORIES.get(r["item"]["category"], "")],
+        search_hint="Search item, category or where it's kept",
+        facets=[
+            # "Out" first: an empty shelf is a different problem from a low one,
+            # and on a list sorted by name they look identical.
+            facet("state", "Level", level_state, order=["Out", "Running low", "In stock"]),
+            facet("category", "Category",
+                  lambda r: STOCK_CATEGORIES.get(r["item"]["category"], r["item"]["category"])),
+            facet("supplier", "Supplier",
+                  lambda r: vendor_names.get(r["item"]["vendor_id"]), limit=10),
+            facet("where", "Where it's kept", lambda r: (r["item"]["location"] or "").strip() or None,
+                  limit=8),
+        ],
+        sorts=[
+            sort_option("urgent", "Most short first",
+                        lambda r: (r["short_by"], -r["level"]), reverse=True),
+            sort_option("name", "Name", lambda r: (r["item"]["name"] or "").lower()),
+            sort_option("value", "Most valuable",
+                        lambda r: r["level"] * (r["item"]["unit_cost"] or 0), reverse=True),
+            sort_option("category", "Category",
+                        lambda r: (r["item"]["category"] or "", (r["item"]["name"] or "").lower())),
+        ],
+        default_sort="urgent",
+    )
+    return render_template("admin_stock.html", data=data, overview=overview, lv=lv,
+                           rows=lv["rows"], vendors=vendors, recent=recent,
                            stock_categories=STOCK_CATEGORIES, stock_reasons=STOCK_REASONS)
 
 
@@ -10984,23 +11018,46 @@ def delete_manual_section(section_id):
 # read it, only the owner edits it.
 # ---------------------------------------------------------------------------
 
+def contacts_list_view(conn, args):
+    """The contacts list as both the page and the export see it."""
+    people = conn.execute("SELECT * FROM contacts ORDER BY sort_order, name").fetchall()
+    return list_view(
+        people, args,
+        search=["name", "role", "phone", "notes"],
+        search_hint="Search name, trade, number or note",
+        # This is a list you reach for in a hurry — a burst pipe, a guest with
+        # a temperature. Grouping by trade is the difference between finding
+        # the plumber and reading forty names looking for one.
+        facets=[facet("role", "Trade", lambda p: (p["role"] or "").strip() or None, limit=12)],
+        sorts=[
+            sort_option("order", "House order", lambda p: (p["sort_order"] or 0,
+                                                           (p["name"] or "").lower())),
+            sort_option("name", "Name", lambda p: (p["name"] or "").lower()),
+            sort_option("role", "Trade", lambda p: ((p["role"] or "~").lower(),
+                                                    (p["name"] or "").lower())),
+        ],
+        default_sort="order",
+    )
+
+
 @app.route("/contacts")
 @login_required
 def contacts():
     conn = get_db()
-    people = conn.execute("SELECT * FROM contacts ORDER BY sort_order, name").fetchall()
+    lv = contacts_list_view(conn, request.args)
     conn.close()
-    return render_template("contacts.html", people=people)
+    return render_template("contacts.html", people=lv["rows"], lv=lv)
 
 
 @app.route("/contacts/export.csv")
 @login_required
 def export_contacts_csv():
     conn = get_db()
-    rows = conn.execute("SELECT * FROM contacts ORDER BY sort_order, name").fetchall()
+    lv = contacts_list_view(conn, request.args)
     conn.close()
     fieldnames = ["name", "role", "phone", "notes"]
-    return csv_response(fieldnames, rows, "contacts.csv")
+    return csv_response(fieldnames, lv["rows"],
+                        "contacts_filtered.csv" if lv["filtered"] else "contacts.csv")
 
 
 @app.route("/contacts/new", methods=["POST"])

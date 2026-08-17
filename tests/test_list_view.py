@@ -3,11 +3,25 @@
 Worth testing on its own rather than through a page: forty screens will depend
 on it, and a fault here is forty faults. It takes plain dicts and a plain args
 mapping, so none of this needs a request.
+
+The last section walks every page that uses the toolbar and checks the promise
+each chip makes — that clicking it gives exactly the number printed on it. Add
+a URL to TOOLBAR_PAGES when you convert a page and it is covered from then on.
 """
-from _harness import Suite, clients
+import html
+import re
+
+from _harness import Suite, clients, db, datetime_now
 import _harness
 
 m = _harness.m
+
+TOOLBAR_PAGES = [
+    "/management/email-templates",
+    "/admin/audit-log",
+    "/contacts",
+    "/admin/stock",
+]
 
 
 ROWS = [
@@ -135,4 +149,72 @@ def run():
     s.check("the search box keeps them too",
             '<input type="hidden" name="area" value="Restaurant">' in page)
 
+    s.section("Every chip on every converted page keeps its promise")
+    _seed_for_toolbar_pages()
+    broken, vacuous = [], []
+    for url in TOOLBAR_PAGES:
+        r = oc.get(url)
+        if r.status_code != 200:
+            broken.append(f"{url} → HTTP {r.status_code}")
+            continue
+        page = r.get_data(as_text=True)
+        chips = re.findall(r'<a href="([^"]+)"\s*\n?\s*class="chip[^"]*">'
+                           r'([^<]*)<span class="chip-n">(\d+)</span>', page)
+        chips = [(html.unescape(h), lbl.strip(), int(n)) for h, lbl, n in chips
+                 if lbl.strip() != "All"]
+        if not chips:
+            vacuous.append(url)
+            continue
+        # One chip per page is enough to prove the wiring; checking every chip
+        # on every page turns a fast suite into a slow one for no more signal.
+        href, label, count = chips[0]
+        got = oc.get(href).get_data(as_text=True)
+        shown = re.search(r"Showing (\d+) of (\d+)", got)
+        actual = int(shown.group(1)) if shown else None
+        if actual != count:
+            broken.append(f"{url}: chip {label!r} says {count}, clicking gives {actual}")
+
+    s.check("a chip's count is what clicking it gives", not broken,
+            detail=" | ".join(broken[:3]))
+    # Say so rather than passing quietly: a page with no data proves nothing,
+    # and a suite that can only go green is the thing worth distrusting.
+    if vacuous:
+        print(f"    ....  {len(vacuous)} page(s) had no rows to check: {', '.join(vacuous)}")
+    s.check("most converted pages actually had data to check",
+            len(vacuous) < len(TOOLBAR_PAGES),
+            detail=f"{len(vacuous)}/{len(TOOLBAR_PAGES)} empty")
+
     return s
+
+
+def _seed_for_toolbar_pages():
+    """Enough rows that the chip check is not vacuous.
+
+    The suite runs against a copy of whatever database is to hand, and on a
+    fresh clone half these tables are empty — so the check would pass by
+    finding nothing to check.
+    """
+    conn = db()
+    now = datetime_now()
+    try:
+        if not conn.execute("SELECT 1 FROM contacts LIMIT 1").fetchone():
+            for n, role in [("Test Plumber", "Plumber"), ("Test Sparks", "Electrician"),
+                            ("Test Plumber Two", "Plumber")]:
+                conn.execute("""INSERT INTO contacts (name, role, phone, sort_order, created_at)
+                                VALUES (?, ?, '+33000000000', 0, ?)""", (n, role, now))
+        if not conn.execute("SELECT 1 FROM stock_items WHERE active=1 LIMIT 1").fetchone():
+            for name, cat, reorder, qty in [("Test champagne", "drinks", 6, 2),
+                                            ("Test coffee", "food", 4, 12),
+                                            ("Test towels", "linen", 20, 0)]:
+                cur = conn.execute(
+                    """INSERT INTO stock_items (name, category, unit, reorder_level,
+                       unit_cost, location, active, created_at)
+                       VALUES (?, ?, 'each', ?, 10.0, 'Cellar', 1, ?)""",
+                    (name, cat, reorder, now))
+                if qty:
+                    conn.execute(
+                        """INSERT INTO stock_movements (stock_item_id, delta, reason, created_at)
+                           VALUES (?, ?, 'opening', ?)""", (cur.lastrowid, qty, now))
+        conn.commit()
+    finally:
+        conn.close()

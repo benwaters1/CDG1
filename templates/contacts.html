@@ -4,12 +4,25 @@
 
 <div class="page-head">
   <h1>Contacts</h1>
-  {% if people %}<a href="{{ url_for('export_contacts_csv') }}" class="btn-mini">Export CSV</a>{% endif %}
+  {% if lv.total %}
+  <a href="{{ url_for('export_contacts_csv', **request.args.to_dict()) }}" class="btn-mini">
+    Export {{ 'this view' if lv.filtered else 'CSV' }}
+  </a>
+  {% endif %}
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Plumber, electrician, insurance broker, anyone the team might need to call in a hurry.</p>
 
+{% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
+
 {% if not people %}
-  <div class="empty-state">No contacts added yet.{% if user['role']=='owner' %} Add the first one below.{% endif %}</div>
+  <div class="empty-state">
+    {% if lv.filtered %}
+      Nobody matches that.
+      <a href="{{ url_for('contacts') }}">Show all {{ lv.total }}</a>
+    {% else %}
+      No contacts added yet.{% if user['role']=='owner' %} Add the first one below.{% endif %}
+    {% endif %}
+  </div>
 {% else %}
   <div class="doc-list" style="max-width:640px;">
     {% for p in people %}
