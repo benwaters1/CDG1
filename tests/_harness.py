@@ -60,6 +60,7 @@ def _cleanup():
 
 
 import app as m  # noqa: E402  — must follow the env setup above
+from flask import request  # noqa: E402
 
 m.app.config["WTF_CSRF_ENABLED"] = False
 m.STRIPE_SECRET_KEY = ""
@@ -82,6 +83,45 @@ assert m.DB_PATH == SCRATCH_DB, (
     f"tests would have run against {m.DB_PATH} — refusing. "
     "The GUDANES_DB_PATH override in app.py is missing or was overwritten."
 )
+
+
+# Which endpoints the suite actually reaches. Measured rather than asserted,
+# because "we have tests" is not the same claim as "this page is tested", and
+# only one of them is checkable. run.py prints the gap at the end.
+EXERCISED = set()
+
+
+@m.app.before_request
+def _record_endpoint():          # pragma: no cover - bookkeeping, not behaviour
+    if request.endpoint:
+        EXERCISED.add(request.endpoint)
+
+
+def coverage_report():
+    """(exercised, untested, by_area) for every page a person can open.
+
+    Excludes the machinery nobody navigates to — static files, webhooks, the
+    JSON polled by the nav badge — because counting those as untested pages
+    would make the number less honest, not more.
+    """
+    skip_exact = {"static", "notifications_unread_count", "stripe_webhook"}
+    pages = {}
+    for rule in m.app.url_map.iter_rules():
+        ep = rule.endpoint
+        if ep in skip_exact or ep.startswith("static"):
+            continue
+        if "webhook" in ep:
+            continue
+        pages[ep] = str(rule)
+
+    area_of = getattr(m, "ENDPOINT_AREA", {})
+    by_area = {}
+    for ep in sorted(pages):
+        area = area_of.get(ep) or ("public/other")
+        hit = ep in EXERCISED
+        entry = by_area.setdefault(area, {"hit": [], "miss": []})
+        entry["hit" if hit else "miss"].append(ep)
+    return set(pages) & EXERCISED, set(pages) - EXERCISED, by_area
 
 
 def db():

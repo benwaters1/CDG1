@@ -14,6 +14,7 @@ import traceback
 import _harness  # noqa: F401  — sets GUDANES_DB_PATH before app is imported
 
 SUITES = [
+    "test_auth",
     "test_routes",
     "test_staff_today",
     "test_chat",
@@ -25,6 +26,9 @@ SUITES = [
     "test_campaign_email",
     "test_email_outbox",
     "test_email_templates",
+    "test_exports",
+    "test_destructive",
+    "test_payments",
     "test_design",
 ]
 
@@ -67,6 +71,27 @@ def main(argv):
             continue
         total_passed += suite.passed
         all_failed += [f"{suite.name}: {f}" for f in suite.failed]
+
+    # What the suite actually reached. Printed even when everything passes,
+    # because a green run over half the app is exactly the failure this guards
+    # against — "we have tests" and "this page is tested" are different claims,
+    # and only one of them is checkable.
+    if not wanted:
+        try:
+            hit, miss, by_area = _harness.coverage_report()
+            print("\n" + "=" * 64)
+            pct = 100 * len(hit) / max(1, len(hit) + len(miss))
+            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages exercised ({pct:.0f}%)")
+            for area in sorted(by_area):
+                got, lost = by_area[area]["hit"], by_area[area]["miss"]
+                line = f"  {area:<14} {len(got):>3}/{len(got) + len(lost):<3}"
+                if lost:
+                    line += "  untested: " + ", ".join(lost[:3])
+                    if len(lost) > 3:
+                        line += f" +{len(lost) - 3} more"
+                print(line)
+        except Exception as e:                       # pragma: no cover
+            print(f"\n(coverage report unavailable: {e})")
 
     print("\n" + "=" * 64)
     total = total_passed + len(all_failed)
