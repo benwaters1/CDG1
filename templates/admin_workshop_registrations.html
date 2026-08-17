@@ -46,7 +46,7 @@
     </div>
     <p class="manual-body">
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
-      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
+      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+€{{ '%.0f'|format(r['single_supplement']) }} pp single){% endif %}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
     </p>
     <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
     {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}

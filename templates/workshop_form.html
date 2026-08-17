@@ -47,6 +47,11 @@
     <textarea name="itinerary" rows="6" placeholder="Day 1: Arrival, welcome dinner&#10;Day 2: Morning session, free afternoon, group dinner&#10;Day 3: Closing session, departure">{{ workshop['itinerary'] if workshop else '' }}</textarea>
     <p class="upload-hint">One line per day works well — line breaks are preserved on the public workshop page.</p>
 
+    <label class="field-label" style="margin-top:16px;">Single-occupancy supplement (€ per person)</label>
+    <input type="number" name="single_supplement" min="0" step="1" placeholder="Leave empty for none"
+           value="{{ workshop['single_supplement'] if workshop and workshop['single_supplement'] is not none else '' }}">
+    <p class="upload-hint">The price above assumes a shared room. This is what a guest pays on top for a room to themselves — a common request, and the only way it gets charged. Left empty, a solo room is offered at no extra cost.</p>
+
     <label class="field-label">Deposit required at booking (%)</label>
     <input type="number" name="deposit_percent" min="0" max="100" value="{{ workshop['deposit_percent'] if workshop else 30 }}">
     <p class="upload-hint">The rest is due as a balance 30 days before the session starts (or in full, if booked within 30 days).</p>

@@ -1,48 +1,5 @@
 {% extends "public_base.html" %}
-{% block title %}Stay
-<script>
-/* Sort and filter the room cards in place — no page reload, no server round
-   trip. Availability still comes from the search above; this only refines
-   what is already shown. */
-(function () {
-  var wrap = document.querySelector('.g-cards');
-  if (!wrap) return;
-  var cards = [].slice.call(wrap.querySelectorAll('.g-card--room'));
-  var sort = document.getElementById('g-sort'),
-      bath = document.getElementById('g-bath'),
-      guests = document.getElementById('g-guests'),
-      count = document.getElementById('g-count');
-
-  function sqm(el) {
-    var m = (el.getAttribute('data-size') || '').match(/(\d+)\s*m/);
-    return m ? parseInt(m[1], 10) : 0;
-  }
-
-  function apply() {
-    var shown = 0;
-    cards.forEach(function (c) {
-      var ok = true;
-      if (bath.value !== 'all' && c.getAttribute('data-bath') !== bath.value) ok = false;
-      if (+guests.value && +c.getAttribute('data-guests') < +guests.value) ok = false;
-      c.style.display = ok ? '' : 'none';
-      if (ok) shown++;
-    });
-
-    var order = cards.slice();
-    if (sort.value === 'low')  order.sort(function(a,b){ return a.dataset.rate - b.dataset.rate; });
-    if (sort.value === 'high') order.sort(function(a,b){ return b.dataset.rate - a.dataset.rate; });
-    if (sort.value === 'size') order.sort(function(a,b){ return sqm(b) - sqm(a); });
-    order.forEach(function (c) { wrap.appendChild(c); });
-
-    count.textContent = shown + (shown === 1 ? ' room' : ' rooms');
-  }
-
-  [sort, bath, guests].forEach(function (s) { s.addEventListener('change', apply); });
-  apply();
-})();
-</script>
-
-{% endblock %}
+{% block title %}Stay{% endblock %}
 {% block content %}
 
 <section class="g-hero">
@@ -59,7 +16,7 @@
     <div>
       <p class="g-p">A rare invitation: stay inside a world-renowned restoration project, within a building still evolving, unmodernised, and utterly unlike anywhere else. This is the château as she truly is — raw, ongoing, alive with history still being uncovered.</p>
       <p class="g-p">And within that, real luxury: bathrooms, bedding, furniture and flooring chosen with care, set against walls that have not yet finished telling their story. It is a stay with limitations, and it is precisely those limitations that make it unforgettable.</p>
-      <p class="g-p">Choose the experience that suits you, and reserve your place within these walls.</p>
+      <p class="g-p">Choose the room that suits you, and reserve your place within these walls.</p>
       <blockquote class="g-quote">To stay within these walls is to take part in her restoration — each visit helping bring her back to life.</blockquote>
     </div>
     <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="Restoration work in progress" loading="lazy">
@@ -88,50 +45,19 @@
 <section class="g-sec"><div class="g-wrap">
   <h2 class="g-place">Château Rooms{% if searched %}<span class="g-rule__note">{{ arrival }} → {{ departure }}</span>{% endif %}</h2>
 
-
-  <div class="g-refine">
-    <label for="g-sort">Sort</label>
-    <select id="g-sort">
-      <option value="default">Featured</option>
-      <option value="low">Rate — lowest first</option>
-      <option value="high">Rate — highest first</option>
-      <option value="size">Largest first</option>
-    </select>
-
-    <label for="g-bath">Bathroom</label>
-    <select id="g-bath">
-      <option value="all">Any</option>
-      <option value="private">Private bathroom</option>
-      <option value="shared">Shared bathroom</option>
-    </select>
-
-    <label for="g-guests">Sleeps</label>
-    <select id="g-guests">
-      <option value="0">Any</option>
-      <option value="2">2 or more</option>
-      <option value="3">3 or more</option>
-      <option value="5">5 or more</option>
-    </select>
-
-    <span class="g-refine__count" id="g-count"></span>
-  </div>
   {% if not rooms %}
     <p class="g-empty">No rooms are open for reservation at present.</p>
   {% else %}
   <div class="g-cards">
     {% for room in rooms %}
-    <article class="g-card g-card--room" id="room-{{ room['id'] }}"
-        data-rate="{{ room['price_per_night'] or 0 }}"
-        data-guests="{{ room['max_occupancy'] or 0 }}"
-        data-bath="{{ 'shared' if room['amenities'] and 'Shared Bathroom' in room['amenities'] else 'private' }}"
-        data-size="{{ room['amenities'] }}">
+    <article class="g-card g-card--room" id="room-{{ room['id'] }}">
       {% if room['photo_filename'] %}
       <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" loading="lazy">
       {% endif %}
       <div class="g-card__b">
         <h3 class="g-card__name">{{ room['name'] }}</h3>
         {% if room['price_per_night'] %}
-        <p class="g-card__rate"><b data-eur="{{ room['price_per_night'] }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
+        <p class="g-card__rate"><b>From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
         {% endif %}
         {% if room['description'] %}<p class="g-card__desc">{{ room['description'] }}</p>{% endif %}
         {% if room['amenities'] %}
@@ -198,48 +124,5 @@
   <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
   <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
 </div></section>
-
-
-<script>
-/* Sort and filter the room cards in place — no page reload, no server round
-   trip. Availability still comes from the search above; this only refines
-   what is already shown. */
-(function () {
-  var wrap = document.querySelector('.g-cards');
-  if (!wrap) return;
-  var cards = [].slice.call(wrap.querySelectorAll('.g-card--room'));
-  var sort = document.getElementById('g-sort'),
-      bath = document.getElementById('g-bath'),
-      guests = document.getElementById('g-guests'),
-      count = document.getElementById('g-count');
-
-  function sqm(el) {
-    var m = (el.getAttribute('data-size') || '').match(/(\d+)\s*m/);
-    return m ? parseInt(m[1], 10) : 0;
-  }
-
-  function apply() {
-    var shown = 0;
-    cards.forEach(function (c) {
-      var ok = true;
-      if (bath.value !== 'all' && c.getAttribute('data-bath') !== bath.value) ok = false;
-      if (+guests.value && +c.getAttribute('data-guests') < +guests.value) ok = false;
-      c.style.display = ok ? '' : 'none';
-      if (ok) shown++;
-    });
-
-    var order = cards.slice();
-    if (sort.value === 'low')  order.sort(function(a,b){ return a.dataset.rate - b.dataset.rate; });
-    if (sort.value === 'high') order.sort(function(a,b){ return b.dataset.rate - a.dataset.rate; });
-    if (sort.value === 'size') order.sort(function(a,b){ return sqm(b) - sqm(a); });
-    order.forEach(function (c) { wrap.appendChild(c); });
-
-    count.textContent = shown + (shown === 1 ? ' room' : ' rooms');
-  }
-
-  [sort, bath, guests].forEach(function (s) { s.addEventListener('change', apply); });
-  apply();
-})();
-</script>
 
 {% endblock %}
