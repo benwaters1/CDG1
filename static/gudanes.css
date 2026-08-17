@@ -244,6 +244,17 @@
 /* ---- Two-column prose -------------------------------------------------- */
 
 .g-two{ display: grid; gap: var(--s8); align-items: center; }
+/* A raw <img> has no intrinsic size before it loads, and these two are the
+   only image slots on the site with no sizing rule of their own — every
+   other one (.g-hero__img, .g-half__img, .g-room__img) gets an explicit
+   height. Without it the grid track collapses to 0x0, which then means the
+   browser's lazy-load intersection check sees zero area to intersect and
+   never fires the load at all: a blank parchment gap where a photo should
+   be, permanently, not just until scrolled into view. */
+.g-two img{ width: 100%; height: clamp(16rem, 34vw, 26rem); object-fit: cover; }
+.g-band{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+.g-band img{ width: 100%; height: clamp(9rem, 16vw, 14rem); object-fit: cover; }
+@media (max-width: 44rem){ .g-band{ grid-template-columns: repeat(2, 1fr); } }
 .g-split{ display: grid; gap: var(--s7); }
 .g-split ul{ margin: 0; padding-left: var(--s5); display: grid; gap: var(--s3); font-size: 16px; }
 .g-list{ list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s4); }
