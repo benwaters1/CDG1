@@ -158,8 +158,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # volume — on Railway the repo directory is ephemeral and would lose the
 # database on every deploy.
 DB_PATH = os.environ.get("GUDANES_DB_PATH") or os.path.join(BASE_DIR, "gudanes_hr.db")
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-ROOM_PHOTO_DIR = os.path.join(BASE_DIR, "room_photos")
+# Uploads live beside the database by default, so pointing GUDANES_DB_PATH at a
+# mounted volume moves the signed contracts, expense receipts and room photos
+# onto it too. They are every bit as unrecoverable as the database, and on a
+# platform that rebuilds the repo directory each deploy, leaving them here
+# would silently delete them on the next push.
+DATA_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or BASE_DIR
+UPLOAD_DIR = os.environ.get("GUDANES_UPLOAD_DIR") or os.path.join(DATA_DIR, "uploads")
+ROOM_PHOTO_DIR = os.environ.get("GUDANES_ROOM_PHOTO_DIR") or os.path.join(DATA_DIR, "room_photos")
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
 # Not RFC-5322-exhaustive — just enough shape-checking to reject garbage
 # and control characters (a public, unauthenticated form is the only place
@@ -20863,6 +20869,20 @@ def admin_outlook_addin():
     )
 
 
+def start_background_work():
+    """Start the automation loop for this process.
+
+    Must be called exactly once per process. It sends balance reminders,
+    campaign triggers, waitlist openings and the daily digest, so two of them
+    means guests get everything twice — which is why production runs a single
+    gunicorn worker (see Procfile) rather than scaling out.
+
+    Kept out of module import on purpose: importing app.py should never start
+    a thread that emails people. The test suite imports this module.
+    """
+    threading.Thread(target=automation_loop, daemon=True).start()
+
+
 if __name__ == "__main__":
     init_db()
     # Running this file directly is the local-development path (production
@@ -20904,6 +20924,6 @@ if __name__ == "__main__":
     # reloader isn't in play at all) keeps a single automation loop per
     # running server instead of one per reloader generation.
     if not use_reloader or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-        threading.Thread(target=automation_loop, daemon=True).start()
+        start_background_work()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=DEBUG_MODE, use_reloader=use_reloader, threaded=True)

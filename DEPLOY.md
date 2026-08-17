@@ -5,6 +5,44 @@ file, no complicated build process. Two realistic options below, easiest first.
 
 ---
 
+## Go live: the short version
+
+The full detail is further down; this is the order to do it in. Steps 1–6 get
+you a working private URL. Everything after that is optional and can wait.
+
+1. **Create a Railway account** — <https://railway.app> → *Login with GitHub*.
+2. **New Project → Deploy from GitHub repo** → pick `benwaters1/CDG1`, branch
+   `main`. It reads `Procfile` and `requirements.txt` and needs no
+   configuration.
+3. **Add a volume before the first real use** — *Settings → Volumes → New
+   Volume*, mount path `/data`. Without it the database is wiped on every
+   deploy.
+4. **Add two variables** — *Settings → Variables*:
+   - `GUDANES_DB_PATH` = `/data/gudanes_hr.db` — puts the database, uploads
+     and room photos on the volume.
+   - `FLASK_SECRET_KEY` = a 64-character random string. Generate one with
+     `python -c "import secrets; print(secrets.token_hex(32))"`. Without it
+     everyone is signed out on every restart.
+5. **Get the first password out of the logs.** On its first boot the app
+   creates the owner account and prints a generated password to the deploy log
+   — *Deployments → View logs*, look for `FIRST RUN`. There is no email
+   recovery configured yet, so this is the only way in. Save it, log in,
+   change it immediately.
+6. **Set `PUBLIC_BASE_URL`** to the address Railway gives you (e.g.
+   `https://cdg1-production.up.railway.app`, no trailing slash). Links inside
+   automated email have nothing to point at until you do.
+7. **Then, in whatever order suits you**: real email (`RESEND_API_KEY`),
+   live payments (`STRIPE_*`), a custom domain, the Vault key, the scheduled
+   jobs. Each is independent — the app runs without any of them, it just does
+   less. `/admin/readiness` tells you what is still missing.
+
+Two things are yours rather than the app's, and a guest sees both at booking:
+the terms & conditions are still placeholder text, and no registered postal
+address is set (marketing email legally has to carry one). Fill those in under
+Management before the URL goes anywhere public.
+
+---
+
 ## Local secrets: the `.env` file
 
 Every secret (Stripe, email, Microsoft Graph, Anthropic, the vault key) can go
@@ -72,7 +110,7 @@ Railway takes a folder of code and gives you a live URL. No server management.
 4. Railway will detect it's a Python app automatically. Add these
    **environment variables** in Railway's dashboard (Settings → Variables):
    - `FLASK_SECRET_KEY` — generate one by running this on your computer:
-     `python3 -c "import secrets; print(secrets.token_hex(32))"`
+     `python -c "import secrets; print(secrets.token_hex(32))"` (on Windows; `python3` on Mac/Linux)
      and paste the output in as the value
    - `FLASK_DEBUG` — leave unset (it now defaults to off). Never set this to
      `1` once it's live — debug mode activates an interactive Python console
@@ -109,13 +147,13 @@ Railway takes a folder of code and gives you a live URL. No server management.
    - **To turn on automatic calendar syncing** (pulling Airbnb/Booking.com/VRBO
      calendars every 1-3 hours instead of only when someone clicks "Sync all
      calendars" by hand): `ICAL_SYNC_TOKEN` — generate one the same way as the
-     secret key: `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.
+     secret key: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
      See **Scheduling automatic calendar sync** below for how this gets used.
      Without it set, `/api/sync-ical` always returns 404 and syncing stays
      manual — nothing changes from how it works today.
    - **To turn on the Vault** (Management → Vault, for shared logins like
      supplier portals or banking): `VAULT_ENCRYPTION_KEY` — generate one with:
-     `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
+     `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
      Entries are encrypted with this key before they're stored — losing the
      key means losing everything in the vault permanently, so back it up
      somewhere separate from the database (a password manager's secure notes,
@@ -127,13 +165,52 @@ Railway takes a folder of code and gives you a live URL. No server management.
    Railway gives you into your Squarespace domain settings
    (Squarespace: Settings → Domains → DNS Settings)
 
-**Important — Railway's disk is not permanent by default.** The SQLite
-database and uploaded files need to live on a *persistent volume*, or they
-can vanish on redeploy. In Railway: **Settings → Volumes → Add a volume**,
-mount it to cover both `uploads/` (documents, receipts, supplier invoices)
-and `room_photos/` (public room images), and consider moving the database
-file there too by setting an environment variable `DB_PATH` — ask Claude
-Code to wire that up when you get there, it's a small change.
+**Important — Railway's disk is not permanent.** Everything in the repo
+directory is rebuilt on each deploy, so the database, the uploaded documents
+and the room photos must live on a *persistent volume* or they are destroyed
+on the next push. Do this **before** anyone puts real data in.
+
+In Railway: **Settings → Volumes → New Volume**, mount path `/data`. Then set
+one variable:
+
+```
+GUDANES_DB_PATH=/data/gudanes_hr.db
+```
+
+That single setting moves all three: uploads and room photos default to
+sitting beside the database, so they follow it onto the volume. (They can be
+split out with `GUDANES_UPLOAD_DIR` and `GUDANES_ROOM_PHOTO_DIR` if you ever
+want them elsewhere, but there's no reason to.)
+
+**How production actually runs.** `python app.py` is the development server
+and is not used here. Railway reads `Procfile`, which starts gunicorn against
+`wsgi.py`. That file exists because creating the database and starting the
+automation loop happen in `app.py`'s `if __name__ == "__main__":` block, which
+a WSGI server never executes — pointed straight at `app:app`, the app would
+boot with no tables and 500 on every page, and would never send a balance
+reminder or daily digest.
+
+It runs **one worker with eight threads**, deliberately. The automation loop
+must exist exactly once per deployment: two workers would mean two loops, and
+every guest would get each automated email twice. Scale with threads, not
+workers. (`GUDANES_NO_AUTOMATION=1` disables the loop on an instance, if a
+second one is ever added purely to serve traffic.)
+
+**Getting in the first time.** On its first boot against an empty volume the
+app creates the owner account and prints a generated password into the deploy
+log:
+
+```
+======================================================================
+FIRST RUN — owner account created.
+  Email:    owner@chateaugudanes.com
+  Password: <generated>
+======================================================================
+```
+
+Read it under **Deployments → View logs**. With no email provider configured
+there is no password-reset route yet, so this is the only way in. Log in and
+change it straight away.
 
 ---
 
