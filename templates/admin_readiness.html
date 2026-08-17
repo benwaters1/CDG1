@@ -34,10 +34,10 @@
 <h2 class="section-heading">{{ area }}</h2>
 <div class="task-list" style="margin-bottom:14px;">
   {% for c in checks %}
-  <div class="task-row">
+  <div class="task-row readiness-row">
     <span class="task-check" style="cursor:default;">{{ '✓' if c.ok else '' }}</span>
-    <span class="task-title" style="flex:0 0 220px;">{{ c.label }}</span>
-    <span class="upload-hint" style="flex:1;">{{ c.detail }}</span>
+    <span class="task-title readiness-label">{{ c.label }}</span>
+    <span class="upload-hint readiness-detail">{{ c.detail }}</span>
     {% if not c.ok %}
       <span class="mini-status {{ 'status-declined' if c.severity == 'blocker' else ('status-pending' if c.severity == 'warn' else 'status-inactive') }}">
         {{ 'must fix' if c.severity == 'blocker' else ('worth fixing' if c.severity == 'warn' else 'optional') }}

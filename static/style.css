@@ -534,6 +534,18 @@ body.staff-shell a.mini-row:hover{
 }
 .task-check:hover{ border-color:var(--success); transform:scale(1.05); }
 .task-title{ flex:1; font-size:14.5px; line-height:1.4; }
+
+/* Readiness rows carry a label, a long explanation and a severity badge. The
+   label used to be a rigid `flex:0 0 220px` that could not shrink, so on a
+   phone the badge was pushed past the edge and took the page with it (452px
+   inside 375px). Fixed width where there is room, wrapping where there isn't. */
+.readiness-row{ flex-wrap:wrap; }
+.readiness-label{ flex:0 0 220px; }
+.readiness-detail{ flex:1 1 240px; min-width:0; }
+@media (max-width:640px){
+  .readiness-label{ flex:1 1 100%; }
+  .readiness-detail{ flex:1 1 100%; }
+}
 .task-row.task-done .task-title{ text-decoration:line-through; color:var(--ink-soft); }
 .task-row.task-done .task-check{ background:var(--status-success-bg); border-color:var(--success); }
 .task-row.task-in-progress .task-check{ background:var(--status-warn-bg); border-color:var(--gold); }
