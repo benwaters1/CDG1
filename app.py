@@ -2158,6 +2158,17 @@ def init_db():
         ("bookings_city_tax", "ALTER TABLE bookings ADD COLUMN city_tax REAL NOT NULL DEFAULT 0"),
         ("workshop_bookings_under_18", "ALTER TABLE workshop_bookings ADD COLUMN guests_under_18 INTEGER NOT NULL DEFAULT 0"),
         ("workshop_bookings_city_tax", "ALTER TABLE workshop_bookings ADD COLUMN city_tax REAL NOT NULL DEFAULT 0"),
+        # A room was described by ONE free-text `amenities` string holding bed
+        # type, floor area, view, bathroom and breakfast all at once — so none
+        # of it could be filtered, displayed properly, or checked against a
+        # party. Each of those now has its own home.
+        ("rooms_max_adults", "ALTER TABLE rooms ADD COLUMN max_adults INTEGER"),
+        ("rooms_max_children", "ALTER TABLE rooms ADD COLUMN max_children INTEGER NOT NULL DEFAULT 0"),
+        ("rooms_size_sqm", "ALTER TABLE rooms ADD COLUMN size_sqm REAL"),
+        ("rooms_bed_setup", "ALTER TABLE rooms ADD COLUMN bed_setup TEXT"),
+        ("rooms_bathroom", "ALTER TABLE rooms ADD COLUMN bathroom TEXT"),
+        ("rooms_outlook", "ALTER TABLE rooms ADD COLUMN outlook TEXT"),
+        ("rooms_floor", "ALTER TABLE rooms ADD COLUMN floor TEXT"),
         # Employment terms. `start_date` alone couldn't express a fixed-term
         # contract or a trial period, and both carry hard deadlines in France:
         # a trial period that lapses un-actioned confirms the employee, and a
@@ -7330,6 +7341,10 @@ def inject_user():
         "user": user, "is_viewable": is_viewable, "hours_between": hours_between,
         "local_time_str": local_time_str, "local_datetime_str": local_datetime_str,
         "expiry_status": expiry_status, "net_hours": net_hours,
+        "room_amenities": ROOM_AMENITIES, "room_amenity_keys": room_amenity_keys,
+        "room_amenity_freetext": room_amenity_freetext,
+        "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
+        "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
         "unread_notifications_count": unread_notifications_count,
@@ -15252,15 +15267,9 @@ def delete_extra(extra_id):
 @owner_required
 def new_room():
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-        max_occupancy = request.form.get("max_occupancy", "").strip()
-        price_per_night = request.form.get("price_per_night", "").strip()
-        min_nights = request.form.get("min_nights", "").strip()
-        amenities = request.form.get("amenities", "").strip()
-
-        if not name:
-            flash("Room name is required.", "error")
+        f = room_fields_from_form()
+        if not f["name"]:
+            flash("Give the room a name.", "error")
             return render_template("room_form.html", room=None)
 
         photo_filename = save_room_photo(request.files.get("photo"))
@@ -15271,16 +15280,18 @@ def new_room():
         conn = get_db()
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM rooms").fetchone()["m"]
         conn.execute(
-            """INSERT INTO rooms (name, description, max_occupancy, price_per_night, min_nights, export_token,
-               sort_order, photo_filename, amenities) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (name, description, int(max_occupancy) if max_occupancy.isdigit() else 2,
-             float(price_per_night) if price_per_night else 0,
-             int(min_nights) if min_nights.isdigit() and int(min_nights) > 0 else 1,
-             secrets.token_urlsafe(20), max_order + 1, photo_filename, amenities or None),
+            """INSERT INTO rooms (name, description, max_occupancy, max_adults, max_children,
+               price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
+               export_token, sort_order, photo_filename, amenities)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+             f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
+             f["bathroom"], f["outlook"], f["floor"],
+             secrets.token_urlsafe(20), max_order + 1, photo_filename, f["amenities"]),
         )
         conn.commit()
         conn.close()
-        flash(f"{name} added.", "success")
+        flash(f"{f['name']} added.", "success")
         return redirect(url_for("admin_rooms"))
 
     return render_template("room_form.html", room=None)
@@ -15296,12 +15307,7 @@ def edit_room(room_id):
         abort(404)
 
     if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-        max_occupancy = request.form.get("max_occupancy", "").strip()
-        price_per_night = request.form.get("price_per_night", "").strip()
-        min_nights = request.form.get("min_nights", "").strip()
-        amenities = request.form.get("amenities", "").strip()
+        f = room_fields_from_form()
         active = 1 if request.form.get("active") == "on" else 0
 
         photo_filename = save_room_photo(request.files.get("photo"))
@@ -15313,12 +15319,13 @@ def edit_room(room_id):
             photo_filename = room["photo_filename"]
 
         conn.execute(
-            """UPDATE rooms SET name=?, description=?, max_occupancy=?, price_per_night=?, min_nights=?,
-               active=?, photo_filename=?, amenities=? WHERE id=?""",
-            (name, description, int(max_occupancy) if max_occupancy.isdigit() else room["max_occupancy"],
-             float(price_per_night) if price_per_night else 0,
-             int(min_nights) if min_nights.isdigit() and int(min_nights) > 0 else room["min_nights"],
-             active, photo_filename, amenities or None, room_id),
+            """UPDATE rooms SET name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
+               price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
+               floor=?, active=?, photo_filename=?, amenities=? WHERE id=?""",
+            (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
+             f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
+             f["bathroom"], f["outlook"], f["floor"], active, photo_filename,
+             f["amenities"], room_id),
         )
 
         gallery_names = save_room_photos_multi(request.files.getlist("gallery_photos"))
@@ -22362,6 +22369,119 @@ EXPENSE_DOC_TYPES = {
     "employee_reimbursement": "Staff expense to reimburse",
     "receipt": "Receipt / small purchase",
 }
+
+
+# What a room can have, grouped the way somebody setting one up thinks about
+# it. Held as data so the form, the guest-facing page and any future filter
+# read from one list — the old free-text field meant "Private bathroom" and
+# "private bath" were different things and neither could be searched.
+ROOM_AMENITIES = {
+    "Sleeping": [
+        ("emperor_bed", "Emperor bed"), ("king_bed", "King bed"),
+        ("double_bed", "Double bed"), ("twin_beds", "Twin beds"),
+        ("sofa_bed", "Sofa bed"), ("cot_available", "Cot available"),
+        ("extra_bed", "Extra bed possible"),
+    ],
+    "Bathroom": [
+        ("ensuite", "En-suite"), ("private_bathroom", "Private bathroom"),
+        ("shared_bathroom", "Shared bathroom"), ("bath", "Bathtub"),
+        ("shower", "Shower"), ("robes", "Robes & slippers"),
+        ("toiletries", "Toiletries"), ("hairdryer", "Hairdryer"),
+    ],
+    "The room": [
+        ("fireplace", "Working fireplace"), ("sitting_area", "Sitting area"),
+        ("desk", "Desk"), ("wardrobe", "Wardrobe"), ("safe", "Safe"),
+        ("heating", "Heating"), ("original_features", "Original features"),
+        ("antique_furniture", "Antique furniture"),
+    ],
+    "Outlook": [
+        ("mountain_view", "Mountain view"), ("valley_view", "Valley view"),
+        ("garden_view", "Garden view"), ("courtyard_view", "Courtyard view"),
+        ("balcony", "Balcony"), ("terrace_access", "Terrace access"),
+    ],
+    "Included": [
+        ("breakfast", "Continental breakfast"), ("tea_coffee", "Tea & coffee"),
+        ("wifi", "Wi-Fi"), ("linen", "Linen & towels"),
+        ("daily_service", "Daily housekeeping"),
+    ],
+    "Access": [
+        ("ground_floor", "Ground floor"), ("stairs_only", "Stairs only"),
+        ("step_free", "Step-free access"), ("family_friendly", "Family friendly"),
+    ],
+}
+AMENITY_LABELS = {k: v for group in ROOM_AMENITIES.values() for k, v in group}
+
+BED_SETUPS = ["Emperor bed", "King bed", "Double bed", "Twin beds",
+              "Twin or double", "Two bedrooms", "Bunk room"]
+BATHROOM_TYPES = ["En-suite", "Private, not en-suite", "Shared"]
+
+# What a transfer is FOR. The château runs airport runs, ski shuttles and the
+# occasional station or doctor trip — different lead times, different cars.
+# One undifferentiated "transfer" hid all of that.
+TRANSFER_TYPES = {
+    "airport": "Airport transfer",
+    "ski": "Ski transfer",
+    "station": "Train station",
+    "excursion": "Excursion / day trip",
+    "restaurant": "Restaurant / evening out",
+    "medical": "Medical",
+    "supplies": "Supplies run",
+    "other": "Other",
+}
+
+
+def room_amenity_keys(room):
+    """The amenity keys a room has. Tolerates the old free-text column, so a
+    room set up before this existed keeps working."""
+    raw = (room["amenities"] or "") if room else ""
+    return {a.strip() for a in raw.split(",") if a.strip() and a.strip() in AMENITY_LABELS}
+
+
+def room_amenity_freetext(room):
+    """Anything in the old column that isn't a known amenity — preserved rather
+    than thrown away when a legacy room is edited."""
+    raw = (room["amenities"] or "") if room else ""
+    return ", ".join(a.strip() for a in raw.split(",")
+                     if a.strip() and a.strip() not in AMENITY_LABELS)
+
+
+def room_fields_from_form():
+    """Everything the room form submits, normalised once so the new and edit
+    paths cannot drift apart."""
+    def _i(name, default=None):
+        raw = (request.form.get(name, "") or "").strip()
+        return int(raw) if raw.isdigit() else default
+
+    def _f(name):
+        raw = (request.form.get(name, "") or "").strip().replace(",", ".")
+        try:
+            return float(raw) if raw else None
+        except ValueError:
+            return None
+
+    checked = [k for k in request.form.getlist("amenities") if k in AMENITY_LABELS]
+    extra = (request.form.get("amenities_other", "") or "").strip()
+    if extra:
+        checked += [a.strip() for a in extra.split(",") if a.strip()]
+
+    adults = _i("max_adults", 2) or 2
+    children = _i("max_children", 0) or 0
+    return {
+        "name": (request.form.get("name", "") or "").strip(),
+        "description": (request.form.get("description", "") or "").strip(),
+        "max_adults": adults, "max_children": children,
+        # Kept in step with the split so every existing availability and
+        # party-size check keeps working untouched.
+        "max_occupancy": adults + children,
+        "price_per_night": _f("price_per_night") or 0,
+        "min_nights": _i("min_nights", 1) or 1,
+        "size_sqm": _f("size_sqm"),
+        "bed_setup": (request.form.get("bed_setup", "") or "").strip() or None,
+        "bathroom": (request.form.get("bathroom", "") or "").strip() or None,
+        "outlook": (request.form.get("outlook", "") or "").strip() or None,
+        "floor": (request.form.get("floor", "") or "").strip() or None,
+        "amenities": ", ".join(checked) or None,
+    }
 
 
 def tax_setting(conn, key):

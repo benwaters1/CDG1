@@ -1,0 +1,58 @@
+{% extends "public_base.html" %}
+{% block title %}The Restoration{% endblock %}
+{% block content %}
+
+{# Needs a route, e.g.:
+   @app.route('/restoration')
+   def restoration_page(): return render_template('restoration.html')  #}
+
+<section class="g-hero">
+  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="Restoration work in progress">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-eyebrow">Since 2013</p>
+    <h1 class="g-display">Fifteen years in, <em>and not finished</em></h1>
+    <p>A Class I Historic Monument that was very nearly lost.</p>
+  </div>
+</section>
+
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    <ul class="g-time">
+      <li><b>1741</b><span>Ange-Jacques Gabriel, First Architect to Louis XV and the hand behind the Petit Trianon and the Place de la Concorde, designs the château for the Marquis de Gudanes. Work runs to 1750.</span></li>
+      <li><b>1850</b><span>The last of its residents leave.</span></li>
+      <li><b>1994</b><span>Classified a Historic Monument on 14 June, the same protected class as the Palace of Versailles and the Eiffel Tower. The status saves it, and then freezes it.</span></li>
+      <li><b>2013</b><span>Karina and Craig Waters, from Perth, buy a château they have barely seen. Most of the ninety-four rooms cannot be entered. The roof has gone, taking five storeys with it in places. Trees are growing inside the rooms.</span></li>
+      <li><b>2014</b><span>The first winter Karina stays inside there is no electricity, no heating and no water. She pitches a tent in one of the rooms to keep warm.</span></li>
+      <li><b>Eight months</b><span>Spent clearing more than 500 tonnes of fallen stone, debris and rubble before restoration could begin.</span></li>
+      <li><b>2016</b><span>The Fondation Prince Louis de Polignac awards the restoration its Medal of Honour, presented by Prince Albert II of Monaco. The château opens to guests for the first time.</span></li>
+      <li><b>Now</b><span>Rooms are finished one at a time. Cream overpaint is lifted by hand to find frescoes hidden for generations. Wherever possible the original stonework, timber and detail is kept rather than replaced.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section class="g-sec g-sec--sand">
+  <div class="g-wrap">
+    <div class="g-two">
+      <div>
+        <p class="g-eyebrow">How the work is governed</p>
+        <h2 class="g-h2">Nothing here begins with a decision. <em>It begins with a dossier.</em></h2>
+        <p class="g-p">Because the château is Class I listed, every intervention is applied for and approved by the Monuments Historiques before a tool is lifted. Restorers work alongside artisans from the valley. New work is done so that it could one day be removed without harming what was there.</p>
+        <p class="g-p">The aim is not to return the château to a single moment in time. It is to let it go on.</p>
+      </div>
+      <img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f2db99cd-30e7-4235-befa-4803738226d8/20170426-20170426-_1170917.jpg" alt="Original stonework" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section class="g-sec">
+  <div class="g-wrap">
+    <div class="g-panel g-panel--dark">
+      <h2 class="g-h2">Stay, and fund <em>the next room</em></h2>
+      <p style="font-size:15.5px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Proceeds from stays go directly into the restoration. Not a donation — the mechanism by which a building this size survives.</p>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#E4D2A8; color:#23201C;">See rooms and rates</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

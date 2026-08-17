@@ -1,0 +1,93 @@
+{% extends "public_base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<section class="g-hero">
+<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg" alt="Château de Gudanes">
+<div class="g-hero__wash"></div>
+<div class="g-hero__in"><h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1></div>
+</section>
+
+<section class="g-sec"><div class="g-wrap">
+<h2 class="g-h2" style="font-size:clamp(34px,5vw,56px); margin-bottom:32px">Bienvenue</h2>
+<p class="g-p"><em>Perched high above the valleys of the French Pyrénées, Château de Gudanes is one of Europe's most extraordinary private estates — a place where centuries of history, remarkable craftsmanship and breathtaking natural beauty come quietly together.</em></p>
+<p class="g-p">She was designed in 1741 by Ange-Jacques Gabriel, principal architect to King Louis XV and the hand behind Marie Antoinette's own Petit Trianon at Versailles. That royal lineage endures today: Gudanes holds the same Class I Historic Monument classification as the Palace of Versailles and the Eiffel Tower.</p>
+<p class="g-p">Abandoned in 1850 and very nearly lost, she has been returned to life since 2013 — room by room, and always by hand. Five hundred tonnes of fallen stone were cleared before the work could begin. Overpaint is lifted patiently to reveal frescoes hidden for generations, and every intervention is approved by France's Monuments Historiques before a tool is lifted. The restoration has been followed by hundreds of thousands, photographed for Vogue, and honoured with the Medal of Honour of the Fondation Prince Louis de Polignac.</p>
+<p class="g-p">Much of her remains as the centuries left her: bare plaster, weathered stone, the quiet marks of two hundred and eighty years. She is protected, and so she is preserved rather than perfected. Within those walls, however, everything you sleep in and wake to has been made anew — the floors, the bathrooms, the beds and the linen, and the food that arrives at her table.</p>
+<p class="g-p"><em>We warmly invite you to step beyond the gates, immerse yourself in centuries of history, and discover a place where beauty, craftsmanship and the art of gracious living continue to flourish.</em></p>
+</div></section>
+
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6781b42-750e-4a3b-9867-77097ae5de71/_DSC1938-2.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/home-7.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f2db99cd-30e7-4235-befa-4803738226d8/20170426-20170426-_1170917.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/67f70e6c-62f4-4db1-a6d6-7e4b4bde77a7/_DSC1938-2.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/home-7.jpg" alt="" loading="lazy"></div>
+
+<section class="g-sec--flush"><div class="g-half">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6781b42-750e-4a3b-9867-77097ae5de71/_DSC1938-2.jpg" alt="A Place To Stay" loading="lazy">
+  <div class="g-half__text">
+    <h2 class="g-place">A Place To Stay</h2>
+    <p class="g-p"><em>Historic rooms, gracious hospitality and the rare privilege of waking within a living monument. Her walls remain exactly as the centuries left them, protected and untouched by law; everything within them — the beds, the linen, the floors underfoot and the bathrooms — has been made new, and made beautifully. Seven bedrooms, each opened as the restoration reaches it.</em></p>
+    <p style="margin-top:32px"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">Discover</a></p>
+  </div>
+</div></section>
+<section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/67f70e6c-62f4-4db1-a6d6-7e4b4bde77a7/_DSC1938-2.jpg" alt="A Place To Create" loading="lazy">
+  <div class="g-half__text">
+    <h2 class="g-place">A Place To Create</h2>
+    <p class="g-p"><em>An exclusive collection of thoughtfully curated ateliers and bespoke experiences celebrating art, history, gastronomy and the enduring beauty of traditional crafts. For ten years guests have gathered here in small numbers, alongside the artisans themselves, in rooms where the work is still gently unfolding.</em></p>
+    <p style="margin-top:32px"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">Discover</a></p>
+  </div>
+</div></section>
+<section class="g-sec--flush"><div class="g-half">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/home-7.jpg" alt="A Place To Dine" loading="lazy">
+  <div class="g-half__text">
+    <h2 class="g-place">A Place To Dine</h2>
+    <p class="g-p"><em>There is no restaurant at Gudanes, and there was never meant to be. There is a chef, a dining room recovered over many years, and dinner arranged in advance — drawn from the Sunday market in the village square, the producers of the Ariège, and in summer the château's own gardens.</em></p>
+    <p style="margin-top:32px"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Discover</a></p>
+  </div>
+</div></section>
+<section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/home-7.jpg" alt="A Place To Celebrate" loading="lazy">
+  <div class="g-half__text">
+    <h2 class="g-place">A Place To Celebrate</h2>
+    <p class="g-p"><em>A timeless and romantic setting for life's most meaningful moments. The château offers a rare backdrop for weddings, private celebrations and occasions of every kind, each thoughtfully shaped to reflect the spirit, style and story of those who gather here — in rooms of great beauty, some finished and some still becoming so.</em></p>
+    <p style="margin-top:32px"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Discover</a></p>
+  </div>
+</div></section>
+<section class="g-sec--flush"><div class="g-half">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/home-7.jpg" alt="A Place To Dream" loading="lazy">
+  <div class="g-half__text">
+    <h2 class="g-place">A Place To Dream</h2>
+    <p class="g-p"><em>With her romantic interiors, extraordinary architecture and breathtaking mountain surroundings, Gudanes offers a setting for photography, film and creative work that could not be built or imagined. Ninety-four rooms in every state between ruin and restoration, an eighteenth-century façade, and twelve acres of grounds. Photographed for Vogue.</em></p>
+    <p style="margin-top:32px"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Discover</a></p>
+  </div>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+<h2 class="g-place">A Place To Belong</h2><p class="g-p"><em>More than a château, Gudanes is a place shaped by history, connection and the people who pass through her doors.</em></p>
+<p class="g-p">Whether staying among her ancient walls, gathering around her table, creating something lasting or celebrating life's most precious moments, guests are welcomed into the warmth and spirit of this living estate.</p>
+<p class="g-p">And every visit leaves something behind. Proceeds from each stay pass directly into the restoration — the next roof, the next ceiling, the next room brought gently back from nothing. Not a donation, but the quiet means by which a house of this size endures.</p>
+<p class="g-p"><em>Here, amidst the beauty of the Pyrénées, we hope you will find a sense of belonging — a place to slow down, to reconnect, and to become part of the ever-unfolding story of Château de Gudanes.</em></p>
+</div></section>
+
+<ul class="g-facts">
+<li><b>1741</b><span>Designed by Ange-Jacques Gabriel, principal architect to Louis&nbsp;XV</span></li>
+<li><b>94</b><span>Rooms across 43,000 square feet</span></li>
+<li><b>1994</b><span>Classified alongside Versailles and the Eiffel Tower</span></li>
+<li><b>500t</b><span>Of rubble cleared before work could begin</span></li>
+<li><b>2013</b><span>Restoration begins. It has no end date.</span></li></ul>
+
+<section class="g-sec"><div class="g-wrap">
+<h2 class="g-display" style="font-size:clamp(28px,4.4vw,48px); font-style:italic; margin-bottom:34px"><em>Every château has a history. Every guest adds a chapter.</em></h2>
+<p class="g-p">Unlike a museum frozen in time, Château de Gudanes is a living estate — one where restoration continues, gardens flourish, guests gather and new memories are woven into centuries of history.</p>
+<p class="g-p">She offers the rare opportunity to live within a private French château while witnessing her remarkable restoration unfold. Once fallen into ruin, she is being brought back to life through patience, perseverance and a profound respect for the craftsmanship, traditions and heritage of France.</p>
+<p class="g-p">She is a reminder that beauty can take patience, that craftsmanship deserves time, and that preserving the past requires both perseverance and passion.</p>
+<p class="g-p"><em>To stay at Gudanes is to experience this living history intimately — and, for a little while, to call the château your home.</em></p>
+</div></section>
+
+<section class="g-sec--flush"><div class="g-half g-half--flip">
+<img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="" loading="lazy">
+<div class="g-half__text">
+<h2 class="g-display" style="font-size:clamp(26px,3.6vw,42px); font-style:italic; margin-bottom:26px"><em>Preserving the past. Welcoming the future.</em></h2>
+<p class="g-p">Fifteen years of restoration, and she is not yet finished. Perhaps she never will be. We would be delighted to welcome you while the work is still unfolding.</p>
+<p style="margin-top:32px"><a href="{{ url_for('book_rooms') }}" class="g-btn">Réserver</a></p>
+</div></div></section>
+
+{% endblock %}
