@@ -81,6 +81,16 @@
         <input type="date" name="alternate_date">
       </div>
     </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">End date (multi-day events)</label>
+        <input type="date" name="end_date">
+      </div>
+      <div>
+        <label class="field-label">Spaces needed</label>
+        <input type="text" name="spaces" placeholder="South lawn, orangery, 4 bedrooms...">
+      </div>
+    </div>
     <label class="field-label">Quoted price (€)</label>
     <input type="number" name="quoted_price" step="0.01" min="0" style="max-width:180px;">
 
@@ -93,6 +103,18 @@
     <button type="submit" class="btn-primary">Add event</button>
   </form>
 </div>
+
+<details style="margin-bottom:18px;">
+  <summary class="small-link" style="color:var(--steel); cursor:pointer;">Edit event types ({{ event_types|length }})</summary>
+  <form method="post" action="{{ url_for('update_event_types') }}" class="detail-card" style="margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field-label">One per line</label>
+    <textarea name="event_types" rows="5" style="font-family:'IBM Plex Mono',monospace; font-size:13px;">{% for t in event_types %}{{ t }}
+{% endfor %}</textarea>
+    <p class="upload-hint">These fill the dropdown on the public enquiry form and here. A type you remove stays valid on events already using it.</p>
+    <button type="submit" class="btn-mini">Save types</button>
+  </form>
+</details>
 
 <form method="get" class="search-bar">
   <div>
@@ -121,8 +143,9 @@
     <span class="upload-hint">{{ e['reference_code'] }}</span>
   </div>
   <p class="manual-body">
-    {% if e['preferred_date'] %}Preferred: {{ e['preferred_date'] }}{% else %}No date set yet{% endif %}
-    {%- if e['alternate_date'] %} · Alternate: {{ e['alternate_date'] }}{% endif %}
+    {% if e['preferred_date'] %}{{ e['preferred_date'] }}{% if e['end_date'] %} → {{ e['end_date'] }}{% endif %}{% else %}No date set yet{% endif %}
+    {%- if e['alternate_date'] %} · Alt: {{ e['alternate_date'] }}{% endif %}
+    {%- if e['spaces'] %} · {{ e['spaces'] }}{% endif %}
     {%- if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
     {%- if e['quoted_price'] %} · Quoted €{{ '%.2f'|format(e['quoted_price']) }}{% endif %}
   </p>

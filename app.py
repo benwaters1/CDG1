@@ -710,6 +710,7 @@ def init_db():
             label TEXT,
             default_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
             route_to_on_shift INTEGER NOT NULL DEFAULT 0,
+            escalate_hours REAL NOT NULL DEFAULT 48,
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
@@ -1498,6 +1499,8 @@ def init_db():
         ("email_flags_mailbox", "ALTER TABLE email_flags ADD COLUMN mailbox TEXT"),
         ("email_flags_first_reply_at", "ALTER TABLE email_flags ADD COLUMN first_reply_at TEXT"),
         ("mailbox_routing_on_shift", "ALTER TABLE mailbox_routing ADD COLUMN route_to_on_shift INTEGER NOT NULL DEFAULT 0"),
+        ("email_flags_escalated_at", "ALTER TABLE email_flags ADD COLUMN escalated_at TEXT"),
+        ("mailbox_routing_escalate_hours", "ALTER TABLE mailbox_routing ADD COLUMN escalate_hours REAL NOT NULL DEFAULT 48"),
         # `guests` became a per-person profile rather than a per-stay register
         # (see the drop-column migration below for why).
         ("guests_email", "ALTER TABLE guests ADD COLUMN email TEXT"),
@@ -1505,6 +1508,9 @@ def init_db():
         ("guests_dietary_notes", "ALTER TABLE guests ADD COLUMN dietary_notes TEXT"),
         ("guests_preferences", "ALTER TABLE guests ADD COLUMN preferences TEXT"),
         ("guests_vip", "ALTER TABLE guests ADD COLUMN vip INTEGER NOT NULL DEFAULT 0"),
+        # A wedding runs across days; preferred_date alone couldn't express that.
+        ("event_end_date", "ALTER TABLE event_inquiries ADD COLUMN end_date TEXT"),
+        ("event_spaces", "ALTER TABLE event_inquiries ADD COLUMN spaces TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -8730,7 +8736,40 @@ def workshop_feedback(token):
 # self-service pattern as the other three booking engines.
 # ---------------------------------------------------------------------------
 
-EVENT_TYPES = ["wedding", "photoshoot", "corporate", "other"]
+# Presets only — the real list is owner-editable and lives in app_settings.
+# Kept as the seed and as the fallback if the setting is ever emptied.
+DEFAULT_EVENT_TYPES = ["wedding", "photoshoot", "corporate", "other"]
+
+
+def event_types(conn):
+    """The owner's current event-type list.
+
+    Stored as a newline-separated string in app_settings rather than a table:
+    it's a short, flat, ordered list with no other data hanging off it, and
+    this keeps the public form, the owner form and validation reading from
+    one place. Falls back to the presets if unset or emptied.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = 'event_types'").fetchone()
+    if not row or not (row["value"] or "").strip():
+        return list(DEFAULT_EVENT_TYPES)
+    seen, out = set(), []
+    for line in row["value"].splitlines():
+        t = line.strip().lower()
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out or list(DEFAULT_EVENT_TYPES)
+
+
+def known_event_types(conn):
+    """Current types PLUS any already used by existing records, so a type the
+    owner has since removed still validates and still renders on old events
+    rather than silently breaking them."""
+    types = event_types(conn)
+    used = conn.execute(
+        "SELECT DISTINCT event_type FROM event_inquiries WHERE event_type IS NOT NULL"
+    ).fetchall()
+    return types + [r["event_type"] for r in used if r["event_type"] not in types]
 
 
 def make_event_reference_code():
@@ -8759,7 +8798,10 @@ def send_event_email(conn, inquiry, template_key, context):
 
 @app.route("/events")
 def events_info():
-    return render_template("events_info.html", event_types=EVENT_TYPES)
+    conn = get_db()
+    types = event_types(conn)
+    conn.close()
+    return render_template("events_info.html", event_types=types)
 
 
 @app.route("/events/inquire", methods=["POST"])
@@ -8781,7 +8823,7 @@ def submit_event_inquiry():
         return redirect(url_for("events_info"))
 
     error = None
-    if event_type not in EVENT_TYPES:
+    if event_type not in event_types(conn):
         error = "Choose an event type."
     elif not contact_name or not contact_email:
         error = "Name and email are required."
@@ -8904,6 +8946,7 @@ def admin_events():
     inquiries = conn.execute(query, params).fetchall()
     new_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'new'").fetchone()["c"]
     confirmed_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed'").fetchone()["c"]
+    types = event_types(conn)
     conn.close()
 
     # Split by whether the event has actually happened yet. Previously one
@@ -8914,7 +8957,9 @@ def admin_events():
     today_iso = datetime.now(timezone.utc).date().isoformat()
     upcoming, past = [], []
     for r in inquiries:
-        day = r["preferred_date"] or ""
+        # A three-day wedding is still upcoming on day two, so judge by the
+        # end date where one is set.
+        day = r["end_date"] or r["preferred_date"] or ""
         (past if (day and day < today_iso) else upcoming).append(r)
     upcoming.sort(key=lambda r: (r["status"] != "new", r["preferred_date"] or "9999-99-99"))
     past.sort(key=lambda r: r["preferred_date"] or "", reverse=True)
@@ -8922,8 +8967,38 @@ def admin_events():
     return render_template(
         "admin_events.html", inquiries=inquiries, upcoming=upcoming, past=past,
         status_filter=status_filter, today=datetime.now(timezone.utc).date(),
-        new_count=new_count, confirmed_count=confirmed_count, event_types=EVENT_TYPES,
+        new_count=new_count, confirmed_count=confirmed_count, event_types=types,
     )
+
+
+@app.route("/admin/events/types", methods=["POST"])
+@owner_required
+def update_event_types():
+    """Owner-editable event types. One per line, free text — the château runs
+    things nobody thought to hardcode. Types already used by existing events
+    are never invalidated (see known_event_types)."""
+    raw = request.form.get("event_types", "")
+    cleaned, seen = [], set()
+    for line in raw.splitlines():
+        t = line.strip().lower()[:40]
+        if t and t not in seen:
+            seen.add(t)
+            cleaned.append(t)
+    if not cleaned:
+        flash("Keep at least one event type.", "error")
+        return redirect(url_for("admin_events"))
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('event_types', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            ("\n".join(cleaned),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    flash(f"Event types updated ({len(cleaned)}).", "success")
+    return redirect(url_for("admin_events"))
 
 
 @app.route("/admin/events/new", methods=["POST"])
@@ -8942,13 +9017,18 @@ def new_event_inquiry():
     contact_phone = request.form.get("contact_phone", "").strip()
     preferred_date = request.form.get("preferred_date", "").strip()
     alternate_date = request.form.get("alternate_date", "").strip()
+    end_date = request.form.get("end_date", "").strip()
+    spaces = request.form.get("spaces", "").strip()[:300]
     guest_count_raw = request.form.get("guest_count", "").strip()
     message = request.form.get("message", "").strip()[:2000]
     owner_note = request.form.get("owner_note", "").strip()[:2000]
     status = request.form.get("status", "new").strip()
     quoted_price_raw = request.form.get("quoted_price", "").strip()
 
-    if event_type not in EVENT_TYPES:
+    conn = get_db()
+    valid_types = known_event_types(conn)
+    conn.close()
+    if event_type not in valid_types:
         flash("Choose an event type.", "error")
         return redirect(url_for("admin_events"))
     if not contact_name:
@@ -8972,15 +9052,16 @@ def new_event_inquiry():
     try:
         conn.execute(
             """INSERT INTO event_inquiries (reference_code, manage_token, event_type, contact_name,
-               contact_email, contact_phone, preferred_date, alternate_date, guest_count, message,
-               status, quoted_price, owner_note, created_at, decided_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               contact_email, contact_phone, preferred_date, alternate_date, end_date, spaces,
+               guest_count, message, status, quoted_price, owner_note, created_at, decided_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             # contact_email is NOT NULL, so a phone enquiry stores an empty
             # string rather than NULL. Deliberately not a placeholder address:
             # a fake email would pollute guest history and could be mailed.
             (make_event_reference_code(), secrets.token_urlsafe(24), event_type, contact_name,
              contact_email, contact_phone or None, preferred_date or None,
-             alternate_date or None, int(guest_count_raw) if guest_count_raw.isdigit() else None,
+             alternate_date or None, end_date or None, spaces or None,
+             int(guest_count_raw) if guest_count_raw.isdigit() else None,
              message or None, status, quoted_price, owner_note or None, now,
              now if status in ("confirmed", "declined") else None),
         )
@@ -16503,6 +16584,14 @@ def fetch_graph_messages(token, folder, since_iso, top=100, mailbox=None):
     return body.get("value", []) if body else []
 
 
+def _positive_float(raw, fallback):
+    try:
+        value = float((raw or "").strip())
+        return value if value > 0 else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
 def resolve_inbox_owner(conn, mb):
     """Who should pick this one up right now.
 
@@ -16541,6 +16630,97 @@ def resolve_inbox_owner(conn, mb):
     if default_id and default_id not in away:
         return default_id
     return None
+
+
+def guest_context_for_emails(conn, addresses):
+    """Who each sender is, for a batch of email addresses at once.
+
+    Whoever picks up a flagged email should see "4th stay, allergic to
+    shellfish, in the Rose Room until Thursday" without going hunting for it.
+    Batched deliberately: doing this per flag would be a query per row on a
+    page that can list dozens.
+    """
+    wanted = {(a or "").strip().lower() for a in addresses if a and a.strip()}
+    if not wanted:
+        return {}
+    today = datetime.now(timezone.utc).date().isoformat()
+    placeholders = ",".join("?" * len(wanted))
+    args = list(wanted)
+
+    out = {}
+    for r in conn.execute(
+        f"""SELECT * FROM guests WHERE LOWER(email) IN ({placeholders})""", args
+    ).fetchall():
+        out[r["email"].lower()] = {
+            "profile_id": r["id"], "name": r["name"], "vip": bool(r["vip"]),
+            "dietary_notes": r["dietary_notes"], "preferences": r["preferences"],
+            "stays": 0, "current": None, "upcoming": None, "lifetime": 0.0,
+        }
+
+    # Confirmed stays: how many, what they're in now, what's next, total spend.
+    for r in conn.execute(
+        f"""SELECT bookings.guest_email AS email, bookings.arrival_date, bookings.departure_date,
+                   bookings.total_price, bookings.status, rooms.name AS room_name
+            FROM bookings LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE LOWER(bookings.guest_email) IN ({placeholders})
+              AND bookings.status = 'confirmed'
+            ORDER BY bookings.arrival_date""", args
+    ).fetchall():
+        key = (r["email"] or "").lower()
+        ctx = out.setdefault(key, {
+            "profile_id": None, "name": None, "vip": False, "dietary_notes": None,
+            "preferences": None, "stays": 0, "current": None, "upcoming": None, "lifetime": 0.0,
+        })
+        ctx["stays"] += 1
+        ctx["lifetime"] += r["total_price"] or 0
+        if r["arrival_date"] <= today < r["departure_date"]:
+            ctx["current"] = f"{r['room_name'] or 'room'} until {r['departure_date']}"
+        elif r["arrival_date"] > today and not ctx["upcoming"]:
+            ctx["upcoming"] = f"{r['room_name'] or 'room'} from {r['arrival_date']}"
+    return out
+
+
+def escalate_stale_flags(conn):
+    """Nudge the owner when a flagged email has sat unresolved past its
+    inbox's threshold.
+
+    Assigning something isn't the same as it being handled -- without this,
+    a flag can sit open indefinitely and the system only *records* that
+    something was missed rather than preventing it. Fires once per flag
+    (escalated_at), so it's a prompt, not a nag.
+    """
+    now = datetime.now(timezone.utc)
+    owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
+    if not owner_row:
+        return 0
+    thresholds = {
+        r["mailbox"]: (r["escalate_hours"] or 48)
+        for r in conn.execute("SELECT mailbox, escalate_hours FROM mailbox_routing").fetchall()
+    }
+    escalated = 0
+    for f in conn.execute(
+        """SELECT email_flags.*, users.name AS assigned_to_name FROM email_flags
+           LEFT JOIN users ON users.id = email_flags.assigned_to_user_id
+           WHERE email_flags.status = 'open' AND email_flags.escalated_at IS NULL"""
+    ).fetchall():
+        hours = thresholds.get(f["mailbox"], 48)
+        received = parse_datetime_iso(f["received_at"])
+        if not received or (now - received) < timedelta(hours=hours):
+            continue
+        who = f["assigned_to_name"] or "nobody"
+        send_notification(
+            conn, owner_row["id"], "inbox_flag_escalated",
+            f"Still unhandled after {int(hours)}h: {f['subject'] or '(no subject)'}",
+            body=f"In {f['mailbox'] or 'the inbox'}, with {who}. "
+                 f"From {f['from_name'] or f['from_address'] or 'unknown sender'}.",
+            link="/admin/inbox-flags",
+        )
+        conn.execute("UPDATE email_flags SET escalated_at = ? WHERE id = ?",
+                     (now.isoformat(), f["id"]))
+        escalated += 1
+    if escalated:
+        conn.commit()
+    return escalated
 
 
 def cross_inbox_duplicates(conn):
@@ -17152,7 +17332,9 @@ def run_email_inbox_scan_job(conn):
                         body=f"From {from_name or from_address or 'unknown sender'}", link="/admin/inbox-flags",
                     )
     conn.commit()
-    return f"scanned {seen} message(s) across {len(mailboxes)} mailbox(es), {flagged} flagged"
+    escalated = escalate_stale_flags(conn)
+    tail = f", {escalated} escalated" if escalated else ""
+    return f"scanned {seen} message(s) across {len(mailboxes)} mailbox(es), {flagged} flagged{tail}"
 
 
 def run_stale_shift_cleanup_job(conn, hours_threshold):
@@ -17430,12 +17612,13 @@ def admin_inbox_flags():
     }
     duplicates = cross_inbox_duplicates(conn)
     response_stats = inbox_response_stats(conn)
+    guest_context = guest_context_for_emails(conn, [f["from_address"] for f in flags])
     conn.close()
     return render_template(
         "admin_inbox_flags.html", flags=flags, status_filter=status_filter, kind_filter=kind_filter,
         counts=counts, graph_enabled=graph_enabled(), employees=employees,
         mailboxes=mailboxes, mailbox_filter=mailbox_filter, per_mailbox=per_mailbox,
-        duplicates=duplicates, response_stats=response_stats,
+        duplicates=duplicates, response_stats=response_stats, guest_context=guest_context,
         mailbox=MS_GRAPH_MAILBOX,
     )
 
@@ -17450,9 +17633,11 @@ def update_mailbox_routing():
         raw = request.form.get(f"default_user_{mb['id']}", "").strip()
         label = request.form.get(f"label_{mb['id']}", "").strip() or None
         conn.execute(
-            "UPDATE mailbox_routing SET default_user_id = ?, label = ?, route_to_on_shift = ? WHERE id = ?",
+            "UPDATE mailbox_routing SET default_user_id = ?, label = ?, route_to_on_shift = ?, "
+            "escalate_hours = ? WHERE id = ?",
             (int(raw) if raw.isdigit() else None, label,
-             1 if request.form.get(f"on_shift_{mb['id']}") else 0, mb["id"]),
+             1 if request.form.get(f"on_shift_{mb['id']}") else 0,
+             _positive_float(request.form.get(f"escalate_{mb['id']}"), 48), mb["id"]),
         )
     conn.commit()
     conn.close()
