@@ -10,11 +10,35 @@
 #}
 
 <div class="receipt">
+  {#
+    Name, address, SIRET and TVA number are what a French note has to carry.
+    They come from Company info rather than being written in here, so getting
+    them right once gets them right on every bill.
+  #}
   <div class="receipt-head">
-    <h1>Château de Gudanes</h1>
-    <p>2 Route de Beille · Château-Verdun, Ariège 09310 · France</p>
+    <h1>{{ (company['legal_name'] if company and company['legal_name'] else '') or 'Château de Gudanes' }}</h1>
+    {% if company and company['registered_address'] %}
+    <p>{{ company['registered_address'] }}</p>
+    {% endif %}
     <p>La Table du Château</p>
+    {% if company and (company['registration_number'] or company['vat_number']) %}
+    <p>
+      {%- if company['registration_number'] %}SIRET {{ company['registration_number'] }}{% endif %}
+      {%- if company['registration_number'] and company['vat_number'] %} · {% endif %}
+      {%- if company['vat_number'] %}TVA {{ company['vat_number'] }}{% endif %}
+    </p>
+    {% else %}
+    {# Said plainly rather than left blank: a note without them is not compliant,
+       and the person printing it is the person who can fix it. #}
+    <p class="receipt-missing">
+      SIRET et n° de TVA manquants — à renseigner dans Company info
+    </p>
+    {% endif %}
   </div>
+
+  {% if order['receipt_number'] %}
+  <p class="receipt-number">Note n° {{ order['receipt_number'] }}</p>
+  {% endif %}
 
   <div class="receipt-meta">
     <span>{{ order['table_label'] }}</span>

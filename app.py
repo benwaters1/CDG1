@@ -12273,9 +12273,14 @@ def pos_reopen(order_id):
 def pos_receipt(order_id):
     """The bill as a guest receives it, and as the taxman expects it.
 
-    A French bill has to show VAT by rate, not one blended figure, and the
-    château's SIRET and address. It prints from the browser — the iPad has no
-    till roll, and a page that prints is worth more than one that cannot.
+    A French note has to carry the company's name, address, SIRET and TVA
+    number alongside VAT by rate — the docstring used to claim it showed
+    those while the template hardcoded an address and printed neither. They
+    now come from Company info, so correcting them in one place corrects
+    every bill.
+
+    It prints from the browser: the iPad has no till roll, and a page that
+    prints beats one that cannot.
     """
     conn = get_db()
     bill = pos_bill(conn, order_id)
@@ -12293,10 +12298,13 @@ def pos_receipt(order_id):
     formule_line_ids = {l["id"] for f in formules for l in f["lines"]}
     a_la_carte = pos_lines_by_course(
         [l for l in bill["live"] if l["id"] not in formule_line_ids])
+    company = conn.execute(
+        """SELECT legal_name, registration_number, vat_number, registered_address
+           FROM company_info WHERE id = 1""").fetchone()
     conn.close()
     return render_template("pos_receipt.html", bill=bill, order=bill["order"],
                            by_course=a_la_carte, formules=formules, context=context,
-                           payments=payments, courses=MENU_COURSES,
+                           payments=payments, courses=MENU_COURSES, company=company,
                            payment_methods=POS_PAYMENT_METHODS)
 
 
