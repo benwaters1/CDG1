@@ -982,3 +982,40 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-hero__lede{
   color: #EAE4DC; max-width: 40rem; font-size: 17px; line-height: 1.6; margin: var(--s4) 0 0;
 }
+
+/* ---- Availability calendar -------------------------------------------- */
+/* Nights already taken are shown struck through and cannot be clicked, so a
+   guest never fills in the form only to be refused at the end. The colour is
+   not the only signal — a strike-through and a title carry it too, since a
+   greyed-out date and a pale one are the same thing to a lot of eyes. */
+.g-cal{ margin-top: var(--s4); border: 1px solid var(--line); padding: var(--s4); }
+.g-cal__nav{ display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.g-cal__btn{
+  font: inherit; line-height: 1; padding: 6px 12px; cursor: pointer;
+  color: var(--ink); background: transparent; border: 1px solid var(--ink);
+}
+.g-cal__btn:hover{ background: var(--ink); color: var(--sand); }
+.g-cal__key{ font-size: 13px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
+.g-cal__swatch{ width: 12px; height: 12px; background: var(--sand-3); border: 1px solid var(--line); display: inline-block; }
+.g-cal__months{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s4); }
+.g-cal__month{ flex: 1 1 240px; min-width: 0; }
+.g-cal__title{ margin: 0 0 var(--s2); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.g-cal__grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.g-cal__dow{ font-size: 11px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
+.g-cal__day{
+  font: inherit; font-size: 13px; aspect-ratio: 1; min-height: 34px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink); background: transparent; border: 1px solid transparent; cursor: pointer;
+}
+.g-cal__day:hover:not(:disabled){ border-color: var(--ink); }
+.g-cal__day.is-empty{ cursor: default; }
+.g-cal__day.is-off{
+  color: var(--ink-faint); background: var(--sand-3);
+  text-decoration: line-through; cursor: not-allowed;
+}
+.g-cal__day.is-sel{ background: var(--ink); color: var(--sand); }
+.g-cal__day.is-range{ background: var(--sand-2); }
+@media (pointer: coarse){
+  /* A 34px target is fine with a mouse and not with a thumb. */
+  .g-cal__day{ min-height: 44px; }
+}

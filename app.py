@@ -5628,6 +5628,76 @@ def house_capacity_error(conn, start, end, additional_guests):
             f"go over. Please call the château directly and we'll see what we can do.")
 
 
+def unavailable_nights(conn, room_id, start, end):
+    """{'YYYY-MM-DD': 'why'} for every night in [start, end) a guest cannot have.
+
+    The same sources is_range_available refuses on, resolved one night at a
+    time so a calendar can grey them out instead of letting someone fill in a
+    whole form and only then be told no. is_range_available stays the actual
+    gate — this is what the guest sees, not what decides.
+
+    The two must agree on the boundaries, which are not the same for every
+    source, so they are spelled out rather than assumed:
+
+      - a booking holds arrival..departure-1 (the checkout morning is free,
+        standard hotel convention)
+      - a workshop holds start..end INCLUSIVE — is_range_available refuses an
+        arrival on the session's end_date, because the guests are still in the
+        house that morning
+      - an event holds its single day
+    """
+    out = {}
+
+    def hold(first, last, reason):
+        """Mark every night from first to last inclusive."""
+        if not first or not last:
+            return
+        day = max(first, start)
+        stop = min(last, end - timedelta(days=1))
+        while day <= stop:
+            out.setdefault(day.isoformat(), reason)
+            day += timedelta(days=1)
+
+    for row in conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
+           WHERE room_id = ? AND status IN ('pending', 'confirmed')""", (room_id,)).fetchall():
+        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+        if b_start and b_end:
+            hold(b_start, b_end - timedelta(days=1), "Already booked")
+
+    for table, reason in (("blocked_dates", "Booked on another channel"),
+                          ("room_blocks", "Not available")):
+        for row in conn.execute(
+            f"SELECT start_date, end_date FROM {table} WHERE room_id = ?", (room_id,)).fetchall():
+            b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+            if b_start and b_end:
+                hold(b_start, b_end - timedelta(days=1), reason)
+
+    for row in conn.execute(
+        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
+           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""
+    ).fetchall():
+        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+        hold(w_start, w_end, f"Held for {row['title']}")
+
+    for row in conn.execute(
+        """SELECT preferred_date, event_type FROM event_inquiries
+           WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
+        e_date = parse_date(row["preferred_date"])
+        hold(e_date, e_date, f"Held for a private {row['event_type'] or 'event'}")
+
+    # And the legal ceiling: a night already holding the maximum has no room
+    # for even one more guest, whatever this particular room's own state is.
+    cap = house_guest_capacity(conn)
+    day = start
+    while day < end:
+        iso = day.isoformat()
+        if iso not in out and peak_guests_in_house(conn, day, day + timedelta(days=1)) >= cap:
+            out[iso] = "The château is full"
+        day += timedelta(days=1)
+    return out
+
+
 def matching_waitlist_entries(conn, arrival_iso, departure_iso):
     """Open/contacted waitlist entries whose desired range overlaps the
     given dates — not room-specific, since a waitlist request is for
@@ -13346,6 +13416,48 @@ def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code=""
             quote["promo_error"] = error
     quote["total"] = round(subtotal - quote["discount"], 2)
     return quote
+
+
+@app.route("/api/availability/<int:room_id>")
+def api_availability(room_id):
+    """Which nights this room cannot be had, so the calendar can grey them out.
+
+    Public and read-only, like /api/quote beside it. It exposes only what a
+    guest would learn anyway by trying dates one at a time — that a night is
+    taken, and roughly why — never who has it.
+    """
+    conn = get_db()
+    if rate_limited(conn, "api_availability", 120):
+        conn.commit()
+        conn.close()
+        return jsonify(error="Too many requests — try again shortly."), 429
+    conn.commit()
+
+    room = conn.execute("SELECT id, min_nights, max_occupancy FROM rooms WHERE id = ? AND active = 1",
+                        (room_id,)).fetchone()
+    if not room:
+        conn.close()
+        abort(404)
+
+    today = datetime.now(timezone.utc).date()
+    start = parse_date(request.args.get("from", "")) or today
+    start = max(start, today)          # the past is never bookable
+    try:
+        months = min(max(int(request.args.get("months", 12)), 1), 24)
+    except ValueError:
+        months = 12
+    end = start + timedelta(days=months * 31)
+
+    nights = unavailable_nights(conn, room_id, start, end)
+    conn.close()
+    return jsonify(
+        room_id=room_id,
+        first=start.isoformat(),
+        last=(end - timedelta(days=1)).isoformat(),
+        min_nights=room["min_nights"] or 1,
+        max_occupancy=room["max_occupancy"],
+        unavailable=nights,
+    )
 
 
 @app.route("/api/quote")
