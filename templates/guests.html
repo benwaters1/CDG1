@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_icons.html" import icon %}
 {% block title %}Guests{% endblock %}
 {% block content %}
 
@@ -6,8 +7,33 @@
   <h1>Guests</h1>
   {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
-    <a href="{{ url_for('export_guests_csv') }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('export_guests_csv') }}" class="btn-ghost">Export CSV</a>
     <a href="{{ url_for('new_guest') }}" class="btn-primary" style="margin-top:0;">+ Add guest</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-success">{{ icon('guests', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ in_residence|sum(attribute='party_size') or in_residence|length }}</span>
+      <span class="stat-tile-label">In residence now</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('calendar', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ upcoming|length }}</span><span class="stat-tile-label">Arriving soon</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('contacts', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ profiles|length }}</span><span class="stat-tile-label">Guest profiles</span></span>
+  </div>
+  {% set returning = stay_counts.values()|select('gt', 1)|list|length %}
+  {% if returning %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('star', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ returning }}</span><span class="stat-tile-label">Returning guests</span></span>
   </div>
   {% endif %}
 </div>
