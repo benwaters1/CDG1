@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
-<meta name="description" content="{% block description %}A Class I Historic Monument in the French Pyrenees, restored since 2013. Seven bedrooms. Your stay funds the next room.{% endblock %}">
+<meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -26,20 +26,133 @@
 })();
 </script>
 </head>
-<body class="g">
+<body class="g{% block bodyclass %}{% endblock %}">
 
 <header class="g-top">
   <div class="g-top__in">
-    <a href="/" class="g-brand">Château de Gudanes<small>Ariège · Restoration</small></a>
-    <nav class="g-nav">
-      <a href="{{ url_for('book_rooms') }}" class="{{ 'is-on' if request.endpoint in ['book_rooms','book_room'] }}">Stay</a>
-      <a href="{{ url_for('workshops_public') }}" class="{{ 'is-on' if request.endpoint in ['workshops_public','workshop_detail','workshop_register'] }}">Ateliers</a>
-      <a href="{{ url_for('restaurant_info') }}" class="{{ 'is-on' if request.endpoint in ['restaurant_info','restaurant_book'] }}">La Table</a>
-      <a href="{{ url_for('events_info') }}" class="{{ 'is-on' if request.endpoint in ['events_info'] }}">Weddings &amp; Events</a>
-      <a href="/restoration">The Restoration</a>
-      <a href="/gallery">Gallery</a>
-      <a href="{{ url_for('find_booking') }}">Manage booking</a>
-    </nav>
+    <a href="/" class="g-logo" aria-label="Château de Gudanes">
+      <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
+    </a>
+
+    <button type="button" class="g-navbtn" aria-expanded="false" aria-controls="g-mainnav">
+      <span class="g-navbtn__bars"><span></span><span></span></span>
+    </button>
+
+    <div class="g-panel-overlay" id="g-panel-overlay"></div>
+    <div class="g-navwrap" id="g-mainnav" role="dialog" aria-label="Menu">
+      <div class="g-navwrap__inner">
+        <button type="button" class="g-navwrap__close" aria-label="Close menu">&times;</button>
+
+        <p class="g-navwrap__group">Stay</p>
+        <a href="{{ url_for('book_rooms') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 20V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10"/><path d="M4 14h16"/><path d="M9 14v6M15 14v6"/></svg>
+          Stay Now
+        </a>
+        <a href="{{ url_for('workshops_public') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M12 3v6M8 5l4 4 4-4"/><path d="M6 21h12M9 21v-4a3 3 0 0 1 6 0v4"/></svg>
+          Workshops
+        </a>
+        <a href="{{ url_for('restaurant_info') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="12" cy="12" r="9"/><path d="M8 9c0-1.5 1.5-3 4-3s4 1.5 4 3"/></svg>
+          La Table
+        </a>
+        <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M6 3v7a6 6 0 0 0 12 0V3M12 17v4M8 21h8"/></svg>
+          Weddings &amp; Events
+        </a>
+        <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="6" width="14" height="12" rx="1"/><path d="M17 10l4-2v8l-4-2"/></svg>
+          Private Photo &amp; Videoshoots
+        </a>
+
+        <div class="g-navwrap__divider"></div>
+
+        <p class="g-navwrap__group">Gallery &amp; Story</p>
+        <a href="/gallery#inside" class="g-navwrap__feature">
+          <img src="{{ url_for('static', filename='img/chateau_facade_formal.jpg') }}" alt="Château de Gudanes, front elevation">
+          <span>
+            <b>Inside the Château</b>
+            <em>The house as she stands today</em>
+          </span>
+        </a>
+        <a href="/gallery#grounds" class="g-navwrap__item g-navwrap__item--sm">
+          The Château &amp; Its Grounds <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="/gallery#restoration" class="g-navwrap__item g-navwrap__item--sm">
+          The Restoration Story <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="/gallery#life" class="g-navwrap__item g-navwrap__item--sm">
+          Life at the Château <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="/gallery" class="g-navwrap__item g-navwrap__item--sm">
+          Gallery Overview <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="/gallery#views" class="g-navwrap__item g-navwrap__item--sm">
+          The Views <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="/restoration" class="g-navwrap__item g-navwrap__item--sm">
+          About &amp; History <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+        <a href="/restoration#press" class="g-navwrap__item g-navwrap__item--sm">
+          Press <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 6l6 6-6 6"/></svg>
+        </a>
+
+        <div class="g-navwrap__divider"></div>
+        <a href="{{ url_for('find_booking') }}" class="g-navwrap__item g-navwrap__item--plain">Manage Booking</a>
+      </div>
+
+      <!-- ================================================================
+           FOOTER TIER — matched to the Ritz Paris panel: newsletter, social
+           icons, a link grid, then legal links at the very foot. Everything
+           below sits on the panel's own scroll, same as theirs.
+           ================================================================ -->
+      <div class="g-navwrap__foot">
+        <p class="g-navwrap__foot-h">Subscribe to our newsletter</p>
+        <form class="g-navwrap__news" onsubmit="return false;">
+          <input type="email" placeholder="Email" aria-label="Email address">
+          <button type="submit" aria-label="Subscribe">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </form>
+
+        <div class="g-navwrap__social">
+          <a href="https://www.instagram.com/chateaugudanes/" aria-label="Instagram" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="1"/></svg>
+          </a>
+          <a href="https://www.facebook.com/chateaudegudanes/" aria-label="Facebook" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M15 8h-2a2 2 0 0 0-2 2v10M9 12h4"/><path d="M13 21V12"/><circle cx="12" cy="12" r="9"/></svg>
+          </a>
+        </div>
+
+        <div class="g-navwrap__linkgrid">
+          <a href="mailto:experience@chateaugudanes.com">Contact us</a>
+          <a href="/restoration#press">Press</a>
+          <a href="{{ url_for('workshops_public') }}">Group development</a>
+          <a href="{{ url_for('find_booking') }}">Change or cancel a reservation</a>
+        </div>
+
+        <p class="g-navwrap__group" style="margin-top:var(--s6)">Château de Gudanes</p>
+        <p class="g-navwrap__addr">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
+        <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
+        <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
+
+        <div class="g-navwrap__legal">
+          <a href="{{ url_for('terms_page') }}">Terms &amp; Conditions</a>
+          <a href="#">Privacy Policy</a>
+        </div>
+      </div>
+    </div>
+
+    <span class="g-cur">
+      
+      <select id="g-currency" aria-label="Display currency">
+        <option value="EUR" selected>EUR €</option>
+        <option value="USD">USD $</option>
+        <option value="GBP">GBP £</option>
+        <option value="AUD">AUD $</option>
+      </select>
+    </span>
+
     <a href="{{ url_for('book_rooms') }}" class="g-reserve">Réserver</a>
   </div>
 </header>
@@ -63,7 +176,7 @@
     <div class="g-footer__grid">
       <div>
         <p class="g-footer__brand">Château de Gudanes</p>
-        <p style="font-size:13.5px; line-height:1.8; margin:0;">
+        <p class="g-footer__contact" style="font-size:13.5px; line-height:2.1; margin:0;">
           2 Route de Beille<br>
           Château-Verdun, Ariège 09310, France<br>
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
@@ -75,7 +188,7 @@
         <h4>Visit</h4>
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">Nightly stays</a></li>
-          <li><a href="{{ url_for('workshops_public') }}">Ateliers</a></li>
+          <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
           <li><a href="{{ url_for('restaurant_info') }}">La Table</a></li>
           <li><a href="{{ url_for('events_info') }}">Weddings &amp; events</a></li>
           <li><a href="/restoration">The restoration</a></li>
@@ -87,19 +200,104 @@
         <ul>
           <li><a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a></li>
           <li><a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a></li>
-          <li><a href="{{ url_for('guest_account_request') }}">Your bookings</a></li>
           <li><a href="{{ url_for('find_booking') }}">Manage a booking</a></li>
           <li><a href="{{ url_for('terms_page') }}">Terms &amp; conditions</a></li>
         </ul>
       </div>
     </div>
-    <p class="g-footer__fine">
-      A private residence, not open to the public. Visits by reservation.<br>
-      Site, contents and photography copyright of Château de Gudanes.
-      Photography by Charli Anderson, Karina Waters, Peter Dillon and Joann Pai.
-    </p>
+    <p class="g-footer__fine">© Château de Gudanes</p>
   </div>
 </footer>
 
+<div class="g-stickybar">
+  <span class="g-stickybar__t">
+    <b>Stay the Night</b>
+    <span>Château de Gudanes</span>
+  </span>
+  <a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">Réserver</a>
+</div>
+
+
+
+<script>
+/* Currency display. Rates fetched once and cached for the day; everything is
+   still charged in Euros, which is stated wherever a converted figure shows. */
+(function () {
+  var sel = document.getElementById('g-currency');
+  if (!sel) return;
+  var KEY = 'gud-fx', DAY = 864e5;
+
+  function symbol(c){ return {EUR:'€', USD:'$', GBP:'£', AUD:'A$'}[c] || ''; }
+
+  function paint(rates, cur) {
+    document.querySelectorAll('[data-eur]').forEach(function (el) {
+      var eur = parseFloat(el.getAttribute('data-eur'));
+      var old = el.parentElement.querySelector('.g-approx');
+      if (old) old.remove();
+      if (cur === 'EUR' || !rates || !rates[cur]) return;
+      var v = Math.round(eur * rates[cur]);
+      var s = document.createElement('span');
+      s.className = 'g-approx';
+      s.textContent = '≈ ' + symbol(cur) + v.toLocaleString() + ' ' + cur + ' · charged in EUR';
+      el.parentElement.appendChild(s);
+    });
+  }
+
+  function withRates(cb) {
+    var cached = null;
+    try { cached = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (cached && (Date.now() - cached.t) < DAY) return cb(cached.r);
+    fetch('https://api.frankfurter.app/latest?from=EUR&to=USD,GBP,AUD')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        try { sessionStorage.setItem(KEY, JSON.stringify({t: Date.now(), r: d.rates})); } catch (e) {}
+        cb(d.rates);
+      })
+      .catch(function () { cb(null); });
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem('gud-cur'); } catch (e) {}
+  if (saved) sel.value = saved;
+
+  function apply() {
+    try { localStorage.setItem('gud-cur', sel.value); } catch (e) {}
+    withRates(function (rates) { paint(rates, sel.value); });
+  }
+  sel.addEventListener('change', apply);
+  apply();
+})();
+</script>
+<script>
+/* navbtn-toggle */
+(function(){
+  var b=document.querySelector('.g-navbtn'), w=document.getElementById('g-mainnav');
+  var overlay=document.getElementById('g-panel-overlay');
+  var closeBtn=document.querySelector('.g-navwrap__close');
+  if(!b||!w) return;
+  function openPanel(){ w.classList.add('is-open'); if(overlay) overlay.classList.add('is-open'); b.setAttribute('aria-expanded','true'); document.body.style.overflow='hidden'; }
+  function closePanel(){ w.classList.remove('is-open'); if(overlay) overlay.classList.remove('is-open'); b.setAttribute('aria-expanded','false'); document.body.style.overflow=''; }
+  b.addEventListener('click', function(){ w.classList.contains('is-open') ? closePanel() : openPanel(); });
+  if(overlay) overlay.addEventListener('click', closePanel);
+  if(closeBtn) closeBtn.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePanel(); });
+})();
+</script>
+
+<script>
+(function(){
+  if (!document.body.classList.contains('has-hero')) return;
+  var top = document.querySelector('.g-top');
+  var hero = document.querySelector('.g-hero');
+  if (!top) return;
+  function set(){
+    var trigger = hero ? hero.offsetHeight - 90 : 10;
+    top.classList.toggle('is-solid', window.scrollY > trigger);
+  }
+  window.addEventListener('scroll', set, {passive:true});
+  window.addEventListener('resize', set);
+  set();
+})();
+</script>
 </body>
 </html>
