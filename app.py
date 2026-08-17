@@ -15197,7 +15197,14 @@ def mark_workshop_payment_paid(conn, session):
                    WHERE workshop_bookings.id = ?""",
                 (booking_id,),
             ).fetchone()
-            send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking))
+            # Commit the payment before sending the receipt. If no provider is
+            # configured, send_email falls back to writing the message into
+            # email_outbox on its own connection, which cannot take a write lock
+            # while this transaction is open — so the guest's deposit receipt was
+            # being lost to "database is locked" instead of held for later.
+            conn.commit()
+            send_workshop_email(conn, booking, "workshop_deposit_receipt",
+                                workshop_email_context(booking))
     conn.commit()
 
 
