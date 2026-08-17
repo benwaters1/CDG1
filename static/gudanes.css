@@ -39,15 +39,16 @@
   --measure: 38rem;
 
   /* ---- Type -------------------------------------------------------- */
-  --serif: 'Lora', Georgia, serif;
-  --display: 'Playfair Display', Georgia, serif;
+  --serif: 'Poppins', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --display: 'Poppins', -apple-system, 'Helvetica Neue', Arial, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   background: var(--sand);
   color: var(--ink);
   font-family: var(--serif);
-  font-size: 17px;
-  line-height: 1.8;
+  font-size: 19px;
+  font-weight: 300;
+  line-height: 1.7;
 }
 
 .g *, .g *::before, .g *::after{ box-sizing: border-box; }
@@ -69,45 +70,45 @@
 
 .g-display{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(30px, 4vw, 50px); line-height: 1.16;
-  color: var(--blue-mid); margin: 0 0 var(--s5);
+  font-size: clamp(34px, 4.6vw, 60px); line-height: 1.12;
+  color: var(--blue-deep); margin: 0 0 var(--s5); letter-spacing: -.01em;
 }
-.g-display em{ font-style: italic; }
+.g-display em{ font-style: normal; font-weight: 300; }
 
 .g-h2{
-  font-family: var(--display); font-weight: 400;
-  font-size: clamp(25px, 2.8vw, 36px); line-height: 1.2;
-  color: var(--blue-mid); margin: 0 0 var(--s5);
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(26px, 3vw, 38px); line-height: 1.18;
+  color: var(--blue-deep); margin: 0 0 var(--s5);
 }
-.g-h2 em{ font-style: italic; }
+.g-h2 em{ font-style: normal; font-weight: 300; }
 
 .g-h3{
-  font-family: var(--display); font-weight: 400;
-  font-size: clamp(19px, 1.6vw, 22px); line-height: 1.3;
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(20px, 1.7vw, 24px); line-height: 1.3;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 
 /* Section heading with a hairline beneath — the site's recurring device. */
 .g-place{
-  font-family: var(--display); font-weight: 400;
-  font-size: clamp(24px, 2.6vw, 34px); line-height: 1.2;
-  color: var(--blue-mid);
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(26px, 2.8vw, 36px); line-height: 1.2;
+  color: var(--blue-deep);
   margin: 0 0 var(--s5);
   padding-bottom: var(--s4);
   border-bottom: 1px solid var(--line);
 }
 
 .g-eyebrow{
-  font-family: var(--mono); font-size: 11px;
-  letter-spacing: .18em; text-transform: uppercase;
-  color: var(--brass); margin: 0 0 var(--s4);
+  font-family: var(--display); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 17px; line-height: 1.8; max-width: var(--measure); margin: 0 0 var(--s4); }
+.g-p{ font-size: 19px; font-weight: 300; line-height: 1.7; max-width: var(--measure); margin: 0 0 var(--s4); color: var(--ink); }
 .g-p:last-child{ margin-bottom: 0; }
-.g-p em{ font-style: italic; color: var(--ink-soft); }
-.g-lede{ font-size: clamp(18px, 1.5vw, 21px); line-height: 1.55; max-width: 48rem; margin: 0 0 var(--s5); }
-.g-fig{ font-family: var(--mono); color: var(--blue-deep); }
+.g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
+.g-lede{ font-size: clamp(19px, 1.6vw, 22px); font-weight: 300; line-height: 1.5; max-width: 48rem; margin: 0 0 var(--s5); }
+.g-fig{ font-family: var(--display); font-weight: 600; color: var(--blue-deep); }
 .g-hint{ font-size: 13px; color: var(--ink-faint); margin: var(--s2) 0 0; }
 .g-hint.is-warn{ color: #a33; }
 .g-opt{ text-transform: none; letter-spacing: 0; color: var(--ink-faint); }
@@ -981,4 +982,41 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 }
 .g-hero__lede{
   color: #EAE4DC; max-width: 40rem; font-size: 17px; line-height: 1.6; margin: var(--s4) 0 0;
+}
+
+/* ---- Availability calendar -------------------------------------------- */
+/* Nights already taken are shown struck through and cannot be clicked, so a
+   guest never fills in the form only to be refused at the end. The colour is
+   not the only signal — a strike-through and a title carry it too, since a
+   greyed-out date and a pale one are the same thing to a lot of eyes. */
+.g-cal{ margin-top: var(--s4); border: 1px solid var(--line); padding: var(--s4); }
+.g-cal__nav{ display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.g-cal__btn{
+  font: inherit; line-height: 1; padding: 6px 12px; cursor: pointer;
+  color: var(--ink); background: transparent; border: 1px solid var(--ink);
+}
+.g-cal__btn:hover{ background: var(--ink); color: var(--sand); }
+.g-cal__key{ font-size: 13px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
+.g-cal__swatch{ width: 12px; height: 12px; background: var(--sand-3); border: 1px solid var(--line); display: inline-block; }
+.g-cal__months{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s4); }
+.g-cal__month{ flex: 1 1 240px; min-width: 0; }
+.g-cal__title{ margin: 0 0 var(--s2); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.g-cal__grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.g-cal__dow{ font-size: 11px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
+.g-cal__day{
+  font: inherit; font-size: 13px; aspect-ratio: 1; min-height: 34px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ink); background: transparent; border: 1px solid transparent; cursor: pointer;
+}
+.g-cal__day:hover:not(:disabled){ border-color: var(--ink); }
+.g-cal__day.is-empty{ cursor: default; }
+.g-cal__day.is-off{
+  color: var(--ink-faint); background: var(--sand-3);
+  text-decoration: line-through; cursor: not-allowed;
+}
+.g-cal__day.is-sel{ background: var(--ink); color: var(--sand); }
+.g-cal__day.is-range{ background: var(--sand-2); }
+@media (pointer: coarse){
+  /* A 34px target is fine with a mouse and not with a thumb. */
+  .g-cal__day{ min-height: 44px; }
 }
