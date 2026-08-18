@@ -26,6 +26,7 @@ SUITES = [
     "test_house_capacity",
     "test_availability_calendar",
     "test_workshop_money",
+    "test_workshop_rooms",
     "test_workflows",
     "test_operations",
     "test_hr_compliance",
