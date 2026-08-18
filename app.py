@@ -6533,6 +6533,129 @@ def menu_dishes_for(conn, menu_id, *, include_unavailable=True):
     return {c: grouped[c] for c in COURSE_ORDER if c in grouped}
 
 
+# What a guest writes in the booking form, mapped to the fourteen. Both
+# languages, because the booking form is in both and a French guest writes
+# "sans gluten". Deliberately generous — a word that turns out not to be a
+# restriction costs the floor one glance; a word missed costs a guest.
+DIETARY_WORDS = {
+    "gluten": ("gluten", "wheat", "blé", "ble", "coeliac", "celiac", "coeliaque",
+               "cœliaque", "froment"),
+    "milk": ("milk", "dairy", "lactose", "lait", "laitier", "laitiers", "crème",
+             "creme", "beurre", "butter"),
+    "nuts": ("nut", "nuts", "almond", "amande", "walnut", "noix", "hazelnut",
+             "noisette", "pistachio", "pistache", "cashew", "cajou",
+             "fruits à coque", "fruits a coque"),
+    "peanuts": ("peanut", "arachide", "cacahuète", "cacahuete"),
+    "fish": ("fish", "poisson", "anchovy", "anchois"),
+    "crustaceans": ("shellfish", "crustac", "prawn", "shrimp", "crevette", "crab",
+                    "crabe", "lobster", "homard", "langoustine"),
+    "molluscs": ("mollus", "mussel", "moule", "oyster", "huître", "huitre", "clam",
+                 "squid", "calamar", "scallop", "coquille"),
+    "eggs": ("egg", "œuf", "oeuf"),
+    "soy": ("soy", "soja", "soya"),
+    "celery": ("celery", "céleri", "celeri"),
+    "mustard": ("mustard", "moutarde"),
+    "sesame": ("sesame", "sésame"),
+    "sulphites": ("sulphite", "sulfite", "sulphur", "soufre"),
+    "lupin": ("lupin",),
+}
+
+# Not allergens, but they decide whether a guest can eat the card just as hard.
+DIETARY_DIETS = {
+    "vegetarian": ("vegetarian", "végétarien", "vegetarien", "veggie", "no meat",
+                   "sans viande"),
+    "vegan": ("vegan", "végétalien", "vegetalien", "végane", "vegane"),
+    "pescatarian": ("pescatarian", "pescetarian", "pescatarien"),
+    "halal": ("halal",),
+    "kosher": ("kosher", "casher", "cacher"),
+}
+
+
+def parse_dietary(note):
+    """A free-text dietary note, read as a set of things to avoid.
+
+    No attempt is made to understand negation. "No nuts" and "nuts are fine"
+    both come back as nuts, because a parser that got clever about "fine" would
+    eventually get it wrong in the direction that matters. The note is shown
+    beside the result so a human reads the actual words; this only decides what
+    to check against the card.
+    """
+    text = (note or "").lower()
+    if not text.strip():
+        return {"allergens": set(), "diets": set()}
+    return {
+        "allergens": {k for k, words in DIETARY_WORDS.items()
+                      if any(w in text for w in words)},
+        "diets": {k for k, words in DIETARY_DIETS.items()
+                  if any(w in text for w in words)},
+    }
+
+
+def dietary_clashes(conn, menu_id, service_date):
+    """Tonight's dietary notes read against tonight's card.
+
+    Two things the system has held separately since the day it was built: the
+    allergen taken at booking, sometimes weeks ago, and the card the chef wrote
+    this afternoon. Nobody puts them together until a plate is already down.
+
+    Honest about what it does not know. A dish with no allergens filled in is
+    unknown, not safe — so a course whose only remaining options are blank
+    reports "nothing confirmed", not "nothing they can eat". The two need
+    different actions: one is a menu change, the other is filling in a form.
+    """
+    if hasattr(service_date, "isoformat"):
+        service_date = service_date.isoformat()
+    bookings = conn.execute(
+        """SELECT * FROM restaurant_bookings
+           WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL
+             AND dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''
+           ORDER BY guest_name""", (service_date,)).fetchall()
+    if not bookings:
+        return []
+    dishes = conn.execute(
+        """SELECT menu_dishes.*, menu_items.dietary_tags
+             FROM menu_dishes
+             LEFT JOIN menu_items ON menu_items.id = menu_dishes.menu_item_id
+            WHERE menu_dishes.menu_id = ? AND menu_dishes.available = 1
+            ORDER BY menu_dishes.sort_order, menu_dishes.id""", (menu_id,)).fetchall()
+
+    out = []
+    for b in bookings:
+        want = parse_dietary(b["dietary_notes"])
+        if not want["allergens"] and not want["diets"]:
+            continue
+        courses = []
+        for key in COURSE_ORDER:
+            here = [d for d in dishes if (d["course"] or "main") == key]
+            if not here:
+                continue
+            safe, unknown, clashing = [], [], []
+            for d in here:
+                declared = {a.strip() for a in (d["allergens"] or "").split(",") if a.strip()}
+                tags = {t.strip().lower()
+                        for t in (d["dietary_tags"] or "").split(",") if t.strip()}
+                if declared & want["allergens"]:
+                    clashing.append(d["name"])
+                elif not declared:
+                    unknown.append(d["name"])
+                elif want["diets"] and not (want["diets"] & tags):
+                    # Allergens are declared but the diet is not, so the dish is
+                    # not known to suit — a different gap from a missing form.
+                    unknown.append(d["name"])
+                else:
+                    safe.append(d["name"])
+            if safe:
+                continue
+            courses.append({"course": key, "clashing": clashing, "unknown": unknown,
+                            "nothing_at_all": bool(clashing) and not unknown})
+        if courses:
+            out.append({"booking": b, "guest": b["guest_name"], "covers": b["party_size"],
+                        "note": (b["dietary_notes"] or "").strip(),
+                        "avoiding": sorted(want["allergens"]), "diets": sorted(want["diets"]),
+                        "courses": courses})
+    return out
+
+
 def card_capacity(conn, menu_id, service_date, service="dinner"):
     """Can the card on the pass actually get through the covers that are booked?
 
@@ -12500,9 +12623,10 @@ def pos_kitchen():
     card = menu_for_date(conn, today)
     capacity = card_capacity(conn, card["id"], today) if card else None
     short = capacity["short"] if capacity else []
+    clashes = dietary_clashes(conn, card["id"], today) if card else []
     conn.close()
     return render_template("pos_kitchen.html", tickets=tickets, courses=MENU_COURSES,
-                           capacity=capacity, short=short)
+                           capacity=capacity, short=short, clashes=clashes)
 
 
 @app.route("/pos/day")
@@ -20883,11 +21007,12 @@ def menu_day():
         """SELECT COUNT(*) AS c FROM menu_items
            WHERE active = 1 AND sold_in_pos = 1 AND always_available = 1""").fetchone()["c"]
     capacity = card_capacity(conn, menu["id"], on, service) if menu else None
+    clashes = dietary_clashes(conn, menu["id"], on) if menu else []
     conn.close()
     return render_template(
         "menu_day.html", menu=menu, dishes=dishes, on=on, service=service,
         courses=MENU_COURSES, allergens=ALLERGENS, recent=recent, standing=standing,
-        capacity=capacity,
+        capacity=capacity, clashes=clashes,
         prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
 
 

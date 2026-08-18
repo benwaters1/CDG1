@@ -1,0 +1,35 @@
+{# Tonight's dietary notes read against tonight's card. Shown on the pass and on
+   the card page, because the two fixes are different: the chef changes a dish,
+   or somebody fills in the allergens that were never entered.
+
+   Expects `clashes` and `courses` in scope. #}
+{% if clashes %}
+<div class="diet-clash">
+  <strong>Check before service</strong>
+  {% for c in clashes %}
+  <div class="diet-clash-row">
+    <span class="diet-clash-who">
+      {{ c.guest }} · {{ c.covers }} cover{{ '' if c.covers == 1 else 's' }}
+    </span>
+    {# The guest's own words, always. The parse below is a prompt to look, not
+       a verdict on what they meant. #}
+    <span class="upload-hint">“{{ c.note }}”</span>
+    {% for co in c.courses %}
+    <span class="diet-clash-course">
+      {{ courses.get(co.course, co.course) }} —
+      {% if co.nothing_at_all %}
+        <span class="mini-status status-declined">nothing on the card they can eat</span>
+        <span class="upload-hint">{{ co.clashing|join(', ') }}</span>
+      {% else %}
+        <span class="mini-status status-pending">nothing confirmed safe</span>
+        <span class="upload-hint">
+          allergens not filled in on {{ co.unknown|join(', ') }}
+          {%- if co.clashing %}; {{ co.clashing|join(', ') }} clash{% endif %}
+        </span>
+      {% endif %}
+    </span>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

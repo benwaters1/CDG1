@@ -152,6 +152,8 @@ Tarte aux mirabelles | glace verveine | gluten, eggs, milk"></textarea>
   </div>
   {% endif %}
 
+  {% include "_dietary_clashes.html" %}
+
   <form method="post" action="{{ url_for('edit_menu_day', menu_id=menu['id']) }}"
         class="detail-card" style="max-width:760px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
