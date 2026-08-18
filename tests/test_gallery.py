@@ -11,12 +11,24 @@ the anchors out of public_base.html rather than repeating the list, so adding
 a sixth menu link without a section fails here rather than in front of a guest.
 """
 import io
+import os
 import re
 
 from _harness import Suite, clients, db, ROOT
 import _harness
 
 m = _harness.m
+
+
+def _order(section_id):
+    """Photographs in the order the public page renders them."""
+    conn = db()
+    try:
+        return conn.execute(
+            """SELECT id, sort_order FROM gallery_photos WHERE section_id = ?
+               ORDER BY sort_order, id""", (section_id,)).fetchall()
+    finally:
+        conn.close()
 
 
 def _menu_anchors():
@@ -91,6 +103,55 @@ def run():
         s.check("and it is off the public page",
                 photo["filename"] not in pub.get("/gallery").get_data(as_text=True))
 
+    s.section("Captions and order")
+    # Two photographs, so there is something to reorder.
+    oc.post(f"/admin/gallery/{section['id']}/photos",
+            data={"photos": [(io.BytesIO(png), "zzgal_a.png"), (io.BytesIO(png), "zzgal_b.png")]},
+            content_type="multipart/form-data", follow_redirects=True)
+    conn = db()
+    pair = conn.execute(
+        """SELECT * FROM gallery_photos WHERE section_id = ?
+           ORDER BY sort_order, id DESC LIMIT 2""", (section["id"],)).fetchall()
+    conn.close()
+
+    if len(pair) == 2:
+        first, second = pair[0], pair[1]
+        oc.post(f"/admin/gallery/photo/{first['id']}",
+                data={"caption": "Bare plaster, north wall"}, follow_redirects=True)
+        conn = db()
+        cap = conn.execute("SELECT caption FROM gallery_photos WHERE id = ?",
+                           (first["id"],)).fetchone()["caption"]
+        conn.close()
+        s.check("a caption saves", cap == "Bare plaster, north wall", detail=repr(cap))
+        s.check("and shows on the public page",
+                "Bare plaster, north wall" in pub.get("/gallery").get_data(as_text=True))
+
+        # Blanking it must give NULL, not "", or the template's `{% if %}`
+        # renders an empty caption element.
+        oc.post(f"/admin/gallery/photo/{first['id']}", data={"caption": "   "},
+                follow_redirects=True)
+        conn = db()
+        cap2 = conn.execute("SELECT caption FROM gallery_photos WHERE id = ?",
+                            (first["id"],)).fetchone()["caption"]
+        conn.close()
+        s.check("blanking a caption stores NULL, not an empty string", cap2 is None,
+                detail=repr(cap2))
+
+        before = [p["id"] for p in _order(section["id"])]
+        oc.post(f"/admin/gallery/photo/{before[-1]}", data={"move": "up"},
+                follow_redirects=True)
+        after = [p["id"] for p in _order(section["id"])]
+        s.check("moving a photograph earlier swaps it with its neighbour",
+                after[-2] == before[-1] and after[-1] == before[-2],
+                detail=f"{before} -> {after}")
+        s.check("and nothing else in the section moved",
+                sorted(after) == sorted(before) and after[:-2] == before[:-2])
+
+        oc.post(f"/admin/gallery/photo/{after[0]}", data={"move": "up"},
+                follow_redirects=True)
+        s.check("moving the first one earlier is a no-op, not an error",
+                [p["id"] for p in _order(section["id"])] == after)
+
     s.section("Guards")
     s.check("an employee cannot reach the gallery admin",
             ec.get("/admin/gallery").status_code in (302, 403))
@@ -119,4 +180,21 @@ def run():
     conn.close()
     s.check("the slug cannot be changed, even if posted", slug_now == "inside",
             detail=f"slug is now {slug_now}")
+
+    # Uploads land beside the throwaway database rather than in real storage
+    # (DATA_DIR follows DB_PATH), so nothing here can touch a guest's photo —
+    # but the files would still pile up in that directory run after run.
+    conn = db()
+    leftovers = conn.execute(
+        "SELECT id, filename FROM gallery_photos WHERE filename LIKE '%zzgal%'").fetchall()
+    conn.execute("DELETE FROM gallery_photos WHERE filename LIKE '%zzgal%'")
+    conn.commit()
+    conn.close()
+    for row in leftovers:
+        path = os.path.join(m.ROOM_PHOTO_DIR, row["filename"])
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
     return s

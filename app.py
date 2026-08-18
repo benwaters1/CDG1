@@ -7860,6 +7860,45 @@ def add_gallery_photos(section_id):
     return redirect(url_for("admin_gallery"))
 
 
+@app.route("/admin/gallery/photo/<int:photo_id>", methods=["POST"])
+@owner_required
+def edit_gallery_photo(photo_id):
+    """Caption, and position within the section.
+
+    Moving is by swap rather than by rewriting every row's sort_order: two
+    photographs exchange places and nothing else in the section is touched, so
+    two people reordering different pairs at once cannot renumber each other's
+    work. An empty caption is stored as NULL, not "", so the template's
+    `{% if caption %}` stays the single test for "is there a caption".
+    """
+    conn = get_db()
+    photo = conn.execute("SELECT * FROM gallery_photos WHERE id = ?", (photo_id,)).fetchone()
+    if not photo:
+        conn.close()
+        abort(404)
+
+    move = (request.form.get("move", "") or "").strip()
+    if move in ("up", "down"):
+        op, order = ("<", "DESC") if move == "up" else (">", "ASC")
+        neighbour = conn.execute(
+            f"""SELECT id, sort_order FROM gallery_photos
+                WHERE section_id = ? AND (sort_order {op} ? OR (sort_order = ? AND id {op} ?))
+                ORDER BY sort_order {order}, id {order} LIMIT 1""",
+            (photo["section_id"], photo["sort_order"], photo["sort_order"], photo_id)).fetchone()
+        if neighbour:
+            conn.execute("UPDATE gallery_photos SET sort_order = ? WHERE id = ?",
+                         (neighbour["sort_order"], photo_id))
+            conn.execute("UPDATE gallery_photos SET sort_order = ? WHERE id = ?",
+                         (photo["sort_order"], neighbour["id"]))
+            conn.commit()
+    else:
+        conn.execute("UPDATE gallery_photos SET caption = ? WHERE id = ?",
+                     ((request.form.get("caption", "") or "").strip() or None, photo_id))
+        conn.commit()
+    conn.close()
+    return redirect(url_for("admin_gallery"))
+
+
 @app.route("/admin/gallery/photo/<int:photo_id>/delete", methods=["POST"])
 @owner_required
 def delete_gallery_photo(photo_id):

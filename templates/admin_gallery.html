@@ -46,15 +46,43 @@
   {% if pics %}
   <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
     {% for p in pics %}
-    <div style="position:relative;">
-      <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt=""
-           style="width:120px; height:90px; object-fit:cover; border-radius:5px; display:block;">
-      <form method="post" action="{{ url_for('delete_gallery_photo', photo_id=p['id']) }}"
-            onsubmit="return confirm('Remove this photograph?');"
-            style="position:absolute; top:2px; right:2px;">
+    <div style="width:150px;">
+      <div style="position:relative;">
+        <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt=""
+             style="width:150px; height:110px; object-fit:cover; border-radius:5px; display:block;">
+        <form method="post" action="{{ url_for('delete_gallery_photo', photo_id=p['id']) }}"
+              onsubmit="return confirm('Remove this photograph?');"
+              style="position:absolute; top:2px; right:2px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini" style="padding:1px 6px; line-height:1.2;">&times;</button>
+        </form>
+      </div>
+
+      {# Caption doubles as the image's alt text on the public page, so it is
+         worth writing even when it is not displayed. #}
+      <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}"
+            style="margin-top:4px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-mini" style="padding:1px 6px; line-height:1.2;">&times;</button>
+        <input type="text" name="caption" value="{{ p['caption'] or '' }}" placeholder="Caption"
+               style="width:100%; font-size:12px;" onchange="this.form.submit()">
       </form>
+
+      <div style="display:flex; gap:4px; margin-top:4px;">
+        {% if not loop.first %}
+        <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="move" value="up">
+          <button type="submit" class="btn-mini" style="padding:1px 7px;" aria-label="Move earlier">←</button>
+        </form>
+        {% endif %}
+        {% if not loop.last %}
+        <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="move" value="down">
+          <button type="submit" class="btn-mini" style="padding:1px 7px;" aria-label="Move later">→</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>
