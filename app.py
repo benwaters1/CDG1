@@ -6591,6 +6591,50 @@ def parse_dietary(note):
     }
 
 
+def mark_dietary_risk(menu, lines, note):
+    """Mark, on the till itself, what this table said it cannot eat.
+
+    The note already reached the table's header — but a header is read once
+    when the tab opens and then scrolled past, and the order is taken twenty
+    minutes later on a different screen. Marking the buttons puts it where the
+    finger is going.
+
+    Only declared clashes are marked. Colouring every dish whose allergens were
+    never filled in would put a warning on most of the till, and a till that is
+    all warning is a till with none. That gap is a card-page problem, and the
+    card page reports it.
+
+    Returns the set of avoided allergens and the lines already on the bill that
+    clash — because the check has to survive a waiter who tapped anyway.
+    """
+    want = parse_dietary(note)
+    avoiding = want["allergens"]
+    if not avoiding:
+        return {"avoiding": [], "on_bill": []}
+    by_dish, by_item = {}, {}
+    for items in (menu or {}).values():
+        for m in items:
+            declared = {a.strip() for a in (m.get("allergens") or "").split(",") if a.strip()}
+            hit = sorted(declared & avoiding)
+            m["dietary_clash"] = hit
+            if m.get("menu_dish_id"):
+                by_dish[m["menu_dish_id"]] = hit
+            if m.get("id"):
+                by_item.setdefault(m["id"], hit)
+
+    # A line carries no allergens of its own — it points at the dish. Resolving
+    # through the same menu the buttons came from means the bill and the
+    # buttons can never disagree.
+    on_bill = []
+    for l in (lines or []):
+        if l["voided"]:
+            continue
+        hit = by_dish.get(l["menu_dish_id"]) or by_item.get(l["menu_item_id"]) or []
+        if hit:
+            on_bill.append({"name": l["name"], "seat": l["seat_number"], "allergens": hit})
+    return {"avoiding": sorted(avoiding), "on_bill": on_bill}
+
+
 def dietary_clashes(conn, menu_id, service_date):
     """Tonight's dietary notes read against tonight's card.
 
@@ -11948,6 +11992,9 @@ def pos_order(order_id):
         formule_choices = menu_dishes_for(conn, formule_menu["id"], include_unavailable=False)
     packages = conn.execute(
         "SELECT * FROM drink_packages WHERE active = 1 ORDER BY name").fetchall()
+    # Marks the buttons and re-checks what is already on the bill, so the note
+    # taken at booking is on the screen the order is actually tapped into.
+    diet = mark_dietary_risk(menu, bill["lines"], context["dietary"] if context else "")
     conn.close()
     return render_template(
         "pos_order.html", bill=bill, order=bill["order"], lines=bill["lines"],
@@ -11958,7 +12005,7 @@ def pos_order(order_id):
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
         allergens=ALLERGENS, other_tables=other_tables,
         formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
-        packages=packages)
+        packages=packages, diet=diet)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])

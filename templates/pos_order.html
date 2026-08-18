@@ -33,7 +33,24 @@
   {# Taken at booking, and until now it never reached the pass. #}
   <div class="till-allergy">
     <strong>Allergies / dietary — {{ context.booking['guest_name'] }}:</strong> {{ context.dietary }}
+    {% if diet.avoiding %}
+    <span class="upload-hint">
+      Read as: {{ diet.avoiding|join(', ') }}. Dishes declaring these are marked on the till below.
+    </span>
+    {% endif %}
   </div>
+  {# The buttons are marked, but a marked button can still be tapped. This is
+     the second look, on what is actually on the bill. #}
+  {% if diet.on_bill %}
+  <div class="till-allergy is-hit">
+    <strong>On this bill and clashing:</strong>
+    {% for l in diet.on_bill %}
+    <span class="till-allergy-line">
+      {{ l.name }}{% if l.seat %} · seat {{ l.seat }}{% endif %} — {{ l.allergens|join(', ') }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% endif %}
   {% if context and context.previous_no_shows > 1 %}
   <div class="till-allergy">This address has not turned up {{ context.previous_no_shows }} times before.</div>
@@ -141,7 +158,7 @@
              this the only way to say "no butter" was the off-menu form, which
              is not where anybody orders a dish that IS on the menu. #}
           <input type="hidden" name="notes" class="note-input" value="">
-          <button type="submit" class="till-item {{ 'is-out' if out }}"
+          <button type="submit" class="till-item {{ 'is-out' if out }} {{ 'is-clash' if m.get('dietary_clash') }}"
                   {{ 'disabled' if out or order['status'] != 'open' }}>
             <span class="till-item-name">{{ m['name'] }}</span>
             <span class="till-item-price">€{{ '%.2f'|format(m['price'] or 0) }}</span>
@@ -150,7 +167,9 @@
             {% elif level is not none %}
             <span class="till-item-flag">{{ level|round(0)|int }} left</span>
             {% endif %}
-            {% if m['allergens'] %}<span class="till-item-allergen">{{ m['allergens'] }}</span>{% endif %}
+            {% if m.get('dietary_clash') %}
+            <span class="till-item-allergen is-clash">{{ m['dietary_clash']|join(', ') }} — this table</span>
+            {% elif m['allergens'] %}<span class="till-item-allergen">{{ m['allergens'] }}</span>{% endif %}
           </button>
         </form>
         {% endfor %}

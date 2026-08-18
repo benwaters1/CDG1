@@ -1849,3 +1849,11 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .diet-clash-row{ display:flex; flex-direction:column; gap:2px; }
 .diet-clash-who{ font-weight:600; }
 .diet-clash-course{ font-size:14px; }
+
+/* A dish this table said it cannot eat. Deliberately unmissable on a screen
+   being tapped at speed, and never applied to a dish whose allergens are
+   merely unknown — that would mark most of the till. */
+.till-item.is-clash{ border-color:var(--danger); box-shadow:inset 0 0 0 2px var(--danger); }
+.till-item-allergen.is-clash{ color:var(--danger); font-weight:700; }
+.till-allergy.is-hit{ border-color:var(--danger); }
+.till-allergy-line{ display:block; font-size:13.5px; }

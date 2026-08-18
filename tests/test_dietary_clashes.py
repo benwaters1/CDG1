@@ -23,6 +23,9 @@ def _cleanup(conn):
                  "(SELECT id FROM menus WHERE title LIKE ?)", (TAG + "%",))
     conn.execute("DELETE FROM menus WHERE title LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM menu_items WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM pos_order_lines WHERE order_id IN "
+                 "(SELECT id FROM pos_orders WHERE table_label LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM pos_orders WHERE table_label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
 
@@ -212,6 +215,62 @@ def run():
     s.check("and the card page carries the same block",
             r.status_code == 200 and (TAG + "Martin").encode() in r.data,
             detail=str(r.status_code))
+
+    s.section("On the till, where the order is actually tapped in")
+    # The header is read once when the tab opens and then scrolled past. The
+    # order gets taken twenty minutes later, on a different screen.
+    _booking(conn, "Noix", 2, tonight, "severe nut allergy")
+    conn.commit()
+    b = conn.execute("SELECT id FROM restaurant_bookings WHERE guest_name = ?",
+                     (TAG + "Noix",)).fetchone()
+    conn.execute("UPDATE menu_dishes SET allergens = 'nuts' WHERE menu_id = ? AND name = ?",
+                 (menu_id, TAG + "Tarte"))
+    conn.commit()
+    oc.post("/pos/open", data={"table_label": TAG + "T9", "covers": "2",
+                               "restaurant_booking_id": str(b["id"])},
+            follow_redirects=True)
+    order = conn.execute("SELECT * FROM pos_orders WHERE table_label = ?",
+                         (TAG + "T9",)).fetchone()
+    s.check("the tab opens against the booking", bool(order))
+    r = oc.get(f"/pos/{order['id']}")
+    s.check("the till opens", r.status_code == 200, detail=str(r.status_code))
+    s.check("the clashing dish is marked on its button", b"is-clash" in r.data)
+    s.check("and what was read from the note is spelled out", b"Read as: nuts" in r.data)
+    s.check("nothing is on the bill yet, so no second warning",
+            b"On this bill and clashing" not in r.data)
+
+    # A marked button can still be tapped. The second look is on the bill.
+    dish = conn.execute("SELECT * FROM menu_dishes WHERE menu_id = ? AND name = ?",
+                        (menu_id, TAG + "Tarte")).fetchone()
+    oc.post(f"/pos/{order['id']}/add",
+            data={"menu_dish_id": str(dish["id"]), "menu_item_id": "", "seat_number": "2"},
+            follow_redirects=True)
+    r = oc.get(f"/pos/{order['id']}")
+    s.check("tapping it anyway is caught on the bill",
+            b"On this bill and clashing" in r.data)
+    s.check("naming the seat it went to", b"seat 2" in r.data)
+
+    # Voiding it clears the warning — the check is on what is live, not history.
+    line = conn.execute("SELECT id FROM pos_order_lines WHERE order_id = ?",
+                        (order["id"],)).fetchone()
+    conn.execute("UPDATE pos_order_lines SET voided = 1 WHERE id = ?", (line["id"],))
+    conn.commit()
+    r = oc.get(f"/pos/{order['id']}")
+    s.check("voiding it clears the warning",
+            b"On this bill and clashing" not in r.data)
+
+    # A table with no note at all must have a completely unmarked till.
+    oc.post("/pos/open", data={"table_label": TAG + "walkin", "covers": "2"},
+            follow_redirects=True)
+    walkin = conn.execute("SELECT * FROM pos_orders WHERE table_label = ?",
+                          (TAG + "walkin",)).fetchone()
+    r = oc.get(f"/pos/{walkin['id']}")
+    s.check("a walk-in's till is unmarked", b"is-clash" not in r.data)
+
+    conn.execute("DELETE FROM pos_order_lines WHERE order_id IN "
+                 "(SELECT id FROM pos_orders WHERE table_label LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM pos_orders WHERE table_label LIKE ?", (TAG + "%",))
+    conn.commit()
 
     # A night where every note is answered must say nothing at all.
     conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?", (TAG + "%",))
