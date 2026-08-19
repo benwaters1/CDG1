@@ -116,9 +116,19 @@ def run():
     r = anon.get("/workshops")
     s.check("the workshops page opens", r.status_code == 200, detail=str(r.status_code))
     body = r.data.decode("utf-8", "replace")
+    # Names checked against workshops that still have dates ahead of them.
+    # "The Long Weekender" is deliberately NOT one of them: every sitting it
+    # was seeded with is in the past, so the public page hides it — a finished
+    # workshop must not sit there inviting registrations for dates that have
+    # gone. It will reappear the moment it is given a future date in the admin.
+    # See test_workshop_lifecycle for that rule on its own terms.
     s.check("with the public names on it",
-            "The Long Weekender" in body and "Seven Starry Nights" in body)
+            "Seven Starry Nights" in body and "Noël at Gudanes" in body,
+            detail="a workshop with dates ahead is missing from the page")
     s.check("and no working title", "Autumn Atelier" not in body)
+    s.check("while one whose dates have all passed is not advertised",
+            "The Long Weekender" not in body,
+            detail="a finished workshop is still on the public page")
 
     conn.close()
     return s

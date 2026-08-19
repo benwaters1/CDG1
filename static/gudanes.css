@@ -99,7 +99,7 @@
 }
 
 .g-eyebrow{
-  font-family: var(--display); font-size: 13px; font-weight: 600;
+  font-family: var(--serif); font-size: 12px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
@@ -118,7 +118,7 @@
   padding-bottom: var(--s4); border-bottom: 1px solid var(--line);
   margin: 0 0 var(--s7);
 }
-.g-rule__note{ font-family: var(--display); font-size: 12px; color: var(--brass); margin-left: auto; }
+.g-rule__note{ font-family: var(--serif); font-size: 12px; color: var(--brass); margin-left: auto; }
 
 /* ---- Header ------------------------------------------------------------ */
 
@@ -328,8 +328,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 .g-room__name{ font-family: var(--display); font-weight: 400; font-size: clamp(21px, 2vw, 26px); line-height: 1.25; color: var(--blue-deep); margin: 0; }
 .g-room__rate{ margin: 0; text-align: right; }
 .g-room__rate .g-fig{ font-size: 22px; display: block; line-height: 1.1; }
-.g-room__rate span:last-child{ font-family: var(--display); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
-.g-room__meta{ font-family: var(--display); font-size: 13px; color: var(--ink-faint); margin: 0 0 var(--s4); }
+.g-room__rate span:last-child{ font-family: var(--serif); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.g-room__meta{ font-family: var(--serif); font-size: 13px; color: var(--ink-faint); margin: 0 0 var(--s4); }
 .g-room__desc{ font-size: 16px; line-height: 1.62; margin: 0 0 var(--s4); }
 .g-room__cta{ margin-top: var(--s5); display: flex; gap: var(--s3); flex-wrap: wrap; }
 
@@ -379,13 +379,13 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   color: var(--blue-deep); margin: 0 0 var(--s5);
   display: flex; align-items: baseline; gap: var(--s3);
 }
-.g-num{ font-family: var(--display); font-size: 12.5px; color: var(--brass); letter-spacing: .08em; }
+.g-num{ font-family: var(--serif); font-size: 12.5px; color: var(--brass); letter-spacing: .08em; }
 
 .g-row{ display: grid; gap: var(--s4); }
 .g-field{ display: flex; flex-direction: column; margin: 0 0 var(--s5); }
 .g-field--narrow{ max-width: 14rem; }
 .g-field label{
-  font-family: var(--display); font-size: 14px; font-weight: 500;
+  font-family: var(--serif); font-size: 14px; font-weight: 500;
   letter-spacing: .01em; text-transform: none;
   color: var(--ink-soft); margin-bottom: var(--s2);
 }
@@ -434,8 +434,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   display: flex; justify-content: space-between; gap: var(--s3);
   padding: var(--s2) 0; border-top: 1px solid rgba(255,255,255,.16);
 }
-.g-dossier__l dt{ font-family: var(--display); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
-.g-dossier__l dd{ margin: 0; font-family: var(--display); font-size: 13px; color: var(--white); }
+.g-dossier__l dt{ font-family: var(--serif); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
+.g-dossier__l dd{ margin: 0; font-family: var(--serif); font-size: 13px; color: var(--white); }
 .g-terms{ display: flex; gap: var(--s3); align-items: flex-start; font-size: 14px; margin-bottom: var(--s5); cursor: pointer; }
 .g-terms input{ width: 18px; height: 18px; margin-top: 3px; accent-color: #D9C79B; flex: none; }
 .g-terms a{ color: #D9C79B; }
@@ -447,7 +447,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 
 .g-reviews{ display: grid; gap: var(--s4); }
 .g-review{ margin: 0; background: var(--white); border: 1px solid var(--line); padding: var(--s6); }
-.g-review__s{ font-family: var(--display); font-size: 12.5px; color: var(--brass); margin: 0 0 var(--s3); }
+.g-review__s{ font-family: var(--serif); font-size: 12.5px; color: var(--brass); margin: 0 0 var(--s3); }
 .g-review blockquote{ margin: 0 0 var(--s3); font-size: 16px; line-height: 1.6; font-style: italic; }
 .g-review figcaption{ font-size: 13px; color: var(--ink-faint); }
 
@@ -564,7 +564,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 
 @media (min-width: 64rem){
   .g-facts{ grid-template-columns: repeat(5, 1fr); }
-  .g-cols{ grid-template-columns: 1fr 21rem; align-items: start; }
+  .g-cols{ grid-template-columns: minmax(0, 1fr) 24rem; align-items: start; }
   .g-aside{ position: sticky; top: 6rem; }
   .g-incs--3{ grid-template-columns: repeat(3, 1fr); }
   .g-footer__grid{ grid-template-columns: 2fr 1fr 1fr; }
@@ -692,7 +692,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
 }
 .g-cur select option{ color: var(--ink); background: #fff; }
-.g-approx{ font-family: var(--display); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
+.g-approx{ font-family: var(--serif); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
 
 /* ---- Filter chips ------------------------------------------------------- */
 .g-filters{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s6); }
@@ -721,7 +721,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s2) var(--s3); min-height: 44px; border-radius: 0;
 }
-.g-refine__count{ margin-left: auto; font-family: var(--display); font-size: 12.5px; color: var(--ink-faint); }
+.g-refine__count{ margin-left: auto; font-family: var(--serif); font-size: 12.5px; color: var(--ink-faint); }
 
 /* ---- Gallery sections --------------------------------------------------- */
 .g-galsec{ padding: var(--s8) 0; border-top: 1px solid var(--line); }
@@ -1039,7 +1039,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 
 /* Booking form wrapper — was unstyled, so fields ran the full page width.
    A form is easier to complete in a contained column. */
-.g-form-full{ max-width: 62rem; }
+.g-form-full{ max-width: 72rem; }
 
 /* Single-column prose inside a full-width wrap was hanging left with a large
    empty right side. Centring the measure keeps the comfortable line length
@@ -1243,10 +1243,12 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s6); display: flex; flex-direction: column;
 }
-/* The card's growing half. It was added around the blurb in the template, and
-   .g-wscard__blurb's flex:1 measures against its parent — so without this the
-   blurb stopped stretching and the price feet stopped lining up across a row. */
-.g-wscard__top{ flex: 1; display: flex; flex-direction: column; }
+/* The card's heading block: length, name, dates. Its siblings all carry a
+   rule and this one did not, which is the shape of the bug the design check
+   exists for — a layout class the stylesheet never heard of. The card is a
+   flex column, so this block must not stretch; the blurb below it does. */
+.g-wscard__top{ flex: none; }
+
 .g-wscard__len{
   font-family: var(--serif); font-size: 12px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
@@ -1277,7 +1279,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 
 .g-wsfull__meta{
-  font-size: 16px; color: var(--ink-soft); margin: 0 0 var(--s5);
+  font-family: var(--serif); font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s5);
 }
 .g-sampleday{
   border-left: 2px solid var(--blue-deep);
@@ -1312,3 +1314,16 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-sitting__left{ font-size: 14px; color: var(--ink-faint); flex: 0 0 auto; }
 .g-sitting__cta{ flex: 0 0 auto; margin-left: auto; }
+
+
+/* A field as wide as the page is harder to read than one sized to its content.
+   Text inputs cap out; textareas keep the full column since they hold prose. */
+.g-field input[type="text"], .g-field input[type="email"],
+.g-field input[type="tel"], .g-field select{ max-width: 30rem; }
+.g-field input[type="number"], .g-field input[type="date"]{ max-width: 14rem; }
+.g-row{ display: grid; gap: var(--s5); }
+@media (min-width: 40rem){ .g-row{ grid-template-columns: 1fr 1fr; } }
+
+/* A standing note between fields needs its own air, or it reads as the hint
+   belonging to the field below it. */
+.g-hint--block{ margin: var(--s5) 0 var(--s6); max-width: 40rem; }

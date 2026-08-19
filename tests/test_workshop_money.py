@@ -352,38 +352,43 @@ def run():
     s.check("rooms already used on the session are counted from the bookings made above",
             used >= 1, detail=f"got {used} used of {total_rooms}")
 
-    # Fill the house, then ask for a private room.
+    # What the session actually refuses on is PEOPLE against the house's legal
+    # occupancy, not rooms against the nightly room list. A workshop takes over
+    # the whole château, and the nightly list is fewer than the bedrooms that
+    # exist — counting against it turned parties away for want of rooms the
+    # château has. rooms_needed() above is still the arithmetic staff use when
+    # allocating, which is why it is still checked.
     conn = db()
+    cap = m.house_guest_capacity(conn)
     conn.execute(
         """INSERT INTO workshop_bookings (session_id, guest_name, guest_email, party_size,
            status, occupancy_type, reference_code, manage_token, created_at)
-           VALUES (?, ?, ?, ?, 'confirmed', 'solo', ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, 'confirmed', 'double', ?, ?, ?)""",
         (session_row["id"], f"{TAG} hog", f"{TAG.lower()}hog@example.invalid",
-         max(total_rooms, 1) * 2, f"{TAG}HOG", f"tok{TAG}HOG", _harness.datetime_now()))
+         cap, f"{TAG}HOG", f"tok{TAG}HOG", _harness.datetime_now()))
     conn.commit()
-    blocked = m.session_room_error(conn, session_row["id"], "solo", 1)
-    shared_ok = m.session_room_error(conn, session_row["id"], "double", 2)
+    blocked = m.session_room_error(conn, session_row["id"], "double", 1)
     conn.close()
-    s.check("with every room taken, another private room is refused", blocked is not None,
+    s.check(f"with the house at its {cap}-guest limit, one more is refused",
+            blocked is not None, detail=f"got {blocked!r}")
+    s.check("and the refusal is about places, not rooms",
+            blocked and "full" in blocked.lower() or "place" in (blocked or "").lower(),
             detail=f"got {blocked!r}")
-    s.check("and the refusal explains it in rooms, not seats",
-            blocked and "room" in blocked.lower(), detail=f"got {blocked!r}")
-    # Sharing is still refused too once there is physically nowhere to put them,
-    # which is the same limit seen from the other side.
-    s.check("sharing is refused too when no room is left at all", shared_ok is not None,
-            detail=f"got {shared_ok!r}")
 
-    # The form never offers a private room now — it is quoted per enquiry —
-    # so the room-shortage case shows up as the page saying none are free
-    # rather than as an option disappearing.
+    # The form no longer asks about occupancy at all. The château allocates
+    # rooms on the day, and both options it used to offer were included in the
+    # price — a decision with no consequence in the middle of a €3,800 booking.
+    # What must still hold is that the guest is told how sleeping arrangements
+    # work, and that the server keeps defaulting the value the form omits.
     pub_page = m.app.test_client().get(f"/workshops/register/{session_row['id']}").get_data(as_text=True)
     s.check("the form does not offer a private room",
             'value="solo"' not in pub_page, detail="solo still selectable")
-    s.check("and points the guest at asking for one",
-            "room to yourself" in pub_page.lower(), detail="no route to enquire on the page")
-    s.check("saying the rooms are gone for these dates",
-            "every room for these dates is currently taken" in pub_page.lower(),
-            detail="no shortage note on the page")
+    s.check("nor asks the guest to choose an occupancy at all",
+            'name="occupancy_type"' not in pub_page,
+            detail="the occupancy selector is back on the public form")
+    s.check("but it does say how rooms are arranged",
+            "rooms are arranged for two" in pub_page.lower(),
+            detail="nothing on the page explains the sleeping arrangements")
 
     conn = db()
     conn.execute("DELETE FROM workshop_bookings WHERE reference_code = ?", (f"{TAG}HOG",))

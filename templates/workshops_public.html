@@ -39,7 +39,7 @@
         {% endif %}
         <h3 class="g-wscard__name">{{ w['title'] }}</h3>
         {% if rows %}
-        <p class="g-wscard__dates">{% for r in rows[:3] %}{{ r.session['start_date'] }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+        <p class="g-wscard__dates">{% for r in rows[:3] %}{{ r.session['start_date']|date_short }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
         {% endif %}
       </div>
       {% if w['description'] %}<p class="g-p g-wscard__blurb">{{ w['description']|truncate(180) }}</p>{% endif %}
@@ -87,7 +87,7 @@
     <h2 class="g-h2">{{ w['title'] }}</h2>
     {% set rows = sessions_by_workshop.get(w['id'], []) %}
     <p class="g-wsfull__meta">
-      {% for r in rows %}{{ r.session['start_date'] }}{% if r.session['end_date'] != r.session['start_date'] %}–{{ r.session['end_date'] }}{% endif %}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
+      {% for r in rows %}{{ date_range(r.session['start_date'], r.session['end_date']) }}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
       {% if w['price_per_person'] %} · <span class="g-fig" data-eur="{{ w['price_per_person'] }}">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span> per person{% endif %}
     </p>
 
@@ -107,7 +107,7 @@
       {% for s in rows %}
       <div class="g-sitting">
         <span class="g-sitting__when">
-          {{ s.session['start_date'] }}{% if s.session['end_date'] != s.session['start_date'] %} – {{ s.session['end_date'] }}{% endif %}
+          {{ date_range(s.session['start_date'], s.session['end_date']) }}
         </span>
         <span class="g-sitting__left">
           {% if s.remaining > 0 %}{{ s.remaining }} place{{ '' if s.remaining == 1 else 's' }} remaining{% else %}Fully booked{% endif %}

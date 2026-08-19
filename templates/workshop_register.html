@@ -7,7 +7,7 @@
 {% set supplement = (session['single_supplement'] or 0) if session['price_per_person'] else 0 %}
 
 {# CONTRACT: method="post", no action (posts to /workshops/register/<session_id>).
-   csrf_token first. Fields: party_size, occupancy_type, guest_name, guest_email,
+   csrf_token first. Fields: party_size, guest_name, guest_email,
    guest_phone, other_guest_names, requested_roommate, dietary_notes,
    medical_notes, special_occasion, notes, promo_code, custom_<id>. #}
 
@@ -17,7 +17,7 @@
     <p class="g-eyebrow">Château Workshop</p>
     <h1 class="g-display" style="font-size:clamp(28px,5vw,46px)">{{ session['title'] }}</h1>
     <p class="g-room__meta">
-      {{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} → {{ session['end_date'] }}{% endif %}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
+      {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
     </p>
     {% if session['inclusions'] %}
     <p class="g-room__note"><b>Includes:</b> {{ session['inclusions'] }}</p>
@@ -38,27 +38,18 @@
             <input type="number" id="party_size" name="party_size" min="1"
                    max="{{ session['capacity'] }}" value="{{ prefill_party_size }}" required>
             <p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>
-          </div>
-
-          <div class="g-field">
-            <label for="occupancy_type">Room arrangement</label>
-            <select name="occupancy_type" id="occupancy_type">
-              <option value="double">Double — shared room, one bed (included)</option>
-              <option value="triple">Triple occupancy (included)</option>
-            </select>
-            {# A private room is not bookable here. What it costs depends on the
-               workshop, the dates and what is actually free, so it is quoted per
-               enquiry rather than carrying a standing supplement — and the server
-               refuses 'solo' from this form regardless of what the markup offers. #}
-            <p class="g-hint">
-              The price includes a shared room. If you would like a room to yourself,
-              <a href="mailto:experience@chateaugudanes.com?subject=Private%20room%20on%20a%20workshop">write to us</a>
-              and we will quote for it — {% if solo_possible %}there are rooms free for these dates{% else %}though every room for these dates is currently taken{% endif %}.
-            </p>
             {% if session['price_per_person'] %}
             <p class="g-hint" id="occupancy_total"></p>
             {% endif %}
           </div>
+
+          <p class="g-hint g-hint--block">
+            Rooms are arranged for two, with a third bed available on request —
+            tell us below and we will arrange it. Solo travellers are paired
+            thoughtfully with a like-minded guest, or given a room to themselves
+            where one is free.
+          </p>
+
 
           <div class="g-field">
             <label for="other_guest_names">Names of others in your party <span class="g-opt">optional</span></label>
@@ -160,7 +151,7 @@
         <p class="g-dossier__k">Your registration</p>
         <h2 class="g-dossier__room">{{ session['title'] }}</h2>
         <dl class="g-dossier__l">
-          <div><dt>Dates</dt><dd>{{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} → {{ session['end_date'] }}{% endif %}</dd></div>
+          <div><dt>Dates</dt><dd>{{ date_range(session['start_date'], session['end_date']) }}</dd></div>
           {% if session['instructor_name'] %}<div><dt>With</dt><dd>{{ session['instructor_name'] }}</dd></div>{% endif %}
           {% if session['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '%.0f'|format(session['price_per_person']) }}</dd></div>{% endif %}
         </dl>
@@ -179,10 +170,9 @@
 <script>
 // The running total, so the figure on the confirmation is never a surprise.
 // Deliberately the same arithmetic as workshop_subtotal() in app.py — price
-// times party size. Both options bookable here include a shared room, so
-// there is no supplement to add: a private room is quoted by enquiry and set
-// on the booking by staff, never chosen on this form. The server is still
-// what charges; this only shows what it is going to do.
+// times party size. Rooms are allocated by the château rather than chosen
+// here, so there is no supplement to add. The server is still what charges;
+// this only shows what it is going to do.
 (function() {
   var totalEl = document.getElementById('occupancy_total');
   if (!totalEl) return;

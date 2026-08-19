@@ -56,7 +56,12 @@ def run():
     s.section("The public form does not offer a private room")
     page = pub.get(f"/workshops/register/{ses['id']}").get_data(as_text=True)
     s.check("no solo option in the markup", 'value="solo"' not in page)
-    s.check("but it says how to ask for one", "room to yourself" in page.lower())
+    # Their own WORKSHOP_OCCUPANCY.md replaced the "write to us for a private
+    # room" line with the arrangements sentence, so this now checks the guest is
+    # still told how rooms work rather than looking for the removed wording.
+    s.check("but it says how rooms are arranged",
+            "rooms are arranged for two" in page.lower(),
+            detail="nothing explains the sleeping arrangements")
 
     s.section("And the server refuses one even if it is posted")
     r = pub.post(f"/workshops/register/{ses['id']}", data={

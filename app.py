@@ -3343,6 +3343,7 @@ def init_db():
         print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
               f"prices and dates.")
 
+
     # The five were seeded by an earlier deploy under working titles, so the
     # seed above will not run again to correct them. Three things to catch up,
     # each of them written so it does nothing on a database that is already
@@ -3361,6 +3362,45 @@ def init_db():
         conn.execute("UPDATE workshops SET title = ?, description = ? WHERE id = ?",
                      (workshop["title"], workshop["description"], row["id"]))
     conn.commit()
+
+    # A workshop added to DEFAULT_WORKSHOPS after the first run never appeared:
+    # the insert above only fires on an empty table, which is true of a fresh
+    # install and never true of the live site again. The five renamed correctly
+    # and "The Long Weekender" — genuinely new, no "was" to rename from — was
+    # simply missing from the château's own site.
+    #
+    # Done once, recorded in app_settings, and never repeated. That matters:
+    # workshops are content now, added and retired in the admin, so a top-up
+    # that ran on every deploy would resurrect anything deliberately deleted —
+    # the same reasoning as the note above DEFAULT_ROOMS.
+    if not conn.execute("SELECT 1 FROM app_settings WHERE key = 'workshop_topup_done'").fetchone():
+        added = []
+        for workshop in DEFAULT_WORKSHOPS:
+            if conn.execute("SELECT 1 FROM workshops WHERE title = ?",
+                            (workshop["title"],)).fetchone():
+                continue
+            fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
+            fields.update({"active": 1, "default_capacity": 10,
+                           "created_at": datetime.now(timezone.utc).isoformat()})
+            if "deposit_percent" in ws_cols:
+                fields["deposit_percent"] = 30
+            fields = {k: v for k, v in fields.items() if k in ws_cols}
+            conn.execute(
+                f"INSERT INTO workshops ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+            new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            for start, end in workshop.get("sessions", []):
+                conn.execute(
+                    """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
+                       capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
+                    (new_id, start, end, datetime.now(timezone.utc).isoformat()))
+            added.append(workshop["title"])
+        conn.execute("INSERT INTO app_settings (key, value) VALUES ('workshop_topup_done', ?)",
+                     (datetime.now(timezone.utc).isoformat(),))
+        conn.commit()
+        if added:
+            print(f"Added {len(added)} atelier(s) missing from this database: "
+                  f"{', '.join(added)}")
 
     # 2. Blank copy fields. Only where blank: if somebody has written their own,
     #    theirs win.
@@ -3973,6 +4013,39 @@ def format_date_human(iso_str):
     if not d:
         return iso_str
     return f"{d.strftime('%B')} {d.day}, {d.year}"
+
+
+def format_date_short(iso_str):
+    """'2027-07-10' -> '10 July 2027'. Day-first, which is how a French
+    château's guests read a date. Avoids the %-d strftime flag, which is
+    Linux-only and crashes on Windows."""
+    d = parse_date(iso_str)
+    if not d:
+        return iso_str
+    return f"{d.day} {d.strftime('%B')} {d.year}"
+
+
+def format_date_range(start_iso, end_iso):
+    """'10 – 17 July 2027' when the month and year match, otherwise both in
+    full. A range written twice over is harder to read than one written once."""
+    a, b = parse_date(start_iso), parse_date(end_iso)
+    if not a or not b:
+        return start_iso or ""
+    if a == b:
+        return format_date_short(start_iso)
+    if a.year == b.year and a.month == b.month:
+        return f"{a.day} – {b.day} {a.strftime('%B')} {a.year}"
+    if a.year == b.year:
+        return f"{a.day} {a.strftime('%B')} – {b.day} {b.strftime('%B')} {a.year}"
+    return f"{format_date_short(start_iso)} – {format_date_short(end_iso)}"
+
+
+# The guest-facing templates call these directly. format_date_human existed but
+# was never reachable from a template, which is why workshop pages were showing
+# raw ISO dates on a €4,800 product.
+app.jinja_env.filters["date_short"] = format_date_short
+app.jinja_env.filters["date_human"] = format_date_human
+app.jinja_env.globals["date_range"] = format_date_range
 
 
 def log_audit(conn, action, target=None, details=None):
@@ -20514,28 +20587,44 @@ def session_rooms_used(conn, session_id, exclude_id=None):
 
 
 def session_room_error(conn, session_id, occupancy_type, party_size, exclude_id=None):
-    """None if this party still fits in the rooms the château has, else why not.
+    """None if this party still fits on the session, else why not.
 
-    A workshop takes over the whole house, so every active room is available to
-    it — no need to ask which. Public forms only: staff putting somebody in by
-    hand may know about a sofa bed, a late cancellation, or a guest happy to
-    share at the last minute.
+    Counts PEOPLE against the house's legal occupancy, not rooms against the
+    nightly room list. A workshop takes over the whole château — is_range_
+    available() blocks every room for its dates — so the binding limit is how
+    many people may sleep here, and bookable_room_count() only knows the handful
+    of rooms let nightly, which is fewer than the bedrooms that exist. Counting
+    against it refused parties for want of rooms the château has.
+
+    The ceiling is house_guest_capacity(), the same setting the nightly side
+    uses, rather than a constant: it is a licensed number and it changes without
+    a deploy. The handover spec hardcoded 15 — this keeps the one source.
+
+    The session's own capacity is checked separately by the caller; this is the
+    ceiling above it. Public forms only, as before: staff entering somebody by
+    hand may know something the rules do not.
     """
-    total = bookable_room_count(conn)
-    if not total:
-        return None                        # no rooms recorded — nothing to enforce
-    used = session_rooms_used(conn, session_id, exclude_id)
-    want = rooms_needed(occupancy_type, party_size)
-    if used + want <= total:
+    party = max(int(party_size or 0), 0)
+    if not party:
         return None
-    left = max(total - used, 0)
-    if occupancy_type == "solo":
-        return (f"A room to yourself needs one room per guest, and only "
-                f"{left} {'is' if left == 1 else 'are'} left for these dates. "
-                f"Choose a shared room, or contact the château and we'll see what we can do.")
-    return (f"Only {left} room{'' if left == 1 else 's'} {'is' if left == 1 else 'are'} "
-            f"left for these dates, and a party of {party_size} sharing needs {want}. "
-            f"Please contact the château directly.")
+    cap = house_guest_capacity(conn)
+
+    query = """SELECT COALESCE(SUM(party_size), 0) AS n FROM workshop_bookings
+               WHERE session_id = ? AND status IN ('pending', 'confirmed')"""
+    params = [session_id]
+    if exclude_id:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    booked = conn.execute(query, params).fetchone()["n"]
+
+    if booked + party <= cap:
+        return None
+    left = max(cap - booked, 0)
+    if left == 0:
+        return "These dates are full. Join the waitlist and we will write if a place opens."
+    return (f"Only {left} place{'' if left == 1 else 's'} left on these dates, "
+            f"and you are booking for {party}. Contact the château and we will see "
+            f"what we can do.")
 
 
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,

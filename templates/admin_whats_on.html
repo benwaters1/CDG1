@@ -13,7 +13,7 @@
   of the year, like skiing.
 </p>
 
-<form method="post" action="{{ url_for('admin_whats_on_save') }}" class="detail-card">
+<form method="post" action="{{ url_for('admin_whats_on_save') }}" class="detail-card" style="margin-bottom:2rem">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="id" value="">
 
@@ -89,6 +89,7 @@
 </form>
 
 {% if events %}
+<div class="table-wrap">
 <table class="data-table">
   <thead>
     <tr><th>Title</th><th>When</th><th>Where</th><th>Season</th><th>Live</th><th></th></tr>
@@ -121,6 +122,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% else %}
 <p style="color:#777">Nothing added yet. The public page shows the standing market list until you add entries here.</p>
 {% endif %}

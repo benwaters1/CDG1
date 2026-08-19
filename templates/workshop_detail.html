@@ -50,8 +50,7 @@
       {% set s = row.session %}
       <article class="g-agenda__row">
         <div class="g-agenda__when">
-          <span class="g-agenda__day">{{ s['start_date'] }}</span>
-          {% if s['end_date'] != s['start_date'] %}<span class="g-agenda__time">→ {{ s['end_date'] }}</span>{% endif %}
+          <span class="g-agenda__day">{{ date_range(s['start_date'], s['end_date']) }}</span>
         </div>
         <div class="g-agenda__what">
           <h3 class="g-agenda__title">

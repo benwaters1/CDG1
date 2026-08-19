@@ -70,7 +70,7 @@
   <p class="g-eyebrow">The Standing Week</p>
   <h2 class="g-h2">Markets in the valley</h2>
   <p class="g-p">Market mornings run roughly eight until one. We will drive you, and the chef will usually come too.</p>
-  {% if standing %}
+{% if standing %}
   <div class="g-agenda" style="margin-top:var(--s6)">
     {% for e in standing %}
     <article class="g-agenda__row">
@@ -90,7 +90,8 @@
     </article>
     {% endfor %}
   </div>
-  {% endif %}
+{% endif %}
+
   <p class="g-hint" style="margin-top:var(--s5)">Market days occasionally shift with public holidays — we confirm before we drive.</p>
 </div></section>
 

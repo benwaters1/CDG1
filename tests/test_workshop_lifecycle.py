@@ -133,9 +133,12 @@ def run():
         s.check("a sitting can be added to it", got == 1, detail=f"got {got}")
         if got:
             page = pub.get("/workshops").get_data(as_text=True)
-            s.check("and the date is now offered to guests",
-                    (today + timedelta(days=60)).isoformat() in page,
-                    detail="the new date is not on the public page")
+            # Dates are written for guests now ("10 July 2027"), not as ISO
+            # strings, so the assertion goes through the same formatter the
+            # page uses rather than hardcoding either shape.
+            shown = m.format_date_short((today + timedelta(days=60)).isoformat())
+            s.check("and the date is now offered to guests", shown in page,
+                    detail=f"{shown!r} is not on the public page")
 
     s.section("Switching one off hides it without deleting it")
     # The owner's other lever: active = 0. History has to survive it.
