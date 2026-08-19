@@ -63,6 +63,7 @@ SUITES = [
     "test_offline",
     "test_translations",
     "test_whats_on",
+    "test_ateliers",
     "test_design",
     "test_links",
 ]

@@ -214,25 +214,47 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 </script>
 
 {% if fully_booked %}
-<div class="narrow-card" style="margin-top:20px;">
-  <h1>Join the Waitlist</h1>
-  <p class="manual-body">We'll reach out if a spot opens up for this session.</p>
-  <form method="post" action="{{ url_for('join_workshop_waitlist') }}" style="margin-top:14px;">
+{# CONTRACT — POST /workshops/waitlist/join
+   session_id, party_size, name, email, phone, notes, csrf_token. #}
+<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Fully Booked</p>
+  <h2 class="g-h2">Join the waitlist</h2>
+  <p class="g-p">These dates are taken, but places do open. Leave your details and we will write to you first if one does.</p>
+
+  <form method="post" action="{{ url_for('join_workshop_waitlist') }}" class="g-form-full" style="margin-top:var(--s6)">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="session_id" value="{{ session['id'] }}">
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" value="{{ prefill_party_size }}" required>
-    <label class="field-label">Your name</label>
-    <input type="text" name="name" value="{{ prefill_name }}" required>
-    <label class="field-label">Email</label>
-    <input type="email" name="email" value="{{ prefill_email }}" required>
-    <label class="field-label">Phone (optional)</label>
-    <input type="tel" name="phone" value="{{ prefill_phone }}">
-    <label class="field-label">Notes</label>
-    <textarea name="notes" placeholder="Anything we should know"></textarea>
-    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Join waitlist</button>
+
+    <div class="g-row">
+      <div class="g-field">
+        <label for="wl_name">Your name</label>
+        <input type="text" id="wl_name" name="name" value="{{ prefill_name }}" required>
+      </div>
+      <div class="g-field">
+        <label for="wl_email">Email</label>
+        <input type="email" id="wl_email" name="email" value="{{ prefill_email }}" required>
+      </div>
+    </div>
+
+    <div class="g-row">
+      <div class="g-field g-field--narrow">
+        <label for="wl_party">How many of you</label>
+        <input type="number" id="wl_party" name="party_size" min="1" value="{{ prefill_party_size }}" required>
+      </div>
+      <div class="g-field g-field--narrow">
+        <label for="wl_phone">Phone <span class="g-opt">optional</span></label>
+        <input type="tel" id="wl_phone" name="phone" value="{{ prefill_phone }}">
+      </div>
+    </div>
+
+    <div class="g-field">
+      <label for="wl_notes">Anything we should know <span class="g-opt">optional</span></label>
+      <textarea id="wl_notes" name="notes" rows="2"></textarea>
+    </div>
+
+    <button type="submit" class="g-btn g-btn--solid">Join the waitlist</button>
   </form>
-</div>
+</div></section>
 {% endif %}
 
 {% endblock %}

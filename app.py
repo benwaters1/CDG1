@@ -2434,6 +2434,8 @@ def init_db():
         ("workshop_bookings_feedback_requested_at", "ALTER TABLE workshop_bookings ADD COLUMN feedback_requested_at TEXT"),
         ("guest_feedback_featured", "ALTER TABLE guest_feedback ADD COLUMN featured INTEGER NOT NULL DEFAULT 0"),
         ("workshops_itinerary", "ALTER TABLE workshops ADD COLUMN itinerary TEXT"),
+        ("workshops_nights_label", "ALTER TABLE workshops ADD COLUMN nights_label TEXT"),
+        ("workshops_sample_day", "ALTER TABLE workshops ADD COLUMN sample_day TEXT"),
         ("rooms_min_nights", "ALTER TABLE rooms ADD COLUMN min_nights INTEGER NOT NULL DEFAULT 1"),
         ("bookings_promo_code_id", "ALTER TABLE bookings ADD COLUMN promo_code_id INTEGER REFERENCES promo_codes(id) ON DELETE SET NULL"),
         ("bookings_discount_amount", "ALTER TABLE bookings ADD COLUMN discount_amount REAL"),
@@ -3341,18 +3343,57 @@ def init_db():
         print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
               f"prices and dates.")
 
-    # The five were seeded by an earlier deploy without this note, so the seed
-    # above will not run again to add it. Fill it in where it is still blank,
-    # and only there: if somebody has written their own inclusions, theirs win.
-    if "inclusions" in ws_cols:
+    # The five were seeded by an earlier deploy under working titles, so the
+    # seed above will not run again to correct them. Three things to catch up,
+    # each of them written so it does nothing on a database that is already
+    # right and nothing to a field somebody has edited by hand.
+
+    # 1. The public names. Matched on the working title, which is unique and
+    #    was never shown to a guest. Renaming is safe because it is the same
+    #    atelier — same price, same dates — under the name the website uses.
+    for workshop in DEFAULT_WORKSHOPS:
+        was = workshop.get("was")
+        if not was:
+            continue
+        row = conn.execute("SELECT id FROM workshops WHERE title = ?", (was,)).fetchone()
+        if not row:
+            continue
+        conn.execute("UPDATE workshops SET title = ?, description = ? WHERE id = ?",
+                     (workshop["title"], workshop["description"], row["id"]))
+    conn.commit()
+
+    # 2. Blank copy fields. Only where blank: if somebody has written their own,
+    #    theirs win.
+    for field in ("inclusions", "nights_label", "sample_day"):
+        if field not in ws_cols:
+            continue
         for workshop in DEFAULT_WORKSHOPS:
-            if not workshop.get("inclusions"):
+            if not workshop.get(field):
                 continue
             conn.execute(
-                """UPDATE workshops SET inclusions = ?
-                   WHERE title = ? AND COALESCE(TRIM(inclusions), '') = ''""",
-                (workshop["inclusions"], workshop["title"]))
-        conn.commit()
+                f"""UPDATE workshops SET {field} = ?
+                    WHERE title = ? AND COALESCE(TRIM({field}), '') = ''""",
+                (workshop[field], workshop["title"]))
+    conn.commit()
+
+    # 3. Dates the earlier seed did not carry. Added only when that exact
+    #    start date is missing, so a session the owner has since edited or
+    #    cancelled is not quietly recreated underneath them.
+    for workshop in DEFAULT_WORKSHOPS:
+        row = conn.execute("SELECT id FROM workshops WHERE title = ?",
+                           (workshop["title"],)).fetchone()
+        if not row:
+            continue
+        for start, end in workshop.get("sessions", []):
+            if conn.execute(
+                    "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? AND start_date = ?",
+                    (row["id"], start)).fetchone():
+                continue
+            conn.execute(
+                """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
+                   capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
+                (row["id"], start, end, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
 
     for slug, name, order in DEFAULT_CHAT_CHANNELS:
         if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
@@ -5389,32 +5430,86 @@ DEFAULT_EXTRAS = [
 # price_per_person means here, so a party of two is charged twice the figure.
 # Recorded in `inclusions` as well, because a solo traveller reading "per person"
 # needs to know a shared room is what the price assumes.
+# The six ateliers, from the live product pages on chateaugudanes.com.
+#
+# `was` is the working title the row was seeded under before the public names
+# were known. Five of these already exist in the database at these exact prices
+# and dates — the handover's INSERTs would have created a second copy of each,
+# so the backfill below matches on `was` and renames in place instead.
 DEFAULT_WORKSHOPS = [
-    {"title": "Autumn Atelier 2026", "price_per_person": 2600.0, "sort_order": 0,
+    {"title": "The Long Weekender", "price_per_person": 2400.0, "sort_order": 0,
      "inclusions": "Per person, sharing a room.",
+     "nights_label": "3 nights / 4 days",
+     "sessions": [("2026-06-06", "2026-06-09"), ("2026-07-04", "2026-07-07"),
+                  ("2026-08-01", "2026-08-04")],
+     "description": "Bric-a-brac and brocante hunting through the region's best "
+                    "antique markets, a private tour of a neighbouring château, "
+                    "and long, laissez-faire days spent wandering village "
+                    "vide-greniers.",
+     "sample_day": "After breakfast, a gentle stroll to the local market — stalls "
+                   "brimming with fresh produce and local crafts. In the afternoon, "
+                   "choose your adventure: join the restoration team working on the "
+                   "château's eighteenth-century frescoes, take a dip in the pool, "
+                   "play pickleball or tennis, or simply unwind.\n\n"
+                   "Aperitifs in the atmospheric Renaissance kitchen, dinner en plein "
+                   "air under the open sky, and an outdoor film to close the night."},
+    {"title": "Immersive Artisan Workshops", "was": "Autumn Atelier 2026",
+     "price_per_person": 2600.0, "sort_order": 1,
+     "inclusions": "Per person, sharing a room.",
+     "nights_label": "4 nights / 5 days",
      "sessions": [("2026-10-23", "2026-10-27")],
-     "description": "Four nights as the valley turns, the season the restoration "
-                    "is at its most visible."},
-    {"title": "Noël Atelier 2026", "price_per_person": 3200.0, "sort_order": 1,
+     "description": "Gather, create and restore amidst the golden landscapes of the "
+                    "French Pyrénées. Centuries-old skills taught by the artisans who "
+                    "still practise them — hands-on, in a house being restored by the "
+                    "same methods."},
+    {"title": "Noël at Gudanes", "was": "Noël Atelier 2026",
+     "price_per_person": 3200.0, "sort_order": 2,
      "inclusions": "Per person, sharing a room.",
+     "nights_label": "4 nights / 5 days",
      "sessions": [("2026-12-05", "2026-12-09")],
-     "description": "Four nights at the château in December — shorter days, "
-                    "longer evenings around the table."},
-    {"title": "Cooking in the Cuisine 2027", "price_per_person": 3800.0, "sort_order": 2,
+     "description": "The château as a sanctuary of gentle anticipation. Four nights of "
+                    "making heirlooms by hand, long festive meals, champagne jellies "
+                    "set in historic moulds, and candlelight against a Pyrenean "
+                    "winter."},
+    {"title": "Cooking in the Cuisine", "was": "Cooking in the Cuisine 2027",
+     "price_per_person": 3800.0, "sort_order": 3,
      "inclusions": "Per person, sharing a room.",
-     "sessions": [("2027-06-25", "2027-06-30")],
-     "description": "Five nights in the château kitchen, cooking what the valley "
-                    "and the markets give us."},
-    {"title": "Antique & French Finds 2027", "price_per_person": 2800.0, "sort_order": 3,
+     "nights_label": "5 nights / 6 days",
+     "sessions": [("2026-06-12", "2026-06-17"), ("2026-07-10", "2026-07-15"),
+                  ("2027-06-25", "2027-06-30")],
+     "description": "Hands-on classes and live demonstrations in the château's own "
+                    "kitchens, market mornings for seasonal produce, and evenings "
+                    "spent eating what you have made — from eighteenth-century "
+                    "recipes to modern French classics.",
+     "sample_day": "A stroll to the local market for fresh produce and crafts, then "
+                   "sweet and savoury cooking classes inspired by the "
+                   "eighteenth-century Château Gudanes cookbook, with a picnic "
+                   "lunch.\n\nAperitifs with a talk on French table-setting and "
+                   "dining history, followed by an informal dinner of the day's "
+                   "creations."},
+    {"title": "Antique & French Finds", "was": "Antique & French Finds 2027",
+     "price_per_person": 2800.0, "sort_order": 4,
      "inclusions": "Per person, sharing a room.",
+     "nights_label": "3 nights / 4 days",
      "sessions": [("2027-07-03", "2027-07-06")],
-     "description": "Three nights among the brocantes and antique dealers of the "
-                    "Ariège and beyond. A second date follows in late July."},
-    {"title": "Summer Starry Nights 2027", "price_per_person": 4800.0, "sort_order": 4,
+     "description": "A treasure hunt through the Ariège. The brocantes and "
+                    "vide-greniers of Mirepoix and beyond, a private château visit, "
+                    "and the quiet pleasure of finding something with a history you "
+                    "will never fully know. A second date follows in late July."},
+    {"title": "Seven Starry Nights", "was": "Summer Starry Nights 2027",
+     "price_per_person": 4800.0, "sort_order": 5,
      "inclusions": "Per person, sharing a room.",
-     "sessions": [("2027-07-10", "2027-07-17")],
-     "description": "A full week at the château in high summer, under the "
-                    "clearest skies of the year."},
+     "nights_label": "7 nights / 8 days",
+     "sessions": [("2026-06-20", "2026-06-27"), ("2027-07-10", "2027-07-17")],
+     "description": "Our fullest Workshop: help restore the château's "
+                    "eighteenth-century frescoes, join cooking classes in between, "
+                    "hike and canoe the Ariège, and explore medieval towns, caves and "
+                    "neighbouring châteaux.",
+     "sample_day": "Crêpe-making and a mimosa breakfast, a riverside picnic at the "
+                   "Pont du Diable, and an afternoon exploring the 17,000-year-old "
+                   "Niaux Cave and its Paleolithic paintings.\n\nA wine-tasting "
+                   "aperitif in the drawing room, followed by dinner and an evening "
+                   "of poetry and prose."},
 ]
 
 # The placeholder titles this file used before the real ones were known. Rows

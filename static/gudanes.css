@@ -39,8 +39,8 @@
   --measure: 52rem;
 
   /* ---- Type -------------------------------------------------------- */
-  --serif: 'Poppins', -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  --display: 'Poppins', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'Inter', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --display: 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
 
   background: var(--sand);
@@ -69,29 +69,29 @@
 /* ---- Type -------------------------------------------------------------- */
 
 .g-display{
-  font-family: var(--display); font-weight: 400;
-  font-size: clamp(34px, 4.6vw, 60px); line-height: 1.12;
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(40px, 5.6vw, 76px); line-height: 1.06;
   color: var(--blue-deep); margin: 0 0 var(--s5); letter-spacing: -.01em;
 }
 .g-display em{ font-style: normal; font-weight: 300; }
 
 .g-h2{
   font-family: var(--display); font-weight: 500;
-  font-size: clamp(24px, 2.4vw, 32px); line-height: 1.25;
-  color: var(--blue-deep); margin: 0 0 var(--s3);
+  font-size: clamp(30px, 3.2vw, 44px); line-height: 1.15;
+  color: var(--blue-deep); margin: 0 0 var(--s4);
 }
 .g-h2 em{ font-style: normal; font-weight: 300; }
 
 .g-h3{
-  font-family: var(--display); font-weight: 500;
-  font-size: clamp(20px, 1.7vw, 24px); line-height: 1.3;
+  font-family: var(--display); font-weight: 600;
+  font-size: clamp(23px, 2vw, 28px); line-height: 1.3;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 
 /* Section heading with a hairline beneath — the site's recurring device. */
 .g-place{
   font-family: var(--display); font-weight: 500;
-  font-size: clamp(26px, 2.8vw, 36px); line-height: 1.2;
+  font-size: clamp(30px, 3.2vw, 42px); line-height: 1.2;
   color: var(--blue-deep);
   margin: 0 0 var(--s5);
   padding-bottom: var(--s4);
@@ -230,7 +230,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 
 .g-half{ display: grid; align-items: center; }
 .g .g-half__img{ width: 100%; height: clamp(17rem, 40vw, 30rem); object-fit: cover; }
-.g-half__text{ padding: var(--s8) var(--s7); max-width: 42rem; margin: 0 auto; width: 100%; }
+.g-half__text{ padding: var(--s7) var(--s6); max-width: 40rem; margin: 0 auto; width: 100%; }
 
 /* ---- Facts ------------------------------------------------------------- */
 
@@ -559,7 +559,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   .g-half{ grid-template-columns: 1fr 1fr; }
   .g-half--flip .g-half__img{ order: 2; }
   .g .g-half__img{ height: 100%; min-height: clamp(22rem, 34vw, 30rem); }
-  .g-half__text{ padding: var(--s9) var(--s8); }
+  .g-half__text{ padding: var(--s8) var(--s7); }
 }
 
 @media (min-width: 64rem){
@@ -1034,7 +1034,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* A page's opening statement — larger than a section heading, matching the
    page-title scale. Was an inline style on home.html; moved here so the
    scale lives in one place rather than drifting per template. */
-.g-h2--lead{ font-size: clamp(28px, 3.4vw, 44px); margin-bottom: var(--s4); }
+.g-h2--lead{ font-size: clamp(38px, 4.6vw, 60px); margin-bottom: var(--s5); }
 
 
 /* Booking form wrapper — was unstyled, so fields ran the full page width.
@@ -1229,3 +1229,86 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-terms input{ width: 22px; height: 22px; accent-color: #D9C79B; flex: none; cursor: pointer; }
 .g-terms a{ color: #D9C79B; min-height: 44px; display: inline-flex; align-items: center; }
+
+/* ==========================================================================
+   WORKSHOPS — three products of different length and price, shown side by
+   side so the choice is legible, then each in full below.
+   ========================================================================== */
+.g-wscards{
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+
+.g-wscard{
+  background: var(--white); border: 1px solid var(--line);
+  padding: var(--s6); display: flex; flex-direction: column;
+}
+/* The card's growing half. It was added around the blurb in the template, and
+   .g-wscard__blurb's flex:1 measures against its parent — so without this the
+   blurb stopped stretching and the price feet stopped lining up across a row. */
+.g-wscard__top{ flex: 1; display: flex; flex-direction: column; }
+.g-wscard__len{
+  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint); margin: 0 0 var(--s3);
+}
+.g-wscard__name{
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(24px, 2.2vw, 30px); line-height: 1.15;
+  color: var(--blue-deep); margin: 0 0 var(--s2);
+}
+.g-wscard__dates{ font-size: 14px; color: var(--ink-soft); margin: 0 0 var(--s4); }
+.g-wscard__blurb{ flex: 1; font-size: 15px; }
+.g-wscard__foot{ margin-top: var(--s5); }
+.g-wscard__price{ margin: 0 0 var(--s4); }
+.g-wscard__price .g-fig{ font-size: 26px; margin-right: var(--s2); }
+.g-wscard__price span:last-child{ font-size: 14px; color: var(--ink-faint); }
+.g .g-wscard .g-btn{ width: 100%; }
+
+/* A single line of the château's own words, given room to be read. */
+.g-quote-band{
+  background: var(--blue-deep); color: #fff;
+  padding: clamp(48px, 7vw, 80px) var(--s5);
+}
+.g-quote-band__t{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(22px, 2.6vw, 34px); line-height: 1.35;
+  max-width: 46rem; margin: 0 auto; text-align: center;
+}
+
+.g-wsfull__meta{
+  font-size: 16px; color: var(--ink-soft); margin: 0 0 var(--s5);
+}
+.g-sampleday{
+  border-left: 2px solid var(--blue-deep);
+  padding: var(--s2) 0 var(--s2) var(--s5);
+  margin: var(--s6) 0;
+}
+.g-sampleday .g-h3{ margin-bottom: var(--s3); }
+
+.g-dates{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s6); }
+
+.g-incl{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); }
+@media (min-width: 52rem){ .g-incl{ grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s7); } }
+.g-incl li{
+  padding-left: var(--s5); position: relative; font-size: 16px;
+  line-height: 1.55; color: var(--ink);
+}
+.g-incl li::before{
+  content: ''; position: absolute; left: 0; top: .65em;
+  width: 10px; height: 1px; background: var(--blue-deep);
+}
+
+/* Each atelier's own dates, listed as a bookable row rather than a wall of
+   buttons — six ateliers with several sittings each needs to stay scannable. */
+.g-sitting{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4);
+  padding: var(--s4) 0; border-bottom: 1px solid var(--line);
+}
+.g-sitting:first-child{ border-top: 1px solid var(--line); }
+.g-sitting__when{
+  font-family: var(--display); font-size: 20px; font-weight: 500;
+  color: var(--blue-deep); flex: 1 1 14rem;
+}
+.g-sitting__left{ font-size: 14px; color: var(--ink-faint); flex: 0 0 auto; }
+.g-sitting__cta{ flex: 0 0 auto; margin-left: auto; }
