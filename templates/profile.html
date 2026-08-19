@@ -26,6 +26,45 @@
     </div>
     {% endif %}
 
+    {% if user['role'] == 'owner' %}
+    {# The PIN they use on the shared iPad by the door. Set here rather than by
+       the staff member, because it is what puts them on the timesheet — if they
+       could set it themselves they could set it to somebody else's. #}
+    <div class="detail-card">
+      <h3>Arrival PIN</h3>
+      <p class="pay-disclaimer" style="margin-top:0;">
+        {% if person['quick_pin_hash'] %}
+          {{ person['name'].split(' ')[0] }} has a PIN. They tap their name on the
+          arrivals screen, enter it, and they're clocked in.
+        {% else %}
+          No PIN yet — {{ person['name'].split(' ')[0] }} can't sign in on a shared
+          device until one is set.
+        {% endif %}
+      </p>
+      <form method="post" action="{{ url_for('set_quick_pin', user_id=person['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="filter-bar">
+          <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*"
+                 maxlength="8" placeholder="4 to 8 digits" style="max-width:160px;"
+                 aria-label="New arrival PIN">
+          <button type="submit" class="btn-mini">
+            {{ 'Change the PIN' if person['quick_pin_hash'] else 'Set a PIN' }}
+          </button>
+          {% if person['quick_pin_hash'] %}
+          <button type="submit" name="pin" value="" class="btn-mini btn-mini-danger"
+                  onclick="return confirm('Remove the PIN? They won\\'t be able to sign in on a shared device.');">
+            Remove it
+          </button>
+          {% endif %}
+        </div>
+        <p class="upload-hint" style="margin-top:6px;">
+          Stored hashed — nobody can read it back, so write it down for them or set
+          a new one if they forget. Setting a PIN also clears any lockout.
+        </p>
+      </form>
+    </div>
+    {% endif %}
+
     {% if onboarding_items %}
     {% set done_count = onboarding_items|selectattr('done')|list|length %}
     <div class="detail-card">

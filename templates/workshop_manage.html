@@ -12,7 +12,7 @@
       <div><span class="detail-label">Dates</span>{{ booking['start_date'] }}{% if booking['end_date'] != booking['start_date'] %} → {{ booking['end_date'] }}{% endif %}</div>
       <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
       {% if booking['total_price'] %}<div><span class="detail-label">Estimated total</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
-      <div><span class="detail-label">Room arrangement</span>{{ booking['occupancy_type']|capitalize }}</div>
+      <div><span class="detail-label">Room arrangement</span>{{ booking['occupancy_type']|capitalize }}{% if booking['single_supplement'] %} <span class="upload-hint">(private room, +€{{ '%.0f'|format(booking['single_supplement']) }} per person)</span>{% endif %}</div>
       {% if booking['assigned_room_name'] %}<div><span class="detail-label">Your room</span>{{ booking['assigned_room_name'] }}</div>{% endif %}
     </div>
     {% if guests and guests|length > 1 %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Card reader{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Card reader</h1>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Which reader the till sends payments to. Once one is chosen, the restaurant tab gets a “Take on the card reader” button — the amount appears on the reader, the guest taps, and the tab closes itself.</p>
+
+{% if not stripe_on %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Stripe isn't connected.</strong> Set <code>STRIPE_SECRET_KEY</code> first — see DEPLOY.md. Without it the till can still take cash, charge to a room, or show a QR code.
+</div>
+{% endif %}
+
+{% if error %}
+<div class="flash flash-error" style="margin-bottom:16px;">{{ error }}</div>
+{% endif %}
+
+{% if readers %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th></th><th>Reader</th><th>Type</th><th>Status</th><th>Serial</th></tr>
+      </thead>
+      <tbody>
+        {% for r in readers %}
+        <tr>
+          <td>
+            <input type="radio" name="reader_id" value="{{ r.id }}"
+                   {{ 'checked' if chosen == r.id }}
+                   {{ 'disabled' if not r.server_drivable }}
+                   aria-label="Use {{ r.label }}">
+          </td>
+          <td>
+            {{ r.label }}
+            {% if not r.server_drivable %}
+            <span class="upload-hint">Can't be driven from here — it connects by Bluetooth to a phone app, so there's nothing for Stripe to send a payment to.</span>
+            {% endif %}
+          </td>
+          <td><span class="upload-hint">{{ r.device_type or '—' }}</span></td>
+          <td>
+            {% if r.status == 'online' %}
+              <span class="mini-status status-approved">online</span>
+            {% else %}
+              <span class="mini-status status-inactive">{{ r.status or 'unknown' }}</span>
+            {% endif %}
+          </td>
+          <td><span class="upload-hint">{{ (r.serial_number or '')[:14] }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="filter-bar" style="margin-top:12px;">
+    <button type="submit" class="btn-primary">Use the selected reader</button>
+    {% if chosen %}
+    <button type="submit" name="reader_id" value="" class="btn-mini">Stop using a reader</button>
+    {% endif %}
+  </div>
+</form>
+{% elif stripe_on and not error %}
+<div class="empty-state">
+  No readers are registered to this Stripe account yet. Register one in the Stripe
+  Dashboard under Terminal → Readers, then come back and it will appear here.
+</div>
+{% endif %}
+
+<h2 class="section-heading">Which readers work</h2>
+<div class="mini-list">
+  <div class="mini-row">
+    <span class="mini-name">Stripe Reader S700 / S710</span>
+    <span class="mini-role">Works. Connects over Wi-Fi, so the till can drive it directly. The S710 also has 4G.</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Verifone V660p, UX700, P630</span>
+    <span class="mini-role">Works, where available.</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">BBPOS WisePad 3, Stripe Reader M2</span>
+    <span class="mini-role">Won't work here. Bluetooth readers need a phone app holding the connection — Stripe has no way to reach them from a server.</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Tap to Pay on a phone</span>
+    <span class="mini-role">Won't work here either. It needs a native app approved by Apple. Usable through the Stripe Dashboard app, but the payment won't attach itself to a tab.</span>
+  </div>
+</div>
+
+<p class="upload-hint" style="margin-top:14px;">
+  A payment taken on the reader needs the internet at that moment — there's no offline mode when the till drives the reader.
+  If the Wi-Fi is unreliable where you serve, an S710 on 4G avoids the problem.
+</p>
+
+{% endblock %}

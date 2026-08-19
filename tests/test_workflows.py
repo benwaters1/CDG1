@@ -14,11 +14,26 @@ import _harness
 m = _harness.m
 TAG = "ZZWF"
 TODAY = datetime.now(timezone.utc).date()
-# Deliberately clear of the seeded workshop sessions and bookings. The app
-# correctly refuses dates held for a workshop, which is right behaviour and
-# would read here as a failure.
-SOON = (TODAY + timedelta(days=330)).isoformat()
-SOON_END = (TODAY + timedelta(days=332)).isoformat()
+
+
+def _free_window(room_id, nights=2):
+    """Two nights the room is actually free, found rather than assumed.
+
+    This used to be a hardcoded today+330, with a comment explaining that it was
+    chosen to miss the seeded workshop dates. Seeding the real ateliers moved
+    those dates onto it, the app correctly refused the booking, and the test read
+    that as a failure. Asking the app which dates are free cannot go stale.
+    """
+    conn = db()
+    try:
+        for offset in range(200, 900, 7):
+            start = TODAY + timedelta(days=offset)
+            end = start + timedelta(days=nights)
+            if m.is_range_available(conn, room_id, start, end)[0]:
+                return start.isoformat(), end.isoformat()
+    finally:
+        conn.close()
+    raise RuntimeError("no free window in the next two years")
 
 
 def run():
@@ -30,6 +45,7 @@ def run():
     room = ensure_room()
 
     s.section("Room booking: public request, owner confirms")
+    SOON, SOON_END = _free_window(room["id"])
     pub.post(f"/book/{room['id']}", data={
         "guest_name": f"{TAG} Guest", "guest_email": f"{TAG.lower()}@example.invalid",
         "arrival_date": SOON, "departure_date": SOON_END, "party_size": "2",

@@ -1,0 +1,30 @@
+{% extends "public_base.html" %}
+{% block title %}{% if state == 'done' %}Subscription confirmed{% else %}Link not recognised{% endif %}{% endblock %}
+{% block content %}
+
+<section class="g-sec">
+  <div class="g-wrap g-wrap--narrow">
+    {% if state == 'done' %}
+      <p class="g-eyebrow">Newsletter</p>
+      <h1 class="g-display">You're on the list</h1>
+      <p class="g-p">{{ email }} is confirmed. You'll hear from the château when there is
+        something worth saying — new dates, the restoration, and the occasional
+        thing we've found in a cupboard.</p>
+      <p class="g-p">Every email we send carries a link to unsubscribe.</p>
+      <p style="margin-top:32px;">
+        <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
+      </p>
+    {% else %}
+      <p class="g-eyebrow">Newsletter</p>
+      <h1 class="g-display">That link didn't work</h1>
+      <p class="g-p">The confirmation link may have already been used, or it may have been
+        broken in half by an email client. Subscribing again from the menu will send a
+        fresh one.</p>
+      <p style="margin-top:32px;">
+        <a href="{{ url_for('preview_home') }}" class="g-btn">Back to the château</a>
+      </p>
+    {% endif %}
+  </div>
+</section>
+
+{% endblock %}

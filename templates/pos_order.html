@@ -432,6 +432,62 @@
       </details>
       {% endif %}
 
+      {# The card reader, driven from here. First, because it is the fastest way
+         to take a card when one is set up: the amount appears on the reader, the
+         guest taps, and the tab closes itself. It asks for what is OUTSTANDING,
+         not the whole bill — this till splits payments. #}
+      {% if reader_on %}
+        {% if order['payment_intent_id'] %}
+        <div class="quote-box" id="card-waiting" style="margin-bottom:10px;">
+          <p class="quote-unavailable" id="card-message" style="color:var(--ink);">
+            Waiting for the guest to tap €{{ '%.2f'|format(bill.outstanding) }} on the reader…
+          </p>
+          <form method="post" action="{{ url_for('pos_cancel_card', order_id=order['id']) }}"
+                style="margin-top:8px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini btn-mini-danger">Cancel the card payment</button>
+          </form>
+        </div>
+        <script>
+        // Poll while the guest taps. The server records the payment and closes
+        // the tab the moment the money lands, so this only has to notice and
+        // move on — it never decides anything about the payment itself.
+        (function () {
+          var el = document.getElementById('card-message');
+          var tries = 0;
+          function check() {
+            if (tries++ > 120) {                     // ~4 minutes, then give up
+              el.textContent = 'Still waiting. Cancel and try again if the reader has gone to sleep.';
+              return;
+            }
+            fetch('{{ url_for("pos_card_status", order_id=order["id"]) }}')
+              .then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (d) {
+                if (!d) { setTimeout(check, 2000); return; }
+                if (d.settled) { window.location = '{{ url_for("pos_home") }}'; return; }
+                // Part-paid on the card: reload so the rest of the bill is right.
+                if (d.state === 'succeeded') { window.location.reload(); return; }
+                if (d.state === 'failed') { window.location.reload(); return; }
+                if (d.message) el.textContent = d.message;
+                setTimeout(check, 2000);
+              })
+              .catch(function () { setTimeout(check, 3000); });
+          }
+          setTimeout(check, 1500);
+        })();
+        </script>
+        {% else %}
+        <form method="post" action="{{ url_for('pos_take_card', order_id=order['id']) }}"
+              style="margin-bottom:10px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-primary" style="width:100%;">
+            Take €{{ '%.2f'|format(bill.outstanding) }} on the card reader
+          </button>
+          <p class="upload-hint">The amount appears on the reader — they tap, and this tab closes itself.</p>
+        </form>
+        {% endif %}
+      {% endif %}
+
       <form method="post" action="{{ url_for('pos_take_payment_route', order_id=order['id']) }}"
             class="till-pay-part">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

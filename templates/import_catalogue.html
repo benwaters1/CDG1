@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Import catalogue{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Import catalogue</h1>
+  <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Rooms</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">Copies rooms and add-ons from another installation, so nobody retypes them. This site currently has <strong>{{ counts.rooms }}</strong> room{{ '' if counts.rooms == 1 else 's' }} and <strong>{{ counts.extras }}</strong> add-on{{ '' if counts.extras == 1 else 's' }}.</p>
+
+<div class="detail-card">
+  <h3>Upload the file</h3>
+  <p class="upload-hint">
+    Produce it on the other machine with <code>python export_catalogue.py</code>,
+    which writes <code>catalogue.json</code>.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="catalogue" accept=".json,application/json" required
+           aria-label="Catalogue file">
+    <label class="checkbox-row" style="margin-top:12px;">
+      <input type="checkbox" name="dry_run" checked>
+      <span>Show me what it would do first, without saving</span>
+    </label>
+    <button type="submit" class="btn-primary" style="margin-top:12px;">Import</button>
+  </form>
+</div>
+
+<h2 class="section-heading">What this does and doesn't touch</h2>
+<div class="mini-list">
+  <div class="mini-row">
+    <span class="mini-name">Rooms and add-ons</span>
+    <span class="mini-role">Added if the name is new, updated if it already exists. Never deleted.</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Guests, bookings, staff, payments</span>
+    <span class="mini-role">Not included in the file and not touched by the import.</span>
+  </div>
+  <div class="mini-row">
+    <span class="mini-name">Calendar feed tokens</span>
+    <span class="mini-role">A fresh one is generated here — it's this site's secret, not something to copy across.</span>
+  </div>
+</div>
+
+<p class="upload-hint" style="margin-top:14px;">
+  Safe to run twice: rooms are matched by name, so a second import updates the
+  same rooms rather than creating duplicates.
+</p>
+
+{% endblock %}

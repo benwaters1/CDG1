@@ -10,6 +10,7 @@
   </p>
   {% if workshop['description'] %}<p class="manual-body">{{ workshop['description'] }}</p>{% endif %}
   {% if workshop['inclusions'] %}<p class="manual-body"><strong>Includes:</strong> {{ workshop['inclusions'] }}</p>{% endif %}
+  {% if workshop['price_per_person'] and workshop['single_supplement'] %}<p class="manual-body">Travelling alone? A room to yourself is €{{ '%.0f'|format(workshop['single_supplement']) }} extra per person.</p>{% endif %}
   {% if workshop['price_per_person'] %}<p class="upload-hint">A {{ workshop['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay.</p>{% endif %}
 
   {% if workshop['itinerary'] %}

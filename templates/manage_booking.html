@@ -54,6 +54,19 @@
 </div>
 
 <div class="detail-card" style="margin-top:20px;">
+  <h3>Stay longer</h3>
+  <p class="upload-hint">If the room is free we'll extend it straight away, and the extra nights go on your bill.</p>
+  <form method="post" class="filter-bar" style="margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_nights">
+    <label class="field-label" style="margin:0;">Extra nights</label>
+    <input type="number" name="nights" value="1" min="1" max="30" style="width:74px;"
+           aria-label="How many extra nights">
+    <button type="submit" class="btn-mini">Add them</button>
+  </form>
+</div>
+
+<div class="detail-card" style="margin-top:20px;">
   <h3>Change your dates</h3>
   <p class="upload-hint">
     {% if booking['status'] == 'pending' and booking['payment_status'] != 'paid' %}
@@ -127,6 +140,65 @@
   {% endif %}
 </div>
 
+{# What the stay costs and what is still owed. A guest could previously see
+   neither, which is also why they could not add anything to it. #}
+{% if bill and bill.lines %}
+<div class="detail-card" style="margin-top:20px;">
+  <h3>Your bill</h3>
+  <div class="quote-box" style="margin-top:0;">
+    {% for line in bill.lines %}
+    <div class="quote-line"><span>{{ line.label }}</span><span>€{{ '%.2f'|format(line.amount) }}</span></div>
+    {% endfor %}
+    <div class="quote-total"><span>Total</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+    {% if bill.paid %}
+    <div class="quote-line" style="margin-top:6px;">
+      <span>Received</span><span>&minus;€{{ '%.2f'|format(bill.paid) }}</span>
+    </div>
+    {% endif %}
+    {% if bill.refunded %}
+    <div class="quote-line"><span>Refunded to you</span><span>€{{ '%.2f'|format(bill.refunded) }}</span></div>
+    {% endif %}
+    {% if bill.owed > 0 %}
+    <div class="quote-total"><span>Still to pay</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
+    {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
+    <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="btn-primary" style="margin-top:10px; display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
+    <p class="upload-hint">Or we'll take it on arrival — whichever you prefer.</p>
+    {% else %}
+    <p class="upload-hint">We'll take this on arrival unless you hear otherwise.</p>
+    {% endif %}
+    {% elif bill.overpaid > 0 %}
+    <div class="quote-total"><span>In credit</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
+    {% else %}
+    <p class="upload-hint" style="margin-top:8px;">Paid in full — thank you.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# Things a guest can add to a stay they have already booked. Goes on the bill
+   rather than asking for a card each time — the balance is settled once. #}
+{% if addable and booking['status'] in ('pending', 'confirmed') %}
+<div class="detail-card" style="margin-top:20px;">
+  <h3>Add to your stay</h3>
+  <p class="upload-hint">Added to your bill, settled with the rest.</p>
+  {% for e in addable %}
+  <form method="post" class="filter-bar" style="margin-bottom:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_extra">
+    <input type="hidden" name="extra_id" value="{{ e['id'] }}">
+    <span style="flex:1; min-width:0;">
+      {{ e['name'] }} — €{{ '%.2f'|format(e['price'] or 0) }}
+      {% if e['description'] %}<span class="upload-hint">{{ e['description'] }}</span>{% endif %}
+    </span>
+    <input type="number" name="quantity" value="1" min="1"
+           {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
+           style="width:64px;" aria-label="How many {{ e['name'] }}">
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+
 {% if dinner_available %}
 <div class="detail-card" style="margin-top:20px;">
   <h3>Book dinner</h3>
@@ -174,6 +246,12 @@
   {% if booking['payment_status'] == 'paid' %}<p class="upload-hint">Cancelling doesn't automatically refund a payment — contact the château about your refund.</p>{% endif %}
 </div>
 
+{% endif %}
+
+{% if portal_token %}
+<p class="upload-hint" style="margin-top:18px;">
+  <a href="{{ url_for('guest_portal', token=portal_token) }}" class="small-link">See everything you have with us →</a>
+</p>
 {% endif %}
 </div>
 

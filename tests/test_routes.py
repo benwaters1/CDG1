@@ -103,7 +103,11 @@ def run():
         except Exception as e:
             broken.append((path, f"{type(e).__name__}: {e}"))
             continue
-        if code >= 500 or code not in (200, 302, 304, 404):
+        # A data endpoint that requires query parameters answers 400 without
+        # them, and that is the correct answer, not a broken page. Everything
+        # else must still land in the normal range.
+        allowed = (200, 302, 304, 400, 404) if path.startswith("/api/") else (200, 302, 304, 404)
+        if code >= 500 or code not in allowed:
             broken.append((path, code))
     s.check(f"all {len(plain)} render", not broken,
             detail="; ".join(f"{p} -> {c}" for p, c in broken[:6]))

@@ -22,6 +22,15 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">{{ email }} · {{ bookings|length }} booking{{ '' if bookings|length == 1 else 's' }}{% if dinners %} · {{ dinners|length }} dinner reservation{{ '' if dinners|length == 1 else 's' }}{% endif %}{% if workshop_regs %} · {{ workshop_regs|length }} workshop registration{{ '' if workshop_regs|length == 1 else 's' }}{% endif %}{% if events %} · {{ events|length }} event inquir{{ 'y' if events|length == 1 else 'ies' }}{% endif %} · €{{ '%.0f'|format(lifetime_spend) }} lifetime (confirmed)</p>
 
+{% if portal_token %}
+<div class="detail-card" style="margin-bottom:18px;">
+  <h3 style="margin-top:0;">Their own link</h3>
+  <p class="upload-hint">One address showing this guest everything they have with us — stays, ateliers and dinners — with no password to forget. Safe to send them; anyone holding it can see their bookings, so treat it exactly like the manage links in their confirmation emails.</p>
+  <input type="text" readonly onclick="this.select()" style="width:100%; font-family:monospace; font-size:12px;"
+         value="{{ url_for('guest_portal', token=portal_token, _external=True) }}">
+</div>
+{% endif %}
+
 {% if profile and (profile['phone'] or profile['dietary_notes'] or profile['preferences'] or profile['notes']) %}
 <div class="detail-card" style="margin-bottom:18px;">
   <h3 style="margin-top:0;">Profile</h3>

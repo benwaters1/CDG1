@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Gallery{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Public Gallery</h1>
+  <a href="/gallery" class="btn-mini">View the public page</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  These five sections are the ones the site's own menu links to. Each has a fixed
+  web address the header already points at, so sections can be retitled but not
+  renamed or removed — a guest clicking "The Views" has to land somewhere.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% for s in sections %}
+<div class="detail-card" style="margin-top:18px;">
+  <div class="page-head" style="margin-bottom:8px;">
+    <h3 style="margin:0;">{{ s['title'] }}</h3>
+    <code class="mini-status">/gallery#{{ s['slug'] }}</code>
+  </div>
+
+  <form method="post" action="{{ url_for('edit_gallery_section', section_id=s['id']) }}"
+        style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div style="flex:1; min-width:180px;">
+      <label class="field-label">Title</label>
+      <input type="text" name="title" value="{{ s['title'] }}" required>
+    </div>
+    <div style="flex:2; min-width:220px;">
+      <label class="field-label">Blurb</label>
+      <input type="text" name="blurb" value="{{ s['blurb'] or '' }}">
+    </div>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+
+  <form method="post" action="{{ url_for('add_gallery_photos', section_id=s['id']) }}"
+        enctype="multipart/form-data" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="photos" accept=".png,.jpg,.jpeg" multiple>
+    <button type="submit" class="btn-mini">+ Add photographs</button>
+  </form>
+
+  {% set pics = by_section.get(s['id'], []) %}
+  {% if pics %}
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;">
+    {% for p in pics %}
+    <div style="width:150px;">
+      <div style="position:relative;">
+        <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt=""
+             style="width:150px; height:110px; object-fit:cover; border-radius:5px; display:block;">
+        <form method="post" action="{{ url_for('delete_gallery_photo', photo_id=p['id']) }}"
+              onsubmit="return confirm('Remove this photograph?');"
+              style="position:absolute; top:2px; right:2px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini" style="padding:1px 6px; line-height:1.2;">&times;</button>
+        </form>
+      </div>
+
+      {# Caption doubles as the image's alt text on the public page, so it is
+         worth writing even when it is not displayed. #}
+      <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}"
+            style="margin-top:4px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="caption" value="{{ p['caption'] or '' }}" placeholder="Caption"
+               style="width:100%; font-size:12px;" onchange="this.form.submit()">
+      </form>
+
+      <div style="display:flex; gap:4px; margin-top:4px;">
+        {% if not loop.first %}
+        <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="move" value="up">
+          <button type="submit" class="btn-mini" style="padding:1px 7px;" aria-label="Move earlier">←</button>
+        </form>
+        {% endif %}
+        {% if not loop.last %}
+        <form method="post" action="{{ url_for('edit_gallery_photo', photo_id=p['id']) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="move" value="down">
+          <button type="submit" class="btn-mini" style="padding:1px 7px;" aria-label="Move later">→</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state" style="margin-top:14px;">
+    No photographs yet. The section still appears on the public page, with its heading
+    and a line pointing at Instagram, so the menu link is never broken.
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+{% endblock %}

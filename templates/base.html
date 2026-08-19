@@ -70,64 +70,93 @@
 {% if user %}
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
 <aside class="sidebar" id="app-sidebar">
+    {# ------------------------------------------------------------------
+       Grouped by the question someone is asking, not by which table the
+       data lives in. Two groups had grown past the point of being
+       navigable — Employee held seventeen items and Management sixteen —
+       and several things sat where nobody would look for them.
+
+       Transfers moved to Guests: an airport run exists because a guest is
+       arriving. The vehicle itself is an asset and stays under Estate.
+       Emails moved out of Financial, because a marketing campaign is not
+       an accounting task. Shopping, Contacts and the Manual moved out of
+       Employee, none of them being about employees at all.
+       ------------------------------------------------------------------ #}
     {% set guests_endpoints = ['guests','new_guest','edit_guest','admin_bookings','guest_booking_history','confirm_booking','decline_booking',
        'checkout_booking','edit_booking','admin_calendar','admin_rooms','new_room','edit_room','new_room_block',
-       'delete_room_block','new_ical_source','sync_ical_source_now','delete_ical_source','admin_extras','new_extra','edit_extra','delete_extra',
-       'room_issues','new_room_issue','resolve_room_issue','reopen_room_issue','delete_room_issue','export_room_issues_csv',
+       'delete_room_block','new_ical_source','sync_ical_source_now','delete_ical_source',
        'admin_feedback','export_feedback_csv','admin_waitlist','update_waitlist_status','export_waitlist_csv',
+       'all_transfers','vehicle_transfers_page','new_vehicle_transfer','delete_vehicle_transfer',
        'breakfast','toggle_breakfast_item','new_breakfast_item','edit_breakfast_item','delete_breakfast_item','toggle_breakfast_stock'] %}
-    {% set employee_endpoints = ['directory','new_employee','profile','edit_employee','delete_employee','regenerate_invite','toggle_employee_status','export_pay_history_csv',
+    {% set team_endpoints = ['directory','new_employee','profile','edit_employee','delete_employee','regenerate_invite','toggle_employee_status','export_pay_history_csv',
        'toggle_onboarding_item','new_onboarding_item','delete_onboarding_item',
        'toggle_offboarding_item','new_offboarding_item','delete_offboarding_item','new_check_in_note','delete_check_in_note',
        'new_equipment_item','toggle_equipment_returned','delete_equipment_item','equipment_overview','export_equipment_csv',
        'candidates','new_candidate','edit_candidate','update_candidate_status','delete_candidate','export_candidates_csv','edit_own_contact_info',
-       'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
        'admin_compliance','new_role_requirement','delete_role_requirement',
        'admin_payroll','export_payroll_csv','admin_incidents','new_incident','update_incident',
-       'repair_time_entry',
-       'my_shifts','respond_shift_swap','decide_shift_swap','ask_hr','admin_hr_notes','handle_hr_note',
+       'ask_hr','admin_hr_notes','handle_hr_note','export_team_csv',
        'admin_hr','new_certification','delete_certification','new_absence','absence_return_to_work',
-       'new_performance_review','share_performance_review',
-       'team_calendar','admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections',
+       'new_performance_review','share_performance_review'] %}
+    {% set rota_endpoints = ['admin_tasks','new_task','toggle_task','complete_task','reschedule_task','delete_task','duplicate_task_next_week',
+       'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
+       'my_shifts','respond_shift_swap','decide_shift_swap','team_calendar',
+       'admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections','repair_time_entry',
        'resolve_timesheet_correction','dismiss_timesheet_correction',
-       'export_timesheets_csv','export_timesheets_summary_csv','export_team_csv','admin_leave','decide_leave','export_leave_csv','admin_tasks','new_task','toggle_task',
-       'reschedule_task','delete_task','duplicate_task_next_week','manual','edit_manual_section',
-       'new_manual_section','delete_manual_section','contacts','new_contact','edit_contact','delete_contact',
+       'export_timesheets_csv','export_timesheets_summary_csv',
+       'admin_leave','decide_leave','export_leave_csv'] %}
+    {# The house and its upkeep — physical things, not people and not guests. #}
+    {% set estate_endpoints = ['room_issues','new_room_issue','resolve_room_issue','reopen_room_issue','delete_room_issue','export_room_issues_csv',
+       'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
+       'log_vehicle_service','new_vehicle_maintenance','resolve_vehicle_maintenance','delete_vehicle_maintenance',
+       'checkout_vehicle','checkin_vehicle','export_vehicles_csv',
+       'admin_assets','new_asset','update_asset','export_assets_csv','asset_photo',
+       'admin_access','new_access_item','issue_access_item','return_access_item',
        'shopping_list','new_shopping_item','toggle_shopping_item','delete_shopping_item','clear_bought_items',
-       'announcements','new_announcement','delete_announcement'] %}
-    {# Financial is now genuinely financial. The Management hub used to live in
-       here, but four of its five sections (Marketing, Automation, Reference,
-       Access) aren't financial — and burying it meant e.g. "who's driving the
-       airport run" sat five clicks deep. It's a top-level group below. #}
+       'contacts','new_contact','edit_contact','delete_contact',
+       'manual','edit_manual_section','new_manual_section','delete_manual_section'] %}
+    {# Anything that talks to people — staff or guests. #}
+    {% set comms_endpoints = ['announcements','new_announcement','edit_announcement','delete_announcement',
+       'admin_emails','new_campaign_template','edit_campaign_template','delete_campaign_template',
+       'send_campaign_template','add_email_optout','admin_email_outbox','send_email_outbox','discard_email_outbox',
+       'management_email_templates','edit_email_template','restore_email_template',
+       'admin_inbox_flags','admin_inbox_flags_status','management_social'] %}
     {% set financial_endpoints = ['expenses','decide_expense','delete_expense','regenerate_supplier_link','export_expenses_csv',
        'admin_approvals','bulk_approve_queue',
        'management_bank_details','new_bank_details','edit_bank_details','delete_bank_details',
        'management_financials','export_financials_csv','annual_summary','admin_refunds','export_refunds_csv',
        'admin_reports','admin_report','export_report_csv',
-       'admin_emails','new_campaign_template','edit_campaign_template','delete_campaign_template',
-       'send_campaign_template','add_email_optout',
        'admin_tax','management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv'] %}
+    {# Settings and permanent records. Deliberately last: it is the group you
+       need least often, and it used to sit fourth while holding the fleet, the
+       keys and the inbox — all daily tools, now under Estate and Comms. #}
     {% set management_endpoints = ['management','management_documents','upload_company_document','edit_company_document',
        'delete_company_document','view_company_document','download_company_document',
        'management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry','management_company_info',
        'management_insurance','new_insurance_policy','edit_insurance_policy','delete_insurance_policy','export_insurance_csv','renew_insurance_policy',
        'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
-       'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
-       'log_vehicle_service','new_vehicle_maintenance','resolve_vehicle_maintenance','delete_vehicle_maintenance',
-       'checkout_vehicle','checkin_vehicle','vehicle_transfers_page','all_transfers','new_vehicle_transfer','delete_vehicle_transfer','export_vehicles_csv',
-       'admin_automation','update_automation_settings','run_automation_job_now','admin_inbox_flags','admin_inbox_flags_status','admin_access','new_access_item','issue_access_item','return_access_item','admin_readiness','admin_assets','new_asset','update_asset','export_assets_csv','asset_photo',
-       'admin_outlook_addin','management_email_templates','management_social','admin_promo_codes','admin_deposit_rules','promo_code_blast'] %}
+       'admin_automation','update_automation_settings','run_automation_job_now','admin_readiness',
+       'admin_outlook_addin','admin_promo_codes','admin_deposit_rules','promo_code_blast','admin_terms',
+       'admin_gallery','add_gallery_photos','delete_gallery_photo','edit_gallery_section',
+       'edit_gallery_photo'] %}
   <nav class="nav">
     {# Today comes before Home for everyone. It answers the question a member of
        staff actually has when they open this on a phone — who is in the house
        and what am I meant to be doing — where Home answers the owner's. #}
     <a href="{{ url_for('staff_today') }}" class="{{ 'active' if request.endpoint=='staff_today' }}">{{ icon('home') }}Today</a>
+    {# Chat sits high, and for both roles. It is the one page here people are
+       meant to open unprompted, and a message nobody sees is worse than none. #}
+    <a href="{{ url_for('chat_home') }}" class="{{ 'active' if request.endpoint in ['chat_home','chat_channel','chat_with'] }}">{{ icon('contacts') }}Chat{% if chat_unread_count %} ({{ chat_unread_count }}){% endif %}</a>
     <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint=='dashboard' }}">{{ icon('home') }}Home</a>
 
-    {% if user['role'] == 'owner' %}
+    {# Each group appears only if its area is granted. A person with partial
+       access sees their part of the menu and nothing else, rather than a
+       list of links that refuse them. #}
+    {% if user_areas %}
     <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
     <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>
 
+    {% if may('guests') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in guests_endpoints }}">
       <a href="{{ url_for('guests') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in guests_endpoints }}">{{ icon('guests') }}Guests</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Guests submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -136,37 +165,79 @@
         <a href="{{ url_for('admin_bookings') }}" class="{{ 'active' if request.endpoint in ['admin_bookings','confirm_booking','decline_booking','checkout_booking','edit_booking'] }}">{{ icon('bookings') }}Bookings</a>
         <a href="{{ url_for('admin_calendar') }}" class="{{ 'active' if request.endpoint=='admin_calendar' }}">{{ icon('calendar') }}Booking Calendar</a>
         <a href="{{ url_for('admin_rooms') }}" class="{{ 'active' if request.endpoint in ['admin_rooms','new_room','edit_room'] }}">{{ icon('rooms') }}Rooms</a>
-        <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
+        <a href="{{ url_for('all_transfers') }}" class="{{ 'active' if request.endpoint in ['all_transfers','vehicle_transfers_page','new_vehicle_transfer'] }}">{{ icon('truck') }}Transfers</a>
         <a href="{{ url_for('admin_feedback') }}" class="{{ 'active' if request.endpoint=='admin_feedback' }}">{{ icon('contacts') }}Guest Feedback</a>
-        <a href="{{ url_for('admin_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_waitlist' }}">{{ icon('leave') }}Waitlist</a>
+        <a href="{{ url_for('admin_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_waitlist' }}">{{ icon('leave') }}Room Waitlist</a>
         <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
       </div>
     </div>
+    {% endif %}
 
-    <div class="nav-dropdown {{ 'open' if request.endpoint in employee_endpoints }}">
-      <a href="{{ url_for('directory') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in employee_endpoints }}">{{ icon('employee') }}Employee</a>
-      <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+    {% if may('team') %}
+    <div class="nav-dropdown {{ 'open' if request.endpoint in team_endpoints }}">
+      <a href="{{ url_for('directory') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in team_endpoints }}">{{ icon('employee') }}Team</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Team submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
-        <a href="{{ url_for('directory') }}" class="{{ 'active' if request.endpoint in ['directory','new_employee','profile','edit_employee'] }}">{{ icon('employee') }}Team</a>
+        <a href="{{ url_for('directory') }}" class="{{ 'active' if request.endpoint in ['directory','new_employee','profile','edit_employee'] }}">{{ icon('employee') }}Who works here</a>
         <a href="{{ url_for('candidates') }}" class="{{ 'active' if request.endpoint=='candidates' }}">{{ icon('guests') }}Candidates</a>
         <a href="{{ url_for('equipment_overview') }}" class="{{ 'active' if request.endpoint in ['equipment_overview','export_equipment_csv'] }}">{{ icon('shopping') }}Equipment</a>
-        <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
         <a href="{{ url_for('admin_hr_notes') }}" class="{{ 'active' if request.endpoint=='admin_hr_notes' }}">{{ icon('contacts') }}Ask HR{% if open_hr_notes_count %} ({{ open_hr_notes_count }}){% endif %}</a>
         <a href="{{ url_for('admin_hr') }}" class="{{ 'active' if request.endpoint=='admin_hr' }}">{{ icon('approvals') }}HR &amp; Compliance</a>
         <a href="{{ url_for('admin_compliance') }}" class="{{ 'active' if request.endpoint=='admin_compliance' }}">{{ icon('shield') }}Role Compliance</a>
         <a href="{{ url_for('admin_payroll') }}" class="{{ 'active' if request.endpoint=='admin_payroll' }}">{{ icon('financial') }}Payroll Pack</a>
         <a href="{{ url_for('admin_incidents') }}" class="{{ 'active' if request.endpoint=='admin_incidents' }}">{{ icon('wrench') }}Incidents</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Everything about when people work, split out of the seventeen-item
+       Employee menu. Who someone is and when they're on are different
+       questions, asked at different times. #}
+    {% if may('rota') %}
+    <div class="nav-dropdown {{ 'open' if request.endpoint in rota_endpoints }}">
+      <a href="{{ url_for('admin_tasks') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in rota_endpoints }}">{{ icon('shifts') }}Rotas &amp; Tasks</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Rotas submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
         <a href="{{ url_for('admin_tasks') }}" class="{{ 'active' if request.endpoint=='admin_tasks' }}">{{ icon('tasks') }}Tasks</a>
         <a href="{{ url_for('admin_shifts') }}" class="{{ 'active' if request.endpoint=='admin_shifts' }}">{{ icon('shifts') }}Shifts</a>
         <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
         <a href="{{ url_for('admin_timesheets') }}" class="{{ 'active' if request.endpoint=='admin_timesheets' }}">{{ icon('shifts') }}Timesheets</a>
         <a href="{{ url_for('admin_leave') }}" class="{{ 'active' if request.endpoint=='admin_leave' }}">{{ icon('leave') }}Time Off</a>
-        <a href="{{ url_for('manual') }}" class="{{ 'active' if request.endpoint=='manual' }}">{{ icon('manual') }}Manual</a>
-        <a href="{{ url_for('contacts') }}" class="{{ 'active' if request.endpoint=='contacts' }}">{{ icon('contacts') }}Contacts</a>
-        <a href="{{ url_for('shopping_list') }}" class="{{ 'active' if request.endpoint=='shopping_list' }}">{{ icon('shopping') }}Shopping</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('estate') %}
+    <div class="nav-dropdown {{ 'open' if request.endpoint in estate_endpoints }}">
+      <a href="{{ url_for('room_issues') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in estate_endpoints }}">{{ icon('wrench') }}Estate</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Estate submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
+        <a href="{{ url_for('management_vehicles') }}" class="{{ 'active' if request.endpoint=='management_vehicles' }}">{{ icon('car') }}Vehicles</a>
+        <a href="{{ url_for('admin_assets') }}" class="{{ 'active' if request.endpoint=='admin_assets' }}">{{ icon('building') }}Asset Register</a>
+        <a href="{{ url_for('admin_access') }}" class="{{ 'active' if request.endpoint=='admin_access' }}">{{ icon('lock') }}Keys &amp; Access</a>
+        <a href="{{ url_for('shopping_list') }}" class="{{ 'active' if request.endpoint=='shopping_list' }}">{{ icon('shopping') }}Shopping</a>
+        <a href="{{ url_for('contacts') }}" class="{{ 'active' if request.endpoint=='contacts' }}">{{ icon('contacts') }}Contacts</a>
+        <a href="{{ url_for('manual') }}" class="{{ 'active' if request.endpoint=='manual' }}">{{ icon('manual') }}Manual</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if may('comms') %}
+    <div class="nav-dropdown {{ 'open' if request.endpoint in comms_endpoints }}">
+      <a href="{{ url_for('announcements') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in comms_endpoints }}">{{ icon('megaphone') }}Comms</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Comms submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
+        <a href="{{ url_for('admin_emails') }}" class="{{ 'active' if request.endpoint in ['admin_emails','edit_campaign_template'] }}">{{ icon('contacts') }}Guest Email</a>
+        <a href="{{ url_for('admin_email_outbox') }}" class="{{ 'active' if request.endpoint=='admin_email_outbox' }}">{{ icon('bell') }}Held Email</a>
+        <a href="{{ url_for('management_email_templates') }}" class="{{ 'active' if request.endpoint=='management_email_templates' }}">{{ icon('megaphone') }}Email Wording</a>
+        <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if may('financial') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in financial_endpoints }}">
       <a href="{{ url_for('admin_approvals') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in financial_endpoints }}">{{ icon('financial') }}Financial</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Financial submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -176,36 +247,13 @@
         <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
         <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
-        <a href="{{ url_for('admin_emails') }}" class="{{ 'active' if request.endpoint in ['admin_emails','edit_campaign_template'] }}">{{ icon('contacts') }}Emails</a>
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
         <a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
       </div>
     </div>
-
-    <div class="nav-dropdown {{ 'open' if request.endpoint in management_endpoints }}">
-      <a href="{{ url_for('management') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in management_endpoints }}">{{ icon('management') }}Management</a>
-      <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
-      <div class="nav-dropdown-menu">
-        <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
-        <a href="{{ url_for('management_vehicles') }}" class="{{ 'active' if request.endpoint=='management_vehicles' }}">{{ icon('car') }}Vehicles</a>
-        <a href="{{ url_for('all_transfers') }}" class="{{ 'active' if request.endpoint=='all_transfers' }}">{{ icon('truck') }}Transfers</a>
-        <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
-        <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
-        <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
-        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company Info</a>
-        <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
-        <a href="{{ url_for('management_email_templates') }}" class="{{ 'active' if request.endpoint=='management_email_templates' }}">{{ icon('megaphone') }}Email Templates</a>
-        <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
-        <a href="{{ url_for('admin_inbox_flags') }}" class="{{ 'active' if request.endpoint=='admin_inbox_flags' }}">{{ icon('bell') }}Inbox Flags{% if open_email_flags_count %} ({{ open_email_flags_count }}){% endif %}</a>
-        <a href="{{ url_for('admin_assets') }}" class="{{ 'active' if request.endpoint=='admin_assets' }}">{{ icon('building') }}Asset Register</a>
-        <a href="{{ url_for('admin_access') }}" class="{{ 'active' if request.endpoint=='admin_access' }}">{{ icon('lock') }}Keys &amp; Access</a>
-        <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
-        <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
-        <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
-      </div>
-    </div>
-
+    {% endif %}
+    {% if may('restaurant') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] }}">
       <a href="{{ url_for('admin_restaurant') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Restaurant submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -214,10 +262,13 @@
         <a href="{{ url_for('admin_restaurant_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_waitlist' }}">{{ icon('leave') }}Waitlist</a>
         <a href="{{ url_for('admin_stock') }}" class="{{ 'active' if request.endpoint=='admin_stock' }}">{{ icon('shopping') }}Stock</a>
         <a href="{{ url_for('admin_extras') }}" class="{{ 'active' if request.endpoint=='admin_extras' }}">{{ icon('receipt') }}Extras &amp; menu</a>
+        <a href="{{ url_for('admin_terminal') }}" class="{{ 'active' if request.endpoint=='admin_terminal' }}">{{ icon('receipt') }}Card Reader</a>
         <a href="{{ url_for('admin_restaurant_settings') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_settings' }}">{{ icon('management') }}Settings</a>
       </div>
     </div>
+    {% endif %}
 
+    {% if may('workshops') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv','admin_workshop_feedback','toggle_workshop_feedback_featured','export_workshop_feedback_csv'] }}">
       <a href="{{ url_for('admin_workshops') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_workshops','new_workshop','edit_workshop','delete_workshop','new_workshop_session','delete_workshop_session','admin_workshop_registrations','confirm_workshop_registration','decline_workshop_registration','cancel_workshop_registration_admin','export_workshop_registrations_csv','admin_workshop_waitlist','update_workshop_waitlist_status','export_workshop_waitlist_csv','admin_workshop_feedback','toggle_workshop_feedback_featured','export_workshop_feedback_csv'] }}">{{ icon('workshop') }}Workshops{% if pending_workshop_count %} ({{ pending_workshop_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Workshops submenu" onclick="toggleNavDropdown(event, this)">▾</button>
@@ -228,9 +279,37 @@
         <a href="{{ url_for('admin_workshop_feedback') }}" class="{{ 'active' if request.endpoint=='admin_workshop_feedback' }}">{{ icon('contacts') }}Feedback</a>
       </div>
     </div>
+    {% endif %}
 
-    <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_take_payment_route','pos_pay_link','pos_send','pos_kitchen','pos_day','pos_receipt','pos_adjust','pos_move_table','pos_journal_page'] }}">{{ icon('restaurant') }}Restaurant POS</a>
-    <a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>
+{% if may('till') %}<a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] }}">{{ icon('restaurant') }}Till</a>{% endif %}
+{% if may('events') %}<a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>{% endif %}
+
+    {# Settings and permanent records — last, because it is the group you need
+       least often. It used to sit fourth while holding the fleet, the keys and
+       the inbox, all of which are daily tools and now live under Estate and
+       Comms. Sixteen items down to ten. #}
+    {% if may('management') %}
+    <div class="nav-dropdown {{ 'open' if request.endpoint in management_endpoints }}">
+      <a href="{{ url_for('management') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in management_endpoints }}">{{ icon('management') }}Management</a>
+      <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
+      <div class="nav-dropdown-menu">
+        <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
+        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company Info</a>
+        <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
+        <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
+        <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
+        <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
+        <a href="{{ url_for('admin_gallery') }}" class="{{ 'active' if request.endpoint=='admin_gallery' }}">{{ icon('folder') }}Public Gallery</a>
+        <a href="{{ url_for('admin_automation') }}" class="{{ 'active' if request.endpoint=='admin_automation' }}">{{ icon('repeat') }}Automation</a>
+        <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
+        <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
+        <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
+        <a href="{{ url_for('import_catalogue') }}" class="{{ 'active' if request.endpoint=='import_catalogue' }}">{{ icon('folder') }}Import Catalogue</a>
+        <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
+      </div>
+    </div>
+    {% endif %}
+
 
     {% else %}
     <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>

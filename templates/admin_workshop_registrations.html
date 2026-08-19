@@ -46,7 +46,7 @@
     </div>
     <p class="manual-body">
       {{ r['start_date'] }}{% if r['end_date'] != r['start_date'] %} → {{ r['end_date'] }}{% endif %}
-      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
+      · Party of {{ r['party_size'] }} · {{ r['occupancy_type']|capitalize }}{% if r['single_supplement'] %} (+€{{ '%.0f'|format(r['single_supplement']) }} pp single){% endif %}{% if r['total_price'] %} · €{{ '%.2f'|format(r['total_price']) }}{% endif %}
     </p>
     <p class="upload-hint">{{ r['guest_email'] }}{% if r['guest_phone'] %} · {{ r['guest_phone'] }}{% endif %} · <a href="{{ url_for('guest_booking_history', email=r['guest_email']) }}" class="small-link" style="color:var(--steel);">full history</a></p>
     {% if r['requested_roommate'] %}<p class="upload-hint">Requested roommate: {{ r['requested_roommate'] }}</p>{% endif %}
@@ -54,6 +54,34 @@
     {% if r['medical_notes'] %}<p class="upload-hint">Medical: {{ r['medical_notes'] }}</p>{% endif %}
     {% if r['special_occasion'] %}<p class="upload-hint">Occasion: {{ r['special_occasion'] }}</p>{% endif %}
     {% if r['notes'] %}<p class="upload-hint">Notes: {{ r['notes'] }}</p>{% endif %}
+
+    {# A private room is not bookable on the public form — it is quoted per
+       enquiry — so this is where an arrangement made by phone or email gets
+       recorded, and priced. Saving reprices the registration and its deposit
+       and balance through the same arithmetic the booking itself uses. #}
+    <details style="margin-top:6px;">
+      <summary class="small-link" style="color:var(--steel); cursor:pointer;">Room arrangement</summary>
+      <form method="post" action="{{ url_for('set_workshop_occupancy', registration_id=r['id']) }}"
+            style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+          <label class="field-label">Arrangement</label>
+          <select name="occupancy_type">
+            <option value="double" {{ 'selected' if r['occupancy_type'] == 'double' }}>Double (shared)</option>
+            <option value="triple" {{ 'selected' if r['occupancy_type'] == 'triple' }}>Triple</option>
+            <option value="solo" {{ 'selected' if r['occupancy_type'] == 'solo' }}>Solo (private room)</option>
+          </select>
+        </div>
+        <div style="max-width:170px;">
+          <label class="field-label">Agreed supplement (€ pp)</label>
+          <input type="number" name="single_supplement" step="0.01" min="0"
+                 value="{{ '%.2f'|format(r['single_supplement']) if r['single_supplement'] else '' }}"
+                 placeholder="0.00">
+        </div>
+        <button type="submit" class="btn-mini">Save arrangement</button>
+      </form>
+      <p class="upload-hint" style="margin-top:4px;">Only a private room carries a supplement; it is cleared automatically on a shared arrangement.</p>
+    </details>
     {% if custom_responses_by_booking.get(r['id']) %}
     {% for cr in custom_responses_by_booking[r['id']] %}<p class="upload-hint">{{ cr['label'] }}: {{ cr['value'] }}</p>{% endfor %}
     {% endif %}

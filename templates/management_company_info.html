@@ -33,6 +33,10 @@
     <label class="field-label">Incorporation date</label>
     <input type="date" name="incorporation_date" value="{{ info['incorporation_date'] if info else '' }}">
 
+    <label class="field-label" style="margin-top:16px;">Maximum guests in the house at once</label>
+    <input type="number" name="house_guest_capacity" min="1" style="max-width:120px;" value="{{ house_guest_capacity }}">
+    <span class="upload-hint">The legal limit, not a comfort one — it caps room bookings and atelier registrations together, in any mix, on the online booking pages. Staff can still confirm or enter a booking that goes over it by hand.</span>
+
     <label class="field-label" style="margin-top:16px;">Accountant</label>
     <div class="field-row-2">
       <div><input type="text" name="accountant_name" placeholder="Name / firm" value="{{ info['accountant_name'] if info else '' }}"></div>

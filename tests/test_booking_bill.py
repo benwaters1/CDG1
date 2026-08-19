@@ -1,0 +1,273 @@
+"""What a stay costs, what has been received, what is still owed.
+
+A room booking had none of this. payment_status could only say
+unpaid/paid/refunded, which cannot express "paid the deposit" or "added a night
+and owes the difference" — so there was nowhere to put the cost of anything a
+guest might add later, which is the real reason they could add nothing.
+Workshops already had deposits and balances; stays did not.
+
+The checks worth having are the ones about money not going missing: payments
+accumulate rather than overwrite, a refund reduces what was received rather than
+what the stay cost, and adding something later increases what is owed.
+"""
+from datetime import date, timedelta
+
+from _harness import Suite, clients, db, ensure_room, flashes
+import _harness
+
+m = _harness.m
+TAG = "ZZBILL"
+
+
+def _booking(nights=3, paid=0.0):
+    room = ensure_room()
+    conn = db()
+    conn.execute("UPDATE rooms SET price_per_night = 250, min_nights = 1 WHERE id = ?",
+                 (room["id"],))
+    arrival = date.today() + timedelta(days=600)
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token,
+           created_at, amount_paid)
+           VALUES (?,?,?,?,?,2,'confirmed',?,?,datetime('now'),?)""",
+        (room["id"], f"{TAG} guest", f"{TAG.lower()}@example.invalid",
+         arrival.isoformat(), (arrival + timedelta(days=nights)).isoformat(),
+         f"{TAG}1", f"tok{TAG}1", paid))
+    conn.commit()
+    bid = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                       (f"{TAG}1",)).fetchone()["id"]
+    conn.close()
+    return bid
+
+
+def _cleanup():
+    conn = db()
+    conn.execute("DELETE FROM booking_extras WHERE booking_id IN "
+                 "(SELECT id FROM bookings WHERE reference_code LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM refunds WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM extras WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM email_outbox WHERE subject LIKE '%added an extra%'")
+    conn.commit()
+    conn.close()
+
+
+def run():
+    s = Suite("Booking bill")
+    clients()
+    _cleanup()
+
+    s.section("A stay is priced and owed in full")
+    bid = _booking(nights=3)
+    conn = db()
+    bill = m.booking_bill(conn, bid)
+    conn.close()
+    s.check("three nights at 250 totals 750", bill["total"] == 750.0,
+            detail=f"got {bill['total']}")
+    s.check("nothing has been received", bill["paid"] == 0.0)
+    s.check("so all of it is owed", bill["owed"] == 750.0, detail=f"got {bill['owed']}")
+
+    s.section("An extra added later increases what is owed")
+    conn = db()
+    conn.execute("""INSERT INTO extras (name, price, active, sort_order, category)
+                    VALUES (?, 120, 1, 1, 'room')""", (f"{TAG} transfer",))
+    conn.commit()
+    extra = conn.execute("SELECT * FROM extras WHERE name = ?", (f"{TAG} transfer",)).fetchone()
+    m.add_booking_extra(conn, "room", bid, extra, 1)
+    conn.commit()
+    bill = m.booking_bill(conn, bid)
+    conn.close()
+    # The whole point of the bill: something can now be added to a stay and the
+    # cost has somewhere to go.
+    s.check("the total rises by the extra", bill["total"] == 870.0, detail=f"got {bill['total']}")
+    s.check("and appears as its own line", len(bill["lines"]) == 2,
+            detail=f"{[l['label'] for l in bill['lines']]}")
+    s.check("and is owed", bill["owed"] == 870.0, detail=f"got {bill['owed']}")
+
+    s.section("Payments accumulate rather than overwrite")
+    conn = db()
+    m.record_booking_payment(conn, bid, 300.00, reference="pi_deposit")
+    conn.commit()
+    bill = m.booking_bill(conn, bid)
+    s.check("a deposit is recorded", bill["paid"] == 300.0, detail=f"got {bill['paid']}")
+    s.check("the rest is still owed", bill["owed"] == 570.0, detail=f"got {bill['owed']}")
+    # A second payment must add to the first. Overwriting is how a deposit
+    # disappears the moment the balance is taken.
+    m.record_booking_payment(conn, bid, 570.00)
+    conn.commit()
+    bill = m.booking_bill(conn, bid)
+    status = conn.execute("SELECT payment_status FROM bookings WHERE id = ?",
+                          (bid,)).fetchone()["payment_status"]
+    conn.close()
+    s.check("paying the balance clears it", bill["owed"] == 0.0, detail=f"got {bill['owed']}")
+    s.check("total received is both payments", bill["paid"] == 870.0, detail=f"got {bill['paid']}")
+    s.check("and the booking reads as paid", status == "paid", detail=f"got {status}")
+
+    s.section("A refund reduces what was received, not what it cost")
+    conn = db()
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, reference_code, guest_name,
+           guest_email, amount, reason, method, created_at)
+           VALUES ('room', ?, ?, ?, ?, 120, 'transfer not needed', 'stripe', datetime('now'))""",
+        (bid, f"{TAG}1", f"{TAG} guest", f"{TAG.lower()}@example.invalid"))
+    conn.commit()
+    bill = m.booking_bill(conn, bid)
+    conn.close()
+    # The stay still cost what it cost. A bill that quietly lowers the total to
+    # hide a refund is one somebody has to reconcile by hand.
+    s.check("the total is unchanged", bill["total"] == 870.0, detail=f"got {bill['total']}")
+    s.check("the refund is shown", bill["refunded"] == 120.0, detail=f"got {bill['refunded']}")
+    s.check("received drops by the refund", bill["paid"] == 750.0, detail=f"got {bill['paid']}")
+    s.check("so it is owed again", bill["owed"] == 120.0, detail=f"got {bill['owed']}")
+
+    s.section("A cancelled extra stops being charged")
+    conn = db()
+    line = conn.execute(
+        "SELECT id FROM booking_extras WHERE booking_id = ? LIMIT 1", (bid,)).fetchone()
+    if line:
+        m.cancel_booking_extra(conn, line["id"])
+        conn.commit()
+        bill = m.booking_bill(conn, bid)
+        s.check("the total comes back down", bill["total"] == 750.0, detail=f"got {bill['total']}")
+        s.check("and the line is gone from the bill", len(bill["lines"]) == 1)
+    conn.close()
+
+    s.section("The guest can see it")
+    pub = m.app.test_client()
+    html = pub.get(f"/book/manage/tok{TAG}1").get_data(as_text=True)
+    s.check("the bill is on their booking page", "Your bill" in html)
+    s.check("with the total", "750.00" in html)
+
+    s.section("Overpaying shows as credit, not a negative balance")
+    conn = db()
+    m.record_booking_payment(conn, bid, 500.00)
+    conn.commit()
+    bill = m.booking_bill(conn, bid)
+    conn.close()
+    s.check("nothing is owed", bill["owed"] == 0.0, detail=f"got {bill['owed']}")
+    s.check("and the excess reads as credit", bill["overpaid"] > 0,
+            detail=f"got {bill['overpaid']}")
+
+    s.section("A guest can add to their own stay")
+    conn = db()
+    conn.execute("""INSERT INTO extras (name, price, active, sort_order, category,
+                    guest_bookable, lead_time_days, max_qty)
+                    VALUES (?, 45, 1, 1, 'room', 1, 0, 2)""", (f"{TAG} hamper",))
+    conn.execute("""INSERT INTO extras (name, price, active, sort_order, category,
+                    guest_bookable, lead_time_days)
+                    VALUES (?, 120, 1, 2, 'room', 1, 14)""", (f"{TAG} late transfer",))
+    conn.commit()
+    hamper = conn.execute("SELECT id FROM extras WHERE name = ?", (f"{TAG} hamper",)).fetchone()["id"]
+    transfer = conn.execute("SELECT id FROM extras WHERE name = ?", (f"{TAG} late transfer",)).fetchone()["id"]
+    # A stay three days away, so the 14-day transfer is out of reach.
+    soon = date.today() + timedelta(days=3)
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token, created_at)
+           SELECT room_id, ?, ?, ?, ?, 2, 'confirmed', ?, ?, datetime('now')
+           FROM bookings WHERE reference_code = ?""",
+        (f"{TAG} adder", f"{TAG.lower()}b@example.invalid", soon.isoformat(),
+         (soon + timedelta(days=2)).isoformat(), f"{TAG}2", f"tok{TAG}2", f"{TAG}1"))
+    conn.execute("DELETE FROM email_outbox")
+    conn.commit()
+    bid2 = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                        (f"{TAG}2",)).fetchone()["id"]
+    conn.close()
+
+    pub = m.app.test_client()
+    html = pub.get(f"/book/manage/tok{TAG}2").get_data(as_text=True)
+    s.check("something with no notice period is offered", f"{TAG} hamper" in html)
+    # Offering it and then refusing would be worse than not offering it.
+    s.check("something needing two weeks' notice is not offered on a stay in three days",
+            f"{TAG} late transfer" not in html)
+
+    r = pub.post(f"/book/manage/tok{TAG}2",
+                 data={"action": "add_extra", "extra_id": str(hamper), "quantity": "1"},
+                 follow_redirects=True)
+    conn = db()
+    bill2 = m.booking_bill(conn, bid2)
+    conn.close()
+    s.check("adding it lands on the bill", len(bill2["lines"]) == 2, r,
+            detail=f"{[l['label'] for l in bill2['lines']]}")
+    s.check("and is owed", bill2["owed"] == bill2["total"], detail=f"got {bill2['owed']}")
+
+    r = pub.post(f"/book/manage/tok{TAG}2",
+                 data={"action": "add_extra", "extra_id": str(hamper), "quantity": "9"},
+                 follow_redirects=True)
+    s.check("more than the maximum is refused",
+            any("only do 2" in f for f in flashes(r)), r, detail=f"{flashes(r)[:1]}")
+    r = pub.post(f"/book/manage/tok{TAG}2",
+                 data={"action": "add_extra", "extra_id": str(transfer), "quantity": "1"},
+                 follow_redirects=True)
+    s.check("and so is something there is no longer time for",
+            any("notice" in f for f in flashes(r)), r, detail=f"{flashes(r)[:1]}")
+
+    # The owner has to hear about it, and that notification was being lost:
+    # send_email writes to email_outbox on its own connection, which could not
+    # take a write lock while the request's transaction was still open.
+    conn = db()
+    told = conn.execute(
+        "SELECT COUNT(*) AS c FROM email_outbox WHERE subject LIKE '%added an extra%'"
+    ).fetchone()["c"]
+    conn.close()
+    s.check("the owner is notified, not silently lost to a locked database", told >= 1,
+            detail=f"{told} rows in the outbox")
+
+    s.section("A guest can stay longer")
+    conn = db()
+    later = date.today() + timedelta(days=800)
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token,
+           created_at, total_price, amount_paid, payment_status)
+           SELECT room_id, ?, ?, ?, ?, 2, 'confirmed', ?, ?, datetime('now'), 500, 500, 'paid'
+           FROM bookings WHERE reference_code = ?""",
+        (f"{TAG} stayer", f"{TAG.lower()}c@example.invalid", later.isoformat(),
+         (later + timedelta(days=2)).isoformat(), f"{TAG}3", f"tok{TAG}3", f"{TAG}1"))
+    # Somebody else two nights after they leave, so extending past that must fail.
+    conn.execute(
+        """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
+           departure_date, party_size, status, reference_code, manage_token, created_at)
+           SELECT room_id, ?, ?, ?, ?, 2, 'confirmed', ?, ?, datetime('now')
+           FROM bookings WHERE reference_code = ?""",
+        (f"{TAG} blocker", f"{TAG.lower()}d@example.invalid",
+         (later + timedelta(days=4)).isoformat(), (later + timedelta(days=6)).isoformat(),
+         f"{TAG}4", f"tok{TAG}4", f"{TAG}1"))
+    conn.commit()
+    bid3 = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                        (f"{TAG}3",)).fetchone()["id"]
+    conn.close()
+
+    pub = m.app.test_client()
+    r = pub.post(f"/book/manage/tok{TAG}3",
+                 data={"action": "add_nights", "nights": "6"}, follow_redirects=True)
+    s.check("extending into someone else's booking is refused",
+            any("can't extend" in f or "can&#39;t extend" in f for f in flashes(r)), r,
+            detail=f"{flashes(r)[:1]}")
+    conn = db()
+    unchanged = conn.execute("SELECT departure_date FROM bookings WHERE id = ?",
+                             (bid3,)).fetchone()["departure_date"]
+    conn.close()
+    s.check("and the stay is left alone", unchanged == (later + timedelta(days=2)).isoformat(),
+            detail=f"got {unchanged}")
+
+    r = pub.post(f"/book/manage/tok{TAG}3",
+                 data={"action": "add_nights", "nights": "1"}, follow_redirects=True)
+    s.check("one free night is added", any("more night" in f for f in flashes(r)), r,
+            detail=f"{flashes(r)[:1]}")
+    conn = db()
+    moved = conn.execute("SELECT departure_date FROM bookings WHERE id = ?",
+                         (bid3,)).fetchone()["departure_date"]
+    bill3 = m.booking_bill(conn, bid3)
+    conn.close()
+    s.check("departure moves out by a night",
+            moved == (later + timedelta(days=3)).isoformat(), detail=f"got {moved}")
+    # The point of doing this after the bill existed: a guest who had paid in
+    # full now owes the extra night, rather than the stay silently getting longer
+    # for the same money.
+    s.check("the extra night is priced", bill3["total"] == 750.0, detail=f"got {bill3['total']}")
+    s.check("and owed by a guest who had paid in full", bill3["owed"] == 250.0,
+            detail=f"got {bill3['owed']}")
+
+    _cleanup()
+    return s

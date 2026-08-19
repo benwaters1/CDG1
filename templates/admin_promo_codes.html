@@ -94,6 +94,13 @@
       </div>
       <span class="upload-hint">{{ c['redemption_count'] }} redemption{{ '' if c['redemption_count'] == 1 else 's' }}{% if c['max_redemptions'] %} / {{ c['max_redemptions'] }}{% endif %}</span>
     </div>
+    {# Guests are told only that a code "isn't recognized, or can't be used",
+       so that the public promo field can't be used to find out which codes
+       exist. The real reason lives here instead, or "my code doesn't work"
+       has no answer. #}
+    {% if status.get(c['code']) %}
+    <p class="upload-hint" style="color:#b3271e;">Guests can't use this right now — {{ status[c['code']] }}</p>
+    {% endif %}
     {% if c['description'] %}<p class="manual-body">{{ c['description'] }}</p>{% endif %}
     <p class="upload-hint">
       {% if c['discount_type'] == 'percent' %}{{ c['discount_value']|int if c['discount_value'] % 1 == 0 else c['discount_value'] }}% off{% if c['max_discount_amount'] %}, up to €{{ '%.2f'|format(c['max_discount_amount']) }}{% endif %}{% else %}€{{ '%.2f'|format(c['discount_value']) }} off{% endif %}

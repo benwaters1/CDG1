@@ -142,7 +142,8 @@ from calendar import monthrange
 
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, flash, send_from_directory, abort, jsonify
+    session, flash, send_from_directory, abort, jsonify,
+    has_request_context,
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -201,6 +202,13 @@ BOOKING_RATE_LIMIT_PER_HOUR = 5
 STALE_PENDING_BOOKING_HOURS = 48
 AUTOMATION_TICK_SECONDS = 300
 VEHICLE_TRANSFER_BUFFER_HOURS = 2
+# The château may sleep 15 guests, and that is a legal limit rather than a
+# comfort one — so it binds across everything in the house on the same night, in
+# any mix: room bookings and atelier registrations together. Held as a setting
+# because a legal number can change and nobody should need a deploy for that.
+HOUSE_SETTING_DEFAULTS = {
+    "house_guest_capacity": "15",
+}
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_daily_digest_enabled": "1",
@@ -217,6 +225,8 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_email_scan_lookback_days": "14",
     "automation_stale_shift_enabled": "1",
     "automation_stale_shift_hours": "14",
+    "automation_backup_email_enabled": "1",
+    "automation_backup_interval_hours": "24",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
@@ -521,6 +531,129 @@ VAULT_ENCRYPTION_KEY = os.environ.get("VAULT_ENCRYPTION_KEY", "")
 
 def stripe_enabled():
     return bool(STRIPE_SECRET_KEY)
+
+
+def terminal_reader_id(conn):
+    """The card reader this château sends payments to, if one is chosen."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'terminal_reader_id'").fetchone()
+    return (row["value"] or "").strip() if row else ""
+
+
+def terminal_ready(conn):
+    return bool(stripe_enabled() and terminal_reader_id(conn))
+
+
+def list_terminal_readers():
+    """Every reader registered to this Stripe account.
+
+    Returns (readers, error). Never raises: this is called to draw a settings
+    page, and Stripe being unreachable should show a message there rather than
+    take the page down.
+    """
+    if not stripe_enabled():
+        return [], "Stripe isn't connected yet."
+    try:
+        result = stripe.terminal.Reader.list(limit=50)
+    except Exception as e:
+        return [], f"Stripe wouldn't list the readers: {e}"
+    readers = []
+    for r in sval(result, "data") or []:
+        readers.append({
+            "id": sval(r, "id"),
+            "label": sval(r, "label") or sval(r, "id"),
+            "device_type": sval(r, "device_type"),
+            "status": sval(r, "status"),
+            "serial_number": sval(r, "serial_number"),
+            # Only smart readers can be driven from a server. A Bluetooth
+            # reader has no internet connection of its own, so Stripe has
+            # nothing to push a payment to.
+            "server_drivable": (sval(r, "device_type") or "").startswith(
+                ("stripe_s700", "stripe_s710", "bbpos_wisepos_e", "verifone")),
+        })
+    return readers, None
+
+
+def terminal_collect_payment(conn, order_id, total, description, reader_id):
+    """Put an amount on the reader and ask the guest to tap.
+
+    Two steps, both on Stripe's side: create a card_present PaymentIntent, then
+    hand it to the reader. Returns (payment_intent_id, error).
+
+    The intent id is stored on the tab by the caller, so pressing the button
+    twice or reloading mid-payment resumes the same charge instead of asking
+    the guest to pay again.
+    """
+    try:
+        intent = stripe.PaymentIntent.create(
+            amount=int(round(total * 100)),
+            currency="eur",
+            payment_method_types=["card_present"],
+            capture_method="automatic",
+            description=description,
+            metadata={"pos_order_id": str(order_id)},
+        )
+    except Exception as e:
+        return None, f"Couldn't start the payment: {e}"
+
+    intent_id = sval(intent, "id")
+    try:
+        stripe.terminal.Reader.process_payment_intent(
+            reader_id, payment_intent=intent_id)
+    except Exception as e:
+        # Leave the intent alone rather than cancelling it — if the reader was
+        # simply busy, the next press can hand the same intent over again.
+        return intent_id, f"The reader wouldn't take it: {e}"
+    return intent_id, None
+
+
+def terminal_payment_state(intent_id):
+    """Where a card payment has got to. Returns (state, message).
+
+    state is one of: succeeded, waiting, failed, unknown. Deliberately coarse —
+    the till only needs to know whether to close the tab, keep waiting, or show
+    a problem. The intent itself comes back too, so the caller can record what
+    Stripe actually captured rather than recomputing it.
+    """
+    if not intent_id:
+        return "unknown", "No payment in progress.", None
+    try:
+        intent = stripe.PaymentIntent.retrieve(intent_id)
+    except Exception as e:
+        return "unknown", f"Couldn't check the payment: {e}", None
+    status = sval(intent, "status") or ""
+    if status == "succeeded":
+        return "succeeded", "Paid.", intent
+    if status in ("requires_payment_method",):
+        # This is what a decline or a cancelled tap looks like coming back.
+        last_error = sval(intent, "last_payment_error") or {}
+        reason = sval(last_error, "message") or "The card was declined or the tap was cancelled."
+        return "failed", reason, intent
+    if status == "canceled":
+        return "failed", "The payment was cancelled.", intent
+    if status in ("requires_confirmation", "requires_action", "processing", "requires_capture"):
+        return "waiting", "Waiting for the guest to tap.", intent
+    return "waiting", f"Payment is {status}.", intent
+
+
+def terminal_cancel(reader_id, intent_id):
+    """Stop asking for the card. Clears the reader, then the intent.
+
+    Both are attempted regardless of the other failing: a reader left showing
+    an amount nobody is paying is worse than an untidy error.
+    """
+    problems = []
+    if reader_id:
+        try:
+            stripe.terminal.Reader.cancel_action(reader_id)
+        except Exception as e:
+            problems.append(str(e))
+    if intent_id:
+        try:
+            stripe.PaymentIntent.cancel(intent_id)
+        except Exception as e:
+            problems.append(str(e))
+    return "; ".join(problems)
 
 
 def sval(obj, key, default=None):
@@ -993,6 +1126,23 @@ def init_db():
                 CHECK(method IN ('stripe','bank_transfer','cash','other')),
             stripe_refund_id TEXT,
             refunded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Individual payments received against a stay. bookings.amount_paid is
+        -- the running total; this is what made it up. A stay can be paid more
+        -- than once -- a deposit, then a balance, then a night added later --
+        -- so a single stripe_session_id column on bookings cannot record them.
+        -- The UNIQUE session id is what makes recording idempotent: Stripe
+        -- retries webhooks and guests reload the success page, and crediting
+        -- the same payment twice would send somebody home believing they had
+        -- paid when they had not.
+        CREATE TABLE IF NOT EXISTS booking_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+            amount REAL NOT NULL,
+            method TEXT NOT NULL DEFAULT 'stripe',
+            stripe_session_id TEXT UNIQUE,
             created_at TEXT NOT NULL
         );
 
@@ -1700,6 +1850,59 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- The public gallery, in the sections the site's menu already links to.
+        --
+        -- The menu links /gallery#inside, #grounds, #restoration, #life and
+        -- #views. Those anchors did not exist and the page rendered a fixed
+        -- empty list, so all five went to the same blank page — which is why
+        -- the sections are a table with a `slug` rather than free-form: the
+        -- slug IS the anchor the menu is already pointing at, so a section
+        -- cannot quietly stop matching its link.
+        --
+        -- Photos reuse ROOM_PHOTO_DIR and the existing room_photo route. A
+        -- second upload directory would need its own serving route, its own
+        -- backup entry and its own permissions, to hold the same kind of file.
+        CREATE TABLE IF NOT EXISTS gallery_sections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            blurb TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS gallery_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_id INTEGER NOT NULL REFERENCES gallery_sections(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            caption TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        -- Newsletter subscribers, from the box in the public site's menu panel.
+        --
+        -- Double opt-in: a row exists from the moment somebody types their
+        -- address, but `confirmed_at` stays NULL until they click the link in
+        -- the email. Only confirmed rows are a mailing list. Anyone can type
+        -- somebody else's address into a public form, so without this the
+        -- château would be mailing people who never asked — which is both
+        -- rude and, under GDPR, not consent.
+        --
+        -- `token` is the credential in the confirmation link, exactly as
+        -- campaign_sends.unsubscribe_token is for unsubscribing: random and
+        -- per-subscriber, so the address never travels in the URL and no
+        -- token can be walked to reach anybody else.
+        CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            token TEXT NOT NULL UNIQUE,
+            source TEXT NOT NULL DEFAULT 'site',
+            confirmed_at TEXT,
+            unsubscribed_at TEXT,
+            created_at TEXT NOT NULL
+        );
+
         -- Mail that could not be sent, kept so it can go out later.
         --
         -- Without this every undelivered message vanished into a console
@@ -1724,6 +1927,76 @@ def init_db():
             last_error TEXT,
             created_at TEXT NOT NULL,
             sent_at TEXT
+        );
+
+        -- Who can see which parts of the business.
+        --
+        -- Before this there were two levels: the owner saw all 302 admin pages
+        -- and an employee saw almost none. Fine for two people, and wrong the
+        -- moment somebody runs the restaurant but has no business reading
+        -- payroll, or keeps the books but does not need the guest register.
+        --
+        -- A preset is a named bundle of areas rather than a per-page checklist.
+        -- Three hundred tick-boxes is not something anyone will maintain, and a
+        -- half-ticked list is how a person ends up able to refund a booking but
+        -- unable to see it.
+        CREATE TABLE IF NOT EXISTS access_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            -- comma-separated area keys from NAV_AREAS, or '*' for everything
+            areas TEXT NOT NULL DEFAULT '',
+            is_full_access INTEGER NOT NULL DEFAULT 0,
+            built_in INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        -- Staff messaging. Announcements were the only way to say anything to
+        -- the team, and they go one way only: the owner posts, nobody replies.
+        -- This is the missing half.
+        --
+        -- Two kinds of channel. 'area' channels are open to every member of
+        -- staff and are fixed (kitchen, housekeeping and so on) so a message
+        -- always has an obvious home. 'dm' channels are private to their
+        -- members. One table rather than two, because the read-state and unread
+        -- arithmetic are identical for both and duplicating that is how the two
+        -- drift apart.
+        CREATE TABLE IF NOT EXISTS chat_channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'area' CHECK(kind IN ('area','dm')),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        -- Only populated for DMs. An area channel deliberately has no member
+        -- rows: everyone is in it, and materialising that would mean a row per
+        -- new employee, or silently leaving them out of the kitchen channel.
+        CREATE TABLE IF NOT EXISTS chat_members (
+            channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            PRIMARY KEY (channel_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- How far each person has read in each channel. The message id rather
+        -- than a timestamp, so unread counts cannot be thrown off by clock skew
+        -- and a message posted while someone was reading is not marked as seen.
+        CREATE TABLE IF NOT EXISTS chat_reads (
+            channel_id INTEGER NOT NULL REFERENCES chat_channels(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            last_read_message_id INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (channel_id, user_id)
         );
 
         CREATE TABLE IF NOT EXISTS workshop_waitlist (
@@ -2101,7 +2374,16 @@ def init_db():
         ("expenses_restaurant_related", "ALTER TABLE expenses ADD COLUMN restaurant_related INTEGER NOT NULL DEFAULT 0"),
         ("workshops_deposit_percent", "ALTER TABLE workshops ADD COLUMN deposit_percent INTEGER NOT NULL DEFAULT 30"),
         ("workshops_inclusions", "ALTER TABLE workshops ADD COLUMN inclusions TEXT"),
+        # The published price assumes a shared room, so a guest travelling alone
+        # who wants their own pays a supplement. Per person, because two people
+        # who both want single rooms take two rooms out of a house that has a
+        # fixed number of them.
+        ("workshops_single_supplement", "ALTER TABLE workshops ADD COLUMN single_supplement REAL"),
         ("workshop_bookings_occupancy_type", "ALTER TABLE workshop_bookings ADD COLUMN occupancy_type TEXT NOT NULL DEFAULT 'double'"),
+        # Frozen on the booking, like every other figure on the row: raising the
+        # workshop's supplement later must not silently re-price a registration
+        # somebody has already paid a deposit against.
+        ("workshop_bookings_single_supplement", "ALTER TABLE workshop_bookings ADD COLUMN single_supplement REAL"),
         ("workshop_bookings_requested_roommate", "ALTER TABLE workshop_bookings ADD COLUMN requested_roommate TEXT"),
         ("workshop_bookings_dietary_notes", "ALTER TABLE workshop_bookings ADD COLUMN dietary_notes TEXT"),
         ("workshop_bookings_medical_notes", "ALTER TABLE workshop_bookings ADD COLUMN medical_notes TEXT"),
@@ -2477,6 +2759,29 @@ def init_db():
         # text on purpose — "EE-fa oh-SULL-i-van" is more use to a person than
         # any phonetic alphabet.
         ("guest_name_pronunciation", "ALTER TABLE guests ADD COLUMN name_pronunciation TEXT"),
+        # Which access preset a person has. NULL means fall back to their role,
+        # so every existing account keeps exactly the access it had until
+        # somebody deliberately changes it — a permissions migration that
+        # silently widens or narrows access is the one you cannot undo quietly.
+        ("users_access_preset", "ALTER TABLE users ADD COLUMN access_preset TEXT"),
+        # The card payment in flight on a tab. Stored so that pressing "Take
+        # card" twice, or reloading the page mid-payment, reuses the same
+        # PaymentIntent instead of asking the guest to tap for a second charge.
+        ("pos_orders_payment_intent", "ALTER TABLE pos_orders ADD COLUMN payment_intent_id TEXT"),
+        # A short code for signing in on a shared device at the château. Hashed
+        # like any password: a PIN readable from the database is a PIN that lets
+        # anyone clock in as anyone, and these records feed payroll.
+        ("users_quick_pin", "ALTER TABLE users ADD COLUMN quick_pin_hash TEXT"),
+        # One link that shows a guest everything they have booked. Per person and
+        # long-lived, like the per-booking manage tokens it sits alongside, so it
+        # can go in an email and still work when they come back next year.
+        ("guests_portal_token", "ALTER TABLE guests ADD COLUMN portal_token TEXT"),
+        # How much has actually been received on a stay. payment_status only ever
+        # said unpaid/paid/refunded, which cannot express "paid the deposit" or
+        # "added a night and owes the difference" — so a room booking had no
+        # balance at all, while a workshop did. Everything a guest might add to
+        # their stay needs somewhere to put what it now costs them.
+        ("bookings_amount_paid", "ALTER TABLE bookings ADD COLUMN amount_paid REAL NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -2879,6 +3184,8 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_guest_sessions_token ON guest_sessions(token)",
         "CREATE INDEX IF NOT EXISTS idx_guest_sessions_email ON guest_sessions(email, created_at)",
         "CREATE INDEX IF NOT EXISTS idx_expenses_pennylane ON expenses(pennylane_invoice_id)",
+        "CREATE INDEX IF NOT EXISTS idx_gallery_photos_section ON gallery_photos(section_id, sort_order)",
+        "CREATE INDEX IF NOT EXISTS idx_newsletter_token ON newsletter_subscribers(token)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_occurred ON incidents(occurred_at)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)",
         "CREATE INDEX IF NOT EXISTS idx_incidents_affected ON incidents(affected_user_id)",
@@ -2924,9 +3231,126 @@ def init_db():
             )
     conn.commit()
 
-    for key, default_value in AUTOMATION_SETTING_DEFAULTS.items():
-        if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
-            conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, default_value))
+    for slug, name, description, areas, full, order in DEFAULT_ACCESS_PRESETS:
+        if not conn.execute("SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
+            conn.execute(
+                """INSERT INTO access_presets (slug, name, description, areas,
+                   is_full_access, built_in, sort_order, created_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                (slug, name, description, areas, 1 if full else 0, order,
+                 datetime.now(timezone.utc).isoformat()),
+            )
+    conn.commit()
+
+    # The rooms, but only into a database that has none. Deliberately not
+    # matched per-name like the email templates: a room deleted on purpose must
+    # stay deleted, and a price edited in the admin must not be reset by the next
+    # deploy. A first-run bootstrap, nothing more.
+    if not conn.execute("SELECT 1 FROM rooms LIMIT 1").fetchone():
+        room_cols = {c["name"] for c in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+        for room in DEFAULT_ROOMS:
+            fields = {k: v for k, v in room.items() if k in room_cols}
+            fields["active"] = 1
+            fields["export_token"] = secrets.token_urlsafe(20)
+            conn.execute(
+                f"INSERT INTO rooms ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+        extra_cols = {c["name"] for c in conn.execute("PRAGMA table_info(extras)").fetchall()}
+        for extra in DEFAULT_EXTRAS:
+            if conn.execute("SELECT 1 FROM extras WHERE name = ?",
+                            (extra["name"],)).fetchone():
+                continue
+            fields = {k: v for k, v in extra.items() if k in extra_cols}
+            fields["active"] = 1
+            conn.execute(
+                f"INSERT INTO extras ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+        conn.commit()
+        print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+
+    # The ateliers, with their real prices and dates. Two passes:
+    #
+    #  - a fresh database gets all five created
+    #  - a database still holding the placeholder titles from an earlier deploy
+    #    has them replaced, since nobody has edited those and their names and
+    #    prices were both wrong
+    #
+    # Anything else is left alone. A workshop somebody has edited, renamed or
+    # deleted must not be touched by a deploy.
+    ws_cols = {c["name"] for c in conn.execute("PRAGMA table_info(workshops)").fetchall()}
+    placeholders = conn.execute(
+        f"SELECT id FROM workshops WHERE title IN "
+        f"({','.join('?' * len(PLACEHOLDER_WORKSHOP_TITLES))}) AND COALESCE(price_per_person, 0) = 0",
+        PLACEHOLDER_WORKSHOP_TITLES).fetchall()
+    if placeholders:
+        ids = [r["id"] for r in placeholders]
+        marks = ",".join("?" * len(ids))
+        conn.execute(f"DELETE FROM workshop_sessions WHERE workshop_id IN ({marks})", ids)
+        conn.execute(f"DELETE FROM workshops WHERE id IN ({marks})", ids)
+        conn.commit()
+
+    real_workshops = conn.execute(
+        "SELECT COUNT(*) AS c FROM workshops WHERE title NOT LIKE '%Test%'").fetchone()["c"]
+    if not real_workshops:
+        for workshop in DEFAULT_WORKSHOPS:
+            fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
+            fields.update({"active": 1, "default_capacity": 10,
+                           "created_at": datetime.now(timezone.utc).isoformat()})
+            if "deposit_percent" in ws_cols:
+                fields["deposit_percent"] = 30
+            fields = {k: v for k, v in fields.items() if k in ws_cols}
+            conn.execute(
+                f"INSERT INTO workshops ({', '.join(fields)}) "
+                f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
+            new_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            for start, end in workshop.get("sessions", []):
+                conn.execute(
+                    """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
+                       capacity, notes, created_at) VALUES (?, ?, ?, 10, NULL, ?)""",
+                    (new_id, start, end, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        print(f"Seeded {len(DEFAULT_WORKSHOPS)} ateliers with their published "
+              f"prices and dates.")
+
+    # The five were seeded by an earlier deploy without this note, so the seed
+    # above will not run again to add it. Fill it in where it is still blank,
+    # and only there: if somebody has written their own inclusions, theirs win.
+    if "inclusions" in ws_cols:
+        for workshop in DEFAULT_WORKSHOPS:
+            if not workshop.get("inclusions"):
+                continue
+            conn.execute(
+                """UPDATE workshops SET inclusions = ?
+                   WHERE title = ? AND COALESCE(TRIM(inclusions), '') = ''""",
+                (workshop["inclusions"], workshop["title"]))
+        conn.commit()
+
+    for slug, name, order in DEFAULT_CHAT_CHANNELS:
+        if not conn.execute("SELECT 1 FROM chat_channels WHERE slug = ?", (slug,)).fetchone():
+            conn.execute(
+                """INSERT INTO chat_channels (slug, name, kind, sort_order, created_at)
+                   VALUES (?, ?, 'area', ?, ?)""",
+                (slug, name, order, datetime.now(timezone.utc).isoformat()),
+            )
+    conn.commit()
+
+    # The five gallery sections the public menu already links to by anchor.
+    # Seeded by slug so the anchors resolve on a fresh install and on the live
+    # volume alike; a section the owner renames keeps its slug, and one they
+    # delete stays deleted.
+    for slug, title, blurb, order in DEFAULT_GALLERY_SECTIONS:
+        if not conn.execute("SELECT 1 FROM gallery_sections WHERE slug = ?", (slug,)).fetchone():
+            conn.execute(
+                """INSERT INTO gallery_sections (slug, title, blurb, sort_order, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (slug, title, blurb, order, datetime.now(timezone.utc).isoformat()),
+            )
+    conn.commit()
+
+    for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS):
+        for key, default_value in defaults.items():
+            if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
+                conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, default_value))
     conn.commit()
 
     if not conn.execute("SELECT 1 FROM restaurant_settings WHERE id = 1").fetchone():
@@ -3000,13 +3424,209 @@ def login_required(view):
     return wrapped
 
 
+# Which part of the business each admin page belongs to.
+#
+# Generated from the navigation groups, and used for two things: drawing the
+# menu, and deciding what a member of staff with partial access may open.
+# One map rather than two, because a page visible in the menu but forbidden
+# when clicked — or reachable but hidden — is the worst of both.
+#
+# Anything NOT listed here is owner-only by default. New pages are therefore
+# private until somebody decides otherwise, which is the safe direction.
+NAV_AREAS = {
+    "guests": [
+        "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
+        "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
+        "delete_breakfast_item", "delete_ical_source", "delete_room_block",
+        "delete_vehicle_transfer", "edit_booking", "edit_breakfast_item", "edit_guest",
+        "edit_room", "export_feedback_csv", "export_waitlist_csv", "guest_booking_history",
+        "guests", "new_breakfast_item", "new_guest", "new_ical_source", "new_room",
+        "new_room_block", "new_vehicle_transfer", "sync_ical_source_now",
+        "toggle_breakfast_item", "toggle_breakfast_stock", "update_waitlist_status",
+        "vehicle_transfers_page"
+    ],
+    "team": [
+        "absence_return_to_work", "admin_compliance", "admin_hr", "admin_hr_notes",
+        "admin_incidents", "ask_hr", "candidates", "delete_candidate",
+        "delete_certification", "delete_check_in_note", "delete_employee",
+        "delete_equipment_item", "delete_offboarding_item", "delete_onboarding_item",
+        "delete_role_requirement", "directory", "edit_candidate", "edit_employee",
+        "edit_own_contact_info", "equipment_overview", "export_candidates_csv",
+        "export_equipment_csv", "export_pay_history_csv", "export_payroll_csv",
+        "export_team_csv", "handle_hr_note", "new_absence", "new_candidate",
+        "new_certification", "new_check_in_note", "new_employee", "new_equipment_item",
+        "new_incident", "new_offboarding_item", "new_onboarding_item",
+        "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
+        "share_performance_review", "toggle_employee_status", "toggle_equipment_returned",
+        "toggle_offboarding_item", "toggle_onboarding_item", "update_candidate_status",
+        "update_incident"
+    ],
+    "rota": [
+        "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
+        "admin_timesheets", "complete_task", "copy_previous_week_shifts", "decide_leave",
+        "decide_shift_swap", "delete_shift", "delete_task", "dismiss_timesheet_correction",
+        "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
+        "export_timesheets_csv", "export_timesheets_summary_csv", "flag_timesheet_entry",
+        "my_shifts", "new_shift", "new_task", "repair_time_entry", "reschedule_task",
+        "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task"
+    ],
+    "estate": [
+        "admin_access", "admin_assets", "asset_photo", "checkin_vehicle", "checkout_vehicle",
+        "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
+        "delete_room_issue", "delete_shopping_item", "delete_vehicle",
+        "delete_vehicle_maintenance", "edit_contact", "edit_manual_section", "edit_vehicle",
+        "export_assets_csv", "export_room_issues_csv", "export_vehicles_csv",
+        "issue_access_item", "log_vehicle_service", "management_vehicles", "manual",
+        "new_access_item", "new_asset", "new_contact", "new_manual_section", "new_room_issue",
+        "new_shopping_item", "new_vehicle", "new_vehicle_maintenance", "reopen_room_issue",
+        "resolve_room_issue", "resolve_vehicle_maintenance", "return_access_item",
+        "room_issues", "shopping_list", "toggle_shopping_item", "toggle_vehicle_cleanliness",
+        "toggle_vehicle_fuel", "update_asset"
+    ],
+    "comms": [
+        "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
+        "admin_inbox_flags_status", "announcements", "delete_announcement",
+        "delete_campaign_template", "discard_email_outbox", "edit_announcement",
+        "edit_campaign_template", "edit_email_template", "management_email_templates",
+        "management_social", "new_announcement", "new_campaign_template",
+        "restore_email_template", "send_campaign_template", "send_email_outbox"
+    ],
+    "financial": [
+        "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
+        "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
+        "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
+        "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
+        "export_refunds_csv", "export_report_csv", "management_bank_details",
+        "management_financials", "management_recurring_costs", "new_bank_details",
+        "new_recurring_cost", "regenerate_supplier_link", "toggle_recurring_cost"
+    ],
+    "restaurant": [
+        "admin_terminal", "admin_extras", "admin_restaurant", "admin_restaurant_settings",
+        "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
+        "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
+        "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
+        "update_restaurant_waitlist_status"
+    ],
+    "workshops": [
+        "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
+        "admin_workshops", "cancel_workshop_registration_admin",
+        "confirm_workshop_registration", "decline_workshop_registration", "delete_workshop",
+        "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
+        "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
+        "new_workshop_session", "toggle_workshop_feedback_featured",
+        "update_workshop_waitlist_status"
+    ],
+    "till": [
+        "pos_add_item", "pos_home", "pos_open_tab", "pos_order", "pos_pay_link",
+        "pos_settle_tab", "pos_void_item"
+    ],
+    "events": [
+        "admin_events", "export_events_csv", "update_event_inquiry"
+    ],
+    "payroll": [
+        "admin_payroll", "export_payroll_csv"
+    ],
+    "management": [
+        "admin_automation", "admin_deposit_rules", "admin_outlook_addin", "admin_promo_codes",
+        "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
+        "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
+        "download_company_document", "edit_company_document", "edit_insurance_policy",
+        "edit_vault_entry", "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
+        "export_vendors_csv", "management", "management_company_info", "management_documents",
+        "management_insurance", "management_vault", "new_insurance_policy", "new_vault_entry",
+        "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
+        "update_automation_settings", "upload_company_document", "vendors",
+        "view_company_document"
+    ],
+}
+
+AREA_TITLES = {
+    "guests": "Guests",
+    "team": "Team",
+    "rota": "Rotas & Tasks",
+    "estate": "Estate",
+    "comms": "Comms",
+    "financial": "Financial",
+    "restaurant": "Restaurant",
+    "workshops": "Workshops",
+    "till": "Till",
+    "events": "Events",
+    "payroll": "Payroll",
+    "management": "Management",
+}
+
+# Named access levels. (slug, name, description, areas, is_full_access, order)
+#
+# The three named ones are seeded because the owner asked for them by name, but
+# their scopes are a GUESS — nobody told me what Ben, Jasmine and Karina
+# actually do. Each says so in its description, and all of them are editable, so
+# the wrong guess costs one visit to the access page rather than a migration.
+
+
+ENDPOINT_AREA = {ep: area for area, eps in NAV_AREAS.items() for ep in eps}
+
+
+def user_access(user):
+    """The set of areas this person may reach, or {"*"} for everything.
+
+    Deliberately conservative in every unclear case:
+
+    - no preset set        -> role decides, exactly as before this existed, so
+                              no existing account silently gained or lost access
+    - preset missing       -> treat as no access rather than as full access
+    - endpoint unmapped    -> owner-only (handled by the caller)
+
+    Getting this backwards is the one bug here that matters: a default-allow
+    would hand payroll to whoever asked first.
+    """
+    if not user:
+        return set()
+    preset_slug = None
+    try:
+        preset_slug = user["access_preset"]
+    except (KeyError, IndexError):
+        preset_slug = None          # pre-migration row
+
+    if not preset_slug:
+        return {"*"} if user["role"] == "owner" else set()
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT areas, is_full_access FROM access_presets WHERE slug = ?",
+            (preset_slug,)).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        # A preset that has been deleted must not become a skeleton key.
+        return {"*"} if user["role"] == "owner" else set()
+    if row["is_full_access"] or (row["areas"] or "").strip() == "*":
+        return {"*"}
+    return {a.strip() for a in (row["areas"] or "").split(",") if a.strip()}
+
+
+def can_reach(user, endpoint):
+    """Whether this person may open this endpoint."""
+    areas = user_access(user)
+    if "*" in areas:
+        return True
+    area = ENDPOINT_AREA.get(endpoint)
+    # Unmapped pages stay owner-only. New admin pages are therefore private
+    # until somebody puts them in an area, which is the safe direction to fail.
+    if area is None:
+        return False
+    return area in areas
+
+
 def owner_required(view):
+    """Admin pages. Full owners pass; anyone with a preset passes only for the
+    areas that preset grants; everybody else is refused, as before."""
     @wraps(view)
     def wrapped(*args, **kwargs):
         user = current_user()
         if not user:
             return redirect(url_for("login"))
-        if user["role"] != "owner":
+        if not can_reach(user, request.endpoint):
             abort(403)
         return view(*args, **kwargs)
     return wrapped
@@ -4610,6 +5230,280 @@ def guests_in_residence(conn, today):
     return [s for s in stays_with_status(conn, today) if s["stay_status"] == "current"]
 
 
+# The channels every château has, seeded so a message always has an obvious
+# home. Fixed rather than user-created on purpose: ad-hoc channels in a team of
+# a dozen produce five near-duplicates and then nobody knows where to post.
+# The château's rooms. Seeded only when the rooms table is completely empty,
+# so this bootstraps a new installation and never resurrects a room somebody
+# has deliberately deleted, nor overwrites edits made in the admin.
+DEFAULT_ROOMS = [
+    {
+        "name": "King Room with Mountain View",
+        "price_per_night": 400.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 0,
+        "max_adults": 2,
+        "max_children": 0,
+        "description": "A serene room dressed in a king bed, where windows open onto sweeping mountain views.",
+    },
+    {
+        "name": "Family Suite with Mountain View",
+        "price_per_night": 675.0,
+        "max_occupancy": 5,
+        "min_nights": 1,
+        "sort_order": 1,
+        "max_children": 0,
+        "description": "A gracious 140 sq m suite spread across two bedrooms, pairing a queen bed for the adults with double beds for up to three children.",
+    },
+    {
+        "name": "Double with Shared Bathroom",
+        "price_per_night": 220.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 2,
+        "max_children": 0,
+        "description": "An intimate double room, quietly charming in its simplicity, with its bathroom shared with one neighbouring room.",
+    },
+    {
+        "name": "Twin/Double with Shared Bathroom",
+        "price_per_night": 240.0,
+        "max_occupancy": 3,
+        "min_nights": 1,
+        "sort_order": 3,
+        "max_children": 0,
+        "description": "A graceful room with a twin or double bedding arrangement, bathroom shared with one neighbouring room.",
+    },
+    {
+        "name": "Suite with Mountain View",
+        "price_per_night": 450.0,
+        "max_occupancy": 2,
+        "min_nights": 1,
+        "sort_order": 4,
+        "max_children": 0,
+        "description": "A generous 70 sq m suite with sweeping mountain views. Sit in comfort by the fireplace.",
+    },
+]
+
+# The public menu links /gallery#inside, #grounds, #restoration, #life and
+# #views. These slugs ARE those anchors — the menu was shipped pointing at them
+# before anything answered, so the names are fixed by the markup, not chosen
+# here. Titles and blurbs are editable in the admin; slugs are not.
+DEFAULT_GALLERY_SECTIONS = [
+    ("inside", "Inside the Château",
+     "Bare plaster and finished salons, often in the same room.", 0),
+    ("grounds", "The Château & Its Grounds",
+     "The park, the terraces and the village beyond the gates.", 1),
+    ("restoration", "The Restoration Story",
+     "The work itself: what was found, and what it took to keep it.", 2),
+    ("life", "Life at the Château",
+     "Long tables, market mornings and the ordinary days between.", 3),
+    ("views", "The Views",
+     "The Pyrénées from the windows, in every season.", 4),
+]
+
+DEFAULT_EXTRAS = [
+    {"name": "Airport Transfer (Toulouse, up to 3 guests)", "price": 350.0, "category": "other", "sort_order": 1, "guest_bookable": 1},
+]
+
+# The ateliers, taken from chateaugudanes.com. Prices and dates are the ones
+# published there; the names are the real product names rather than the
+# by-duration shorthand.
+#
+# Confirmed by the owner: these are per person, sharing a room — which is what
+# price_per_person means here, so a party of two is charged twice the figure.
+# Recorded in `inclusions` as well, because a solo traveller reading "per person"
+# needs to know a shared room is what the price assumes.
+DEFAULT_WORKSHOPS = [
+    {"title": "Autumn Atelier 2026", "price_per_person": 2600.0, "sort_order": 0,
+     "inclusions": "Per person, sharing a room.",
+     "sessions": [("2026-10-23", "2026-10-27")],
+     "description": "Four nights as the valley turns, the season the restoration "
+                    "is at its most visible."},
+    {"title": "Noël Atelier 2026", "price_per_person": 3200.0, "sort_order": 1,
+     "inclusions": "Per person, sharing a room.",
+     "sessions": [("2026-12-05", "2026-12-09")],
+     "description": "Four nights at the château in December — shorter days, "
+                    "longer evenings around the table."},
+    {"title": "Cooking in the Cuisine 2027", "price_per_person": 3800.0, "sort_order": 2,
+     "inclusions": "Per person, sharing a room.",
+     "sessions": [("2027-06-25", "2027-06-30")],
+     "description": "Five nights in the château kitchen, cooking what the valley "
+                    "and the markets give us."},
+    {"title": "Antique & French Finds 2027", "price_per_person": 2800.0, "sort_order": 3,
+     "inclusions": "Per person, sharing a room.",
+     "sessions": [("2027-07-03", "2027-07-06")],
+     "description": "Three nights among the brocantes and antique dealers of the "
+                    "Ariège and beyond. A second date follows in late July."},
+    {"title": "Summer Starry Nights 2027", "price_per_person": 4800.0, "sort_order": 4,
+     "inclusions": "Per person, sharing a room.",
+     "sessions": [("2027-07-10", "2027-07-17")],
+     "description": "A full week at the château in high summer, under the "
+                    "clearest skies of the year."},
+]
+
+# The placeholder titles this file used before the real ones were known. Rows
+# with these exact names and no price were created by an earlier deploy and
+# nobody has edited them, so they are safe to replace.
+PLACEHOLDER_WORKSHOP_TITLES = [
+    "Three Nights at Gudanes", "Five Nights at Gudanes", "Seven Nights at Gudanes",
+    "Autumn Atelier", "Winter Atelier",
+]
+
+
+DEFAULT_ACCESS_PRESETS = [
+    ("owner", "Owner", "Everything, including settings, payroll and the vault.",
+     "*", True, 0),
+    ("manager", "Manager",
+     "Runs the place day to day. Everything except settings, the vault and the audit log.",
+     "guests,team,rota,estate,comms,financial,payroll,restaurant,workshops,till,events", False, 1),
+    ("employee", "Employee",
+     "Today, chat, their own shifts, timesheet, leave and expenses. No admin pages.",
+     "", False, 9),
+    # --- Named, and guessed. Edit to match the job. ---
+    ("ben", "Ben",
+     "STARTING POINT — guessed, please edit. Operations and money, not settings.",
+     "guests,team,rota,estate,comms,financial,payroll,restaurant,workshops,till,events", False, 2),
+    ("jasmine", "Jasmine",
+     "STARTING POINT — guessed, please edit. Guest-facing: bookings, restaurant, events, guest email.",
+     "guests,restaurant,events,comms,till", False, 3),
+    ("karina", "Karina",
+     "STARTING POINT — guessed, please edit. The team and the house: staff, rotas, estate.",
+     "team,rota,estate", False, 4),
+]
+
+
+DEFAULT_CHAT_CHANNELS = [
+    ("everyone", "Everyone", 0),
+    ("kitchen", "Kitchen", 1),
+    ("housekeeping", "Housekeeping", 2),
+    ("front-of-house", "Front of house", 3),
+    ("maintenance", "Maintenance", 4),
+    ("grounds", "Garden & grounds", 5),
+]
+
+
+def dm_channel_for(conn, user_a, user_b):
+    """The private channel between two people, created on first use.
+
+    Keyed on the sorted pair so opening it from either side finds the same
+    channel — without that, two people messaging each other simultaneously end
+    up with two separate threads and each sees half the conversation.
+    """
+    low, high = sorted((int(user_a), int(user_b)))
+    slug = f"dm-{low}-{high}"
+    row = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    if row:
+        return row
+    names = {r["id"]: r["name"] for r in conn.execute(
+        "SELECT id, name FROM users WHERE id IN (?, ?)", (low, high)).fetchall()}
+    conn.execute(
+        """INSERT INTO chat_channels (slug, name, kind, sort_order, created_at)
+           VALUES (?, ?, 'dm', 0, ?)""",
+        (slug, " & ".join(names.get(i, "?") for i in (low, high)),
+         datetime.now(timezone.utc).isoformat()),
+    )
+    channel = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    conn.executemany(
+        "INSERT OR IGNORE INTO chat_members (channel_id, user_id) VALUES (?, ?)",
+        [(channel["id"], low), (channel["id"], high)])
+    conn.commit()
+    return channel
+
+
+def can_read_channel(conn, channel, user):
+    """Area channels are open to all staff; a DM is only for its members."""
+    if channel["kind"] == "area":
+        return True
+    return conn.execute(
+        "SELECT 1 FROM chat_members WHERE channel_id = ? AND user_id = ?",
+        (channel["id"], user["id"]),
+    ).fetchone() is not None
+
+
+def chat_channel_list(conn, user):
+    """Every channel this person can see, newest activity first, with unread
+    counts. One query per kind rather than per channel, so the sidebar does not
+    get slower as the history grows."""
+    areas = conn.execute(
+        "SELECT * FROM chat_channels WHERE kind = 'area' ORDER BY sort_order, name").fetchall()
+    dms = conn.execute(
+        """SELECT c.* FROM chat_channels c
+           JOIN chat_members m ON m.channel_id = c.id
+           WHERE c.kind = 'dm' AND m.user_id = ?""", (user["id"],)).fetchall()
+
+    reads = {r["channel_id"]: r["last_read_message_id"] for r in conn.execute(
+        "SELECT channel_id, last_read_message_id FROM chat_reads WHERE user_id = ?",
+        (user["id"],)).fetchall()}
+    latest = {r["channel_id"]: r for r in conn.execute(
+        """SELECT channel_id, MAX(id) AS last_id, MAX(created_at) AS last_at,
+                  COUNT(*) AS total
+           FROM chat_messages GROUP BY channel_id""").fetchall()}
+
+    out = []
+    for channel in list(areas) + list(dms):
+        stats = latest.get(channel["id"])
+        last_id = stats["last_id"] if stats else 0
+        unread = conn.execute(
+            """SELECT COUNT(*) AS c FROM chat_messages
+               WHERE channel_id = ? AND id > ? AND (user_id IS NULL OR user_id != ?)""",
+            (channel["id"], reads.get(channel["id"], 0), user["id"]),
+        ).fetchone()["c"]
+        preview = conn.execute(
+            """SELECT m.body, u.name FROM chat_messages m
+               LEFT JOIN users u ON u.id = m.user_id
+               WHERE m.channel_id = ? ORDER BY m.id DESC LIMIT 1""",
+            (channel["id"],)).fetchone()
+        out.append({
+            "id": channel["id"], "slug": channel["slug"], "name": channel["name"],
+            "kind": channel["kind"], "unread": unread, "last_id": last_id,
+            "last_at": stats["last_at"] if stats else None,
+            "preview": (" ".join(preview["body"].split())[:60] if preview else None),
+            "preview_from": (preview["name"] if preview else None),
+        })
+    # Anything unread first, then most recently active. Someone opening this
+    # wants the thing they have not seen, not an alphabetical list.
+    out.sort(key=lambda c: (c["unread"] == 0, -(c["last_id"] or 0), c["name"]))
+    return out
+
+
+def chat_unread_total(conn, user):
+    """For the badge in the navigation."""
+    return sum(c["unread"] for c in chat_channel_list(conn, user))
+
+
+def notify_chat_mentions(conn, channel, message_id, body, author):
+    """Notify anyone named with @ in the message, and everyone in a DM.
+
+    Without this a channel is only useful to whoever happens to be looking at
+    it. A DM notifies unconditionally — that is what makes it a DM rather than
+    a note left on a shelf.
+    """
+    recipients = set()
+    if channel["kind"] == "dm":
+        recipients |= {r["user_id"] for r in conn.execute(
+            "SELECT user_id FROM chat_members WHERE channel_id = ?", (channel["id"],)).fetchall()}
+    else:
+        handles = {h.lower() for h in re.findall(r"@([\w'-]+)", body or "")}
+        if handles:
+            for row in conn.execute(
+                    "SELECT id, name FROM users WHERE status = 'active'").fetchall():
+                first = (row["name"] or "").split(" ")[0].lower()
+                if first in handles or (row["name"] or "").lower() in handles:
+                    recipients.add(row["id"])
+    recipients.discard(author["id"])
+
+    link = url_for("chat_channel", slug=channel["slug"]) if has_request_context() \
+        else f"/chat/{channel['slug']}"
+    for user_id in recipients:
+        send_notification(
+            conn, user_id, "chat",
+            f"{author['name']} in {channel['name']}" if channel["kind"] == "area"
+            else f"{author['name']} messaged you",
+            body=" ".join((body or "").split())[:120], link=link,
+        )
+
+
 def guest_recognition_cards(conn, today, viewer_role="employee"):
     """Who is in the house, phrased so any member of staff can greet them.
 
@@ -5309,6 +6203,22 @@ def compute_promo_discount(subtotal, promo):
     return round(max(0.0, min(discount, subtotal)), 2)
 
 
+# What a guest is told when a code exists but cannot be used, and there is
+# nothing they can do about it. Deliberately the same sentence as a code that
+# does not exist at all.
+#
+# Distinct messages made the promo field an oracle: submit a guess, and
+# "isn't recognized" versus "has expired" tells you whether you found a real
+# code. That is worth closing even though these are marketing codes rather
+# than secrets, because the field is public, unauthenticated and cheap to
+# script against.
+#
+# The exception is a minimum spend, which stays specific: it is the one
+# refusal a guest can actually act on — add a night and the code works — and
+# withholding it would make a working code look broken.
+PROMO_REFUSED = "That code isn't recognized, or can't be used on this booking."
+
+
 def validate_promo_code(conn, code, category, subtotal):
     """Checks a code against everything that could make it unusable right
     now — active, in-date, right category, under its redemption cap, meets
@@ -5317,24 +6227,55 @@ def validate_promo_code(conn, code, category, subtotal):
     'workshop'. Callers should treat a validation failure as 'no discount
     applied', not as a reason to block the booking itself — a promo code
     is a nice-to-have, not something that should stop a real booking going
-    through if it's expired or mistyped."""
+    through if it's expired or mistyped.
+
+    The error message is guest-facing and says as little as possible about
+    whether the code exists (see PROMO_REFUSED). `promo_refusal_reason` gives
+    the owner the real reason for the admin preview and the audit trail.
+    """
     promo = find_promo_code(conn, code)
     if not promo:
-        return None, 0.0, "That code isn't recognized."
+        return None, 0.0, PROMO_REFUSED
     if not promo["active"]:
-        return None, 0.0, "That code is no longer active."
+        return None, 0.0, PROMO_REFUSED
     today_iso = datetime.now(timezone.utc).date().isoformat()
     if promo["valid_from"] and today_iso < promo["valid_from"]:
-        return None, 0.0, "That code isn't active yet."
+        return None, 0.0, PROMO_REFUSED
     if promo["valid_until"] and today_iso > promo["valid_until"]:
-        return None, 0.0, "That code has expired."
+        return None, 0.0, PROMO_REFUSED
     if promo["applies_to"] != "all" and promo["applies_to"] != category:
-        return None, 0.0, "That code doesn't apply to this kind of booking."
+        return None, 0.0, PROMO_REFUSED
     if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
-        return None, 0.0, "That code has already been fully redeemed."
+        return None, 0.0, PROMO_REFUSED
     if promo["min_spend"] and subtotal < promo["min_spend"]:
         return None, 0.0, f"That code needs a minimum of €{promo['min_spend']:.2f}."
     return promo, compute_promo_discount(subtotal, promo), None
+
+
+def promo_refusal_reason(conn, code, category, subtotal):
+    """The real reason a code was refused, for the owner rather than a guest.
+
+    Same order of checks as validate_promo_code, so the two cannot disagree
+    about which rule bit. Returns None when the code is usable.
+    """
+    promo = find_promo_code(conn, code)
+    if not promo:
+        return "No such code."
+    if not promo["active"]:
+        return "The code is switched off."
+    today_iso = datetime.now(timezone.utc).date().isoformat()
+    if promo["valid_from"] and today_iso < promo["valid_from"]:
+        return f"Not valid until {promo['valid_from']}."
+    if promo["valid_until"] and today_iso > promo["valid_until"]:
+        return f"Expired on {promo['valid_until']}."
+    if promo["applies_to"] != "all" and promo["applies_to"] != category:
+        return f"Only applies to {promo['applies_to']} bookings."
+    if promo["max_redemptions"] is not None and promo["redemption_count"] >= promo["max_redemptions"]:
+        return (f"Fully redeemed — {promo['redemption_count']} of "
+                f"{promo['max_redemptions']} used.")
+    if promo["min_spend"] and subtotal < promo["min_spend"]:
+        return f"Below the €{promo['min_spend']:.2f} minimum spend."
+    return None
 
 
 def record_promo_redemption(conn, promo, category, booking_reference, guest_email, original_amount, discount_amount):
@@ -5448,6 +6389,143 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
             return False, f"That date is held for a confirmed event ({row['event_type']})."
 
     return True, None
+
+
+def house_guest_capacity(conn):
+    """The legal ceiling on how many guests may be in the château at once —
+    everyone, in any mix of rooms and an atelier running at the same time. A
+    setting rather than a constant because it is a licensed number, not a
+    design choice, and can change without a deploy."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'house_guest_capacity'").fetchone()
+    try:
+        return int(row["value"]) if row else int(HOUSE_SETTING_DEFAULTS["house_guest_capacity"])
+    except (TypeError, ValueError):
+        return int(HOUSE_SETTING_DEFAULTS["house_guest_capacity"])
+
+
+def peak_guests_in_house(conn, start, end):
+    """The most guests present on any single night in [start, end).
+
+    A workshop already reserves every room for its run (see the block above),
+    so in practice the two occupancy sources don't overlap — but this adds
+    them together night by night regardless, rather than assuming that stays
+    true forever. Pending requests count, same as is_range_available: a
+    pending request has already staked a claim on the capacity a new one
+    would also want.
+    """
+    nights = (end - start).days
+    if nights <= 0:
+        return 0
+    peak = 0
+    for offset in range(nights):
+        day = (start + timedelta(days=offset)).isoformat()
+        room_total = conn.execute(
+            """SELECT COALESCE(SUM(party_size), 0) AS c FROM bookings
+               WHERE status IN ('pending', 'confirmed')
+                 AND arrival_date <= ? AND departure_date > ?""", (day, day)).fetchone()["c"]
+
+        ws_total = conn.execute(
+            """SELECT COALESCE(SUM(workshop_bookings.party_size), 0) AS c
+               FROM workshop_bookings JOIN workshop_sessions
+                 ON workshop_sessions.id = workshop_bookings.session_id
+               WHERE workshop_bookings.status IN ('pending', 'confirmed')
+                 AND workshop_sessions.start_date <= ? AND workshop_sessions.end_date > ?""",
+            (day, day)).fetchone()["c"]
+
+        peak = max(peak, room_total + ws_total)
+    return peak
+
+
+def house_capacity_error(conn, start, end, additional_guests):
+    """None if adding additional_guests over [start, end) stays within the
+    legal house capacity, else a guest-facing message explaining why not.
+
+    Only called from the public booking forms — a member of staff confirming,
+    editing, or entering a booking by hand is trusted to already know why a
+    particular night is going over, whether that's a licensed exception for
+    one event or a correction to old data. The law binds what the château
+    offers a stranger online; it doesn't second-guess the owner's own staff.
+    """
+    cap = house_guest_capacity(conn)
+    peak = peak_guests_in_house(conn, start, end)
+    if peak + additional_guests <= cap:
+        return None
+    if peak == 0:
+        return f"The château can host up to {cap} guests at once, and this party of {additional_guests} is over that on its own."
+    return (f"The château can host up to {cap} guests at once. {peak} "
+            f"{'is' if peak == 1 else 'are'} already booked for those dates, so {additional_guests} more would "
+            f"go over. Please call the château directly and we'll see what we can do.")
+
+
+def unavailable_nights(conn, room_id, start, end):
+    """{'YYYY-MM-DD': 'why'} for every night in [start, end) a guest cannot have.
+
+    The same sources is_range_available refuses on, resolved one night at a
+    time so a calendar can grey them out instead of letting someone fill in a
+    whole form and only then be told no. is_range_available stays the actual
+    gate — this is what the guest sees, not what decides.
+
+    The two must agree on the boundaries, which are not the same for every
+    source, so they are spelled out rather than assumed:
+
+      - a booking holds arrival..departure-1 (the checkout morning is free,
+        standard hotel convention)
+      - a workshop holds start..end INCLUSIVE — is_range_available refuses an
+        arrival on the session's end_date, because the guests are still in the
+        house that morning
+      - an event holds its single day
+    """
+    out = {}
+
+    def hold(first, last, reason):
+        """Mark every night from first to last inclusive."""
+        if not first or not last:
+            return
+        day = max(first, start)
+        stop = min(last, end - timedelta(days=1))
+        while day <= stop:
+            out.setdefault(day.isoformat(), reason)
+            day += timedelta(days=1)
+
+    for row in conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
+           WHERE room_id = ? AND status IN ('pending', 'confirmed')""", (room_id,)).fetchall():
+        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+        if b_start and b_end:
+            hold(b_start, b_end - timedelta(days=1), "Already booked")
+
+    for table, reason in (("blocked_dates", "Booked on another channel"),
+                          ("room_blocks", "Not available")):
+        for row in conn.execute(
+            f"SELECT start_date, end_date FROM {table} WHERE room_id = ?", (room_id,)).fetchall():
+            b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+            if b_start and b_end:
+                hold(b_start, b_end - timedelta(days=1), reason)
+
+    for row in conn.execute(
+        """SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
+           FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""
+    ).fetchall():
+        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+        hold(w_start, w_end, f"Held for {row['title']}")
+
+    for row in conn.execute(
+        """SELECT preferred_date, event_type FROM event_inquiries
+           WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
+        e_date = parse_date(row["preferred_date"])
+        hold(e_date, e_date, f"Held for a private {row['event_type'] or 'event'}")
+
+    # And the legal ceiling: a night already holding the maximum has no room
+    # for even one more guest, whatever this particular room's own state is.
+    cap = house_guest_capacity(conn)
+    day = start
+    while day < end:
+        iso = day.isoformat()
+        if iso not in out and peak_guests_in_house(conn, day, day + timedelta(days=1)) >= cap:
+            out[iso] = "The château is full"
+        day += timedelta(days=1)
+    return out
 
 
 def matching_waitlist_entries(conn, arrival_iso, departure_iso):
@@ -6115,6 +7193,194 @@ def extras_for_booking(conn, category, booking_id):
 def extras_total(rows, include_cancelled=False):
     return round(sum((r["unit_price"] or 0) * (r["quantity"] or 0)
                      for r in rows if include_cancelled or r["status"] != "cancelled"), 2)
+
+
+def booking_bill(conn, booking_id):
+    """What a stay costs, what has been received, and what is still owed.
+
+    A room booking had none of this. `payment_status` could only say
+    unpaid/paid/refunded, which cannot express "paid the deposit" or "added a
+    night and owes the difference" — so there was nowhere to put the cost of
+    anything a guest might add later, which is why they could not add anything.
+    Workshops already worked this way; this brings stays into line.
+
+    The room line is recomputed from the rates rather than trusted from
+    total_price, so a stay whose dates changed prices correctly. Extras are
+    real line items. Refunds come off what was received, not off the total —
+    the stay still cost what it cost, and a bill that hides a refund is a bill
+    somebody has to reconcile by hand.
+    """
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking:
+        return None
+
+    arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    nights = (departure - arrival).days if (arrival and departure) else 0
+    room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    room_total = compute_room_total(conn, room, arrival, departure) if (room and nights) else 0.0
+
+    lines = []
+    if room_total:
+        lines.append({
+            "label": f"{booking['room_name']} — {nights} night{'' if nights == 1 else 's'}",
+            "amount": room_total, "kind": "room"})
+
+    extras = extras_for_booking(conn, "room", booking_id)
+    for extra in extras:
+        if extra["status"] == "cancelled":
+            continue
+        amount = round((extra["unit_price"] or 0) * (extra["quantity"] or 0), 2)
+        qty = extra["quantity"] or 1
+        lines.append({
+            "label": extra["name"] + (f" × {qty}" if qty > 1 else ""),
+            "amount": amount, "kind": "extra"})
+
+    total = round(sum(l["amount"] for l in lines), 2)
+    refunded = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
+           WHERE category = 'room' AND booking_id = ?""", (booking_id,)).fetchone()["t"] or 0.0
+    paid = round((booking["amount_paid"] or 0) - refunded, 2)
+    return {
+        "booking": booking,
+        "lines": lines,
+        "nights": nights,
+        "total": total,
+        "paid": max(paid, 0.0),
+        "refunded": round(refunded, 2),
+        "owed": round(max(total - paid, 0.0), 2),
+        "overpaid": round(max(paid - total, 0.0), 2),
+    }
+
+
+def record_booking_payment(conn, booking_id, amount, reference=None):
+    """Add to what has been received on a stay.
+
+    Additive rather than a flag, so a deposit followed by a balance — or a night
+    added and paid for later — accumulates instead of overwriting. Also keeps
+    payment_status roughly in step for the older code that reads it.
+    """
+    conn.execute(
+        "UPDATE bookings SET amount_paid = COALESCE(amount_paid, 0) + ? WHERE id = ?",
+        (round(amount or 0, 2), booking_id))
+    bill = booking_bill(conn, booking_id)
+    if bill and bill["owed"] <= 0.005:
+        conn.execute("UPDATE bookings SET payment_status = 'paid' WHERE id = ?", (booking_id,))
+    if reference:
+        conn.execute(
+            "UPDATE bookings SET stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ?) "
+            "WHERE id = ?", (reference, booking_id))
+    return bill
+
+
+def start_booking_stripe_payment(conn, booking_id):
+    """Checkout URL for whatever is still owed on a stay, or None.
+
+    Workshop guests have been able to settle online since the start; room
+    guests could only be told "we'll take this on arrival", even after adding
+    an extra or a night to their own booking. That leaves the château carrying
+    every stay to the door and a guest who wants to pay unable to.
+
+    The amount comes from booking_bill() at the moment the guest clicks, not
+    from total_price — a stay that gained an extra, lost a night or took a
+    part payment has to charge what is actually left.
+    """
+    if not stripe_enabled():
+        return None
+    bill = booking_bill(conn, booking_id)
+    if not bill:
+        return None
+    booking = bill["booking"]
+    if booking["status"] in ("declined", "cancelled") or bill["owed"] <= 0:
+        return None
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"{booking['room_name']} ({booking['reference_code']})"},
+                    "unit_amount": int(round(bill["owed"] * 100)),
+                },
+                "quantity": 1,
+            }],
+            customer_email=booking["guest_email"],
+            success_url=url_for("booking_stripe_success", manage_token=booking["manage_token"],
+                                _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=url_for("manage_booking", manage_token=booking["manage_token"], _external=True),
+            metadata={"booking_id": str(booking_id), "kind": "room_balance"},
+        )
+    except Exception:
+        return None
+    return checkout_session.url
+
+
+def mark_booking_payment_paid(conn, session):
+    """Record a room-stay payment, once, whichever of the success redirect or
+    the webhook arrives first.
+
+    Stripe retries webhooks and the guest may reload the success page, so the
+    same Checkout Session can arrive several times. The session id is written
+    into a payments row and checked first — recording twice would take the
+    money off what they owe twice and send them home thinking they had paid.
+    """
+    meta = smeta(session)
+    if meta.get("kind") != "room_balance":
+        return
+    booking_id = meta.get("booking_id")
+    if not booking_id:
+        return
+    booking_id = int(booking_id)
+    session_id = session["id"]
+    already = conn.execute(
+        "SELECT 1 FROM booking_payments WHERE stripe_session_id = ?", (session_id,)).fetchone()
+    if already:
+        return
+    amount = (sval(session, "amount_total") or 0) / 100
+    if amount <= 0:
+        return
+    try:
+        conn.execute(
+            """INSERT INTO booking_payments (booking_id, amount, method, stripe_session_id, created_at)
+               VALUES (?, ?, 'stripe', ?, ?)""",
+            (booking_id, round(amount, 2), session_id, datetime.now(timezone.utc).isoformat()))
+    except sqlite3.IntegrityError:
+        # The success redirect and the webhook can be in flight at the same
+        # moment and both clear the check above. The UNIQUE session id is the
+        # real guarantee; losing the race is the correct outcome, not an error
+        # the guest should see as a 500 immediately after paying.
+        return
+    record_booking_payment(conn, booking_id, amount, reference=sval(session, "payment_intent"))
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    # Commit before the receipt goes out. With no email provider configured
+    # send_email falls back to email_outbox on its own connection, which cannot
+    # take a write lock while this transaction is open — the same way a
+    # workshop deposit receipt was being lost to "database is locked".
+    conn.commit()
+    if booking:
+        bill = booking_bill(conn, booking_id)
+        portal_token = guest_portal_token(conn, booking["guest_email"])
+        conn.commit()
+        account_line = ""
+        if portal_token:
+            account_line = ("\nYour bookings and balances are always here:\n"
+                            f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
+        send_email(
+            booking["guest_email"],
+            f"Payment received — {booking['room_name']}",
+            f"Hi {booking['guest_name']},\n\n"
+            f"We've received €{amount:.2f} for your stay ({booking['reference_code']}).\n"
+            + (f"Still to pay: €{bill['owed']:.2f}.\n" if bill and bill["owed"] > 0
+               else "Your stay is now paid in full.\n")
+            + account_line
+            + f"\n— Château de Gudanes",
+        )
 
 
 # How a tab can be settled. An iPad in a browser cannot read a card by itself,
@@ -7292,6 +8558,42 @@ def pos_take_payment(conn, order_id, amount, method, *, reference=None, line_ids
     return payment_id
 
 
+def pos_close_if_settled(conn, order_id, method, *, user_id=None):
+    """Close a tab if nothing is left outstanding. Returns the bill either way.
+
+    Every way of paying goes through here — cash, the card reader, a payment
+    link. Two routes closing a tab by their own arithmetic is how one of them
+    ends up not writing a journal entry, and a journal with a hole in it is
+    worth less than no journal at all.
+    """
+    after = pos_bill(conn, order_id)
+    if after["outstanding"] > 0.01:
+        return after
+    # Each payment keeps its own reference, because a split bill has several.
+    # The tab still carries them too: without that, a Stripe charge exists and
+    # nothing at tab level points back at it, which is the reconciliation
+    # problem the reader was added to remove.
+    refs = [r["reference"] for r in conn.execute(
+        "SELECT reference FROM pos_payments WHERE order_id = ? AND reference IS NOT NULL "
+        "ORDER BY id", (order_id,)).fetchall() if (r["reference"] or "").strip()]
+    conn.execute(
+        """UPDATE pos_orders SET status = 'paid', settled_total = ?, payment_method = ?,
+           payment_reference = ?, closed_at = ? WHERE id = ?""",
+        (after["total"], method, ", ".join(refs) or None,
+         datetime.now(timezone.utc).isoformat(), order_id))
+    log_audit(conn, "pos_tab_settled", target=after["order"]["table_label"],
+              details=f"€{after['total']:.2f}")
+    pos_journal_append(conn, "tab_settled", {
+        "table": after["order"]["table_label"], "total": after["total"],
+        "gross": after["gross"], "discount": after["discount"],
+        "service": after["service"], "deposit": after["deposit"],
+        "vat": {str(k): v for k, v in after["vat_by_rate"].items()},
+        "covers": after["covers"], "method": method,
+        "receipt_number": pos_allocate_receipt_number(conn, order_id),
+    }, order_id=order_id, user_id=user_id)
+    return after
+
+
 def pos_day_report(conn, on_date):
     """The end-of-day figures: takings by method, VAT owed, covers, average spend.
 
@@ -7341,20 +8643,6 @@ def pos_day_report(conn, on_date):
         "average_per_cover": round(gross / covers, 2) if covers else 0,
         "average_per_tab": round(gross / len(orders), 2) if orders else 0,
     }
-
-
-def pos_order_lines(conn, order_id, include_voided=False):
-    sql = "SELECT * FROM pos_order_lines WHERE order_id = ?"
-    if not include_voided:
-        sql += " AND voided = 0"
-    return conn.execute(sql + " ORDER BY id", (order_id,)).fetchall()
-
-
-def pos_order_total(conn, order_id):
-    row = conn.execute(
-        """SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM pos_order_lines
-           WHERE order_id = ? AND voided = 0""", (order_id,)).fetchone()
-    return round(row["t"], 2)
 
 
 def pos_add_line(conn, order_id, extra, quantity=1, *, unit_price=None,
@@ -7657,62 +8945,6 @@ def pos_void_line(conn, line_id, user_id=None):
         )
     conn.execute("UPDATE pos_order_lines SET voided = 1 WHERE id = ?", (line_id,))
     return True
-
-
-def pos_settle(conn, order_id, method, *, room_booking_id=None, reference=None,
-               user_id=None):
-    """Close a tab.
-
-    Charging to a room writes a real line onto that booking, so it turns up on
-    the guest's bill and in revenue like any other extra — the restaurant does
-    not get its own parallel set of money that nothing else knows about.
-    Returns (ok, message).
-    """
-    if method not in POS_PAYMENT_METHODS:
-        return False, "Unknown payment method."
-    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
-    if not order:
-        return False, "That tab no longer exists."
-    if order["status"] != "open":
-        return False, "That tab has already been settled."
-    lines = pos_order_lines(conn, order_id)
-    if not lines:
-        return False, "Nothing has been added to this tab yet."
-    total = pos_order_total(conn, order_id)
-
-    if method == "room":
-        if not room_booking_id:
-            return False, "Choose which room to charge it to."
-        booking = conn.execute(
-            "SELECT * FROM bookings WHERE id = ? AND status = 'confirmed'",
-            (room_booking_id,)).fetchone()
-        if not booking:
-            return False, "That booking isn't a confirmed stay."
-        # One line on the room bill per item, so the guest can see what they had
-        # rather than an unexplained lump sum.
-        for l in lines:
-            conn.execute(
-                """INSERT INTO booking_extras (category, booking_id, extra_id, name,
-                   unit_price, quantity, notes, status, added_by_user_id, created_at)
-                   VALUES ('room', ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?)""",
-                (room_booking_id, l["extra_id"], l["name"], l["unit_price"],
-                 l["quantity"], f"Restaurant — table {order['table_label']}",
-                 user_id, datetime.now(timezone.utc).isoformat()),
-            )
-        conn.execute(
-            """UPDATE pos_orders SET status = 'charged_to_room', payment_method = 'room',
-               room_booking_id = ?, settled_total = ?, closed_at = ? WHERE id = ?""",
-            (room_booking_id, total, datetime.now(timezone.utc).isoformat(), order_id),
-        )
-        return True, f"€{total:.2f} charged to {booking['guest_name']}'s room."
-
-    conn.execute(
-        """UPDATE pos_orders SET status = 'paid', payment_method = ?, payment_reference = ?,
-           settled_total = ?, closed_at = ? WHERE id = ?""",
-        (method, reference, total, datetime.now(timezone.utc).isoformat(), order_id),
-    )
-    return True, (f"€{total:.2f} settled — {POS_PAYMENT_METHODS[method].lower()}."
-                  if method != "comp" else "Tab closed, nothing charged.")
 
 
 def asset_summary(conn, today):
@@ -8707,6 +9939,290 @@ def campaign_unsubscribe(token):
                            email=email, name=row["recipient_name"], token=token)
 
 
+@app.route("/admin/gallery")
+@owner_required
+def admin_gallery():
+    conn = get_db()
+    sections = conn.execute(
+        "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
+    photos = conn.execute(
+        "SELECT * FROM gallery_photos ORDER BY section_id, sort_order, id").fetchall()
+    subs = conn.execute(
+        """SELECT COUNT(*) AS confirmed FROM newsletter_subscribers
+           WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL""").fetchone()["confirmed"]
+    pending = conn.execute(
+        """SELECT COUNT(*) AS c FROM newsletter_subscribers
+           WHERE confirmed_at IS NULL AND unsubscribed_at IS NULL""").fetchone()["c"]
+    conn.close()
+    by_section = {}
+    for p in photos:
+        by_section.setdefault(p["section_id"], []).append(p)
+    overview = [
+        overview_cell("Sections", len(sections)),
+        overview_cell("Photographs", len(photos)),
+        overview_cell("Newsletter", subs, sub=f"{pending} unconfirmed" if pending else None),
+    ]
+    return render_template("admin_gallery.html", sections=sections,
+                           by_section=by_section, overview=overview)
+
+
+@app.route("/admin/gallery/<int:section_id>/photos", methods=["POST"])
+@owner_required
+def add_gallery_photos(section_id):
+    conn = get_db()
+    section = conn.execute(
+        "SELECT * FROM gallery_sections WHERE id = ?", (section_id,)).fetchone()
+    if not section:
+        conn.close()
+        abort(404)
+    stored = save_room_photos_multi(request.files.getlist("photos"))
+    if not stored:
+        conn.close()
+        flash("No usable image was uploaded — PNG or JPG only.", "error")
+        return redirect(url_for("admin_gallery"))
+    start = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM gallery_photos WHERE section_id = ?",
+        (section_id,)).fetchone()["n"]
+    for i, name in enumerate(stored):
+        conn.execute(
+            """INSERT INTO gallery_photos (section_id, filename, sort_order, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (section_id, name, start + i, datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "gallery_photos_added", target=section["slug"])
+    conn.commit()
+    conn.close()
+    flash(f"Added {len(stored)} photograph(s) to {section['title']}.", "success")
+    return redirect(url_for("admin_gallery"))
+
+
+@app.route("/admin/gallery/photo/<int:photo_id>", methods=["POST"])
+@owner_required
+def edit_gallery_photo(photo_id):
+    """Caption, and position within the section.
+
+    Moving is by swap rather than by rewriting every row's sort_order: two
+    photographs exchange places and nothing else in the section is touched, so
+    two people reordering different pairs at once cannot renumber each other's
+    work. An empty caption is stored as NULL, not "", so the template's
+    `{% if caption %}` stays the single test for "is there a caption".
+    """
+    conn = get_db()
+    photo = conn.execute("SELECT * FROM gallery_photos WHERE id = ?", (photo_id,)).fetchone()
+    if not photo:
+        conn.close()
+        abort(404)
+
+    move = (request.form.get("move", "") or "").strip()
+    if move in ("up", "down"):
+        op, order = ("<", "DESC") if move == "up" else (">", "ASC")
+        neighbour = conn.execute(
+            f"""SELECT id, sort_order FROM gallery_photos
+                WHERE section_id = ? AND (sort_order {op} ? OR (sort_order = ? AND id {op} ?))
+                ORDER BY sort_order {order}, id {order} LIMIT 1""",
+            (photo["section_id"], photo["sort_order"], photo["sort_order"], photo_id)).fetchone()
+        if neighbour:
+            conn.execute("UPDATE gallery_photos SET sort_order = ? WHERE id = ?",
+                         (neighbour["sort_order"], photo_id))
+            conn.execute("UPDATE gallery_photos SET sort_order = ? WHERE id = ?",
+                         (photo["sort_order"], neighbour["id"]))
+            conn.commit()
+    else:
+        conn.execute("UPDATE gallery_photos SET caption = ? WHERE id = ?",
+                     ((request.form.get("caption", "") or "").strip() or None, photo_id))
+        conn.commit()
+    conn.close()
+    return redirect(url_for("admin_gallery"))
+
+
+@app.route("/admin/gallery/photo/<int:photo_id>/delete", methods=["POST"])
+@owner_required
+def delete_gallery_photo(photo_id):
+    conn = get_db()
+    photo = conn.execute(
+        "SELECT * FROM gallery_photos WHERE id = ?", (photo_id,)).fetchone()
+    if not photo:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM gallery_photos WHERE id = ?", (photo_id,))
+    log_audit(conn, "gallery_photo_deleted")
+    conn.commit()
+    conn.close()
+    # The file itself goes too, but only after the row: an orphaned row shows a
+    # broken image to guests, while an orphaned file merely wastes disk.
+    path = os.path.join(ROOM_PHOTO_DIR, photo["filename"])
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    flash("Photograph removed.", "success")
+    return redirect(url_for("admin_gallery"))
+
+
+@app.route("/admin/gallery/<int:section_id>", methods=["POST"])
+@owner_required
+def edit_gallery_section(section_id):
+    """Title and blurb only. The slug is deliberately not editable: it is the
+    anchor the public menu links to, so changing it silently breaks a link
+    that is already shipped in every page's header."""
+    conn = get_db()
+    section = conn.execute(
+        "SELECT * FROM gallery_sections WHERE id = ?", (section_id,)).fetchone()
+    if not section:
+        conn.close()
+        abort(404)
+    title = (request.form.get("title", "") or "").strip()
+    if not title:
+        conn.close()
+        flash("A section needs a title.", "error")
+        return redirect(url_for("admin_gallery"))
+    conn.execute("UPDATE gallery_sections SET title = ?, blurb = ? WHERE id = ?",
+                 (title, (request.form.get("blurb", "") or "").strip() or None, section_id))
+    log_audit(conn, "gallery_section_edited", target=section["slug"])
+    conn.commit()
+    conn.close()
+    flash("Section updated.", "success")
+    return redirect(url_for("admin_gallery"))
+
+
+@app.route("/newsletter/subscribe", methods=["POST"])
+def newsletter_subscribe():
+    """The newsletter box in the public menu panel.
+
+    Deliberately says the same thing whichever branch it takes. Telling a
+    stranger "you are already subscribed" turns the box into a way to test
+    whether an address is on the château's list, which is somebody else's
+    private information; and a public form is rate-limited rather than
+    trusted, since it sends mail on an anonymous request.
+
+    Nothing here mails an unconfirmed address anything except its own
+    confirmation link, and an address on the opt-out list is never mailed
+    at all — it is recorded as pending and left alone, so an unsubscribe
+    is not silently undone by somebody re-typing the address.
+    """
+    conn = get_db()
+    if rate_limited(conn, "newsletter_subscribe", BOOKING_RATE_LIMIT_PER_HOUR):
+        conn.commit()
+        conn.close()
+        flash("Too many attempts from this connection — please try again shortly.", "error")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    email = (request.form.get("email", "") or "").strip().lower()
+    thanks = "Thank you — please check your email and click the link to confirm."
+    if not email or not EMAIL_RE.match(email):
+        conn.commit()
+        conn.close()
+        flash("Enter a valid email address.", "error")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    opted_out = conn.execute(
+        "SELECT 1 FROM email_optouts WHERE email = ?", (email,)).fetchone() is not None
+    row = conn.execute(
+        "SELECT id, token, confirmed_at FROM newsletter_subscribers WHERE email = ?",
+        (email,)).fetchone()
+
+    if row is None:
+        token = secrets.token_urlsafe(32)
+        conn.execute(
+            """INSERT INTO newsletter_subscribers (email, token, source, created_at)
+               VALUES (?, ?, 'site', ?)""", (email, token, now_iso))
+    else:
+        token = row["token"]
+
+    conn.commit()
+    # Already confirmed, or previously unsubscribed: say the same thing, send
+    # nothing. Re-sending a confirmation to a confirmed address is a way to
+    # have the château email somebody repeatedly on demand.
+    if (row and row["confirmed_at"]) or opted_out:
+        conn.close()
+        flash(thanks, "success")
+        return redirect(request.referrer or url_for("preview_home"))
+
+    link = url_for("newsletter_confirm", token=token, _external=True)
+    send_email(
+        email, "Confirm your subscription — Château de Gudanes",
+        "Thank you for subscribing to news from Château de Gudanes.\n\n"
+        "Please confirm your address by opening this link:\n\n"
+        f"{link}\n\n"
+        "If you did not ask for this, ignore this message and nothing further "
+        "will be sent.\n",
+    )
+    conn.close()
+    flash(thanks, "success")
+    return redirect(request.referrer or url_for("preview_home"))
+
+
+@app.route("/newsletter/confirm/<token>")
+def newsletter_confirm(token):
+    """Completes the double opt-in.
+
+    A GET is right here, unlike unsubscribing: the risk of a mail client
+    pre-fetching the link is that somebody who DID ask gets subscribed,
+    which is what they asked for. The opposite default — opting people out
+    on GET — is what the campaign unsubscribe route guards against.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, email, confirmed_at FROM newsletter_subscribers WHERE token = ?",
+        (token,)).fetchone()
+    if not row:
+        conn.close()
+        return render_template("newsletter_confirmed.html", state="unknown"), 404
+    if not row["confirmed_at"]:
+        conn.execute(
+            "UPDATE newsletter_subscribers SET confirmed_at = ?, unsubscribed_at = NULL WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), row["id"]))
+        # Confirming is an explicit, deliberate opt-in, so it clears an older
+        # opt-out for the same address rather than being silently overridden.
+        conn.execute("DELETE FROM email_optouts WHERE email = ?", (row["email"],))
+        conn.commit()
+    conn.close()
+    return render_template("newsletter_confirmed.html", state="done", email=row["email"])
+
+
+@app.route("/newsletter/unsubscribe/<token>", methods=["GET", "POST"])
+@csrf.exempt
+def newsletter_unsubscribe(token):
+    """Same shape and reasoning as the campaign unsubscribe: GET shows,
+    POST acts, CSRF-exempt because the reader arrives from their inbox with
+    no session and the only reachable outcome is the safe one."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, email FROM newsletter_subscribers WHERE token = ?", (token,)).fetchone()
+    if not row:
+        conn.close()
+        return render_template("unsubscribe.html", state="unknown"), 404
+    email = row["email"]
+    if request.method == "POST":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE newsletter_subscribers SET unsubscribed_at = ?, confirmed_at = NULL WHERE id = ?",
+            (now_iso, row["id"]))
+        conn.execute(
+            "INSERT OR IGNORE INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
+            (email, "Unsubscribed from the newsletter", now_iso))
+        conn.commit()
+        conn.close()
+        return render_template("unsubscribe.html", state="done", email=email)
+    conn.close()
+    return render_template("unsubscribe.html", state="confirm", email=email, token=token)
+
+
+def newsletter_recipients(conn):
+    """Confirmed subscribers who have not opted out — the actual mailing list.
+
+    The opt-out join is not redundant with unsubscribed_at: the owner can add
+    an address to email_optouts by hand, and that must suppress the newsletter
+    too, not only campaign sends.
+    """
+    return conn.execute(
+        """SELECT email FROM newsletter_subscribers
+           WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL
+             AND email NOT IN (SELECT email FROM email_optouts)
+           ORDER BY confirmed_at""").fetchall()
+
+
 @app.route("/admin/emails/optout", methods=["POST"])
 @owner_required
 def add_email_optout():
@@ -9102,15 +10618,31 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
 
 def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, departure,
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
-                    stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None):
+                    stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
+                    total_price_override=None, discount_amount_override=None):
     nights = (departure - arrival).days
-    room_total = compute_room_total(conn, room, arrival, departure)
     extras_total = sum(e["price"] for e in chosen_extras)
 
-    promo, discount_amount = None, 0.0
-    if promo_code:
-        promo, discount_amount, _ = validate_promo_code(conn, promo_code, "room", room_total)
-    total_price = (round(room_total - discount_amount, 2) + extras_total) or None
+    if total_price_override is not None:
+        # Called from the Stripe webhook path: trust the price actually quoted
+        # and charged at checkout-creation time, passed through via metadata,
+        # rather than recomputing the room total and re-validating the promo
+        # code fresh here. Recomputing lets pricing drift between checkout
+        # creation and the webhook firing — a seasonal rate edited in the
+        # admin, or the promo hitting its redemption cap from a different
+        # booking in between — silently store a total the guest never agreed
+        # to, against a card charge that already went through for the old one.
+        # Same fault and same fix as the restaurant path.
+        total_price = total_price_override or None
+        discount_amount = discount_amount_override or 0.0
+        room_total = round((total_price or 0) - extras_total + discount_amount, 2)
+        promo = find_promo_code(conn, promo_code) if promo_code else None
+    else:
+        room_total = compute_room_total(conn, room, arrival, departure)
+        promo, discount_amount = None, 0.0
+        if promo_code:
+            promo, discount_amount, _ = validate_promo_code(conn, promo_code, "room", room_total)
+        total_price = (round(room_total - discount_amount, 2) + extras_total) or None
     extras_summary = ", ".join(f"{e['name']} (€{e['price']:.2f})" for e in chosen_extras) or None
 
     reference_code = make_reference_code()
@@ -9196,7 +10728,21 @@ def create_booking_from_stripe_session(conn, session):
         chosen_extras, payment_status="paid",
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
+        # Trust what was quoted and charged, not today's prices. Absent on
+        # sessions created before this was added, in which case create_booking
+        # recomputes exactly as it always did.
+        total_price_override=float(meta["total_price"]) if meta.get("total_price") else None,
+        discount_amount_override=float(meta["discount_amount"]) if meta.get("discount_amount") else None,
     )
+    # Record the amount, not just the fact. Without this the stay shows as paid
+    # with nothing received against it, so adding a night later would look like
+    # the whole stay was owed again.
+    paid_row = conn.execute(
+        "SELECT id FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone()
+    if paid_row:
+        received = (sval(session, "amount_total") or 0) / 100.0
+        record_booking_payment(conn, paid_row["id"], received,
+                               reference=sval(session, "payment_intent"))
     if not available:
         # Money has already changed hands, so the booking is still recorded —
         # but the room may now be double-booked (another booking was confirmed
@@ -9404,11 +10950,30 @@ def inject_user():
     pending_workshop_count = None
     pending_events_count = None
     open_email_flags_count = None
+    chat_unread_count = None
+    areas = user_access(user)
+
+    def may(area):
+        """For the navigation: show a group only if its pages can be opened.
+
+        The menu and owner_required read the same map, so a visible link always
+        works and a working page is always findable. Deriving one from the other
+        is what stops them drifting into 'greyed out for no reason' or 'clicked
+        it and got 403'.
+        """
+        return "*" in areas or area in areas
+
     if user:
         conn = get_db()
         unread_notifications_count = conn.execute(
             "SELECT COUNT(*) FROM notifications WHERE user_id = ? AND read_at IS NULL", (user["id"],)
         ).fetchone()[0]
+        # For every member of staff, not just the owner — the badge is the only
+        # reason anyone opens a chat app they were not already in.
+        try:
+            chat_unread_count = chat_unread_total(conn, user) or None
+        except sqlite3.Error:
+            chat_unread_count = None      # pre-migration database
         vapid_public_key = get_vapid_public_key(conn)
         if user["role"] == "owner":
             # Must match what /admin/approvals actually lists, or the sidebar
@@ -9450,6 +11015,8 @@ def inject_user():
         "pending_workshop_count": pending_workshop_count,
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
+        "chat_unread_count": chat_unread_count,
+        "may": may, "user_areas": areas, "area_titles": AREA_TITLES,
         # Constants the forms need. Exposed here rather than passed through
         # every render_template call, so a new form can't quietly render an
         # empty dropdown because one route forgot to include them.
@@ -9668,8 +11235,18 @@ def edit_own_contact_info():
 # ---------------------------------------------------------------------------
 
 @app.route("/")
-@login_required
 def dashboard():
+    # Two audiences, one address. A visitor gets the château's front page; a
+    # signed-in member of staff gets their dashboard. The public header links the
+    # brand to "/", so without this a guest clicking the château's own name
+    # landed on a staff login screen.
+    if not current_user():
+        return render_template("home.html")
+    return staff_dashboard()
+
+
+@login_required
+def staff_dashboard():
     user = current_user()
     conn = get_db()
     stats = {}
@@ -9753,7 +11330,8 @@ def dashboard():
             "SELECT COUNT(*) AS c FROM waitlist_entries WHERE status IN ('open', 'contacted')"
         ).fetchone()["c"]
         last_backup = conn.execute(
-            "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' ORDER BY created_at DESC LIMIT 1"
+            "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
+            "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_backup_at = last_backup["created_at"] if last_backup else None
         backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
@@ -11995,6 +13573,7 @@ def pos_order(order_id):
     # Marks the buttons and re-checks what is already on the bill, so the note
     # taken at booking is on the screen the order is actually tapped into.
     diet = mark_dietary_risk(menu, bill["lines"], context["dietary"] if context else "")
+    reader_on = terminal_ready(conn)
     conn.close()
     return render_template(
         "pos_order.html", bill=bill, order=bill["order"], lines=bill["lines"],
@@ -12005,7 +13584,7 @@ def pos_order(order_id):
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
         allergens=ALLERGENS, other_tables=other_tables,
         formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
-        packages=packages, diet=diet)
+        packages=packages, diet=diet, reader_on=reader_on)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])
@@ -12553,22 +14132,7 @@ def pos_take_payment_route(order_id):
                      reference=(request.form.get("reference", "") or "").strip() or None,
                      seats=seats, room_booking_id=room_booking_id,
                      user_id=session.get("user_id"))
-    after = pos_bill(conn, order_id)
-    if after["outstanding"] <= 0.01:
-        conn.execute(
-            """UPDATE pos_orders SET status = 'paid', settled_total = ?, payment_method = ?,
-               closed_at = ? WHERE id = ?""",
-            (after["total"], method, datetime.now(timezone.utc).isoformat(), order_id))
-        log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
-                  details=f"€{after['total']:.2f}")
-        pos_journal_append(conn, "tab_settled", {
-            "table": bill["order"]["table_label"], "total": after["total"],
-            "gross": after["gross"], "discount": after["discount"],
-            "service": after["service"], "deposit": after["deposit"],
-            "vat": {str(k): v for k, v in after["vat_by_rate"].items()},
-            "covers": after["covers"], "method": method,
-            "receipt_number": pos_allocate_receipt_number(conn, order_id),
-        }, order_id=order_id, user_id=session.get("user_id"))
+    after = pos_close_if_settled(conn, order_id, method, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
     if after["outstanding"] > 0.01:
@@ -12921,6 +14485,279 @@ def pos_journal_page():
     ]
     return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"], chain=chain,
                            closures=closures, overview=overview, perpetual=perpetual)
+
+
+@app.route("/pos/<int:order_id>/take-card", methods=["POST"])
+@login_required
+def pos_take_card(order_id):
+    """Put the tab's total on the card reader and wait for a tap.
+
+    The reader is driven from here — Stripe pushes the amount to it over the
+    internet — so there is no app to switch to and nothing to type twice. The
+    resulting payment settles the tab against its own reference.
+    """
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["status"] != "open":
+        conn.close()
+        flash("That tab is closed.", "error")
+        return redirect(url_for("pos_home"))
+    reader = terminal_reader_id(conn)
+    if not stripe_enabled() or not reader:
+        conn.close()
+        flash("No card reader is set up — take cash, charge it to a room, or "
+              "show the QR code instead.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+    # What is left, not the whole bill. This till can split a payment, so a
+    # table that has already put half on cash must not be asked to tap for all
+    # of it.
+    total = pos_bill(conn, order_id)["outstanding"]
+    if total <= 0:
+        conn.close()
+        flash("Nothing to charge yet.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+
+    # Resume rather than restart. A second press must not ask the guest to tap
+    # for a second charge.
+    if order["payment_intent_id"]:
+        state, _msg, _intent = terminal_payment_state(order["payment_intent_id"])
+        if state in ("waiting", "succeeded"):
+            conn.close()
+            return redirect(url_for("pos_order", order_id=order_id))
+
+    intent_id, error = terminal_collect_payment(
+        conn, order_id, total, f"Table {order['table_label']}", reader)
+    if intent_id:
+        conn.execute("UPDATE pos_orders SET payment_intent_id = ? WHERE id = ?",
+                     (intent_id, order_id))
+        conn.commit()
+    conn.close()
+    if error:
+        flash(error, "error")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+@app.route("/pos/<int:order_id>/card-status")
+@login_required
+def pos_card_status(order_id):
+    """Polled by the till while the guest is tapping.
+
+    Settles the tab itself the moment Stripe says the money arrived, so the
+    payment cannot succeed without the tab closing — the two must not be able
+    to disagree.
+    """
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return jsonify(state="unknown", message="No such tab."), 404
+    if order["status"] != "open":
+        conn.close()
+        return jsonify(state="succeeded", message="Settled.", settled=True)
+    if not order["payment_intent_id"]:
+        conn.close()
+        return jsonify(state="idle", message="")
+
+    state, message, intent = terminal_payment_state(order["payment_intent_id"])
+    settled = False
+    if state == "succeeded":
+        # Trust Stripe for the amount, exactly as the webhook does — the guest
+        # tapped what the reader asked for, and recomputing it here would let a
+        # line added mid-tap change what we record as taken.
+        taken = round((sval(intent, "amount_received") or 0) / 100.0, 2) if intent else 0.0
+        if taken <= 0:
+            taken = pos_bill(conn, order_id)["outstanding"]
+        who = current_user()
+        user = who["id"] if who else None
+        pos_take_payment(conn, order_id, taken, "card_terminal",
+                         reference=order["payment_intent_id"], user_id=user)
+        after = pos_close_if_settled(conn, order_id, "card_terminal", user_id=user)
+        conn.commit()
+        settled = after["outstanding"] <= 0.01
+        message = (f"€{taken:.2f} taken on the reader."
+                   if not settled else f"Settled — €{after['total']:.2f}.")
+    elif state == "failed":
+        # Clear the reference so the next attempt starts a fresh payment rather
+        # than polling a dead one forever.
+        conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?",
+                     (order_id,))
+        conn.commit()
+    conn.close()
+    return jsonify(state=state, message=message, settled=settled)
+
+
+@app.route("/pos/<int:order_id>/cancel-card", methods=["POST"])
+@login_required
+def pos_cancel_card(order_id):
+    conn = get_db()
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        abort(404)
+    problems = terminal_cancel(terminal_reader_id(conn), order["payment_intent_id"])
+    conn.execute("UPDATE pos_orders SET payment_intent_id = NULL WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+    flash(problems or "Card payment cancelled — the reader is clear.",
+          "error" if problems else "success")
+    return redirect(url_for("pos_order", order_id=order_id))
+
+
+PIN_ATTEMPT_LIMIT = 5
+PIN_LOCKOUT_MINUTES = 10
+
+
+def pin_locked_out(conn, user_id):
+    """Whether this person has failed too many PINs to try again yet.
+
+    Counted per person, not per device. Everyone shares the château's IP on a
+    kiosk, so an IP-based limit would let one fumbled PIN lock the whole kitchen
+    out of clocking in.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(minutes=PIN_LOCKOUT_MINUTES)).isoformat()
+    failures = conn.execute(
+        """SELECT COUNT(*) AS c FROM submission_log
+           WHERE action = ? AND created_at >= ?""",
+        (f"arrive_pin_fail:{user_id}", since)).fetchone()["c"]
+    return failures >= PIN_ATTEMPT_LIMIT
+
+
+def record_pin_failure(conn, user_id):
+    """Only failures are logged. Counting successes too would lock out whoever
+    signs in most often, which is the opposite of the intent."""
+    conn.execute(
+        "INSERT INTO submission_log (ip_address, action, created_at) VALUES (?, ?, ?)",
+        (request.remote_addr or "kiosk", f"arrive_pin_fail:{user_id}",
+         datetime.now(timezone.utc).isoformat()))
+
+
+def initials_for(name):
+    parts = [p for p in (name or "").split() if p]
+    return ((parts[0][0] + parts[-1][0]) if len(parts) > 1
+            else (parts[0][:2] if parts else "?")).upper()
+
+
+@app.route("/arrive")
+def arrive():
+    """The screen on the shared iPad or a borrowed phone: tap your name, enter
+    your PIN, and you are signed in and clocked on.
+
+    Separate from /login on purpose. Signing in is not the same event as
+    arriving at work — someone checking next week's rota from home at nine at
+    night should not appear on the timesheet.
+    """
+    conn = get_db()
+    staff = conn.execute(
+        """SELECT id, name, job_role, quick_pin_hash FROM users
+           WHERE status = 'active' ORDER BY name""").fetchall()
+    on_shift = {r["user_id"] for r in conn.execute(
+        "SELECT user_id FROM time_entries WHERE clock_out_at IS NULL").fetchall()}
+    conn.close()
+    people = [{
+        "id": p["id"], "name": p["name"], "job_role": p["job_role"],
+        "initials": initials_for(p["name"]),
+        "has_pin": bool(p["quick_pin_hash"]),
+        "here": p["id"] in on_shift,
+    } for p in staff]
+    return render_template("arrive.html", people=people)
+
+
+@app.route("/arrive/<int:user_id>", methods=["POST"])
+def arrive_signin(user_id):
+    """Check the PIN, sign them in, and start their shift."""
+    pin = request.form.get("pin", "").strip()
+    conn = get_db()
+    person = conn.execute(
+        "SELECT * FROM users WHERE id = ? AND status = 'active'", (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+
+    if pin_locked_out(conn, user_id):
+        conn.commit()
+        conn.close()
+        flash(f"Too many wrong PINs. Wait {PIN_LOCKOUT_MINUTES} minutes, or ask "
+              f"the owner to reset it.", "error")
+        return redirect(url_for("arrive"))
+    if not person["quick_pin_hash"]:
+        conn.close()
+        flash(f"{person['name'].split(' ')[0]} has no PIN yet — the owner sets "
+              f"one on their profile.", "error")
+        return redirect(url_for("arrive"))
+    if not check_password_hash(person["quick_pin_hash"], pin):
+        record_pin_failure(conn, user_id)
+        log_audit(conn, "arrive_pin_failed", target=person["name"])
+        conn.commit()
+        conn.close()
+        flash("That PIN doesn't match.", "error")
+        return redirect(url_for("arrive"))
+
+    session["user_id"] = person["id"]
+    # Arriving means starting work. Only start a shift if one is not already
+    # running, so tapping in twice does not open a second overlapping entry.
+    started = False
+    if not open_shift(conn, person["id"]):
+        clock_in(conn, person["id"])
+        started = True
+    log_audit(conn, "arrived_on_shift" if started else "arrived_already_on",
+              target=person["name"])
+    conn.commit()
+    conn.close()
+    first = (person["name"] or "").split(" ")[0]
+    flash(f"Welcome, {first} — you're clocked in." if started
+          else f"Welcome back, {first}. You were already clocked in.", "success")
+    return redirect(url_for("staff_today"))
+
+
+@app.route("/directory/<int:user_id>/set-pin", methods=["POST"])
+@owner_required
+def set_quick_pin(user_id):
+    """Set or clear a staff member's arrival PIN."""
+    pin = request.form.get("pin", "").strip()
+    conn = get_db()
+    person = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+    if pin and (not pin.isdigit() or not 4 <= len(pin) <= 8):
+        conn.close()
+        flash("A PIN is 4 to 8 digits.", "error")
+        return redirect(url_for("profile", user_id=user_id))
+
+    conn.execute("UPDATE users SET quick_pin_hash = ? WHERE id = ?",
+                 (generate_password_hash(pin) if pin else None, user_id))
+    # Clear any lockout, so resetting a forgotten PIN lets them straight back in.
+    conn.execute("DELETE FROM submission_log WHERE action = ?",
+                 (f"arrive_pin_fail:{user_id}",))
+    log_audit(conn, "quick_pin_set" if pin else "quick_pin_cleared", target=person["name"])
+    conn.commit()
+    conn.close()
+    flash(f"PIN {'set' if pin else 'removed'} for {person['name']}.", "success")
+    return redirect(url_for("profile", user_id=user_id))
+
+
+@app.route("/admin/terminal", methods=["GET", "POST"])
+@owner_required
+def admin_terminal():
+    """Choose which card reader the till talks to."""
+    conn = get_db()
+    if request.method == "POST":
+        chosen = request.form.get("reader_id", "").strip()
+        conn.execute(
+            """INSERT INTO app_settings (key, value) VALUES ('terminal_reader_id', ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (chosen,))
+        log_audit(conn, "terminal_reader_selected", target=chosen or "(none)")
+        conn.commit()
+        conn.close()
+        flash(f"Card reader set to {chosen}." if chosen
+              else "Card reader cleared — the till will offer cash and QR only.", "success")
+        return redirect(url_for("admin_terminal"))
+
+    chosen = terminal_reader_id(conn)
+    conn.close()
+    readers, error = list_terminal_readers()
+    return render_template("admin_terminal.html", readers=readers, error=error,
+                           chosen=chosen, stripe_on=stripe_enabled())
 
 
 @app.route("/pos/<int:order_id>/pay-link", methods=["POST"])
@@ -14388,6 +16225,148 @@ def unsubscribe_push():
 # their lawyer) can set, so it's left as a placeholder rather than guessed.
 # ---------------------------------------------------------------------------
 
+CATALOGUE_ROOM_FIELDS = [
+    "name", "description", "max_occupancy", "price_per_night", "active",
+    "sort_order", "amenities", "min_nights", "max_adults", "max_children",
+    "size_sqm", "bed_setup", "bathroom", "outlook", "floor",
+]
+CATALOGUE_EXTRA_FIELDS = [
+    "name", "price", "active", "sort_order", "category", "description",
+    "lead_time_days", "max_qty", "guest_bookable", "sold_in_pos",
+]
+
+
+@app.route("/management/import-catalogue", methods=["GET", "POST"])
+@owner_required
+def import_catalogue():
+    """Load rooms and add-ons from a file exported off another installation.
+
+    The live database is a different database from the one on somebody's laptop,
+    so a room set up there does not exist here. This copies the catalogue over
+    rather than making anyone retype it.
+
+    Deliberately narrow: rooms and add-ons only. It will not touch guests,
+    bookings, staff, payments or settings, and it never deletes anything — the
+    worst a bad file can do is add a room you then deactivate.
+    """
+    if request.method == "GET":
+        conn = get_db()
+        counts = {
+            "rooms": conn.execute("SELECT COUNT(*) AS c FROM rooms").fetchone()["c"],
+            "extras": conn.execute("SELECT COUNT(*) AS c FROM extras").fetchone()["c"],
+        }
+        conn.close()
+        return render_template("import_catalogue.html", counts=counts)
+
+    upload = request.files.get("catalogue")
+    if not upload or not upload.filename:
+        flash("Choose the catalogue.json file first.", "error")
+        return redirect(url_for("import_catalogue"))
+    try:
+        data = json.loads(upload.read().decode("utf-8"))
+    except Exception as e:
+        flash(f"That file isn't readable as JSON: {e}", "error")
+        return redirect(url_for("import_catalogue"))
+    if not isinstance(data, dict) or not isinstance(data.get("rooms"), list):
+        flash("That doesn't look like a catalogue export.", "error")
+        return redirect(url_for("import_catalogue"))
+
+    dry_run = request.form.get("dry_run") == "on"
+    conn = get_db()
+    room_cols = {r["name"] for r in conn.execute("PRAGMA table_info(rooms)").fetchall()}
+    extra_cols = {r["name"] for r in conn.execute("PRAGMA table_info(extras)").fetchall()}
+    added, updated = [], []
+
+    def upsert(table, fields, available, row, extra_values=None):
+        """Match on name so importing the same file twice updates rather than
+        duplicating. Nothing is ever deleted."""
+        name = (row.get("name") or "").strip()
+        if not name:
+            return None
+        use = [f for f in fields if f in available and f in row]
+        existing = conn.execute(
+            f"SELECT id FROM {table} WHERE name = ?", (name,)).fetchone()
+        if existing:
+            if not dry_run and use:
+                conn.execute(
+                    f"UPDATE {table} SET {', '.join(f'{f} = ?' for f in use)} WHERE id = ?",
+                    [row[f] for f in use] + [existing["id"]])
+            return "updated"
+        cols, vals = list(use), [row[f] for f in use]
+        for key, value in (extra_values or {}).items():
+            if key in available:
+                cols.append(key)
+                vals.append(value)
+        if not dry_run:
+            conn.execute(
+                f"INSERT INTO {table} ({', '.join(cols)}) "
+                f"VALUES ({', '.join('?' * len(cols))})", vals)
+        return "added"
+
+    for row in data.get("rooms", []):
+        # A fresh export_token per installation: it is this site's secret for the
+        # room's calendar feed, not something to copy between databases.
+        outcome = upsert("rooms", CATALOGUE_ROOM_FIELDS, room_cols, row,
+                         {"export_token": secrets.token_urlsafe(20)})
+        if outcome:
+            (added if outcome == "added" else updated).append(f"room {row.get('name')}")
+    for row in data.get("extras", []):
+        outcome = upsert("extras", CATALOGUE_EXTRA_FIELDS, extra_cols, row)
+        if outcome:
+            (added if outcome == "added" else updated).append(f"add-on {row.get('name')}")
+
+    if dry_run:
+        conn.rollback()
+        conn.close()
+        flash(f"Dry run — nothing saved. Would add {len(added)} and update "
+              f"{len(updated)}: " + "; ".join(added + updated)[:300], "success")
+        return redirect(url_for("import_catalogue"))
+
+    log_audit(conn, "catalogue_imported",
+              details=f"{len(added)} added, {len(updated)} updated")
+    conn.commit()
+    conn.close()
+    flash(f"Imported — {len(added)} added, {len(updated)} updated.", "success")
+    return redirect(url_for("admin_rooms"))
+
+
+@app.route("/restoration")
+def restoration_page():
+    """A public page about the restoration. Static copy, no data behind it."""
+    return render_template("restoration.html")
+
+
+@app.route("/gallery")
+def gallery_page():
+    """Photographs, in the sections the public menu already links to.
+
+    Every section is passed whether or not it has photographs yet, because the
+    menu links to each one's anchor: a section dropped for being empty takes
+    its anchor with it and the link lands at the top of the page instead. An
+    empty section renders its heading and says so.
+    """
+    conn = get_db()
+    sections = conn.execute(
+        "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
+    photos = conn.execute(
+        "SELECT * FROM gallery_photos ORDER BY section_id, sort_order, id").fetchall()
+    conn.close()
+    by_section = {}
+    for p in photos:
+        by_section.setdefault(p["section_id"], []).append(p)
+    galleries = [{
+        "slug": s["slug"],
+        "title": s["title"],
+        "blurb": s["blurb"],
+        "images": [
+            {"url": url_for("room_photo", filename=p["filename"]),
+             "caption": p["caption"]}
+            for p in by_section.get(s["id"], [])
+        ],
+    } for s in sections]
+    return render_template("gallery.html", galleries=galleries)
+
+
 @app.route("/terms")
 def terms_page():
     conn = get_db()
@@ -15629,6 +17608,148 @@ def api_validate_promo_code():
     })
 
 
+def build_stay_quote(conn, room, arrival, departure, extra_ids=(), promo_code="",
+                     party_size=None):
+    """What this stay costs, itemised.
+
+    Uses the same functions that charge for it — compute_room_total for the
+    room, validate_promo_code for the discount — because a quote calculated
+    separately from the charge is one that will eventually disagree with the
+    charge, and the guest will be right. validate_promo_code only reads, so
+    quoting cannot burn a code.
+
+    Also answers "can I have these dates at all", so the guest finds out before
+    filling the form in rather than on submit.
+    """
+    nights = (departure - arrival).days if (arrival and departure) else 0
+    quote = {"nights": nights, "available": True, "reason": None, "lines": [],
+             "room_total": 0.0, "extras_total": 0.0, "discount": 0.0,
+             "promo_error": None, "total": 0.0, "per_night": None}
+
+    if nights < 1:
+        quote.update(available=False, reason="Departure must be after arrival.")
+        return quote
+    if room["min_nights"] and nights < room["min_nights"]:
+        quote.update(available=False,
+                     reason=f"This room has a {room['min_nights']}-night minimum, "
+                            f"and you have chosen {nights}.")
+        return quote
+    if party_size and room["max_occupancy"] and party_size > room["max_occupancy"]:
+        quote.update(available=False,
+                     reason=f"This room sleeps up to {room['max_occupancy']}.")
+        return quote
+    if not is_range_available(conn, room["id"], arrival, departure)[0]:
+        quote.update(available=False, reason="Those dates are no longer free.")
+        return quote
+
+    quote["room_total"] = compute_room_total(conn, room, arrival, departure)
+    quote["per_night"] = round(quote["room_total"] / nights, 2) if nights else None
+    quote["lines"].append({
+        "label": f"{room['name']} — {nights} night{'' if nights == 1 else 's'}",
+        "amount": quote["room_total"]})
+
+    # Mirrors the booking form's own query: every active extra, by id. Filtering
+    # differently here would price a line the form let them tick, or vice versa.
+    ids = [i for i in extra_ids if isinstance(i, int)]
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for extra in conn.execute(
+                f"SELECT * FROM extras WHERE active = 1 AND id IN ({marks})",
+                tuple(ids)).fetchall():
+            price = round(extra["price"] or 0, 2)
+            quote["extras_total"] += price
+            quote["lines"].append({"label": extra["name"], "amount": price})
+    quote["extras_total"] = round(quote["extras_total"], 2)
+
+    subtotal = round(quote["room_total"] + quote["extras_total"], 2)
+    if promo_code:
+        promo, discount, error = validate_promo_code(conn, promo_code, "room", subtotal)
+        if promo:
+            quote["discount"] = round(discount, 2)
+            quote["lines"].append({"label": f"Promo code {promo['code']}",
+                                   "amount": -quote["discount"]})
+        else:
+            quote["promo_error"] = error
+    quote["total"] = round(subtotal - quote["discount"], 2)
+    return quote
+
+
+@app.route("/api/availability/<int:room_id>")
+def api_availability(room_id):
+    """Which nights this room cannot be had, so the calendar can grey them out.
+
+    Public and read-only, like /api/quote beside it. It exposes only what a
+    guest would learn anyway by trying dates one at a time — that a night is
+    taken, and roughly why — never who has it.
+    """
+    conn = get_db()
+    if rate_limited(conn, "api_availability", 120):
+        conn.commit()
+        conn.close()
+        return jsonify(error="Too many requests — try again shortly."), 429
+    conn.commit()
+
+    room = conn.execute("SELECT id, min_nights, max_occupancy FROM rooms WHERE id = ? AND active = 1",
+                        (room_id,)).fetchone()
+    if not room:
+        conn.close()
+        abort(404)
+
+    today = datetime.now(timezone.utc).date()
+    start = parse_date(request.args.get("from", "")) or today
+    start = max(start, today)          # the past is never bookable
+    try:
+        months = min(max(int(request.args.get("months", 12)), 1), 24)
+    except ValueError:
+        months = 12
+    end = start + timedelta(days=months * 31)
+
+    nights = unavailable_nights(conn, room_id, start, end)
+    conn.close()
+    return jsonify(
+        room_id=room_id,
+        first=start.isoformat(),
+        last=(end - timedelta(days=1)).isoformat(),
+        min_nights=room["min_nights"] or 1,
+        max_occupancy=room["max_occupancy"],
+        unavailable=nights,
+    )
+
+
+@app.route("/api/quote")
+def api_quote():
+    """Price a stay without committing to it. Public, like the form it serves.
+
+    Read-only, and rate-limited on the same reasoning as the promo preview: it
+    is an unauthenticated endpoint that runs a handful of queries.
+    """
+    conn = get_db()
+    if rate_limited(conn, "api_quote", 120):
+        conn.commit()
+        conn.close()
+        return jsonify(error="Too many requests — try again shortly."), 429
+    conn.commit()
+    try:
+        room_id = request.args.get("room_id", "")
+        arrival = parse_date(request.args.get("arrival", ""))
+        departure = parse_date(request.args.get("departure", ""))
+        if not room_id.isdigit() or not arrival or not departure:
+            return jsonify(error="need room_id, arrival and departure"), 400
+        room = conn.execute(
+            "SELECT * FROM rooms WHERE id = ? AND active = 1", (int(room_id),)).fetchone()
+        if not room:
+            return jsonify(error="no such room"), 404
+        party_raw = request.args.get("party_size", "")
+        quote = build_stay_quote(
+            conn, room, arrival, departure,
+            [int(i) for i in request.args.getlist("extras") if i.isdigit()],
+            request.args.get("promo", "").strip(),
+            int(party_raw) if party_raw.isdigit() else None)
+    finally:
+        conn.close()
+    return jsonify(quote)
+
+
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
 def book_room(room_id):
     conn = get_db()
@@ -15687,6 +17808,8 @@ def book_room(room_id):
             ok, reason = is_range_available(conn, room_id, arrival, departure)
             if not ok:
                 error = reason
+            else:
+                error = house_capacity_error(conn, arrival, departure, party_size)
 
         if error:
             flash(error, "error")
@@ -15752,6 +17875,13 @@ def book_room(room_id):
                         "special_requests": special_requests[:490],
                         "extra_ids": ",".join(str(e["id"]) for e in chosen_extras),
                         "promo_code": promo_code if discount_amount else "",
+                        # The figures the guest is being charged, right now, so
+                        # the webhook stores these rather than recomputing them
+                        # from prices that may have changed in between. These
+                        # are what the card is actually charged for: the line
+                        # items above are built from the same two numbers.
+                        "total_price": f"{grand_total:.2f}",
+                        "discount_amount": f"{discount_amount:.2f}",
                     },
                 )
             except Exception as e:
@@ -15776,11 +17906,23 @@ def book_room(room_id):
     prefill_email = request.args.get("email", "")
     prefill_phone = request.args.get("phone", "")
     prefill_party_size = request.args.get("party_size", "")
+
+    # Priced server-side when the guest arrives with dates already chosen, which
+    # they usually do — the room list carries them through. The same figures are
+    # then kept current by /api/quote as they change anything, so the page is
+    # never silent about the price and never needs JavaScript to show one.
+    initial_quote = None
+    arrival_d, departure_d = parse_date(arrival_raw), parse_date(departure_raw)
+    if arrival_d and departure_d:
+        initial_quote = build_stay_quote(
+            conn, room, arrival_d, departure_d,
+            party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None)
     conn.close()
     return render_template(
         "book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras,
         stripe_enabled=stripe_enabled(), prefill_name=prefill_name, prefill_email=prefill_email,
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
+        initial_quote=initial_quote,
     )
 
 
@@ -15927,6 +18069,12 @@ def stripe_webhook():
                 ).fetchone()
                 if not existing and sval(session, "payment_status") == "paid":
                     create_restaurant_booking_from_stripe_session(conn, session)
+            elif meta.get("kind") == "room_balance":
+                # Must be matched explicitly: the fall-through below CREATES a
+                # booking from the session, so a guest paying off an existing
+                # stay would get a second, duplicate booking out of it.
+                if sval(session, "payment_status") == "paid":
+                    mark_booking_payment_paid(conn, session)
             else:
                 existing = conn.execute(
                     "SELECT id FROM bookings WHERE stripe_session_id = ?", (session["id"],)
@@ -15982,6 +18130,44 @@ def guest_checkin(manage_token):
 
 def booking_has_transfer(booking):
     return "transfer" in (booking["extras_summary"] or "").lower()
+
+
+@app.route("/book/pay/<manage_token>")
+def booking_pay(manage_token):
+    """Let a guest settle what is outstanding on their stay."""
+    conn = get_db()
+    booking = conn.execute("SELECT id FROM bookings WHERE manage_token = ?", (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    checkout_url = start_booking_stripe_payment(conn, booking["id"])
+    conn.close()
+    if not checkout_url:
+        # Stripe off, nothing owed, or the booking is cancelled. Say so rather
+        # than showing an error — none of those is the guest's mistake.
+        flash("There's nothing to pay online at the moment — please contact the château.", "error")
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+    return redirect(checkout_url, code=303)
+
+
+@app.route("/book/stripe-success")
+def booking_stripe_success():
+    manage_token = request.args.get("manage_token", "")
+    session_id = request.args.get("session_id", "").strip()
+    if not stripe_enabled() or not session_id or not manage_token:
+        abort(404)
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception:
+        abort(404)
+    if sval(session, "payment_status") == "paid":
+        conn = get_db()
+        mark_booking_payment_paid(conn, session)
+        conn.close()
+        flash("Payment received, thank you.", "success")
+    else:
+        flash("That payment wasn't completed.", "error")
+    return redirect(url_for("manage_booking", manage_token=manage_token))
 
 
 @app.route("/book/manage/<manage_token>", methods=["GET", "POST"])
@@ -16164,6 +18350,108 @@ def manage_booking(manage_token):
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
+    elif action == "add_nights" and booking["status"] in ("pending", "confirmed"):
+        # Staying longer. Applied immediately when the room is free, even on a
+        # paid booking, because unlike a date change this only ever adds nights
+        # and cost — it cannot take a room away from anyone, or leave the guest
+        # having paid for something they no longer have. The cost shows up as
+        # owed on their bill.
+        nights_raw = request.form.get("nights", "1").strip()
+        nights = int(nights_raw) if nights_raw.isdigit() and int(nights_raw) > 0 else 0
+        departure = parse_date(booking["departure_date"])
+        room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+
+        if not nights or nights > 30:
+            flash("Choose how many nights to add.", "error")
+        elif not departure or not room:
+            flash("We couldn't work that out — please get in touch.", "error")
+        else:
+            new_departure = departure + timedelta(days=nights)
+            ok, reason = is_range_available(
+                conn, booking["room_id"], departure, new_departure,
+                exclude_booking_id=booking["id"])
+            if not ok:
+                flash(f"We can't extend that far — {reason}. Get in touch and we'll "
+                      f"see what else we can do.", "error")
+            else:
+                added = compute_room_total(conn, room, departure, new_departure)
+                conn.execute(
+                    "UPDATE bookings SET departure_date = ?, total_price = ? WHERE id = ?",
+                    (new_departure.isoformat(),
+                     round((booking["total_price"] or 0) + added, 2) or None,
+                     booking["id"]))
+                log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
+                          details=f"+{nights} night(s), +€{added:.2f}")
+                owner_to = owner_email(conn)
+                conn.commit()      # before send_email, which needs its own write lock
+                if owner_to:
+                    send_email(
+                        owner_to, f"Guest extended their stay — {booking['reference_code']}",
+                        f"{booking['guest_name']} added {nights} night"
+                        f"{'s' if nights != 1 else ''} to their {booking['room_name']} "
+                        f"stay. It now runs {booking['arrival_date']} to "
+                        f"{new_departure.isoformat()}, and €{added:.2f} has been added "
+                        f"to their bill.\n\n— Château de Gudanes")
+                flash(f"{nights} more night{'s' if nights != 1 else ''} added — "
+                      f"€{added:.2f} on your bill.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
+    elif action == "add_extra" and booking["status"] in ("pending", "confirmed"):
+        # A guest adding a transfer or a hamper to a stay they have already
+        # booked. It goes on the bill as a line and is owed — no card is asked
+        # for here, because the amount owed is settled once, on arrival or by
+        # paying the balance, rather than as a string of small charges.
+        extra_id = request.form.get("extra_id", "").strip()
+        qty_raw = request.form.get("quantity", "1").strip()
+        quantity = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
+        departure = parse_date(booking["departure_date"])
+        extra = conn.execute(
+            """SELECT * FROM extras WHERE id = ? AND active = 1
+               AND guest_bookable = 1 AND category = 'room'""",
+            (extra_id,)).fetchone() if extra_id.isdigit() else None
+
+        if departure and departure < datetime.now(timezone.utc).date():
+            flash("That stay has already finished.", "error")
+        elif not extra:
+            flash("That isn't something we can add.", "error")
+        elif extra["max_qty"] and quantity > extra["max_qty"]:
+            flash(f"We can only do {extra['max_qty']} of those.", "error")
+        else:
+            # Some things need notice — a transfer booked for tomorrow morning
+            # cannot be arranged, and promising it would be worse than refusing.
+            arrival = parse_date(booking["arrival_date"])
+            lead = extra["lead_time_days"] or 0
+            days_until = (arrival - datetime.now(timezone.utc).date()).days if arrival else 0
+            if lead and days_until < lead:
+                flash(f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
+                      f"notice, so it's too late for this stay — call us and we'll "
+                      f"see what we can do.", "error")
+            else:
+                add_booking_extra(conn, "room", booking["id"], extra, quantity,
+                                  notes="Added by the guest")
+                log_audit(conn, "guest_added_extra", target=booking["reference_code"],
+                          details=f"{quantity} x {extra['name']}")
+                owner_to = owner_email(conn)
+                # Commit before sending. send_email falls back to writing the
+                # message into email_outbox on its own connection, which cannot
+                # take a write lock while this transaction is still open — the
+                # notification was being silently lost to "database is locked".
+                conn.commit()
+                if owner_to:
+                    send_email(
+                        owner_to, f"Guest added an extra — {booking['reference_code']}",
+                        f"{booking['guest_name']} added {quantity} x {extra['name']} "
+                        f"(€{(extra['price'] or 0) * quantity:.2f}) to their "
+                        f"{booking['room_name']} stay, {booking['arrival_date']} to "
+                        f"{booking['departure_date']}.\n\n— Château de Gudanes")
+                conn.commit()
+                flash(f"{extra['name']} added — it's on your bill.", "success")
+        conn.commit()
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
     elif action == "book_dinner" and booking["status"] == "confirmed":
         restaurant_settings = get_restaurant_settings(conn)
         if not restaurant_settings or not restaurant_settings["enabled"]:
@@ -16219,12 +18507,28 @@ def manage_booking(manage_token):
         dinner_max_date = (stay_end - timedelta(days=1)).isoformat()
         dinner_available = dinner_min_date <= dinner_max_date
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
+    bill = booking_bill(conn, booking["id"])
+    # What they can still add. Anything needing more notice than they have left
+    # is left out rather than offered and then refused.
+    days_until = 0
+    if parse_date(booking["arrival_date"]):
+        days_until = (parse_date(booking["arrival_date"]) - datetime.now(timezone.utc).date()).days
+    addable = [e for e in conn.execute(
+        """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
+           AND category = 'room' ORDER BY sort_order, name""").fetchall()
+        if (e["lead_time_days"] or 0) <= max(days_until, 0)]
+    # Minted on first sight rather than up front, so a link only exists for
+    # someone who has actually been here. Written before the connection closes.
+    portal_token = guest_portal_token(conn, booking["guest_email"])
+    conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
-        dinner_available=dinner_available,
+        dinner_available=dinner_available, bill=bill, addable=addable,
+        stripe_enabled=stripe_enabled(),
     )
 
 
@@ -17319,12 +19623,129 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     return deposit_amount, balance_amount, balance_due_date
 
 
+def parse_money(raw):
+    """A typed-in amount, or None if the box was left empty or filled with junk.
+
+    None and 0 mean different things here: None is "no supplement is charged",
+    0 is "the owner has decided it is free". Both behave the same when charging,
+    but only the first should read as unset on the form.
+    """
+    text = (raw or "").strip().replace("€", "").replace(",", ".")
+    if not text:
+        return None
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return round(value, 2) if value >= 0 else None
+
+
+# What a guest may choose for themselves on the public registration form.
+#
+# 'solo' is deliberately absent. A private room on an atelier is arranged with
+# the château directly: the price depends on the atelier, the dates and what is
+# actually free, so it is quoted per enquiry rather than carried as a standing
+# supplement. Staff can still set solo on a booking by hand, which is how one
+# that was arranged over the phone gets recorded.
+PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
+ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+
+
+def workshop_single_supplement(workshop, occupancy_type):
+    """The per-person supplement for a private room, or 0.
+
+    Only 'solo' pays it. The published price includes a shared room, so double
+    and triple occupancy are what the headline figure already covers.
+    """
+    if occupancy_type != "solo":
+        return 0.0
+    try:
+        return round(float(workshop["single_supplement"] or 0), 2)
+    except (KeyError, IndexError, TypeError, ValueError):
+        # Older databases predate the column; no supplement is the honest answer.
+        return 0.0
+
+
+def workshop_subtotal(workshop, party_size, occupancy_type="double"):
+    """(subtotal, supplement_per_person) before any promo discount.
+
+    Every place that works out what a registration costs goes through here —
+    the booking itself, the promo preview and the figure shown on the form. When
+    the deposit is calculated from one sum and the guest was quoted another, the
+    two disagree by exactly the supplement, and nobody notices until the balance
+    invoice.
+    """
+    price = workshop["price_per_person"] or 0
+    if not price:
+        return 0, 0.0
+    supplement = workshop_single_supplement(workshop, occupancy_type)
+    return round((price + supplement) * party_size, 2), supplement
+
+
+def rooms_needed(occupancy_type, party_size):
+    """How many rooms a party of this size takes at this occupancy.
+
+    The château has a fixed number of rooms, and a session's capacity counts
+    heads, not rooms — so ten guests sharing need five rooms and ten guests
+    each wanting their own need ten. Since the single supplement made a private
+    room something a guest deliberately buys, the difference has to be counted.
+    """
+    party = max(int(party_size or 0), 0)
+    if not party:
+        return 0
+    if occupancy_type == "solo":
+        return party
+    per_room = 3 if occupancy_type == "triple" else 2
+    return -(-party // per_room)          # ceiling division
+
+
+def bookable_room_count(conn):
+    return conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+
+
+def session_rooms_used(conn, session_id, exclude_id=None):
+    """Rooms already spoken for on a session, from the occupancy each party chose."""
+    query = """SELECT occupancy_type, party_size FROM workshop_bookings
+               WHERE session_id = ? AND status IN ('pending', 'confirmed')"""
+    params = [session_id]
+    if exclude_id:
+        query += " AND id != ?"
+        params.append(exclude_id)
+    return sum(rooms_needed(r["occupancy_type"], r["party_size"])
+               for r in conn.execute(query, params).fetchall())
+
+
+def session_room_error(conn, session_id, occupancy_type, party_size, exclude_id=None):
+    """None if this party still fits in the rooms the château has, else why not.
+
+    A workshop takes over the whole house, so every active room is available to
+    it — no need to ask which. Public forms only: staff putting somebody in by
+    hand may know about a sofa bed, a late cancellation, or a guest happy to
+    share at the last minute.
+    """
+    total = bookable_room_count(conn)
+    if not total:
+        return None                        # no rooms recorded — nothing to enforce
+    used = session_rooms_used(conn, session_id, exclude_id)
+    want = rooms_needed(occupancy_type, party_size)
+    if used + want <= total:
+        return None
+    left = max(total - used, 0)
+    if occupancy_type == "solo":
+        return (f"A room to yourself needs one room per guest, and only "
+                f"{left} {'is' if left == 1 else 'are'} left for these dates. "
+                f"Choose a shared room, or contact the château and we'll see what we can do.")
+    return (f"Only {left} room{'' if left == 1 else 's'} {'is' if left == 1 else 'are'} "
+            f"left for these dates, and a party of {party_size} sharing needs {want}. "
+            f"Please contact the château directly.")
+
+
 def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email, guest_phone, party_size,
                              notes, occupancy_type="double", requested_roommate=None, dietary_notes=None,
                              medical_notes=None, special_occasion=None, booking_id=None, promo_code=None):
     reference_code = make_workshop_reference_code()
     manage_token = secrets.token_urlsafe(24)
-    subtotal = (workshop["price_per_person"] * party_size) if workshop["price_per_person"] else 0
+    subtotal, supplement = workshop_subtotal(workshop, party_size, occupancy_type)
 
     promo, discount_amount = None, 0.0
     if promo_code and subtotal:
@@ -17343,13 +19764,13 @@ def create_workshop_booking(conn, session_row, workshop, guest_name, guest_email
            (session_id, reference_code, manage_token, guest_name, guest_email, guest_phone, party_size,
             notes, total_price, occupancy_type, requested_roommate, dietary_notes, medical_notes,
             special_occasion, deposit_amount, balance_amount, balance_due_date, booking_id, created_at,
-            promo_code_id, discount_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            promo_code_id, discount_amount, single_supplement)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (session_row["id"], reference_code, manage_token, guest_name, guest_email, guest_phone or None,
          party_size, notes or None, total_price, occupancy_type, requested_roommate or None,
          dietary_notes or None, medical_notes or None, special_occasion or None,
          deposit_amount, balance_amount, balance_due_date, booking_id, datetime.now(timezone.utc).isoformat(),
-         promo["id"] if promo else None, discount_amount or None),
+         promo["id"] if promo else None, discount_amount or None, supplement or None),
     )
     booking_row_id = conn.execute("SELECT id FROM workshop_bookings WHERE manage_token = ?", (manage_token,)).fetchone()["id"]
     # Same transaction as the booking insert -- see the room-booking path
@@ -17792,7 +20213,14 @@ def mark_workshop_payment_paid(conn, session):
                    WHERE workshop_bookings.id = ?""",
                 (booking_id,),
             ).fetchone()
-            send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking))
+            # Commit the payment before sending the receipt. If no provider is
+            # configured, send_email falls back to writing the message into
+            # email_outbox on its own connection, which cannot take a write lock
+            # while this transaction is open — so the guest's deposit receipt was
+            # being lost to "database is locked" instead of held for later.
+            conn.commit()
+            send_workshop_email(conn, booking, "workshop_deposit_receipt",
+                                workshop_email_context(booking))
     conn.commit()
 
 
@@ -17904,7 +20332,8 @@ def workshop_register(session_id):
     conn = get_db()
     session_row = conn.execute(
         """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person, workshops.instructor_name,
-               workshops.instructor_user_id, workshops.active, workshops.deposit_percent, workshops.inclusions
+               workshops.instructor_user_id, workshops.active, workshops.deposit_percent, workshops.inclusions,
+               workshops.single_supplement
            FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
            WHERE workshop_sessions.id = ?""",
         (session_id,),
@@ -17922,12 +20351,26 @@ def workshop_register(session_id):
         (session_row["workshop_id"],),
     ).fetchall()
 
+    # Everything the page needs regardless of which way the request goes. This
+    # template is rendered from three places below, and passing each value by
+    # hand is how one of them ends up missing a variable that the other two
+    # have — so they are gathered once and splatted into all three.
+    rooms_left = max(bookable_room_count(conn) - session_rooms_used(conn, session_id), 0)
+    page = {
+        "session": session_row,
+        "custom_fields": custom_fields,
+        "rooms_left": rooms_left,
+        # Don't offer a private room the château cannot give: the same reason
+        # a taken night is not clickable on the booking calendar.
+        "solo_possible": rooms_left >= 1 or not bookable_room_count(conn),
+    }
+
     if request.method == "POST":
         if rate_limited(conn, "register_workshop", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
             flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("workshop_register.html", session=session_row, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False, custom_fields=custom_fields)
+            return render_template("workshop_register.html", **page, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False)
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
@@ -17936,7 +20379,13 @@ def workshop_register(session_id):
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
         occupancy_type = request.form.get("occupancy_type", "double").strip()
-        if occupancy_type not in ("solo", "double", "triple"):
+        # A private room is arranged with the château directly, not booked
+        # online: what it costs depends on the atelier, the dates and what is
+        # free, so it is quoted case by case rather than carrying a standing
+        # supplement. The refusal is here rather than only in the form because
+        # hiding an <option> stops nobody from posting the value — and 'solo'
+        # with no supplement set is a private room given away for nothing.
+        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES:
             occupancy_type = "double"
         requested_roommate = request.form.get("requested_roommate", "").strip()[:200]
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -17960,6 +20409,19 @@ def workshop_register(session_id):
         elif workshop_session_remaining_capacity(conn, session_id) < party_size:
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
+        else:
+            # end_date is the last day the guests are still there (they check
+            # out that morning, the same convention a workshop uses to hold
+            # every room — see is_range_available), so it needs +1 day to
+            # become the exclusive end peak_guests_in_house expects.
+            session_end = parse_date(session_row["end_date"])
+            error = house_capacity_error(
+                conn, start_date, session_end + timedelta(days=1), party_size)
+            # Heads fitting is not the same as rooms fitting: since a private
+            # room is now something a guest pays extra for, we must not sell
+            # one the château hasn't got.
+            if not error:
+                error = session_room_error(conn, session_id, occupancy_type, party_size)
 
         custom_values = {}
         if not error:
@@ -17975,15 +20437,18 @@ def workshop_register(session_id):
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
             return render_template(
-                "workshop_register.html", session=session_row,
+                "workshop_register.html", **page,
                 prefill_name=guest_name, prefill_email=guest_email, prefill_phone=guest_phone,
-                prefill_party_size=party_size_raw, fully_booked=fully_booked, custom_fields=custom_fields,
+                prefill_party_size=party_size_raw, fully_booked=fully_booked,
             )
 
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (session_row["workshop_id"],)).fetchone()
         if promo_code and workshop["price_per_person"]:
+            # Same subtotal the booking will use, supplement included — a code
+            # with a minimum spend must not be judged against a smaller figure
+            # than the one the guest is actually being charged.
             promo_preview, _, promo_error = validate_promo_code(
-                conn, promo_code, "workshop", workshop["price_per_person"] * party_size
+                conn, promo_code, "workshop", workshop_subtotal(workshop, party_size, occupancy_type)[0]
             )
             if not promo_preview:
                 flash(f"Promo code not applied: {promo_error}", "error")
@@ -18018,10 +20483,10 @@ def workshop_register(session_id):
 
     conn.close()
     return render_template(
-        "workshop_register.html", session=session_row,
+        "workshop_register.html", **page,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        fully_booked=False, custom_fields=custom_fields,
+        fully_booked=False,
     )
 
 
@@ -18584,7 +21049,8 @@ def build_owner_digest(conn):
         "SELECT COUNT(*) AS c FROM waitlist_entries WHERE status IN ('open', 'contacted')"
     ).fetchone()["c"]
     last_backup = conn.execute(
-        "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' ORDER BY created_at DESC LIMIT 1"
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
+        "ORDER BY created_at DESC LIMIT 1"
     ).fetchone()
     last_backup_at = last_backup["created_at"] if last_backup else None
     backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
@@ -19530,6 +21996,86 @@ def admin_bookings():
     )
 
 
+def guest_portal_token(conn, email):
+    """The guest's own standing link, minted once and kept.
+
+    Every other guest link in this app is per-booking: a stay, a registration
+    and a dinner each carry their own manage token, so somebody who has been
+    three times is holding three unrelated URLs and no way to see themselves.
+    This is the one address that is *them* — the account behind the email,
+    with no password to forget.
+
+    Keyed on the guests profile, which is already one row per person (see the
+    find-or-create in confirm_booking_by_id). Returns None when there is no
+    profile yet: a link nobody could reach is not worth minting.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    row = conn.execute("SELECT id, portal_token FROM guests WHERE email = ? COLLATE NOCASE",
+                       (email,)).fetchone()
+    if not row:
+        return None
+    if row["portal_token"]:
+        return row["portal_token"]
+    token = secrets.token_urlsafe(24)
+    conn.execute("UPDATE guests SET portal_token = ? WHERE id = ?", (token, row["id"]))
+    return token
+
+
+def guest_portal_contents(conn, email):
+    """Everything of this guest's, in the order they would look for it.
+
+    Deliberately the same sources the owner's history page reads, so the two
+    cannot disagree about what a guest has — minus the parts that are the
+    château's business rather than theirs: promo redemptions, lifetime spend,
+    owner notes.
+    """
+    stays = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.guest_email = ? COLLATE NOCASE
+             AND bookings.status IN ('pending', 'confirmed')
+           ORDER BY bookings.arrival_date DESC""", (email,)).fetchall()
+    dinners = conn.execute(
+        """SELECT * FROM restaurant_bookings
+           WHERE guest_email = ? COLLATE NOCASE AND status IN ('pending', 'confirmed')
+           ORDER BY dinner_date DESC""", (email,)).fetchall()
+    ateliers = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                  workshop_sessions.start_date, workshop_sessions.end_date
+           FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_bookings.guest_email = ? COLLATE NOCASE
+             AND workshop_bookings.status IN ('pending', 'confirmed')
+           ORDER BY workshop_sessions.start_date DESC""", (email,)).fetchall()
+    return stays, dinners, ateliers
+
+
+@app.route("/my/<token>")
+def guest_portal(token):
+    """One link, everything of theirs. No password — the token is the secret,
+    exactly as it is for the per-booking manage links this sits above."""
+    conn = get_db()
+    profile = conn.execute("SELECT * FROM guests WHERE portal_token = ?", (token,)).fetchone()
+    if not profile:
+        conn.close()
+        abort(404)
+    stays, dinners, ateliers = guest_portal_contents(conn, profile["email"])
+    bills = {}
+    for stay in stays:
+        bill = booking_bill(conn, stay["id"])
+        if bill and bill["owed"] > 0:
+            bills[stay["id"]] = bill
+    conn.close()
+    return render_template(
+        "guest_portal.html", profile=profile, stays=stays, dinners=dinners,
+        ateliers=ateliers, bills=bills,
+        today=datetime.now(timezone.utc).date().isoformat(),
+    )
+
+
 @app.route("/admin/bookings/guest/<email>")
 @owner_required
 def guest_booking_history(email):
@@ -19561,6 +22107,9 @@ def guest_booking_history(email):
         (email,),
     ).fetchall()
     profile = conn.execute("SELECT * FROM guests WHERE email = ?", (email,)).fetchone()
+    # So the owner can send a guest their own link when they ask for one.
+    portal_token = guest_portal_token(conn, email)
+    conn.commit()
     conn.close()
     # A profile with no activity yet is still a legitimate page to open.
     if not bookings and not dinners and not workshop_regs and not events and not profile:
@@ -19572,7 +22121,7 @@ def guest_booking_history(email):
     return render_template(
         "guest_booking_history.html", email=email, profile=profile, bookings=bookings, dinners=dinners,
         workshop_regs=workshop_regs, events=events, promo_redemptions=promo_redemptions,
-        lifetime_spend=lifetime_spend,
+        lifetime_spend=lifetime_spend, portal_token=portal_token,
     )
 
 
@@ -19631,6 +22180,25 @@ def confirm_booking_by_id(conn, booking_id):
         # the guest record insert above is harmless to leave in place
         # (guest_id just goes unused), but the email below must not fire.
         return False, "not found or not pending"
+    # This is the moment the guest gets a standing profile, so it is also the
+    # moment their own link becomes real — and this email is the one place a
+    # first-time guest is certain to see it. Built in code rather than from a
+    # template, so no wording anybody has edited is disturbed by adding it.
+    portal_token = guest_portal_token(conn, booking["guest_email"])
+    account_line = ""
+    if portal_token:
+        account_line = (
+            "\nEverything you have with us — this stay, any ateliers or dinners — "
+            "is always here:\n"
+            f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
+    # Commit before sending. With no email provider configured send_email falls
+    # back to email_outbox on its own connection, which cannot take a write lock
+    # while this transaction is open — so the guest's confirmation, with its
+    # calendar invite and check-in link, was being dropped instead of held.
+    # Same fault already fixed in add_extra and mark_workshop_payment_paid.
+    # Safe for bulk_confirm_bookings too: it confirms in a loop, and each
+    # booking being durable as it goes is what you want if the loop dies.
+    conn.commit()
     send_email(
         booking["guest_email"],
         f"Booking confirmed — {room['name']}",
@@ -19640,7 +22208,8 @@ def confirm_booking_by_id(conn, booking_id):
         f"Reference code: {booking['reference_code']}\n"
         f"Check in online — confirm your arrival time, tell us about any requests"
         f"{' and your airport transfer details' if booking_has_transfer(booking) else ''}: "
-        f"{url_for('guest_checkin', manage_token=booking['manage_token'], _external=True)}\n\n"
+        f"{url_for('guest_checkin', manage_token=booking['manage_token'], _external=True)}\n"
+        f"{account_line}\n"
         f"— Château de Gudanes",
         ics_content=generate_booking_ics(booking, room["name"]),
         ics_filename=f"{booking['reference_code']}.ics",
@@ -21521,6 +24090,16 @@ PROMO_APPLIES_TO = ["all", "room", "restaurant", "workshop"]
 def admin_promo_codes():
     conn = get_db()
     codes = conn.execute("SELECT * FROM promo_codes ORDER BY active DESC, created_at DESC").fetchall()
+    # Why each code would be refused right now, for the owner. Guests are told
+    # only that a code "isn't recognized, or can't be used" — deliberately, so
+    # the public field can't be used to discover which codes exist — so the
+    # real reason has to be visible somewhere, or "my code doesn't work" becomes
+    # unanswerable. An infinite subtotal so a minimum spend never trips: this is
+    # about the code's own state, not any one booking, and each code is judged
+    # against its own category so "only applies to room bookings" — a setting,
+    # not a fault — never shows up here as a problem.
+    status = {c["code"]: promo_refusal_reason(conn, c["code"], c["applies_to"], float("inf"))
+              for c in codes}
     conn.close()
     today = datetime.now(timezone.utc).date().isoformat()
 
@@ -21568,7 +24147,7 @@ def admin_promo_codes():
         default_sort="used",
     )
     return render_template("admin_promo_codes.html", codes=lv["rows"], lv=lv,
-                           applies_to_options=PROMO_APPLIES_TO)
+                           status=status, applies_to_options=PROMO_APPLIES_TO)
 
 
 def _parse_promo_form():
@@ -21991,6 +24570,7 @@ def new_workshop():
         deposit_percent_raw = request.form.get("deposit_percent", "").strip()
         inclusions = request.form.get("inclusions", "").strip()
         itinerary = request.form.get("itinerary", "").strip()
+        supplement = parse_money(request.form.get("single_supplement", ""))
 
         if not title:
             flash("Workshop title is required.", "error")
@@ -22000,15 +24580,16 @@ def new_workshop():
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
-               default_capacity, sort_order, deposit_percent, inclusions, itinerary, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
              float(price_raw) if price_raw else 0,
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else 10,
              max_order + 1,
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else 30,
-             inclusions or None, itinerary or None, datetime.now(timezone.utc).isoformat()),
+             inclusions or None, itinerary or None, supplement,
+             datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         conn.close()
@@ -22045,6 +24626,7 @@ def edit_workshop(workshop_id):
         inclusions = request.form.get("inclusions", "").strip()
         itinerary = request.form.get("itinerary", "").strip()
         active = 1 if request.form.get("active") == "on" else 0
+        supplement = parse_money(request.form.get("single_supplement", ""))
 
         if not title:
             conn.close()
@@ -22053,13 +24635,14 @@ def edit_workshop(workshop_id):
 
         conn.execute(
             """UPDATE workshops SET title=?, description=?, instructor_name=?, instructor_user_id=?,
-               price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?, active=? WHERE id=?""",
+               price_per_person=?, default_capacity=?, deposit_percent=?, inclusions=?, itinerary=?,
+               single_supplement=?, active=? WHERE id=?""",
             (title, description, instructor_name or None,
              int(instructor_user_id) if instructor_user_id.isdigit() else None,
              float(price_raw) if price_raw else 0,
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else workshop["default_capacity"],
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else workshop["deposit_percent"],
-             inclusions or None, itinerary or None, active, workshop_id),
+             inclusions or None, itinerary or None, supplement, active, workshop_id),
         )
         conn.commit()
         conn.close()
@@ -22285,6 +24868,82 @@ def admin_workshop_registrations():
         messages_by_booking=messages_by_booking,
         refunded_by_registration=refunded_by_registration, paid_by_registration=paid_by_registration,
     )
+
+
+@app.route("/admin/workshops/registrations/<int:registration_id>/occupancy", methods=["POST"])
+@owner_required
+def set_workshop_occupancy(registration_id):
+    """Record a private room that was arranged with the château directly.
+
+    Solo is not bookable on the public form: what a private room costs depends
+    on the atelier, the dates and what is free, so it is quoted per enquiry.
+    This is where that quote is entered once it has been agreed — the guest
+    who phoned up is on the same registration as everyone else, just with an
+    occupancy and a supplement staff set by hand.
+
+    The supplement is per person, matching workshop_subtotal(), and repricing
+    goes through the same arithmetic as the booking itself so the two cannot
+    drift. An existing discount is preserved as the amount already agreed
+    rather than re-derived from the new subtotal.
+    """
+    conn = get_db()
+    reg = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshops.price_per_person,
+                  workshops.deposit_percent
+           FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_bookings.id = ?""", (registration_id,)).fetchone()
+    if not reg:
+        conn.close()
+        abort(404)
+
+    occupancy = (request.form.get("occupancy_type", "") or "").strip()
+    if occupancy not in ALL_OCCUPANCY_TYPES:
+        conn.close()
+        flash("Choose a room arrangement.", "error")
+        return redirect(url_for("admin_workshop_registrations"))
+
+    supplement = parse_money(request.form.get("single_supplement", "")) or 0.0
+    if occupancy != "solo":
+        supplement = 0.0   # only a private room carries one
+
+    # Staff can override capacity, but not silently: a solo booking needs a
+    # room per guest, and if the session has not got them somebody has to know
+    # before the guest is told yes.
+    room_problem = session_room_error(conn, reg["session_id"], occupancy, reg["party_size"],
+                                      exclude_id=registration_id)
+
+    price = reg["price_per_person"] or 0
+    subtotal = round((price + supplement) * reg["party_size"], 2) if price else 0
+    discount = reg["discount_amount"] or 0.0
+    total_price = round(subtotal - discount, 2) if subtotal else None
+    deposit_percent = resolve_deposit_percent(
+        conn, "workshop", reg["start_date"], reg["party_size"], reg["deposit_percent"])
+    deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
+        total_price, deposit_percent, parse_date(reg["start_date"]))
+    # A deposit already paid is not re-taken; only what is still owed moves.
+    if reg["deposit_paid_at"]:
+        deposit_amount = reg["deposit_amount"]
+        balance_amount = round((total_price or 0) - (deposit_amount or 0), 2)
+
+    conn.execute(
+        """UPDATE workshop_bookings
+           SET occupancy_type = ?, single_supplement = ?, total_price = ?,
+               deposit_amount = ?, balance_amount = ?, balance_due_date = ?
+           WHERE id = ?""",
+        (occupancy, supplement or None, total_price, deposit_amount, balance_amount,
+         balance_due_date, registration_id))
+    log_audit(conn, "workshop_occupancy_set", target=reg["reference_code"],
+              details=f"{occupancy}, supplement €{supplement:.2f}")
+    conn.commit()
+    conn.close()
+
+    if room_problem:
+        flash(f"Saved — but note: {room_problem}", "error")
+    else:
+        flash(f"Room arrangement saved for {reg['reference_code']}.", "success")
+    return redirect(url_for("admin_workshop_registrations"))
 
 
 @app.route("/admin/workshops/registrations/<int:registration_id>/confirm", methods=["POST"])
@@ -22593,7 +25252,8 @@ def export_workshop_registrations_csv():
     ).fetchall()
     conn.close()
     fieldnames = ["workshop_title", "reference_code", "guest_name", "party_names", "guest_email", "guest_phone",
-                  "start_date", "end_date", "party_size", "occupancy_type", "assigned_room_name",
+                  "start_date", "end_date", "party_size", "occupancy_type", "single_supplement",
+                  "assigned_room_name",
                   "requested_roommate", "dietary_notes", "medical_notes", "special_occasion", "status",
                   "total_price", "deposit_amount", "deposit_paid_at", "balance_amount", "balance_due_date",
                   "balance_paid_at", "notes", "created_at"]
@@ -24164,14 +26824,24 @@ def management_company_info():
                 ON CONFLICT(id) DO UPDATE SET {', '.join(f'{f} = excluded.{f}' for f in fields)}, updated_at = excluded.updated_at""",
             (*values, datetime.now(timezone.utc).isoformat()),
         )
+        # Lives in app_settings rather than company_info: it isn't a fact about
+        # the company, it's a number the booking forms enforce, and it belongs
+        # with the other single-value settings the app already reads that way.
+        capacity_raw = request.form.get("house_guest_capacity", "").strip()
+        if capacity_raw.isdigit() and int(capacity_raw) > 0:
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES ('house_guest_capacity', ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                (capacity_raw,))
         log_audit(conn, "company_info_updated")
         conn.commit()
         conn.close()
         flash("Company info updated.", "success")
         return redirect(url_for("management_company_info"))
     info = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    capacity = house_guest_capacity(conn)
     conn.close()
-    return render_template("management_company_info.html", info=info)
+    return render_template("management_company_info.html", info=info, house_guest_capacity=capacity)
 
 
 @app.route("/management/bank-details")
@@ -24636,7 +27306,7 @@ def readiness_checks(conn):
         "the footer currently omits it.")
 
     last_backup = conn.execute(
-        "SELECT created_at FROM audit_log WHERE action = 'backup_downloaded' "
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
         "ORDER BY id DESC LIMIT 1").fetchone()
     days = None
     if last_backup:
@@ -24653,6 +27323,25 @@ def readiness_checks(conn):
         "No impossible shifts." if not broken else
         f"{broken} shift{'s' if broken != 1 else ''} end before they start — "
         "payroll export is blocked until they're fixed.")
+
+    # A private room is not bookable online, so an unset supplement is no
+    # longer a way to give one away: the registration form offers shared
+    # occupancy only and the route refuses 'solo' whatever is posted. What
+    # matters instead is that a solo booking staff entered by hand actually
+    # carries a price, since that one WAS quoted to somebody.
+    unpriced_solo = conn.execute(
+        """SELECT COUNT(*) AS c FROM workshop_bookings
+           WHERE occupancy_type = 'solo'
+             AND status NOT IN ('declined', 'cancelled')
+             AND COALESCE(single_supplement, 0) = 0""").fetchone()["c"]
+    if unpriced_solo == 1:
+        solo_detail = ("1 solo registration carries no supplement, so that private "
+                       "room is being given away. Set the agreed amount on it.")
+    else:
+        solo_detail = (f"{unpriced_solo} solo registrations carry no supplement, so those "
+                       "private rooms are being given away. Set the agreed amount on each.")
+    add("warn", "Workshops", "Private rooms arranged by hand", unpriced_solo == 0,
+        "Every solo registration carries a supplement." if not unpriced_solo else solo_detail)
 
     for label, token, why in (
         ("Kiosk display token", OFFICE_DISPLAY_TOKEN,
@@ -24692,14 +27381,11 @@ def admin_readiness():
                            blockers=blockers, warnings=warnings)
 
 
-@app.route("/admin/backup")
-@owner_required
-def download_backup():
-    audit_conn = get_db()
-    log_audit(audit_conn, "backup_downloaded")
-    audit_conn.commit()
-    audit_conn.close()
-
+def build_backup_zip(include_media=True):
+    """A zip of the database, and optionally the uploaded documents and room
+    photos alongside it. Shared by the owner's manual download and the
+    automated email job, so there is exactly one place that knows what a
+    backup contains."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         tmp_db_path = os.path.join(BASE_DIR, f"_backup_tmp_{secrets.token_hex(6)}.db")
@@ -24714,19 +27400,116 @@ def download_backup():
             if os.path.exists(tmp_db_path):
                 os.remove(tmp_db_path)
 
-        for folder, arc_prefix in ((UPLOAD_DIR, "uploads"), (ROOM_PHOTO_DIR, "room_photos")):
-            for root, _dirs, files in os.walk(folder):
-                for fname in files:
-                    full = os.path.join(root, fname)
-                    rel = os.path.relpath(full, folder)
-                    zf.write(full, os.path.join(arc_prefix, rel))
+        if include_media:
+            for folder, arc_prefix in ((UPLOAD_DIR, "uploads"), (ROOM_PHOTO_DIR, "room_photos")):
+                for root, _dirs, files in os.walk(folder):
+                    for fname in files:
+                        full = os.path.join(root, fname)
+                        rel = os.path.relpath(full, folder)
+                        zf.write(full, os.path.join(arc_prefix, rel))
+    return buf.getvalue()
 
-    buf.seek(0)
+
+@app.route("/admin/backup")
+@owner_required
+def download_backup():
+    audit_conn = get_db()
+    log_audit(audit_conn, "backup_downloaded")
+    audit_conn.commit()
+    audit_conn.close()
+
+    zip_bytes = build_backup_zip(include_media=True)
     filename = f"gudanes-backup-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.zip"
     return app.response_class(
-        buf.getvalue(), mimetype="application/zip",
+        zip_bytes, mimetype="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# A backup email lands in a real inbox outside Railway entirely, which is the
+# point — the volume and the mailbox fail independently. Most providers cap
+# an incoming message around 25MB; this stays well under that even after
+# base64 inflates it by roughly a third.
+BACKUP_EMAIL_MAX_BYTES = 15 * 1024 * 1024
+
+
+def send_backup_email(to_address, zip_bytes, filename, note=""):
+    """Emails one backup zip as an attachment.
+
+    Deliberately separate from send_email(): that function is on the
+    critical path for every guest-facing message and only knows how to
+    attach an .ics file. Backups are lower-stakes to get wrong (a failed
+    send just tries again next tick) and don't belong sharing a code path
+    with a booking confirmation."""
+    if not to_address:
+        return False, "no owner email configured"
+    if resend_enabled():
+        payload = {
+            "from": RESEND_FROM, "to": [to_address],
+            "subject": "Château de Gudanes — automated backup",
+            "text": note or "Attached: a full backup of the database and uploaded files.",
+            "attachments": [{
+                "filename": filename,
+                "content": base64.b64encode(zip_bytes).decode("ascii"),
+            }],
+        }
+        try:
+            req = Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(req, timeout=30) as resp:
+                resp.read()
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    if not email_enabled():
+        return False, "no email provider configured"
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = "Château de Gudanes — automated backup"
+        msg["From"] = SMTP_FROM
+        msg["To"] = to_address
+        msg.set_content(note or "Attached: a full backup of the database and uploaded files.")
+        msg.add_attachment(zip_bytes, maintype="application", subtype="zip", filename=filename)
+        context = ssl.create_default_context()
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def run_backup_email_job(conn):
+    """Emails a backup zip to the owner on a schedule, so a lost or
+    corrupted Railway volume isn't the only copy. Falls back to the
+    database alone if the full zip (with uploads and room photos) is too
+    big to email — a smaller backup that actually arrives beats a bigger
+    one that a mail provider silently drops."""
+    to_address = owner_email(conn)
+    if not to_address:
+        return "no owner email configured"
+    date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    zip_bytes = build_backup_zip(include_media=True)
+    note = ""
+    if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
+        zip_bytes = build_backup_zip(include_media=False)
+        note = ("The database is attached, but uploaded documents and room photos were "
+                "left out this time because the full backup was too large to email. "
+                "Use Admin → Backup to download everything, including media.")
+        if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
+            return f"skipped — even the database alone is {len(zip_bytes) // (1024 * 1024)}MB, too large to email"
+    filename = f"gudanes-backup-{date_str}.zip"
+    ok, error = send_backup_email(to_address, zip_bytes, filename, note)
+    if ok:
+        log_audit(conn, "backup_auto_sent")
+        conn.commit()
+        return f"sent to {to_address} ({len(zip_bytes) // 1024}KB){' (database only)' if note else ''}"
+    return f"send failed: {error}"
 
 
 # ---------------------------------------------------------------------------
@@ -24840,6 +27623,203 @@ def new_task():
     else:
         flash("Task added.", "success")
     return redirect(request.referrer or url_for("admin_tasks"))
+
+
+@app.route("/admin/access-levels")
+@owner_required
+def admin_access_levels():
+    """Who can see what. Levels down one side, people down the other."""
+    conn = get_db()
+    presets = conn.execute(
+        "SELECT * FROM access_presets ORDER BY sort_order, name").fetchall()
+    people = conn.execute(
+        """SELECT id, name, email, role, job_role, status, access_preset
+           FROM users ORDER BY role != 'owner', name""").fetchall()
+    counts = {}
+    for row in conn.execute(
+            "SELECT access_preset AS p, COUNT(*) AS c FROM users GROUP BY access_preset").fetchall():
+        counts[row["p"]] = row["c"]
+    conn.close()
+    return render_template(
+        "admin_access_levels.html", presets=presets, people=people, counts=counts,
+        access_areas=[(key, AREA_TITLES[key]) for key in NAV_AREAS],
+        page_counts={key: len(eps) for key, eps in NAV_AREAS.items()})
+
+
+@app.route("/admin/access-levels/<slug>/save", methods=["POST"])
+@owner_required
+def save_access_preset(slug):
+    conn = get_db()
+    preset = conn.execute("SELECT * FROM access_presets WHERE slug = ?", (slug,)).fetchone()
+    if not preset:
+        conn.close()
+        abort(404)
+    if preset["is_full_access"]:
+        conn.close()
+        flash("The Owner level always has everything — that is what makes it the "
+              "way back in if another level is set wrong.", "error")
+        return redirect(url_for("admin_access_levels"))
+
+    granted = [a for a in request.form.getlist("areas") if a in NAV_AREAS]
+    conn.execute(
+        "UPDATE access_presets SET areas = ?, name = ?, description = ? WHERE slug = ?",
+        (",".join(granted), request.form.get("name", "").strip() or preset["name"],
+         request.form.get("description", "").strip() or None, slug))
+    log_audit(conn, "access_preset_saved", target=slug, details=",".join(granted) or "nothing")
+    conn.commit()
+    conn.close()
+    flash(f"Saved. {len(granted)} area{'' if len(granted) == 1 else 's'} allowed.", "success")
+    return redirect(url_for("admin_access_levels"))
+
+
+@app.route("/admin/access-levels/assign", methods=["POST"])
+@owner_required
+def assign_access_preset():
+    """Give one person an access level.
+
+    Refuses to remove the last full-access account. Locking yourself out of a
+    system with no email configured — so no password reset — means editing the
+    database by hand to get back in.
+    """
+    user_id = request.form.get("user_id", "")
+    slug = request.form.get("access_preset", "").strip()
+    if not user_id.isdigit():
+        abort(400)
+    conn = get_db()
+    person = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+    if not person:
+        conn.close()
+        abort(404)
+    if slug and not conn.execute(
+            "SELECT 1 FROM access_presets WHERE slug = ?", (slug,)).fetchone():
+        conn.close()
+        abort(400)
+
+    full_slugs = [r["slug"] for r in conn.execute(
+        "SELECT slug FROM access_presets WHERE is_full_access = 1").fetchall()]
+    had_full = person["role"] == "owner" or person["access_preset"] in full_slugs
+    if had_full and slug not in full_slugs:
+        marks = ",".join("?" * len(full_slugs)) or "''"
+        remaining = conn.execute(
+            f"""SELECT COUNT(*) AS c FROM users
+                WHERE id != ? AND status = 'active'
+                  AND (role = 'owner' OR access_preset IN ({marks}))""",
+            (person["id"], *full_slugs)).fetchone()["c"]
+        if not remaining:
+            conn.close()
+            flash("That would leave nobody with full access, and there is no email "
+                  "configured to send a password reset. Give someone else full "
+                  "access first.", "error")
+            return redirect(url_for("admin_access_levels"))
+
+    conn.execute("UPDATE users SET access_preset = ? WHERE id = ?",
+                 (slug or None, person["id"]))
+    log_audit(conn, "access_assigned", target=person["name"], details=slug or "(role default)")
+    conn.commit()
+    conn.close()
+    flash(f"{person['name']} now has "
+          + (f"the {slug} access level." if slug else "the default for their role."),
+          "success")
+    return redirect(url_for("admin_access_levels"))
+
+
+@app.route("/chat")
+@login_required
+def chat_home():
+    """The channel list. Unread first."""
+    user = current_user()
+    conn = get_db()
+    channels = chat_channel_list(conn, user)
+    people = conn.execute(
+        """SELECT id, name, job_role FROM users
+           WHERE status = 'active' AND id != ? ORDER BY name""", (user["id"],)).fetchall()
+    conn.close()
+    return render_template("chat_home.html", channels=channels, people=people)
+
+
+@app.route("/chat/<slug>")
+@login_required
+def chat_channel(slug):
+    user = current_user()
+    conn = get_db()
+    channel = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    if not channel:
+        conn.close()
+        abort(404)
+    if not can_read_channel(conn, channel, user):
+        conn.close()
+        abort(403)
+
+    messages = conn.execute(
+        """SELECT m.*, u.name AS author, u.job_role FROM chat_messages m
+           LEFT JOIN users u ON u.id = m.user_id
+           WHERE m.channel_id = ? ORDER BY m.id LIMIT 300""", (channel["id"],)).fetchall()
+    # Mark read on open. Doing it here rather than on scroll keeps the badge
+    # honest: the alternative is a channel that stays bold after you have read it.
+    if messages:
+        conn.execute(
+            """INSERT INTO chat_reads (channel_id, user_id, last_read_message_id)
+               VALUES (?, ?, ?)
+               ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_message_id = ?""",
+            (channel["id"], user["id"], messages[-1]["id"], messages[-1]["id"]))
+        conn.commit()
+    channels = chat_channel_list(conn, user)
+    conn.close()
+    return render_template("chat_channel.html", channel=channel, messages=messages,
+                           channels=channels)
+
+
+@app.route("/chat/<slug>/post", methods=["POST"])
+@login_required
+def chat_post(slug):
+    user = current_user()
+    body = request.form.get("body", "").strip()
+    conn = get_db()
+    channel = conn.execute("SELECT * FROM chat_channels WHERE slug = ?", (slug,)).fetchone()
+    if not channel:
+        conn.close()
+        abort(404)
+    if not can_read_channel(conn, channel, user):
+        conn.close()
+        abort(403)
+    if not body:
+        conn.close()
+        return redirect(url_for("chat_channel", slug=slug))
+
+    cur = conn.execute(
+        """INSERT INTO chat_messages (channel_id, user_id, body, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (channel["id"], user["id"], body[:4000], datetime.now(timezone.utc).isoformat()))
+    message_id = cur.lastrowid
+    # Your own message counts as read, or your channel shows unread to you.
+    conn.execute(
+        """INSERT INTO chat_reads (channel_id, user_id, last_read_message_id)
+           VALUES (?, ?, ?)
+           ON CONFLICT(channel_id, user_id) DO UPDATE SET last_read_message_id = ?""",
+        (channel["id"], user["id"], message_id, message_id))
+    conn.commit()
+    notify_chat_mentions(conn, channel, message_id, body, user)
+    conn.commit()
+    conn.close()
+    return redirect(url_for("chat_channel", slug=slug))
+
+
+@app.route("/chat/with/<int:user_id>")
+@login_required
+def chat_with(user_id):
+    """Open (or start) a direct message with one person."""
+    user = current_user()
+    if user_id == user["id"]:
+        return redirect(url_for("chat_home"))
+    conn = get_db()
+    other = conn.execute(
+        "SELECT id FROM users WHERE id = ? AND status = 'active'", (user_id,)).fetchone()
+    if not other:
+        conn.close()
+        abort(404)
+    channel = dm_channel_for(conn, user["id"], user_id)
+    conn.close()
+    return redirect(url_for("chat_channel", slug=channel["slug"]))
 
 
 @app.route("/today")
@@ -26775,6 +29755,7 @@ AUTOMATION_JOBS = [
     ("email_inbox_scan", "automation_email_scan_enabled", None, 900, run_email_inbox_scan_job),
     ("hr_escalation", "automation_hr_escalation_enabled", None, 21600, run_hr_escalation_job),
     ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
+    ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
 ]
 
 
@@ -26855,6 +29836,7 @@ AUTOMATION_JOB_LABELS = {
     "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",
     "hr_escalation": "HR chase-ups (overdue approvals, reviews, certificates)",
     "campaign_triggers": "Automated guest emails (before arrival, after departure)",
+    "backup_email": "Automated backup email (database + uploads, to the owner)",
 }
 
 
@@ -26886,6 +29868,7 @@ def update_automation_settings():
         "automation_hr_escalation_enabled": "1" if request.form.get("automation_hr_escalation_enabled") else "0",
         "automation_campaign_triggers_enabled": "1" if request.form.get("automation_campaign_triggers_enabled") else "0",
         "automation_stale_shift_enabled": "1" if request.form.get("automation_stale_shift_enabled") else "0",
+        "automation_backup_email_enabled": "1" if request.form.get("automation_backup_email_enabled") else "0",
     }
     interval_raw = request.form.get("automation_ical_sync_interval_hours", "").strip()
     try:
@@ -26910,6 +29893,11 @@ def update_automation_settings():
         updates["automation_stale_shift_hours"] = str(max(1, float(stale_hours_raw)))
     except ValueError:
         updates["automation_stale_shift_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_stale_shift_hours"]
+    backup_interval_raw = request.form.get("automation_backup_interval_hours", "").strip()
+    try:
+        updates["automation_backup_interval_hours"] = str(max(1, float(backup_interval_raw)))
+    except ValueError:
+        updates["automation_backup_interval_hours"] = AUTOMATION_SETTING_DEFAULTS["automation_backup_interval_hours"]
 
     for key, value in updates.items():
         conn.execute("UPDATE app_settings SET value = ? WHERE key = ?", (value, key))
@@ -26948,6 +29936,8 @@ def run_automation_job_now(job_name):
             except (TypeError, ValueError):
                 stale_hours = 14
             result = run_stale_shift_cleanup_job(conn, stale_hours)
+        elif job_name == "backup_email":
+            result = run_backup_email_job(conn)
         else:
             conn.close()
             abort(404)
@@ -28279,23 +31269,21 @@ def admin_outlook_addin():
 
 
 # ---------------------------------------------------------------------------
-# Public front-end design preview — new pages only, nothing existing touched.
-# Remove once the design is signed off and the templates go live properly.
+# The design is now live: home.html is served at "/" to visitors, and
+# /restoration and /gallery have permanent routes alongside the other public
+# pages. /preview is kept because it is a stable link for showing the design to
+# somebody without sending them to the front page.
+#
+# The duplicate /restoration and /gallery definitions that used to sit here were
+# removed in the merge — two functions of the same name on the same rule makes
+# Flask refuse to start at all ("View function mapping is overwriting an existing
+# endpoint"), so this would have taken the whole site down rather than serving a
+# stale page.
 # ---------------------------------------------------------------------------
 
 @app.route('/preview')
 def preview_home():
     return render_template('home.html')
-
-
-@app.route('/restoration')
-def restoration_page():
-    return render_template('restoration.html')
-
-
-@app.route('/gallery')
-def gallery_page():
-    return render_template('gallery.html', galleries=[])
 
 
 def start_background_work():

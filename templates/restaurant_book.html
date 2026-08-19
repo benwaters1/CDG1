@@ -1,55 +1,129 @@
 {% extends "public_base.html" %}
-{% block title %}Book Dinner{% endblock %}
+{% block title %}Reserve a Table{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>Book a Table</h1>
-  <p class="manual-body">
-    {% if settings['price_per_person'] %}€{{ '%.0f'|format(settings['price_per_person']) }} per person · {% endif %}
-    Up to {{ settings['capacity'] }} guests a night{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}.
+{# CONTRACT — POST /restaurant/book
+   dinner_date, guest_name, guest_email, guest_phone, party_size,
+   dietary_notes, promo_code, plus csrf_token. Nothing renamed, nothing added
+   that the server does not read. #}
+
+<div class="g-wrap" style="padding-top:clamp(2rem,5vw,3.5rem)">
+
+  <p class="g-eyebrow">La Table · Château de Gudanes</p>
+  <h1 class="g-display" style="font-size:clamp(28px,4.4vw,48px)">Reserve a table</h1>
+  <p class="g-lede" style="margin-bottom:8px">
+    {% if settings['price_per_person'] %}<span class="g-fig">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{% endif %}
   </p>
 
-  <form method="post" style="margin-top:18px;">
+  <form method="post" class="g-resform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Date</label>
-    <input type="date" name="dinner_date" min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required>
 
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" max="{{ settings['capacity'] }}" value="{{ prefill_party_size }}" required>
+    <div class="g-cols">
+      <div>
 
-    <label class="field-label">Your name</label>
-    <input type="text" name="guest_name" value="{{ prefill_name }}" required>
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">01</span> The evening</h2>
+          <div class="g-row">
+            <p class="g-field">
+              <label for="dinner_date">Date</label>
+              <input type="date" id="dinner_date" name="dinner_date"
+                     min="{{ min_date.isoformat() }}" value="{{ prefill_date }}" required>
+            </p>
+            <p class="g-field">
+              <label for="party_size">Guests</label>
+              <input type="number" id="party_size" name="party_size" min="1"
+                     max="{{ settings['capacity'] }}" value="{{ prefill_party_size }}" required>
+              <span class="g-hint">Up to {{ settings['capacity'] }} are seated each evening.</span>
+            </p>
+          </div>
+          <p class="g-hint">Dinner is served at a single sitting{% if settings['dinner_time'] %}, from {{ settings['dinner_time'] }}{% endif %}. Lunches are arranged on request — tell us below.</p>
+        </section>
 
-    <label class="field-label">Email</label>
-    <input type="email" name="guest_email" value="{{ prefill_email }}" required>
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">02</span> Your party</h2>
+          <p class="g-field">
+            <label for="guest_name">Name</label>
+            <input type="text" id="guest_name" name="guest_name" autocomplete="name" value="{{ prefill_name }}" required>
+          </p>
+          <div class="g-row">
+            <p class="g-field">
+              <label for="guest_email">Email</label>
+              <input type="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
+            </p>
+            <p class="g-field">
+              <label for="guest_phone">Telephone <span class="g-opt">optional</span></label>
+              <input type="tel" id="guest_phone" name="guest_phone" autocomplete="tel" value="{{ prefill_phone }}">
+            </p>
+          </div>
+        </section>
 
-    <label class="field-label">Phone (optional)</label>
-    <input type="tel" name="guest_phone" value="{{ prefill_phone }}">
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">03</span> The table</h2>
+          <p class="g-field">
+            <label for="dietary_notes">Dietary requirements, allergies, and the occasion</label>
+            <textarea id="dietary_notes" name="dietary_notes" rows="5"
+              placeholder="Allergies, vegetarian, a birthday, a preference for lunch rather than dinner, anything at all"></textarea>
+            <span class="g-hint">Requirements are designed into the menu rather than worked around on the night. Send them now and they become part of the planning.</span>
+          </p>
+          <p class="g-field g-field--narrow">
+            <label for="promo_code">Code <span class="g-opt">optional</span></label>
+            <span class="g-promo">
+              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters">
+              <button type="button" id="promo_apply_btn">Apply</button>
+            </span>
+            <span class="g-hint" id="promo_result" aria-live="polite"></span>
+          </p>
+        </section>
 
-    <label class="field-label">Dietary needs or anything else we should know?</label>
-    <textarea name="dietary_notes" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
+      </div>
 
-    <label class="field-label">Promo code (optional)</label>
-    <div style="display:flex; gap:8px;">
-      <input type="text" name="promo_code" id="promo_code" style="text-transform:uppercase;">
-      <button type="button" class="btn-mini" id="promo_apply_btn" style="flex-shrink:0;">Apply</button>
+      <aside class="g-aside">
+        <div class="g-dossier">
+          <p class="g-dossier__k">Your table</p>
+          <p class="g-dossier__room">La Table</p>
+          <dl class="g-dossier__l">
+            <div><dt>Date</dt><dd data-mirror="dinner_date">—</dd></div>
+            <div><dt>Guests</dt><dd data-mirror="party_size">—</dd></div>
+            {% if settings['dinner_time'] %}<div><dt>Seating</dt><dd>{{ settings['dinner_time'] }}</dd></div>{% endif %}
+            {% if settings['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '%.0f'|format(settings['price_per_person']) }}</dd></div>{% endif %}
+          </dl>
+
+          {% if stripe_enabled and settings['price_per_person'] %}
+            {% if settings['deposit_percent'] %}
+            <button type="submit" class="g-btn g-submit">Pay deposit &amp; request a table</button>
+            <p class="g-foot-note">You'll be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. This still isn't an instant confirmation — the château reviews every request. If it's declined, your deposit is refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+            {% else %}
+            <button type="submit" class="g-btn g-submit">Pay &amp; request a table</button>
+            <p class="g-foot-note">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+            {% endif %}
+          {% else %}
+            <button type="submit" class="g-btn g-submit">Request a table</button>
+            <p class="g-foot-note">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You'll get a reference code and a link to manage your reservation.</p>
+          {% endif %}
+        </div>
+      </aside>
     </div>
-    <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
-
-    {% if stripe_enabled and settings['price_per_person'] %}
-      {% if settings['deposit_percent'] %}
-      <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Pay Deposit &amp; Request a Table</button>
-      <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. This still isn't an instant confirmation — the château reviews every request. If it's declined, your deposit is refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
-      {% else %}
-      <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Pay &amp; Request a Table</button>
-      <p class="upload-hint" style="margin-top:10px;">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
-      {% endif %}
-    {% else %}
-    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Request a table</button>
-    <p class="upload-hint" style="margin-top:10px;">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You'll get a reference code and a link to manage your reservation.</p>
-    {% endif %}
   </form>
 </div>
+
+{% if fully_booked %}
+<section class="g-sec"><div class="g-wrap">
+  <div class="g-panel" style="max-width:40rem">
+    <h2 class="g-h3">That evening is fully seated</h2>
+    <p class="g-p" style="font-size:16px">Leave your details and we shall write to you should a place open.</p>
+    <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:18px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="desired_date" value="{{ prefill_date }}">
+      <p class="g-field"><label for="rw_name">Name</label><input type="text" id="rw_name" name="name" value="{{ prefill_name }}" required></p>
+      <p class="g-field"><label for="rw_email">Email</label><input type="email" id="rw_email" name="email" value="{{ prefill_email }}" required></p>
+      <p class="g-field"><label for="rw_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" id="rw_phone" name="phone" value="{{ prefill_phone }}"></p>
+      <p class="g-field g-field--narrow"><label for="rw_party">Guests</label><input type="number" id="rw_party" name="party_size" min="1" value="{{ prefill_party_size }}" required></p>
+      <p class="g-field"><label for="rw_notes">Anything else</label><textarea id="rw_notes" name="notes" rows="3"></textarea></p>
+      <button type="submit" class="g-btn g-submit">Join the waitlist</button>
+    </form>
+  </div>
+</div></section>
+{% endif %}
 
 <script>
 document.getElementById('promo_apply_btn').addEventListener('click', function() {
@@ -64,28 +138,21 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     .then(function(data) { resultEl.textContent = data.message || ''; resultEl.style.color = data.valid ? 'var(--success)' : 'var(--danger)'; })
     .catch(function() { resultEl.textContent = 'Could not check that code right now.'; });
 });
-</script>
 
-{% if fully_booked %}
-<div class="narrow-card" style="margin-top:20px;">
-  <h1>Join the Waitlist</h1>
-  <p class="manual-body">We'll reach out if a table opens up for that date.</p>
-  <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:14px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="desired_date" value="{{ prefill_date }}">
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" value="{{ prefill_party_size }}" required>
-    <label class="field-label">Your name</label>
-    <input type="text" name="name" value="{{ prefill_name }}" required>
-    <label class="field-label">Email</label>
-    <input type="email" name="email" value="{{ prefill_email }}" required>
-    <label class="field-label">Phone (optional)</label>
-    <input type="tel" name="phone" value="{{ prefill_phone }}">
-    <label class="field-label">Notes</label>
-    <textarea name="notes" placeholder="Anything we should know"></textarea>
-    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Join waitlist</button>
-  </form>
-</div>
-{% endif %}
+(function () {
+  var f = document.querySelector('.g-resform');
+  if (!f) return;
+  function sync() {
+    f.querySelectorAll('[data-mirror]').forEach(function (el) {
+      var src = f.querySelector('#' + el.getAttribute('data-mirror'));
+      el.textContent = src && src.value ? src.value : '\u2014';
+    });
+  }
+  f.querySelectorAll('input').forEach(function (el) {
+    el.addEventListener('change', sync); el.addEventListener('input', sync);
+  });
+  sync();
+})();
+</script>
 
 {% endblock %}

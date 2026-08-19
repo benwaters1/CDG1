@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ channel['name'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ channel['name'] }}</h1>
+  <div>
+    <a href="{{ url_for('chat_home') }}" class="btn-ghost">All channels</a>
+  </div>
+</div>
+
+{% if channel['kind'] == 'area' %}
+<p class="upload-hint" style="margin-top:-14px;">Everyone on the team can read this. Type <strong>@firstname</strong> to make sure someone sees it.</p>
+{% else %}
+<p class="upload-hint" style="margin-top:-14px;">Private — only the two of you.</p>
+{% endif %}
+
+<div class="chat-thread" id="chat-thread">
+  {% if not messages %}
+    <div class="empty-state">Nothing here yet. Say something.</div>
+  {% endif %}
+  {% for msg in messages %}
+  <div class="chat-msg {{ 'chat-msg-mine' if msg['user_id'] == user['id'] }}">
+    <div class="chat-msg-head">
+      <span class="chat-msg-author">{{ msg['author'] or 'Someone who has left' }}</span>
+      <span class="chat-msg-time">{{ msg['created_at'][11:16] }}</span>
+    </div>
+    <div class="chat-msg-body">{{ msg['body'] }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+<form method="post" action="{{ url_for('chat_post', slug=channel['slug']) }}" class="chat-compose">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <textarea name="body" rows="2" required placeholder="Write a message…"
+            aria-label="Message"></textarea>
+  <button type="submit" class="btn-primary">Send</button>
+</form>
+
+<script>
+// Land at the newest message, the way every messaging app does. Without this a
+// long channel opens at the top and you scroll to find what you came for.
+(function () {
+  var thread = document.getElementById('chat-thread');
+  if (thread) thread.scrollTop = thread.scrollHeight;
+})();
+</script>
+
+{% endblock %}
