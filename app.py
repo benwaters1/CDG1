@@ -132,7 +132,7 @@ import base64
 import threading
 import time
 from email.message import EmailMessage
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta, date, time as dtime
 from functools import wraps
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -11309,8 +11309,358 @@ def edit_own_contact_info():
 
 
 # ---------------------------------------------------------------------------
-# Dashboard
+# Owner home — the redesigned dashboard
+#
+# One screen answering four questions in order: what needs my decision, what
+# happens next, is the house full, is the money on track. Everything here is
+# derived from data the app already holds; nothing is sample data.
+#
+# The design's figure sparklines are seven real daily values, computed per
+# figure rather than stored — there is no history table, and adding one to draw
+# a 22px bar chart would be a migration in service of decoration. Seven cheap
+# COUNT queries is the honest trade, and it means the line never disagrees with
+# the figure above it.
 # ---------------------------------------------------------------------------
+
+# Revenue is charted against a monthly target the owner sets. Held in
+# app_settings rather than hardcoded: a budget nobody chose is a line on a
+# chart that means nothing, and the dashed line is labelled with whatever this
+# says. Unset means no line is drawn at all, which is honest — the chart still
+# shows six real months.
+REVENUE_BUDGET_SETTING = "monthly_revenue_budget"
+
+
+def _spark(values):
+    """Seven values as percentage bar heights, tallest at 100.
+
+    Percentages rather than raw numbers because the sparkline is 22px tall and
+    unitless; a flat series renders as a flat row of short bars rather than
+    nothing, so 'no change' still reads as data rather than as missing.
+    """
+    top = max(values) if values and max(values) > 0 else 1
+    return [max(6, round(v / top * 100)) for v in values]
+
+
+def _last_seven_days(today):
+    return [today - timedelta(days=i) for i in range(6, -1, -1)]
+
+
+def owner_home_figures(conn, today):
+    """The five figures across the top, each with a real seven-day series."""
+    days = _last_seven_days(today)
+
+    rooms_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+    occupied = []
+    for d in days:
+        occupied.append(conn.execute(
+            """SELECT COUNT(DISTINCT room_id) AS c FROM bookings
+               WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
+            (d.isoformat(), d.isoformat())).fetchone()["c"] or 0)
+    rooms_now = occupied[-1]
+    last_night = occupied[-2] if len(occupied) > 1 else rooms_now
+    room_delta = rooms_now - last_night
+
+    arrivals = []
+    for d in days:
+        arrivals.append(conn.execute(
+            """SELECT COUNT(*) AS c FROM bookings
+               WHERE status = 'confirmed' AND arrival_date = ?""",
+            (d.isoformat(),)).fetchone()["c"] or 0)
+    departures_today = conn.execute(
+        """SELECT COUNT(*) AS c FROM bookings
+           WHERE status = 'confirmed' AND departure_date = ?""",
+        (today.isoformat(),)).fetchone()["c"] or 0
+    next_arrival = conn.execute(
+        """SELECT estimated_arrival_time FROM bookings
+           WHERE status = 'confirmed' AND arrival_date = ?
+             AND estimated_arrival_time IS NOT NULL AND estimated_arrival_time <> ''
+           ORDER BY estimated_arrival_time LIMIT 1""",
+        (today.isoformat(),)).fetchone()
+
+    covers = []
+    for d in days:
+        covers.append(conn.execute(
+            """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
+               WHERE status = 'confirmed' AND dinner_date = ?""",
+            (d.isoformat(),)).fetchone()["c"] or 0)
+    dietary_tonight = conn.execute(
+        """SELECT COUNT(*) AS c FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date = ?
+             AND COALESCE(TRIM(dietary_notes), '') <> ''""",
+        (today.isoformat(),)).fetchone()["c"] or 0
+
+    staff_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM users WHERE role <> 'owner' AND status = 'active'").fetchone()["c"] or 0
+    on_shift = conn.execute(
+        "SELECT COUNT(*) AS c FROM time_entries WHERE clock_out_at IS NULL").fetchone()["c"] or 0
+    shift_series = []
+    for d in days:
+        shift_series.append(conn.execute(
+            "SELECT COUNT(*) AS c FROM time_entries WHERE DATE(clock_in_at) = ?",
+            (d.isoformat(),)).fetchone()["c"] or 0)
+
+    decisions, decisions_value, stale = owner_queue_totals(conn, today)
+    decision_series = []
+    for d in days:
+        decision_series.append(conn.execute(
+            """SELECT (SELECT COUNT(*) FROM expenses WHERE DATE(submitted_at) <= ? AND status = 'pending')
+                    + (SELECT COUNT(*) FROM leave_requests WHERE DATE(requested_at) <= ? AND status = 'pending')
+                      AS c""", (d.isoformat(), d.isoformat())).fetchone()["c"] or 0)
+
+    return [
+        {"label": "Rooms occupied", "value": rooms_now, "unit": f"/ {rooms_total}",
+         "trend": _spark(occupied),
+         "delta": (f"+{room_delta} on last night" if room_delta > 0 else
+                   f"{room_delta} on last night" if room_delta < 0 else "same as last night"),
+         "delta_tone": "good" if room_delta > 0 else ("bad" if room_delta < 0 else "neutral")},
+        {"label": "Arrivals today", "value": arrivals[-1],
+         "unit": f"in · {departures_today} out", "trend": _spark(arrivals),
+         "delta": (f"next at {next_arrival['estimated_arrival_time']}" if next_arrival
+                   else "no times given"), "delta_tone": "neutral"},
+        {"label": "Dinner tonight", "value": covers[-1], "unit": "covers",
+         "trend": _spark(covers),
+         "delta": (f"{dietary_tonight} with dietary notes" if dietary_tonight
+                   else "no dietary notes"), "delta_tone": "neutral"},
+        {"label": "Staff on shift", "value": on_shift, "unit": f"of {staff_total}",
+         "trend": _spark(shift_series),
+         "delta": "nobody clocked in" if not on_shift else f"{on_shift} clocked in now",
+         "delta_tone": "neutral"},
+        {"label": "Your decisions", "value": decisions,
+         "unit": (f"· €{decisions_value:,.0f}" if decisions_value else ""),
+         "trend": _spark(decision_series),
+         "delta": (f"{stale} older than 5 days" if stale else "none waiting long"),
+         "delta_tone": "bad" if stale else "neutral"},
+    ]
+
+
+def owner_queue_totals(conn, today):
+    """(count, money value, how many are over five days old) across the queue."""
+    cutoff = (today - timedelta(days=5)).isoformat()
+    row = conn.execute(
+        """SELECT
+             (SELECT COUNT(*) FROM expenses WHERE status = 'pending')
+           + (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending')
+           + (SELECT COUNT(*) FROM timesheet_corrections WHERE status = 'pending') AS n,
+             (SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE status = 'pending') AS v,
+             (SELECT COUNT(*) FROM expenses WHERE status = 'pending' AND DATE(submitted_at) < ?)
+           + (SELECT COUNT(*) FROM leave_requests WHERE status = 'pending' AND DATE(requested_at) < ?)
+             AS old""", (cutoff, cutoff)).fetchone()
+    return row["n"] or 0, row["v"] or 0.0, row["old"] or 0
+
+
+def owner_home_queue(conn):
+    """Everything waiting on the owner, as one ordered list.
+
+    Money first and oldest first within each kind, because an unpaid supplier
+    invoice is the item with a deadline attached. A timesheet correction is
+    never marked bulk-eligible: approving one rewrites a pay record, and that
+    needs a person to look at it.
+    """
+    out = []
+    for e in conn.execute(
+            """SELECT expenses.*, users.name AS who FROM expenses
+               LEFT JOIN users ON users.id = expenses.submitted_by_user_id
+               WHERE expenses.status = 'pending'
+               ORDER BY expenses.submitted_at""").fetchall():
+        out.append({
+            "kind": "Claim" if e["submitted_by_user_id"] else "Invoice",
+            "who": e["who"] or e["vendor_name"] or "—",
+            "title": e["vendor_name"] or e["who"] or e["description"] or "Expense",
+            "detail": e["description"] or "",
+            "amount": f"€{(e['amount'] or 0):,.2f}",
+            "age": (e["submitted_at"] or "")[:10],
+            "tone": "money", "ok_label": "Approve", "no_label": "Reject",
+            "bulk_eligible": (e["amount"] or 0) < 100,
+            "endpoint": url_for("decide_expense", expense_id=e["id"]) if "decide_expense" in app.view_functions else None,
+        })
+    for l in conn.execute(
+            """SELECT leave_requests.*, users.name AS who FROM leave_requests
+               JOIN users ON users.id = leave_requests.user_id
+               WHERE leave_requests.status = 'pending'
+               ORDER BY leave_requests.requested_at""").fetchall():
+        days = 1
+        s, e2 = parse_date(l["start_date"]), parse_date(l["end_date"])
+        if s and e2:
+            days = (e2 - s).days + 1
+        out.append({
+            "kind": "Time off", "who": l["who"], "title": l["who"],
+            "detail": f"{l['start_date']} – {l['end_date']}",
+            "amount": f"{days} day{'s' if days != 1 else ''}",
+            "age": (l["requested_at"] or "")[:10],
+            "tone": "people", "ok_label": "Approve", "no_label": "Decline",
+            "bulk_eligible": False, "endpoint": None,
+        })
+    for c in conn.execute(
+            """SELECT timesheet_corrections.*, users.name AS who FROM timesheet_corrections
+               LEFT JOIN users ON users.id = timesheet_corrections.user_id
+               WHERE timesheet_corrections.status = 'pending'
+               ORDER BY timesheet_corrections.created_at""").fetchall():
+        out.append({
+            "kind": "Timesheet", "who": c["who"] or "—", "title": c["who"] or "Timesheet",
+            "detail": c["note"] or "needs checking",
+            "amount": "—", "age": (c["created_at"] or "")[:10],
+            # Never bulk: a timesheet edit rewrites a pay record.
+            "tone": "people", "ok_label": "Fix", "no_label": "Dismiss",
+            "bulk_eligible": False, "endpoint": None,
+        })
+    return out
+
+
+def owner_home_day(conn, today, user):
+    """Today, in the order it happens. Arrivals, departures, dinner, tasks."""
+    rows = []
+    for b in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+               JOIN rooms ON rooms.id = bookings.room_id
+               WHERE bookings.status = 'confirmed' AND bookings.arrival_date = ?""",
+            (today.isoformat(),)).fetchall():
+        rows.append({"time": b["estimated_arrival_time"] or "", "kind": "arrival",
+                     "title": f"{b['guest_name']} arriving",
+                     "detail": f"{b['room_name']} · party of {b['party_size']}",
+                     "assignee": None, "done": bool(b["arrival_prepped_at"])})
+    for b in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+               JOIN rooms ON rooms.id = bookings.room_id
+               WHERE bookings.status = 'confirmed' AND bookings.departure_date = ?""",
+            (today.isoformat(),)).fetchall():
+        rows.append({"time": "", "kind": "departure",
+                     "title": f"{b['guest_name']} departing",
+                     "detail": b["room_name"], "assignee": None,
+                     "done": bool(b["checked_out_at"])})
+    covers = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date = ?""",
+        (today.isoformat(),)).fetchone()["c"] or 0
+    if covers:
+        rows.append({"time": "19:30", "kind": "dinner", "title": "Dinner service",
+                     "detail": f"{covers} covers", "assignee": None, "done": False})
+    for t in conn.execute(
+            """SELECT tasks.*, users.name AS who FROM tasks
+               LEFT JOIN users ON users.id = tasks.assigned_to_user_id
+               WHERE tasks.due_date = ? ORDER BY tasks.status, tasks.id""",
+            (today.isoformat(),)).fetchall():
+        rows.append({"time": "", "kind": "task", "title": t["title"],
+                     "detail": t["room_note"] or "",
+                     "assignee": "Mine" if t["assigned_to_user_id"] == user["id"] else t["who"],
+                     "done": t["status"] == "done"})
+    # Timed things first, in clock order; untimed after, since "no time given"
+    # is not the same as midnight and must not sort to the top of the day.
+    rows.sort(key=lambda r: (r["time"] == "", r["time"]))
+    return rows
+
+
+def owner_home_revenue(conn, today):
+    """Six months of real revenue, and the owner's target if they set one."""
+    months = []
+    cursor = today.replace(day=1)
+    for _ in range(6):
+        months.append(cursor)
+        cursor = (cursor - timedelta(days=1)).replace(day=1)
+    months.reverse()
+    out = []
+    for m in months:
+        nxt = (m + timedelta(days=31)).replace(day=1)
+        summary = financial_month_summary(conn, m, nxt)
+        out.append({"label": m.strftime("%b"), "value": summary["revenue"] or 0})
+    top = max([m["value"] for m in out] + [1])
+    for m in out:
+        m["height_pct"] = max(4, round(m["value"] / top * 100))
+    budget_row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (REVENUE_BUDGET_SETTING,)).fetchone()
+    try:
+        budget = float(budget_row["value"]) if budget_row and budget_row["value"] else 0.0
+    except (TypeError, ValueError):
+        budget = 0.0
+    # Where to draw the dashed line, as a percentage of the tallest bar. Off the
+    # top of the chart is clamped, so an unreachable target still reads as
+    # "above everything" rather than vanishing.
+    budget_pct = min(100, round(budget / top * 100)) if budget else None
+    return out, budget, budget_pct
+
+
+def owner_home_occupancy(conn, today):
+    """Every day of this month: how full the house was, and what moved."""
+    first = today.replace(day=1)
+    nxt = (first + timedelta(days=31)).replace(day=1)
+    cap = house_guest_capacity(conn) or 1
+    cells = []
+    d = first
+    while d < nxt:
+        peak = peak_guests_in_house(conn, d, d + timedelta(days=1))
+        arriving = conn.execute(
+            """SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed'
+               AND arrival_date = ?""", (d.isoformat(),)).fetchone()["c"]
+        leaving = conn.execute(
+            """SELECT COUNT(*) AS c FROM bookings WHERE status = 'confirmed'
+               AND departure_date = ?""", (d.isoformat(),)).fetchone()["c"]
+        workshop = conn.execute(
+            """SELECT COUNT(*) AS c FROM workshop_sessions
+               WHERE start_date <= ? AND end_date >= ?""",
+            (d.isoformat(), d.isoformat())).fetchone()["c"]
+        marker = ("arrival" if arriving else
+                  "departure" if leaving else
+                  "workshop" if workshop else "none")
+        cells.append({"day": d.day, "occupancy_0_1": min(1.0, peak / cap),
+                      "marker": marker, "today": d == today})
+        d += timedelta(days=1)
+    # Monday-first, so the grid needs leading blanks for however far into the
+    # week the 1st falls.
+    return cells, first.weekday(), sum(c["occupancy_0_1"] for c in cells) / max(1, len(cells))
+
+
+def owner_home_guests(conn, today):
+    """Who is in the house right now."""
+    return [{
+        "name": r["guest_name"],
+        "room": f"{r['room_name']} · party of {r['party_size']}",
+        "checkout": format_date_human(r["departure_date"]),
+        "initials": "".join(p[0] for p in (r["guest_name"] or "?").split()[:2]).upper(),
+    } for r in conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed' AND bookings.arrival_date <= ?
+             AND bookings.departure_date > ? AND bookings.checked_out_at IS NULL
+           ORDER BY bookings.departure_date""",
+        (today.isoformat(), today.isoformat())).fetchall()]
+
+
+def owner_home_next_up(conn, today, day_rows):
+    """The next thing with a time on it, and how long until it.
+
+    Falls back to tomorrow's first event rather than showing an empty panel,
+    because "nothing else today" is itself worth knowing at four in the
+    afternoon — and a panel that disappears is a layout that jumps.
+    """
+    now = datetime.now(timezone.utc)
+    for r in day_rows:
+        if not r["time"] or r["done"]:
+            continue
+        try:
+            hh, mm = (int(x) for x in r["time"].split(":")[:2])
+        except ValueError:
+            continue
+        when = datetime.combine(today, dtime(hh, mm), tzinfo=timezone.utc)
+        if when < now:
+            continue
+        mins = int((when - now).total_seconds() // 60)
+        return {"time": r["time"], "title": r["title"], "room": r["detail"],
+                "note": "", "countdown": f"in {mins // 60}h {mins % 60:02d}m"
+                if mins >= 60 else f"in {mins}m", "tomorrow": False}
+    nxt = conn.execute(
+        """SELECT bookings.guest_name, bookings.party_size, bookings.arrival_date,
+                  bookings.estimated_arrival_time, rooms.name AS room_name
+           FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed' AND bookings.arrival_date > ?
+           ORDER BY bookings.arrival_date LIMIT 1""", (today.isoformat(),)).fetchone()
+    if not nxt:
+        return None
+    return {"time": nxt["estimated_arrival_time"] or "—",
+            "title": f"{nxt['guest_name']} arriving",
+            "room": f"{nxt['room_name']} · party of {nxt['party_size']}",
+            "note": "", "countdown": format_date_human(nxt["arrival_date"]),
+            "tomorrow": True}
+
 
 @app.route("/")
 def dashboard():
@@ -11617,6 +11967,58 @@ def staff_dashboard():
                    ORDER BY workshop_bookings.guest_name""",
                 (my_next_session["id"],),
             ).fetchall()
+
+    # The owner's Home is a different screen from a member of staff's, because
+    # the questions are different: an owner opens this to decide things, and
+    # staff open it to find out what they are doing. Employees keep the existing
+    # dashboard untouched.
+    if user["role"] == "owner":
+        day_rows = owner_home_day(conn, today, user)
+        revenue, revenue_budget, revenue_budget_pct = owner_home_revenue(conn, today)
+        occupancy, occupancy_lead, occupancy_avg = owner_home_occupancy(conn, today)
+        queue = owner_home_queue(conn)
+        hour = datetime.now(timezone.utc).hour
+        greeting = ("Good morning" if hour < 12 else
+                    "Good afternoon" if hour < 18 else "Good evening")
+        # One sentence saying whether anything needs doing, built from the same
+        # figures shown below it so the two can never disagree.
+        bits = []
+        if queue:
+            bits.append(f"{len(queue)} thing{'s' if len(queue) != 1 else ''} need a decision")
+        occ_now = sum(1 for g in owner_home_guests(conn, today) for _ in [1])
+        rooms_n = conn.execute(
+            "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+        if rooms_n:
+            bits.append(f"{occ_now} of {rooms_n} rooms are occupied")
+        undone = sum(1 for r in day_rows if not r["done"])
+        bits.append(f"{undone} thing{'s' if undone != 1 else ''} left on today"
+                    if undone else "everything on today is done")
+        hero_line = ", and ".join([", ".join(bits[:-1]), bits[-1]]) if len(bits) > 1 else bits[0]
+        hero_line = hero_line[0].upper() + hero_line[1:] + "."
+        page = render_template(
+            "owner_home.html", user=user, today=today,
+            greeting=greeting, hero_line=hero_line,
+            figures=owner_home_figures(conn, today),
+            next_up=owner_home_next_up(conn, today, day_rows),
+            queue=queue,
+            queue_money=[q for q in queue if q["tone"] == "money"],
+            queue_people=[q for q in queue if q["tone"] != "money"],
+            bulk_count=sum(1 for q in queue if q["bulk_eligible"]),
+            day=day_rows,
+            day_done=sum(1 for r in day_rows if r["done"]),
+            revenue=revenue, revenue_budget=revenue_budget,
+            revenue_budget_pct=revenue_budget_pct,
+            revenue_now=(revenue[-1]["value"] if revenue else 0),
+            revenue_prev=(revenue[-2]["value"] if len(revenue) > 1 else 0),
+            occupancy=occupancy, occupancy_lead=occupancy_lead,
+            occupancy_avg=occupancy_avg,
+            guests=owner_home_guests(conn, today),
+            rooms_total=conn.execute(
+                "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0,
+            my_shift=my_shift,
+        )
+        conn.close()
+        return page
 
     conn.close()
     return render_template(
