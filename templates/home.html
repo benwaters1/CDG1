@@ -41,6 +41,74 @@
 
 
 
+
+<!-- ============ THE ROOMS THEMSELVES ============ -->
+{# A front page should show what is actually for sale, not a tile that links
+   to it. Both lists are optional — the section simply does not render if the
+   route has not been given the data yet. #}
+{% if rooms %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Stay the Night</p>
+  <h2 class="g-place">Rooms &amp; Suites</h2>
+  <p class="g-p">Seven bedrooms, opened one at a time as the restoration reaches them. Each is different, because the house is.</p>
+
+  <div class="g-homerooms">
+    {% for r in rooms %}
+    <article class="g-homeroom">
+      <img class="g-homeroom__img"
+           src="{% if r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ [
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+des+Fleurs+1.jpg?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+Bleue+4.png?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+du+Parc+1.jpg?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+Emeraude.jpg?format=1000w'
+           ][loop.index0 % 4] }}{% endif %}"
+           alt="{{ r['name'] }}" loading="lazy">
+      <div class="g-homeroom__b">
+        <h3 class="g-homeroom__name">{{ r['name'] }}</h3>
+        {% if r['description'] %}<p class="g-p">{{ r['description']|truncate(120) }}</p>{% endif %}
+        <p class="g-homeroom__rate">
+          {% if r['price_per_night'] %}<span class="g-fig">€{{ '%.0f'|format(r['price_per_night']) }}</span> a night{% endif %}
+          {% if r['max_occupancy'] %} · up to {{ r['max_occupancy'] }}{% endif %}
+        </p>
+        <a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--line">Check dates</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a></p>
+</div></section>
+{% endif %}
+
+<!-- ============ THE NEXT WORKSHOP DATES ============ -->
+{% if upcoming %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Château Workshops</p>
+  <h2 class="g-place">The Next Dates</h2>
+  <p class="g-p">Three to seven nights, a small group, and the house given over to it entirely.</p>
+
+  <div class="g-agenda" style="margin-top:var(--s6)">
+    {% for s in upcoming %}
+    <article class="g-agenda__row">
+      <div class="g-agenda__when">
+        <span class="g-agenda__day">{{ date_range(s['start_date'], s['end_date']) }}</span>
+        {% if s['nights_label'] %}<span class="g-agenda__time">{{ s['nights_label'] }}</span>{% endif %}
+      </div>
+      <div class="g-agenda__what">
+        <h3 class="g-agenda__title">{{ s['title'] }}</h3>
+        {% if s['price_per_person'] %}
+        <p class="g-agenda__loc"><span class="g-fig">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person</p>
+        {% endif %}
+      </div>
+      <div style="align-self:center">
+        <a href="{{ url_for('workshop_detail', workshop_id=s['workshop_id']) }}" class="g-btn">View</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Every workshop &amp; date</a></p>
+</div></section>
+{% endif %}
+
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+In+Fall.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+In+September.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="" loading="lazy"></div>
 
 <section class="g-sec--flush"><div class="g-half">

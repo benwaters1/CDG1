@@ -1,0 +1,77 @@
+{% extends "public_base.html" %}
+{% block title %}Contact{% endblock %}
+{% block bodyclass %} has-hero{% endblock %}
+{% block content %}
+
+{# Needs: @app.route("/contact") -> render_template("contact.html")
+   Every comparable house has one; this site had none, so a guest with a
+   question had to hunt the footer. #}
+
+<section class="g-hero">
+  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The gates at Château de Gudanes">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-eyebrow" style="color:rgba(255,255,255,.75)">Château de Gudanes</p>
+    <h1 class="g-display">{{ t('Contact') }}</h1>
+  </div>
+</section>
+
+<section class="g-sec"><div class="g-two">
+  <div>
+    <p class="g-eyebrow">Write to Us</p>
+    <h2 class="g-h2">However you would rather reach us</h2>
+    <p class="g-p">Someone reads every message. For a stay, a workshop or a table, the booking pages are quickest — but if you would rather simply ask, write and we will answer.</p>
+
+    <dl class="g-facts-list" style="margin-top:var(--s6)">
+      <div><dt>Stays &amp; general</dt><dd><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></dd></div>
+      <div><dt>Workshops</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
+      <div><dt>Weddings &amp; events</dt><dd><a href="mailto:experience@chateaugudanes.com">experience@chateaugudanes.com</a></dd></div>
+      <div><dt>Telephone</dt><dd><a href="tel:+33628069776">+33 6 28 06 97 76</a></dd></div>
+    </dl>
+
+    <div class="g-motif" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
+        <path d="M12 2l2.2 5.6L20 9l-4.4 3.6L17 19l-5-3-5 3 1.4-6.4L4 9l5.8-1.4z"/>
+      </svg>
+    </div>
+
+    <p class="g-eyebrow">Finding Us</p>
+    <h2 class="g-h2">Château-Verdun, Ariège</h2>
+    <p class="g-p">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
+    <dl class="g-facts-list" style="margin-top:var(--s5)">
+      <div><dt>By air</dt><dd>Toulouse-Blagnac, about 1 hour 45 minutes by road. Transfers arranged on request.</dd></div>
+      <div><dt>By train</dt><dd>Les Cabannes, three minutes from the gates, on the Toulouse–Latour-de-Carol line.</dd></div>
+      <div><dt>By car</dt><dd>The N20 south from Toulouse. Free parking at the château.</dd></div>
+      <div><dt>Nearest village</dt><dd>Les Cabannes — market on Sunday mornings.</dd></div>
+    </dl>
+  </div>
+
+  <div class="g-two__media">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château and the valley" loading="lazy">
+  </div>
+</div></section>
+
+<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Booking Directly</p>
+  <h2 class="g-h2">What you are most likely after</h2>
+  <div class="g-contact-links">
+    <a href="{{ url_for('book_rooms') }}" class="g-contact-link">
+      <b>{{ t('Stay the Night') }}</b>
+      <span>Check dates and reserve a room</span>
+    </a>
+    <a href="{{ url_for('workshops_public') }}" class="g-contact-link">
+      <b>{{ t('Workshops') }}</b>
+      <span>Every date, and what each one includes</span>
+    </a>
+    <a href="{{ url_for('restaurant_info') }}" class="g-contact-link">
+      <b>{{ t('La Table') }}</b>
+      <span>Reserve a table for dinner</span>
+    </a>
+    <a href="{{ url_for('find_booking') }}" class="g-contact-link">
+      <b>{{ t('Manage a booking') }}</b>
+      <span>Change, pay or cancel an existing reservation</span>
+    </a>
+  </div>
+</div></section>
+
+{% endblock %}

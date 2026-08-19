@@ -8,6 +8,44 @@
    #restoration, #life and #views directly. Sections render even when empty so
    those links always land somewhere. #}
 
+{# Until photographs are uploaded through the staff area, show the château's
+   own library rather than an empty section. Real uploads take over the moment
+   they exist — this only fills a section that has none. #}
+{% set FALLBACK = {
+  'inside': [
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w", 'caption': 'The kitchen'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w", 'caption': 'The dining room'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w", 'caption': 'The kitchen table in winter'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+des+Fleurs+1.jpg?format=1500w", 'caption': 'Chambre des Fleurs'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+Bleue+4.png?format=1500w", 'caption': 'Chambre Bleue'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+du+Parc+1.jpg?format=1500w", 'caption': 'Chambre du Parc'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+Emeraude.jpg?format=1500w", 'caption': 'Chambre Emeraude'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w", 'caption': 'The bathrooms'}
+  ],
+  'grounds': [
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w", 'caption': 'The gates in spring'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+-+Formal+Gardens+2.jpg?format=1500w", 'caption': 'The formal gardens'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+In+Fall.jpg?format=1500w", 'caption': 'The gardens in autumn'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+In+September.jpg?format=1500w", 'caption': 'September'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w", 'caption': 'The parkland'}
+  ],
+  'restoration': [
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w", 'caption': 'Room by room'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w", 'caption': 'Bare plaster'},
+    {'url': "https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w", 'caption': 'The work itself'}
+  ],
+  'life': [
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w", 'caption': 'At the table'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w", 'caption': 'A March morning'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w", 'caption': 'The château at night'}
+  ],
+  'views': [
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w", 'caption': 'From the windows'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w", 'caption': 'The valley'},
+    {'url': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w", 'caption': 'Toward the Pyrénées'}
+  ]
+} %}
+
 <section class="g-sec g-sec--tight">
   <div class="g-wrap">
     <p class="g-eyebrow">Gallery</p>
@@ -25,12 +63,13 @@
          sit over the heading the reader just jumped to. #}
       <h2 class="g-h2 g-rule" id="{{ gal['slug'] }}" style="scroll-margin-top:96px;">{{ gal['title'] }}</h2>
       {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:24px;">{{ gal['blurb'] }}</p>{% endif %}
-      {% if gal['images'] %}
+      {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
+      {% if shown %}
       <div class="g-grid g-grid--3" style="margin-bottom:56px;">
-        {% for img in gal['images'] %}
+        {% for img in shown %}
         <figure style="margin:0;">
           <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
-               style="width:100%; height:16rem; object-fit:cover; border-radius:4px;">
+               style="width:100%; height:16rem; object-fit:cover;">
           {% if img['caption'] %}<figcaption class="g-hint">{{ img['caption'] }}</figcaption>{% endif %}
         </figure>
         {% endfor %}

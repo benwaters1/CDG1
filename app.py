@@ -11842,7 +11842,26 @@ def dashboard():
     # brand to "/", so without this a guest clicking the château's own name
     # landed on a staff login screen.
     if not current_user():
-        return render_template("home.html")
+        conn = get_db()
+        # Real rooms and real dates, not category tiles. A visitor should be
+        # able to see what is actually for sale — named, priced, described —
+        # without clicking through first.
+        rooms = conn.execute(
+            """SELECT * FROM rooms WHERE active = 1
+               ORDER BY sort_order, price_per_night LIMIT 4""").fetchall()
+        # Only sittings still ahead. A front page advertising a workshop that
+        # finished in June is worse than one advertising none.
+        upcoming = conn.execute(
+            """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+                      workshops.nights_label, workshops.id AS workshop_id
+                 FROM workshop_sessions
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
+                ORDER BY workshop_sessions.start_date LIMIT 3""",
+            (datetime.now(timezone.utc).date().isoformat(),)).fetchall()
+        conn.close()
+        # Both are optional in the template, so an empty house still renders.
+        return render_template("home.html", rooms=rooms, upcoming=upcoming)
     return staff_dashboard()
 
 
@@ -32282,6 +32301,13 @@ def admin_outlook_addin():
 # endpoint"), so this would have taken the whole site down rather than serving a
 # stale page.
 # ---------------------------------------------------------------------------
+
+@app.route("/contact")
+def contact_page():
+    """How to reach the house. Named contact_page, not contact, because
+    contacts() is the staff CRM and two views cannot share a name."""
+    return render_template("contact.html")
+
 
 @app.route('/preview')
 def preview_home():

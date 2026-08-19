@@ -8,7 +8,7 @@
 <title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
 <meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -70,6 +70,10 @@
         <a href="/facilities" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 12h18M6 12V8a6 6 0 0 1 12 0v4"/><path d="M5 16h14M7 20h10"/></svg>
           {{ t('Facilities & Activities') }}
+        </a>
+        <a href="/contact" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/></svg>
+          {{ t('Contact') }}
         </a>
         <a href="/whats-on" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
@@ -239,7 +243,7 @@
     <div class="g-footer__grid">
       <div>
         <p class="g-footer__brand">Château de Gudanes</p>
-        <p class="g-footer__contact" style="font-size:13.5px; line-height:2.1; margin:0;">
+        <p class="g-footer__contact" style="font-size:13px; line-height:2.1; margin:0;">
           2 Route de Beille<br>
           Château-Verdun, Ariège 09310, France<br>
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
@@ -263,6 +267,7 @@
         <ul>
           <li><a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a></li>
           <li><a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a></li>
+          <li><a href="/contact">{{ t('Contact') }}</a></li>
           <li><a href="{{ url_for('find_booking') }}">{{ t('Manage a booking') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
         </ul>

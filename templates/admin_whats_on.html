@@ -100,7 +100,7 @@
     <tr>
       <td>
         <b>{{ e['title'] }}</b>
-        {% if e['description'] %}<br><span style="color:#777;font-size:.9em">{{ e['description'][:80] }}{% if e['description']|length > 80 %}…{% endif %}</span>{% endif %}
+        {% if e['description'] %}<br><span style="color:#777;font-size:13px">{{ e['description'][:80] }}{% if e['description']|length > 80 %}…{% endif %}</span>{% endif %}
       </td>
       <td>
         {% if e['weekday'] is not none %}{{ DAYS[e['weekday']] }}
