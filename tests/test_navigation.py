@@ -86,6 +86,36 @@ def run():
     s.check("but it is still reachable from Estate",
             "management_vehicles" in nav, detail="the vehicles link was lost entirely")
 
+    s.section("Folding a group in must not cost anyone the link")
+    # Till now sits inside Restaurant, and Events inside Guests. Every current
+    # preset that grants till also grants restaurant — but a custom one need
+    # not, and the honest failure mode of a consolidation is a menu item that
+    # quietly disappears for one person.
+    conn = _harness.db()
+    probe = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()["id"]
+    original = conn.execute("SELECT access_preset FROM users WHERE id = ?", (probe,)).fetchone()[0]
+    for slug, areas, must_see, label in (
+        ("zznav-till", "till", "/pos", "somebody with only till access"),
+        ("zznav-events", "events", "/admin/events", "somebody with only events access"),
+    ):
+        conn.execute(
+            """INSERT INTO access_presets (slug, name, description, areas, is_full_access,
+               built_in, sort_order, created_at) VALUES (?, ?, '', ?, 0, 0, 99, ?)
+               ON CONFLICT(slug) DO UPDATE SET areas = excluded.areas""",
+            (slug, slug, areas, _harness.datetime_now()))
+        conn.execute("UPDATE users SET access_preset = ? WHERE id = ?", (slug, probe))
+        conn.commit()
+        client = m.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = probe
+        nav = client.get("/today").get_data(as_text=True)
+        s.check(f"{label} still gets the link", must_see in nav,
+                detail=f"{must_see} is missing from the menu")
+    conn.execute("UPDATE users SET access_preset = ? WHERE id = ?", (original, probe))
+    conn.execute("DELETE FROM access_presets WHERE slug LIKE 'zznav-%'")
+    conn.commit()
+    conn.close()
+
     s.section("Payroll stays out of Team")
     # Deliberate: payroll used to sit inside the team area, which let anyone
     # with team access open the payroll pack. It is its own access area and
