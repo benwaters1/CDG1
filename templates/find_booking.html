@@ -1,18 +1,18 @@
 {% extends "public_base.html" %}
-{% block title %}Find my booking{% endblock %}
+{% block title %}{{ t('Find My Booking') }}{% endblock %}
 {% block content %}
 
 <div class="login-wrap">
   <div class="login-card">
     <div class="login-crest">Château de Gudanes</div>
-    <h1>Find My Booking</h1>
+    <h1>{{ t('Find My Booking') }}</h1>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="field-label">Reference code</label>
+      <label class="field-label">{{ t('Reference code') }}</label>
       <input type="text" name="reference_code" placeholder="GUD-XXXXXX" required>
-      <label class="field-label">Email you booked with</label>
+      <label class="field-label">{{ t('Email you booked with') }}</label>
       <input type="email" name="email" required>
-      <button type="submit" class="btn-primary btn-block">Find booking</button>
+      <button type="submit" class="btn-primary btn-block">{{ t('Find booking') }}</button>
     </form>
   </div>
 </div>
