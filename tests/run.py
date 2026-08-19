@@ -58,6 +58,8 @@ SUITES = [
     "test_promo_privacy",
     "test_terminal",
     "test_arrive",
+    "test_timesheet_repair",
+    "test_staff_lifecycle",
     "test_offline",
     "test_translations",
     "test_whats_on",
