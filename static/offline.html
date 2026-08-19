@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>No connection — Château de Gudanes</title>
+<!--
+  Served from the cache by sw.js when a page cannot be reached. Everything it
+  needs is inline: it has to look right precisely when the network does not
+  work, and a page that arrives unstyled reads as "the app is broken" rather
+  than "the connection is". No Jinja either — no server is involved by the
+  time this is shown.
+
+  It says plainly that nothing was saved. The dangerous version of this screen
+  is the reassuring one: a staff member who believes they clocked in, and did
+  not, has a payroll problem nobody notices until the end of the month.
+-->
+<style>
+  :root{ --ink:#2A2B30; --soft:#5D6169; --sand:#F8F3ED; --line:#D8CCBF; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:24px; background:var(--sand); color:var(--ink);
+    font-family:'Poppins',-apple-system,'Helvetica Neue',Arial,sans-serif;
+    font-weight:300; line-height:1.6;
+  }
+  .card{ max-width:26rem; width:100%; text-align:left; }
+  h1{ font-size:26px; font-weight:500; margin:0 0 12px; line-height:1.2; }
+  p{ margin:0 0 14px; color:var(--soft); font-size:16px; }
+  .warn{
+    color:var(--ink); background:#fff; border:1px solid var(--line);
+    padding:12px 14px; font-size:15px;
+  }
+  button{
+    font:inherit; font-weight:500; font-size:15px; cursor:pointer;
+    min-height:48px; width:100%; margin-top:18px; padding:0 24px;
+    color:#fff; background:var(--ink); border:1px solid var(--ink);
+  }
+  .hint{ font-size:13px; margin-top:14px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1 data-i18n="title">No connection</h1>
+    <p data-i18n="body">The château's internet is not reachable right now. This isn't a problem with your phone or with the app.</p>
+    <p class="warn" data-i18n="warn">Anything you just tapped was <strong>not saved</strong> — including clocking in or out. Please do it again once you have signal.</p>
+    <button type="button" id="retry" data-i18n="retry">Try again</button>
+    <p class="hint" data-i18n="hint">If it keeps happening, tell a manager rather than assuming your hours went through.</p>
+  </div>
+
+<script>
+// The staff app is used in French and Spanish too. There is no server here to
+// ask, so this follows the phone's own language — the same first guess the
+// site makes from Accept-Language when there is a connection.
+var COPY = {
+  fr: {
+    title: "Pas de connexion",
+    body: "Internet n'est pas joignable au château pour le moment. Le problème ne vient ni de votre téléphone ni de l'application.",
+    warn: "Ce que vous venez de faire n'a <strong>pas été enregistré</strong> — y compris un pointage d'arrivée ou de départ. Merci de recommencer dès que vous aurez du réseau.",
+    retry: "Réessayer",
+    hint: "Si cela se reproduit, prévenez un responsable plutôt que de supposer que vos heures sont enregistrées."
+  },
+  es: {
+    title: "Sin conexión",
+    body: "No hay acceso a internet en el château en este momento. No es un problema de su teléfono ni de la aplicación.",
+    warn: "Lo que acaba de hacer <strong>no se ha guardado</strong> — incluidas las entradas y salidas de turno. Vuelva a intentarlo cuando tenga cobertura.",
+    retry: "Reintentar",
+    hint: "Si sigue ocurriendo, avise a un responsable en lugar de dar por hecho que sus horas se han registrado."
+  }
+};
+(function () {
+  var lang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+  var copy = COPY[lang];
+  if (copy) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      var key = el.getAttribute('data-i18n');
+      if (copy[key]) el.innerHTML = copy[key];
+    });
+  }
+  document.getElementById('retry').addEventListener('click', function () {
+    location.reload();
+  });
+})();
+</script>
+</body>
+</html>
