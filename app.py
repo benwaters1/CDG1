@@ -6684,6 +6684,12 @@ def mark_booking_payment_paid(conn, session):
     conn.commit()
     if booking:
         bill = booking_bill(conn, booking_id)
+        portal_token = guest_portal_token(conn, booking["guest_email"])
+        conn.commit()
+        account_line = ""
+        if portal_token:
+            account_line = ("\nYour bookings and balances are always here:\n"
+                            f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
         send_email(
             booking["guest_email"],
             f"Payment received — {booking['room_name']}",
@@ -6691,6 +6697,7 @@ def mark_booking_payment_paid(conn, session):
             f"We've received €{amount:.2f} for your stay ({booking['reference_code']}).\n"
             + (f"Still to pay: €{bill['owed']:.2f}.\n" if bill and bill["owed"] > 0
                else "Your stay is now paid in full.\n")
+            + account_line
             + f"\n— Château de Gudanes",
         )
 
@@ -18243,6 +18250,25 @@ def confirm_booking_by_id(conn, booking_id):
         # the guest record insert above is harmless to leave in place
         # (guest_id just goes unused), but the email below must not fire.
         return False, "not found or not pending"
+    # This is the moment the guest gets a standing profile, so it is also the
+    # moment their own link becomes real — and this email is the one place a
+    # first-time guest is certain to see it. Built in code rather than from a
+    # template, so no wording anybody has edited is disturbed by adding it.
+    portal_token = guest_portal_token(conn, booking["guest_email"])
+    account_line = ""
+    if portal_token:
+        account_line = (
+            "\nEverything you have with us — this stay, any ateliers or dinners — "
+            "is always here:\n"
+            f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
+    # Commit before sending. With no email provider configured send_email falls
+    # back to email_outbox on its own connection, which cannot take a write lock
+    # while this transaction is open — so the guest's confirmation, with its
+    # calendar invite and check-in link, was being dropped instead of held.
+    # Same fault already fixed in add_extra and mark_workshop_payment_paid.
+    # Safe for bulk_confirm_bookings too: it confirms in a loop, and each
+    # booking being durable as it goes is what you want if the loop dies.
+    conn.commit()
     send_email(
         booking["guest_email"],
         f"Booking confirmed — {room['name']}",
@@ -18252,7 +18278,8 @@ def confirm_booking_by_id(conn, booking_id):
         f"Reference code: {booking['reference_code']}\n"
         f"Check in online — confirm your arrival time, tell us about any requests"
         f"{' and your airport transfer details' if booking_has_transfer(booking) else ''}: "
-        f"{url_for('guest_checkin', manage_token=booking['manage_token'], _external=True)}\n\n"
+        f"{url_for('guest_checkin', manage_token=booking['manage_token'], _external=True)}\n"
+        f"{account_line}\n"
         f"— Château de Gudanes",
         ics_content=generate_booking_ics(booking, room["name"]),
         ics_filename=f"{booking['reference_code']}.ics",

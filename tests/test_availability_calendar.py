@@ -48,12 +48,34 @@ def _room():
     return row["id"]
 
 
+def _clear_base(room_id, span=40):
+    """A start date with `span` days of genuinely free nights after it.
+
+    A hardcoded offset does not survive contact with the calendar: the real
+    seeded ateliers move, and every day that passes slides a fixed offset
+    along until it lands on one. This test previously picked today+300 and
+    went red the morning that reached Cooking in the Cuisine 2027 — the same
+    trap that had already been fixed once in test_workflows.
+    """
+    conn = db()
+    try:
+        for offset in range(200, 900, 10):
+            start = date.today() + timedelta(days=offset)
+            taken = m.unavailable_nights(conn, room_id, start - timedelta(days=15),
+                                         start + timedelta(days=span + 15))
+            if not taken:
+                return start
+    finally:
+        conn.close()
+    raise RuntimeError("no clear window in the next two and a half years")
+
+
 def run():
     s = Suite("Availability calendar")
     _cleanup()
     room_id = _room()
-    # Far enough out to clear the real ateliers and anything else seeded.
-    base = date.today() + timedelta(days=300)
+    # Asked for rather than assumed — see _clear_base.
+    base = _clear_base(room_id)
     window_start, window_end = base - timedelta(days=10), base + timedelta(days=40)
 
     s.section("A booking holds its nights, but frees the checkout morning")
