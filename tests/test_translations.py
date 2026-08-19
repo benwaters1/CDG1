@@ -114,6 +114,26 @@ def run():
     page = fresh2.get("/", headers={"Accept-Language": "ja-JP,ja;q=0.9"}).get_data(as_text=True)
     s.check("a language we don't offer falls back to English", 'lang="en"' in page)
 
+    s.section("The booking funnel itself, not just the shell around it")
+    # A guest can reach a French home page and then hit English the moment they
+    # try to book, which is worse than no translation at all — it looks broken
+    # rather than unfinished. These are the pages money goes through.
+    fr = m.app.test_client()
+    fr.get("/language/fr", follow_redirects=True)
+    with m.app.test_request_context():
+        pages = {
+            "the room search": m.url_for("book_rooms"),
+            "finding a booking": m.url_for("find_booking"),
+        }
+    for label, url in pages.items():
+        body = fr.get(url).get_data(as_text=True)
+        s.check(f"{label} renders in French", 'lang="fr"' in body,
+                detail=f"{url} did not")
+    body = fr.get(pages["finding a booking"]).get_data(as_text=True)
+    s.check("and its wording is translated, not just its lang attribute",
+            "Retrouver ma réservation" in body,
+            detail="the French heading is missing")
+
     s.section("The staff app stays in English")
     oc, ec, owner, emp = clients()
     oc.get("/language/fr", follow_redirects=True)
