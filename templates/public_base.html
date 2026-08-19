@@ -139,32 +139,34 @@
         <p><a href="tel:+33628069776">+33 6 28 06 97 76</a></p>
         <p><a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
 
+        <div class="g-navwrap__prefs">
+          <span class="g-navwrap__prefs-row">
+            <span class="g-navwrap__prefs-label">{{ t('Language') }}</span>
+            <span class="g-lang">
+              {% for code, label in languages.items() %}
+              <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
+                 class="g-lang__opt{{ ' is-on' if code == lang }}"
+                 {% if code == lang %}aria-current="true"{% endif %}>{{ label }}</a>
+              {% endfor %}
+            </span>
+          </span>
+          <span class="g-navwrap__prefs-row">
+            <span class="g-navwrap__prefs-label">{{ t('Currency') }}</span>
+            <select id="g-currency" aria-label="{{ t('Display currency') }}">
+              <option value="EUR" selected>EUR €</option>
+              <option value="USD">USD $</option>
+              <option value="GBP">GBP £</option>
+              <option value="AUD">AUD $</option>
+            </select>
+          </span>
+        </div>
+
         <div class="g-navwrap__legal">
           <a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a>
           <a href="#">{{ t('Privacy Policy') }}</a>
         </div>
       </div>
     </div>
-
-    {# A plain link per language rather than a select: it works with no
-       JavaScript, and each one is a normal GET the browser can bookmark. #}
-    <span class="g-cur g-lang">
-      {% for code, label in languages.items() %}
-      <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
-         class="g-lang__opt{{ ' is-on' if code == lang }}"
-         {% if code == lang %}aria-current="true"{% endif %}>{{ label }}</a>
-      {% endfor %}
-    </span>
-
-    <span class="g-cur">
-
-      <select id="g-currency" aria-label="{{ t('Display currency') }}">
-        <option value="EUR" selected>EUR €</option>
-        <option value="USD">USD $</option>
-        <option value="GBP">GBP £</option>
-        <option value="AUD">AUD $</option>
-      </select>
-    </span>
 
     <a href="{{ url_for('book_rooms') }}" class="g-reserve">{{ t('Book') }}</a>
   </div>

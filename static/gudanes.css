@@ -11,21 +11,21 @@
      dark panels. It sits on a warm parchment ground — the warmth is the
      building, the blue is the discipline. Brass is used only for small
      marks: eyebrows, figures, the rule under a heading.                */
-  --blue-deep:  #14213D;   /* the ONE accent — room names, primary buttons */
+  --blue-deep:  #183456;   /* the ONE colour — headings, body, links, buttons */
   --blue:       #14213D;   /* solid Book/Filters buttons                   */
   --blue-mid:   #14213D;   /* room names, accent headings                 */
   --blue-pale:  #F5F5F3;   /* pale panel ground                           */
   --blue-line:  #DEDBD4;   /* hairlines                                    */
 
-  --sand:       #F8F3ED;   /* page ground                                */
-  --sand-2:     #F1E9E0;   /* alternate section                          */
+  --sand:       #FFFFFF;   /* page ground — white, as Ritz                */
+  --sand-2:     #F7F5F2;   /* alternate section — a whisper off white     */
   --sand-3:     #E7DCD0;   /* third step                                 */
-  --line:       #D8CCBF;   /* hairlines on warm ground                   */
+  --line:       #E2E0DC;   /* hairlines                                   */
   --white:      #FDFBF8;
 
-  --ink:        #2A2B30;   /* body text — very slightly blue-grey        */
-  --ink-soft:   #5D6169;
-  --ink-faint:  #878C94;
+  --ink:        #183456;   /* body text — the same navy, one colour       */
+  --ink-soft:   #4A6076;
+  --ink-faint:  #7C8CA0;
   --brass:      #8A8578;   /* whisper only — never a rule or fill */
 
   /* ---- Spacing scale — every margin and padding comes from here ---- */
@@ -36,7 +36,7 @@
   /* ---- Measures ---------------------------------------------------- */
   --wrap: 76rem;
   --wrap-narrow: 54rem;
-  --measure: 44rem;
+  --measure: 52rem;
 
   /* ---- Type -------------------------------------------------------- */
   --serif: 'Poppins', -apple-system, 'Helvetica Neue', Arial, sans-serif;
@@ -46,9 +46,9 @@
   background: var(--sand);
   color: var(--ink);
   font-family: var(--serif);
-  font-size: 20px;
-  font-weight: 300;
-  line-height: 1.8;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .g *, .g *::before, .g *::after{ box-sizing: border-box; }
@@ -60,7 +60,7 @@
 .g-wrap{ max-width: var(--wrap); margin: 0 auto; padding: 0 var(--s5); }
 .g-wrap--narrow{ max-width: var(--wrap-narrow); }
 
-.g-sec{ padding: clamp(64px, 9vw, 128px) 0; }
+.g-sec{ padding: clamp(48px, 6vw, 84px) 0; }
 .g-sec--sand{ background: var(--sand-2); }
 .g-sec--pale{ background: var(--blue-pale); }
 .g-sec--tight{ padding: var(--s7) 0; }
@@ -77,8 +77,8 @@
 
 .g-h2{
   font-family: var(--display); font-weight: 500;
-  font-size: clamp(28px, 3.2vw, 40px); line-height: 1.18;
-  color: var(--blue-deep); margin: 0 0 var(--s6);
+  font-size: clamp(24px, 2.4vw, 32px); line-height: 1.25;
+  color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 .g-h2 em{ font-style: normal; font-weight: 300; }
 
@@ -104,10 +104,10 @@
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 20px; font-weight: 300; line-height: 1.8; max-width: var(--measure); margin: 0 0 var(--s5); color: var(--ink); }
+.g-p{ font-size: 16px; font-weight: 400; line-height: 1.5; max-width: var(--measure); margin: 0 0 var(--s4); color: var(--blue-deep); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
-.g-lede{ font-size: clamp(21px, 1.8vw, 25px); font-weight: 300; line-height: 1.6; max-width: 50rem; margin: 0 0 var(--s6); }
+.g-lede{ font-size: clamp(17px, 1.3vw, 19px); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
 .g-fig{ font-family: var(--display); font-weight: 600; color: var(--blue-deep); }
 .g-hint{ font-size: 13px; color: var(--ink-faint); margin: var(--s2) 0 0; }
 .g-hint.is-warn{ color: #a33; }
@@ -1034,7 +1034,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* A page's opening statement — larger than a section heading, matching the
    page-title scale. Was an inline style on home.html; moved here so the
    scale lives in one place rather than drifting per template. */
-.g-h2--lead{ font-size: clamp(34px, 5vw, 56px); margin-bottom: var(--s6); }
+.g-h2--lead{ font-size: clamp(28px, 3.4vw, 44px); margin-bottom: var(--s4); }
 
 
 /* Booking form wrapper — was unstyled, so fields ran the full page width.
@@ -1075,3 +1075,27 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
     display: inline-flex; align-items: center;
   }
 }
+
+/* Panel preferences — language and currency, moved out of the header where
+   they were wider than the Book button itself. */
+.g-navwrap__prefs{
+  margin-top: var(--s6); padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: var(--s4);
+}
+.g-navwrap__prefs-row{ display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
+.g-navwrap__prefs-label{
+  font-family: var(--display); font-size: 13px; font-weight: 500; color: var(--ink-faint);
+}
+.g-navwrap__prefs select{
+  font-family: var(--display); font-size: 14px; color: var(--ink);
+  background: transparent; border: 1px solid var(--line); border-radius: 0;
+  padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
+}
+.g-lang{ display: inline-flex; align-items: center; gap: var(--s3); }
+.g-lang__opt{
+  font-family: var(--display); font-size: 14px; color: var(--ink-faint);
+  text-decoration: none; min-height: 44px; display: inline-flex; align-items: center;
+}
+.g-lang__opt.is-on{ color: var(--blue-deep); font-weight: 500; }
+.g-lang__opt:hover{ color: var(--blue-deep); }
