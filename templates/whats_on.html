@@ -1,0 +1,97 @@
+{% extends "public_base.html" %}
+{% block title %}What's On{% endblock %}
+{% block bodyclass %} has-hero{% endblock %}
+{% block content %}
+
+{# Needs route /whats-on — see WHATS_ON_SETUP.md for the table, routes and admin. #}
+
+<section class="g-hero">
+  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="The Ariège">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <h1 class="g-display">{{ t("What's On") }}</h1>
+    <p class="g-hero__lede">Markets, fairs and mountain days in the valley below — and what is happening at the château itself.</p>
+  </div>
+</section>
+
+<section class="g-sec"><div class="g-wrap">
+
+  {% if this_week %}
+  <p class="g-eyebrow">This Week</p>
+  <h2 class="g-h2">{{ week_label }}</h2>
+  <div class="g-agenda">
+    {% for e in this_week %}
+    <article class="g-agenda__row{{ ' is-today' if e.is_today }}">
+      <div class="g-agenda__when">
+        <span class="g-agenda__day">{{ e.day_label }}</span>
+        {% if e.time_label %}<span class="g-agenda__time">{{ e.time_label }}</span>{% endif %}
+      </div>
+      <div class="g-agenda__what">
+        <h3 class="g-agenda__title">{{ e.title }}</h3>
+        {% if e.location %}<p class="g-agenda__loc">{{ e.location }}{% if e.distance %} · {{ e.distance }}{% endif %}</p>{% endif %}
+        {% if e.description %}<p class="g-p">{{ e.description }}</p>{% endif %}
+      </div>
+      {% if e.is_today %}<span class="g-agenda__flag">{{ t('Today') }}</span>{% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if upcoming %}
+  <p class="g-eyebrow" style="margin-top:var(--s8)">Coming Up</p>
+  <h2 class="g-h2">Later this season</h2>
+  <div class="g-agenda">
+    {% for e in upcoming %}
+    <article class="g-agenda__row">
+      <div class="g-agenda__when">
+        <span class="g-agenda__day">{{ e.date_label }}</span>
+        {% if e.time_label %}<span class="g-agenda__time">{{ e.time_label }}</span>{% endif %}
+      </div>
+      <div class="g-agenda__what">
+        <h3 class="g-agenda__title">{{ e.title }}</h3>
+        {% if e.location %}<p class="g-agenda__loc">{{ e.location }}{% if e.distance %} · {{ e.distance }}{% endif %}</p>{% endif %}
+        {% if e.description %}<p class="g-p">{{ e.description }}</p>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if not this_week and not upcoming %}
+  <p class="g-eyebrow">This Week</p>
+  <h2 class="g-h2">The week ahead</h2>
+  <p class="g-p">Nothing is listed yet. Add markets, fairs and château events in the staff area and they appear here automatically, week by week.</p>
+  {% endif %}
+
+</div></section>
+
+<!-- The standing weekly rhythm, whether or not anything is entered. -->
+<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
+  <p class="g-eyebrow">The Standing Week</p>
+  <h2 class="g-h2">Markets in the valley</h2>
+  <p class="g-p">Market mornings run roughly eight until one. We will drive you, and the chef will usually come too.</p>
+  {% if standing %}
+  <div class="g-agenda" style="margin-top:var(--s6)">
+    {% for e in standing %}
+    <article class="g-agenda__row">
+      <div class="g-agenda__when">
+        <span class="g-agenda__day">{{ e.day_label }}</span>
+        {% if e.time_label %}<span class="g-agenda__time">{{ e.time_label }}</span>{% endif %}
+      </div>
+      <div class="g-agenda__what">
+        <h3 class="g-agenda__title">{{ e.title }}</h3>
+        {% if e.location or e.distance %}
+        <p class="g-agenda__loc">
+          {{ e.location }}{% if e.location and e.distance %} · {% endif %}{{ e.distance }}
+        </p>
+        {% endif %}
+        {% if e.description %}<p class="g-p">{{ e.description }}</p>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <p class="g-hint" style="margin-top:var(--s5)">Market days occasionally shift with public holidays — we confirm before we drive.</p>
+</div></section>
+
+{% endblock %}

@@ -1882,6 +1882,33 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- What's on locally: the markets, and one-off things worth walking to.
+        --
+        -- Two shapes in one table, and exactly one of them per row: `weekday`
+        -- for the standing markets, which repeat forever, or `event_date` for
+        -- a one-off. Storing a market as fifty-two dated rows a year would
+        -- mean somebody has to remember to add next year's.
+        --
+        -- `season_from`/`season_to` are 'MM-DD' with no year, so a winter
+        -- entry written once keeps working — and the comparison wraps, since
+        -- December-to-March is a perfectly ordinary season here.
+        CREATE TABLE IF NOT EXISTS whats_on (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            location TEXT,
+            distance TEXT,
+            weekday INTEGER,
+            event_date TEXT,
+            start_time TEXT,
+            end_time TEXT,
+            season_from TEXT,
+            season_to TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         -- Newsletter subscribers, from the box in the public site's menu panel.
         --
         -- Double opt-in: a row exists from the moment somebody types their
@@ -3347,6 +3374,18 @@ def init_db():
                    VALUES (?, ?, ?, ?, ?)""",
                 (slug, title, blurb, order, datetime.now(timezone.utc).isoformat()),
             )
+    conn.commit()
+
+    # The standing markets. Seeded by title, so one the owner edits or deletes
+    # is not put back on the next restart — this is a starting point, not a
+    # fixture the app keeps reasserting.
+    for entry in DEFAULT_WHATS_ON:
+        if not conn.execute("SELECT 1 FROM whats_on WHERE title = ?", (entry[0],)).fetchone():
+            conn.execute(
+                """INSERT INTO whats_on (title, description, location, distance,
+                   weekday, start_time, end_time, sort_order, created_at)
+                   VALUES (?, ?, ?, ?, ?, '08:00', '13:00', ?, ?)""",
+                entry + (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS):
@@ -5302,6 +5341,32 @@ DEFAULT_GALLERY_SECTIONS = [
      "Long tables, market mornings and the ordinary days between.", 3),
     ("views", "The Views",
      "The Pyrénées from the windows, in every season.", 4),
+]
+
+# The four markets within half an hour, as a starting point for What's On.
+# (title, description, location, distance, weekday, sort_order) — weekday is
+# 0=Monday.
+#
+# The Les Cabannes day is NOT confirmed: the Ariège tourism board says Sunday
+# on Place des Platanes, one directory says Friday. Sunday is seeded because
+# it is the better source, but somebody should ask in the village before a
+# guest walks down on the strength of it. The owner can change it on
+# /admin/whats-on without touching this.
+DEFAULT_WHATS_ON = [
+    ("Les Cabannes Market",
+     "Fruit, vegetables, dairy, meat and artisanal producers. The closest "
+     "market to the gates.",
+     "Place des Platanes", "3 minutes", 6, 1),
+    ("Tarascon-sur-Ariège Market",
+     "The larger of the two.",
+     "Place Jean-Jaurès", "15 minutes", 2, 2),
+    ("Tarascon-sur-Ariège Producers' Market",
+     "Cheese from the mountain farms, charcuterie, and whatever the season "
+     "has decided.",
+     "Place du 19 mars", "15 minutes", 5, 3),
+    ("Ax-les-Thermes Market",
+     "Mountain produce, and the thermal baths a short walk away afterwards.",
+     "Place Roussel", "25 minutes", 6, 4),
 ]
 
 DEFAULT_EXTRAS = [
@@ -16333,6 +16398,214 @@ def import_catalogue():
     conn.close()
     flash(f"Imported — {len(added)} added, {len(updated)} updated.", "success")
     return redirect(url_for("admin_rooms"))
+
+
+@app.route("/facilities")
+def facilities_page():
+    """What the house has. Static copy, no data behind it."""
+    return render_template("facilities.html")
+
+
+# The days of the week, written out. Not strftime('%A'), which follows the
+# server's locale and would put a French guest's Sunday market under
+# "dimanche" on an English page while an English one reads "Sunday".
+WHATS_ON_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                 "Friday", "Saturday", "Sunday"]
+
+
+def whats_on_in_season(row, on_date):
+    """Whether a seasonal entry is running on a date.
+
+    Both ends are 'MM-DD' with no year, so December-to-March wraps round the
+    new year and has to be read as "after the start OR before the end" rather
+    than "between".
+    """
+    start, end = row["season_from"], row["season_to"]
+    if not start or not end:
+        return True
+    md = on_date.strftime("%m-%d")
+    return (start <= md <= end) if start <= end else (md >= start or md <= end)
+
+
+def whats_on_time_label(row):
+    if row["start_time"] and row["end_time"]:
+        return f"{row['start_time']}–{row['end_time']}"
+    return row["start_time"] or ""
+
+
+def whats_on_date_label(d):
+    """'6 September'. Written out rather than strftime('%-d %B'), because that
+    flag is Linux-only and raises on Windows — the same trap format_date_human
+    exists to avoid."""
+    return f"{d.day} {d.strftime('%B')}"
+
+
+@app.route("/whats-on")
+def whats_on():
+    """The markets and whatever else is on, for the week a guest is here.
+
+    Recurring entries are resolved against real dates rather than listed as
+    rules, because "Sunday" is not what somebody staying Thursday to Monday
+    needs to read — they need to know whether it falls while they are here.
+    """
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT * FROM whats_on WHERE is_active = 1 ORDER BY sort_order, id").fetchall()
+    conn.close()
+
+    # The château's own date, not the server's. A UTC host rolls over an hour
+    # or two before midnight in France, which would move "Today" onto the
+    # wrong market.
+    today = datetime.now(timezone.utc).astimezone(LOCAL_TZ).date()
+    this_week, upcoming = [], []
+
+    for offset in range(7):
+        d = today + timedelta(days=offset)
+        for r in rows:
+            if r["weekday"] is None or r["weekday"] != d.weekday():
+                continue
+            if not whats_on_in_season(r, d):
+                continue
+            this_week.append({
+                "title": r["title"], "description": r["description"],
+                "location": r["location"], "distance": r["distance"],
+                # Translated here rather than in the template, because the day
+                # name is built in Python. Left untranslated it would sit next
+                # to a translated "Today" flag, which reads worse than either
+                # being consistently English.
+                "day_label": t("Today") if offset == 0 else t(WHATS_ON_DAYS[d.weekday()]),
+                "date_label": whats_on_date_label(d),
+                "time_label": whats_on_time_label(r),
+                "is_today": offset == 0,
+            })
+
+    for r in rows:
+        if not r["event_date"]:
+            continue
+        on = parse_date(r["event_date"])
+        if not on or on < today:
+            continue
+        item = {
+            "title": r["title"], "description": r["description"],
+            "location": r["location"], "distance": r["distance"],
+            "day_label": t("Today") if on == today else t(WHATS_ON_DAYS[on.weekday()]),
+            "date_label": whats_on_date_label(on),
+            "time_label": whats_on_time_label(r),
+            "is_today": on == today,
+        }
+        (this_week if on <= today + timedelta(days=6) else upcoming).append(item)
+
+    # The standing rhythm, listed once per entry rather than once per matching
+    # day. Out-of-season entries are left out here as well as above: a ski
+    # market printed in August as part of "the standing week" reads as running
+    # now. The agenda above only reaches seven days; somebody choosing dates in
+    # October still wants to know which morning the market is. Same table, so
+    # the two can never disagree about what day Les Cabannes is on.
+    standing = [{
+        "title": r["title"], "description": r["description"],
+        "location": r["location"], "distance": r["distance"],
+        "day_label": t(WHATS_ON_DAYS[r["weekday"]]),
+        "time_label": whats_on_time_label(r),
+    } for r in rows if r["weekday"] is not None and 0 <= r["weekday"] <= 6
+        and whats_on_in_season(r, today)]
+
+    week_label = (f"{whats_on_date_label(today)} – "
+                  f"{whats_on_date_label(today + timedelta(days=6))}")
+    return render_template("whats_on.html", this_week=this_week,
+                           upcoming=upcoming, standing=standing,
+                           week_label=week_label)
+
+
+@app.route("/admin/whats-on")
+@owner_required
+def admin_whats_on():
+    conn = get_db()
+    events = conn.execute("SELECT * FROM whats_on ORDER BY sort_order, id").fetchall()
+    conn.close()
+    return render_template("admin_whats_on.html", events=events)
+
+
+@app.route("/admin/whats-on/save", methods=["POST"])
+@owner_required
+def admin_whats_on_save():
+    f = request.form
+    title = (f.get("title", "") or "").strip()
+    if not title:
+        flash("An entry needs a title.", "error")
+        return redirect(url_for("admin_whats_on"))
+
+    raw_weekday = (f.get("weekday", "") or "").strip()
+    weekday = int(raw_weekday) if raw_weekday.isdigit() and 0 <= int(raw_weekday) <= 6 else None
+    event_date = (f.get("event_date", "") or "").strip() or None
+    if event_date and not parse_date(event_date):
+        flash("That date isn't a date.", "error")
+        return redirect(url_for("admin_whats_on"))
+    # One shape or the other. A row carrying both would be listed twice in the
+    # same week — once as the weekday rule, once as the dated one — and a row
+    # carrying neither can never appear at all, so it would look saved and do
+    # nothing.
+    if event_date:
+        weekday = None
+    elif weekday is None:
+        flash("Choose a weekday for something that repeats, or a date for a one-off.",
+              "error")
+        return redirect(url_for("admin_whats_on"))
+
+    try:
+        sort_order = int(f.get("sort_order") or 0)
+    except ValueError:
+        sort_order = 0
+
+    vals = (
+        title,
+        (f.get("description", "") or "").strip() or None,
+        (f.get("location", "") or "").strip() or None,
+        (f.get("distance", "") or "").strip() or None,
+        weekday, event_date,
+        (f.get("start_time", "") or "").strip() or None,
+        (f.get("end_time", "") or "").strip() or None,
+        (f.get("season_from", "") or "").strip() or None,
+        (f.get("season_to", "") or "").strip() or None,
+        1 if f.get("is_active") else 0,
+        sort_order,
+    )
+    conn = get_db()
+    entry_id = (f.get("id") or "").strip()
+    if entry_id.isdigit():
+        conn.execute(
+            """UPDATE whats_on SET title=?, description=?, location=?, distance=?,
+               weekday=?, event_date=?, start_time=?, end_time=?, season_from=?,
+               season_to=?, is_active=?, sort_order=? WHERE id=?""",
+            vals + (int(entry_id),))
+        log_audit(conn, "whats_on_edited", target=title)
+    else:
+        conn.execute(
+            """INSERT INTO whats_on (title, description, location, distance, weekday,
+               event_date, start_time, end_time, season_from, season_to, is_active,
+               sort_order, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            vals + (datetime.now(timezone.utc).isoformat(),))
+        log_audit(conn, "whats_on_added", target=title)
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("admin_whats_on"))
+
+
+@app.route("/admin/whats-on/<int:event_id>/delete", methods=["POST"])
+@owner_required
+def admin_whats_on_delete(event_id):
+    conn = get_db()
+    row = conn.execute("SELECT title FROM whats_on WHERE id = ?", (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM whats_on WHERE id = ?", (event_id,))
+    log_audit(conn, "whats_on_removed", target=row["title"])
+    conn.commit()
+    conn.close()
+    flash("Removed.", "success")
+    return redirect(url_for("admin_whats_on"))
 
 
 @app.route("/restoration")
