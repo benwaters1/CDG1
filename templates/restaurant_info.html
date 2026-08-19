@@ -1,48 +1,96 @@
 {% extends "public_base.html" %}
-{% block title %}Dinner{% endblock %}
+{% block title %}La Table{% endblock %}
+{% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>Dinner at Château de Gudanes</h1>
-  {% if not_yet_open %}
-  <p class="manual-body">Our dining room opens {{ settings['opening_date'] }}. Reservations are open now for that date onward.</p>
-  {% else %}
-  <p class="manual-body">A small, seasonal dinner service — up to {{ settings['capacity'] if settings else 20 }} guests a night, cooked by our chef.</p>
-  {% endif %}
-  {% if settings and settings['price_per_person'] %}
-  <p class="room-meta">€{{ '%.0f'|format(settings['price_per_person']) }} per person{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}</p>
-  {% elif settings and settings['dinner_time'] %}
-  <p class="room-meta">Seating from {{ settings['dinner_time'] }}</p>
-  {% endif %}
+<section class="g-hero">
+<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/home-7.jpg" alt="The dining room at Château de Gudanes">
+<div class="g-hero__wash"></div>
+<div class="g-hero__in"><h1 class="g-display"><em>La Table</em></h1></div>
+</section>
 
-  {% if settings and settings['enabled'] %}
-  <a href="{{ url_for('restaurant_book') }}" class="btn-primary btn-block" style="margin-top:16px;">Book a table</a>
-  <p class="upload-hint" style="margin-top:12px; text-align:center;"><a href="{{ url_for('restaurant_find') }}" style="color:var(--steel);">Manage an existing reservation</a></p>
-  {% else %}
-  <p class="upload-hint" style="margin-top:16px;">Online reservations aren't open yet — check back soon, or contact the château directly.</p>
-  {% endif %}
-</div>
+<section class="g-sec"><div class="g-wrap"><p class="g-p"><em>There is no restaurant at Château de Gudanes, and there was never meant to be.</em></p>
+<p class="g-p">There is a chef, a dining room recovered over several years, and a table that seats the house. Lunches and dinners are arranged in advance and cooked for whoever is staying — most evenings a single sitting, occasionally two, and never so many that the kitchen loses sight of the room.</p>
+<p class="g-p">Menus are built around the week rather than a card. What arrives depends on the Sunday market in the village square, on producers our chef has known for years, and in summer on the château's own gardens.</p></div></section>
 
-{% if items_by_category %}
-<div class="narrow-card" style="margin-top:20px;">
-  <h1>Menu</h1>
-  {% for category in menu_categories %}
-  {% if items_by_category.get(category) %}
-  <p class="field-label" style="margin-top:18px;">{{ category }}s</p>
-  <div class="mini-list">
-    {% for item in items_by_category[category] %}
-    <div class="mini-row" {% if item['description'] %}style="align-items:flex-start; flex-direction:column; gap:2px;"{% endif %}>
-      <div style="display:flex; width:100%; gap:8px; justify-content:space-between;">
-        <span class="mini-name">{{ item['name'] }}{% if item['dietary_tags'] %} <span class="upload-hint">({{ item['dietary_tags'] }})</span>{% endif %}</span>
-        {% if item['price'] %}<span class="mini-role">€{{ '%.0f'|format(item['price']) }}</span>{% endif %}
-      </div>
-      {% if item['description'] %}<span class="upload-hint">{{ item['description'] }}</span>{% endif %}
+<section class="g-book-bar"><div class="g-wrap">
+  <div class="g-table-cta">
+    <div>
+      <h2 class="g-h3" style="margin-bottom:8px">Reserve a table</h2>
+      <p style="margin:0;font-size:15.5px;color:var(--ink-2)">
+        {% if settings and settings['price_per_person'] %}<span class="g-fig">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings and settings['dinner_time'] %} · from {{ settings['dinner_time'] }}{% endif %}{% if settings and settings['capacity'] %} · up to {{ settings['capacity'] }} guests{% endif %}
+      </p>
     </div>
-    {% endfor %}
+    {% if settings and settings['enabled'] %}
+      <a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve</a>
+    {% else %}
+      <span class="g-btn g-btn--off">Reservations opening shortly</span>
+    {% endif %}
+  </div>
+  <p class="g-book-bar__note" style="margin-top:16px">
+    Confirmed by the château within twenty-four hours, and the menu sent before you arrive.
+    <a href="{{ url_for('restaurant_find') }}">Manage an existing reservation</a>
+  </p>
+</div></section>
+
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/home-7.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/03bb742f-839e-47c4-b4fc-7e4d2fd52e8f/home-7.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6781b42-750e-4a3b-9867-77097ae5de71/_DSC1938-2.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/f2db99cd-30e7-4235-befa-4803738226d8/20170426-20170426-_1170917.jpg" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aa7e337d-6a3c-437b-9b9f-a128c57f849e/home-7.jpg" alt="" loading="lazy"></div>
+
+<section class="g-sec--flush"><div class="g-half">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/c9165a78-1300-47a7-b1c0-b46f4172bf44/home-7.jpg" alt="" loading="lazy">
+  <div class="g-half__text"><h2 class="g-place">Where It Comes From</h2><p class="g-p"><em>Almost nothing travels far to reach this table.</em></p>
+<p class="g-p">Bread and pastries come from the boulangerie in Les Cabannes, three minutes' walk below the gates, and arrive while they are still warm. The Sunday morning market in the village square supplies most of the rest — vegetables, cheeses from the mountain farms, charcuterie, and whatever the season has decided upon.</p>
+<p class="g-p">The château gardens give herbs through the year, and in summer cherries, plums and raspberries. Trout comes from the Ariège. Lamb comes from the Pyrénées, sometimes from the valley visible out of the dining room windows.</p></div>
+</div></section>
+
+<section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/e6781b42-750e-4a3b-9867-77097ae5de71/_DSC1938-2.jpg" alt="" loading="lazy">
+  <div class="g-half__text"><h2 class="g-place">The Dining Room</h2><p class="g-p"><em>The room in which dinner is served was among the most damaged in the house.</em></p>
+<p class="g-p">Its ceiling had gone. What remained of the panelling was under later paint, and the floor beneath it had rotted through in places. It took several years to bring back — the plaster consolidated rather than replaced, the panelling cleaned by hand, and a new floor laid in oak beneath walls left deliberately as they were found.</p>
+<p class="g-p">Dinner is served by candlelight at a long table, and the room is at its best in winter, when the fire is lit and the valley outside has gone entirely quiet.</p></div>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <h2 class="g-place">The Menus</h2>
+  <p class="g-p">Two courses, three courses, or a full degustation. Wine may be paired throughout, drawn largely from the south-west.</p>
+
+  {% if items_by_category %}
+  <div style="margin-top:34px">
+  {% for category in menu_categories %}
+    {% if items_by_category.get(category) %}
+    <h3 class="g-h3" style="margin-top:34px">{{ category }}s</h3>
+    <ul class="g-time" style="margin:0">
+      {% for item in items_by_category[category] %}
+      <li style="grid-template-columns:1fr auto">
+        <span><b>{{ item['name'] }}</b>{% if item['description'] %}<br><span>{{ item['description'] }}</span>{% endif %}</span>
+        {% if item['price'] %}<span class="g-fig">€{{ '%.0f'|format(item['price']) }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  {% endfor %}
   </div>
   {% endif %}
-  {% endfor %}
-</div>
-{% endif %}
+
+  <p class="g-p" style="margin-top:34px"><em>Dietary requirements and allergies are designed into the menu rather than worked around on the night. Tell us when you reserve and they become part of the planning — not an adjustment made in the kitchen at eight o'clock.</em></p>
+</div></section>
+
+<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
+  <h2 class="g-place">Through The Day</h2>
+  <ul class="g-time"><li><b>Petit-déjeuner</b><span>Eight until ten, included with every stay. Viennoiseries from the village, local yoghurts and preserves, and teas made from herbs grown in the gardens.</span></li><li><b>Salon de Thé</b><span>Open from morning until evening. French and local teas, coffee, and hot water refreshed through the day.</span></li><li><b>Déjeuner</b><span>By arrangement, and often taken outside when the weather allows — beneath the façade, or in the gardens above the valley.</span></li><li><b>Dîner</b><span>Served from half past seven. A single sitting, at a long table, by candlelight.</span></li></ul>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <h2 class="g-place">Occasions</h2>
+  <p class="g-p">Birthdays, anniversaries and proposals are arranged with the chef — styling, flowers, menu cards, and a table set apart from the rest if you would prefer it. Tell us what the evening is for when you reserve.</p>
+</div></section>
+
+<section class="g-sec--flush"><div class="g-half g-half--flip">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="" loading="lazy">
+  <div class="g-half__text">
+    <h2 class="g-display" style="font-size:clamp(24px,3vw,38px);font-style:italic;margin-bottom:24px"><em>The kitchen was the first room brought back</em></h2>
+    <p class="g-p">It was recovered before the bedrooms, before the salons, and before anything else that guests now see. A house of this kind is organised around its table, and always has been.</p>
+    <p style="margin-top:30px"><a href="#top" class="g-btn">Reserve a table</a></p>
+  </div>
+</div></section>
 
 {% endblock %}
