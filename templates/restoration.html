@@ -1,5 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}The Restoration{% endblock %}
+{% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
 {# Needs a route, e.g.:
@@ -48,8 +49,8 @@
 <section class="g-sec">
   <div class="g-wrap">
     <div class="g-panel g-panel--dark">
-      <h2 class="g-h2">Stay, and fund <em>the next room</em></h2>
-      <p style="font-size:15.5px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Proceeds from stays go directly into the restoration. Not a donation — the mechanism by which a building this size survives.</p>
+      <h2 class="g-h2">A restoration, <em>not a renovation</em></h2>
+      <p style="font-size:15.5px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Restoration answers for every decision: each intervention approved by the Monuments Historiques before a tool is lifted, overpaint lifted by hand, original stone and timber conserved rather than replaced. It is the slower and more exacting course, and the only one worth taking with a house of this consequence.</p>
       <a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#E4D2A8; color:#23201C;">See rooms and rates</a>
     </div>
   </div>
