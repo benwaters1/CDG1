@@ -15913,6 +15913,17 @@ def parse_money(raw):
     return round(value, 2) if value >= 0 else None
 
 
+# What a guest may choose for themselves on the public registration form.
+#
+# 'solo' is deliberately absent. A private room on an atelier is arranged with
+# the château directly: the price depends on the atelier, the dates and what is
+# actually free, so it is quoted per enquiry rather than carried as a standing
+# supplement. Staff can still set solo on a booking by hand, which is how one
+# that was arranged over the phone gets recorded.
+PUBLIC_OCCUPANCY_TYPES = ("double", "triple")
+ALL_OCCUPANCY_TYPES = ("solo", "double", "triple")
+
+
 def workshop_single_supplement(workshop, occupancy_type):
     """The per-person supplement for a private room, or 0.
 
@@ -16618,7 +16629,13 @@ def workshop_register(session_id):
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
         occupancy_type = request.form.get("occupancy_type", "double").strip()
-        if occupancy_type not in ("solo", "double", "triple"):
+        # A private room is arranged with the château directly, not booked
+        # online: what it costs depends on the atelier, the dates and what is
+        # free, so it is quoted case by case rather than carrying a standing
+        # supplement. The refusal is here rather than only in the form because
+        # hiding an <option> stops nobody from posting the value — and 'solo'
+        # with no supplement set is a private room given away for nothing.
+        if occupancy_type not in PUBLIC_OCCUPANCY_TYPES:
             occupancy_type = "double"
         requested_roommate = request.form.get("requested_roommate", "").strip()[:200]
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -20112,6 +20129,82 @@ def admin_workshop_registrations():
     )
 
 
+@app.route("/admin/workshops/registrations/<int:registration_id>/occupancy", methods=["POST"])
+@owner_required
+def set_workshop_occupancy(registration_id):
+    """Record a private room that was arranged with the château directly.
+
+    Solo is not bookable on the public form: what a private room costs depends
+    on the atelier, the dates and what is free, so it is quoted per enquiry.
+    This is where that quote is entered once it has been agreed — the guest
+    who phoned up is on the same registration as everyone else, just with an
+    occupancy and a supplement staff set by hand.
+
+    The supplement is per person, matching workshop_subtotal(), and repricing
+    goes through the same arithmetic as the booking itself so the two cannot
+    drift. An existing discount is preserved as the amount already agreed
+    rather than re-derived from the new subtotal.
+    """
+    conn = get_db()
+    reg = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date, workshops.price_per_person,
+                  workshops.deposit_percent
+           FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           WHERE workshop_bookings.id = ?""", (registration_id,)).fetchone()
+    if not reg:
+        conn.close()
+        abort(404)
+
+    occupancy = (request.form.get("occupancy_type", "") or "").strip()
+    if occupancy not in ALL_OCCUPANCY_TYPES:
+        conn.close()
+        flash("Choose a room arrangement.", "error")
+        return redirect(url_for("admin_workshop_registrations"))
+
+    supplement = parse_money(request.form.get("single_supplement", "")) or 0.0
+    if occupancy != "solo":
+        supplement = 0.0   # only a private room carries one
+
+    # Staff can override capacity, but not silently: a solo booking needs a
+    # room per guest, and if the session has not got them somebody has to know
+    # before the guest is told yes.
+    room_problem = session_room_error(conn, reg["session_id"], occupancy, reg["party_size"],
+                                      exclude_id=registration_id)
+
+    price = reg["price_per_person"] or 0
+    subtotal = round((price + supplement) * reg["party_size"], 2) if price else 0
+    discount = reg["discount_amount"] or 0.0
+    total_price = round(subtotal - discount, 2) if subtotal else None
+    deposit_percent = resolve_deposit_percent(
+        conn, "workshop", reg["start_date"], reg["party_size"], reg["deposit_percent"])
+    deposit_amount, balance_amount, balance_due_date = compute_workshop_payment_terms(
+        total_price, deposit_percent, parse_date(reg["start_date"]))
+    # A deposit already paid is not re-taken; only what is still owed moves.
+    if reg["deposit_paid_at"]:
+        deposit_amount = reg["deposit_amount"]
+        balance_amount = round((total_price or 0) - (deposit_amount or 0), 2)
+
+    conn.execute(
+        """UPDATE workshop_bookings
+           SET occupancy_type = ?, single_supplement = ?, total_price = ?,
+               deposit_amount = ?, balance_amount = ?, balance_due_date = ?
+           WHERE id = ?""",
+        (occupancy, supplement or None, total_price, deposit_amount, balance_amount,
+         balance_due_date, registration_id))
+    log_audit(conn, "workshop_occupancy_set", target=reg["reference_code"],
+              details=f"{occupancy}, supplement €{supplement:.2f}")
+    conn.commit()
+    conn.close()
+
+    if room_problem:
+        flash(f"Saved — but note: {room_problem}", "error")
+    else:
+        flash(f"Room arrangement saved for {reg['reference_code']}.", "success")
+    return redirect(url_for("admin_workshop_registrations"))
+
+
 @app.route("/admin/workshops/registrations/<int:registration_id>/confirm", methods=["POST"])
 @owner_required
 def confirm_workshop_registration(registration_id):
@@ -22259,19 +22352,24 @@ def readiness_checks(conn):
         f"{broken} shift{'s' if broken != 1 else ''} end before they start — "
         "payroll export is blocked until they're fixed.")
 
-    # A supplement that has never been set is not an error — free single rooms
-    # is a legitimate choice — but it is silent, and a solo guest asking for
-    # their own room is a common enough request that nobody wants to find out
-    # they have all been given one for nothing.
-    no_supplement = conn.execute(
-        """SELECT COUNT(*) AS c FROM workshops
-           WHERE active = 1 AND COALESCE(price_per_person, 0) > 0
-             AND single_supplement IS NULL""").fetchone()["c"]
-    add("warn", "Workshops", "Single-occupancy supplement", no_supplement == 0,
-        "Set on every priced atelier." if not no_supplement else
-        f"Not set on {no_supplement} atelier{'s' if no_supplement != 1 else ''}, so a guest "
-        "asking for a room to themselves is charged nothing extra for it. Set it per "
-        "atelier under Workshops, or enter 0 to confirm single rooms really are free.")
+    # A private room is not bookable online, so an unset supplement is no
+    # longer a way to give one away: the registration form offers shared
+    # occupancy only and the route refuses 'solo' whatever is posted. What
+    # matters instead is that a solo booking staff entered by hand actually
+    # carries a price, since that one WAS quoted to somebody.
+    unpriced_solo = conn.execute(
+        """SELECT COUNT(*) AS c FROM workshop_bookings
+           WHERE occupancy_type = 'solo'
+             AND status NOT IN ('declined', 'cancelled')
+             AND COALESCE(single_supplement, 0) = 0""").fetchone()["c"]
+    if unpriced_solo == 1:
+        solo_detail = ("1 solo registration carries no supplement, so that private "
+                       "room is being given away. Set the agreed amount on it.")
+    else:
+        solo_detail = (f"{unpriced_solo} solo registrations carry no supplement, so those "
+                       "private rooms are being given away. Set the agreed amount on each.")
+    add("warn", "Workshops", "Private rooms arranged by hand", unpriced_solo == 0,
+        "Every solo registration carries a supplement." if not unpriced_solo else solo_detail)
 
     for label, token, why in (
         ("Kiosk display token", OFFICE_DISPLAY_TOKEN,

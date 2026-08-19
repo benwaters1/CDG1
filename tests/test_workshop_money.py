@@ -294,12 +294,13 @@ def run():
             after["total_price"] == 1300.0 and after["single_supplement"] == 400.0,
             detail=f"got {after['total_price']} / {after['single_supplement']}")
 
-    # A guest booking through the actual form, which is the only path that
-    # matters — the occupancy they picked has to reach the money.
+    # A guest booking through the actual form. A private room is no longer
+    # sold here — it is quoted per enquiry and set by staff afterwards — so
+    # what matters is that asking for one anyway cannot buy one, and that the
+    # shared price is what reaches the money.
     pub = m.app.test_client()
     page = pub.get(f"/workshops/register/{session_row['id']}").get_data(as_text=True)
-    s.check("the form shows what a private room costs", "€400" in page,
-            detail="no figure on the page")
+    s.check("the form does not sell a private room", 'value="solo"' not in page)
     r = pub.post(f"/workshops/register/{session_row['id']}", data={
         "guest_name": f"{TAG} form guest", "guest_email": f"{TAG.lower()}f@example.invalid",
         "party_size": "2", "occupancy_type": "solo", "notes": "",
@@ -312,8 +313,10 @@ def run():
     s.check("the registration goes through", r.status_code == 200 and booked is not None,
             detail=f"HTTP {r.status_code}, row {booked is not None}")
     if booked:
-        s.check("the occupancy chosen on the form reaches the charge",
-                booked["total_price"] == 2600.0,
+        # 2 guests at the shared price, not the solo one: posting solo is
+        # ignored, so the supplement never reaches the charge.
+        s.check("posting solo does not buy a private room",
+                booked["occupancy_type"] != "solo" and booked["total_price"] == 1800.0,
                 detail=f"got {booked['total_price']} for {booked['occupancy_type']}")
 
     # An atelier with no supplement set behaves as it did before: solo is free.
@@ -370,12 +373,17 @@ def run():
     s.check("sharing is refused too when no room is left at all", shared_ok is not None,
             detail=f"got {shared_ok!r}")
 
-    # And the form stops offering it, rather than refusing after the fact.
+    # The form never offers a private room now — it is quoted per enquiry —
+    # so the room-shortage case shows up as the page saying none are free
+    # rather than as an option disappearing.
     pub_page = m.app.test_client().get(f"/workshops/register/{session_row['id']}").get_data(as_text=True)
-    s.check("the form no longer offers a private room it cannot give",
+    s.check("the form does not offer a private room",
             'value="solo"' not in pub_page, detail="solo still selectable")
-    s.check("and says why", "only offer shared occupancy" in pub_page,
-            detail="no explanation on the page")
+    s.check("and points the guest at asking for one",
+            "room to yourself" in pub_page.lower(), detail="no route to enquire on the page")
+    s.check("saying the rooms are gone for these dates",
+            "every room for these dates is currently taken" in pub_page.lower(),
+            detail="no shortage note on the page")
 
     conn = db()
     conn.execute("DELETE FROM workshop_bookings WHERE reference_code = ?", (f"{TAG}HOG",))

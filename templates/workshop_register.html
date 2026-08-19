@@ -28,17 +28,17 @@
     <label class="field-label">Room arrangement</label>
     <select name="occupancy_type" id="occupancy_type">
       <option value="double">Double (shared room, one bed) — included</option>
-      {# Not offered at all once the rooms are gone — a private room is now
-         something the guest pays extra for, so it must not be selectable
-         when there is none left to give. #}
-      {% if solo_possible %}
-      <option value="solo">Solo (private room){% if supplement %} — €{{ '%.0f'|format(supplement) }} per person extra{% endif %}</option>
-      {% endif %}
       <option value="triple">Triple occupancy — included</option>
     </select>
-    {% if not solo_possible %}
-    <p class="upload-hint" style="margin-top:4px;">Every room for these dates is taken, so we can only offer shared occupancy — do contact the château if you need a room to yourself.</p>
-    {% endif %}
+    {# A private room is not bookable here. What it costs depends on the
+       atelier, the dates and what is actually free, so it is quoted per
+       enquiry rather than carrying a standing supplement — and the server
+       refuses 'solo' from this form regardless of what the markup offers. #}
+    <p class="upload-hint" style="margin-top:4px;">
+      The price includes a shared room. If you would like a room to yourself,
+      <a href="mailto:experience@chateaugudanes.com?subject=Private%20room%20on%20an%20atelier">write to us</a>
+      and we will quote for it — {% if solo_possible %}there are rooms free for these dates{% else %}though every room for these dates is currently taken{% endif %}.
+    </p>
     {% if session['price_per_person'] %}
     <p class="upload-hint" id="occupancy_total" style="margin-top:4px;"></p>
     {% endif %}
@@ -105,31 +105,25 @@
 </div>
 
 <script>
-// The running total, so nobody discovers the single supplement on the invoice.
-// Deliberately the same arithmetic as workshop_subtotal() in app.py: price plus
-// supplement, times party size. The server is still what charges — this only
-// shows what it is going to do.
+// The running total, so the figure on the confirmation is never a surprise.
+// Deliberately the same arithmetic as workshop_subtotal() in app.py — price
+// times party size. Both options bookable here include a shared room, so
+// there is no supplement to add: a private room is quoted by enquiry and set
+// on the booking by staff, never chosen on this form. The server is still
+// what charges; this only shows what it is going to do.
 (function() {
   var totalEl = document.getElementById('occupancy_total');
   if (!totalEl) return;
   var price = {{ session['price_per_person'] or 0 }};
-  var supplement = {{ supplement or 0 }};
   var partyEl = document.querySelector('[name="party_size"]');
-  var occupancyEl = document.getElementById('occupancy_type');
   function render() {
     var party = parseInt(partyEl.value, 10);
     if (!party || party < 1) { totalEl.textContent = ''; return; }
-    var extra = occupancyEl.value === 'solo' ? supplement : 0;
-    var total = (price + extra) * party;
-    var line = 'Total for ' + party + (party === 1 ? ' guest: €' : ' guests: €') + total.toLocaleString('en-GB');
-    if (extra) {
-      line += ' (€' + price.toLocaleString('en-GB') + ' + €' + extra.toLocaleString('en-GB')
-            + ' single room, per person)';
-    }
-    totalEl.textContent = line;
+    var total = price * party;
+    totalEl.textContent = 'Total for ' + party
+      + (party === 1 ? ' guest: €' : ' guests: €') + total.toLocaleString('en-GB');
   }
   partyEl.addEventListener('input', render);
-  occupancyEl.addEventListener('change', render);
   render();
 })();
 
