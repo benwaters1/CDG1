@@ -1,65 +1,65 @@
 {% extends "public_base.html" %}
-{% block title %}Your château account{% endblock %}
+{% block title %}{{ t('Your château account') }}{% endblock %}
 {% block content %}
 
 <div class="narrow-card">
-  <h1>{{ profile['name'] or 'Your château account' }}</h1>
+  <h1>{{ profile['name'] or t('Your château account') }}</h1>
   <p class="manual-body">Everything you have with us, in one place. Keep this link — it's yours, and it works without a password.</p>
 
   {% if not stays and not ateliers and not dinners %}
   <div class="detail-card">
-    <p class="manual-body">Nothing booked at the moment.</p>
+    <p class="manual-body">{{ t('Nothing booked at the moment.') }}</p>
     <p class="upload-hint">Anything you book from now on will appear here.</p>
   </div>
   {% endif %}
 
   {% if stays %}
-  <h2 class="section-heading">Your stays</h2>
+  <h2 class="section-heading">{{ t('Your stays') }}</h2>
   {% for stay in stays %}
   <div class="detail-card" style="margin-bottom:12px;">
     <div class="detail-grid">
-      <div><span class="detail-label">Room</span>{{ stay['room_name'] }}</div>
-      <div><span class="detail-label">Dates</span>{{ stay['arrival_date'] }} → {{ stay['departure_date'] }}</div>
-      <div><span class="detail-label">Reference</span>{{ stay['reference_code'] }}</div>
-      <div><span class="detail-label">Status</span><span class="mini-status status-{{ stay['status'] }}">{{ stay['status'] }}</span></div>
+      <div><span class="detail-label">{{ t('Room') }}</span>{{ stay['room_name'] }}</div>
+      <div><span class="detail-label">{{ t('Dates') }}</span>{{ stay['arrival_date'] }} → {{ stay['departure_date'] }}</div>
+      <div><span class="detail-label">{{ t('Reference') }}</span>{{ stay['reference_code'] }}</div>
+      <div><span class="detail-label">{{ t('Status') }}</span><span class="mini-status status-{{ stay['status'] }}">{{ stay['status'] }}</span></div>
     </div>
     {% if bills.get(stay['id']) %}
     <p class="manual-body" style="margin-top:10px;">Still to pay: <strong>€{{ '%.2f'|format(bills[stay['id']].owed) }}</strong></p>
     {% endif %}
     <a href="{{ url_for('manage_booking', manage_token=stay['manage_token']) }}" class="btn-mini" style="margin-top:10px; display:inline-block;">
-      {% if stay['arrival_date'] >= today %}Manage this stay{% else %}View this stay{% endif %}
+      {% if stay['arrival_date'] >= today %}{{ t('Manage this stay') }}{% else %}{{ t('View this stay') }}{% endif %}
     </a>
   </div>
   {% endfor %}
   {% endif %}
 
   {% if ateliers %}
-  <h2 class="section-heading">Your ateliers</h2>
+  <h2 class="section-heading">{{ t('Your ateliers') }}</h2>
   {% for reg in ateliers %}
   <div class="detail-card" style="margin-bottom:12px;">
     <div class="detail-grid">
       <div><span class="detail-label">Atelier</span>{{ reg['workshop_title'] }}</div>
-      <div><span class="detail-label">Dates</span>{{ reg['start_date'] }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date'] }}{% endif %}</div>
-      <div><span class="detail-label">Reference</span>{{ reg['reference_code'] }}</div>
-      <div><span class="detail-label">Status</span><span class="mini-status status-{{ reg['status'] }}">{{ reg['status'] }}</span></div>
+      <div><span class="detail-label">{{ t('Dates') }}</span>{{ reg['start_date'] }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date'] }}{% endif %}</div>
+      <div><span class="detail-label">{{ t('Reference') }}</span>{{ reg['reference_code'] }}</div>
+      <div><span class="detail-label">{{ t('Status') }}</span><span class="mini-status status-{{ reg['status'] }}">{{ reg['status'] }}</span></div>
     </div>
-    <a href="{{ url_for('workshop_manage', manage_token=reg['manage_token']) }}" class="btn-mini" style="margin-top:10px; display:inline-block;">Manage this registration</a>
+    <a href="{{ url_for('workshop_manage', manage_token=reg['manage_token']) }}" class="btn-mini" style="margin-top:10px; display:inline-block;">{{ t('Manage this registration') }}</a>
   </div>
   {% endfor %}
   {% endif %}
 
   {% if dinners %}
-  <h2 class="section-heading">Your dinners</h2>
+  <h2 class="section-heading">{{ t('Your dinners') }}</h2>
   {% for dinner in dinners %}
   <div class="detail-card" style="margin-bottom:12px;">
     <div class="detail-grid">
       <div><span class="detail-label">Date</span>{{ dinner['dinner_date'] }}</div>
-      <div><span class="detail-label">Party</span>{{ dinner['party_size'] }}</div>
-      <div><span class="detail-label">Reference</span>{{ dinner['reference_code'] }}</div>
-      <div><span class="detail-label">Status</span><span class="mini-status status-{{ dinner['status'] }}">{{ dinner['status'] }}</span></div>
+      <div><span class="detail-label">{{ t('Party size') }}</span>{{ dinner['party_size'] }}</div>
+      <div><span class="detail-label">{{ t('Reference') }}</span>{{ dinner['reference_code'] }}</div>
+      <div><span class="detail-label">{{ t('Status') }}</span><span class="mini-status status-{{ dinner['status'] }}">{{ dinner['status'] }}</span></div>
     </div>
     {% if dinner['manage_token'] %}
-    <a href="{{ url_for('restaurant_manage', manage_token=dinner['manage_token']) }}" class="btn-mini" style="margin-top:10px; display:inline-block;">Manage this booking</a>
+    <a href="{{ url_for('restaurant_manage', manage_token=dinner['manage_token']) }}" class="btn-mini" style="margin-top:10px; display:inline-block;">{{ t('Manage this booking') }}</a>
     {% endif %}
   </div>
   {% endfor %}

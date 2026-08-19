@@ -134,7 +134,7 @@ from datetime import datetime, timezone, timedelta, date
 from functools import wraps
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
@@ -151,6 +151,8 @@ import anthropic
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from py_vapid import Vapid
+
+import translations
 from pywebpush import webpush, WebPushException
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -8885,6 +8887,9 @@ def inject_user():
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
         "may": may, "user_areas": areas, "area_titles": AREA_TITLES,
+        # Translation, available to every template rather than passed in by
+        # each route — a page that forgot it would silently render English.
+        "t": t, "lang": current_language(), "languages": translations.LANGUAGES,
         # Constants the forms need. Exposed here rather than passed through
         # every render_template call, so a new form can't quietly render an
         # empty dropdown because one route forgot to include them.
@@ -18081,6 +18086,55 @@ def admin_bookings():
         scheduled_by_date=scheduled_by_date, today_iso=today_iso,
         refunded_by_booking=refunded_by_booking,
     )
+
+
+def current_language():
+    """The language to render the guest-facing site in.
+
+    An explicit choice wins and is remembered; otherwise the browser's own
+    Accept-Language is honoured, so a French visitor gets French without
+    having to find a switcher. Falls back to English.
+
+    The staff app ignores this — see translations.py for why.
+    """
+    if not has_request_context():
+        return "en"
+    chosen = session.get("lang")
+    if chosen in translations.LANGUAGES:
+        return chosen
+    best = request.accept_languages.best_match(list(translations.LANGUAGES))
+    return best or "en"
+
+
+def t(text, **kwargs):
+    """Translate for the current language, then fill in any placeholders.
+
+    Formatting happens after the lookup so a translation can move a value to
+    where that language wants it — French and Spanish do not put numbers and
+    nouns in the same order English does.
+    """
+    out = translations.translate(text, current_language())
+    if kwargs:
+        try:
+            return out.format(**kwargs)
+        except (KeyError, IndexError):
+            # A translation with a typo'd placeholder must not blank the page.
+            return text.format(**kwargs)
+    return out
+
+
+@app.route("/language/<code>")
+def set_language(code):
+    """Switch language and return the guest to the page they were reading."""
+    if code in translations.LANGUAGES:
+        session["lang"] = code
+    target = request.referrer or url_for("dashboard")
+    # Never bounce to another site on the strength of a header: referrer is
+    # attacker-settable, and an open redirect from a one-click link is exactly
+    # the shape phishing wants.
+    if urlparse(target).netloc and urlparse(target).netloc != request.host:
+        target = url_for("dashboard")
+    return redirect(target)
 
 
 def guest_portal_token(conn, email):
