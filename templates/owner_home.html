@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+{# The owner's Home. Four questions in order: what needs my decision, what
+   happens next, is the house full, is the money on track.
+
+   Every figure, row and bar here is real data from the route — there is no
+   sample content. Styling lives in static/style.css under .oh-* classes
+   rather than inline, so the design's exact values are stated once. #}
+
+<div class="oh">
+
+  <!-- Hero: who you are, what the day is, and the next thing to happen -->
+  <div class="oh-hero">
+    <div class="oh-hero__left">
+      <p class="oh-meta">
+        {# %-d is POSIX-only and raises on Windows, so the day is built by hand. #}
+        <span>{{ today.strftime('%A') }} {{ today.day }} {{ today.strftime('%B') }} · week {{ today.isocalendar()[1] }}</span>
+      </p>
+      <h1 class="oh-h1">{{ greeting }}, {{ user['name'].split()[0] }}</h1>
+      <p class="oh-sub">{{ hero_line }}</p>
+      <div class="oh-actions">
+        {# The gold button is the page's one loud element, so it only exists when
+           there is actually something to decide. "Review 0 decisions" was the
+           loudest thing on the screen while being the one thing that did
+           nothing — at zero the quiet actions are the whole row. #}
+        {% if queue %}
+        <a href="#waiting" class="oh-btn oh-btn--gold">Review {{ queue|length }} decision{{ '' if queue|length == 1 else 's' }}</a>
+        {% endif %}
+        <a href="{{ url_for('office_display') }}" target="_blank" rel="noopener" class="oh-btn">Office display</a>
+        <a href="{{ url_for('staff_today') }}" class="oh-btn">Printable sheet</a>
+      </div>
+    </div>
+
+    {# The only dark surface on the page, and it earns it: this is the one
+       thing the owner needs to know without reading. #}
+    <div class="oh-next">
+      {% if next_up %}
+      <div class="oh-next__head">
+        <span class="oh-next__label">Next up</span>
+        <span class="oh-next__chip">{{ 'Tomorrow' if next_up['tomorrow'] else next_up['countdown'] }}</span>
+      </div>
+      <div class="oh-next__when">
+        <span class="oh-next__time">{{ next_up['time'] }}</span>
+        <span class="oh-next__title">{{ next_up['title'] }}</span>
+      </div>
+      <p class="oh-next__room">{{ next_up['room'] }}</p>
+      {% if next_up['note'] %}<p class="oh-next__note">{{ next_up['note'] }}</p>{% endif %}
+      <div class="oh-next__actions">
+        <a href="{{ url_for('admin_bookings') }}" class="oh-btn oh-btn--gold oh-btn--sm">Open booking</a>
+        <a href="{{ url_for('chat_home') }}" class="oh-btn oh-btn--ondark oh-btn--sm">Message the team</a>
+      </div>
+      {% else %}
+      <div class="oh-next__head"><span class="oh-next__label">Next up</span></div>
+      <p class="oh-next__room" style="margin-top:auto;">Nothing scheduled. No arrivals, no dinner service, no dated tasks.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Five figures, each with its own real seven-day series -->
+  <div class="oh-figures">
+    {% for f in figures %}
+    <div class="oh-fig">
+      <p class="oh-fig__label">{{ f['label'] }}</p>
+      <div class="oh-fig__row">
+        <span class="oh-fig__value">{{ f['value'] }}</span>
+        {% if f['unit'] %}<span class="oh-fig__unit">{{ f['unit'] }}</span>{% endif %}
+        <span class="oh-spark" aria-hidden="true">
+          {% for h in f['trend'] %}<i style="height:{{ h }}%"></i>{% endfor %}
+        </span>
+      </div>
+      <p class="oh-fig__delta oh-tone--{{ f['delta_tone'] }}">{{ f['delta'] }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="oh-body">
+    <div class="oh-col">
+
+      <!-- What needs a decision -->
+      <div class="oh-sec__head" id="waiting">
+        <h2 class="oh-h2">Waiting on you</h2>
+        <span class="oh-chip is-on" data-filter="all">All {{ queue|length }}</span>
+        <span class="oh-chip" data-filter="money">Money {{ queue_money|length }}</span>
+        <span class="oh-chip" data-filter="people">People {{ queue_people|length }}</span>
+        <span class="oh-spacer"></span>
+        {% if bulk_count %}
+        <a href="{{ url_for('admin_approvals') }}" class="oh-link">Approve {{ bulk_count }} routine →</a>
+        {% endif %}
+      </div>
+
+      {% if not queue %}
+      <div class="oh-table"><p class="oh-empty">Nothing waiting on you.</p></div>
+      {% else %}
+      <div class="oh-table">
+        <div class="oh-qrow oh-qrow--head">
+          <span></span><span>Type</span><span>Item</span>
+          <span class="oh-right">Amount</span><span class="oh-right">Decision</span>
+        </div>
+        {% for q in queue %}
+        <div class="oh-qrow" data-tone="{{ q['tone'] }}">
+          {% set tonecls = {"money":"oh-bar--money","people":"oh-bar--people","risk":"oh-bar--risk"} %}
+          <span class="oh-bar {{ tonecls.get(q["tone"], "oh-bar--people") }}"></span>
+          <span class="oh-kind oh-kind--{{ q['tone'] }}">{{ q['kind'] }}</span>
+          <span class="oh-item">
+            <b>{{ q['title'] }}</b>
+            {% if q['detail'] %}<em>{{ q['detail'] }}</em>{% endif %}
+          </span>
+          <span class="oh-amount">{{ q['amount'] }}</span>
+          <span class="oh-decide">
+            <a href="{{ url_for('admin_approvals') }}" class="oh-btn oh-btn--cream oh-btn--xs">{{ q['ok_label'] }}</a>
+            <a href="{{ url_for('admin_approvals') }}" class="oh-btn oh-btn--xs">{{ q['no_label'] }}</a>
+          </span>
+        </div>
+        {% endfor %}
+        <div class="oh-tfoot">
+          <span>{{ bulk_count }} under €100</span>
+          <a href="{{ url_for('admin_approvals') }}" class="oh-link">Show everything</a>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- The day, in the order it happens -->
+      <div class="oh-sec__head oh-sec__head--day">
+        <h2 class="oh-h2">The day</h2>
+        <span class="oh-mono">{{ day_done }} of {{ day|length }} done</span>
+        <span class="oh-track">
+          <i style="width:{{ (100 * day_done / day|length)|round|int if day else 0 }}%"></i>
+        </span>
+        <span class="oh-spacer"></span>
+        <a href="{{ url_for('admin_calendar') }}" class="oh-link">Full calendar →</a>
+      </div>
+
+      <div class="oh-list">
+        {% if not day %}
+        <p class="oh-empty">Nothing on today.</p>
+        {% else %}
+        {% for r in day %}
+        <div class="oh-drow{{ ' is-done' if r['done'] }}">
+          <span class="oh-mono oh-dtime">{{ r['time'] or '—' }}</span>
+          {% set kindcls = {"arrival":"oh-bar--arrival","departure":"oh-bar--departure","dinner":"oh-bar--dinner","task":"oh-bar--task"} %}
+          <span class="oh-bar {{ kindcls.get(r["kind"], "oh-bar--task") }}"></span>
+          <span class="oh-dtitle">{{ r['title'] }}</span>
+          <span class="oh-ddetail">{{ r['detail'] }}</span>
+          <span class="oh-dwho">
+            {% if r['assignee'] %}
+            <span class="oh-av{{ ' oh-av--mine' if r['assignee'] == 'Mine' }}">
+              {{ 'BW' if r['assignee'] == 'Mine' else r['assignee'][:2]|upper }}
+            </span>
+            {% endif %}
+          </span>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Right rail -->
+    <div class="oh-col oh-col--rail">
+
+      <div class="oh-card">
+        <div class="oh-card__head">
+          <h2 class="oh-h3">Revenue</h2>
+          <a href="{{ url_for('admin_reports') }}" class="oh-link oh-link--sm">Financials →</a>
+        </div>
+        <div class="oh-card__value">
+          <span class="oh-big">€{{ '{:,.0f}'.format(revenue_now) }}</span>
+          {% if revenue_prev %}
+          {% set pc = ((revenue_now - revenue_prev) / revenue_prev * 100)|round|int %}
+          <span class="oh-delta oh-tone--{{ 'good' if pc >= 0 else 'bad' }}">
+            {{ '+' if pc >= 0 }}{{ pc }}% on {{ revenue[-2]['label'] }}
+          </span>
+          {% endif %}
+        </div>
+        <div class="oh-chart">
+          {% if revenue_budget_pct %}
+          <span class="oh-budget" style="bottom:{{ revenue_budget_pct }}%"></span>
+          {% endif %}
+          {# Recency shading is written out rather than built from loop.index, so
+             every class on the page is one a stylesheet rule actually exists
+             for — a composed name cannot be checked by anything. #}
+          {% for m in revenue %}
+          {% set shade = 'oh-cbar--late' if loop.revindex == 1 else
+                         ('oh-cbar--mid' if loop.revindex <= 3 else
+                         ('oh-cbar--early' if loop.revindex == 4 else '')) %}
+          <span class="oh-cbar {{ shade }}" style="height:{{ m['height_pct'] }}%"
+                title="{{ m['label'] }} · €{{ '{:,.0f}'.format(m['value']) }}"></span>
+          {% endfor %}
+        </div>
+        <div class="oh-clabels">
+          {% for m in revenue %}<span class="oh-mono">{{ m['label'] }}</span>{% endfor %}
+        </div>
+        <div class="oh-legend">
+          <span><i class="oh-sw oh-sw--gold"></i>Revenue</span>
+          {% if revenue_budget %}
+          <span><i class="oh-sw oh-sw--dash"></i>Budget €{{ '{:,.0f}'.format(revenue_budget) }}</span>
+          {% else %}
+          <span class="oh-mono oh-muted">No target set</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="oh-card">
+        <div class="oh-card__head">
+          <h2 class="oh-h3">Occupancy · {{ today.strftime('%B') }}</h2>
+          <span class="oh-mono">{{ (occupancy_avg * 100)|round|int }}% full</span>
+        </div>
+        <div class="oh-heat">
+          {% for _ in range(occupancy_lead) %}<span class="oh-cell oh-cell--blank"></span>{% endfor %}
+          {% for c in occupancy %}
+          <span class="oh-cell{{ ' is-today' if c['today'] }}"
+                style="background:rgba(184,133,62,{{ 0.06 + c['occupancy_0_1'] * 0.24 }})"
+                title="{{ c['day'] }} · {{ (c['occupancy_0_1'] * 100)|round|int }}% full">
+            <b class="{{ 'is-busy' if c['occupancy_0_1'] > 0.7 else '' }}">{{ c['day'] }}</b>
+            {% if c['marker'] != 'none' %}{% set mk = {"arrival":"oh-tick--arrival","departure":"oh-tick--departure","workshop":"oh-tick--workshop"} %}<i class="oh-tick {{ mk.get(c["marker"], "oh-tick--workshop") }}"></i>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        <div class="oh-legend oh-legend--heat">
+          <span>Quieter</span>
+          <span class="oh-swatches">
+            <i style="background:rgba(184,133,62,.08)"></i><i style="background:rgba(184,133,62,.16)"></i>
+            <i style="background:rgba(184,133,62,.24)"></i><i style="background:rgba(184,133,62,.30)"></i>
+          </span>
+          <span>Full</span>
+        </div>
+      </div>
+
+      <div class="oh-card">
+        <div class="oh-card__head">
+          <h2 class="oh-h3">In residence</h2>
+          <span class="oh-mono">{{ guests|length }} of {{ rooms_total }} rooms</span>
+        </div>
+        {% if not guests %}
+        <p class="oh-empty">Nobody in the house.</p>
+        {% else %}
+        {% for g in guests %}
+        <div class="oh-grow">
+          <span class="oh-av oh-av--guest">{{ g['initials'] }}</span>
+          <span class="oh-gname"><b>{{ g['name'] }}</b><em>{{ g['room'] }}</em></span>
+          <span class="oh-mono oh-gout">{{ g['checkout'] }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+        <a href="{{ url_for('guests') }}" class="oh-link oh-gall">All guests →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Filter the queue in place. Client-side because the rows are already here —
+// a round trip to hide three of six items would be slower and lose the scroll.
+(function () {
+  var chips = document.querySelectorAll('.oh-chip');
+  if (!chips.length) return;
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var want = chip.getAttribute('data-filter');
+      chips.forEach(function (c) { c.classList.toggle('is-on', c === chip); });
+      document.querySelectorAll('.oh-qrow[data-tone]').forEach(function (row) {
+        var tone = row.getAttribute('data-tone');
+        row.style.display = (want === 'all' || tone === want) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
+
+{% endblock %}

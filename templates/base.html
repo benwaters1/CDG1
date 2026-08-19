@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Staff{% endblock %} — Château de Gudanes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+{# Inter Tight is the owner Home's figure face. Added to the existing request
+   rather than a second one, and Playfair stays: it is still the shell's
+   heading face on every other staff screen. #}
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 <meta name="theme-color" content="#FFFFFF">
@@ -152,15 +155,21 @@
     {# Each group appears only if its area is granted. A person with partial
        access sees their part of the menu and nothing else, rather than a
        list of links that refuse them. #}
+    {% set events_endpoints = ['admin_events','update_event_inquiry','export_events_csv'] %}
+    {% set till_endpoints = ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] %}
     {% if user_areas %}
     <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
     <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>
 
-    {% if may('guests') %}
+    {# Events (weddings, photoshoots) are bookings of the house, so they sit
+       with Guests rather than as their own top-level entry. Either area
+       opens the group; the label points somewhere the viewer can open. #}
+    {% if may('guests') or may('events') %}
     <div class="nav-dropdown {{ 'open' if request.endpoint in guests_endpoints }}">
-      <a href="{{ url_for('guests') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in guests_endpoints }}">{{ icon('guests') }}Guests</a>
+      <a href="{{ url_for('guests') if may('guests') else url_for('admin_events') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in guests_endpoints }}">{{ icon('guests') }}Guests</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Guests submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
+        {% if may('guests') %}
         <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint in ['guests','new_guest','edit_guest'] }}">{{ icon('guests') }}Guest List</a>
         <a href="{{ url_for('admin_bookings') }}" class="{{ 'active' if request.endpoint in ['admin_bookings','confirm_booking','decline_booking','checkout_booking','edit_booking'] }}">{{ icon('bookings') }}Bookings</a>
         <a href="{{ url_for('admin_calendar') }}" class="{{ 'active' if request.endpoint=='admin_calendar' }}">{{ icon('calendar') }}Booking Calendar</a>
@@ -169,6 +178,10 @@
         <a href="{{ url_for('admin_feedback') }}" class="{{ 'active' if request.endpoint=='admin_feedback' }}">{{ icon('contacts') }}Guest Feedback</a>
         <a href="{{ url_for('admin_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_waitlist' }}">{{ icon('leave') }}Room Waitlist</a>
         <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
+        {% endif %}
+        {% if may('events') %}
+        <a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in events_endpoints }}">{{ icon('megaphone') }}Weddings &amp; Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -253,17 +266,26 @@
       </div>
     </div>
     {% endif %}
-    {% if may('restaurant') %}
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] }}">
-      <a href="{{ url_for('admin_restaurant') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
+    {# Till lives in here rather than as its own top-level entry: it is the
+       restaurant's till. Shown if somebody has EITHER area, because a
+       custom preset could grant till without restaurant and the item must
+       not vanish for them — hence the conditional label target too. #}
+    {% if may('restaurant') or may('till') %}
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] or request.endpoint in till_endpoints }}">
+      <a href="{{ url_for('admin_restaurant') if may('restaurant') else url_for('pos_home') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] or request.endpoint in till_endpoints }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Restaurant submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
+        {% if may('till') %}
+        <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in till_endpoints }}">{{ icon('receipt') }}Till</a>
+        {% endif %}
+        {% if may('restaurant') %}
         <a href="{{ url_for('admin_restaurant') }}" class="{{ 'active' if request.endpoint=='admin_restaurant' }}">{{ icon('restaurant') }}Reservations{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
         <a href="{{ url_for('admin_restaurant_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_waitlist' }}">{{ icon('leave') }}Waitlist</a>
         <a href="{{ url_for('admin_stock') }}" class="{{ 'active' if request.endpoint=='admin_stock' }}">{{ icon('shopping') }}Stock</a>
         <a href="{{ url_for('admin_extras') }}" class="{{ 'active' if request.endpoint=='admin_extras' }}">{{ icon('receipt') }}Extras &amp; menu</a>
         <a href="{{ url_for('admin_terminal') }}" class="{{ 'active' if request.endpoint=='admin_terminal' }}">{{ icon('receipt') }}Card Reader</a>
         <a href="{{ url_for('admin_restaurant_settings') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_settings' }}">{{ icon('management') }}Settings</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -281,8 +303,6 @@
     </div>
     {% endif %}
 
-{% if may('till') %}<a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] }}">{{ icon('restaurant') }}Till</a>{% endif %}
-{% if may('events') %}<a href="{{ url_for('admin_events') }}" class="{{ 'active' if request.endpoint in ['admin_events','update_event_inquiry','export_events_csv'] }}">{{ icon('megaphone') }}Events{% if pending_events_count %} ({{ pending_events_count }}){% endif %}</a>{% endif %}
 
     {# Settings and permanent records — last, because it is the group you need
        least often. It used to sit fourth while holding the fleet, the keys and
@@ -294,9 +314,9 @@
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
-        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company Info</a>
+        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company &amp; Insurance</a>
         <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
-        <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
+
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
         <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
         <a href="{{ url_for('admin_gallery') }}" class="{{ 'active' if request.endpoint=='admin_gallery' }}">{{ icon('folder') }}Public Gallery</a>

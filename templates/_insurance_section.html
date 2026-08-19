@@ -1,16 +1,6 @@
-{% extends "base.html" %}
-{% block title %}Insurance{% endblock %}
-{% block content %}
-
-<div class="page-head">
-  <h1>Insurance</h1>
-  <div style="display:flex; gap:10px; align-items:center;">
-    <a href="{{ url_for('export_insurance_csv') }}" class="btn-mini">Export CSV</a>
-    <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
-  </div>
-</div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Policy reference — for the certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
-
+{# The insurance policies themselves. Kept as a partial because they live
+   on the company page now — a policy is a company record, and the broker
+   was already listed there while the policies sat somewhere else. #}
 {% if not policies %}
   <div class="empty-state">No policies tracked yet.</div>
 {% else %}
@@ -87,5 +77,3 @@ function toggleInsuranceEdit(id) {
   el.style.display = el.style.display === 'none' ? '' : 'none';
 }
 </script>
-
-{% endblock %}
