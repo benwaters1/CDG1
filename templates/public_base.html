@@ -67,6 +67,14 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="6" width="14" height="12" rx="1"/><path d="M17 10l4-2v8l-4-2"/></svg>
           {{ t('Private Photo & Videoshoots') }}
         </a>
+        <a href="/facilities" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 12h18M6 12V8a6 6 0 0 1 12 0v4"/><path d="M5 16h14M7 20h10"/></svg>
+          {{ t('Facilities & Activities') }}
+        </a>
+        <a href="/whats-on" class="g-navwrap__item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+          {{ t("What's On") }}
+        </a>
 
         <div class="g-navwrap__divider"></div>
 
@@ -222,6 +230,11 @@
 </main>
 
 <footer class="g-footer">
+  <div class="g-crest g-crest--foot">
+    <img src="{{ url_for('static', filename='img/chateau_engraving.png') }}"
+         alt="Château de Gudanes, Château-Verdun, France">
+    <p class="g-crest__note">{{ t('Ariège · French Pyrénées · Restored since 2013') }}</p>
+  </div>
   <div class="g-wrap">
     <div class="g-footer__grid">
       <div>

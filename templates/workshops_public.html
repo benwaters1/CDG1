@@ -2,7 +2,6 @@
 {% block title %}Château Workshops{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-
 {# Content and voice from vicente-yuste-2air.squarespace.com/workshops — the
    .net page — not the .com. Structure: choose, then the region, then each
    workshop in full with a sample day, then stay/arrival/inclusions. #}
@@ -19,7 +18,7 @@
   </div>
 </section>
 
-<section class="g-sec"><div class="g-wrap">
+<section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-p">Each Workshop welcomes a small group of guests into the château itself: to hunt for treasures at the brocantes, to cook alongside our chefs, or to help bring her eighteenth-century frescoes back to life.</p>
   <p class="g-p">Choose the length that suits you. Each stay includes full board, château beverages, shared accommodation and a curated itinerary — and every visit helps fund the restoration itself: a decade-long labour of love that has been peeling back the centuries, room by room, fresco by fresco, since the work began in 2013.</p>
 </div></section>
@@ -65,113 +64,118 @@
   <p class="g-quote-band__t">To stay within these walls is to take part in her restoration — each Workshop helping bring her back to life, one fresco, one meal, one market morning at a time.</p>
 </div>
 
-<!-- ============ THE ARIÈGE ============ -->
-<section class="g-sec"><div class="g-two">
-  <div>
-    <p class="g-eyebrow">Just Beyond the Gate</p>
-    <h2 class="g-h2">The Ariège</h2>
-    <p class="g-p">The château sits deep in the Ariège — Cathar country, at the foot of the Pyrénées, in a corner of France that still feels wonderfully undiscovered.</p>
-    <p class="g-p">Between Workshop activities, guests wander the antique fairs and vide-greniers of Mirepoix, one of France's best-preserved medieval bastide towns; browse the Sunday morning market at Les Cabannes for cheese, honey and whatever the season offers; and, on the longer stays, descend into the Grotte de Niaux, where paintings on the cave walls have survived some fourteen thousand years.</p>
-    <p class="g-p">Afternoons might mean a guided hike into the high valleys, a paddle down the Ariège river, or simply a glass of local wine on the terrace as the light shifts on the mountains — this is rural France as the French themselves still live it: unhurried, deeply local, and entirely real.</p>
+<!-- ============ EVERY DATE, IN ONE PLACE ============ -->
+{# The point of this page is choosing a date and booking it. Every sitting
+   across every workshop, in date order, filterable — not five essays. #}
+<section class="g-sec" id="dates"><div class="g-wrap">
+  <h2 class="g-place">All Dates</h2>
+
+  {% set ns = namespace(rows=[]) %}
+  {% for w in workshops %}
+    {% for r in sessions_by_workshop.get(w['id'], []) %}
+      {% set _ = ns.rows.append({'w': w, 'r': r}) %}
+    {% endfor %}
+  {% endfor %}
+
+  {% if ns.rows %}
+  <div class="g-datefilter" role="group" aria-label="Filter by workshop">
+    <button type="button" class="g-chip is-on" data-ws="all">All workshops</button>
+    {% for w in workshops %}
+      {% if sessions_by_workshop.get(w['id']) %}
+      <button type="button" class="g-chip" data-ws="{{ w['id'] }}">{{ w['title'] }}</button>
+      {% endif %}
+    {% endfor %}
   </div>
-  <div class="g-two__media">
-    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The Ariège" loading="lazy">
-  </div>
-</div></section>
 
-<!-- ============ EACH WORKSHOP IN FULL ============ -->
-{% for w in workshops %}
-<section class="g-sec{% if loop.index0 is odd %} g-sec--sand{% endif %}" id="w{{ w['id'] }}">
-  <div class="g-wrap">
-    
-    <h2 class="g-h2">{{ w['title'] }}</h2>
-    {% set rows = sessions_by_workshop.get(w['id'], []) %}
-    <p class="g-wsfull__meta">
-      {% for r in rows %}{{ date_range(r.session['start_date'], r.session['end_date']) }}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
-      {% if w['price_per_person'] %} · <span class="g-fig" data-eur="{{ w['price_per_person'] }}">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span> per person{% endif %}
-    </p>
-
-    {% if w['description'] %}<p class="g-p">{{ w['description'] }}</p>{% endif %}
-
-    {% if w['sample_day'] %}
-    <div class="g-sampleday">
-      <h3 class="g-h3">A Sample Day</h3>
-      <p class="g-p" style="white-space:pre-line">{{ w['sample_day'] }}</p>
-    </div>
-    {% endif %}
-    {# sample_day and nights_label are optional new columns — see
-       WORKSHOP_FIELDS.md. The page works without them. #}
-
-    {% if rows %}
-    <div class="g-sittings">
-      {% for s in rows %}
-      <div class="g-sitting">
-        <span class="g-sitting__when">
-          {{ date_range(s.session['start_date'], s.session['end_date']) }}
-        </span>
-        <span class="g-sitting__left">
-          {% if s.remaining > 0 %}{{ s.remaining }} place{{ '' if s.remaining == 1 else 's' }} remaining{% else %}Fully booked{% endif %}
-        </span>
-        <span class="g-sitting__cta">
-          {% if s.remaining > 0 %}
-          <a href="{{ url_for('workshop_register', session_id=s.session['id']) }}" class="g-btn g-btn--solid">Book these dates</a>
+  <table class="g-dates-table">
+    <thead>
+      <tr>
+        <th scope="col">Dates</th>
+        <th scope="col">Workshop</th>
+        <th scope="col">Length</th>
+        <th scope="col">Per person</th>
+        <th scope="col">Places</th>
+        <th scope="col"><span class="g-vh">Book</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in ns.rows|sort(attribute='r.session.start_date') %}
+      {% set w = item.w %}{% set r = item.r %}
+      <tr data-ws="{{ w['id'] }}"{% if r.remaining <= 0 %} class="is-full"{% endif %}>
+        <td data-label="Dates" class="g-dates-table__when">
+          {{ date_range(r.session['start_date'], r.session['end_date']) }}
+        </td>
+        <td data-label="Workshop">
+          <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}">{{ w['title'] }}</a>
+        </td>
+        <td data-label="Length">{{ w['nights_label'] or '—' }}</td>
+        <td data-label="Per person">
+          {% if w['price_per_person'] %}<span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>{% else %}—{% endif %}
+        </td>
+        <td data-label="Places">
+          {% if r.remaining > 0 %}{{ r.remaining }} left{% else %}<span class="g-full">Full</span>{% endif %}
+        </td>
+        <td class="g-dates-table__act">
+          {% if r.remaining > 0 %}
+          <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn g-btn--solid">Book</a>
           {% else %}
-          <a href="{{ url_for('workshop_register', session_id=s.session['id']) }}" class="g-btn">Join the waitlist</a>
+          <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn">Waitlist</a>
           {% endif %}
-        </span>
-      </div>
+        </td>
+      </tr>
       {% endfor %}
-    </div>
-    {% endif %}
-  </div>
-</section>
-{% endfor %}
-
-<div class="g-band">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1000w" alt="" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+des+Fleurs+1.jpg?format=1000w" alt="" loading="lazy">
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+-+Formal+Gardens+2.jpg?format=1000w" alt="" loading="lazy">
-</div>
-
-<!-- ============ YOUR STAY ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Your Stay</p>
-  <h2 class="g-h2">The rooms, and the table</h2>
-  <div class="g-split">
-    <div>
-      <p class="g-p">Each château bedroom welcomes you with fresh garden flowers and the calming scent of lavender. Beds are dressed in vintage monogrammed linens, ruffled pillows and floral sheets, with antique furnishings lending a refined, historic feel.</p>
-      <p class="g-p">Rooms are arranged for two guests, or three by request, each offering up to 70&nbsp;m² of comfort and privacy. Bathrooms are shared and beautifully appointed — the château is still under restoration, and ensuite bathrooms are not permitted under historic preservation rules.</p>
-    </div>
-    <div>
-      <p class="g-p">Every day brings a new dining experience — leisurely breakfasts, garden picnics, alfresco lunches and elegant candlelit dinners, all prepared by our château chefs using regional, seasonal ingredients drawn from the Ariège's own markets and producers: mountain cheeses, foie gras, magret de canard, wild mushrooms in season, and desserts drawn from recipes in the château's own eighteenth-century cookbook.</p>
-      <p class="g-p">A private selection of local wines, spirits and non-alcoholic drinks is offered with every meal.</p>
-    </div>
-  </div>
+    </tbody>
+  </table>
+  {% else %}
+  <p class="g-p">Dates for the coming season are being finalised. They are released here first, and to the newsletter before that.</p>
+  {% endif %}
 </div></section>
 
-<!-- ============ ARRIVAL ============ -->
-<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap g-wrap--narrow">
-  <p class="g-eyebrow">Arrival &amp; Departure</p>
-  <h2 class="g-h2">Getting here</h2>
-  <p class="g-p">On the first day we meet you at 11am in the centre of Toulouse, collect your luggage and travel to the château together.</p>
-  <p class="g-p">At the end of your stay we leave the château at 11am, arriving in Toulouse around 1pm — we can drop you at the airport, the train station, or the centre of town. Private transport outside these times can be arranged at an additional cost.</p>
-</div></section>
-
-<!-- ============ INCLUSIONS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Inclusions &amp; Amenities</p>
-  <h2 class="g-h2">What the price carries</h2>
+<!-- ============ WHAT EVERY WORKSHOP INCLUDES ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <h2 class="g-place">Included in Every Workshop</h2>
   <ul class="g-incl">
-    <li>Daily dining prepared by the château chefs — from relaxed family-style meals to refined French dining, showing regional specialities and seasonal ingredients</li>
-    <li>Unlimited château beverages — wine, spirits, local beer and non-alcoholic options</li>
-    <li>Double-occupancy accommodation, triple by request, in an antique French bed, with a beautifully appointed shared bathroom — shower, WC and basin, and a freestanding bath in one of them</li>
-    <li>All activities as per the itinerary</li>
-    <li>Full use of château amenities — tennis, pickleball, pool and Wi-Fi</li>
-    <li>Laundry facilities</li>
-    <li>Transfers to and from Toulouse at the designated times</li>
+    <li>Full board — every meal prepared by the château chefs</li>
+    <li>Unlimited château beverages — wine, spirits, local beer and soft drinks</li>
+    <li>Accommodation in an antique French bed, with a beautifully appointed shared bathroom</li>
+    <li>Every activity on the itinerary</li>
+    <li>Tennis, pickleball, the pool and Wi-Fi</li>
+    <li>Laundry</li>
+    <li>Transfers to and from Toulouse at the set times</li>
   </ul>
-  <p class="g-hint" style="margin-top:var(--s5)">Travel insurance is required. A deposit reserves your place; the balance is due thirty days before the stay.</p>
+
+  <div class="g-motif" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1">
+      <path d="M12 2l2.2 5.6L20 9l-4.4 3.6L17 19l-5-3-5 3 1.4-6.4L4 9l5.8-1.4z"/>
+    </svg>
+  </div>
+
+  <dl class="g-facts-list">
+    <div><dt>Group size</dt><dd>Small — the house takes no other guests while a workshop runs</dd></div>
+    <div><dt>Rooms</dt><dd>Arranged for two, a third bed on request. Solo travellers paired, or given a room where one is free</dd></div>
+    <div><dt>Deposit</dt><dd>30% to reserve; the balance thirty days before</dd></div>
+    <div><dt>Arrival</dt><dd>We meet you at 11am in central Toulouse and travel together</dd></div>
+    <div><dt>Departure</dt><dd>Leave the château at 11am, in Toulouse by about 1pm</dd></div>
+    <div><dt>Insurance</dt><dd>Travel insurance is required</dd></div>
+  </dl>
 </div></section>
 
+<script>
+/* Filter the date table by workshop. Plain show/hide — the rows are already
+   in the page, so nothing is fetched and it works the moment it renders. */
+(function(){
+  var chips = document.querySelectorAll('.g-datefilter .g-chip');
+  var rows  = document.querySelectorAll('.g-dates-table tbody tr');
+  if (!chips.length || !rows.length) return;
+  chips.forEach(function(chip){
+    chip.addEventListener('click', function(){
+      var want = chip.dataset.ws;
+      chips.forEach(function(c){ c.classList.toggle('is-on', c === chip); });
+      rows.forEach(function(r){
+        r.style.display = (want === 'all' || r.dataset.ws === want) ? '' : 'none';
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}

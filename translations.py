@@ -69,6 +69,8 @@ FR = {
     "Currency": "Devise",
     "Language": "Langue",
     "charged in EUR": "débité en EUR",
+    "Ariège · French Pyrénées · Restored since 2013":
+        "Ariège · Pyrénées françaises · En restauration depuis 2013",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Vos dates",
@@ -235,6 +237,8 @@ ES = {
     "Currency": "Moneda",
     "Language": "Idioma",
     "charged in EUR": "cobrado en EUR",
+    "Ariège · French Pyrénées · Restored since 2013":
+        "Ariège · Pirineos franceses · En restauración desde 2013",
 
     # -- Booking ---------------------------------------------------------
     "Your dates": "Sus fechas",

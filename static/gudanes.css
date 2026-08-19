@@ -17,10 +17,10 @@
   --blue-pale:  #F5F5F3;   /* pale panel ground                           */
   --blue-line:  #DEDBD4;   /* hairlines                                    */
 
-  --sand:       #FFFFFF;   /* page ground — white, as Ritz                */
-  --sand-2:     #F7F5F2;   /* alternate section — a whisper off white     */
+  --sand:       #FAF7F2;   /* page ground — warm off-white, paper not screen */
+  --sand-2:     #F2EDE4;   /* alternate section — a shade deeper           */
   --sand-3:     #E7DCD0;   /* third step                                 */
-  --line:       #E2E0DC;   /* hairlines                                   */
+  --line:       #DED7CB;   /* hairlines — warm, to match the ground        */
   --white:      #FDFBF8;
 
   --ink:        #183456;   /* body text — the same navy, one colour       */
@@ -63,7 +63,7 @@
 .g-sec{ padding: clamp(48px, 6vw, 84px) 0; }
 .g-sec--sand{ background: var(--sand-2); }
 .g-sec--pale{ background: var(--blue-pale); }
-.g-sec--tight{ padding: var(--s7) 0; }
+.g-sec--tight{ padding: var(--s6) 0; }
 .g-sec--flush{ padding: 0; }
 
 /* ---- Type -------------------------------------------------------------- */
@@ -1244,10 +1244,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s6); display: flex; flex-direction: column;
 }
-/* The card's heading block: length, name, dates. The card is a flex
-   column, so this must not stretch — the blurb below it does. */
 .g-wscard__top{ flex: none; }
-
 .g-wscard__len{
   font-family: var(--serif); font-size: 12px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
@@ -1269,7 +1266,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 /* A single line of the château's own words, given room to be read. */
 .g-quote-band{
   background: var(--blue-deep); color: #fff;
-  padding: clamp(48px, 7vw, 80px) var(--s5);
+  padding: clamp(40px, 5vw, 60px) var(--s5);
 }
 .g-quote-band__t{
   font-family: var(--display); font-weight: 400;
@@ -1332,3 +1329,141 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    rather than relying on line-height. */
 .g-footer a{ min-height: 44px; display: inline-flex; align-items: center; }
 .g-footer__legal a{ min-height: 40px; }
+
+/* In the footer the crest closes the page rather than interrupting one, and
+   the footer is already navy — so no band of its own, just the mark. */
+.g-crest--foot{
+  background: transparent;
+  padding: 0 var(--s5) var(--s7);
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  margin-bottom: var(--s7);
+}
+.g-crest--foot img{ max-width: 18rem; min-height: 0; opacity: .92; }
+.g-crest--foot .g-crest__note{
+  font-size: 12px; letter-spacing: .16em; color: rgba(255,255,255,.5);
+  margin-top: var(--s4);
+}
+
+/* ==========================================================================
+   ENGRAVED DETAIL
+   The visual grammar of a plate in an old book — double rules, a small
+   centred motif between sections, and the façade used faintly as ground.
+   Nothing decorative for its own sake; each one marks a division that was
+   previously a bare hairline.
+   ========================================================================== */
+
+/* A double rule reads as older than a single one. Used where a section ends
+   rather than where a field does. */
+.g-rule--double{
+  border: 0; height: 4px; margin: var(--s7) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+/* A small engraved motif, centred, to break prose without a heading. */
+.g-motif{
+  display: flex; align-items: center; gap: var(--s5);
+  margin: var(--s7) auto; max-width: var(--measure);
+  color: var(--line);
+}
+.g-motif::before, .g-motif::after{
+  content: ''; flex: 1; height: 1px; background: currentColor;
+}
+.g-motif svg{ width: 26px; height: 26px; color: var(--blue-deep); opacity: .55; flex: none; }
+
+/* Section headings sit over a hairline that runs the full measure, with the
+   heading knocked out of it — the way a chapter opens on a printed page. */
+.g-place{ position: relative; }
+
+/* The façade, very faint, behind a section. Sparingly — one per page at most. */
+.g-sec--plate{
+  position: relative; overflow: hidden;
+}
+.g-sec--plate::before{
+  content: ''; position: absolute; inset: 0;
+  background: url('/static/img/chateau_plate.png') center 55% / min(46rem, 88%) no-repeat;
+  opacity: .05; filter: invert(1); pointer-events: none;
+}
+.g-sec--plate > *{ position: relative; }
+
+/* A quiet corner ornament for cards, so a bordered box reads as engraved
+   rather than as a UI panel. */
+.g-card, .g-wscard{ position: relative; }
+.g-card::after, .g-wscard::after{
+  content: ''; position: absolute; top: 0; right: 0;
+  width: 10px; height: 10px;
+  border-top: 1px solid var(--blue-deep); border-right: 1px solid var(--blue-deep);
+  opacity: .35;
+}
+
+/* ==========================================================================
+   WORKSHOP DATES — a booking table, not an essay. Every sitting across every
+   workshop in one scannable list, filterable by workshop.
+   ========================================================================== */
+.g-vh{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+.g-datefilter{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-bottom: var(--s6); }
+.g-chip{
+  font-family: var(--serif); font-size: 14px; font-weight: 500;
+  padding: var(--s2) var(--s4); min-height: 44px;
+  background: transparent; color: var(--ink-soft);
+  border: 1px solid var(--line); border-radius: 0; cursor: pointer;
+}
+.g-chip:hover{ border-color: var(--blue-deep); color: var(--blue-deep); }
+.g-chip.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+
+.g-dates-table{ width: 100%; border-collapse: collapse; }
+.g-dates-table th{
+  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+  text-align: left; padding: 0 var(--s4) var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.g-dates-table td{
+  padding: var(--s4) var(--s4) var(--s4) 0;
+  border-bottom: 1px solid var(--line); vertical-align: middle;
+}
+.g-dates-table__when{
+  font-family: var(--display); font-size: 20px; font-weight: 500;
+  color: var(--blue-deep); white-space: nowrap;
+}
+/* The workshop name in a row is a real link people tap — give it a target,
+   not just a text baseline. */
+.g-dates-table a:not(.g-btn){
+  color: var(--blue-deep); text-decoration: none;
+  display: inline-flex; align-items: center; min-height: 44px;
+}
+.g-dates-table a:hover{ text-decoration: underline; }
+.g-dates-table__act{ text-align: right; padding-right: 0; }
+.g-dates-table tr.is-full .g-dates-table__when{ opacity: .55; }
+.g-full{ color: var(--ink-faint); }
+
+/* On a phone a six-column table cannot hold — each row becomes a card with
+   the column name carried in front of its value. */
+@media (max-width: 52rem){
+  .g-dates-table thead{ display: none; }
+  .g-dates-table, .g-dates-table tbody, .g-dates-table tr, .g-dates-table td{ display: block; width: 100%; }
+  .g-dates-table tr{
+    border: 1px solid var(--line); padding: var(--s4);
+    margin-bottom: var(--s4); background: var(--white);
+  }
+  .g-dates-table td{ border: 0; padding: var(--s1) 0; }
+  .g-dates-table td[data-label]::before{
+    content: attr(data-label) " · ";
+    font-family: var(--serif); font-size: 12px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .g-dates-table__when::before{ display: none; }
+  .g-dates-table__act{ text-align: left; margin-top: var(--s3); }
+  .g .g-dates-table__act .g-btn{ width: 100%; }
+}
+
+/* The standing facts, as a definition list rather than paragraphs. */
+.g-facts-list{ display: grid; gap: var(--s4); margin: 0; }
+@media (min-width: 46rem){ .g-facts-list{ grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s7); } }
+.g-facts-list > div{ display: grid; grid-template-columns: 8rem 1fr; gap: var(--s4); align-items: baseline; }
+.g-facts-list dt{
+  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
+}
+.g-facts-list dd{ margin: 0; font-size: 15px; color: var(--ink); line-height: 1.5; }
