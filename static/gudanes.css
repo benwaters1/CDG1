@@ -36,7 +36,7 @@
   /* ---- Measures ---------------------------------------------------- */
   --wrap: 76rem;
   --wrap-narrow: 54rem;
-  --measure: 44rem;
+  --measure: 38rem;
 
   /* ---- Type -------------------------------------------------------- */
   --serif: 'Poppins', -apple-system, 'Helvetica Neue', Arial, sans-serif;
@@ -46,9 +46,9 @@
   background: var(--sand);
   color: var(--ink);
   font-family: var(--serif);
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 300;
-  line-height: 1.8;
+  line-height: 1.7;
 }
 
 .g *, .g *::before, .g *::after{ box-sizing: border-box; }
@@ -60,7 +60,7 @@
 .g-wrap{ max-width: var(--wrap); margin: 0 auto; padding: 0 var(--s5); }
 .g-wrap--narrow{ max-width: var(--wrap-narrow); }
 
-.g-sec{ padding: clamp(64px, 9vw, 128px) 0; }
+.g-sec{ padding: var(--s9) 0; }
 .g-sec--sand{ background: var(--sand-2); }
 .g-sec--pale{ background: var(--blue-pale); }
 .g-sec--tight{ padding: var(--s7) 0; }
@@ -77,8 +77,8 @@
 
 .g-h2{
   font-family: var(--display); font-weight: 500;
-  font-size: clamp(28px, 3.2vw, 40px); line-height: 1.18;
-  color: var(--blue-deep); margin: 0 0 var(--s6);
+  font-size: clamp(26px, 3vw, 38px); line-height: 1.18;
+  color: var(--blue-deep); margin: 0 0 var(--s5);
 }
 .g-h2 em{ font-style: normal; font-weight: 300; }
 
@@ -104,10 +104,10 @@
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 20px; font-weight: 300; line-height: 1.8; max-width: var(--measure); margin: 0 0 var(--s5); color: var(--ink); }
+.g-p{ font-size: 19px; font-weight: 300; line-height: 1.7; max-width: var(--measure); margin: 0 0 var(--s4); color: var(--ink); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
-.g-lede{ font-size: clamp(21px, 1.8vw, 25px); font-weight: 300; line-height: 1.6; max-width: 50rem; margin: 0 0 var(--s6); }
+.g-lede{ font-size: clamp(19px, 1.6vw, 22px); font-weight: 300; line-height: 1.5; max-width: 48rem; margin: 0 0 var(--s5); }
 .g-fig{ font-family: var(--display); font-weight: 600; color: var(--blue-deep); }
 .g-hint{ font-size: 13px; color: var(--ink-faint); margin: var(--s2) 0 0; }
 .g-hint.is-warn{ color: #a33; }
@@ -118,7 +118,7 @@
   padding-bottom: var(--s4); border-bottom: 1px solid var(--line);
   margin: 0 0 var(--s7);
 }
-.g-rule__note{ font-family: var(--display); font-size: 12px; color: var(--brass); margin-left: auto; }
+.g-rule__note{ font-family: var(--mono); font-size: 12px; color: var(--brass); margin-left: auto; }
 
 /* ---- Header ------------------------------------------------------------ */
 
@@ -147,7 +147,7 @@ body.has-hero main{ padding-top: 0; }
   display: inline-flex; flex-direction: column; justify-content: center;
 }
 .g-brand small{
-  display: block; font-family: var(--serif); font-size: 12px;
+  display: block; font-family: var(--serif); font-size: 10.5px;
   letter-spacing: .08em; color: var(--ink-faint); margin-top: 2px;
 }
 .g-nav{ display: flex; gap: var(--s6); align-items: center; }
@@ -314,7 +314,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 .g-room__img--none{ background: var(--sand-3); }
 .g-flag{
   position: absolute; top: var(--s3); left: var(--s3);
-  font-family: var(--display); font-size: 12px;
+  font-family: var(--mono); font-size: 10px;
   letter-spacing: .1em; text-transform: uppercase; padding: var(--s2) var(--s3);
 }
 .g-flag--free{ background: var(--blue-deep); color: var(--sand); }
@@ -328,8 +328,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 .g-room__name{ font-family: var(--display); font-weight: 400; font-size: clamp(21px, 2vw, 26px); line-height: 1.25; color: var(--blue-deep); margin: 0; }
 .g-room__rate{ margin: 0; text-align: right; }
 .g-room__rate .g-fig{ font-size: 22px; display: block; line-height: 1.1; }
-.g-room__rate span:last-child{ font-family: var(--display); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
-.g-room__meta{ font-family: var(--display); font-size: 13px; color: var(--ink-faint); margin: 0 0 var(--s4); }
+.g-room__rate span:last-child{ font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.g-room__meta{ font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); margin: 0 0 var(--s4); }
 .g-room__desc{ font-size: 16px; line-height: 1.62; margin: 0 0 var(--s4); }
 .g-room__cta{ margin-top: var(--s5); display: flex; gap: var(--s3); flex-wrap: wrap; }
 
@@ -356,7 +356,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 .g-search{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 .g-search__f{ display: flex; flex-direction: column; min-width: 0; }
 .g-search label{
-  font-family: var(--display); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
   text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--s2);
 }
 .g-search input{
@@ -379,36 +379,30 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   color: var(--blue-deep); margin: 0 0 var(--s5);
   display: flex; align-items: baseline; gap: var(--s3);
 }
-.g-num{ font-family: var(--display); font-size: 12.5px; color: var(--brass); letter-spacing: .08em; }
+.g-num{ font-family: var(--mono); font-size: 11px; color: var(--brass); letter-spacing: .08em; }
 
 .g-row{ display: grid; gap: var(--s4); }
 .g-field{ display: flex; flex-direction: column; margin: 0 0 var(--s5); }
 .g-field--narrow{ max-width: 14rem; }
 .g-field label{
-  font-family: var(--display); font-size: 14px; font-weight: 500;
-  letter-spacing: .01em; text-transform: none;
-  color: var(--ink-soft); margin-bottom: var(--s2);
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--s2);
 }
 .g-field input, .g-field textarea, .g-field select{
-  font-family: var(--serif); font-size: 17px; font-weight: 300; color: var(--ink);
+  font-family: var(--serif); font-size: 16px; color: var(--blue-deep);
   background: var(--white); border: 1px solid var(--line); border-radius: 0;
-  padding: var(--s3) var(--s4); min-height: 52px; width: 100%;
-  transition: border-color .18s ease;
-}
-.g-field input:focus, .g-field textarea:focus, .g-field select:focus{
-  outline: none; border-color: var(--blue-deep);
+  padding: var(--s3); min-height: 48px; width: 100%;
 }
 .g-field textarea{ min-height: 8rem; resize: vertical; line-height: 1.55; }
 
 .g-promo{ display: flex; gap: var(--s2); }
 .g-promo input{ text-transform: uppercase; }
 .g-promo button{
-  flex-shrink: 0; min-height: 52px; padding: 0 var(--s5);
-  font-family: var(--display); font-size: 14px; font-weight: 500; letter-spacing: 0;
-  color: var(--blue-deep); background: transparent;
-  border: 1px solid var(--blue-deep); cursor: pointer;
+  flex-shrink: 0; min-height: 48px; padding: 0 var(--s5);
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--blue-deep); background: var(--blue-pale);
+  border: 1px solid var(--blue-line); cursor: pointer;
 }
-.g-promo button:hover{ background: var(--blue-deep); color: #fff; }
 
 .g-extras{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
 .g-check{
@@ -425,7 +419,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 
 .g-dossier{ background: var(--blue-deep); color: #C9D4DF; padding: var(--s6); }
 .g-dossier__k{
-  font-family: var(--display); font-size: 12px; letter-spacing: .18em;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
   text-transform: uppercase; color: #D9C79B; margin: 0 0 var(--s1);
 }
 .g-dossier__room{ font-family: var(--serif); font-size: 21px; line-height: 1.2; color: var(--white); margin: 0 0 var(--s5); }
@@ -434,8 +428,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   display: flex; justify-content: space-between; gap: var(--s3);
   padding: var(--s2) 0; border-top: 1px solid rgba(255,255,255,.16);
 }
-.g-dossier__l dt{ font-family: var(--display); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
-.g-dossier__l dd{ margin: 0; font-family: var(--display); font-size: 13px; color: var(--white); }
+.g-dossier__l dt{ font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
+.g-dossier__l dd{ margin: 0; font-family: var(--mono); font-size: 13px; color: var(--white); }
 .g-terms{ display: flex; gap: var(--s3); align-items: flex-start; font-size: 14px; margin-bottom: var(--s5); cursor: pointer; }
 .g-terms input{ width: 18px; height: 18px; margin-top: 3px; accent-color: #D9C79B; flex: none; }
 .g-terms a{ color: #D9C79B; }
@@ -447,7 +441,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 
 .g-reviews{ display: grid; gap: var(--s4); }
 .g-review{ margin: 0; background: var(--white); border: 1px solid var(--line); padding: var(--s6); }
-.g-review__s{ font-family: var(--display); font-size: 12.5px; color: var(--brass); margin: 0 0 var(--s3); }
+.g-review__s{ font-family: var(--mono); font-size: 11px; color: var(--brass); margin: 0 0 var(--s3); }
 .g-review blockquote{ margin: 0 0 var(--s3); font-size: 16px; line-height: 1.6; font-style: italic; }
 .g-review figcaption{ font-size: 13px; color: var(--ink-faint); }
 
@@ -458,7 +452,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 .g-footer a:hover{ color: var(--white); }
 .g-footer__grid{ display: grid; gap: var(--s8); }
 .g-footer h4{
-  font-family: var(--display); font-size: 12px; letter-spacing: .18em;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .18em;
   text-transform: uppercase; color: #D9C79B; margin: 0 0 var(--s4); font-weight: 400;
 }
 .g-footer ul{ list-style: none; margin: 0; padding: 0; }
@@ -498,7 +492,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   font-weight: 400; color: #FFFFFF; line-height: 1.2;
 }
 .g-stickybar__t span{
-  display: block; font-family: var(--display); font-size: 12px;
+  display: block; font-family: var(--mono); font-size: 10px;
   letter-spacing: .12em; text-transform: uppercase; color: #A9C8DA; margin-top: 2px;
 }
 .g .g-stickybar__cta{
@@ -579,7 +573,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   .g-navtoggle > summary{
     display: flex; align-items: center; gap: var(--s2);
     list-style: none; cursor: pointer; min-height: 44px;
-    font-family: var(--display); font-size: 12.5px;
+    font-family: var(--mono); font-size: 11px;
     letter-spacing: .16em; text-transform: uppercase; color: #D6E4EC;
   }
   .g-navtoggle > summary::-webkit-details-marker{ display: none; }
@@ -634,7 +628,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 
 /* Session date buttons on a workshop. */
 .g-dates{ display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
-.g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 12px; }
+.g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 10.5px; }
 .g .g-book-bar__note a{ display: inline-block; padding: 12px 0; min-height: 44px; }
 
 /* ==========================================================================
@@ -679,25 +673,25 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
 .g-drop a:hover{ background: var(--blue-pale); color: var(--blue-mid); }
 .g-drop__note{
   padding: var(--s2) var(--s5) var(--s3);
-  font-family: var(--display); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
   text-transform: uppercase; color: var(--ink-faint);
 }
 
 /* ---- Currency selector -------------------------------------------------- */
 .g-cur{ display: inline-flex; align-items: center; gap: var(--s2); }
 .g-cur select{
-  font-family: var(--display); font-size: 12.5px; letter-spacing: .1em;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
   color: #D6E4EC; background: transparent;
   border: 1px solid rgba(255,255,255,.4); border-radius: 0;
   padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
 }
 .g-cur select option{ color: var(--ink); background: #fff; }
-.g-approx{ font-family: var(--display); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
+.g-approx{ font-family: var(--mono); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
 
 /* ---- Filter chips ------------------------------------------------------- */
 .g-filters{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s6); }
 .g-filter{
-  font-family: var(--display); font-size: 12.5px; letter-spacing: .12em; text-transform: uppercase;
+  font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
   min-height: 44px; padding: var(--s3) var(--s5);
   color: var(--blue-mid); background: transparent;
   border: 1px solid var(--blue-line); cursor: pointer;
@@ -713,7 +707,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
 .g-refine label{
-  font-family: var(--display); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .14em;
   text-transform: uppercase; color: var(--ink-faint);
 }
 .g-refine select{
@@ -721,7 +715,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s2) var(--s3); min-height: 44px; border-radius: 0;
 }
-.g-refine__count{ margin-left: auto; font-family: var(--display); font-size: 12.5px; color: var(--ink-faint); }
+.g-refine__count{ margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
 
 /* ---- Gallery sections --------------------------------------------------- */
 .g-galsec{ padding: var(--s8) 0; border-top: 1px solid var(--line); }
@@ -747,7 +741,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #FFFFFF
   .g-navbtn{
     display: inline-flex; align-items: center; gap: var(--s2);
     order: 3; min-height: 44px; padding: 0;
-    font-family: var(--display); font-size: 12.5px;
+    font-family: var(--mono); font-size: 11px;
     letter-spacing: .16em; text-transform: uppercase;
     color: #D6E4EC; background: none; border: 0; cursor: pointer;
   }
@@ -874,7 +868,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   font-size: 26px; line-height: 1; color: var(--ink-faint); cursor: pointer;
 }
 .g-navwrap__group{
-  font-family: var(--display); font-size: 12px; letter-spacing: .16em;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .16em;
   text-transform: uppercase; color: var(--ink-faint);
   margin: var(--s7) 0 var(--s3); font-weight: 400;
 }
@@ -897,7 +891,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__item--sm:hover .g-navwrap__chev{ color: var(--blue-deep); }
 
 .g-navwrap__item--plain{
-  font-family: var(--display); font-size: 12px; letter-spacing: .08em;
+  font-family: var(--mono); font-size: 12px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--ink-soft); min-height: 44px;
 }
 .g-navwrap__divider{ border-top: 1px solid var(--line); margin: var(--s6) 0; }
@@ -976,12 +970,9 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* ==========================================================================
    HERO VIDEO — full-bleed looping background, pause control.
    ========================================================================== */
-/* The video must stay in the layout flow. As position:absolute it was
-   removed from flow, .g-hero collapsed to zero height, and the section
-   below slid up underneath the video — the text-over-video overlap. */
 .g .g-hero__video{
   width: 100%; height: clamp(22rem, 78vh, 46rem); object-fit: cover;
-  display: block;
+  display: block; position: absolute; inset: 0;
 }
 .g-hero__pause{
   position: absolute; bottom: var(--s6); right: var(--s6); z-index: 3;
@@ -990,8 +981,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .g-hero__lede{
-  color: #EAE4DC; max-width: 42rem; font-size: 21px; font-weight: 300;
-  line-height: 1.6; margin: var(--s5) 0 0;
+  color: #EAE4DC; max-width: 40rem; font-size: 17px; line-height: 1.6; margin: var(--s4) 0 0;
 }
 
 /* ---- Availability calendar -------------------------------------------- */
@@ -1012,7 +1002,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-cal__month{ flex: 1 1 240px; min-width: 0; }
 .g-cal__title{ margin: 0 0 var(--s2); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
 .g-cal__grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.g-cal__dow{ font-size: 12.5px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
+.g-cal__dow{ font-size: 11px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
 .g-cal__day{
   font: inherit; font-size: 13px; aspect-ratio: 1; min-height: 34px; padding: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1030,21 +1020,3 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   /* A 34px target is fine with a mouse and not with a thumb. */
   .g-cal__day{ min-height: 44px; }
 }
-
-/* A page's opening statement — larger than a section heading, matching the
-   page-title scale. Was an inline style on home.html; moved here so the
-   scale lives in one place rather than drifting per template. */
-.g-h2--lead{ font-size: clamp(34px, 5vw, 56px); margin-bottom: var(--s6); }
-
-
-/* Booking form wrapper — was unstyled, so fields ran the full page width.
-   A form is easier to complete in a contained column. */
-.g-form-full{ max-width: 62rem; }
-
-/* Single-column prose inside a full-width wrap was hanging left with a large
-   empty right side. Centring the measure keeps the comfortable line length
-   while sitting properly in the page — matching how Ritz sets prose blocks. */
-.g-wrap > .g-p,
-.g-wrap > .g-h2 + .g-p,
-.g-sec > .g-wrap > .g-p{ margin-left: auto; margin-right: auto; }
-.g-sec > .g-wrap > .g-h2{ max-width: var(--measure); margin-left: auto; margin-right: auto; }

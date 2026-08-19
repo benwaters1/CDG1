@@ -1,41 +1,19 @@
 {% extends "public_base.html" %}
 {% block title %}Home{% endblock %}
-{% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
 <section class="g-hero">
-  <video class="g-hero__video" autoplay muted loop playsinline
-         poster="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg">
-    <source src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}" type="video/mp4">
-  </video>
-  <div class="g-hero__wash"></div>
-  <div class="g-hero__in">
-    <h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1>
-    <p class="g-hero__lede">A rare invitation: stay inside a world-renowned restoration project, within a building still evolving, unmodernised, and utterly unlike anywhere else.</p>
-  </div>
-  <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
-  </button>
+<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/aabd8580-5420-43e7-92c9-779b82294ee3/home-7.jpg" alt="Château de Gudanes">
+<div class="g-hero__wash"></div>
+<div class="g-hero__in"><h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1></div>
 </section>
 
-<script>
-(function(){
-  var btn = document.getElementById('g-hero-pause');
-  var vid = document.querySelector('.g-hero__video');
-  if(!btn || !vid) return;
-  btn.addEventListener('click', function(){
-    if (vid.paused){ vid.play(); btn.setAttribute('aria-label','Pause video'); }
-    else { vid.pause(); btn.setAttribute('aria-label','Play video'); }
-  });
-})();
-</script>
-
 <section class="g-sec"><div class="g-wrap">
-<h2 class="g-h2 g-h2--lead">Bienvenue</h2>
+<h2 class="g-h2" style="font-size:clamp(34px,5vw,56px); margin-bottom:32px">Bienvenue</h2>
 <p class="g-p"><em>Perched high above the valleys of the French Pyrénées, Château de Gudanes is one of Europe's most extraordinary private estates — a place where centuries of history, remarkable craftsmanship and breathtaking natural beauty come quietly together.</em></p>
 <p class="g-p">She was designed in 1741 by Ange-Jacques Gabriel, principal architect to King Louis XV and the hand behind Marie Antoinette's own Petit Trianon at Versailles. That royal lineage endures today: Gudanes holds the same Class I Historic Monument classification as the Palace of Versailles and the Eiffel Tower.</p>
 <p class="g-p">Abandoned in 1850 and very nearly lost, she has been returned to life since 2013 — room by room, and always by hand. Five hundred tonnes of fallen stone were cleared before the work could begin. Overpaint is lifted patiently to reveal frescoes hidden for generations, and every intervention is approved by France's Monuments Historiques before a tool is lifted. The restoration has been followed by hundreds of thousands, photographed for Vogue, and honoured with the Medal of Honour of the Fondation Prince Louis de Polignac.</p>
-<p class="g-p">Much of her remains as the centuries left her: bare plaster, weathered stone, the quiet marks of two hundred and eighty years. She is protected, and so she is preserved rather than perfected. Within those walls, however, everything within them has been made anew — the floors, the bathrooms, the beds and the linen, and the food that arrives at her table.</p>
+<p class="g-p">Much of her remains as the centuries left her: bare plaster, weathered stone, the quiet marks of two hundred and eighty years. She is protected, and so she is preserved rather than perfected. Within those walls, however, everything you sleep in and wake to has been made anew — the floors, the bathrooms, the beds and the linen, and the food that arrives at her table.</p>
 <p class="g-p"><em>We warmly invite you to step beyond the gates, immerse yourself in centuries of history, and discover a place where beauty, craftsmanship and the art of gracious living continue to flourish.</em></p>
 </div></section>
 
@@ -85,7 +63,7 @@
 <section class="g-sec"><div class="g-wrap">
 <h2 class="g-place">A Place To Belong</h2><p class="g-p"><em>More than a château, Gudanes is a place shaped by history, connection and the people who pass through her doors.</em></p>
 <p class="g-p">Whether staying among her ancient walls, gathering around her table, creating something lasting or celebrating life's most precious moments, guests are welcomed into the warmth and spirit of this living estate.</p>
-<p class="g-p">Hers is among the most closely watched private restorations in France, and those who stay here are part of it — not observers of a finished thing, but present while it is still being made.</p>
+<p class="g-p">And every visit leaves something behind. Proceeds from each stay pass directly into the restoration — the next roof, the next ceiling, the next room brought gently back from nothing. Not a donation, but the quiet means by which a house of this size endures.</p>
 <p class="g-p"><em>Here, amidst the beauty of the Pyrénées, we hope you will find a sense of belonging — a place to slow down, to reconnect, and to become part of the ever-unfolding story of Château de Gudanes.</em></p>
 </div></section>
 
@@ -108,7 +86,7 @@
 <img class="g-half__img" src="https://images.squarespace-cdn.com/content/v1/6a55fc287fb69872c3cc49bd/cb20bf25-71dd-499a-9ed8-456d55cc26ae/_DSC1938-2.jpg" alt="" loading="lazy">
 <div class="g-half__text">
 <h2 class="g-display" style="font-size:clamp(26px,3.6vw,42px); font-style:italic; margin-bottom:26px"><em>Preserving the past. Welcoming the future.</em></h2>
-<p class="g-p">A restoration, not a renovation — the longer course, and the only one worth taking with a house of this consequence. Fifteen years in, and she is not yet finished. We should be glad to welcome you while the work is still unfolding.</p>
+<p class="g-p">Fifteen years of restoration, and she is not yet finished. Perhaps she never will be. We would be delighted to welcome you while the work is still unfolding.</p>
 <p style="margin-top:32px"><a href="{{ url_for('book_rooms') }}" class="g-btn">Réserver</a></p>
 </div></div></section>
 
