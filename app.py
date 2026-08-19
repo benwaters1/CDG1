@@ -3453,6 +3453,14 @@ def current_user():
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
     conn.close()
+    # An account marked inactive is refused here, not only at the login form.
+    # Marking somebody inactive is the closest thing this app has to revoking
+    # access, and checking it only at sign-in left the phone already in their
+    # pocket working — for somebody who has left, or been asked to, until their
+    # session happened to expire. Every page resolves its user through here, so
+    # this is the one place that catches all of them.
+    if user and user["status"] == "inactive":
+        return None
     return user
 
 
