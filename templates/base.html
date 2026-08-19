@@ -380,7 +380,21 @@
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('/static/sw.js').catch(function() {});
+    // Registered from the root, not /static/: a worker's scope is the
+    // directory it is served from, and at /static/sw.js it could never
+    // control /today or /arrive — so the offline page could not appear.
+    navigator.serviceWorker.register('/sw.js').catch(function() {});
+    // Anyone who installed the app before that fix still has the old
+    // /static/-scoped registration. It cannot control any real page, but it
+    // does still hold a push subscription, so two workers would race to show
+    // the same notification. Retire it.
+    if (navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        regs.forEach(function(reg) {
+          if (reg.scope.indexOf('/static/') !== -1) reg.unregister();
+        });
+      }).catch(function() {});
+    }
   });
 }
 

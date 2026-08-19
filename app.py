@@ -22036,6 +22036,22 @@ def t(text, **kwargs):
     return out
 
 
+@app.route("/sw.js")
+def service_worker():
+    """The service worker, served from the site root rather than /static/.
+
+    A worker's scope defaults to the directory it is served from, so at
+    /static/sw.js it could only ever control pages under /static/ — it never
+    saw /today or /arrive, and the offline page it falls back to could not
+    appear on any page a staff member actually opens. Served from here its
+    scope is the whole site, which is what makes the offline handling work at
+    all. The file itself still lives in static/.
+    """
+    return send_from_directory(
+        os.path.join(BASE_DIR, "static"), "sw.js",
+        mimetype="application/javascript")
+
+
 @app.route("/language/<code>")
 def set_language(code):
     """Switch language and return the guest to the page they were reading."""

@@ -66,6 +66,7 @@ FR = {
     "Stay the Night": "Passez la nuit",
     "Book": "Réserver",
     "Display currency": "Devise d'affichage",
+    "Currency": "Devise",
     "Language": "Langue",
     "charged in EUR": "débité en EUR",
 
@@ -165,6 +166,7 @@ ES = {
     "Stay the Night": "Pase la noche",
     "Book": "Reservar",
     "Display currency": "Moneda",
+    "Currency": "Moneda",
     "Language": "Idioma",
     "charged in EUR": "cobrado en EUR",
 
