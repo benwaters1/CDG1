@@ -1,5 +1,5 @@
 {% extends "public_base.html" %}
-{% block title %}Check In{% endblock %}
+{% block title %}{{ t('Check In') }}{% endblock %}
 {% block content %}
 
 <div class="narrow-card">
@@ -11,28 +11,28 @@
 
   <div class="detail-card">
     <div class="detail-grid">
-      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
-      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
-      <div><span class="detail-label">Arrival</span>{{ booking['arrival_date'] }}</div>
-      <div><span class="detail-label">Departure</span>{{ booking['departure_date'] }}</div>
-      {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
+      <div><span class="detail-label">{{ t('Reference code') }}</span>{{ booking['reference_code'] }}</div>
+      <div><span class="detail-label">{{ t('Party size') }}</span>{{ booking['party_size'] }}</div>
+      <div><span class="detail-label">{{ t('Arrival') }}</span>{{ booking['arrival_date'] }}</div>
+      <div><span class="detail-label">{{ t('Departure') }}</span>{{ booking['departure_date'] }}</div>
+      {% if booking['total_price'] %}<div><span class="detail-label">{{ t('Total') }}</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
     </div>
     {% if booking['extras_summary'] %}
     <div class="notes-block">
-      <span class="detail-label">Add-ons</span>
+      <span class="detail-label">{{ t('Add-ons') }}</span>
       <p>{{ booking['extras_summary'] }}</p>
     </div>
     {% endif %}
     {% if booking['special_requests'] %}
     <div class="notes-block">
-      <span class="detail-label">Your notes</span>
+      <span class="detail-label">{{ t('Your notes') }}</span>
       <p>{{ booking['special_requests'] }}</p>
     </div>
     {% endif %}
   </div>
 
   {% if booking['status'] in ('pending', 'confirmed') %}
-  <p class="upload-hint" style="margin-top:16px;"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">Add to calendar (.ics)</a></p>
+  <p class="upload-hint" style="margin-top:16px;"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
   {% endif %}
   {% if booking['status'] == 'confirmed' %}
   <p class="upload-hint" style="margin-top:16px;"><a href="{{ url_for('guest_feedback', token=booking['manage_token']) }}" style="color:var(--steel);">Share feedback about your stay</a></p>
@@ -41,33 +41,33 @@
 {% if booking['status'] in ('pending', 'confirmed') %}
 
 <div class="detail-card" style="margin-top:20px;">
-  <h3>Estimated arrival time</h3>
-  <p class="upload-hint">Let us know roughly when to expect you, so someone's ready.</p>
+  <h3>{{ t('Estimated arrival time') }}</h3>
+  <p class="upload-hint">{{ t("Let us know roughly when to expect you, so someone's ready.") }}</p>
   <form method="post" class="search-bar" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="arrival_time">
     <div style="flex:1 1 200px;">
       <input type="text" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 4pm">
     </div>
-    <button type="submit" class="btn-mini">Save</button>
+    <button type="submit" class="btn-mini">{{ t('Save') }}</button>
   </form>
 </div>
 
 <div class="detail-card" style="margin-top:20px;">
-  <h3>Stay longer</h3>
+  <h3>{{ t('Stay longer') }}</h3>
   <p class="upload-hint">If the room is free we'll extend it straight away, and the extra nights go on your bill.</p>
   <form method="post" class="filter-bar" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_nights">
-    <label class="field-label" style="margin:0;">Extra nights</label>
+    <label class="field-label" style="margin:0;">{{ t('Extra nights') }}</label>
     <input type="number" name="nights" value="1" min="1" max="30" style="width:74px;"
            aria-label="How many extra nights">
-    <button type="submit" class="btn-mini">Add them</button>
+    <button type="submit" class="btn-mini">{{ t('Add them') }}</button>
   </form>
 </div>
 
 <div class="detail-card" style="margin-top:20px;">
-  <h3>Change your dates</h3>
+  <h3>{{ t('Change your dates') }}</h3>
   <p class="upload-hint">
     {% if booking['status'] == 'pending' and booking['payment_status'] != 'paid' %}
       Pick new dates and they'll update right away, as long as the room is free.
@@ -80,20 +80,20 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="change_dates">
     <div>
-      <label class="field-label">New arrival</label>
+      <label class="field-label">{{ t('New arrival') }}</label>
       <input type="date" name="new_arrival_date" value="{{ booking['arrival_date'] }}" required>
     </div>
     <div>
-      <label class="field-label">New departure</label>
+      <label class="field-label">{{ t('New departure') }}</label>
       <input type="date" name="new_departure_date" value="{{ booking['departure_date'] }}" required>
     </div>
-    <button type="submit" class="btn-mini">Update dates</button>
+    <button type="submit" class="btn-mini">{{ t('Update dates') }}</button>
   </form>
 </div>
 
 {% if has_transfer %}
 <div class="detail-card" style="margin-top:20px;">
-  <h3>Airport transfer</h3>
+  <h3>{{ t('Airport transfer') }}</h3>
   {% if booking['transfer_flight_number'] or booking['transfer_arrival_time'] %}
   <p class="upload-hint">On file: {{ booking['transfer_flight_number'] or 'no flight number' }}{% if booking['transfer_arrival_time'] %}, arriving {{ booking['transfer_arrival_time'] }}{% endif %}{% if booking['transfer_notes'] %} — {{ booking['transfer_notes'] }}{% endif %}. Update below if anything changes.</p>
   {% else %}
@@ -104,7 +104,7 @@
     <input type="hidden" name="action" value="transfer">
     <div class="search-bar">
       <div>
-        <label class="field-label">Flight number</label>
+        <label class="field-label">{{ t('Flight number') }}</label>
         <input type="text" name="flight_number" value="{{ booking['transfer_flight_number'] or '' }}" placeholder="e.g. AF1234">
       </div>
       <div>
@@ -114,19 +114,19 @@
     </div>
     <label class="field-label" style="margin-top:10px; display:block;">Notes</label>
     <textarea name="notes" rows="2" placeholder="Anything else the driver should know">{{ booking['transfer_notes'] or '' }}</textarea>
-    <button type="submit" class="btn-primary" style="margin-top:10px;">Save transfer details</button>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">{{ t('Save transfer details') }}</button>
   </form>
 </div>
 {% endif %}
 
 <div class="detail-card" style="margin-top:20px;">
-  <h3>Requests</h3>
+  <h3>{{ t('Requests') }}</h3>
   <p class="upload-hint">Need something for your stay — a bottle of wine waiting in the room, a late checkout, dietary notes? Tell us here.</p>
   <form method="post" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="request">
     <textarea name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
-    <button type="submit" class="btn-primary" style="margin-top:10px;">Send request</button>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">{{ t('Send request') }}</button>
   </form>
   {% if guest_requests %}
   <div class="task-list" style="margin-top:16px;">
@@ -149,17 +149,17 @@
     {% for line in bill.lines %}
     <div class="quote-line"><span>{{ line.label }}</span><span>€{{ '%.2f'|format(line.amount) }}</span></div>
     {% endfor %}
-    <div class="quote-total"><span>Total</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
+    <div class="quote-total"><span>{{ t('Total') }}</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
     {% if bill.paid %}
     <div class="quote-line" style="margin-top:6px;">
-      <span>Received</span><span>&minus;€{{ '%.2f'|format(bill.paid) }}</span>
+      <span>{{ t('Received') }}</span><span>&minus;€{{ '%.2f'|format(bill.paid) }}</span>
     </div>
     {% endif %}
     {% if bill.refunded %}
-    <div class="quote-line"><span>Refunded to you</span><span>€{{ '%.2f'|format(bill.refunded) }}</span></div>
+    <div class="quote-line"><span>{{ t('Refunded to you') }}</span><span>€{{ '%.2f'|format(bill.refunded) }}</span></div>
     {% endif %}
     {% if bill.owed > 0 %}
-    <div class="quote-total"><span>Still to pay</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
+    <div class="quote-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
     {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
     <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="btn-primary" style="margin-top:10px; display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
     <p class="upload-hint">Or we'll take it on arrival — whichever you prefer.</p>
@@ -167,9 +167,9 @@
     <p class="upload-hint">We'll take this on arrival unless you hear otherwise.</p>
     {% endif %}
     {% elif bill.overpaid > 0 %}
-    <div class="quote-total"><span>In credit</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
+    <div class="quote-total"><span>{{ t('In credit') }}</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
     {% else %}
-    <p class="upload-hint" style="margin-top:8px;">Paid in full — thank you.</p>
+    <p class="upload-hint" style="margin-top:8px;">{{ t('Paid in full — thank you.') }}</p>
     {% endif %}
   </div>
 </div>
@@ -179,7 +179,7 @@
    rather than asking for a card each time — the balance is settled once. #}
 {% if addable and booking['status'] in ('pending', 'confirmed') %}
 <div class="detail-card" style="margin-top:20px;">
-  <h3>Add to your stay</h3>
+  <h3>{{ t('Add to your stay') }}</h3>
   <p class="upload-hint">Added to your bill, settled with the rest.</p>
   {% for e in addable %}
   <form method="post" class="filter-bar" style="margin-bottom:8px;">
@@ -241,7 +241,7 @@
   <form method="post" onsubmit="return confirm('Cancel this booking? This cannot be undone.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="cancel">
-    <button type="submit" class="btn-text-danger">Cancel this booking</button>
+    <button type="submit" class="btn-text-danger">{{ t('Cancel this booking') }}</button>
   </form>
   {% if booking['payment_status'] == 'paid' %}<p class="upload-hint">Cancelling doesn't automatically refund a payment — contact the château about your refund.</p>{% endif %}
 </div>

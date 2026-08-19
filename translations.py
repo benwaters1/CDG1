@@ -125,6 +125,55 @@ FR = {
     "Manage this registration": "Gérer cette inscription",
     "Manage this booking": "Gérer cette réservation",
     "See everything you have with us →": "Voir toutes vos réservations →",
+
+    # -- Finding and confirming a booking ---------------------------------
+    "Find My Booking": "Retrouver ma réservation",
+    "Find booking": "Retrouver la réservation",
+    "Reference code": "Code de réservation",
+    "Email you booked with": "E-mail utilisé pour réserver",
+    "Thank you": "Merci",
+    "Booking request received": "Demande de réservation reçue",
+    "Add-ons": "Suppléments",
+    "Check in / view my booking": "S'enregistrer / voir ma réservation",
+    "Add to calendar (.ics)": "Ajouter au calendrier (.ics)",
+    "Save this page's link, or write down your reference code and the email you booked with — that's your check-in link for later, and how you'll manage this booking.":
+        "Conservez le lien de cette page, ou notez votre code de réservation et l'e-mail utilisé — c'est votre lien d'enregistrement et le moyen de gérer cette réservation.",
+
+    # -- Managing a stay ---------------------------------------------------
+    "Check In": "Enregistrement",
+    "Estimated arrival time": "Heure d'arrivée estimée",
+    "Let us know roughly when to expect you, so someone's ready.":
+        "Dites-nous à peu près quand vous arriverez, pour que quelqu'un vous accueille.",
+    "Save": "Enregistrer",
+    "Stay longer": "Prolonger le séjour",
+    "Extra nights": "Nuits supplémentaires",
+    "Add them": "Ajouter",
+    "Change your dates": "Modifier vos dates",
+    "New arrival": "Nouvelle arrivée",
+    "New departure": "Nouveau départ",
+    "Update dates": "Mettre à jour",
+    "Requests": "Demandes",
+    "Send request": "Envoyer la demande",
+    "Airport transfer": "Transfert aéroport",
+    "Flight number": "Numéro de vol",
+    "Notes": "Remarques",
+    "Save transfer details": "Enregistrer les détails du transfert",
+    "Your notes": "Vos remarques",
+    "Add to your stay": "Ajouter à votre séjour",
+    "Cancel this booking": "Annuler cette réservation",
+    "Received": "Reçu",
+    "Refunded to you": "Remboursé",
+    "In credit": "Avoir en votre faveur",
+    "Payment": "Paiement",
+
+    # -- Searching for a room ---------------------------------------------
+    "Check availability": "Vérifier les disponibilités",
+    "Available": "Disponible",
+    "Unavailable": "Non disponible",
+    "Search": "Rechercher",
+    "Sleeps": "Couchages",
+    "View room": "Voir la chambre",
+    "No rooms are available for those dates.": "Aucune chambre n'est disponible à ces dates.",
 }
 
 ES = {
@@ -225,6 +274,55 @@ ES = {
     "Manage this registration": "Gestionar esta inscripción",
     "Manage this booking": "Gestionar esta reserva",
     "See everything you have with us →": "Ver todas sus reservas →",
+
+    # -- Finding and confirming a booking ---------------------------------
+    "Find My Booking": "Buscar mi reserva",
+    "Find booking": "Buscar reserva",
+    "Reference code": "Código de reserva",
+    "Email you booked with": "Correo con el que reservó",
+    "Thank you": "Gracias",
+    "Booking request received": "Solicitud de reserva recibida",
+    "Add-ons": "Extras",
+    "Check in / view my booking": "Registrarse / ver mi reserva",
+    "Add to calendar (.ics)": "Añadir al calendario (.ics)",
+    "Save this page's link, or write down your reference code and the email you booked with — that's your check-in link for later, and how you'll manage this booking.":
+        "Guarde el enlace de esta página, o anote su código de reserva y el correo con el que reservó — es su enlace de registro y la forma de gestionar esta reserva.",
+
+    # -- Managing a stay ---------------------------------------------------
+    "Check In": "Registro",
+    "Estimated arrival time": "Hora estimada de llegada",
+    "Let us know roughly when to expect you, so someone's ready.":
+        "Díganos aproximadamente cuándo llegará, para que alguien le reciba.",
+    "Save": "Guardar",
+    "Stay longer": "Alargar la estancia",
+    "Extra nights": "Noches adicionales",
+    "Add them": "Añadir",
+    "Change your dates": "Cambiar sus fechas",
+    "New arrival": "Nueva llegada",
+    "New departure": "Nueva salida",
+    "Update dates": "Actualizar",
+    "Requests": "Peticiones",
+    "Send request": "Enviar petición",
+    "Airport transfer": "Traslado desde el aeropuerto",
+    "Flight number": "Número de vuelo",
+    "Notes": "Notas",
+    "Save transfer details": "Guardar los datos del traslado",
+    "Your notes": "Sus notas",
+    "Add to your stay": "Añadir a su estancia",
+    "Cancel this booking": "Cancelar esta reserva",
+    "Received": "Recibido",
+    "Refunded to you": "Reembolsado",
+    "In credit": "Saldo a su favor",
+    "Payment": "Pago",
+
+    # -- Searching for a room ---------------------------------------------
+    "Check availability": "Ver disponibilidad",
+    "Available": "Disponible",
+    "Unavailable": "No disponible",
+    "Search": "Buscar",
+    "Sleeps": "Capacidad",
+    "View room": "Ver la habitación",
+    "No rooms are available for those dates.": "No hay habitaciones disponibles en esas fechas.",
 }
 
 TABLES = {"fr": FR, "es": ES}

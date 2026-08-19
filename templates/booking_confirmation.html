@@ -1,32 +1,32 @@
 {% extends "public_base.html" %}
-{% block title %}Booking request received{% endblock %}
+{% block title %}{{ t('Booking request received') }}{% endblock %}
 {% block content %}
 
 <div class="narrow-card">
-  <h1>Thank you, {{ booking['guest_name'].split(' ')[0] }}</h1>
+  <h1>{{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}</h1>
   <p class="manual-body">Your request for <strong>{{ booking['room_name'] }}</strong> has been received and is <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>{% if booking['payment_status'] == 'paid' %} · <span class="mini-status status-paid">paid</span>{% endif %}.</p>
 
   <div class="detail-card" style="margin-top:16px;">
     <div class="detail-grid">
-      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
-      <div><span class="detail-label">Arrival</span>{{ booking['arrival_date'] }}</div>
-      <div><span class="detail-label">Departure</span>{{ booking['departure_date'] }}</div>
-      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
-      {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
+      <div><span class="detail-label">{{ t('Reference code') }}</span>{{ booking['reference_code'] }}</div>
+      <div><span class="detail-label">{{ t('Arrival') }}</span>{{ booking['arrival_date'] }}</div>
+      <div><span class="detail-label">{{ t('Departure') }}</span>{{ booking['departure_date'] }}</div>
+      <div><span class="detail-label">{{ t('Party size') }}</span>{{ booking['party_size'] }}</div>
+      {% if booking['total_price'] %}<div><span class="detail-label">{{ t('Total') }}</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
     </div>
     {% if booking['extras_summary'] %}
     <div class="notes-block">
-      <span class="detail-label">Add-ons</span>
+      <span class="detail-label">{{ t('Add-ons') }}</span>
       <p>{{ booking['extras_summary'] }}</p>
     </div>
     {% endif %}
   </div>
 
-  <p class="pay-disclaimer" style="margin-top:16px;">Save this page's link, or write down your reference code and the email you booked with — that's your check-in link for later, and how you'll manage this booking.</p>
+  <p class="pay-disclaimer" style="margin-top:16px;">{{ t("Save this page's link, or write down your reference code and the email you booked with — that's your check-in link for later, and how you'll manage this booking.") }}</p>
   <p class="share-link-box">{{ url_for('guest_checkin', manage_token=booking['manage_token'], _external=True) }}</p>
 
-  <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">Check in / view my booking</a>
-  <p class="upload-hint" style="margin-top:12px; text-align:center;"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">Add to calendar (.ics)</a></p>
+  <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">{{ t('Check in / view my booking') }}</a>
+  <p class="upload-hint" style="margin-top:12px; text-align:center;"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
 </div>
 
 
