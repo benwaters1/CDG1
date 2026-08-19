@@ -64,6 +64,7 @@ SUITES = [
     "test_offline",
     "test_translations",
     "test_whats_on",
+    "test_navigation",
     "test_design",
     "test_links",
 ]

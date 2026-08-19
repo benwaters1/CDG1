@@ -93,13 +93,8 @@
 <div class="card-grid">
   <a href="{{ url_for('management_company_info') }}" class="action-card">
     <div class="action-card-icon action-card-icon-steel">{{ icon('building', 20) }}</div>
-    <div class="action-title">Company Info</div>
-    <div class="action-sub">{% if company_info_set %}Registration, VAT, accountant, insurance broker{% else %}Not filled in yet{% endif %}</div>
-  </a>
-  <a href="{{ url_for('management_insurance') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('shield', 20) }}</div>
-    <div class="action-title">Insurance</div>
-    <div class="action-sub">{{ insurance_count }} polic{{ 'y' if insurance_count == 1 else 'ies' }} tracked</div>
+    <div class="action-title">Company &amp; Insurance</div>
+    <div class="action-sub">{% if company_info_set %}Registration, VAT, accountant, broker · {{ insurance_count }} polic{{ 'y' if insurance_count == 1 else 'ies' }}{% else %}Not filled in yet{% endif %}</div>
   </a>
   <a href="{{ url_for('vendors') }}" class="action-card">
     <div class="action-card-icon action-card-icon-steel">{{ icon('truck', 20) }}</div>
@@ -110,11 +105,6 @@
     <div class="action-card-icon action-card-icon-steel">{{ icon('folder', 20) }}</div>
     <div class="action-title">Documents</div>
     <div class="action-sub">{{ doc_count }} company document{{ '' if doc_count == 1 else 's' }} — certificates, registration, scans</div>
-  </a>
-  <a href="{{ url_for('management_vehicles') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('car', 20) }}</div>
-    <div class="action-title">Vehicles</div>
-    <div class="action-sub">{{ vehicle_count }} vehicle{{ '' if vehicle_count == 1 else 's' }} on site</div>
   </a>
 </div>
 

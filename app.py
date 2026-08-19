@@ -3501,7 +3501,12 @@ NAV_AREAS = {
         "delete_equipment_item", "delete_offboarding_item", "delete_onboarding_item",
         "delete_role_requirement", "directory", "edit_candidate", "edit_employee",
         "edit_own_contact_info", "equipment_overview", "export_candidates_csv",
-        "export_equipment_csv", "export_pay_history_csv", "export_payroll_csv",
+        # export_payroll_csv is deliberately NOT here. It used to be, and the
+        # only thing keeping team access out of the payroll export was that
+        # ENDPOINT_AREA is built last-wins and payroll happens to fall after
+        # team in the dict. Reordering these areas would have quietly handed
+        # the payroll pack back to anyone with team access.
+        "export_equipment_csv", "export_pay_history_csv",
         "export_team_csv", "handle_hr_note", "new_absence", "new_candidate",
         "new_certification", "new_check_in_note", "new_employee", "new_equipment_item",
         "new_incident", "new_offboarding_item", "new_onboarding_item",
@@ -26116,10 +26121,10 @@ def delete_recurring_cost(cost_id):
 @app.route("/management/insurance")
 @owner_required
 def management_insurance():
-    conn = get_db()
-    policies = conn.execute("SELECT * FROM insurance_policies ORDER BY expiry_date IS NULL, expiry_date").fetchall()
-    conn.close()
-    return render_template("management_insurance.html", policies=policies)
+    """Kept as an address, not a page: insurance is now part of the company
+    record. Bookmarks, the dashboard's expiry links and anything already
+    pointing here still land on the policies rather than a 404."""
+    return redirect(url_for("management_company_info") + "#insurance")
 
 
 @app.route("/management/insurance/new", methods=["POST"])
@@ -26133,7 +26138,7 @@ def new_insurance_policy():
     expiry_date = request.form.get("expiry_date", "").strip()
     notes = request.form.get("notes", "").strip()
     vehicle_id = request.form.get("vehicle_id", "").strip()
-    redirect_to = "management_vehicles" if vehicle_id else "management_insurance"
+    redirect_to = "management_vehicles" if vehicle_id else "management_company_info"
     if premium_frequency not in ("monthly", "annual"):
         premium_frequency = "annual"
     try:
@@ -26175,7 +26180,7 @@ def edit_insurance_policy(policy_id):
         premium_val = None
     if not provider:
         flash("A provider is required.", "error")
-        return redirect(url_for("management_insurance"))
+        return redirect(url_for("management_company_info") + "#insurance")
     conn = get_db()
     conn.execute(
         """UPDATE insurance_policies SET provider = ?, policy_number = ?, coverage_type = ?,
@@ -26187,7 +26192,7 @@ def edit_insurance_policy(policy_id):
     conn.commit()
     conn.close()
     flash("Policy updated.", "success")
-    return redirect(url_for("management_insurance"))
+    return redirect(url_for("management_company_info") + "#insurance")
 
 
 @app.route("/management/insurance/<int:policy_id>/renew", methods=["POST"])
@@ -26208,12 +26213,12 @@ def renew_insurance_policy(policy_id):
     if cur.rowcount == 0:
         conn.close()
         flash("Already renewed.", "success")
-        return redirect(url_for("management_insurance"))
+        return redirect(url_for("management_company_info") + "#insurance")
     log_audit(conn, "insurance_policy_renewed", target=policy["provider"], details=f"new expiry {new_expiry.isoformat()}")
     conn.commit()
     conn.close()
     flash(f"Renewed — new expiry {new_expiry.isoformat()}.", "success")
-    return redirect(url_for("management_insurance"))
+    return redirect(url_for("management_company_info") + "#insurance")
 
 
 @app.route("/management/insurance/<int:policy_id>/delete", methods=["POST"])
@@ -26227,7 +26232,7 @@ def delete_insurance_policy(policy_id):
     conn.commit()
     conn.close()
     flash("Removed.", "success")
-    return redirect(url_for("management_insurance"))
+    return redirect(url_for("management_company_info") + "#insurance")
 
 
 @app.route("/management/vendors")
@@ -27191,8 +27196,14 @@ def management_company_info():
         return redirect(url_for("management_company_info"))
     info = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
     capacity = house_guest_capacity(conn)
+    # Insurance lives here rather than on a page of its own. The broker was
+    # already listed on this form while the policies sat somewhere else, which
+    # is two places to look for one answer.
+    policies = conn.execute(
+        "SELECT * FROM insurance_policies ORDER BY expiry_date IS NULL, expiry_date").fetchall()
     conn.close()
-    return render_template("management_company_info.html", info=info, house_guest_capacity=capacity)
+    return render_template("management_company_info.html", info=info,
+                           house_guest_capacity=capacity, policies=policies)
 
 
 @app.route("/management/bank-details")
