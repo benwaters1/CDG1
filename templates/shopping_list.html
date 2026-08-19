@@ -3,11 +3,11 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Shopping List</h1>
+  <h1>{{ t('Shopping List') }}</h1>
   {% if item_count %}
   <form method="post" action="{{ url_for('clear_bought_items') }}" onsubmit="return confirm('Remove everything marked bought?');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="btn-mini">Clear bought items</button>
+    <button type="submit" class="btn-mini">{{ t('Clear bought items') }}</button>
   </form>
   {% endif %}
 </div>
@@ -15,22 +15,22 @@
 <form method="post" action="{{ url_for('new_shopping_item') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="flex:2 1 200px;">
-    <label class="field-label">Item</label>
+    <label class="field-label">{{ t('Item') }}</label>
     <input type="text" name="name" placeholder="e.g. Bin liners" required>
   </div>
   <div>
-    <label class="field-label">Category</label>
+    <label class="field-label">{{ t('Category') }}</label>
     <input type="text" name="category" placeholder="e.g. Cleaning">
   </div>
   <div>
-    <label class="field-label">Store</label>
+    <label class="field-label">{{ t('Store') }}</label>
     <input type="text" name="store" placeholder="e.g. Carrefour">
   </div>
-  <button type="submit" class="btn-mini">+ Add</button>
+  <button type="submit" class="btn-mini">{{ t('+ Add') }}</button>
 </form>
 
 {% if not by_category %}
-  <div class="empty-state">Nothing on the list right now.</div>
+  <div class="empty-state">{{ t('Nothing on the list right now.') }}</div>
 {% else %}
   {% for category, items in by_category.items() %}
   <div class="expense-card">

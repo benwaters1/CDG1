@@ -3,29 +3,29 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Team Calendar</h1>
+  <h1>{{ t('Team Calendar') }}</h1>
   {% if user['role'] == 'owner' %}
   <div style="display:flex; gap:10px;">
-    <a href="{{ url_for('admin_shifts') }}" class="btn-mini">Shift Schedule</a>
-    <a href="{{ url_for('admin_leave') }}" class="btn-mini">Time Off</a>
+    <a href="{{ url_for('admin_shifts') }}" class="btn-mini">{{ t('Shift Schedule') }}</a>
+    <a href="{{ url_for('admin_leave') }}" class="btn-mini">{{ t('Time Off') }}</a>
   </div>
   {% endif %}
 </div>
 
 <div class="search-bar" style="justify-content:space-between;">
-  <a href="{{ url_for('team_calendar', month=prev_month) }}" class="btn-mini">&larr; Prev</a>
+  <a href="{{ url_for('team_calendar', month=prev_month) }}" class="btn-mini">{{ t('← Prev') }}</a>
   <strong>{{ first_day.strftime('%B %Y') }}</strong>
-  <a href="{{ url_for('team_calendar', month=next_month) }}" class="btn-mini">Next &rarr;</a>
+  <a href="{{ url_for('team_calendar', month=next_month) }}" class="btn-mini">{{ t('Next →') }}</a>
 </div>
 
 {% if not employee_rows %}
-  <div class="empty-state">No active employees yet.</div>
+  <div class="empty-state">{{ t('No active employees yet.') }}</div>
 {% else %}
 <div style="overflow-x:auto;">
   <table class="cal-table">
     <thead>
       <tr>
-        <th class="cal-room-col">Employee</th>
+        <th class="cal-room-col">{{ t('Employee') }}</th>
         {% for d in days %}
         <th class="{{ 'cal-today' if d == today }}">{{ d.day }}</th>
         {% endfor %}
@@ -34,7 +34,7 @@
     <tbody>
       {% if has_dinner_covers %}
       <tr>
-        <td class="cal-room-col">{% if user['role'] == 'owner' %}<a href="{{ url_for('admin_restaurant') }}">Dinner covers</a>{% else %}Dinner covers{% endif %}</td>
+        <td class="cal-room-col">{% if user['role'] == 'owner' %}<a href="{{ url_for('admin_restaurant') }}">{{ t('Dinner covers') }}</a>{% else %}Dinner covers{% endif %}</td>
         {% for cell in dinner_cells %}
         <td class="cal-cell {{ 'cal-cell-confirmed' if cell.covers else 'cal-cell-free' }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.covers }} covers">
           {% if cell.covers and user['role'] == 'owner' %}<a href="{{ url_for('admin_restaurant') }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ cell.covers }}</a>{% elif cell.covers %}<span style="display:block; font-size:9px; color:var(--success);">{{ cell.covers }}</span>{% endif %}
@@ -44,7 +44,7 @@
       {% endif %}
       {% if has_workshop_covers %}
       <tr>
-        <td class="cal-room-col">{% if user['role'] == 'owner' %}<a href="{{ url_for('admin_workshops') }}">Workshop covers</a>{% else %}Workshop covers{% endif %}</td>
+        <td class="cal-room-col">{% if user['role'] == 'owner' %}<a href="{{ url_for('admin_workshops') }}">{{ t('Workshop covers') }}</a>{% else %}Workshop covers{% endif %}</td>
         {% for cell in workshop_cells %}
         <td class="cal-cell {{ 'cal-cell-confirmed' if cell.covers else 'cal-cell-free' }} {{ 'cal-today' if cell.date == today }}" title="{{ cell.titles }} — {{ cell.covers }} covers">
           {% if cell.covers and user['role'] == 'owner' %}<a href="{{ url_for('admin_workshops') }}" style="display:block; width:100%; height:100%; font-size:9px; color:var(--success); text-decoration:none;">{{ cell.covers }}</a>{% elif cell.covers %}<span style="display:block; font-size:9px; color:var(--success);">{{ cell.covers }}</span>{% endif %}
@@ -65,11 +65,11 @@
 </div>
 
 <div style="display:flex; gap:16px; margin-top:14px; font-size:12px; color:var(--ink-soft); flex-wrap:wrap;">
-  <span><span class="cal-legend cal-cell-shift"></span> Working</span>
-  <span><span class="cal-legend cal-cell-leave"></span> Approved time off</span>
-  <span><span class="cal-legend cal-cell-free"></span> Nothing scheduled</span>
-  {% if has_dinner_covers %}<span><span class="cal-legend cal-cell-confirmed"></span> Dinner covers booked</span>{% endif %}
-  {% if has_workshop_covers %}<span><span class="cal-legend cal-cell-confirmed"></span> Workshop covers booked</span>{% endif %}
+  <span><span class="cal-legend cal-cell-shift"></span> {{ t('Working') }}</span>
+  <span><span class="cal-legend cal-cell-leave"></span> {{ t('Approved time off') }}</span>
+  <span><span class="cal-legend cal-cell-free"></span> {{ t('Nothing scheduled') }}</span>
+  {% if has_dinner_covers %}<span><span class="cal-legend cal-cell-confirmed"></span> {{ t('Dinner covers booked') }}</span>{% endif %}
+  {% if has_workshop_covers %}<span><span class="cal-legend cal-cell-confirmed"></span> {{ t('Workshop covers booked') }}</span>{% endif %}
 </div>
 {% endif %}
 

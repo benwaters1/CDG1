@@ -3,21 +3,21 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Employee Manual</h1>
+  <h1>{{ t('Employee Manual') }}</h1>
 </div>
 
 {% if user['role'] != 'owner' %}
   {% if not my_ack %}
   <div class="announcement-banner" style="margin-bottom:16px;">
-    <strong>You haven't acknowledged this yet.</strong>
-    <span>Please read it, then confirm below.</span>
-    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">I've read this</button></form>
+    <strong>{{ t("You haven't acknowledged this yet.") }}</strong>
+    <span>{{ t('Please read it, then confirm below.') }}</span>
+    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">{{ t("I've read this") }}</button></form>
   </div>
   {% elif not my_ack.current %}
   <div class="announcement-banner" style="margin-bottom:16px;">
-    <strong>This has changed since you last read it.</strong>
+    <strong>{{ t('This has changed since you last read it.') }}</strong>
     <span>Last acknowledged {{ my_ack.acknowledged_at[:10] }}.</span>
-    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">I've read the update</button></form>
+    <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">{{ t("I've read the update") }}</button></form>
   </div>
   {% else %}
   <p class="upload-hint" style="margin-top:-10px;">You acknowledged this on {{ my_ack.acknowledged_at[:10] }}.</p>
@@ -26,7 +26,7 @@
 
 {% if user['role'] == 'owner' and compliance %}
 <div class="detail-card" style="margin-bottom:20px;">
-  <h3>Read confirmations</h3>
+  <h3>{{ t('Read confirmations') }}</h3>
   <div class="mini-list">
     {% for c in compliance %}
     <div class="mini-row">
@@ -34,7 +34,7 @@
       {% if c.acknowledged_at %}
       <span class="mini-status status-{{ 'onshift' if c.current else 'pending' }}">{{ 'up to date' if c.current else 'outdated — ' + c.acknowledged_at[:10] }}</span>
       {% else %}
-      <span class="mini-status status-inactive">not yet read</span>
+      <span class="mini-status status-inactive">{{ t('not yet read') }}</span>
       {% endif %}
     </div>
     {% endfor %}
@@ -49,10 +49,10 @@
       <h3>{{ s['title'] }}</h3>
       {% if user['role'] == 'owner' %}
       <div class="manual-actions">
-        <span class="small-link" onclick="toggleEdit({{ s['id'] }})">Edit</span>
+        <span class="small-link" onclick="toggleEdit({{ s['id'] }})">{{ t('Edit') }}</span>
         <form method="post" action="{{ url_for('delete_manual_section', section_id=s['id']) }}" onsubmit="return confirm('Remove this section?');" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="small-link danger-link">Remove</button>
+          <button type="submit" class="small-link danger-link">{{ t('Remove') }}</button>
         </form>
       </div>
       {% endif %}
@@ -70,7 +70,7 @@
     <form method="post" action="{{ url_for('edit_manual_section', section_id=s['id']) }}" class="manual-edit-form" id="edit-{{ s['id'] }}" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <textarea name="body">{{ s['body'] }}</textarea>
-      <button type="submit" class="btn-mini">Save section</button>
+      <button type="submit" class="btn-mini">{{ t('Save section') }}</button>
     </form>
     {% endif %}
   </div>
@@ -80,7 +80,7 @@
   <form method="post" action="{{ url_for('new_manual_section') }}" class="new-section-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="title" placeholder="New section title (e.g. Kitchen & Meals)">
-    <button type="submit" class="btn-mini">+ Add section</button>
+    <button type="submit" class="btn-mini">{{ t('+ Add section') }}</button>
   </form>
   {% endif %}
 </div>
