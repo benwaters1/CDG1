@@ -166,5 +166,46 @@ def run():
             "Nothing waiting on you." in empty and "Waiting on you" in empty)
     s.check("the page still renders its figures", empty.count("oh-fig__value") == 5)
 
+    # The gold button is the page's one loud element. At zero it was the
+    # loudest thing on screen and the only one that did nothing.
+    s.check("no gold Review button when there is nothing to review",
+            "Review 0 decision" not in empty)
+    s.check("the quiet actions are still there", "Office display" in empty)
+    # "Everything on today is done" with an empty diary reads as an achievement
+    # rather than as an empty day. Which branch is correct depends on whether
+    # this database actually has anything dated today — seeded tasks often do —
+    # so the check asserts they agree rather than assuming the day is empty.
+    day_is_empty = "Nothing on today." in empty
+    if day_is_empty:
+        s.check("an empty day is described as empty, not as finished",
+                "nothing is scheduled for today" in empty and
+                "everything on today is done" not in empty, detail=_sub_line(empty))
+    else:
+        s.check("a day with things on it never claims to be empty",
+                "nothing is scheduled for today" not in empty, detail=_sub_line(empty))
+
+    s.section("The hero line is grammatical at one")
+    conn = db()
+    conn.execute(
+        """INSERT INTO expenses (kind, vendor_name, description, amount, status, submitted_at)
+           VALUES ('supplier_invoice', ?, 'x', 500.0, 'pending', ?)""",
+        (f"{TAG} One", now))
+    conn.commit()
+    conn.close()
+    one = oc.get("/").get_data(as_text=True)
+    s.check("one thing NEEDS a decision, not need", "1 thing needs a decision" in one,
+            detail=_sub_line(one))
+    s.check("and the button comes back", "Review 1 decision<" in one)
+
+    _cleanup()
+    return s
+
+
+def _sub_line(html):
+    """The hero sentence, for a failure message worth reading."""
+    import re as _re
+    hit = _re.search(r'class="oh-sub">([^<]*)', html)
+    return hit.group(1).strip() if hit else "(no hero line)"
+
     _cleanup()
     return s

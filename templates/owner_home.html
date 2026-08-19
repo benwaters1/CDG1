@@ -21,7 +21,13 @@
       <h1 class="oh-h1">{{ greeting }}, {{ user['name'].split()[0] }}</h1>
       <p class="oh-sub">{{ hero_line }}</p>
       <div class="oh-actions">
+        {# The gold button is the page's one loud element, so it only exists when
+           there is actually something to decide. "Review 0 decisions" was the
+           loudest thing on the screen while being the one thing that did
+           nothing — at zero the quiet actions are the whole row. #}
+        {% if queue %}
         <a href="#waiting" class="oh-btn oh-btn--gold">Review {{ queue|length }} decision{{ '' if queue|length == 1 else 's' }}</a>
+        {% endif %}
         <a href="{{ url_for('office_display') }}" target="_blank" rel="noopener" class="oh-btn">Office display</a>
         <a href="{{ url_for('staff_today') }}" class="oh-btn">Printable sheet</a>
       </div>

@@ -11989,15 +11989,26 @@ def staff_dashboard():
         # figures shown below it so the two can never disagree.
         bits = []
         if queue:
-            bits.append(f"{len(queue)} thing{'s' if len(queue) != 1 else ''} need a decision")
+            # Verb agrees with the count, or the owner's own dashboard greets
+            # them with a typo every morning there is exactly one thing to do.
+            bits.append(f"{len(queue)} thing needs a decision" if len(queue) == 1
+                        else f"{len(queue)} things need a decision")
         occ_now = sum(1 for g in owner_home_guests(conn, today) for _ in [1])
         rooms_n = conn.execute(
             "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
         if rooms_n:
-            bits.append(f"{occ_now} of {rooms_n} rooms are occupied")
+            bits.append(f"{occ_now} of {rooms_n} rooms is occupied" if occ_now == 1
+                        else f"{occ_now} of {rooms_n} rooms are occupied")
+        # "Everything on today is done" is only true if there was something to
+        # do. With an empty day it reads as an achievement rather than as an
+        # empty diary, which is the opposite of what the owner needs to know.
         undone = sum(1 for r in day_rows if not r["done"])
-        bits.append(f"{undone} thing{'s' if undone != 1 else ''} left on today"
-                    if undone else "everything on today is done")
+        if not day_rows:
+            bits.append("nothing is scheduled for today")
+        elif undone:
+            bits.append(f"{undone} thing{'s' if undone != 1 else ''} left on today")
+        else:
+            bits.append("everything on today is done")
         hero_line = ", and ".join([", ".join(bits[:-1]), bits[-1]]) if len(bits) > 1 else bits[0]
         hero_line = hero_line[0].upper() + hero_line[1:] + "."
         page = render_template(
