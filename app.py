@@ -17584,7 +17584,6 @@ def guest_account(token):
     extras = conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            ORDER BY category, sort_order, name""").fetchall()
-    restaurant_settings = get_restaurant_settings(conn)
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,
@@ -26255,11 +26254,8 @@ def management():
     conn = get_db()
     doc_count = conn.execute("SELECT COUNT(*) AS c FROM company_documents").fetchone()["c"]
     vault_count = conn.execute("SELECT COUNT(*) AS c FROM vault_entries").fetchone()["c"]
-    bank_count = conn.execute("SELECT COUNT(*) AS c FROM bank_details").fetchone()["c"]
-    recurring_count = conn.execute("SELECT COUNT(*) AS c FROM recurring_costs WHERE active = 1").fetchone()["c"]
     insurance_count = conn.execute("SELECT COUNT(*) AS c FROM insurance_policies").fetchone()["c"]
     vendor_count = conn.execute("SELECT COUNT(*) AS c FROM vendors").fetchone()["c"]
-    vehicle_count = conn.execute("SELECT COUNT(*) AS c FROM vehicles").fetchone()["c"]
     company_info_set = conn.execute("SELECT 1 FROM company_info WHERE id = 1").fetchone() is not None
     today = datetime.now(timezone.utc).date()
     period = period_from_request()
@@ -26269,19 +26265,14 @@ def management():
         date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
     )
     restaurant_settings = get_restaurant_settings(conn)
-    restaurant_pending_count = conn.execute(
-        "SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'"
-    ).fetchone()["c"]
     social_scheduled_count = conn.execute(
         "SELECT COUNT(*) AS c FROM social_posts WHERE status IN ('drafted', 'scheduled')"
     ).fetchone()["c"]
     conn.close()
     return render_template(
         "management.html", doc_count=doc_count, vault_count=vault_count, vault_enabled=vault_enabled(),
-        bank_count=bank_count, recurring_count=recurring_count, insurance_count=insurance_count,
+        insurance_count=insurance_count,
         company_info_set=company_info_set, current_financials=current_financials, vendor_count=vendor_count,
-        vehicle_count=vehicle_count, restaurant_pending_count=restaurant_pending_count,
-        restaurant_enabled=bool(restaurant_settings and restaurant_settings["enabled"]),
         social_scheduled_count=social_scheduled_count,
         overview=overview, period=period,
     )

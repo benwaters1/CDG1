@@ -6,7 +6,10 @@
 <div class="page-head">
   <h1>Management</h1>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Business reference and control — everything that isn't day-to-day staff or guest ops lives here.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Settings and permanent records — the things you set once and refer back to.
+  Money is under <a href="{{ url_for('management_financials') }}">Financial</a>,
+  guest email under <a href="{{ url_for('admin_emails') }}">Comms</a>,
+  and the restaurant under <a href="{{ url_for('admin_restaurant') }}">Restaurant</a>.</p>
 
 {# No period control here on purpose: Management holds records, not activity, so
    a day/week/month switch would move the arrows without moving the numbers.
@@ -20,31 +23,6 @@
   <a href="{{ url_for('management_financials') }}">full financials</a>
 </p>
 
-<h2 class="section-heading" style="margin-top:0;">Financial</h2>
-<div class="card-grid">
-  <a href="{{ url_for('management_financials') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-gold">{{ icon('financial', 20) }}</div>
-    <div class="action-title">Financials</div>
-    <div class="action-sub">Revenue, expenses, labour cost, and net — this month and the last 6</div>
-  </a>
-  <a href="{{ url_for('management_bank_details') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-gold">{{ icon('building', 20) }}</div>
-    <div class="action-title">Bank Details</div>
-    <div class="action-sub">
-      {% if not vault_enabled %}Not set up yet — needs VAULT_ENCRYPTION_KEY{% else %}{{ bank_count }} account{{ '' if bank_count == 1 else 's' }} on file{% endif %}
-    </div>
-  </a>
-  <a href="{{ url_for('management_recurring_costs') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-gold">{{ icon('repeat', 20) }}</div>
-    <div class="action-title">Recurring Costs</div>
-    <div class="action-sub">{{ recurring_count }} active subscription{{ '' if recurring_count == 1 else 's' }} / bill{{ '' if recurring_count == 1 else 's' }}</div>
-  </a>
-  <a href="{{ url_for('admin_restaurant') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-gold">{{ icon('restaurant', 20) }}</div>
-    <div class="action-title">Restaurant</div>
-    <div class="action-sub">{% if restaurant_pending_count %}{{ restaurant_pending_count }} reservation{{ '' if restaurant_pending_count == 1 else 's' }} awaiting a decision{% elif restaurant_enabled %}Open for online reservations{% else %}Reservations not open yet{% endif %}</div>
-  </a>
-</div>
 
 <h2 class="section-heading">Marketing</h2>
 <div class="card-grid">
@@ -52,11 +30,6 @@
     <div class="action-card-icon action-card-icon-steel">{{ icon('megaphone', 20) }}</div>
     <div class="action-title">Social Media Schedule</div>
     <div class="action-sub">{{ social_scheduled_count }} post{{ '' if social_scheduled_count == 1 else 's' }} scheduled or drafted</div>
-  </a>
-  <a href="{{ url_for('management_email_templates') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('receipt', 20) }}</div>
-    <div class="action-title">Email Templates</div>
-    <div class="action-sub">One set of merge-tag templates for every workshop registration email</div>
   </a>
   <a href="{{ url_for('admin_promo_codes') }}" class="action-card">
     <div class="action-card-icon action-card-icon-steel">{{ icon('receipt', 20) }}</div>
@@ -82,14 +55,9 @@
     <div class="action-title">Outlook Add-in</div>
     <div class="action-sub">See a guest's bookings inside Outlook when you open their email</div>
   </a>
-  <a href="{{ url_for('admin_inbox_flags') }}" class="action-card">
-    <div class="action-card-icon action-card-icon-steel">{{ icon('bell', 20) }}</div>
-    <div class="action-title">Inbox Flags</div>
-    <div class="action-sub">{% if open_email_flags_count %}{{ open_email_flags_count }} open flag{{ '' if open_email_flags_count == 1 else 's' }}{% else %}Unanswered emails and pricing/availability conflicts{% endif %}</div>
-  </a>
 </div>
 
-<h2 class="section-heading">Reference</h2>
+<h2 class="section-heading">The company</h2>
 <div class="card-grid">
   <a href="{{ url_for('management_company_info') }}" class="action-card">
     <div class="action-card-icon action-card-icon-steel">{{ icon('building', 20) }}</div>

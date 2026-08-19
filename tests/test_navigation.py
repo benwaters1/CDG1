@@ -73,6 +73,37 @@ def run():
     s.check(f"each of the {len(seen)} cards goes somewhere different", not twice,
             detail=", ".join(twice))
 
+    s.section("Management does not repeat the other menus")
+    # It had become a second copy of them: Financials, Bank Details and
+    # Recurring Costs all sat here AND under Financial; Email Templates and
+    # Inbox Flags here AND under Comms. A hub that repeats the menu is what
+    # makes an app feel like it has more places than it has.
+    nav_html = open(os.path.join(ROOT, "templates", "base.html"), encoding="utf-8").read()
+    menu_only = nav_html[nav_html.index("{% if user_areas %}"):]
+    # The Management dropdown is meant to mirror this page — it is the same
+    # group seen from the sidebar. What must not repeat is another group's
+    # menu, so that block is cut out before comparing.
+    mgmt_start = menu_only.index("{% if may('management') %}")
+    mgmt_end = menu_only.index("{% endif %}", menu_only.index("</div>", mgmt_start))
+    other_menus = menu_only[:mgmt_start] + menu_only[mgmt_end:]
+    in_other_menus = set(re.findall(r"""url_for\('([a-z_]+)'\)""", other_menus))
+    repeated = sorted(set(targets) & in_other_menus)
+    s.check("no card duplicates a link belonging to another group", not repeated,
+            detail=", ".join(repeated))
+
+    s.section("The route stops fetching what the page no longer shows")
+    # Four counts were still being queried on every load for cards that had
+    # moved elsewhere.
+    route = open(os.path.join(ROOT, "app.py"), encoding="utf-8").read()
+    start = route.index("def management():")
+    body = route[start:route.index("\n@app.route", start)]
+    page = open(os.path.join(ROOT, "templates", "management.html"), encoding="utf-8").read()
+    orphans = [name for name in ("bank_count", "recurring_count", "vehicle_count",
+                                 "restaurant_pending_count", "restaurant_enabled")
+               if name in body or name in page]
+    s.check("no count is fetched for a card that has gone", not orphans,
+            detail=", ".join(orphans))
+
     s.section("And nothing points at a page that no longer exists")
     missing = [ep for ep in set(targets) if ep not in m.app.view_functions]
     s.check("every card's destination is a real route", not missing,
