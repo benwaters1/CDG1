@@ -6,101 +6,173 @@
    passed by hand would sooner or later be missing from one of them. #}
 {% set supplement = (session['single_supplement'] or 0) if session['price_per_person'] else 0 %}
 
-<div class="narrow-card">
-  <h1>{{ session['title'] }}</h1>
-  <p class="room-meta">
-    {{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} → {{ session['end_date'] }}{% endif %}
-    {% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}
-    {% if session['price_per_person'] %} · €{{ '%.0f'|format(session['price_per_person']) }} / person{% endif %}
-  </p>
-  {% if session['inclusions'] %}
-  <p class="manual-body" style="margin-top:10px;"><strong>Includes:</strong> {{ session['inclusions'] }}</p>
-  {% endif %}
-  {% if session['price_per_person'] %}
-  <p class="upload-hint" style="margin-top:6px;">A {{ session['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay (or in full if you're booking within 30 days of it).</p>
-  {% endif %}
+{# CONTRACT: method="post", no action (posts to /workshops/register/<session_id>).
+   csrf_token first. Fields: party_size, occupancy_type, guest_name, guest_email,
+   guest_phone, other_guest_names, requested_roommate, dietary_notes,
+   medical_notes, special_occasion, notes, promo_code, custom_<id>. #}
 
-  <form method="post" style="margin-top:18px;">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" max="{{ session['capacity'] }}" value="{{ prefill_party_size }}" required>
+<div class="g-wrap" style="padding-top:clamp(1.5rem,4vw,2.5rem)">
 
-    <label class="field-label">Room arrangement</label>
-    <select name="occupancy_type" id="occupancy_type">
-      <option value="double">Double (shared room, one bed) — included</option>
-      <option value="triple">Triple occupancy — included</option>
-    </select>
-    {# A private room is not bookable here. What it costs depends on the
-       atelier, the dates and what is actually free, so it is quoted per
-       enquiry rather than carrying a standing supplement — and the server
-       refuses 'solo' from this form regardless of what the markup offers. #}
-    <p class="upload-hint" style="margin-top:4px;">
-      The price includes a shared room. If you would like a room to yourself,
-      <a href="mailto:experience@chateaugudanes.com?subject=Private%20room%20on%20an%20atelier">write to us</a>
-      and we will quote for it — {% if solo_possible %}there are rooms free for these dates{% else %}though every room for these dates is currently taken{% endif %}.
+  <div style="padding:clamp(1.25rem,4vw,2rem) 0 0">
+    <p class="g-eyebrow">Château Workshop</p>
+    <h1 class="g-display" style="font-size:clamp(28px,5vw,46px)">{{ session['title'] }}</h1>
+    <p class="g-room__meta">
+      {{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} → {{ session['end_date'] }}{% endif %}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
     </p>
-    {% if session['price_per_person'] %}
-    <p class="upload-hint" id="occupancy_total" style="margin-top:4px;"></p>
+    {% if session['inclusions'] %}
+    <p class="g-room__note"><b>Includes:</b> {{ session['inclusions'] }}</p>
     {% endif %}
+  </div>
 
-    <label class="field-label">Your name</label>
-    <input type="text" name="guest_name" value="{{ prefill_name }}" required>
+  <form method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <label class="field-label">Email</label>
-    <input type="email" name="guest_email" value="{{ prefill_email }}" required>
+    <div class="g-cols">
+      <div>
 
-    <label class="field-label">Phone (optional)</label>
-    <input type="tel" name="guest_phone" value="{{ prefill_phone }}">
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">01</span> Your party</h2>
 
-    <label class="field-label">Names of other guests in your party (optional, one per line)</label>
-    <textarea name="other_guest_names" placeholder="e.g.&#10;Jane Doe&#10;John Smith"></textarea>
+          <div class="g-field g-field--narrow">
+            <label for="party_size">How many of you</label>
+            <input type="number" id="party_size" name="party_size" min="1"
+                   max="{{ session['capacity'] }}" value="{{ prefill_party_size }}" required>
+            <p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>
+          </div>
 
-    <label class="field-label">Requested roommate (optional)</label>
-    <input type="text" name="requested_roommate" placeholder="Name, if you're travelling with someone">
+          <div class="g-field">
+            <label for="occupancy_type">Room arrangement</label>
+            <select name="occupancy_type" id="occupancy_type">
+              <option value="double">Double — shared room, one bed (included)</option>
+              <option value="triple">Triple occupancy (included)</option>
+            </select>
+            {# A private room is not bookable here. What it costs depends on the
+               workshop, the dates and what is actually free, so it is quoted per
+               enquiry rather than carrying a standing supplement — and the server
+               refuses 'solo' from this form regardless of what the markup offers. #}
+            <p class="g-hint">
+              The price includes a shared room. If you would like a room to yourself,
+              <a href="mailto:experience@chateaugudanes.com?subject=Private%20room%20on%20a%20workshop">write to us</a>
+              and we will quote for it — {% if solo_possible %}there are rooms free for these dates{% else %}though every room for these dates is currently taken{% endif %}.
+            </p>
+            {% if session['price_per_person'] %}
+            <p class="g-hint" id="occupancy_total"></p>
+            {% endif %}
+          </div>
 
-    <label class="field-label">Dietary notes (optional)</label>
-    <textarea name="dietary_notes" placeholder="Allergies, preferences..."></textarea>
+          <div class="g-field">
+            <label for="other_guest_names">Names of others in your party <span class="g-opt">optional</span></label>
+            <textarea id="other_guest_names" name="other_guest_names" rows="3"
+                      placeholder="One per line"></textarea>
+          </div>
 
-    <label class="field-label">Relevant medical issues (optional)</label>
-    <textarea name="medical_notes" placeholder="Anything our team should be aware of"></textarea>
+          <div class="g-field">
+            <label for="requested_roommate">Requested roommate <span class="g-opt">optional</span></label>
+            <input type="text" id="requested_roommate" name="requested_roommate"
+                   placeholder="Name, if you are travelling with someone">
+          </div>
+        </section>
 
-    <label class="field-label">Celebrating a special occasion? (optional)</label>
-    <input type="text" name="special_occasion" placeholder="Birthday, anniversary...">
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">02</span> Who is coming</h2>
 
-    <label class="field-label">Anything else we should know?</label>
-    <textarea name="notes" placeholder="Experience level, questions..."></textarea>
+          <div class="g-row">
+            <div class="g-field">
+              <label for="guest_name">Your name</label>
+              <input type="text" id="guest_name" name="guest_name" value="{{ prefill_name }}" required>
+            </div>
+            <div class="g-field">
+              <label for="guest_email">Email</label>
+              <input type="email" id="guest_email" name="guest_email" value="{{ prefill_email }}" required>
+            </div>
+          </div>
 
-    <label class="field-label">Promo code (optional)</label>
-    <div style="display:flex; gap:8px;">
-      <input type="text" name="promo_code" id="promo_code" style="text-transform:uppercase;">
-      <button type="button" class="btn-mini" id="promo_apply_btn" style="flex-shrink:0;">Apply</button>
+          <div class="g-field g-field--narrow">
+            <label for="guest_phone">Phone <span class="g-opt">optional</span></label>
+            <input type="tel" id="guest_phone" name="guest_phone" value="{{ prefill_phone }}">
+          </div>
+        </section>
+
+        <section class="g-step">
+          <h2 class="g-step__h"><span class="g-num">03</span> Anything we should know</h2>
+
+          <div class="g-field">
+            <label for="dietary_notes">Dietary notes <span class="g-opt">optional</span></label>
+            <textarea id="dietary_notes" name="dietary_notes" rows="2"
+                      placeholder="Allergies, preferences — designed into the menu, not worked around on the night"></textarea>
+          </div>
+
+          <div class="g-field">
+            <label for="medical_notes">Relevant medical issues <span class="g-opt">optional</span></label>
+            <textarea id="medical_notes" name="medical_notes" rows="2"
+                      placeholder="Anything our team should be aware of"></textarea>
+          </div>
+
+          <div class="g-field">
+            <label for="special_occasion">Celebrating something <span class="g-opt">optional</span></label>
+            <input type="text" id="special_occasion" name="special_occasion"
+                   placeholder="Birthday, anniversary…">
+          </div>
+
+          <div class="g-field">
+            <label for="notes">Anything else <span class="g-opt">optional</span></label>
+            <textarea id="notes" name="notes" rows="2"
+                      placeholder="Experience level, questions…"></textarea>
+          </div>
+
+          {% for f in custom_fields %}
+          <div class="g-field">
+            <label for="custom_{{ f['id'] }}">{{ f['label'] }}{% if not f['required'] %} <span class="g-opt">optional</span>{% endif %}</label>
+            {% if f['field_type'] == 'textarea' %}
+            <textarea id="custom_{{ f['id'] }}" name="custom_{{ f['id'] }}" rows="2" {{ 'required' if f['required'] }}></textarea>
+            {% elif f['field_type'] == 'select' %}
+            <select id="custom_{{ f['id'] }}" name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}>
+              <option value="">Select…</option>
+              {% for opt in (f['options'] or '').split(',') %}
+              <option value="{{ opt.strip() }}">{{ opt.strip() }}</option>
+              {% endfor %}
+            </select>
+            {% elif f['field_type'] == 'checkbox' %}
+            <select id="custom_{{ f['id'] }}" name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}>
+              <option value="">Select…</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+            {% else %}
+            <input type="text" id="custom_{{ f['id'] }}" name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}>
+            {% endif %}
+          </div>
+          {% endfor %}
+
+          <div class="g-field">
+            <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
+            <div class="g-promo">
+              <input type="text" id="promo_code" name="promo_code">
+              <button type="button" id="promo_apply_btn">Apply</button>
+            </div>
+            <p class="g-hint" id="promo_result"></p>
+          </div>
+        </section>
+
+      </div>
+
+      <aside class="g-dossier">
+        <p class="g-dossier__k">Your registration</p>
+        <h2 class="g-dossier__room">{{ session['title'] }}</h2>
+        <dl class="g-dossier__l">
+          <div><dt>Dates</dt><dd>{{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} → {{ session['end_date'] }}{% endif %}</dd></div>
+          {% if session['instructor_name'] %}<div><dt>With</dt><dd>{{ session['instructor_name'] }}</dd></div>{% endif %}
+          {% if session['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '%.0f'|format(session['price_per_person']) }}</dd></div>{% endif %}
+        </dl>
+
+        {% if session['price_per_person'] %}
+        <p class="g-foot-note">A {{ session['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay, or in full if you are booking within 30 days of it.</p>
+        {% endif %}
+
+        <button type="submit" class="g-btn g-submit">Request to register</button>
+        <p class="g-foot-note">This is a registration request, not an instant confirmation — the château will review and confirm it. You will get a reference code and a link to manage your registration and payment.</p>
+      </aside>
     </div>
-    <p class="upload-hint" id="promo_result" style="margin-top:4px;"></p>
-
-    {% for f in custom_fields %}
-    <label class="field-label">{{ f['label'] }}{% if not f['required'] %} (optional){% endif %}</label>
-    {% if f['field_type'] == 'textarea' %}
-    <textarea name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}></textarea>
-    {% elif f['field_type'] == 'select' %}
-    <select name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}>
-      <option value="">Select…</option>
-      {% for opt in (f['options'] or '').split(',') %}
-      <option value="{{ opt.strip() }}">{{ opt.strip() }}</option>
-      {% endfor %}
-    </select>
-    {% elif f['field_type'] == 'checkbox' %}
-    <select name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}>
-      <option value="">Select…</option>
-      <option value="Yes">Yes</option>
-      <option value="No">No</option>
-    </select>
-    {% else %}
-    <input type="text" name="custom_{{ f['id'] }}" {{ 'required' if f['required'] }}>
-    {% endif %}
-    {% endfor %}
-
-    <button type="submit" class="btn-primary btn-block" style="margin-top:10px;">Request to register</button>
-    <p class="upload-hint" style="margin-top:10px;">This is a registration request, not an instant confirmation — the château will review and confirm it. You'll get a reference code and a link to manage your registration and payment.</p>
   </form>
 </div>
 

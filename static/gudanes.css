@@ -1132,8 +1132,10 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   border-bottom: 1px solid var(--line);
 }
 .g-bookmenu__opt:hover{ background: var(--sand-2); }
-.g-bookmenu__ico{ flex: none; color: var(--blue-deep); }
-.g-bookmenu__ico svg{ width: 24px; height: 24px; }
+/* The base .g img/svg sizing was beating this, so the chooser icons expanded
+   to fill the panel. Fixed basis plus a .g-prefixed rule to match specificity. */
+.g-bookmenu__ico{ flex: 0 0 24px; width: 24px; color: var(--blue-deep); }
+.g .g-bookmenu__ico svg{ width: 24px; height: 24px; display: block; }
 .g-bookmenu__txt{ display: block; }
 .g-bookmenu__txt b{
   display: block; font-family: var(--display); font-size: 16px;

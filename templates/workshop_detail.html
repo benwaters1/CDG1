@@ -1,42 +1,158 @@
 {% extends "public_base.html" %}
 {% block title %}{{ workshop['title'] }}{% endblock %}
+{% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>{{ workshop['title'] }}</h1>
-  <p class="room-meta">
-    {% if workshop['instructor_name'] %}With {{ workshop['instructor_name'] }}{% endif %}
-    {% if workshop['price_per_person'] %} · €{{ '%.0f'|format(workshop['price_per_person']) }} / person{% endif %}
-  </p>
-  {% if workshop['description'] %}<p class="manual-body">{{ workshop['description'] }}</p>{% endif %}
-  {% if workshop['inclusions'] %}<p class="manual-body"><strong>Includes:</strong> {{ workshop['inclusions'] }}</p>{% endif %}
-  {% if workshop['price_per_person'] and workshop['single_supplement'] %}<p class="manual-body">Travelling alone? A room to yourself is €{{ '%.0f'|format(workshop['single_supplement']) }} extra per person.</p>{% endif %}
-  {% if workshop['price_per_person'] %}<p class="upload-hint">A {{ workshop['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay.</p>{% endif %}
+{# A workshop is a €2,400–4,500 product. It was previously sold from a card
+   with date buttons; this is the sales document it needs. Everything below
+   is driven from the workshop record, with the château's own standing copy
+   (chambres, bathrooms, rhythm) as the frame around it. #}
 
-  {% if workshop['itinerary'] %}
-  <p class="field-label" style="margin-top:18px;">Itinerary</p>
-  <p class="manual-body" style="white-space:pre-line;">{{ workshop['itinerary'] }}</p>
-  {% endif %}
+{% set WS_IMAGES = [
+  'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w',
+  'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w',
+  'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w'
+] %}
 
-  <p class="field-label" style="margin-top:18px;">Upcoming dates</p>
+<section class="g-hero">
+  <img class="g-hero__img" src="{{ WS_IMAGES[workshop['id'] % 3] }}" alt="{{ workshop['title'] }}">
+  <div class="g-hero__wash"></div>
+  <div class="g-hero__in">
+    <p class="g-eyebrow" style="color:rgba(255,255,255,.75)">Château Workshop</p>
+    <h1 class="g-display">{{ workshop['title'] }}</h1>
+    {% if workshop['price_per_person'] %}
+    <p class="g-hero__lede">
+      €{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['instructor_name'] %} · with {{ workshop['instructor_name'] }}{% endif %}
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+<!-- ============ THE INVITATION ============ -->
+{% if workshop['description'] %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Invitation</p>
+  <h2 class="g-h2 g-h2--lead">An atelier at the château</h2>
+  <p class="g-p" style="white-space:pre-line">{{ workshop['description'] }}</p>
+</div></section>
+{% endif %}
+
+<!-- ============ DATES — the decision ============ -->
+<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
+  <p class="g-eyebrow">Dates</p>
+  <h2 class="g-h2">Choose your stay</h2>
+
   {% if not session_rows %}
-    <p class="empty-inline">No sessions scheduled yet — check back soon.</p>
+    <p class="g-p">No dates are open just yet. They are released here first, and to the newsletter before that.</p>
   {% else %}
-    <div class="mini-list">
+    <div class="g-agenda" style="margin-top:var(--s6)">
       {% for row in session_rows %}
       {% set s = row.session %}
-      <div class="mini-row">
-        <span class="mini-name">{{ s['start_date'] }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date'] }}{% endif %}</span>
-        <span class="mini-role">{{ row.remaining }}/{{ s['capacity'] }} spots left{% if s['notes'] %} · {{ s['notes'] }}{% endif %}</span>
-        {% if row.remaining > 0 %}
-        <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="btn-mini">Register</a>
-        {% else %}
-        <span class="mini-status status-inactive">full</span>
-        {% endif %}
-      </div>
+      <article class="g-agenda__row">
+        <div class="g-agenda__when">
+          <span class="g-agenda__day">{{ s['start_date'] }}</span>
+          {% if s['end_date'] != s['start_date'] %}<span class="g-agenda__time">→ {{ s['end_date'] }}</span>{% endif %}
+        </div>
+        <div class="g-agenda__what">
+          <h3 class="g-agenda__title">
+            {% if row.remaining > 0 %}{{ row.remaining }} of {{ s['capacity'] }} places remaining{% else %}Fully booked{% endif %}
+          </h3>
+          {% if s['notes'] %}<p class="g-p">{{ s['notes'] }}</p>{% endif %}
+          {% if workshop['price_per_person'] %}
+          <p class="g-agenda__loc">€{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['deposit_percent'] %} · {{ workshop['deposit_percent'] }}% deposit to reserve{% endif %}</p>
+          {% endif %}
+        </div>
+        <div style="align-self:center">
+          {% if row.remaining > 0 %}
+          <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn g-btn--solid">Register</a>
+          {% else %}
+          <span class="g-btn g-btn--off">Full</span>
+          {% endif %}
+        </div>
+      </article>
       {% endfor %}
     </div>
   {% endif %}
+</div></section>
+
+<!-- ============ WHAT AWAITS ============ -->
+{% if workshop['itinerary'] %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">A Glimpse of What Awaits</p>
+  <h2 class="g-h2">The days themselves</h2>
+  <p class="g-p" style="white-space:pre-line">{{ workshop['itinerary'] }}</p>
+</div></section>
+{% endif %}
+
+<div class="g-band">
+  {% for img in WS_IMAGES %}<img src="{{ img }}" alt="" loading="lazy">{% endfor %}
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="" loading="lazy">
 </div>
+
+<!-- ============ INCLUDED ============ -->
+{% if workshop['inclusions'] %}
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Included</p>
+  <h2 class="g-h2">What the price carries</h2>
+  <ul class="g-tags g-tags--lg">
+    {% for item in workshop['inclusions'].split(',') %}<li>{{ item.strip() }}</li>{% endfor %}
+  </ul>
+</div></section>
+{% endif %}
+
+<!-- ============ THE RHYTHM ============ -->
+<section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
+  <p class="g-eyebrow">The Rhythm of Château Life</p>
+  <h2 class="g-h2">There is an itinerary. There is no obligation to it.</h2>
+  <div class="g-split">
+    <div>
+      <p class="g-p">Only a small number of guests join each workshop, so the days stay unhurried. There is time to slow down, to settle in, and to let the house set the pace rather than a schedule.</p>
+      <p class="g-p">Whilst there is an itinerary, there is no expectation to follow it. Join an experience, gather at the table with the others, or spend an afternoon beside the pool. The rhythm of your days is entirely your own.</p>
+    </div>
+    <div>
+      <p class="g-p">Wander through centuries of history, walk beneath ancient trees, or lose yourself in the gardens and salons that have become the heart of the château.</p>
+      <p class="g-p">Above all, the house is meant to feel like a home — a place to embrace each day exactly as you wish.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ LES CHAMBRES ============ -->
+<section class="g-sec"><div class="g-two">
+  <div>
+    <p class="g-eyebrow">Guest Quarters</p>
+    <h2 class="g-h2">Les Chambres</h2>
+    <p class="g-p">Each bedroom is prepared with antique French beds, vintage monogrammed linens, heirloom furnishings and objects collected through the restoration. Beyond the windows, the mountains and the valley.</p>
+    <p class="g-p">Guests are welcomed to their own antique French double bed; couples enjoy a private room with a king bed. Rooms are arranged for two, with a third available on request. Solo travellers are paired thoughtfully with a like-minded guest, or given a private room where one is free.</p>
+  </div>
+  <div class="g-two__media">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A château bedroom" loading="lazy">
+  </div>
+</div></section>
+
+<!-- ============ LES SALLES DE BAINS ============ -->
+<section class="g-sec"><div class="g-two">
+  <div class="g-two__media">
+    <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="The bathrooms" loading="lazy">
+  </div>
+  <div>
+    <p class="g-eyebrow">Bathing</p>
+    <h2 class="g-h2">Les Salles de Bains</h2>
+    <p class="g-p">Beautifully appointed with elegant fittings, floral wallpapers, soft towels and timeless details — a welcoming place to refresh and unwind.</p>
+    <p class="g-p">As a protected eighteenth-century monument, the château has been restored under historic preservation guidelines. To honour its original architecture, ensuite bathrooms are not permitted; the bathrooms sit together on the ground floor, each privately allocated, with a dressing room adjoining.</p>
+  </div>
+</div></section>
+
+<!-- ============ TERMS + CTA ============ -->
+<section class="g-sec" style="background:var(--blue-deep);color:#fff"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow" style="color:rgba(255,255,255,.7)">Reserving</p>
+  <h2 class="g-h2" style="color:#fff">How it works</h2>
+  {% if workshop['price_per_person'] %}
+  <p class="g-p" style="color:rgba(255,255,255,.88)">A {{ workshop['deposit_percent'] }}% deposit reserves your place; the balance is due thirty days before the stay, or in full if you are booking within thirty days of it. Travel insurance is required.</p>
+  {% endif %}
+  <p class="g-p" style="color:rgba(255,255,255,.88)">Registration is a request rather than an instant confirmation — the château reviews each one. You will receive a reference code and a link to manage your registration and payment.</p>
+  {% if session_rows %}
+  <p style="margin-top:var(--s6)"><a href="#top" class="g-btn" style="background:#fff;color:var(--blue-deep);border-color:#fff">See the dates</a></p>
+  {% endif %}
+</div></section>
 
 {% endblock %}
