@@ -3,11 +3,11 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Announcements</h1>
+  <h1>{{ t('Announcements') }}</h1>
 </div>
 
 {% if not current %}
-  <div class="empty-state">No announcements right now.</div>
+  <div class="empty-state">{{ t('No announcements right now.') }}</div>
 {% else %}
   <div class="doc-list" style="max-width:640px;">
     {% for a in current %}
@@ -15,7 +15,7 @@
       <div style="display:flex; width:100%; align-items:center; gap:8px;">
         <strong style="flex:1;">{{ a['title'] }}</strong>
         {% if user['role'] == 'owner' %}
-        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleAnnouncementEdit({{ a['id'] }})">Edit</span>
+        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleAnnouncementEdit({{ a['id'] }})">{{ t('Edit') }}</span>
         <form method="post" action="{{ url_for('delete_announcement', announcement_id=a['id']) }}" onsubmit="return confirm('Remove this announcement?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="doc-delete">×</button>
@@ -31,10 +31,10 @@
           <input type="text" name="title" value="{{ a['title'] }}" placeholder="Title" required>
           <input type="text" name="body" value="{{ a['body'] or '' }}" placeholder="Details (optional)">
           <div>
-            <label class="field-label">Show until (optional)</label>
+            <label class="field-label">{{ t('Show until (optional)') }}</label>
             <input type="date" name="expires_date" value="{{ a['expires_date'] or '' }}">
           </div>
-          <button type="submit" class="btn-mini">Save changes</button>
+          <button type="submit" class="btn-mini">{{ t('Save changes') }}</button>
         </form>
       </div>
       {% endif %}
@@ -45,21 +45,21 @@
 
 {% if user['role'] == 'owner' %}
 <div class="detail-card" style="max-width:640px; margin-top:20px;">
-  <h3>Post an announcement</h3>
+  <h3>{{ t('Post an announcement') }}</h3>
   <form method="post" action="{{ url_for('new_announcement') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="title" placeholder="Title" required>
     <input type="text" name="body" placeholder="Details (optional)">
     <div>
-      <label class="field-label">Show until (optional)</label>
+      <label class="field-label">{{ t('Show until (optional)') }}</label>
       <input type="date" name="expires_date">
     </div>
-    <button type="submit" class="btn-mini">Post</button>
+    <button type="submit" class="btn-mini">{{ t('Post') }}</button>
   </form>
 </div>
 
 {% if past %}
-<h2 class="section-heading">Past Announcements</h2>
+<h2 class="section-heading">{{ t('Past Announcements') }}</h2>
 <div class="mini-list">
   {% for a in past %}
   <div class="mini-row">

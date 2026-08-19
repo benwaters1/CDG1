@@ -3,17 +3,17 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Today</h1>
+  <h1>{{ t('Today') }}</h1>
   <div>
     {% if clocked_in %}
       <form method="post" action="{{ url_for('clock_out_action') }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-ghost">Clock out</button>
+        <button type="submit" class="btn-ghost">{{ t('Clock out') }}</button>
       </form>
     {% else %}
       <form method="post" action="{{ url_for('clock_in_action') }}" style="display:inline;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-primary">Clock in</button>
+        <button type="submit" class="btn-primary">{{ t('Clock in') }}</button>
       </form>
     {% endif %}
   </div>
@@ -34,7 +34,7 @@
 </h2>
 
 {% if not guests_here %}
-  <div class="empty-state">Nobody staying right now.</div>
+  <div class="empty-state">{{ t('Nobody staying right now.') }}</div>
 {% else %}
   <div class="guest-cards">
     {% for g in guests_here %}
@@ -59,13 +59,13 @@
 
       <div class="guest-detail">
         {% if g.detail.dietary %}
-        <p><span class="guest-detail-label">Dietary</span> {{ g.detail.dietary }}</p>
+        <p><span class="guest-detail-label">{{ t('Dietary') }}</span> {{ g.detail.dietary }}</p>
         {% endif %}
         {% if g.detail.requests %}
-        <p><span class="guest-detail-label">Asked for</span> {{ g.detail.requests }}</p>
+        <p><span class="guest-detail-label">{{ t('Asked for') }}</span> {{ g.detail.requests }}</p>
         {% endif %}
         {% if g.detail.notes %}
-        <p><span class="guest-detail-label">Notes</span> {{ g.detail.notes }}</p>
+        <p><span class="guest-detail-label">{{ t('Notes') }}</span> {{ g.detail.notes }}</p>
         {% endif %}
         {# %-d is a glibc extension and raises on Windows, where this is also
            developed — %d costs a leading zero and works everywhere. #}
@@ -76,7 +76,7 @@
           {% if g.detail.reference %} · {{ g.detail.reference }}{% endif %}
         </p>
         {% if not (g.detail.dietary or g.detail.requests or g.detail.notes) %}
-        <p class="upload-hint">Nothing else on file.</p>
+        <p class="upload-hint">{{ t('Nothing else on file.') }}</p>
         {% endif %}
       </div>
     </details>
@@ -91,7 +91,7 @@
 </h2>
 
 {% if not my_tasks %}
-  <div class="empty-state">Nothing on your list today.</div>
+  <div class="empty-state">{{ t('Nothing on your list today.') }}</div>
 {% else %}
   <div class="check-list">
     {% for t in my_tasks %}
@@ -106,16 +106,16 @@
         <span class="check-sub">{{ t['room_note'] or t['notes'] }}</span>
         {% endif %}
       </span>
-      {% if t['priority'] == 'high' %}<span class="mini-status status-declined">urgent</span>{% endif %}
+      {% if t['priority'] == 'high' %}<span class="mini-status status-declined">{{ t('urgent') }}</span>{% endif %}
     </div>
     {% endfor %}
   </div>
 {% endif %}
 
 {# ---- Your shift, then who else is around to ask. ---- #}
-<h2 class="section-heading">Your shift</h2>
+<h2 class="section-heading">{{ t('Your shift') }}</h2>
 {% if not my_shift_today %}
-  <div class="empty-state">You're not rostered today.</div>
+  <div class="empty-state">{{ t("You're not rostered today.") }}</div>
 {% else %}
   <div class="mini-list">
     {% for s in my_shift_today %}
@@ -131,7 +131,7 @@
 {% endif %}
 
 {% if on_today %}
-<h2 class="section-heading">Also on today</h2>
+<h2 class="section-heading">{{ t('Also on today') }}</h2>
 <div class="mini-list">
   {% for s in on_today %}
   <div class="mini-row">

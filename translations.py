@@ -11,9 +11,16 @@ drops back to English rather than showing a stale translation. That is the safe
 direction to fail, and tests/test_translations.py reports how much of each
 language is filled in so the gap is visible rather than assumed.
 
-Only the guest-facing site is translated. The staff app stays in English: it is
-used by a handful of named people who share a working language, and translating
-it would double the surface for no reader.
+Scope is the guest-facing site plus the screens a member of staff actually
+opens on a shift — Today, their shifts, time off, announcements and the PIN
+arrival screen. The château is in the Ariège and its staff are not all English
+speakers, so those pages carry a real reader.
+
+The owner's side is deliberately NOT translated: payroll, financials, the till,
+reports and the HR record are read by one person, in one language, and every
+string added there is a string to keep in three. Staff language is stored on
+the account rather than the session (see current_language) because somebody who
+opens the app every shift should not re-pick it each login.
 
 Accents matter here and are written properly — "Château", "Ariège", "Señor".
 A missing entry falls back to English, so a partial language is always safe to
@@ -195,6 +202,53 @@ FR = {
     "Sleeps": "Couchages",
     "View room": "Voir la chambre",
     "No rooms are available for those dates.": "Aucune chambre n'est disponible à ces dates.",
+    # -- The employee's own screens ---------------------------------------
+    "Clock out": "Pointer la sortie",
+    "Clock in": "Pointer l'arrivée",
+    "Nobody staying right now.": "Aucun client sur place actuellement.",
+    "Dietary": "Régime alimentaire",
+    "Asked for": "Demandé",
+    "Nothing else on file.": "Rien d'autre au dossier.",
+    "Nothing on your list today.": "Rien sur votre liste aujourd'hui.",
+    "urgent": "urgent",
+    "Your shift": "Votre service",
+    "You're not rostered today.": "Vous n'êtes pas planifié aujourd'hui.",
+    "Also on today": "Également aujourd'hui",
+    "Who's arriving?": "Qui arrive ?",
+    "Tap your name, enter your PIN, and you're clocked in.": "Touchez votre nom, saisissez votre code, et vous êtes pointé.",
+    "Nobody on the team yet.": "Aucun membre de l'équipe pour le moment.",
+    "already in": "déjà pointé",
+    "no PIN set": "aucun code défini",
+    "clear": "effacer",
+    "Cancel": "Annuler",
+    "My Shifts": "Mes services",
+    "Offered to you": "Proposé à vous",
+    "Accept": "Accepter",
+    "Decline": "Refuser",
+    "Your upcoming shifts": "Vos prochains services",
+    "Nothing scheduled.": "Rien de planifié.",
+    "Request swap": "Demander un échange",
+    "Your swap requests": "Vos demandes d'échange",
+    "Time Off": "Congés",
+    "Request time off": "Demander un congé",
+    "From": "Du",
+    "Type": "Type",
+    "Vacation": "Vacances",
+    "Sick": "Maladie",
+    "Personal": "Personnel",
+    "Other": "Autre",
+    "Reason (optional)": "Motif (facultatif)",
+    "Submit request": "Envoyer la demande",
+    "Your requests": "Vos demandes",
+    "No time off requested yet.": "Aucun congé demandé pour le moment.",
+    "Announcements": "Annonces",
+    "No announcements right now.": "Aucune annonce pour le moment.",
+    "Edit": "Modifier",
+    "Show until (optional)": "Afficher jusqu'au (facultatif)",
+    "Save changes": "Enregistrer les modifications",
+    "Post an announcement": "Publier une annonce",
+    "Post": "Publier",
+    "Past Announcements": "Annonces passées",
 }
 
 ES = {
@@ -365,6 +419,53 @@ ES = {
     "Sleeps": "Capacidad",
     "View room": "Ver la habitación",
     "No rooms are available for those dates.": "No hay habitaciones disponibles en esas fechas.",
+    # -- The employee's own screens ---------------------------------------
+    "Clock out": "Fichar salida",
+    "Clock in": "Fichar entrada",
+    "Nobody staying right now.": "Ningún huésped alojado ahora mismo.",
+    "Dietary": "Dieta",
+    "Asked for": "Ha pedido",
+    "Nothing else on file.": "Nada más en el expediente.",
+    "Nothing on your list today.": "Nada en su lista hoy.",
+    "urgent": "urgente",
+    "Your shift": "Su turno",
+    "You're not rostered today.": "Hoy no está en el cuadrante.",
+    "Also on today": "También hoy",
+    "Who's arriving?": "¿Quién llega?",
+    "Tap your name, enter your PIN, and you're clocked in.": "Toque su nombre, introduzca su PIN y quedará fichado.",
+    "Nobody on the team yet.": "Todavía no hay nadie en el equipo.",
+    "already in": "ya fichado",
+    "no PIN set": "sin PIN asignado",
+    "clear": "borrar",
+    "Cancel": "Cancelar",
+    "My Shifts": "Mis turnos",
+    "Offered to you": "Ofrecido a usted",
+    "Accept": "Aceptar",
+    "Decline": "Rechazar",
+    "Your upcoming shifts": "Sus próximos turnos",
+    "Nothing scheduled.": "Nada programado.",
+    "Request swap": "Solicitar cambio",
+    "Your swap requests": "Sus solicitudes de cambio",
+    "Time Off": "Vacaciones y ausencias",
+    "Request time off": "Solicitar ausencia",
+    "From": "Desde",
+    "Type": "Tipo",
+    "Vacation": "Vacaciones",
+    "Sick": "Baja por enfermedad",
+    "Personal": "Asuntos propios",
+    "Other": "Otro",
+    "Reason (optional)": "Motivo (opcional)",
+    "Submit request": "Enviar solicitud",
+    "Your requests": "Sus solicitudes",
+    "No time off requested yet.": "Todavía no ha solicitado ninguna ausencia.",
+    "Announcements": "Avisos",
+    "No announcements right now.": "No hay avisos ahora mismo.",
+    "Edit": "Editar",
+    "Show until (optional)": "Mostrar hasta (opcional)",
+    "Save changes": "Guardar cambios",
+    "Post an announcement": "Publicar un aviso",
+    "Post": "Publicar",
+    "Past Announcements": "Avisos anteriores",
 }
 
 TABLES = {"fr": FR, "es": ES}
