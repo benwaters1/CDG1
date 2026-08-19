@@ -29,6 +29,7 @@ SUITES = [
     "test_availability_calendar",
     "test_workshop_money",
     "test_workshop_rooms",
+    "test_workshop_lifecycle",
     "test_solo_occupancy",
     "test_workflows",
     "test_operations",

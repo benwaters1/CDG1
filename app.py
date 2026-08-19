@@ -21083,13 +21083,33 @@ def workshop_pay_balance(manage_token):
 def workshops_public():
     conn = get_db()
     today = datetime.now(timezone.utc).date()
-    workshops = conn.execute("SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall()
+    # Workshops are not a fixed catalogue — they are added in the admin, run,
+    # and finish. A finished one must come off the public page rather than sit
+    # there forever saying "dates to be announced", which is what happens if
+    # only the SESSIONS are filtered by date and the workshop itself is not.
+    #
+    # "Finished" and "announced but not yet dated" both look like zero upcoming
+    # sessions, so they are told apart by whether any session ever existed:
+    #
+    #   upcoming > 0            -> show, with its dates
+    #   none upcoming, some past -> it is over, hide it
+    #   never had any            -> coming soon, show without dates
+    all_active = conn.execute(
+        "SELECT * FROM workshops WHERE active = 1 ORDER BY sort_order, title").fetchall()
+    workshops = []
     sessions_by_workshop = {}
-    for w in workshops:
+    for w in all_active:
         sessions = conn.execute(
             "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND start_date >= ? ORDER BY start_date",
             (w["id"], today.isoformat()),
         ).fetchall()
+        if not sessions:
+            ever = conn.execute(
+                "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
+                (w["id"],)).fetchone()
+            if ever:
+                continue          # it has run and is over
+        workshops.append(w)
         sessions_by_workshop[w["id"]] = [
             {"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions
         ]
@@ -21121,6 +21141,17 @@ def workshop_detail(workshop_id):
         (workshop_id, today.isoformat()),
     ).fetchall()
     session_rows = [{"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions]
+    # A finished workshop is off the public list, so its own page would be a
+    # dead end reached from an old link or a search result. Send them to what
+    # is actually on rather than showing dates that have all passed.
+    if not sessions:
+        ever = conn.execute(
+            "SELECT 1 FROM workshop_sessions WHERE workshop_id = ? LIMIT 1",
+            (workshop_id,)).fetchone()
+        if ever:
+            conn.close()
+            flash(f"{workshop['title']} has finished — here is what is coming up.", "error")
+            return redirect(url_for("workshops_public"))
     conn.close()
     return render_template("workshop_detail.html", workshop=workshop, session_rows=session_rows)
 
