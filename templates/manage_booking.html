@@ -250,7 +250,7 @@
 
 {% if portal_token %}
 <p class="upload-hint" style="margin-top:18px;">
-  <a href="{{ url_for('guest_portal', token=portal_token) }}" class="small-link">See everything you have with us →</a>
+  <a href="{{ url_for('guest_portal', token=portal_token) }}" class="small-link">{{ t('See everything you have with us →') }}</a>
 </p>
 {% endif %}
 </div>

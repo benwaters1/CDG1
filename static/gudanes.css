@@ -1048,3 +1048,30 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-wrap > .g-h2 + .g-p,
 .g-sec > .g-wrap > .g-p{ margin-left: auto; margin-right: auto; }
 .g-sec > .g-wrap > .g-h2{ max-width: var(--measure); margin-left: auto; margin-right: auto; }
+/* ---- Language switcher ------------------------------------------------- */
+/* Plain links, not a dropdown: three options do not need a menu, and a link
+   works before any JavaScript has run. The current one is marked by weight and
+   an underline as well as colour, so it is not carried by colour alone. */
+.g-lang{ display: inline-flex; align-items: center; gap: var(--s2); }
+.g-lang__opt{
+  font-size: 13px; line-height: 1; padding: 6px 4px; text-decoration: none;
+  color: var(--ink-soft); border-bottom: 1px solid transparent; white-space: nowrap;
+}
+.g-lang__opt:hover{ color: var(--ink); }
+.g-lang__opt.is-on{ color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+body.has-hero .g-top:not(.is-solid) .g-lang__opt{ color: rgba(255,255,255,.8); }
+body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bottom-color: #fff; }
+@media (max-width: 900px){
+  /* On a phone the header is already tight; the switcher keeps its own line
+     rather than pushing the reserve button off the edge. */
+  .g-lang{ order: 10; width: 100%; justify-content: flex-end; }
+}
+@media (pointer: coarse){
+  /* 26px of link is a fine mouse target and a poor thumb one. Stated as a
+     minimum height rather than padding, because padding has to be re-derived
+     every time the font size moves and this does not. */
+  .g-lang__opt{
+    min-height: 46px; padding: 0 10px;
+    display: inline-flex; align-items: center;
+  }
+}
