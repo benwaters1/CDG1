@@ -43,6 +43,7 @@ SUITES = [
     "test_promo_privacy",
     "test_terminal",
     "test_arrive",
+    "test_translations",
     "test_design",
     "test_links",
 ]
