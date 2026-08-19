@@ -9,10 +9,17 @@
 
 <div class="g-wrap" style="padding-top:clamp(1.5rem,4vw,2.5rem);">
 
-  {% if room['photo_filename'] %}
-  <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}"
-       style="width:100%; height:clamp(14rem,42vh,28rem); object-fit:cover; border-radius:4px;">
-  {% endif %}
+  {# A room page selling a night at this price cannot be a bare form. If no
+     photo has been uploaded for this room yet, fall back to the château's own
+     photography rather than showing nothing at all. #}
+  {% set ROOM_FALLBACKS = [
+    'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w',
+    'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w',
+    'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w'
+  ] %}
+  <img class="g-roomhero"
+       src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
+       alt="{{ room['name'] }}">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
     <p class="g-eyebrow">Ariège · French Pyrénées</p>
@@ -20,15 +27,23 @@
     <p class="g-room__meta">
       For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
     </p>
+    <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
   </div>
 
-  {% if gallery_photos %}
   <div class="g-strip">
-    {% for p in gallery_photos %}
-    <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}" loading="lazy">
-    {% endfor %}
+    {% if gallery_photos %}
+      {% for p in gallery_photos %}
+      <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}" loading="lazy">
+      {% endfor %}
+    {% else %}
+      {# Until room photography is uploaded, show the house: the bathrooms
+         guests actually use, the dining room, the gardens. #}
+      <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="The bathrooms" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1000w" alt="La Table" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1000w" alt="The château" loading="lazy">
+    {% endif %}
   </div>
-  {% endif %}
 
   {% if room['description'] %}<p class="g-p">{{ room['description'] }}</p>{% endif %}
 

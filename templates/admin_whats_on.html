@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}What's On{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What's On</h1>
+  <a href="/whats-on" class="btn-mini" target="_blank" rel="noopener">View public page ↗</a>
+</div>
+
+<p style="max-width:52rem;color:#666;margin-bottom:1.5rem">
+  Weekly entries repeat automatically — set a day and it appears every week.
+  Dated entries show once. Use the season window for things that only run part
+  of the year, like skiing.
+</p>
+
+<form method="post" action="{{ url_for('admin_whats_on_save') }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="id" value="">
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
+    <div>
+      <label class="field-label">Title</label>
+      <input type="text" name="title" placeholder="Les Cabannes Market" required>
+    </div>
+    <div>
+      <label class="field-label">Location</label>
+      <input type="text" name="location" placeholder="Place des Platanes">
+    </div>
+    <div>
+      <label class="field-label">Distance</label>
+      <input type="text" name="distance" placeholder="3 minutes">
+    </div>
+  </div>
+
+  <div style="margin-top:1rem">
+    <label class="field-label">Description</label>
+    <textarea name="description" rows="2" placeholder="Fruit, vegetables, dairy and artisanal producers."></textarea>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
+    <div>
+      <label class="field-label">Repeats on</label>
+      <select name="weekday">
+        <option value="none">— not weekly —</option>
+        <option value="0">Every Monday</option>
+        <option value="1">Every Tuesday</option>
+        <option value="2">Every Wednesday</option>
+        <option value="3">Every Thursday</option>
+        <option value="4">Every Friday</option>
+        <option value="5">Every Saturday</option>
+        <option value="6">Every Sunday</option>
+      </select>
+    </div>
+    <div>
+      <label class="field-label">Or one date</label>
+      <input type="date" name="event_date">
+    </div>
+    <div>
+      <label class="field-label">From</label>
+      <input type="time" name="start_time" value="08:00">
+    </div>
+    <div>
+      <label class="field-label">Until</label>
+      <input type="time" name="end_time" value="13:00">
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
+    <div>
+      <label class="field-label">Season from (MM-DD)</label>
+      <input type="text" name="season_from" placeholder="12-01">
+    </div>
+    <div>
+      <label class="field-label">Season to (MM-DD)</label>
+      <input type="text" name="season_to" placeholder="03-31">
+    </div>
+    <div>
+      <label class="field-label">Order</label>
+      <input type="number" name="sort_order" value="0">
+    </div>
+    <div style="display:flex;align-items:flex-end">
+      <label style="display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" name="is_active" checked> Show on site
+      </label>
+    </div>
+  </div>
+
+  <button type="submit" class="btn-mini" style="margin-top:1.25rem">+ Add entry</button>
+</form>
+
+{% if events %}
+<table class="data-table">
+  <thead>
+    <tr><th>Title</th><th>When</th><th>Where</th><th>Season</th><th>Live</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% set DAYS = ['Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays','Sundays'] %}
+    {% for e in events %}
+    <tr>
+      <td>
+        <b>{{ e['title'] }}</b>
+        {% if e['description'] %}<br><span style="color:#777;font-size:.9em">{{ e['description'][:80] }}{% if e['description']|length > 80 %}…{% endif %}</span>{% endif %}
+      </td>
+      <td>
+        {% if e['weekday'] is not none %}{{ DAYS[e['weekday']] }}
+        {% elif e['event_date'] %}{{ e['event_date'] }}
+        {% else %}—{% endif %}
+        {% if e['start_time'] %}<br><span style="color:#777">{{ e['start_time'] }}{% if e['end_time'] %}–{{ e['end_time'] }}{% endif %}</span>{% endif %}
+      </td>
+      <td>{{ e['location'] or '—' }}{% if e['distance'] %}<br><span style="color:#777">{{ e['distance'] }}</span>{% endif %}</td>
+      <td>{% if e['season_from'] %}{{ e['season_from'] }} → {{ e['season_to'] }}{% else %}All year{% endif %}</td>
+      <td>{{ 'Yes' if e['is_active'] else 'No' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_whats_on_delete', event_id=e['id']) }}"
+              onsubmit="return confirm('Remove this entry?')" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-mini">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p style="color:#777">Nothing added yet. The public page shows the standing market list until you add entries here.</p>
+{% endif %}
+
+{% endblock %}
