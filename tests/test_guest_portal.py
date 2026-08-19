@@ -11,7 +11,7 @@ across guests would hand one person another's bookings and contact details.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, clients, db
 import _harness
 
 m = _harness.m
@@ -156,10 +156,37 @@ def run():
     s.check("a cancelled stay is no longer shown", f"{TAG}S1" not in body)
     s.check("but the atelier still is", f"{TAG} Atelier" in body)
 
+    s.section("The link actually reaches the guest")
+    # Built by hand rather than from a template, so confirming a booking is the
+    # one place a first-time guest is certain to be given it. Without this the
+    # portal only exists for somebody who already opened a per-booking link —
+    # which is precisely the problem it was built to solve.
+    conn = db()
+    conn.execute("DELETE FROM email_outbox WHERE subject LIKE 'Booking confirmed%'")
+    conn.execute("UPDATE bookings SET status = 'pending' WHERE reference_code = ?", (f"{TAG}S1",))
+    conn.commit()
+    pending_id = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                              (f"{TAG}S1",)).fetchone()["id"]
+    conn.close()
+    oc, ec, owner, emp = clients()
+    oc.post(f"/admin/bookings/{pending_id}/confirm", follow_redirects=True)
+    conn = db()
+    sent = conn.execute(
+        "SELECT body FROM email_outbox WHERE subject LIKE 'Booking confirmed%' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    s.check("a confirmation email was produced", sent is not None)
+    if sent:
+        s.check("and it carries their account link", f"/my/{token}" in sent["body"],
+                detail="no portal link in the confirmation email")
+
     s.section("A guest with nothing booked still has a page")
     conn = db()
     conn.execute("UPDATE workshop_bookings SET status = 'cancelled' WHERE reference_code = ?",
                  (f"{TAG}W1",))
+    # The confirm above put the stay back to 'confirmed' — cancel it again, or
+    # this section is testing a guest who still has one.
+    conn.execute("UPDATE bookings SET status = 'cancelled' WHERE reference_code = ?", (f"{TAG}S1",))
     conn.commit()
     conn.close()
     r = pub.get(f"/my/{token}")
