@@ -297,9 +297,9 @@
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
-        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company Info</a>
+        <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company &amp; Insurance</a>
         <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
-        <a href="{{ url_for('management_insurance') }}" class="{{ 'active' if request.endpoint=='management_insurance' }}">{{ icon('shield') }}Insurance</a>
+
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
         <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>
         <a href="{{ url_for('admin_gallery') }}" class="{{ 'active' if request.endpoint=='admin_gallery' }}">{{ icon('folder') }}Public Gallery</a>

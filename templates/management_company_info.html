@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Company Info{% endblock %}
+{% block title %}Company &amp; Insurance{% endblock %}
 {% block content %}
 
 <div class="page-head">
-  <h1>Company Info</h1>
+  <h1>Company &amp; Insurance</h1>
   <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Quick-glance reference — the things you'd otherwise dig through files or your inbox to find. For scans/certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">Who the company is, and what it is insured for — the things you'd otherwise dig through files or your inbox to find. For the scans and certificates themselves, use <a href="{{ url_for('management_documents') }}" style="color:inherit;">Documents</a>.</p>
 
 <div class="detail-card" style="max-width:640px;">
   <h3>Legal &amp; Registration</h3>
@@ -55,5 +55,12 @@
   </form>
   {% if info and info['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ info['updated_at'][:10] }}</p>{% endif %}
 </div>
+
+<h2 class="section-heading" id="insurance">Insurance</h2>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Policies, premiums and renewal dates.
+  <a href="{{ url_for('export_insurance_csv') }}" style="color:inherit;">Export CSV</a>
+</p>
+{% include "_insurance_section.html" %}
 
 {% endblock %}
