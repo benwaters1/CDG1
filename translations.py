@@ -68,6 +68,8 @@ FR = {
     "Display currency": "Devise d'affichage",
     "Currency": "Devise",
     "Language": "Langue",
+    "Password": "Mot de passe",
+    "Log out": "Déconnexion",
     "charged in EUR": "débité en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pyrénées françaises · En restauration depuis 2013",
@@ -236,6 +238,8 @@ ES = {
     "Display currency": "Moneda",
     "Currency": "Moneda",
     "Language": "Idioma",
+    "Password": "Contraseña",
+    "Log out": "Cerrar sesión",
     "charged in EUR": "cobrado en EUR",
     "Ariège · French Pyrénées · Restored since 2013":
         "Ariège · Pirineos franceses · En restauración desde 2013",

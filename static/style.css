@@ -2242,3 +2242,10 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   .oh-drow .oh-dwho{ grid-column:3; justify-content:flex-start; }
   .oh .oh-h1{ font-size:27px; }
 }
+
+/* The staff language picker in the top bar. Three short codes rather than
+   full names: the bar is already crowded, and EN/FR/ES is unambiguous. The
+   current one is marked by weight and colour, not by colour alone. */
+.staff-lang{ display:inline-flex; gap:2px; align-items:center; }
+.staff-lang__opt{ padding:2px 5px; border-radius:4px; font-size:11px; letter-spacing:0.04em; }
+.staff-lang__opt.is-on{ background:var(--parchment-line); color:var(--ink); font-weight:600; }
