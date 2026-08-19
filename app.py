@@ -143,7 +143,7 @@ from calendar import monthrange
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, send_from_directory, abort, jsonify,
-    has_request_context,
+    has_request_context, g,
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -2515,6 +2515,12 @@ def init_db():
         ("users_contract_type", "ALTER TABLE users ADD COLUMN contract_type TEXT"),
         ("users_contract_end_date", "ALTER TABLE users ADD COLUMN contract_end_date TEXT"),
         ("users_trial_end_date", "ALTER TABLE users ADD COLUMN trial_end_date TEXT"),
+        # The language this person reads the app in. Per-user rather than the
+        # guest site's session guess: a housekeeper should not have to re-pick
+        # French every login, and must not inherit Spanish because somebody
+        # browsed the public site on the office laptop. NULL means "follow the
+        # browser", which is what the guest side does.
+        ("users_language", "ALTER TABLE users ADD COLUMN language TEXT"),
         ("users_notice_period_days", "ALTER TABLE users ADD COLUMN notice_period_days INTEGER"),
         # `extras` was a flat name+price list used only at room-booking time.
         # These turn it into a real catalogue the château can sell from.
@@ -22934,21 +22940,47 @@ def admin_bookings():
 
 
 def current_language():
-    """The language to render the guest-facing site in.
+    """The language to render in, for whoever is reading.
 
-    An explicit choice wins and is remembered; otherwise the browser's own
-    Accept-Language is honoured, so a French visitor gets French without
-    having to find a switcher. Falls back to English.
+    Three sources, most specific first:
 
-    The staff app ignores this — see translations.py for why.
+      1. A signed-in person's saved language. Staff read the app every day, so
+         the choice belongs to the account rather than the browser session — a
+         housekeeper should not re-pick French each login, and must not inherit
+         Spanish because somebody browsed the public site on the same laptop.
+      2. An explicit choice made through the switcher, remembered in the
+         session. This is how a guest, who has no account, picks a language.
+      3. The browser's own Accept-Language, so a French visitor gets French
+         without having to find the switcher at all.
+
+    Falls back to English. A missing translation falls back to English too, so
+    a partly-filled language is always safe to serve.
     """
     if not has_request_context():
         return "en"
-    chosen = session.get("lang")
-    if chosen in translations.LANGUAGES:
-        return chosen
-    best = request.accept_languages.best_match(list(translations.LANGUAGES))
-    return best or "en"
+    # g caches it for the request: this is called once per page by the context
+    # processor and again by every t() in the template, and it must not be a
+    # query each time.
+    cached = getattr(g, "_lang", None)
+    if cached:
+        return cached
+    lang = None
+    user = current_user()
+    if user is not None:
+        try:
+            saved = user["language"]
+        except (KeyError, IndexError):
+            saved = None            # older database, before the column existed
+        if saved in translations.LANGUAGES:
+            lang = saved
+    if lang is None:
+        chosen = session.get("lang")
+        if chosen in translations.LANGUAGES:
+            lang = chosen
+    if lang is None:
+        lang = request.accept_languages.best_match(list(translations.LANGUAGES)) or "en"
+    g._lang = lang
+    return lang
 
 
 def t(text, **kwargs):
@@ -22986,9 +23018,25 @@ def service_worker():
 
 @app.route("/language/<code>")
 def set_language(code):
-    """Switch language and return the guest to the page they were reading."""
+    """Switch language and return the reader to the page they were on.
+
+    For a signed-in person this writes to their account, so the choice sticks
+    across logins and devices rather than living in one browser's session. For
+    a guest, who has no account, the session is the only place to put it.
+    """
     if code in translations.LANGUAGES:
         session["lang"] = code
+        user = current_user()
+        if user is not None:
+            conn = get_db()
+            conn.execute("UPDATE users SET language = ? WHERE id = ?", (code, user["id"]))
+            conn.commit()
+            conn.close()
+        # The request already resolved a language before this ran, and the
+        # redirect target is rendered by a fresh request, but clearing the
+        # cache keeps this honest if that ever stops being true.
+        if hasattr(g, "_lang"):
+            del g._lang
     target = request.referrer or url_for("dashboard")
     # Never bounce to another site on the strength of a header: referrer is
     # attacker-settable, and an open redirect from a one-click link is exactly

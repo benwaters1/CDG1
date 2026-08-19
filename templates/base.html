@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+{# The language actually being rendered, so a screen reader uses the right
+   voice and the browser does not offer to translate a page already in the
+   reader's tongue. #}
+<html lang="{{ lang }}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -62,8 +65,18 @@
       {% if user['role'] == 'owner' %}
       <a href="{{ url_for('download_backup') }}" class="small-link">Backup</a>
       {% endif %}
-      <a href="{{ url_for('change_password') }}" class="small-link">Password</a>
-      <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">Log out</a>
+      {# One link per language rather than a <select>: it works with no
+         JavaScript, each is a normal GET, and for a signed-in person the
+         choice is written to their account so it survives the next login. #}
+      <span class="staff-lang">
+        {% for code, label in languages.items() %}
+        <a href="{{ url_for('set_language', code=code) }}" hreflang="{{ code }}"
+           class="small-link staff-lang__opt{{ ' is-on' if code == lang }}"
+           {% if code == lang %}aria-current="true"{% endif %}>{{ code|upper }}</a>
+        {% endfor %}
+      </span>
+      <a href="{{ url_for('change_password') }}" class="small-link">{{ t('Password') }}</a>
+      <a href="{{ url_for('logout') }}" class="small-link" id="logout-link" onclick="return unsubscribeThenLogout(event)">{{ t('Log out') }}</a>
     </div>
   </div>
 </header>

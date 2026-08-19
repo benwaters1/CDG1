@@ -3,19 +3,19 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Time Off</h1>
+  <h1>{{ t('Time Off') }}</h1>
   {% if leave %}
   <span class="upload-hint">{% if leave.entitlement is not none %}{{ leave.remaining }} of {{ leave.entitlement }} days left in {{ leave.year }}{% else %}No leave entitlement set yet — ask the owner{% endif %}</span>
   {% endif %}
 </div>
 
 <div class="detail-card" style="max-width:520px;">
-  <h3>Request time off</h3>
+  <h3>{{ t('Request time off') }}</h3>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field-row-2">
       <div>
-        <label class="field-label">From</label>
+        <label class="field-label">{{ t('From') }}</label>
         <input type="date" name="start_date" required>
       </div>
       <div>
@@ -23,22 +23,22 @@
         <input type="date" name="end_date" required>
       </div>
     </div>
-    <label class="field-label">Type</label>
+    <label class="field-label">{{ t('Type') }}</label>
     <select name="leave_type">
-      <option value="vacation">Vacation</option>
-      <option value="sick">Sick</option>
-      <option value="personal">Personal</option>
-      <option value="other">Other</option>
+      <option value="vacation">{{ t('Vacation') }}</option>
+      <option value="sick">{{ t('Sick') }}</option>
+      <option value="personal">{{ t('Personal') }}</option>
+      <option value="other">{{ t('Other') }}</option>
     </select>
-    <label class="field-label">Reason (optional)</label>
+    <label class="field-label">{{ t('Reason (optional)') }}</label>
     <input type="text" name="reason" placeholder="e.g. Family visit">
-    <button type="submit" class="btn-primary" style="margin-top:14px;">Submit request</button>
+    <button type="submit" class="btn-primary" style="margin-top:14px;">{{ t('Submit request') }}</button>
   </form>
 </div>
 
-<h2 class="section-heading">Your requests</h2>
+<h2 class="section-heading">{{ t('Your requests') }}</h2>
 {% if not requests %}
-  <div class="empty-state">No time off requested yet.</div>
+  <div class="empty-state">{{ t('No time off requested yet.') }}</div>
 {% else %}
   {% for r in requests %}
   <div class="expense-card">
@@ -56,7 +56,7 @@
     <div class="expense-actions">
       <form method="post" action="{{ url_for('cancel_leave_request', request_id=r['id']) }}" onsubmit="return confirm('Cancel this time off request?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn-text-danger">Cancel</button>
+        <button type="submit" class="btn-text-danger">{{ t('Cancel') }}</button>
       </form>
     </div>
     {% endif %}

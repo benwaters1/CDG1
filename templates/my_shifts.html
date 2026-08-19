@@ -3,11 +3,11 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>My Shifts</h1>
+  <h1>{{ t('My Shifts') }}</h1>
 </div>
 
 {% if offered_to_me %}
-<h2 class="section-heading" style="margin-top:0;">Offered to you</h2>
+<h2 class="section-heading" style="margin-top:0;">{{ t('Offered to you') }}</h2>
 {% for s in offered_to_me %}
 <div class="expense-card">
   <div class="expense-head">
@@ -18,16 +18,16 @@
   </div>
   {% if s['note'] %}<p class="manual-body">{{ s['note'] }}</p>{% endif %}
   <div class="expense-actions">
-    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="accepted"><button type="submit" class="btn-mini">Accept</button></form>
-    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="accepted"><button type="submit" class="btn-mini">{{ t('Accept') }}</button></form>
+    <form method="post" action="{{ url_for('respond_shift_swap', swap_id=s['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">{{ t('Decline') }}</button></form>
   </div>
 </div>
 {% endfor %}
 {% endif %}
 
-<h2 class="section-heading" {% if not offered_to_me %}style="margin-top:0;"{% endif %}>Your upcoming shifts</h2>
+<h2 class="section-heading" {% if not offered_to_me %}style="margin-top:0;"{% endif %}>{{ t('Your upcoming shifts') }}</h2>
 {% if not upcoming_shifts %}
-  <div class="empty-state">Nothing scheduled.</div>
+  <div class="empty-state">{{ t('Nothing scheduled.') }}</div>
 {% else %}
   <div class="mini-list">
     {% for s in upcoming_shifts %}
@@ -50,7 +50,7 @@
           {% endfor %}
         </select>
         <input type="text" name="note" placeholder="Note (optional)">
-        <button type="submit" class="btn-mini">Request swap</button>
+        <button type="submit" class="btn-mini">{{ t('Request swap') }}</button>
       </form>
       {% endif %}
     </div>
@@ -59,7 +59,7 @@
 {% endif %}
 
 {% if my_swap_requests %}
-<h2 class="section-heading">Your swap requests</h2>
+<h2 class="section-heading">{{ t('Your swap requests') }}</h2>
 <div class="mini-list">
   {% for s in my_swap_requests %}
   <div class="mini-row">

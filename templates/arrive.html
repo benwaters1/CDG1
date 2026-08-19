@@ -3,12 +3,12 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Who's arriving?</h1>
+  <h1>{{ t("Who's arriving?") }}</h1>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Tap your name, enter your PIN, and you're clocked in.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ t("Tap your name, enter your PIN, and you're clocked in.") }}</p>
 
 {% if not people %}
-  <div class="empty-state">Nobody on the team yet.</div>
+  <div class="empty-state">{{ t('Nobody on the team yet.') }}</div>
 {% else %}
 <div class="arrive-grid">
   {% for p in people %}
@@ -18,8 +18,8 @@
     <span class="arrive-initials">{{ p.initials }}</span>
     <span class="arrive-name">{{ p.name }}</span>
     {% if p.job_role %}<span class="arrive-role">{{ p.job_role }}</span>{% endif %}
-    {% if p.here %}<span class="arrive-flag">already in</span>
-    {% elif not p.has_pin %}<span class="arrive-flag">no PIN set</span>{% endif %}
+    {% if p.here %}<span class="arrive-flag">{{ t('already in') }}</span>
+    {% elif not p.has_pin %}<span class="arrive-flag">{{ t('no PIN set') }}</span>{% endif %}
   </button>
   {% endfor %}
 </div>
@@ -39,11 +39,11 @@
       {% for n in [1,2,3,4,5,6,7,8,9] %}
       <button type="button" class="pin-key" onclick="pinPress('{{ n }}')">{{ n }}</button>
       {% endfor %}
-      <button type="button" class="pin-key pin-key-quiet" onclick="pinClear()">clear</button>
+      <button type="button" class="pin-key pin-key-quiet" onclick="pinClear()">{{ t('clear') }}</button>
       <button type="button" class="pin-key" onclick="pinPress('0')">0</button>
       <button type="submit" class="pin-key pin-key-go" aria-label="Sign in">→</button>
     </div>
-    <button type="button" class="btn-mini" onclick="closePin()" style="margin-top:10px;">Cancel</button>
+    <button type="button" class="btn-mini" onclick="closePin()" style="margin-top:10px;">{{ t('Cancel') }}</button>
   </form>
 </div>
 
