@@ -114,7 +114,7 @@
             {% for e in extras %}
             <li>
               <label class="g-check">
-                <input type="checkbox" name="extras" value="{{ e['id'] }}">
+                <input type="checkbox" id="extra_{{ e['id'] }}" name="extras" value="{{ e['id'] }}">
                 <span class="g-check__t">
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
@@ -186,8 +186,8 @@
             </p>
           </div>
 
-          <label class="g-terms">
-            <input type="checkbox" name="agree_terms" required>
+          <label class="g-terms" for="agree_terms">
+            <input type="checkbox" id="agree_terms" name="agree_terms" required>
             <span>I agree to the <a href="{{ url_for('terms_page') }}" target="_blank" rel="noopener">Terms &amp; Conditions</a></span>
           </label>
 

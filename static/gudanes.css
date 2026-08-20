@@ -279,6 +279,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
    scrolled into view. */
 .g-two img{ width: 100%; height: clamp(16rem, 34vw, 26rem); object-fit: cover; }
 .g-split{ display: grid; gap: var(--s7); }
+.g-split > *{ min-width: 0; }
 .g-split ul{ margin: 0; padding-left: var(--s5); display: grid; gap: var(--s3); font-size: 16px; }
 .g-list{ list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s4); }
 .g-list li{ position: relative; padding-left: var(--s5); font-size: 16px; }
@@ -550,13 +551,13 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 }
 
 @media (min-width: 52rem){
-  .g-two{ grid-template-columns: 1fr 1fr; }
+  .g-two{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .g-room{ grid-template-columns: 24rem 1fr; align-items: stretch; }
   .g .g-room__img{ position: absolute; inset: 0; }
 }
 
 @media (min-width: 60rem){
-  .g-half{ grid-template-columns: 1fr 1fr; }
+  .g-half{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .g-half--flip .g-half__img{ order: 2; }
   .g .g-half__img{ height: 100%; min-height: clamp(16rem, 22vw, 20rem); max-height: 26rem; }
   .g-half__text{ padding: var(--s7) var(--s7); }
@@ -1611,3 +1612,9 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 /* An email address inside a hint line is still a link people tap. */
 .g-hint a{ display: inline-flex; align-items: center; min-height: 44px; }
+
+
+/* A long email address or an unbroken word must never widen the page. */
+.g main, .g footer, .g header{ overflow-x: clip; }
+.g-two > *, .g-half > *, .g-cols > *{ min-width: 0; }
+.g-p, .g-h2, .g-display, .g-place, .g-eyebrow{ overflow-wrap: anywhere; }

@@ -19,28 +19,28 @@
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem">
     <div>
-      <label class="field-label">Title</label>
-      <input type="text" name="title" placeholder="Les Cabannes Market" required>
+      <label for="wo_title" class="field-label">Title</label>
+      <input type="text" id="wo_title" name="title" placeholder="Les Cabannes Market" required>
     </div>
     <div>
-      <label class="field-label">Location</label>
-      <input type="text" name="location" placeholder="Place des Platanes">
+      <label for="wo_location" class="field-label">Location</label>
+      <input type="text" id="wo_location" name="location" placeholder="Place des Platanes">
     </div>
     <div>
-      <label class="field-label">Distance</label>
-      <input type="text" name="distance" placeholder="3 minutes">
+      <label for="wo_distance" class="field-label">Distance</label>
+      <input type="text" id="wo_distance" name="distance" placeholder="3 minutes">
     </div>
   </div>
 
   <div style="margin-top:1rem">
-    <label class="field-label">Description</label>
-    <textarea name="description" rows="2" placeholder="Fruit, vegetables, dairy and artisanal producers."></textarea>
+    <label for="wo_description" class="field-label">Description</label>
+    <textarea id="wo_description" name="description" rows="2" placeholder="Fruit, vegetables, dairy and artisanal producers."></textarea>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
     <div>
-      <label class="field-label">Repeats on</label>
-      <select name="weekday">
+      <label for="wo_weekday" class="field-label">Repeats on</label>
+      <select id="wo_weekday" name="weekday">
         <option value="none">— not weekly —</option>
         <option value="0">Every Monday</option>
         <option value="1">Every Tuesday</option>
@@ -52,35 +52,35 @@
       </select>
     </div>
     <div>
-      <label class="field-label">Or one date</label>
-      <input type="date" name="event_date">
+      <label for="wo_event_date" class="field-label">Or one date</label>
+      <input type="date" id="wo_event_date" name="event_date">
     </div>
     <div>
-      <label class="field-label">From</label>
-      <input type="time" name="start_time" value="08:00">
+      <label for="wo_start_time" class="field-label">From</label>
+      <input type="time" id="wo_start_time" name="start_time" value="08:00">
     </div>
     <div>
-      <label class="field-label">Until</label>
-      <input type="time" name="end_time" value="13:00">
+      <label for="wo_end_time" class="field-label">Until</label>
+      <input type="time" id="wo_end_time" name="end_time" value="13:00">
     </div>
   </div>
 
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-top:1rem">
     <div>
-      <label class="field-label">Season from (MM-DD)</label>
-      <input type="text" name="season_from" placeholder="12-01">
+      <label for="wo_season_from" class="field-label">Season from (MM-DD)</label>
+      <input type="text" id="wo_season_from" name="season_from" placeholder="12-01">
     </div>
     <div>
-      <label class="field-label">Season to (MM-DD)</label>
-      <input type="text" name="season_to" placeholder="03-31">
+      <label for="wo_season_to" class="field-label">Season to (MM-DD)</label>
+      <input type="text" id="wo_season_to" name="season_to" placeholder="03-31">
     </div>
     <div>
-      <label class="field-label">Order</label>
-      <input type="number" name="sort_order" value="0">
+      <label for="wo_sort_order" class="field-label">Order</label>
+      <input type="number" id="wo_sort_order" name="sort_order" value="0">
     </div>
     <div style="display:flex;align-items:flex-end">
-      <label style="display:flex;align-items:center;gap:.5rem">
-        <input type="checkbox" name="is_active" checked> Show on site
+      <label for="wo_is_active" style="display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" id="wo_is_active" name="is_active" checked> Show on site
       </label>
     </div>
   </div>
