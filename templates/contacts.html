@@ -3,14 +3,14 @@
 {% block content %}
 
 <div class="page-head">
-  <h1>Contacts</h1>
+  <h1>{{ t('Contacts') }}</h1>
   {% if lv.total %}
   <a href="{{ url_for('export_contacts_csv', **request.args.to_dict()) }}" class="btn-mini">
     Export {{ 'this view' if lv.filtered else 'CSV' }}
   </a>
   {% endif %}
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Plumber, electrician, insurance broker, anyone the team might need to call in a hurry.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ t('Plumber, electrician, insurance broker, anyone the team might need to call in a hurry.') }}</p>
 
 {% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
 
@@ -30,7 +30,7 @@
       <div style="display:flex; align-items:center; width:100%; gap:8px;">
         <strong style="flex:1;">{{ p['name'] }}{% if p['role'] %} <span class="upload-hint">— {{ p['role'] }}</span>{% endif %}</strong>
         {% if user['role'] == 'owner' %}
-        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleContactEdit({{ p['id'] }})">Edit</span>
+        <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleContactEdit({{ p['id'] }})">{{ t('Edit') }}</span>
         <form method="post" action="{{ url_for('delete_contact', contact_id=p['id']) }}" onsubmit="return confirm('Remove this contact?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="doc-delete">×</button>
@@ -47,7 +47,7 @@
       <input type="text" name="role" value="{{ p['role'] or '' }}" placeholder="Role (e.g. Plumber)">
       <input type="text" name="phone" value="{{ p['phone'] or '' }}" placeholder="Phone">
       <input type="text" name="notes" value="{{ p['notes'] or '' }}" placeholder="Notes (optional)">
-      <button type="submit" class="btn-mini">Save</button>
+      <button type="submit" class="btn-mini">{{ t('Save') }}</button>
     </form>
     {% endif %}
     {% endfor %}
@@ -56,14 +56,14 @@
 
 {% if user['role'] == 'owner' %}
 <div class="detail-card" style="max-width:640px;">
-  <h3>Add a contact</h3>
+  <h3>{{ t('Add a contact') }}</h3>
   <form method="post" action="{{ url_for('new_contact') }}" class="upload-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="name" placeholder="Name" required>
     <input type="text" name="role" placeholder="Role (e.g. Electrician)">
     <input type="text" name="phone" placeholder="Phone">
     <input type="text" name="notes" placeholder="Notes (optional)">
-    <button type="submit" class="btn-mini">Add contact</button>
+    <button type="submit" class="btn-mini">{{ t('Add contact') }}</button>
   </form>
 </div>
 

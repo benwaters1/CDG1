@@ -2,16 +2,16 @@
 {% block title %}My availability{% endblock %}
 {% block content %}
 
-<div class="page-head"><h1>My Availability</h1></div>
-<p class="pay-disclaimer" style="margin-top:-10px;">Tell us when you're normally free. This doesn't book anything — it just means the rota gets built around you instead of guessing. For a specific date, add an exception below.</p>
+<div class="page-head"><h1>{{ t('My Availability') }}</h1></div>
+<p class="pay-disclaimer" style="margin-top:-10px;">{{ t("Tell us when you're normally free. This doesn't book anything — it just means the rota gets built around you instead of guessing. For a specific date, add an exception below.") }}</p>
 
 <div class="detail-card">
-  <h3 style="margin-top:0;">A normal week</h3>
+  <h3 style="margin-top:0;">{{ t('A normal week') }}</h3>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>Day</th><th>Usually free?</th><th>From</th><th>Until</th></tr></thead>
+        <thead><tr><th>{{ t('Day') }}</th><th>{{ t('Usually free?') }}</th><th>{{ t('From') }}</th><th>{{ t('Until') }}</th></tr></thead>
         <tbody>
           {% for day in weekdays %}
           {% set i = loop.index0 %}
@@ -21,7 +21,7 @@
             <td>
               <label class="checkbox-row">
                 <input type="checkbox" name="available_{{ i }}" value="1" {% if not r or r['available'] %}checked{% endif %}>
-                <span class="upload-hint">available</span>
+                <span class="upload-hint">{{ t('available') }}</span>
               </label>
             </td>
             <td><input type="time" name="from_{{ i }}" value="{{ r['from_time'] if r and r['from_time'] else '' }}"></td>
@@ -31,36 +31,36 @@
         </tbody>
       </table>
     </div>
-    <p class="upload-hint">Leave the times blank if you're free all day.</p>
-    <button type="submit" class="btn-primary">Save my week</button>
+    <p class="upload-hint">{{ t("Leave the times blank if you're free all day.") }}</p>
+    <button type="submit" class="btn-primary">{{ t('Save my week') }}</button>
   </form>
 </div>
 
-<h2 class="section-heading">One-off dates</h2>
-<p class="upload-hint" style="margin-top:-6px;">Overrides the week above — use it for a specific day you can't do, or one you unusually can.</p>
+<h2 class="section-heading">{{ t('One-off dates') }}</h2>
+<p class="upload-hint" style="margin-top:-6px;">{{ t("Overrides the week above — use it for a specific day you can't do, or one you unusually can.") }}</p>
 
 <form method="post" action="{{ url_for('add_availability_exception') }}" class="search-bar">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div>
-    <label class="field-label">Date</label>
+    <label class="field-label">{{ t('Date') }}</label>
     <input type="date" name="on_date" min="{{ today.isoformat() }}" required>
   </div>
   <div>
     <label class="field-label">I am…</label>
     <select name="available">
-      <option value="">not available</option>
-      <option value="1">available</option>
+      <option value="">{{ t('not available') }}</option>
+      <option value="1">{{ t('available') }}</option>
     </select>
   </div>
   <div style="flex:2 1 200px;">
-    <label class="field-label">Note (optional)</label>
+    <label class="field-label">{{ t('Note (optional)') }}</label>
     <input type="text" name="note" placeholder="Family thing, appointment…">
   </div>
-  <button type="submit" class="btn-mini">Add</button>
+  <button type="submit" class="btn-mini">{{ t('Add') }}</button>
 </form>
 
 {% if not exceptions %}
-  <div class="empty-state">No upcoming exceptions.</div>
+  <div class="empty-state">{{ t('No upcoming exceptions.') }}</div>
 {% else %}
 <div class="mini-list">
   {% for e in exceptions %}
@@ -72,7 +72,7 @@
     </span>
     <form method="post" action="{{ url_for('delete_availability_exception', exception_id=e['id']) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-mini">Remove</button>
+      <button type="submit" class="btn-mini">{{ t('Remove') }}</button>
     </form>
   </div>
   {% endfor %}

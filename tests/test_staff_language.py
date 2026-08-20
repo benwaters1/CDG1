@@ -18,7 +18,11 @@ m = _harness.m
 
 # What a housekeeper or chef actually opens. Deliberately not the owner's
 # financial pages: those are one reader, in one language.
-EMPLOYEE_PAGES = ["/today", "/shifts/mine", "/leave", "/announcements"]
+EMPLOYEE_PAGES = [
+    "/today", "/shifts/mine", "/leave", "/announcements", "/manual",
+    "/directory", "/admin/team-calendar", "/availability", "/contacts",
+    "/shopping", "/hr/ask", "/my-reviews", "/notifications",
+]
 
 
 def _h1(html):
@@ -52,6 +56,23 @@ def run():
     s.check("the Time Off heading differs in all three",
             len({seen["en"], seen["fr"], seen["es"]}) == 3, detail=str(seen))
     s.check("English is still English", seen["en"] == "Time Off", detail=seen["en"])
+
+    # Heading by heading across every page: loading in French proves routing,
+    # not translation. Anything whose heading is identical in all three is
+    # either untranslated or a word that genuinely does not change.
+    unchanged = []
+    for path in EMPLOYEE_PAGES:
+        got = {}
+        for code in ("en", "fr", "es"):
+            ec.get(f"/language/{code}", headers={"Referer": path}, follow_redirects=True)
+            got[code] = _h1(ec.get(path).get_data(as_text=True))
+        if got["en"] == got["fr"] == got["es"]:
+            unchanged.append(f"{path} ({got['en']})")
+    # Contacts and Notifications are the same word in all three languages.
+    allowed = {"/contacts", "/notifications"}
+    real = [u for u in unchanged if u.split(" ")[0] not in allowed]
+    s.check("every page's heading is translated, bar the words that don't change",
+            not real, detail=" | ".join(real))
 
     s.section("The choice belongs to the account, not the browser")
     ec.get("/language/fr", headers={"Referer": "/today"}, follow_redirects=True)
