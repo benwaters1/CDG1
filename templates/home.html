@@ -5,7 +5,7 @@
 
 <section class="g-hero">
   <video class="g-hero__video" autoplay muted loop playsinline
-         poster="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+-+Formal+Gardens+2.jpg?format=1500w">
+         poster="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w">
     <source src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}" type="video/mp4">
   </video>
   <div class="g-hero__wash"></div>
@@ -46,31 +46,36 @@
 {# A front page should show what is actually for sale, not a tile that links
    to it. Both lists are optional — the section simply does not render if the
    route has not been given the data yet. #}
-{% if rooms %}
+{# The route passes `rooms` now, so the placeholder list that used to sit
+   here is gone. A fallback would advertise rates the owner cannot edit
+   and rooms that may not be bookable — worse than showing nothing. #}
+{% set shown_rooms = rooms %}
+{% if shown_rooms %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Stay the Night</p>
   <h2 class="g-place">Rooms &amp; Suites</h2>
   <p class="g-p">Seven bedrooms, opened one at a time as the restoration reaches them. Each is different, because the house is.</p>
 
   <div class="g-homerooms">
-    {% for r in rooms %}
+    {% for r in shown_rooms %}
     <article class="g-homeroom">
       <img class="g-homeroom__img"
-           src="{% if r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ [
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+des+Fleurs+1.jpg?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+Bleue+4.png?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+du+Parc+1.jpg?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Chambre+Emeraude.jpg?format=1000w'
+           src="{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ [
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w'
            ][loop.index0 % 4] }}{% endif %}"
            alt="{{ r['name'] }}" loading="lazy">
       <div class="g-homeroom__b">
         <h3 class="g-homeroom__name">{{ r['name'] }}</h3>
-        {% if r['description'] %}<p class="g-p">{{ r['description']|truncate(120) }}</p>{% endif %}
+        {% if r.get('spec') %}<p class="g-p">{{ r['spec'] }}</p>
+        {% elif r['description'] %}<p class="g-p">{{ r['description']|truncate(120) }}</p>{% endif %}
         <p class="g-homeroom__rate">
-          {% if r['price_per_night'] %}<span class="g-fig">€{{ '%.0f'|format(r['price_per_night']) }}</span> a night{% endif %}
-          {% if r['max_occupancy'] %} · up to {{ r['max_occupancy'] }}{% endif %}
+          {% set rate = r.get('rate') or r['price_per_night'] %}
+          {% if rate %}<span class="g-fig">from €{{ '%.0f'|format(rate) }}</span> a night{% endif %}
         </p>
-        <a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--line">Check dates</a>
+        <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>
       </div>
     </article>
     {% endfor %}
@@ -109,7 +114,7 @@
 </div></section>
 {% endif %}
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+In+Fall.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/Gardens+In+September.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1500w" alt="" loading="lazy"></div>
 
 <section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1500w" alt="A Place To Stay" loading="lazy">

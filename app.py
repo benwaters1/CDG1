@@ -11852,19 +11852,23 @@ def dashboard():
         # Real rooms and real dates, not category tiles. A visitor should be
         # able to see what is actually for sale — named, priced, described —
         # without clicking through first.
-        rooms = conn.execute(
+        # Plain dicts, not sqlite3.Row: the template reads optional keys with
+        # .get('img'), .get('spec'), .get('rate') so a hand-written room can
+        # override the photograph or the rate, and a Row has no .get at all —
+        # it raises rather than returning None, which took the front page down.
+        rooms = [dict(r) for r in conn.execute(
             """SELECT * FROM rooms WHERE active = 1
-               ORDER BY sort_order, price_per_night LIMIT 4""").fetchall()
+               ORDER BY sort_order, price_per_night LIMIT 4""").fetchall()]
         # Only sittings still ahead. A front page advertising a workshop that
         # finished in June is worse than one advertising none.
-        upcoming = conn.execute(
+        upcoming = [dict(r) for r in conn.execute(
             """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                       workshops.nights_label, workshops.id AS workshop_id
                  FROM workshop_sessions
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
-            (datetime.now(timezone.utc).date().isoformat(),)).fetchall()
+            (datetime.now(timezone.utc).date().isoformat(),)).fetchall()]
         conn.close()
         # Both are optional in the template, so an empty house still renders.
         return render_template("home.html", rooms=rooms, upcoming=upcoming)

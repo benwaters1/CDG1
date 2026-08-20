@@ -1516,3 +1516,98 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-homeroom__rate{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); }
 .g-homeroom__rate .g-fig{ font-size: 20px; }
 .g .g-homeroom .g-btn{ width: 100%; }
+
+/* Inclusions as photographic cards. A list of seven bullet points is the
+   least persuasive way to sell what a €4,800 price covers. */
+.g-incl-cards{
+  display: grid; gap: var(--s5); margin-top: var(--s6);
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+.g-incl-card{ background: var(--white); border: 1px solid var(--line); display: flex; flex-direction: column; }
+.g .g-incl-card img{ width: 100%; height: 12rem; object-fit: cover; display: block; }
+.g-incl-card__b{ padding: var(--s5); }
+.g-incl-card__t{
+  font-family: var(--display); font-weight: 400; font-size: 22px;
+  color: var(--blue-deep); margin: 0 0 var(--s3);
+}
+.g-incl-card__b p{ font-size: 15px; line-height: 1.6; color: var(--ink); margin: 0; }
+
+/* ==========================================================================
+   MOBILE
+   12px uppercase with wide tracking is legible on a desktop at arm's length
+   and genuinely hard on a phone. Lift the small labels, and let the tall
+   stacked sections breathe less — on a phone every section is full-width, so
+   desktop padding compounds into a very long scroll.
+   ========================================================================== */
+@media (max-width: 40rem){
+  .g-eyebrow,
+  .g-navwrap__group,
+  .g-crest__note,
+  .g-footer h4,
+  .g-footer__fine,
+  .g-navwrap__item--plain,
+  .g-facts-list dt,
+  .g-dates-table th,
+  .g-dossier__k{ font-size: 13px; }
+
+  .g-facts li span{ font-size: 14px; }
+
+  /* A button is the thing being tapped — it should never be the smallest
+     text on the screen. */
+  .g .g-btn, .g .g-submit, .g-chip{ font-size: 15px; }
+  .g-foot-note, .g-hint, .g-opt{ font-size: 13px; }
+  .g-num{ font-size: 13px; }
+  .g-facts-list dt, .g-dossier__l dt, dl dt{ font-size: 13px; }
+  .g-cal > summary, small{ font-size: 13px; }
+  .g-approx, .g-navwrap__legal a{ font-size: 13px; }
+  .g-navwrap__feature em, .g-footer__brand + p,
+  .g-crest__note, .g-footer span{ font-size: 13px; }
+
+  /* Sections stack full-width on a phone, so the desktop rhythm compounds. */
+  .g-sec{ padding: clamp(36px, 9vw, 52px) 0; }
+  .g-sec--tight{ padding: var(--s5) 0; }
+  .g-half__text{ padding: var(--s5) var(--s4); }
+  .g-crest--foot{ padding-bottom: var(--s5); margin-bottom: var(--s5); }
+  .g-footer{ padding: var(--s6) 0 var(--s5); }
+  .g-footer__grid{ gap: var(--s5); }
+
+  /* A photo band of five images on a phone becomes five full-width blocks —
+     scroll it sideways instead. */
+  .g-band{
+    display: grid; grid-auto-flow: column; grid-auto-columns: 72%;
+    gap: 2px; overflow-x: auto; scroll-snap-type: x mandatory;
+  }
+  .g .g-band img{ height: 13rem; scroll-snap-align: start; }
+}
+
+/* The scale's smallest step is 12px, which is fine at desktop distance and
+   small on a phone. Lift only that step; every larger size is untouched. */
+@media (max-width: 40rem){
+  .g [class*="eyebrow"], .g [class*="__k"], .g [class*="hint"],
+  .g [class*="note"], .g [class*="fine"], .g [class*="meta"],
+  .g [class*="label"], .g [class*="__len"], .g [class*="group"],
+  .g dt, .g th, .g small, .g figcaption, .g summary,
+  .g .g-num, .g .g-opt, .g .g-approx{ font-size: 13px; }
+  .g .g-btn, .g .g-submit, .g .g-chip{ font-size: 15px; }
+}
+
+/* Press — a list of names that carry their own weight. Set as a plain roll
+   rather than logo tiles, since we do not hold the logos. */
+.g-press{
+  list-style: none; margin: var(--s6) 0 0; padding: 0;
+  display: grid; gap: 0;
+  border-top: 1px solid var(--line);
+}
+@media (min-width: 46rem){ .g-press{ grid-template-columns: 1fr 1fr; column-gap: var(--s7); } }
+.g-press li{
+  display: flex; align-items: baseline; gap: var(--s4);
+  padding: var(--s4) 0; border-bottom: 1px solid var(--line);
+}
+.g-press b{
+  font-family: var(--display); font-weight: 400; font-size: 20px;
+  color: var(--blue-deep); flex: 0 0 auto;
+}
+.g-press span{ font-size: 14px; color: var(--ink-soft); }
+
+/* An email address inside a hint line is still a link people tap. */
+.g-hint a{ display: inline-flex; align-items: center; min-height: 44px; }
