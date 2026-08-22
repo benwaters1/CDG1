@@ -2,37 +2,65 @@
 {% block title %}Registration received{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>Thank you, {{ booking['guest_name'].split(' ')[0] }}</h1>
-  <p class="manual-body">Your registration for <strong>{{ booking['title'] }}</strong> is <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>.</p>
+{# CONTRACT — read-only. Same booking.* fields and the same workshop_manage
+   endpoint as before. #}
 
-  <div class="detail-card" style="margin-top:16px;">
-    <div class="detail-grid">
-      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
-      <div><span class="detail-label">Dates</span>{{ booking['start_date'] }}{% if booking['end_date'] != booking['start_date'] %} → {{ booking['end_date'] }}{% endif %}</div>
-      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
-      {% if booking['total_price'] %}<div><span class="detail-label">Estimated total</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
-      {% if booking['deposit_amount'] %}<div><span class="detail-label">Deposit</span>€{{ '%.2f'|format(booking['deposit_amount']) }} {{ 'paid' if booking['deposit_paid_at'] else '— due' }}</div>{% endif %}
-      {% if booking['balance_amount'] %}<div><span class="detail-label">Balance</span>€{{ '%.2f'|format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} due {{ booking['balance_due_date'] }}{% endif %}</div>{% endif %}
-    </div>
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Registration received</p>
+  <h1 class="g-display" style="font-size:clamp(32px,4.6vw,56px)">
+    Thank you, {{ booking['guest_name'].split(' ')[0] }}
+  </h1>
+  <p class="g-p g-lede-first">
+    Your registration for <strong>{{ booking['title'] }}</strong> has been received.
+    We will confirm your place by email.
+  </p>
+
+  <div class="g-conf g-plate-edge">
+    <dl class="g-facts-list">
+      <div><dt>Reference</dt><dd><strong>{{ booking['reference_code'] }}</strong></dd></div>
+      <div><dt>Status</dt><dd>{{ booking['status']|capitalize }}</dd></div>
+      <div><dt>Dates</dt><dd>{{ date_range(booking['start_date'], booking['end_date']) }}</dd></div>
+      <div><dt>Guests</dt><dd>{{ booking['party_size'] }}</dd></div>
+      {% if booking['total_price'] %}
+      <div><dt>Estimated total</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span></dd></div>
+      {% endif %}
+      {% if booking['deposit_amount'] %}
+      <div><dt>Deposit</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }} · {{ 'paid' if booking['deposit_paid_at'] else 'due' }}</dd></div>
+      {% endif %}
+      {% if booking['balance_amount'] %}
+      <div><dt>Balance</dt><dd>€{{ '%.2f'|format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} · due {{ booking['balance_due_date']|date_short }}{% endif %}</dd></div>
+      {% endif %}
+    </dl>
+
     {% if guests and guests|length > 1 %}
-    <div class="notes-block">
-      <span class="detail-label">Party</span>
-      <p>{% for g in guests %}{{ g['guest_name'] }}{{ ' (you)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
-    </div>
+    <p class="g-hint" style="margin-top:var(--s5)"><strong>Your party</strong> ·
+      {% for g in guests %}{{ g['guest_name'] }}{{ ' (you)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}
+    </p>
     {% endif %}
     {% if booking['notes'] %}
-    <div class="notes-block">
-      <span class="detail-label">Your notes</span>
-      <p>{{ booking['notes'] }}</p>
-    </div>
+    <p class="g-hint"><strong>Your notes</strong> · {{ booking['notes'] }}</p>
     {% endif %}
   </div>
 
-  <p class="pay-disclaimer" style="margin-top:16px;">Save this page's link, or write down your reference code and the email you registered with — that's how you'll manage this registration later.</p>
-  <p class="share-link-box">{{ url_for('workshop_manage', manage_token=booking['manage_token'], _external=True) }}</p>
+  <div class="g-conf__acts">
+    <a href="{{ url_for('workshop_manage', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">
+      View my registration
+    </a>
+  </div>
 
-  <a href="{{ url_for('workshop_manage', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">View my registration</a>
+  <div class="g-orn" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
+  </div>
+
+  <p class="g-hint">Save this link, or write down your reference code and the email you registered with — that is how you manage this registration later.</p>
+  <p class="g-sharelink">{{ url_for('workshop_manage', manage_token=booking['manage_token'], _external=True) }}</p>
+</div></section>
+
+<div class="g-band">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w" alt="The kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w" alt="A bedroom" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="Restoration in progress" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1000w" alt="The château from above" loading="lazy">
 </div>
 
 {% endblock %}

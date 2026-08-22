@@ -2,33 +2,55 @@
 {% block title %}Reservation request received{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>Thank you, {{ booking['guest_name'].split(' ')[0] }}</h1>
-  <p class="manual-body">Your dinner reservation request is <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>.</p>
+{# CONTRACT — read-only. Same booking.* fields and restaurant_manage endpoint. #}
 
-  <div class="detail-card" style="margin-top:16px;">
-    <div class="detail-grid">
-      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
-      <div><span class="detail-label">Date</span>{{ booking['dinner_date'] }}</div>
-      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
-      {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</div>{% endif %}
-      {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
-      <div><span class="detail-label">Deposit paid</span>€{{ '%.2f'|format(booking['deposit_amount']) }}</div>
-      <div><span class="detail-label">Due at the restaurant</span>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</div>
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Reservation received</p>
+  <h1 class="g-display" style="font-size:clamp(32px,4.6vw,56px)">
+    Thank you, {{ booking['guest_name'].split(' ')[0] }}
+  </h1>
+  <p class="g-p g-lede-first">
+    Your table has been requested. We will confirm by email.
+  </p>
+
+  <div class="g-conf g-plate-edge">
+    <dl class="g-facts-list">
+      <div><dt>Reference</dt><dd><strong>{{ booking['reference_code'] }}</strong></dd></div>
+      <div><dt>Status</dt><dd>{{ booking['status']|capitalize }}</dd></div>
+      <div><dt>Date</dt><dd>{{ booking['dinner_date']|date_short }}</dd></div>
+      <div><dt>Guests</dt><dd>{{ booking['party_size'] }}</dd></div>
+      {% if booking['total_price'] %}
+      <div><dt>Total</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span>{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} · {{ booking['payment_status'] }}{% endif %}</dd></div>
       {% endif %}
-    </div>
+      {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
+      <div><dt>Deposit paid</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }}</dd></div>
+      <div><dt>Due on the night</dt><dd>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>
+      {% endif %}
+    </dl>
     {% if booking['dietary_notes'] %}
-    <div class="notes-block">
-      <span class="detail-label">Your notes</span>
-      <p>{{ booking['dietary_notes'] }}</p>
-    </div>
+    <p class="g-hint" style="margin-top:var(--s5)"><strong>Your notes</strong> · {{ booking['dietary_notes'] }}</p>
     {% endif %}
   </div>
 
-  <p class="pay-disclaimer" style="margin-top:16px;">Save this page's link, or write down your reference code and the email you booked with — that's how you'll manage this reservation later.</p>
-  <p class="share-link-box">{{ url_for('restaurant_manage', manage_token=booking['manage_token'], _external=True) }}</p>
+  <div class="g-conf__acts">
+    <a href="{{ url_for('restaurant_manage', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">
+      View my reservation
+    </a>
+  </div>
 
-  <a href="{{ url_for('restaurant_manage', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">View my reservation</a>
+  <div class="g-orn" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
+  </div>
+
+  <p class="g-hint">Save this link, or write down your reference code and the email you booked with — that is how you manage this reservation later.</p>
+  <p class="g-sharelink">{{ url_for('restaurant_manage', manage_token=booking['manage_token'], _external=True) }}</p>
+</div></section>
+
+<div class="g-band">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1000w" alt="The dining room" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1000w" alt="A table laid outside" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Copper in the kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
 </div>
 
 {% endblock %}

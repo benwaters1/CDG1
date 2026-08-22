@@ -2,41 +2,61 @@
 {% block title %}{{ t('Booking request received') }}{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
-  <h1>{{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}</h1>
-  <p class="manual-body">Your request for <strong>{{ booking['room_name'] }}</strong> has been received and is <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>{% if booking['payment_status'] == 'paid' %} · <span class="mini-status status-paid">paid</span>{% endif %}.</p>
+{# CONTRACT — read-only. Uses booking.* and the same url_for endpoints as
+   before; nothing renamed. Previously this used admin classes and printed raw
+   ISO dates, on the one page a guest sees straight after committing money. #}
 
-  <div class="detail-card" style="margin-top:16px;">
-    <div class="detail-grid">
-      <div><span class="detail-label">{{ t('Reference code') }}</span>{{ booking['reference_code'] }}</div>
-      <div><span class="detail-label">{{ t('Arrival') }}</span>{{ booking['arrival_date'] }}</div>
-      <div><span class="detail-label">{{ t('Departure') }}</span>{{ booking['departure_date'] }}</div>
-      <div><span class="detail-label">{{ t('Party size') }}</span>{{ booking['party_size'] }}</div>
-      {% if booking['total_price'] %}<div><span class="detail-label">{{ t('Total') }}</span>€{{ '%.2f'|format(booking['total_price']) }}</div>{% endif %}
-    </div>
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">{{ t('Booking request received') }}</p>
+  <h1 class="g-display" style="font-size:clamp(32px,4.6vw,56px)">
+    {{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}
+  </h1>
+  <p class="g-p g-lede-first">
+    Your request for <strong>{{ booking['room_name'] }}</strong> has been received.
+    We will confirm by email.
+  </p>
+
+  <div class="g-conf g-plate-edge">
+    <dl class="g-facts-list">
+      <div><dt>{{ t('Reference code') }}</dt><dd><strong>{{ booking['reference_code'] }}</strong></dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd>{{ booking['status']|capitalize }}{% if booking['payment_status'] == 'paid' %} · {{ t('paid') }}{% endif %}</dd></div>
+      <div><dt>{{ t('Arrival') }}</dt><dd>{{ booking['arrival_date']|date_short }}</dd></div>
+      <div><dt>{{ t('Departure') }}</dt><dd>{{ booking['departure_date']|date_short }}</dd></div>
+      <div><dt>{{ t('Guests') }}</dt><dd>{{ booking['party_size'] }}</dd></div>
+      {% if booking['total_price'] %}
+      <div><dt>{{ t('Total') }}</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span></dd></div>
+      {% endif %}
+    </dl>
     {% if booking['extras_summary'] %}
-    <div class="notes-block">
-      <span class="detail-label">{{ t('Add-ons') }}</span>
-      <p>{{ booking['extras_summary'] }}</p>
-    </div>
+    <p class="g-hint" style="margin-top:var(--s5)"><strong>{{ t('Add-ons') }}</strong> · {{ booking['extras_summary'] }}</p>
     {% endif %}
   </div>
 
-  <p class="pay-disclaimer" style="margin-top:16px;">{{ t("Save this page's link, or write down your reference code and the email you booked with — that's your check-in link for later, and how you'll manage this booking.") }}</p>
-  <p class="share-link-box">{{ url_for('guest_checkin', manage_token=booking['manage_token'], _external=True) }}</p>
+  <div class="g-conf__acts">
+    <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">
+      {{ t('Check in / view my booking') }}
+    </a>
+    <a href="{{ url_for('booking_statement', manage_token=booking['manage_token']) }}" class="g-btn">
+      {{ t('View your bill') }}
+    </a>
+    <a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" class="g-btn">
+      {{ t('Add to calendar') }}
+    </a>
+  </div>
 
-  <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="btn-primary btn-block" style="margin-top:16px;">{{ t('Check in / view my booking') }}</a>
-  <p class="upload-hint" style="margin-top:12px; text-align:center;"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
+  <div class="g-orn" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
+  </div>
+
+  <p class="g-hint">{{ t("Save this link, or write down your reference code and the email you booked with — that's how you check in and manage this booking later.") }}</p>
+  <p class="g-sharelink">{{ url_for('guest_checkin', manage_token=booking['manage_token'], _external=True) }}</p>
+</div></section>
+
+<div class="g-band">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w" alt="A château bedroom" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The grounds from above" loading="lazy">
 </div>
-
-
-{# The bill. A guest who paid deserves to see what for, and a business guest
-   needs it to reclaim their VAT — it was previously reachable only if you
-   guessed the URL. #}
-<p style="margin-top:14px;">
-  <a href="{{ url_for('booking_statement', manage_token=booking['manage_token']) }}" class="btn-mini">
-    View your bill
-  </a>
-</p>
 
 {% endblock %}

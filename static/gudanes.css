@@ -1755,3 +1755,25 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   opacity: .07; pointer-events: none;
 }
 .g-sec--plate-dark > *{ position: relative; }
+
+/* The opening paragraph of a page carries a little more weight than the rest. */
+.g-lede-first{ font-size: 18px; line-height: 1.6; max-width: 46rem; }
+
+/* ==========================================================================
+   CONFIRMATION PAGES
+   The page a guest lands on straight after committing money. It was styled
+   like a back-office screen; it should feel like a letter from the house.
+   ========================================================================== */
+.g-conf{
+  background: var(--white); border: 1px solid var(--line);
+  padding: var(--s6); margin: var(--s6) 0;
+}
+.g-conf .g-facts-list dd{ font-size: 16px; }
+.g-conf .g-fig{ font-size: 22px; }
+.g-conf__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s6) 0; }
+@media (max-width: 40rem){ .g .g-conf__acts .g-btn{ width: 100%; } }
+.g-sharelink{
+  font-family: var(--serif); font-size: 13px; color: var(--ink-soft);
+  background: var(--sand-2); border: 1px solid var(--line);
+  padding: var(--s4); word-break: break-all; margin: var(--s3) 0 0;
+}

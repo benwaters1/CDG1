@@ -48,7 +48,7 @@
 
 <section class="g-sec g-sec--plate"><div class="g-wrap">
 <h2 class="g-h2 g-h2--lead">Bienvenue</h2>
-<p class="g-p"><em>Perched high above the valleys of the French Pyrénées, Château de Gudanes is one of Europe's most extraordinary private estates — a place where centuries of history, remarkable craftsmanship and breathtaking natural beauty come quietly together.</em></p>
+<p class="g-p g-drop-cap g-lede-first">Perched high above the valleys of the French Pyrénées, Château de Gudanes is one of Europe's most extraordinary private estates — a place where centuries of history, remarkable craftsmanship and breathtaking natural beauty come quietly together.</p>
 <p class="g-p">She was designed in 1741 by Ange-Jacques Gabriel, principal architect to King Louis XV and the hand behind Marie Antoinette's own Petit Trianon at Versailles. That royal lineage endures today: Gudanes holds the same Class I Historic Monument classification as the Palace of Versailles and the Eiffel Tower.</p>
 <p class="g-p">Abandoned in 1850 and very nearly lost, she has been returned to life since 2013 — room by room, and always by hand. Five hundred tonnes of fallen stone were cleared before the work could begin. Overpaint is lifted patiently to reveal frescoes hidden for generations, and every intervention is approved by France's Monuments Historiques before a tool is lifted. The restoration has been followed by hundreds of thousands, photographed for Vogue, and honoured with the Medal of Honour of the Fondation Prince Louis de Polignac.</p>
 <p class="g-p">Much of her remains as the centuries left her: bare plaster, weathered stone, the quiet marks of two hundred and eighty years. She is protected, and so she is preserved rather than perfected. Within those walls, however, everything within them has been made anew — the floors, the bathrooms, the beds and the linen, and the food that arrives at her table.</p>
@@ -69,6 +69,9 @@
 {% if shown_rooms %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Stay the Night</p>
+  <div class="g-orn" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
+  </div>
   <h2 class="g-place">Rooms &amp; Suites</h2>
   <p class="g-p">Seven bedrooms, opened one at a time as the restoration reaches them. Each is different, because the house is.</p>
 
@@ -163,8 +166,8 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="A Place To Dine" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Dine at La Table</h2>
-    <p class="g-p"><em>There is no restaurant at Gudanes, and there was never meant to be.</em></p>
-    <p class="g-p">There is a chef, a dining room recovered over many years, and one sitting a night. Dinner is arranged in advance and drawn from the Sunday market in the village square, the producers of the Ariège, and in summer the château's own gardens.</p>
+    <p class="g-p"><em>Dinner cooked by the château chefs, served by candlelight in the dining room.</em></p>
+    <p class="g-p">There is a chef, a dining room recovered over many years, and dinner arranged in advance — drawn from the Sunday market in the village square, the producers of the Ariège, and in summer the château's own gardens.</p>
     <p style="margin-top:32px"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
   </div>
 </div></section>
@@ -173,7 +176,7 @@
   <div class="g-half__text">
     <h2 class="g-place">Weddings &amp; Celebrations</h2>
     <p class="g-p"><em>The whole house, for a day that belongs only to you.</em></p>
-    <p class="g-p">Weddings, birthdays and gatherings of every kind, shaped around the people in them rather than a package. Twelve acres of parkland, rooms in every state between ruin and restoration, and no other guests.</p>
+    <p class="g-p">Weddings, birthdays and gatherings of every kind. Ninety-four rooms in every state between ruin and restoration, parkland running up toward the mountain, and a house that photographs unlike anywhere else.</p>
     <p style="margin-top:32px"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Enquire about your day</a></p>
   </div>
 </div></section>
@@ -181,8 +184,8 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="A Place To Dream" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Photography &amp; Film</h2>
-    <p class="g-p"><em>A location that could not be built, or convincingly faked.</em></p>
-    <p class="g-p">Ninety-four rooms between ruin and restoration, an eighteenth-century façade by the architect of the Petit Trianon, and twelve acres of grounds beneath the Pyrénées. Photographed for Vogue.</p>
+    <p class="g-p"><em>Ninety-four rooms in every state between ruin and restoration.</em></p>
+    <p class="g-p">Ninety-four rooms between ruin and restoration, an eighteenth-century façade by the architect of the Petit Trianon, and six acres of grounds beneath the Pyrénées. Photographed for Vogue.</p>
     <p style="margin-top:32px"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Enquire about a shoot</a></p>
   </div>
 </div></section>
