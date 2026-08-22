@@ -71,6 +71,7 @@ SUITES = [
     "test_navigation",
     "test_front_page",
     "test_confirmations",
+    "test_social_schedule",
     "test_design",
     "test_links",
 ]

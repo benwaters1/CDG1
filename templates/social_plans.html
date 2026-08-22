@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}The social schedule{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>The social schedule</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('management_social') }}" class="btn-ghost">The posts</a>
+    <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A plan is a standing commitment — “Instagram, Tuesdays at ten, the restaurant”. Each one turns
+  itself into dated posts a few weeks ahead, and every post arrives as a task on somebody's list
+  and on the <a href="{{ url_for('ops_calendar') }}">calendar</a>. Nothing is published
+  automatically: a person still presses post, with the caption already written.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" action="{{ url_for('generate_social_now') }}" style="margin-bottom:18px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-mini">Fill the schedule now</button>
+  <span class="upload-hint">Runs on its own once a day — this is for when you have just changed something.</span>
+</form>
+
+{% if not plans %}
+  <div class="empty-state">No plans yet. The first one below starts the schedule.</div>
+{% else %}
+<div class="doc-list" style="max-width:900px;">
+  {% for p in plans %}
+  <details class="doc-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+    <summary style="display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; cursor:pointer;">
+      <strong style="flex:1;">{{ p['name'] }}</strong>
+      <span class="mini-status {{ 'status-onshift' if p['active'] else 'status-inactive' }}">
+        {{ p['platform'] }}{{ '' if p['active'] else ' — paused' }}
+      </span>
+      <span class="upload-hint">
+        {{ cadences.get(p['cadence'], p['cadence']) }}
+        {%- if p['cadence'] == 'monthly' %}, day {{ p['day_of_month'] }}
+        {%- elif p['weekday'] is not none %}, {{ weekdays[p['weekday']] }}{% endif %}
+        {%- if p['post_time'] %} at {{ p['post_time'] }}{% endif %}
+      </span>
+      {% if p['assignee_name'] %}
+        <span class="upload-hint">{{ p['assignee_name'] }}</span>
+      {% else %}
+        <span class="mini-status status-pending">nobody assigned</span>
+      {% endif %}
+    </summary>
+
+    {% if p['next_dates'] %}
+    {# A weekday number and a cadence word are hard to picture. Actual dates
+       are not. #}
+    <p class="field-hint" style="margin:0;">
+      Next: {% for d in p['next_dates'] %}{{ d.strftime('%a %d %b') }}{% if not loop.last %} · {% endif %}{% endfor %}
+      {%- if p['made'] %} · {{ p['made'] }} made so far, {{ p['waiting'] }} still to go out{% endif %}
+    </p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('edit_social_plan', plan_id=p['id']) }}"
+          class="detail-card" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% with plan = p %}{% include "_social_plan_fields.html" %}{% endwith %}
+      <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+        <button type="submit" class="btn-mini">Save</button>
+        <button type="submit" class="btn-mini btn-mini-danger"
+                formaction="{{ url_for('delete_social_plan', plan_id=p['id']) }}"
+                formnovalidate
+                onclick="return confirm('Retire this plan? Posts it has already made stay where they are.')">
+          Retire this plan
+        </button>
+      </div>
+    </form>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Add a plan</h2>
+<form method="post" action="{{ url_for('new_social_plan') }}" class="detail-card"
+      style="max-width:760px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% with plan = None %}{% include "_social_plan_fields.html" %}{% endwith %}
+  <button type="submit" class="btn-primary" style="margin-top:10px;">Add the plan</button>
+</form>
+
+{% endblock %}

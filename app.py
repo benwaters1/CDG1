@@ -229,6 +229,8 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_stale_shift_hours": "14",
     "automation_backup_email_enabled": "1",
     "automation_backup_interval_hours": "24",
+    "automation_social_schedule_enabled": "1",
+    "automation_social_horizon_days": "28",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
@@ -1425,6 +1427,34 @@ def init_db():
             posted_at TEXT
         );
 
+        -- A standing commitment to post: "Instagram, Tuesdays at 10, the
+        -- restaurant". The plan is the rule; social_posts rows are what the
+        -- rule produced, and they are ordinary editable posts once made.
+        CREATE TABLE IF NOT EXISTS social_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            platform TEXT NOT NULL DEFAULT 'Instagram',
+            cadence TEXT NOT NULL DEFAULT 'weekly'
+                CHECK(cadence IN ('weekly','fortnightly','monthly')),
+            weekday INTEGER,              -- 0=Mon..6=Sun, for weekly/fortnightly
+            day_of_month INTEGER,         -- 1..28, for monthly
+            post_time TEXT,               -- '10:00', local
+            theme TEXT,                   -- what this slot is for
+            brief TEXT,                   -- the standing instruction to whoever writes it
+            post_type TEXT,
+            assigned_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            -- How far ahead the task appears. Writing a caption on the morning
+            -- it goes out is how a slot gets skipped.
+            lead_days INTEGER NOT NULL DEFAULT 3,
+            active INTEGER NOT NULL DEFAULT 1,
+            -- The high-water mark. Nothing is ever generated on or before this
+            -- date, so deleting a post the plan made does not bring it back on
+            -- the next run.
+            generated_through TEXT,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS room_issues (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
@@ -2434,6 +2464,13 @@ def init_db():
         ("workshop_bookings_feedback_requested_at", "ALTER TABLE workshop_bookings ADD COLUMN feedback_requested_at TEXT"),
         ("guest_feedback_featured", "ALTER TABLE guest_feedback ADD COLUMN featured INTEGER NOT NULL DEFAULT 0"),
         ("workshops_itinerary", "ALTER TABLE workshops ADD COLUMN itinerary TEXT"),
+        ("social_posts_plan_id", "ALTER TABLE social_posts ADD COLUMN plan_id INTEGER REFERENCES social_plans(id) ON DELETE SET NULL"),
+        ("social_posts_task_id", "ALTER TABLE social_posts ADD COLUMN task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL"),
+        # One post per plan per date. The generator relies on this rather
+        # than on checking first: two ticks landing together cannot both
+        # insert, because only one can win the unique index.
+        ("social_posts_plan_date_unique",
+         "CREATE UNIQUE INDEX IF NOT EXISTS idx_social_posts_plan_date ON social_posts(plan_id, scheduled_date) WHERE plan_id IS NOT NULL"),
         ("workshops_nights_label", "ALTER TABLE workshops ADD COLUMN nights_label TEXT"),
         ("workshops_sample_day", "ALTER TABLE workshops ADD COLUMN sample_day TEXT"),
         ("rooms_min_nights", "ALTER TABLE rooms ADD COLUMN min_nights INTEGER NOT NULL DEFAULT 1"),
@@ -27014,6 +27051,178 @@ def delete_vendor(vendor_id):
 
 
 # ---------------------------------------------------------------------------
+# The social schedule.
+#
+# The board this sits on was a list you filled in by hand, which is the same
+# problem a paper diary has: it only holds what somebody remembered to write
+# down, and nobody notices the Tuesday that never got posted.
+#
+# A plan is a standing commitment — "Instagram, Tuesdays at 10, the restaurant".
+# The generator turns plans into dated posts a few weeks ahead, and gives each
+# one a task so it lands on somebody's list and on the calendar, which is where
+# work in this app actually gets seen.
+#
+# What this does NOT do is publish. Posting to Instagram or Facebook needs API
+# credentials and an app review from each platform, and publishing on the
+# château's behalf is not something to switch on quietly. This automates the
+# schedule and the work; a person still presses post, with the caption written
+# and waiting.
+# ---------------------------------------------------------------------------
+
+SOCIAL_CADENCES = {
+    "weekly": "Every week",
+    "fortnightly": "Every other week",
+    "monthly": "Once a month",
+}
+
+# The four the château actually uses. Free text would give us "instagram",
+# "Instagram " and "IG" as three separate platforms within a month.
+SOCIAL_PLATFORMS = ["Instagram", "Facebook", "Newsletter", "Pinterest"]
+
+SOCIAL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                   "Friday", "Saturday", "Sunday"]
+
+
+def social_plan_hits(plan, on_date):
+    """Does this plan want a post on this date?
+
+    Fortnightly is anchored to the ISO week number rather than to a count of
+    posts made, so a plan that was paused for a month resumes on the weeks it
+    would always have used instead of drifting by however long it was off.
+    """
+    cadence = plan["cadence"] or "weekly"
+    if cadence == "monthly":
+        return on_date.day == (plan["day_of_month"] or 1)
+    if plan["weekday"] is None or on_date.weekday() != plan["weekday"]:
+        return False
+    if cadence == "fortnightly":
+        return on_date.isocalendar()[1] % 2 == 0
+    return True
+
+
+def social_post_title(plan, on_date):
+    """What the task is called on somebody's list."""
+    theme = (plan["theme"] or "").strip()
+    return (f"{plan['platform']} post — {theme}" if theme
+            else f"{plan['platform']} post")
+
+
+def generate_social_posts(conn, *, horizon_days=None, today=None, user_id=None):
+    """Turn active plans into dated posts, each with a task attached.
+
+    Two rules keep this from fighting whoever is using it:
+
+    A plan never generates on or before its `generated_through` date. So a post
+    somebody deleted stays deleted, and a plan switched on today does not
+    back-fill last month. The mark advances even when a date produced nothing,
+    which is what stops a paused-and-resumed plan from dumping six weeks of
+    posts in one tick.
+
+    And the unique index on (plan_id, scheduled_date) is what actually prevents
+    duplicates — not the SELECT below. Two ticks landing at the same moment
+    both pass the check; only one survives the insert.
+    """
+    if horizon_days is None:
+        try:
+            horizon_days = int(get_automation_settings(conn)["automation_social_horizon_days"])
+        except (TypeError, ValueError):
+            horizon_days = 28
+    horizon_days = max(1, min(365, horizon_days))
+    today = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(today, str):
+        today = parse_date(today)
+    last = today + timedelta(days=horizon_days)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    made = 0
+    for plan in conn.execute(
+            "SELECT * FROM social_plans WHERE active = 1 ORDER BY id").fetchall():
+        through = parse_date(plan["generated_through"] or "") or (today - timedelta(days=1))
+        start = max(today, through + timedelta(days=1))
+        day = start
+        while day <= last:
+            if social_plan_hits(plan, day):
+                made += _make_social_post(conn, plan, day, now_iso, user_id)
+            day += timedelta(days=1)
+        # Advanced whether or not anything was made, so the window only ever
+        # moves forwards.
+        if last >= start:
+            conn.execute("UPDATE social_plans SET generated_through = ? WHERE id = ?",
+                         (last.isoformat(), plan["id"]))
+    conn.commit()
+    return made
+
+
+def _make_social_post(conn, plan, on_date, now_iso, user_id):
+    """One post and its task. Returns 1 if it was created, 0 if it already was."""
+    iso = on_date.isoformat()
+    if conn.execute("SELECT 1 FROM social_posts WHERE plan_id = ? AND scheduled_date = ?",
+                    (plan["id"], iso)).fetchone():
+        return 0
+    # The task is due `lead_days` before the post, so the caption gets written
+    # in advance rather than on the morning it is meant to go out.
+    due = on_date - timedelta(days=max(0, plan["lead_days"] or 0))
+    try:
+        conn.execute(
+            """INSERT INTO social_posts (plan_id, platform, caption, post_type,
+                 scheduled_date, scheduled_time, status, assigned_to_user_id, notes,
+                 created_by_user_id, created_at)
+               VALUES (?, ?, '', ?, ?, ?, 'idea', ?, ?, ?, ?)""",
+            (plan["id"], plan["platform"], plan["post_type"], iso, plan["post_time"],
+             plan["assigned_to_user_id"], plan["brief"], user_id, now_iso))
+    except sqlite3.IntegrityError:
+        # The unique index caught a concurrent tick. Nothing to do.
+        conn.rollback()
+        return 0
+    post_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    conn.execute(
+        """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+             status, origin, created_at)
+           VALUES (?, ?, ?, 'normal', ?, 'open', 'social', ?)""",
+        (plan["assigned_to_user_id"], social_post_title(plan, on_date),
+         (plan["brief"] or "").strip() or None, due.isoformat(), now_iso))
+    task_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.execute("UPDATE social_posts SET task_id = ? WHERE id = ?", (task_id, post_id))
+    return 1
+
+
+def close_social_task(conn, post_id):
+    """Tick the task off when its post goes out.
+
+    Without this the task sits open on somebody's list forever after the work
+    is done, and a list with stale items on it is a list people stop reading.
+    """
+    row = conn.execute("SELECT task_id FROM social_posts WHERE id = ?", (post_id,)).fetchone()
+    if not row or not row["task_id"]:
+        return False
+    conn.execute(
+        """UPDATE tasks SET status = 'done', completed_at = ?
+           WHERE id = ? AND status != 'done'""",
+        (datetime.now(timezone.utc).isoformat(), row["task_id"]))
+    return True
+
+
+def social_plan_next_dates(plan, count=3, today=None):
+    """The next few dates this plan would post on. Shown beside the plan so a
+    weekday number and a cadence word turn into actual days."""
+    today = today or datetime.now(LOCAL_TZ).date()
+    out, day = [], today
+    for _ in range(400):
+        if len(out) >= count:
+            break
+        if social_plan_hits(plan, day):
+            out.append(day)
+        day += timedelta(days=1)
+    return out
+
+
+def run_social_schedule_job(conn):
+    made = generate_social_posts(conn)
+    return f"created {made} social post(s)"
+
+
+# ---------------------------------------------------------------------------
 # Social media content calendar
 # ---------------------------------------------------------------------------
 
@@ -27128,6 +27337,9 @@ def mark_social_post_posted(post_id):
         "UPDATE social_posts SET status = 'posted', posted_at = ? WHERE id = ? AND status != 'posted'",
         (datetime.now(timezone.utc).isoformat(), post_id),
     )
+    # The post going out is the task being done. Leaving it open would put a
+    # finished job back on somebody's list tomorrow morning.
+    close_social_task(conn, post_id)
     conn.commit()
     conn.close()
     return redirect(url_for("management_social"))
@@ -27137,11 +27349,186 @@ def mark_social_post_posted(post_id):
 @owner_required
 def delete_social_post(post_id):
     conn = get_db()
+    # Its task goes with it. An orphaned "Instagram post — the restaurant"
+    # with nothing behind it is worse than no task at all, and the plan's
+    # high-water mark means this date is not generated again.
+    row = conn.execute("SELECT task_id FROM social_posts WHERE id = ?", (post_id,)).fetchone()
+    if row and row["task_id"]:
+        conn.execute("DELETE FROM tasks WHERE id = ? AND origin = 'social'", (row["task_id"],))
     conn.execute("DELETE FROM social_posts WHERE id = ?", (post_id,))
     conn.commit()
     conn.close()
     flash("Post removed.", "success")
     return redirect(url_for("management_social"))
+
+
+@app.route("/management/social/plans")
+@owner_required
+def social_plans():
+    """The standing commitments, and what they will produce next."""
+    conn = get_db()
+    plans = [dict(p) for p in conn.execute(
+        """SELECT social_plans.*, users.name AS assignee_name FROM social_plans
+             LEFT JOIN users ON users.id = social_plans.assigned_to_user_id
+            ORDER BY active DESC, platform, id""").fetchall()]
+    for p in plans:
+        p["next_dates"] = social_plan_next_dates(p, 3)
+        p["made"] = conn.execute(
+            "SELECT COUNT(*) AS c FROM social_posts WHERE plan_id = ?", (p["id"],)).fetchone()["c"]
+        p["waiting"] = conn.execute(
+            """SELECT COUNT(*) AS c FROM social_posts
+               WHERE plan_id = ? AND status != 'posted'""", (p["id"],)).fetchone()["c"]
+    employees = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    scheduled = conn.execute(
+        """SELECT COUNT(*) AS c FROM social_posts
+           WHERE plan_id IS NOT NULL AND status != 'posted'""").fetchone()["c"]
+    unassigned = conn.execute(
+        """SELECT COUNT(*) AS c FROM social_plans
+           WHERE active = 1 AND assigned_to_user_id IS NULL""").fetchone()["c"]
+    conn.close()
+    overview = [
+        overview_cell("Standing plans", len([p for p in plans if p["active"]])),
+        overview_cell("Posts waiting", scheduled, endpoint="management_social"),
+        overview_cell("Nobody assigned", unassigned, alert=bool(unassigned),
+                      hint="these make tasks with no owner"),
+    ]
+    return render_template(
+        "social_plans.html", plans=plans, employees=employees, overview=overview,
+        cadences=SOCIAL_CADENCES, platforms=SOCIAL_PLATFORMS, weekdays=SOCIAL_WEEKDAYS)
+
+
+def _social_plan_fields():
+    """Read a plan out of the form. Returns (fields, error)."""
+    f = request.form
+    name = (f.get("name", "") or "").strip()
+    if not name:
+        return None, "Give the plan a name — it is what the task will be called."
+    platform = (f.get("platform", "") or "").strip() or "Instagram"
+    if platform not in SOCIAL_PLATFORMS:
+        return None, "That is not one of the platforms."
+    cadence = (f.get("cadence", "") or "weekly").strip()
+    if cadence not in SOCIAL_CADENCES:
+        cadence = "weekly"
+    weekday = day_of_month = None
+    if cadence == "monthly":
+        try:
+            day_of_month = min(28, max(1, int(f.get("day_of_month", "1"))))
+        except ValueError:
+            day_of_month = 1
+    else:
+        try:
+            weekday = int(f.get("weekday", "1"))
+        except ValueError:
+            weekday = 1
+        if not 0 <= weekday <= 6:
+            weekday = 1
+    try:
+        lead = max(0, min(60, int(f.get("lead_days", "3") or 3)))
+    except ValueError:
+        lead = 3
+    assignee = (f.get("assigned_to_user_id", "") or "").strip()
+    return {
+        "name": name, "platform": platform, "cadence": cadence,
+        "weekday": weekday, "day_of_month": day_of_month,
+        "post_time": (f.get("post_time", "") or "").strip() or None,
+        "theme": (f.get("theme", "") or "").strip() or None,
+        "brief": (f.get("brief", "") or "").strip() or None,
+        "post_type": (f.get("post_type", "") or "").strip() or None,
+        "assigned_to_user_id": int(assignee) if assignee.isdigit() else None,
+        "lead_days": lead,
+        "active": 1 if f.get("active") else 0,
+    }, None
+
+
+@app.route("/management/social/plans/new", methods=["POST"])
+@owner_required
+def new_social_plan():
+    fields, error = _social_plan_fields()
+    if error:
+        flash(error, "error")
+        return redirect(url_for("social_plans"))
+    conn = get_db()
+    cols = list(fields) + ["created_by_user_id", "created_at"]
+    conn.execute(
+        f"INSERT INTO social_plans ({', '.join(cols)}) "
+        f"VALUES ({', '.join('?' * len(cols))})",
+        list(fields.values()) + [session.get("user_id"),
+                                 datetime.now(timezone.utc).isoformat()])
+    conn.commit()
+    log_audit(conn, "social_plan_created", target=fields["name"])
+    conn.commit()
+    # Generated straight away, so a plan made on Monday does not sit doing
+    # nothing until the small hours.
+    made = generate_social_posts(conn, user_id=session.get("user_id"))
+    conn.close()
+    flash(f"Plan added — {made} post{'' if made == 1 else 's'} scheduled.", "success")
+    return redirect(url_for("social_plans"))
+
+
+@app.route("/management/social/plans/<int:plan_id>/edit", methods=["POST"])
+@owner_required
+def edit_social_plan(plan_id):
+    fields, error = _social_plan_fields()
+    if error:
+        flash(error, "error")
+        return redirect(url_for("social_plans"))
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM social_plans WHERE id = ?", (plan_id,)).fetchone():
+        conn.close()
+        abort(404)
+    conn.execute(
+        f"UPDATE social_plans SET {', '.join(k + ' = ?' for k in fields)} WHERE id = ?",
+        list(fields.values()) + [plan_id])
+    conn.commit()
+    # Posts already generated keep the day and time they were given. Changing
+    # a plan changes what it produces next, not what somebody may already have
+    # written a caption for.
+    made = generate_social_posts(conn, user_id=session.get("user_id"))
+    conn.close()
+    flash(f"Plan saved — {made} new post{'' if made == 1 else 's'} scheduled."
+          if made else "Plan saved.", "success")
+    return redirect(url_for("social_plans"))
+
+
+@app.route("/management/social/plans/<int:plan_id>/delete", methods=["POST"])
+@owner_required
+def delete_social_plan(plan_id):
+    """Retire a plan. Posts it already made are left alone.
+
+    Deleting them would take away work somebody may already have written, and
+    a post that is going out on Thursday does not stop being real because the
+    standing rule behind it was retired.
+    """
+    conn = get_db()
+    plan = conn.execute("SELECT name FROM social_plans WHERE id = ?", (plan_id,)).fetchone()
+    if not plan:
+        conn.close()
+        abort(404)
+    kept = conn.execute(
+        """SELECT COUNT(*) AS c FROM social_posts
+           WHERE plan_id = ? AND status != 'posted'""", (plan_id,)).fetchone()["c"]
+    conn.execute("DELETE FROM social_plans WHERE id = ?", (plan_id,))
+    conn.commit()
+    log_audit(conn, "social_plan_deleted", target=plan["name"])
+    conn.commit()
+    conn.close()
+    flash(f"Plan removed. {kept} post{'' if kept == 1 else 's'} it already made "
+          f"{'is' if kept == 1 else 'are'} still scheduled." if kept else "Plan removed.",
+          "success")
+    return redirect(url_for("social_plans"))
+
+
+@app.route("/management/social/generate", methods=["POST"])
+@owner_required
+def generate_social_now():
+    conn = get_db()
+    made = generate_social_posts(conn, user_id=session.get("user_id"))
+    conn.close()
+    flash(f"{made} post{'' if made == 1 else 's'} scheduled." if made
+          else "Nothing new to schedule — everything in the window is already there.",
+          "success")
+    return redirect(url_for("social_plans"))
 
 
 @app.route("/management/vehicles")
@@ -30829,6 +31216,9 @@ AUTOMATION_JOBS = [
     ("hr_escalation", "automation_hr_escalation_enabled", None, 21600, run_hr_escalation_job),
     ("campaign_triggers", "automation_campaign_triggers_enabled", None, 21600, run_campaign_triggers_job),
     ("backup_email", "automation_backup_email_enabled", "automation_backup_interval_hours", None, run_backup_email_job),
+    # Daily is enough: it works a month ahead, so a missed day costs
+    # nothing and a slot is never generated at short notice.
+    ("social_schedule", "automation_social_schedule_enabled", None, 24 * 3600, run_social_schedule_job),
 ]
 
 
@@ -30910,6 +31300,7 @@ AUTOMATION_JOB_LABELS = {
     "hr_escalation": "HR chase-ups (overdue approvals, reviews, certificates)",
     "campaign_triggers": "Automated guest emails (before arrival, after departure)",
     "backup_email": "Automated backup email (database + uploads, to the owner)",
+    "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
 }
 
 

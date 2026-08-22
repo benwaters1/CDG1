@@ -1,0 +1,80 @@
+{# The plan form, shared by the add form and every edit form on the page, so
+   the two can never drift apart. Expects `plan` (a row, or None for a new
+   one), plus `platforms`, `cadences` and `weekdays`. #}
+<div class="refund-fields">
+  <div>
+    <label class="field-label">Name</label>
+    <input type="text" name="name" value="{{ plan['name'] if plan else '' }}"
+           placeholder="Tuesday restaurant post" required>
+  </div>
+  <div>
+    <label class="field-label">Platform</label>
+    <select name="platform">
+      {% for pf in platforms %}
+      <option value="{{ pf }}" {{ 'selected' if plan and plan['platform'] == pf }}>{{ pf }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">How often</label>
+    <select name="cadence">
+      {% for key, label in cadences.items() %}
+      <option value="{{ key }}" {{ 'selected' if plan and plan['cadence'] == key }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Which day</label>
+    <select name="weekday">
+      {% for i in range(7) %}
+      <option value="{{ i }}" {{ 'selected' if plan and plan['weekday'] == i }}>{{ weekdays[i] }}</option>
+      {% endfor %}
+    </select>
+    <p class="field-hint">Ignored for a monthly plan — that uses the day number below.</p>
+  </div>
+  <div>
+    <label class="field-label">Day of the month</label>
+    <input type="number" name="day_of_month" min="1" max="28"
+           value="{{ plan['day_of_month'] if plan and plan['day_of_month'] else 1 }}">
+    <p class="field-hint">Capped at 28 so a monthly plan never skips February.</p>
+  </div>
+  <div>
+    <label class="field-label">Time</label>
+    <input type="time" name="post_time" value="{{ plan['post_time'] if plan else '10:00' }}">
+  </div>
+  <div>
+    <label class="field-label">Theme</label>
+    <input type="text" name="theme" value="{{ plan['theme'] if plan else '' }}"
+           placeholder="The restaurant">
+    <p class="field-hint">Becomes part of the task title, so the list says what the post is about.</p>
+  </div>
+  <div>
+    <label class="field-label">Who writes it</label>
+    <select name="assigned_to_user_id">
+      <option value="">— nobody yet —</option>
+      {% for e in employees %}
+      <option value="{{ e['id'] }}" {{ 'selected' if plan and plan['assigned_to_user_id'] == e['id'] }}>{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Days of notice</label>
+    <input type="number" name="lead_days" min="0" max="60"
+           value="{{ plan['lead_days'] if plan else 3 }}">
+    <p class="field-hint">The task falls due this many days before the post. Writing a caption on
+      the morning it goes out is how a slot gets missed.</p>
+  </div>
+  <div style="grid-column:1 / -1;">
+    <label class="field-label">Standing brief</label>
+    <textarea name="brief" rows="2"
+              placeholder="A dish from tonight's card, or the kitchen mid-service. Never a guest without asking.">{{ plan['brief'] if plan else '' }}</textarea>
+    <p class="field-hint">Copied onto every task and post this plan makes.</p>
+  </div>
+  <div style="grid-column:1 / -1;">
+    <label class="amenity" style="max-width:220px;">
+      <input type="checkbox" name="active" {{ 'checked' if (plan is none) or plan['active'] }}>
+      <span>Running</span>
+    </label>
+    <p class="field-hint">Pausing stops new posts. Ones already scheduled stay.</p>
+  </div>
+</div>
