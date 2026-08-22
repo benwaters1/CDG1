@@ -45,27 +45,33 @@
   {% if not session_rows %}
     <p class="g-p">No dates are open just yet. They are released here first, and to the newsletter before that.</p>
   {% else %}
-    <div class="g-agenda" style="margin-top:var(--s6)">
+    <div class="g-sittings-grid">
       {% for row in session_rows %}
       {% set s = row.session %}
-      <article class="g-agenda__row">
-        <div class="g-agenda__when">
-          <span class="g-agenda__day">{{ date_range(s['start_date'], s['end_date']) }}</span>
-        </div>
-        <div class="g-agenda__what">
-          <h3 class="g-agenda__title">
-            {% if row.remaining > 0 %}{{ row.remaining }} of {{ s['capacity'] }} places remaining{% else %}Fully booked{% endif %}
-          </h3>
-          {% if s['notes'] %}<p class="g-p">{{ s['notes'] }}</p>{% endif %}
+      <article class="g-sit{% if row.remaining <= 0 %} g-sit--full{% endif %}">
+        {% if row.remaining <= 0 %}
+          <span class="g-sit__flag">Fully booked</span>
+        {% elif row.remaining <= 3 %}
+          <span class="g-sit__flag g-sit__flag--few">{{ row.remaining }} place{{ '' if row.remaining == 1 else 's' }} left</span>
+        {% endif %}
+        <img class="g-sit__img" src="{{ WS_IMAGES[loop.index0 % 3] }}" alt="{{ workshop['title'] }}" loading="lazy">
+        <div class="g-sit__b">
+          <p class="g-sit__name">{{ workshop['title'] }}</p>
+          <h3 class="g-sit__when">{{ date_range(s['start_date'], s['end_date']) }}</h3>
+          <p class="g-sit__meta">
+            {% if row.remaining > 0 %}{{ row.remaining }} of {{ s['capacity'] }} places remaining{% else %}No places remaining{% endif %}
+            {% if s['notes'] %}<br>{{ s['notes'] }}{% endif %}
+          </p>
           {% if workshop['price_per_person'] %}
-          <p class="g-agenda__loc">€{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['deposit_percent'] %} · {{ workshop['deposit_percent'] }}% deposit to reserve{% endif %}</p>
+          <p class="g-sit__rate">
+            <span class="g-fig">€{{ '{:,.0f}'.format(workshop['price_per_person']) }}</span>
+            <span>per person{% if workshop['deposit_percent'] %} · {{ workshop['deposit_percent'] }}% deposit{% endif %}</span>
+          </p>
           {% endif %}
-        </div>
-        <div style="align-self:center">
           {% if row.remaining > 0 %}
-          <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn g-btn--solid">Register</a>
+          <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn g-btn--solid">Book these dates</a>
           {% else %}
-          <span class="g-btn g-btn--off">Full</span>
+          <a href="{{ url_for('workshop_register', session_id=s['id']) }}" class="g-btn">Join the waitlist</a>
           {% endif %}
         </div>
       </article>
@@ -85,7 +91,7 @@
 
 <div class="g-band">
   {% for img in WS_IMAGES %}<img src="{{ img }}" alt="" loading="lazy">{% endfor %}
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1000w" alt="" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1000w" alt="" loading="lazy">
 </div>
 
 <!-- ============ INCLUDED ============ -->

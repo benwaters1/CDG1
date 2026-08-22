@@ -9,12 +9,19 @@ Nothing tested it. The failure surfaced two suites away, in the translation
 tests, because those happened to fetch "/" on their way to something else. This
 suite exists so the next one is caught where it happens.
 """
+import re
 from datetime import datetime, timezone, timedelta
 
 from _harness import Suite, clients, db
 import _harness
 
 m = _harness.m
+
+# The markers this suite counts. Both are asserted present on a populated
+# page before they are counted, so renaming them in a design pass fails
+# here rather than quietly turning every count into zero.
+ROOM_MARK = "g-homeroom__name"
+SIT_MARK = "g-sit__name"
 
 
 def run():
@@ -42,8 +49,20 @@ def run():
                 detail=f"expected {first['name']!r}")
     else:
         s.check("no active rooms, so nothing to show", "g-homerooms" not in body)
-    s.check("at most four of them", body.count("g-homeroom__name") <= 4,
-            detail=f"{body.count('g-homeroom__name')} shown")
+    # ROOM_MARK and SIT_MARK are checked for PRESENCE first, deliberately.
+    # A design pass renamed the sitting cards from g-agenda__* to g-sit__* and
+    # the counters below silently went to zero — which passes "at most three"
+    # while guarding nothing. Asserting the marker is there first makes a
+    # rename fail loudly instead, and the fix is one line here.
+    #
+    # Links are not enough on their own: the placeholder rooms that keep
+    # arriving in handovers carry no id, so they link to /book without one and
+    # a link-counting check never sees them.
+    s.check("the room cards are still marked the way this test expects",
+            ROOM_MARK in body,
+            detail=f"{ROOM_MARK!r} not found — markup renamed, update this test")
+    s.check("at most four of them", body.count(ROOM_MARK) <= 4,
+            detail=f"{body.count(ROOM_MARK)} shown")
 
     s.section("Only dates still ahead")
     # A front page advertising a workshop that finished in June is worse than
@@ -72,8 +91,12 @@ def run():
         s.check("its date is written out, not left as ISO",
                 ahead["start_date"] not in body,
                 detail=f"{ahead['start_date']} printed raw")
-    s.check("at most three sittings", body.count("g-agenda__title") <= 3,
-            detail=f"{body.count('g-agenda__title')} shown")
+    if ahead:
+        s.check("the sitting cards are still marked the way this test expects",
+                SIT_MARK in body,
+                detail=f"{SIT_MARK!r} not found — markup renamed, update this test")
+    s.check("at most three sittings", body.count(SIT_MARK) <= 3,
+            detail=f"{body.count(SIT_MARK)} shown")
 
     s.section("An empty house still renders")
     # Both lists are optional in the template. If that ever stops being true,
@@ -85,9 +108,12 @@ def run():
     s.check("with no rooms and no workshops it still opens",
             r.status_code == 200, detail=str(r.status_code))
     empty = r.get_data(as_text=True)
+    # Not "no links" — the placeholder rooms link to /book with no id, so a
+    # link check passes while four invented rooms sit on the page.
     s.check("and says nothing about rooms rather than showing an empty frame",
-            "g-homeroom__name" not in empty)
-    s.check("nor about dates", "g-agenda__title" not in empty)
+            ROOM_MARK not in empty, detail=f"{empty.count(ROOM_MARK)} rooms shown")
+    s.check("nor about dates", SIT_MARK not in empty,
+            detail=f"{empty.count(SIT_MARK)} sittings shown")
     conn.execute("UPDATE rooms SET active = 1")
     conn.execute("UPDATE workshops SET active = 1")
     conn.commit()
@@ -97,7 +123,7 @@ def run():
     s.check("an owner gets their own screen", r.status_code == 200,
             detail=str(r.status_code))
     s.check("which is not the visitor's front page",
-            "g-homerooms" not in r.get_data(as_text=True))
+            ROOM_MARK not in r.get_data(as_text=True))
 
     conn.close()
     return s

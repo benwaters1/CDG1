@@ -20,6 +20,8 @@
   --sand:       #FAF7F2;   /* page ground — warm off-white, paper not screen */
   --sand-2:     #F2EDE4;   /* alternate section — a shade deeper           */
   --sand-3:     #E7DCD0;   /* third step                                 */
+  --stone:      #8F8C78;   /* warm stone — the second colour, from the walls */
+  --stone-pale: #EDE8DC;   /* stone at a whisper, for panels                */
   --line:       #DED7CB;   /* hairlines — warm, to match the ground        */
   --white:      #FDFBF8;
 
@@ -1618,3 +1620,138 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g main, .g footer, .g header{ overflow-x: clip; }
 .g-two > *, .g-half > *, .g-cols > *{ min-width: 0; }
 .g-p, .g-h2, .g-display, .g-place, .g-eyebrow{ overflow-wrap: anywhere; }
+
+/* ==========================================================================
+   WORKSHOP DATES AS CARDS
+   A spreadsheet is how an airline sells a seat, not how a house sells a week.
+   Each sitting gets its own photograph, the price set large, and one action.
+   ========================================================================== */
+.g-sittings-grid{
+  display: grid; gap: var(--s5); margin-top: var(--s6);
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+}
+.g-sit{
+  background: var(--white); border: 1px solid var(--line);
+  display: flex; flex-direction: column; position: relative;
+}
+.g .g-sit__img{ width: 100%; height: 12rem; object-fit: cover; display: block; }
+.g-sit__b{ padding: var(--s5); display: flex; flex-direction: column; flex: 1; }
+.g-sit__when{
+  font-family: var(--display); font-weight: 400; font-size: 22px;
+  line-height: 1.15; color: var(--blue-deep); margin: 0 0 var(--s2);
+}
+.g-sit__name{
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--stone); margin: 0 0 var(--s4);
+}
+.g-sit__meta{ font-size: 14px; color: var(--ink-soft); margin: 0 0 var(--s4); flex: 1; }
+.g-sit__rate{ margin: 0 0 var(--s4); }
+.g-sit__rate .g-fig{ font-size: 24px; }
+.g-sit__rate span:last-child{ font-size: 14px; color: var(--ink-faint); }
+.g .g-sit .g-btn{ width: 100%; }
+.g-sit--full{ opacity: .72; }
+.g-sit__flag{
+  position: absolute; top: 0; left: 0;
+  background: var(--blue-deep); color: #fff;
+  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  padding: var(--s2) var(--s4);
+}
+.g-sit__flag--few{ background: var(--stone); }
+
+/* ==========================================================================
+   HERO SEARCH
+   On a booking site the search is the hero, not something below it. Sits on
+   the photograph so the first act available is looking for a date.
+   ========================================================================== */
+.g-herosearch{
+  display: grid; gap: 1px; background: rgba(255,255,255,.28);
+  border: 1px solid rgba(255,255,255,.4);
+  margin-top: var(--s6); max-width: 46rem;
+}
+@media (min-width: 46rem){
+  .g-herosearch{ grid-template-columns: 1fr 1fr 7rem auto; align-items: stretch; }
+}
+.g-herosearch__f{
+  background: rgba(255,255,255,.94); padding: var(--s3) var(--s4);
+  display: flex; flex-direction: column; justify-content: center; min-width: 0;
+}
+.g-herosearch__f label{
+  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--ink-faint); margin-bottom: 2px;
+}
+.g-herosearch__f input{
+  border: 0; background: transparent; padding: 0; width: 100%;
+  font-family: var(--serif); font-size: 16px; color: var(--blue-deep);
+  min-height: 44px; line-height: 44px;
+}
+/* The field itself is the tap target, not just the text inside it. */
+.g-herosearch__f{ min-height: 60px; }
+.g-herosearch__f input:focus{ outline: 2px solid var(--blue-deep); outline-offset: 3px; }
+.g-herosearch__go{
+  background: var(--blue-deep); color: #fff; border: 0; cursor: pointer;
+  font-family: var(--serif); font-size: 15px; font-weight: 500;
+  letter-spacing: .06em; padding: var(--s4) var(--s6); min-height: 56px;
+  white-space: nowrap;
+}
+.g-herosearch__go:hover{ background: #0F2440; }
+@media (max-width: 46rem){
+  .g-herosearch{ margin-top: var(--s5); }
+  .g-herosearch__go{ width: 100%; }
+}
+
+/* Eight hundred years, as a dated list. A year set in the serif against the
+   line of text it belongs to — the shape of a chronology in a printed book. */
+.g-timeline{ list-style: none; margin: var(--s6) 0 0; padding: 0; }
+.g-timeline li{
+  display: grid; gap: var(--s3) var(--s6); align-items: baseline;
+  padding: var(--s5) 0; border-bottom: 1px solid var(--line);
+}
+@media (min-width: 40rem){ .g-timeline li{ grid-template-columns: 7rem 1fr; } }
+.g-timeline li:first-child{ border-top: 1px solid var(--line); }
+.g-timeline b{
+  font-family: var(--display); font-weight: 400; font-size: 30px;
+  color: var(--stone); line-height: 1;
+}
+.g-timeline span{ font-size: 16px; line-height: 1.6; color: var(--ink); }
+
+/* ==========================================================================
+   ENGRAVED ORNAMENT — more of it, used as structure rather than decoration
+   ========================================================================== */
+
+/* A section opener with a rule either side of a small mark. */
+.g-orn{
+  display: flex; align-items: center; gap: var(--s5);
+  margin: 0 0 var(--s5); color: var(--line);
+}
+.g-orn::before, .g-orn::after{ content:''; flex:1; height:1px; background: currentColor; }
+.g-orn svg{ width: 22px; height: 22px; flex: none; color: var(--stone); }
+.g-orn--left::before{ display: none; }
+.g-orn--left{ justify-content: flex-start; }
+.g-orn--left svg{ margin-right: var(--s3); }
+
+/* A drop initial, the way a chapter opens in a printed book. */
+.g-drop-cap::first-letter{
+  font-family: var(--display); font-weight: 400;
+  font-size: 3.4em; line-height: .82; float: left;
+  margin: .06em var(--s3) 0 0; color: var(--stone);
+}
+
+/* A corner rule on a panel — engraved plate rather than UI box. */
+.g-plate-edge{ position: relative; }
+.g-plate-edge::before, .g-plate-edge::after{
+  content:''; position:absolute; width: 14px; height: 14px; pointer-events:none;
+}
+.g-plate-edge::before{ top:0; left:0; border-top:1px solid var(--stone); border-left:1px solid var(--stone); }
+.g-plate-edge::after{ bottom:0; right:0; border-bottom:1px solid var(--stone); border-right:1px solid var(--stone); }
+
+/* The façade, very faint, as ground for a navy panel. */
+.g-sec--plate-dark{ position: relative; overflow: hidden; }
+.g-sec--plate-dark::before{
+  content:''; position:absolute; inset:0;
+  background: url('/static/img/chateau_plate.png') center 62% / min(40rem, 82%) no-repeat;
+  opacity: .07; pointer-events: none;
+}
+.g-sec--plate-dark > *{ position: relative; }

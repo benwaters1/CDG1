@@ -5,14 +5,30 @@
 
 <section class="g-hero">
   <video class="g-hero__video" autoplay muted loop playsinline
-         poster="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w">
+         poster="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1500w">
     <source src="{{ url_for('static', filename='video/chateau_hero_loop.mp4') }}" type="video/mp4">
   </video>
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1>
     <p class="g-hero__lede">A rare invitation: stay inside a world-renowned restoration project, within a building still evolving, unmodernised, and utterly unlike anywhere else.</p>
-  </div>
+  
+    <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
+      <div class="g-herosearch__f">
+        <label for="hs_arrival">{{ t('Arrival') }}</label>
+        <input type="date" id="hs_arrival" name="arrival_date">
+      </div>
+      <div class="g-herosearch__f">
+        <label for="hs_departure">{{ t('Departure') }}</label>
+        <input type="date" id="hs_departure" name="departure_date">
+      </div>
+      <div class="g-herosearch__f g-herosearch__f--n">
+        <label for="hs_guests">{{ t('Guests') }}</label>
+        <input type="number" id="hs_guests" name="party_size" min="1" max="15" value="2">
+      </div>
+      <button type="submit" class="g-herosearch__go">{{ t('Check availability') }}</button>
+    </form>
+</div>
   <button type="button" class="g-hero__pause" id="g-hero-pause" aria-label="Pause video">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>
   </button>
@@ -62,7 +78,7 @@
       <img class="g-homeroom__img"
            src="{% if r.get('img') %}{{ r['img'] }}{% elif r['photo_filename'] %}{{ url_for('room_photo', filename=r['photo_filename']) }}{% else %}{{ [
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w',
-             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w',
+             'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w',
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w',
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w'
            ][loop.index0 % 4] }}{% endif %}"
@@ -91,21 +107,30 @@
   <h2 class="g-place">The Next Dates</h2>
   <p class="g-p">Three to seven nights, a small group, and the house given over to it entirely.</p>
 
-  <div class="g-agenda" style="margin-top:var(--s6)">
+  {% set WS_PIC = {
+    'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w",
+    'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w",
+    'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w",
+    'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1000w",
+    'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1000w"
+  } %}
+  <div class="g-sittings-grid">
     {% for s in upcoming %}
-    <article class="g-agenda__row">
-      <div class="g-agenda__when">
-        <span class="g-agenda__day">{{ date_range(s['start_date'], s['end_date']) }}</span>
-        {% if s['nights_label'] %}<span class="g-agenda__time">{{ s['nights_label'] }}</span>{% endif %}
-      </div>
-      <div class="g-agenda__what">
-        <h3 class="g-agenda__title">{{ s['title'] }}</h3>
+    {% set pic = namespace(u=None) %}
+    {% for k, v in WS_PIC.items() %}{% if k in s['title'] %}{% set pic.u = v %}{% endif %}{% endfor %}
+    <article class="g-sit">
+      <img class="g-sit__img" src="{{ pic.u or WS_PIC['Cooking'] }}" alt="{{ s['title'] }}" loading="lazy">
+      <div class="g-sit__b">
+        <p class="g-sit__name">{{ s['title'] }}</p>
+        <h3 class="g-sit__when">{{ date_range(s['start_date'], s['end_date']) }}</h3>
+        {% if s['nights_label'] %}<p class="g-sit__meta">{{ s['nights_label'] }}</p>{% endif %}
         {% if s['price_per_person'] %}
-        <p class="g-agenda__loc"><span class="g-fig">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span> per person</p>
+        <p class="g-sit__rate">
+          <span class="g-fig">€{{ '{:,.0f}'.format(s['price_per_person']) }}</span>
+          <span>per person</span>
+        </p>
         {% endif %}
-      </div>
-      <div style="align-self:center">
-        <a href="{{ url_for('workshop_detail', workshop_id=s['workshop_id']) }}" class="g-btn">View</a>
+        <a href="{{ url_for('workshop_detail', workshop_id=s['workshop_id']) }}" class="g-btn g-btn--solid">View this workshop</a>
       </div>
     </article>
     {% endfor %}
@@ -144,7 +169,7 @@
   </div>
 </div></section>
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w" alt="A Place To Celebrate" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1500w" alt="A Place To Celebrate" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Weddings &amp; Celebrations</h2>
     <p class="g-p"><em>The whole house, for a day that belongs only to you.</em></p>
@@ -191,7 +216,7 @@
 </div></section>
 
 <section class="g-sec--flush"><div class="g-half g-half--flip">
-<img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="" loading="lazy">
+<img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="" loading="lazy">
 <div class="g-half__text">
 <h2 class="g-display" style="font-size:clamp(26px,3.6vw,42px); font-style:italic; margin-bottom:26px"><em>Preserving the past. Welcoming the future.</em></h2>
 <p class="g-p">A restoration, not a renovation — the longer course, and the only one worth taking with a house of this consequence. Fifteen years in, and she is not yet finished. We should be glad to welcome you while the work is still unfolding.</p>

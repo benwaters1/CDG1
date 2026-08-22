@@ -87,45 +87,47 @@
     {% endfor %}
   </div>
 
-  <table class="g-dates-table">
-    <thead>
-      <tr>
-        <th scope="col">Dates</th>
-        <th scope="col">Workshop</th>
-        <th scope="col">Length</th>
-        <th scope="col">Per person</th>
-        <th scope="col">Places</th>
-        <th scope="col"><span class="g-vh">Book</span></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for item in ns.rows|sort(attribute='r.session.start_date') %}
-      {% set w = item.w %}{% set r = item.r %}
-      <tr data-ws="{{ w['id'] }}"{% if r.remaining <= 0 %} class="is-full"{% endif %}>
-        <td data-label="Dates" class="g-dates-table__when">
-          {{ date_range(r.session['start_date'], r.session['end_date']) }}
-        </td>
-        <td data-label="Workshop">
-          <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}">{{ w['title'] }}</a>
-        </td>
-        <td data-label="Length">{{ w['nights_label'] or '—' }}</td>
-        <td data-label="Per person">
-          {% if w['price_per_person'] %}<span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>{% else %}—{% endif %}
-        </td>
-        <td data-label="Places">
-          {% if r.remaining > 0 %}{{ r.remaining }} left{% else %}<span class="g-full">Full</span>{% endif %}
-        </td>
-        <td class="g-dates-table__act">
-          {% if r.remaining > 0 %}
-          <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn g-btn--solid">Book</a>
-          {% else %}
-          <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn">Waitlist</a>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% set WS_PIC = {
+    'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w",
+    'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w",
+    'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w",
+    'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1000w",
+    'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1000w"
+  } %}
+
+  <div class="g-sittings-grid">
+    {% for item in ns.rows|sort(attribute='r.session.start_date') %}
+    {% set w = item.w %}{% set r = item.r %}
+    {% set pic = namespace(u=None) %}
+    {% for k, v in WS_PIC.items() %}{% if k in w['title'] %}{% set pic.u = v %}{% endif %}{% endfor %}
+    <article class="g-sit{% if r.remaining <= 0 %} g-sit--full{% endif %}" data-ws="{{ w['id'] }}">
+      {% if r.remaining <= 0 %}
+        <span class="g-sit__flag">Fully booked</span>
+      {% elif r.remaining <= 3 %}
+        <span class="g-sit__flag g-sit__flag--few">{{ r.remaining }} place{{ '' if r.remaining == 1 else 's' }} left</span>
+      {% endif %}
+      <img class="g-sit__img" src="{{ pic.u or WS_PIC['Cooking'] }}" alt="{{ w['title'] }}" loading="lazy">
+      <div class="g-sit__b">
+        <p class="g-sit__name">{{ w['title'] }}</p>
+        <h3 class="g-sit__when">{{ date_range(r.session['start_date'], r.session['end_date']) }}</h3>
+        <p class="g-sit__meta">
+          {{ w['nights_label'] or '' }}{% if w['nights_label'] and r.remaining > 0 %} · {% endif %}{% if r.remaining > 0 %}{{ r.remaining }} of {{ r.session['capacity'] }} places remaining{% endif %}
+        </p>
+        {% if w['price_per_person'] %}
+        <p class="g-sit__rate">
+          <span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
+          <span>per person</span>
+        </p>
+        {% endif %}
+        {% if r.remaining > 0 %}
+        <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn g-btn--solid">Book these dates</a>
+        {% else %}
+        <a href="{{ url_for('workshop_register', session_id=r.session['id']) }}" class="g-btn">Join the waitlist</a>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
   {% else %}
   <p class="g-p">Dates for the coming season are being finalised. They are released here first, and to the newsletter before that.</p>
   {% endif %}
@@ -133,12 +135,15 @@
 
 <!-- ============ WHAT EVERY WORKSHOP INCLUDES ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
+  <div class="g-orn" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
+  </div>
   <h2 class="g-place">Included in Every Workshop</h2>
   <p class="g-p">One price, and nothing added to it once you are here.</p>
 
   <div class="g-incl-cards">
     <article class="g-incl-card">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1000w" alt="At the table" loading="lazy">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w" alt="At the table" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Full Board</h3>
         <p>Every meal prepared by the château chefs — long breakfasts, garden lunches, candlelit dinners. Unlimited château beverages throughout: wine, spirits, local beer and soft drinks.</p>
@@ -185,7 +190,7 @@
    in the page, so nothing is fetched and it works the moment it renders. */
 (function(){
   var chips = document.querySelectorAll('.g-datefilter .g-chip');
-  var rows  = document.querySelectorAll('.g-dates-table tbody tr');
+  var rows  = document.querySelectorAll('.g-sittings-grid .g-sit');
   if (!chips.length || !rows.length) return;
   chips.forEach(function(chip){
     chip.addEventListener('click', function(){
