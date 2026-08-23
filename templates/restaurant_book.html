@@ -85,8 +85,8 @@
           <p class="g-dossier__k">Your table</p>
           <p class="g-dossier__room">La Table</p>
           <dl class="g-dossier__l">
-            <div><dt>Date</dt><dd data-mirror="dinner_date">—</div>
-            <div><dt>Guests</dt><dd data-mirror="party_size">—</div>
+            <div><dt>Date</dt><dd data-mirror="dinner_date">—</dd></div>
+            <div><dt>Guests</dt><dd data-mirror="party_size">—</dd></div>
             {% if settings['dinner_time'] %}<div><dt>Seating</dt><dd>{{ settings['dinner_time'] }}</dd></div>{% endif %}
             {% if settings['price_per_person'] %}<div><dt>Per person</dt><dd>€{{ '%.0f'|format(settings['price_per_person']) }}</dd></div>{% endif %}
           </dl>

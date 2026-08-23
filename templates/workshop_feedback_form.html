@@ -2,7 +2,7 @@
 {% block title %}Your Feedback{% endblock %}
 {% block content %}
 
-<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="page-head">
   <h1>How was {{ booking['title'] }}?</h1>
 </div>
@@ -13,7 +13,8 @@
   <div class="empty-state">You've already sent feedback for this workshop — thank you!</div>
 {% else %}
   <div class="g-mb-card" style="max-width:520px;">
-    <p class="g-p" style="margin-top:0;">{{ booking['guest_name'] }}, thank you for joining us. A couple of minutes of your time helps us a lot.</p>
+    <p class="g-p" style="margin-top:0;">{{ booking['guest_name'] }}, thank you for coming. Two minutes here genuinely changes what we do next — we read every one, and the programme is still being shaped by what guests tell us.</p>
+    <p class="g-hint" style="margin-bottom:var(--s5)">Nothing is published without asking you first.</p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-mb-label">Rating</label>
@@ -32,5 +33,8 @@
   </div>
 {% endif %}
 </div></section>
+
+
+<img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w" alt="The kitchen" loading="lazy">
 
 {% endblock %}

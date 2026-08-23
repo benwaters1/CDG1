@@ -1940,3 +1940,113 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g .btn-text-danger:hover,
 .g .g-btn--danger:hover{ background: #8A2B22; border-color: #8A2B22; color: #fff; }
+
+/* The footer sat at 12px on every page — small at desktop reading distance,
+   and it is the last thing anyone reads. 13px is still quiet. */
+.g-footer h4{ font-size: 13px; }
+.g-footer__fine{ font-size: 13px; }
+.g-crest__note{ font-size: 13px; }
+
+
+/* The 12px step is used for every uppercase, letter-spaced micro-label —
+   eyebrows, dt terms, step numbers, dossier keys, card flags, footer notes.
+   Caps at 12px with wide tracking is hard to read at desktop distance, so the
+   step becomes 13px everywhere. Larger sizes are untouched. */
+.g .g-eyebrow, .g .g-crest__note, .g .g-crest--foot .g-crest__note,
+.g .g-num, .g .g-dossier__k, .g .g-dossier__l dt,
+.g .g-facts-list dt, .g .g-mb-dt, .g dl dt,
+.g .g-wscard__len, .g .g-sit__name, .g .g-sit__flag,
+.g .g-press span, .g .g-score span, .g .g-say__by,
+.g .g-dates-table th, .g .g-foot-note, .g .g-hint,
+.g .g-field label, .g .g-mb-label, .g .g-opt,
+.g .g-footer h4, .g .g-footer__fine,
+.g .g-search label, .g .g-refine label,
+.g .g-herosearch__f label, .g .g-incl-card__t + p{
+  font-size: 13px;
+}
+
+/* A form control that has missed a class should still be usable — a 21px
+   input is not tappable. This is a floor, not a style. */
+.g main input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),
+.g main select,
+.g main textarea{
+  min-height: 48px;
+  font-family: var(--serif); font-size: 16px;
+}
+.g main textarea{ min-height: 6rem; }
+
+/* ==========================================================================
+   SHORT UTILITY PAGES
+   Find-a-booking, confirmations, feedback, expired links. Forty words in a
+   full section reads as an error page. Tighten the section, cap the measure,
+   and let the photograph below carry the weight.
+   ========================================================================== */
+.g-short{ padding: clamp(40px, 6vw, 72px) 0 clamp(28px, 4vw, 44px); }
+.g-short .g-wrap{ max-width: 40rem; }
+.g-short .g-display{ font-size: clamp(28px, 3.4vw, 42px); }
+.g-short .g-framed{ margin-top: var(--s6); }
+
+/* Two classes the guest templates referenced that the stylesheet never
+   defined — a page heading block and an empty/neutral state. */
+.g .page-head{ margin-bottom: var(--s5); }
+.g .page-head h1{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.1;
+  color: var(--blue-deep); margin: 0;
+}
+.g .empty-state{
+  background: var(--sand-2); border: 1px solid var(--line);
+  padding: var(--s6); font-size: 16px; line-height: 1.6; color: var(--ink);
+}
+
+/* ==========================================================================
+   Classes the guest templates referenced that the stylesheet never defined —
+   found by diffing every class="" against the sheet. The statement is a
+   guest's bill and had no styling at all.
+   ========================================================================== */
+.g .flash{
+  padding: var(--s4) var(--s5); border: 1px solid var(--line);
+  background: var(--sand-2); font-size: 16px; margin-bottom: var(--s5);
+}
+.g .flash-success{ border-color: #7E9B7A; background: #F1F5EF; }
+
+.g .statement{ width: 100%; border-collapse: collapse; margin-top: var(--s5); }
+.g .statement-head{
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+  text-align: left; padding: 0 var(--s4) var(--s3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.g .statement td{ padding: var(--s3) var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line); }
+.g .num{ text-align: right; font-family: var(--display); font-size: 17px; white-space: nowrap; }
+
+.g .section-heading{
+  font-family: var(--display); font-weight: 400; font-size: 24px;
+  color: var(--blue-deep); margin: var(--s7) 0 var(--s4);
+  padding-bottom: var(--s3); border-bottom: 1px solid var(--line);
+}
+.g .quote-box{
+  background: var(--sand-2); border-left: 2px solid var(--stone);
+  padding: var(--s5); margin: var(--s5) 0;
+}
+.g .small-link{ font-size: 14px; color: var(--ink-soft); }
+
+/* Six classes in use with no rule — found by diffing every class attribute in
+   the templates against this sheet. .g-formhero and .g-two__media were mine,
+   lost in a rewrite; .data-table is the admin table on the guest statement. */
+.g .g-formhero{
+  width: 100%; height: clamp(12rem, 30vh, 22rem);
+  object-fit: cover; display: block;
+}
+.g .g-two__media{ min-width: 0; }
+.g .g-two__media img{ width: 100%; height: 100%; min-height: 18rem; max-height: 30rem; object-fit: cover; display: block; }
+.g .g-agenda__what{ min-width: 0; }
+.g .g-herosearch__f--n{ }
+.g .g-resform{ max-width: 42rem; }
+.g .data-table{ width: 100%; border-collapse: collapse; font-size: 15px; }
+.g .data-table th{
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+  text-align: left; padding: 0 var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line);
+}
+.g .data-table td{ padding: var(--s3) var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line); }

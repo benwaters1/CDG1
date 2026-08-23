@@ -2,7 +2,7 @@
 {% block title %}My Event Inquiry{% endblock %}
 {% block content %}
 
-<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="g-mb-card">
   <h1>{{ inquiry['event_type']|capitalize }} Inquiry</h1>
   <p class="g-p">Status: <span class="mini-status status-{{ inquiry['status'] }}">{{ inquiry['status'] }}</span></p>
@@ -38,5 +38,8 @@
   {% endif %}
 </div>
 </div></section>
+
+
+<img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1500w" alt="The château from above" loading="lazy">
 
 {% endblock %}

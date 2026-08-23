@@ -2,7 +2,7 @@
 {% block title %}{% if state == 'done' %}Subscription confirmed{% else %}Link not recognised{% endif %}{% endblock %}
 {% block content %}
 
-<section class="g-sec">
+<section class="g-sec g-short">
   <div class="g-wrap g-wrap--narrow">
     {% if state == 'done' %}
       <p class="g-eyebrow">Newsletter</p>
@@ -26,5 +26,8 @@
     {% endif %}
   </div>
 </section>
+
+
+<img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="The formal gardens" loading="lazy">
 
 {% endblock %}

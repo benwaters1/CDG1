@@ -152,10 +152,10 @@
           <p class="g-dossier__k">Your request</p>
           <p class="g-dossier__room">{{ room['name'] }}</p>
           <dl class="g-dossier__l">
-            <div><dt>Arrival</dt><dd data-mirror="arrival_date">—</div>
-            <div><dt>Departure</dt><dd data-mirror="departure_date">—</div>
-            <div><dt>Nights</dt><dd data-nights>—</div>
-            <div><dt>Guests</dt><dd data-mirror="party_size">—</div>
+            <div><dt>Arrival</dt><dd data-mirror="arrival_date">—</dd></div>
+            <div><dt>Departure</dt><dd data-mirror="departure_date">—</dd></div>
+            <div><dt>Nights</dt><dd data-nights>—</dd></div>
+            <div><dt>Guests</dt><dd data-mirror="party_size">—</dd></div>
           </dl>
 
           {# The price, before they commit. Rendered server-side when dates
@@ -172,7 +172,7 @@
             <dl class="g-quote__l" id="quote_lines">
               {% if initial_quote and initial_quote.available %}
                 {% for line in initial_quote.lines %}
-                <div><dt>{{ line.label }}</dt><dd class="g-fig">€{{ '%.2f'|format(line.amount) }}</div>
+                <div><dt>{{ line.label }}</dt><dd class="g-fig">€{{ '%.2f'|format(line.amount) }}</dd></div>
                 {% endfor %}
               {% endif %}
             </dl>
@@ -429,5 +429,16 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   sync();
 })();
 </script>
+
+
+<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
+  <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
+    Gudanes is a Class I Historic Monument, which means the walls stay as the
+    centuries left them — bare plaster, weathered stone, protected by law and
+    not ours to change. Everything within them is new and genuinely good: the
+    beds, the linen, the floors underfoot, the bathrooms, the food. The
+    imperfection is deliberate, and staying here pays for the next room.
+  </p>
+</div></section>
 
 {% endblock %}
