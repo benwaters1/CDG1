@@ -2,24 +2,25 @@
 {% block title %}My Reservation{% endblock %}
 {% block content %}
 
-<div class="narrow-card">
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+<div class="g-mb-card">
   <h1>Dinner Reservation</h1>
-  <p class="manual-body">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
+  <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
 
-  <div class="detail-card">
-    <div class="detail-grid">
-      <div><span class="detail-label">Reference code</span>{{ booking['reference_code'] }}</div>
-      <div><span class="detail-label">Date</span>{{ booking['dinner_date'] }}</div>
-      <div><span class="detail-label">Party size</span>{{ booking['party_size'] }}</div>
-      {% if booking['total_price'] %}<div><span class="detail-label">Total</span>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</div>{% endif %}
+  <div class="g-mb-card">
+    <dl class="g-facts-list">
+      <div><dt>Reference code</dt><dd>{{ booking['reference_code'] }}</dd></div>
+      <div><dt>Date</dt><dd>{{ booking['dinner_date']|date_short }}</dd></div>
+      <div><dt>Party size</dt><dd>{{ booking['party_size'] }}</dd></div>
+      {% if booking['total_price'] %}<div><dt>Total</dt><dd>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</dd></div>{% endif %}
       {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
-      <div><span class="detail-label">Deposit paid</span>€{{ '%.2f'|format(booking['deposit_amount']) }}</div>
-      <div><span class="detail-label">Due at the restaurant</span>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</div>
+      <div><dt>Deposit paid</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }}</dd></div>
+      <div><dt>Due at the restaurant</dt><dd>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>
       {% endif %}
-    </div>
+    </dl>
     {% if booking['dietary_notes'] %}
-    <div class="notes-block">
-      <span class="detail-label">Your notes</span>
+    <div class="g-mb-note">
+      <span class="g-mb-dt">Your notes</span>
       <p>{{ booking['dietary_notes'] }}</p>
     </div>
     {% endif %}
@@ -33,5 +34,6 @@
   </form>
   {% endif %}
 </div>
+</div></section>
 
 {% endblock %}

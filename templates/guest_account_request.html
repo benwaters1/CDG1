@@ -2,6 +2,7 @@
 {% block title %}Your account{% endblock %}
 {% block content %}
 
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
 <div style="max-width:460px; margin:0 auto;">
   <h1>Your bookings</h1>
 
@@ -12,26 +13,27 @@
   <div class="flash flash-success">
     If we have bookings for that address, a link is on its way. It works for 48 hours.
   </div>
-  <p class="upload-hint">
+  <p class="g-hint">
     Nothing arrived? Check the spam folder, or
     <a href="{{ url_for('guest_account_request') }}">try again</a>.
   </p>
   {% else %}
-  <p class="upload-hint">
+  <p class="g-hint">
     Everything you've booked with us — stays, dinners, workshops — in one place. Tell us your email
     and we'll send you a link. No password to remember.
   </p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field-label" for="email">Your email</label>
+    <label class="g-mb-label" for="email">Your email</label>
     <input type="email" id="email" name="email" required autocomplete="email"
            placeholder="the address you booked with">
-    <button type="submit" class="btn-primary">Send me the link</button>
+    <button type="submit" class="g-btn g-btn--solid">Send me the link</button>
   </form>
-  <p class="upload-hint" style="margin-top:14px;">
+  <p class="g-hint" style="margin-top:14px;">
     Have a reference code instead? <a href="{{ url_for('find_booking') }}">Find a single booking</a>.
   </p>
   {% endif %}
 </div>
+</div></section>
 
 {% endblock %}

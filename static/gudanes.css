@@ -1777,3 +1777,166 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--sand-2); border: 1px solid var(--line);
   padding: var(--s4); word-break: break-all; margin: var(--s3) 0 0;
 }
+
+
+/* The wordmark asset is white-on-transparent. The header is cream, so on its
+   own it was invisible on every page. Invert it to the brand navy; the only
+   place it should stay white is over a dark hero. */
+.g .g-brand img{
+  filter: invert(11%) sepia(37%) saturate(1946%) hue-rotate(190deg) brightness(96%) contrast(93%);
+}
+.g.has-hero.at-top .g-brand img{ filter: none; }
+
+/* ==========================================================================
+   TESTIMONIALS
+   Set as an engraved plate rather than a review widget — a rule above, the
+   quote in the display serif, the source small beneath. No stars, no cards
+   with drop shadows; this is a house, not a listing.
+   ========================================================================== */
+.g-says{ background: var(--stone-pale); }
+.g-says__grid{
+  display: grid; gap: var(--s6); margin-top: var(--s6);
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+.g-say{
+  padding: var(--s6) 0 0; border-top: 2px solid var(--blue-deep);
+  display: flex; flex-direction: column;
+}
+.g-say__q{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(19px, 1.7vw, 23px); line-height: 1.45;
+  color: var(--blue-deep); margin: 0 0 var(--s5); flex: 1;
+}
+.g-say__q::before{ content: "“"; margin-right: .06em; }
+.g-say__q::after{ content: "”"; }
+.g-say__by{
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--stone); margin: 0;
+}
+.g-say__src{
+  display: block;
+  font-family: var(--serif); font-size: 13px; color: var(--ink-faint);
+  margin: 3px 0 0; letter-spacing: 0; text-transform: none; font-weight: 400;
+}
+
+/* The scores, as a row of engraved figures. */
+.g-scores{
+  display: grid; gap: var(--s5) var(--s6); margin-top: var(--s7);
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  border-top: 1px solid var(--line); padding-top: var(--s6);
+}
+.g-score{ text-align: center; }
+.g-score b{
+  display: block; font-family: var(--display); font-weight: 400;
+  font-size: 34px; line-height: 1; color: var(--blue-deep);
+}
+.g-score span{
+  display: block; font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+  margin-top: var(--s2);
+}
+
+/* ==========================================================================
+   ENGRAVED DEVICES
+   Drawn from the vocabulary of an eighteenth-century plate: a rule that
+   swells at the centre, a fleuron, a laurel, and a cartouche for a section
+   opener. Line only, navy or stone, no fills.
+   ========================================================================== */
+.g-rule-fine{
+  display: block; width: 100%; height: 12px; margin: var(--s7) 0;
+  color: var(--stone);
+}
+.g-fleur{ display: block; margin: var(--s6) auto; color: var(--stone); width: 120px; height: 26px; }
+.g-cartouche{
+  position: relative; text-align: center;
+  padding: var(--s7) var(--s6); margin: 0;
+}
+.g-cartouche::before, .g-cartouche::after{
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+  width: min(22rem, 70%); height: 1px; background: var(--line);
+}
+.g-cartouche::before{ top: var(--s4); }
+.g-cartouche::after{ bottom: var(--s4); }
+.g-cartouche .g-place{ margin: 0; }
+
+/* A heading with a small drawn mark set above it, centred. */
+.g-crown{ display: block; margin: 0 auto var(--s4); width: 34px; height: 34px; color: var(--stone); }
+
+/* Section that reads as a printed plate: hairline frame inset from the edge. */
+.g-framed{
+  border: 1px solid var(--line); position: relative;
+  padding: clamp(28px, 4vw, 48px);
+}
+.g-framed::before{
+  content: ''; position: absolute; inset: 6px;
+  border: 1px solid var(--line); pointer-events: none;
+}
+
+/* ==========================================================================
+   MANAGE A BOOKING
+   The most functional guest page — eight forms on one screen: arrival time,
+   extend, change dates, transfer, requests, bill, extras, dinner. It was
+   built on admin classes. Kept dense and legible rather than decorated.
+   ========================================================================== */
+.g-mb-card{
+  background: var(--white); border: 1px solid var(--line);
+  padding: var(--s6); margin-bottom: var(--s5);
+}
+.g-mb-card h3{
+  font-family: var(--display); font-weight: 400; font-size: 22px;
+  color: var(--blue-deep); margin: 0 0 var(--s4);
+}
+.g-mb-label{
+  display: block; font-family: var(--serif); font-size: 13px; font-weight: 500;
+  color: var(--ink-soft); margin: var(--s4) 0 var(--s2);
+}
+.g-mb-card input, .g-mb-card select, .g-mb-card textarea{
+  width: 100%; max-width: 30rem; padding: var(--s3) var(--s4);
+  border: 1px solid var(--line); background: var(--sand);
+  font-family: var(--serif); font-size: 16px; color: var(--blue-deep);
+  min-height: 48px;
+}
+.g-mb-card textarea{ min-height: 6rem; resize: vertical; }
+.g-mb-dt{
+  display: block; font-family: var(--serif); font-size: 12px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+}
+.g-mb-note{
+  background: var(--sand-2); border-left: 2px solid var(--stone);
+  padding: var(--s4) var(--s5); margin: var(--s4) 0;
+}
+.g-mb-line{
+  display: flex; justify-content: space-between; gap: var(--s5);
+  padding: var(--s3) 0; border-bottom: 1px solid var(--line); font-size: 15px;
+}
+.g-mb-total{
+  display: flex; justify-content: space-between; gap: var(--s5);
+  padding: var(--s4) 0 0; margin-top: var(--s3);
+  border-top: 2px solid var(--blue-deep);
+  font-family: var(--display); font-size: 20px; color: var(--blue-deep);
+}
+.g-mb-list{ list-style: none; margin: 0; padding: 0; }
+.g-mb-row{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4);
+  padding: var(--s4) 0; border-bottom: 1px solid var(--line);
+}
+.g-mb-rowt{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); flex: 1 1 12rem; }
+.g-mb-acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0; }
+.g .g-btn--sm{ padding: var(--s2) var(--s4); font-size: 14px; min-height: 44px; }
+@media (max-width: 40rem){
+  .g-mb-card input, .g-mb-card select, .g-mb-card textarea{ max-width: 100%; }
+  .g .g-mb-acts .g-btn{ width: 100%; }
+}
+
+/* Cancelling is destructive and irreversible, so it should look deliberate —
+   quiet rather than shouting, but unmistakably not a primary action. */
+.g .btn-text-danger,
+.g .g-btn--danger{
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: var(--s2) var(--s5);
+  font-family: var(--serif); font-size: 14px; font-weight: 500;
+  background: transparent; color: #8A2B22;
+  border: 1px solid #D9C2BE; cursor: pointer; text-decoration: none;
+}
+.g .btn-text-danger:hover,
+.g .g-btn--danger:hover{ background: #8A2B22; border-color: #8A2B22; color: #fff; }

@@ -6,13 +6,13 @@
   <div class="statement-head">
     <div>
       <h1 style="margin:0;">Statement</h1>
-      <p class="upload-hint" style="margin:4px 0 0;">
+      <p class="g-hint" style="margin:4px 0 0;">
         {{ booking['reference_code'] }} · {{ booking['guest_name'] }}
       </p>
     </div>
     <div style="text-align:right;">
       <strong>{{ employer }}</strong>
-      <div class="upload-hint">
+      <div class="g-hint">
         Château de Gudanes
         {% if company and company['registered_address'] %}<br>{{ company['registered_address'] }}{% endif %}
         {% if company and company['siret'] %}<br>SIRET {{ company['siret'] }}{% endif %}
@@ -21,8 +21,8 @@
     </div>
   </div>
 
-  <p class="upload-hint">
-    {{ booking['room_name'] }} · {{ booking['arrival_date'] }} to {{ booking['departure_date'] }}
+  <p class="g-hint">
+    {{ booking['room_name'] }} · {{ booking['arrival_date']|date_short }} to {{ booking['departure_date']|date_short }}
     · {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
     · {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }}{% if s.children %}, {{ s.children }} under 18{% endif %}
   </p>
@@ -44,7 +44,7 @@
   </table>
 
   {% if s.vat %}
-  <p class="field-label" style="margin-top:18px;">VAT included in the above</p>
+  <p class="g-mb-label" style="margin-top:18px;">VAT included in the above</p>
   <table class="data-table">
     <thead><tr><th>Rate</th><th class="num">Net</th><th class="num">VAT</th><th class="num">Gross</th></tr></thead>
     <tbody>
@@ -68,7 +68,7 @@
       <tr>
         <td>
           <strong>Taxe de séjour</strong>
-          <div class="upload-hint">
+          <div class="g-hint">
             €{{ '%.2f'|format(s.city_tax_rate) }} per adult per night ·
             {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }} × {{ s.nights }} night{{ '' if s.nights == 1 else 's' }}
             {%- if s.children %} · under-18s exempt{% endif %}
@@ -97,7 +97,7 @@
     </tbody>
   </table>
 
-  <p class="upload-hint" style="margin-top:20px;">
+  <p class="g-hint" style="margin-top:20px;">
     Please keep this for your records. Any question about it, contact the château with your
     reference {{ booking['reference_code'] }}.
   </p>

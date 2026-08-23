@@ -18,14 +18,40 @@
   </div>
 </section>
 
-<section class="g-sec g-sec--tight"><div class="g-wrap">
-  <p class="g-p">Each Workshop welcomes a small group of guests into the château itself: to hunt for treasures at the brocantes, to cook alongside our chefs, or to help bring her eighteenth-century frescoes back to life.</p>
-  <p class="g-p">Choose the length that suits you. Each stay includes full board, château beverages, shared accommodation and a curated itinerary — and every visit helps fund the restoration itself: a decade-long labour of love that has been peeling back the centuries, room by room, fresco by fresco, since the work began in 2013.</p>
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-p g-drop-cap g-lede-first">Three lengths, and each one leads with something different. This is not the same holiday sold at three durations — a long weekend here is the brocantes, five days is the kitchen, and a week is the restoration itself. What you come for decides how long you stay.</p>
+
+  <div class="g-split" style="margin-top:var(--s6)">
+    <div>
+      <p class="g-p">A château is not a hotel that happens to be old. There is no reception desk, no lift, and no evening turndown. There is a house that has been standing since 1741, four of whose ninety-four rooms were habitable when the family bought it, and a decade of work since to bring back the rest — approved intervention by approved intervention, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
+      <p class="g-p">What that means for a guest is unusual. You are not visiting a finished thing. Bare plaster and weathered stone are protected and will stay; the beds, the linen, the floors and the bathrooms are new and are very good indeed. Both facts are true at once, and neither is an apology.</p>
+    </div>
+    <div>
+      <p class="g-p">Meals matter here more than the schedule does. The chefs cook from the Sunday market in the village square, from producers they have used for years, and in summer from the château's own gardens. Breakfast runs long. Lunch is often outside under the lime trees. Dinner is by candlelight at one table, because there is only one table.</p>
+      <p class="g-p">Between the working hours there is a pool below the formal gardens, a tennis court in the trees, six acres of parkland to walk at any hour, and the salons — the drawing room, the music room, the two dining rooms — to sit in and do nothing at all. Electricity is limited by design. In the evening the rooms are lit by candle.</p>
+    </div>
+  </div>
+
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M0 13h38"/><path d="M82 13h38"/>
+    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+    <circle cx="60" cy="13" r="1.4"/>
+  </svg>
+
+  <p class="g-p" style="max-width:46rem;margin-left:auto;margin-right:auto;text-align:center">
+    Never more than fifteen guests, and the house takes no others while a workshop runs. Full board, château beverages, every activity and the transfers from Toulouse are included in one price.
+  </p>
 </div></section>
 
 <!-- ============ CHOOSE — the three, side by side ============ -->
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <h2 class="g-place">Choose Your Workshop</h2>
+  <dl class="g-facts-list" style="margin-bottom:var(--s7)">
+    <div><dt>Three nights</dt><dd>The brocantes — antique fairs, vide-greniers and the dealers worth the detour</dd></div>
+    <div><dt>Five nights</dt><dd>The kitchen — market mornings, hands-on classes, and the château's own 1700s recipe book</dd></div>
+    <div><dt>Seven nights</dt><dd>The restoration — real hours beside the conservators on the frescoes, plus cooking and the fairs</dd></div>
+  </dl>
 
   {% if workshops %}
   <div class="g-wscards">
@@ -103,7 +129,7 @@
     <article class="g-sit{% if r.remaining <= 0 %} g-sit--full{% endif %}" data-ws="{{ w['id'] }}">
       {% if r.remaining <= 0 %}
         <span class="g-sit__flag">Fully booked</span>
-      {% elif r.remaining <= 3 %}
+      {% elif r.remaining <= 4 %}
         <span class="g-sit__flag g-sit__flag--few">{{ r.remaining }} place{{ '' if r.remaining == 1 else 's' }} left</span>
       {% endif %}
       <img class="g-sit__img" src="{{ pic.u or WS_PIC['Cooking'] }}" alt="{{ w['title'] }}" loading="lazy">
@@ -111,7 +137,7 @@
         <p class="g-sit__name">{{ w['title'] }}</p>
         <h3 class="g-sit__when">{{ date_range(r.session['start_date'], r.session['end_date']) }}</h3>
         <p class="g-sit__meta">
-          {{ w['nights_label'] or '' }}{% if w['nights_label'] and r.remaining > 0 %} · {% endif %}{% if r.remaining > 0 %}{{ r.remaining }} of {{ r.session['capacity'] }} places remaining{% endif %}
+          {{ w['nights_label'] or '' }}
         </p>
         {% if w['price_per_person'] %}
         <p class="g-sit__rate">
@@ -135,9 +161,12 @@
 
 <!-- ============ WHAT EVERY WORKSHOP INCLUDES ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
-  <div class="g-orn" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
-  </div>
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M0 13h38"/><path d="M82 13h38"/>
+  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+  <circle cx="60" cy="13" r="1.4"/>
+</svg>
   <h2 class="g-place">Included in Every Workshop</h2>
   <p class="g-p">One price, and nothing added to it once you are here.</p>
 
@@ -178,7 +207,7 @@
   <hr class="g-rule--double">
 
   <dl class="g-facts-list">
-    <div><dt>Group size</dt><dd>Small — the house takes no other guests while a workshop runs</dd></div>
+    <div><dt>Group size</dt><dd>Never more than fifteen, and the house takes no other guests while a workshop runs</dd></div>
     <div><dt>Rooms</dt><dd>Arranged for two, a third bed on request. Solo travellers paired, or given a room where one is free</dd></div>
     <div><dt>Deposit</dt><dd>30% to reserve; the balance thirty days before</dd></div>
     <div><dt>Insurance</dt><dd>Travel insurance is required</dd></div>

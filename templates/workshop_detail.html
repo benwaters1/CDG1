@@ -51,7 +51,7 @@
       <article class="g-sit{% if row.remaining <= 0 %} g-sit--full{% endif %}">
         {% if row.remaining <= 0 %}
           <span class="g-sit__flag">Fully booked</span>
-        {% elif row.remaining <= 3 %}
+        {% elif row.remaining <= 4 %}
           <span class="g-sit__flag g-sit__flag--few">{{ row.remaining }} place{{ '' if row.remaining == 1 else 's' }} left</span>
         {% endif %}
         <img class="g-sit__img" src="{{ WS_IMAGES[loop.index0 % 3] }}" alt="{{ workshop['title'] }}" loading="lazy">
@@ -59,7 +59,7 @@
           <p class="g-sit__name">{{ workshop['title'] }}</p>
           <h3 class="g-sit__when">{{ date_range(s['start_date'], s['end_date']) }}</h3>
           <p class="g-sit__meta">
-            {% if row.remaining > 0 %}{{ row.remaining }} of {{ s['capacity'] }} places remaining{% else %}No places remaining{% endif %}
+            {% if s['notes'] %}{{ s['notes'] }}{% endif %}
             {% if s['notes'] %}<br>{{ s['notes'] }}{% endif %}
           </p>
           {% if workshop['price_per_person'] %}

@@ -96,6 +96,33 @@ def run():
     conn.commit()
     m.init_db()
 
+    s.section("The rewritten copy, and the copy somebody wrote themselves")
+    # WORKSHOP_COPY.md rewrote three ateliers. Its own SQL would have
+    # overwritten whatever was in the database; the seed applies it only where
+    # the text is still exactly what was last seeded.
+    for title in ("Seven Starry Nights", "Cooking in the Cuisine",
+                  "Antique & French Finds"):
+        row = conn.execute(
+            "SELECT description, itinerary FROM workshops WHERE title = ?",
+            (title,)).fetchone()
+        s.check(f"{title} has the longer description",
+                row and len(row["description"] or "") > 250,
+                detail=f"{len(row['description'] or '') if row else 0} chars")
+        s.check(f"{title} has an itinerary at all",
+                row and (row["itinerary"] or "").strip(),
+                detail="itinerary is empty — the column was never filled")
+
+    mine = "We rewrote this ourselves and it must survive a deploy."
+    conn.execute("UPDATE workshops SET description = ? WHERE title = ?",
+                 (mine, "Cooking in the Cuisine"))
+    conn.commit()
+    m.init_db()
+    kept = conn.execute(
+        "SELECT description FROM workshops WHERE title = ?",
+        ("Cooking in the Cuisine",)).fetchone()["description"]
+    s.check("a description written by hand is not overwritten", kept == mine,
+            detail=kept[:50])
+
     s.section("A cancelled sitting is not quietly put back")
     row = conn.execute("SELECT id FROM workshops WHERE title = 'The Long Weekender'").fetchone()
     conn.execute("DELETE FROM workshop_sessions WHERE workshop_id = ? AND start_date = ?",

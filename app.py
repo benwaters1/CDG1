@@ -3445,6 +3445,23 @@ def init_db():
             print(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
 
+    # 2a. Rewritten copy. Applied only where the text is still exactly what we
+    #     last seeded, so a description somebody has edited by hand survives a
+    #     deploy. `was_description` is the previous wording, kept for precisely
+    #     this comparison.
+    for workshop in DEFAULT_WORKSHOPS:
+        if not workshop.get("was_description"):
+            continue
+        for field in ("description", "sample_day", "itinerary"):
+            if field not in ws_cols or not workshop.get(field):
+                continue
+            conn.execute(
+                f"""UPDATE workshops SET {field} = ?
+                     WHERE title = ? AND (COALESCE(TRIM({field}), '') = ''
+                                          OR TRIM(description) = ?)""",
+                (workshop[field], workshop["title"], workshop["was_description"].strip()))
+    conn.commit()
+
     # 2. Blank copy fields. Only where blank: if somebody has written their own,
     #    theirs win.
     for field in ("inclusions", "nights_label", "sample_day"):
@@ -5595,42 +5612,58 @@ DEFAULT_WORKSHOPS = [
     {"title": "Cooking in the Cuisine", "was": "Cooking in the Cuisine 2027",
      "price_per_person": 3800.0, "sort_order": 3,
      "inclusions": "Per person, sharing a room.",
-     "nights_label": "5 nights / 6 days",
+     "nights_label": '5 nights / 6 days',
      "sessions": [("2026-06-12", "2026-06-17"), ("2026-07-10", "2026-07-15"),
                   ("2027-06-25", "2027-06-30")],
-     "description": "Hands-on classes and live demonstrations in the château's own "
-                    "kitchens, market mornings for seasonal produce, and evenings "
-                    "spent eating what you have made — from eighteenth-century "
-                    "recipes to modern French classics.",
      "sample_day": "A stroll to the local market for fresh produce and crafts, then "
                    "sweet and savoury cooking classes inspired by the "
                    "eighteenth-century Château Gudanes cookbook, with a picnic "
                    "lunch.\n\nAperitifs with a talk on French table-setting and "
                    "dining history, followed by an informal dinner of the day's "
-                   "creations."},
+                   "creations.",
+     "description": 'Five days in the château kitchens, cooking the way this house has always cooked — from the market that morning, from the garden if it is summer, and from a recipe book written here in the 1700s. You will also spend a morning on the frescoes, because it is difficult to eat in a room and not want to know how it was saved.',
+     "sample_day": 'Down to the village market before the good things go. The chef points, you carry, and somebody explains what a cardoon is.\n\nBack in the Renaissance kitchen until lunch — knife work, a sauce that cannot be hurried, and the copper pans that came with the house. You eat what you have made, outside if the weather allows.\n\nThe afternoon drifts. Aperitifs at six. Dinner is the thing you cooked at noon, and it is better than you expected.',
+     "itinerary": "SEASONAL FRENCH COOKING — four hands-on classes with the château chefs, built around whatever the Ariège is giving that week\nTHE 1700s COOKBOOK — historic dishes from the château's own recipe book, including ices set in antique copper moulds\nA MORNING AT THE MARKET — Les Cabannes on a Sunday, or Tarascon midweek, with the chef doing the buying\nBREAD AND PASTRY — at the boulangerie below the gates, three minutes down the hill, while it is still dark\nFRESCO CONSERVATION — one morning with the restoration team, on the walls of the room you have been eating in\nSETTING THE FRENCH TABLE — the etiquette, the history, and laying one properly for the last night\nWINE OF THE SOUTH-WEST — a tasting with a local producer, matched to what you have been cooking\nA PRIVATE CHÂTEAU LUNCHEON — at a neighbouring house, in its own dining room",
+     # What was seeded before this rewrite. The catch-up replaces the
+     # description only where it still matches — copy somebody has
+     # edited by hand is left alone.
+     "was_description": "Hands-on classes and live demonstrations in the château's own kitchens, market mornings for seasonal produce, and evenings spent eating what you have made — from eighteenth-century recipes to modern French classics.",
+    },
     {"title": "Antique & French Finds", "was": "Antique & French Finds 2027",
      "price_per_person": 2800.0, "sort_order": 4,
      "inclusions": "Per person, sharing a room.",
-     "nights_label": "3 nights / 4 days",
+     "nights_label": '3 nights / 4 days',
      "sessions": [("2027-07-03", "2027-07-06")],
      "description": "A treasure hunt through the Ariège. The brocantes and "
                     "vide-greniers of Mirepoix and beyond, a private château visit, "
                     "and the quiet pleasure of finding something with a history you "
-                    "will never fully know. A second date follows in late July."},
+                    "will never fully know. A second date follows in late July.",
+     "description": 'A long weekend of hunting. The Ariège is thick with brocantes, vide-greniers and antique fairs, and this is three days of working through them properly — with someone who knows which dealers are worth the detour, what things are worth, and how to get them home. Cooking and long lunches in between, because you cannot hunt on an empty stomach.',
+     "sample_day": 'An early start for the fair at Mirepoix — timbered arcades, four hundred years old, and dealers setting up in the dark. You are there before the good linen goes.\n\nCoffee and a pain aux raisins standing up. Then the hidden ones: two dealers in a barn outside a village you would never find, and a vide-grenier in a churchyard.\n\nBack for a late lunch, everything spread out on the terrace, and somebody explaining what you actually bought.',
+     "itinerary": 'THE BROCANTES — our own dealers and vide-greniers across the valley, including the ones that are not advertised\nMIREPOIX — the medieval bastide and its market, among the best preserved in France\nTHE GRAND ANTIQUE FAIRE AT FOIX — for the late-July sitting, timed to it deliberately\nWHAT IS IT WORTH — an hour on marks, makers, period and repair, so you buy well rather than often\nLINENS AND MONOGRAMS — the French domestic textiles worth looking for, and how to read them\nSEASONAL COOKING — a hands-on class with the château chefs, using the market you walked through that morning\nA PRIVATE CHÂTEAU LUNCHEON — at a neighbouring house\nGETTING IT HOME — packing, shipping and the paperwork, handled before you leave',
+     # What was seeded before this rewrite. The catch-up replaces the
+     # description only where it still matches — copy somebody has
+     # edited by hand is left alone.
+     "was_description": 'A treasure hunt through the Ariège. The brocantes and vide-greniers of Mirepoix and beyond, a private château visit, and the quiet pleasure of finding something with a history you will never fully know. A second date follows in late July.',
+    },
     {"title": "Seven Starry Nights", "was": "Summer Starry Nights 2027",
      "price_per_person": 4800.0, "sort_order": 5,
      "inclusions": "Per person, sharing a room.",
-     "nights_label": "7 nights / 8 days",
+     "nights_label": '7 nights / 8 days',
      "sessions": [("2026-06-20", "2026-06-27"), ("2027-07-10", "2027-07-17")],
-     "description": "Our fullest Workshop: help restore the château's "
-                    "eighteenth-century frescoes, join cooking classes in between, "
-                    "hike and canoe the Ariège, and explore medieval towns, caves and "
-                    "neighbouring châteaux.",
      "sample_day": "Crêpe-making and a mimosa breakfast, a riverside picnic at the "
                    "Pont du Diable, and an afternoon exploring the 17,000-year-old "
                    "Niaux Cave and its Paleolithic paintings.\n\nA wine-tasting "
                    "aperitif in the drawing room, followed by dinner and an evening "
-                   "of poetry and prose."},
+                   "of poetry and prose.",
+     "description": 'A week inside the restoration itself. You will spend real hours beside the artisans lifting eighteenth-century frescoes out from under a century of overpaint — the slowest, most exacting work in the house, and the reason it is taking a decade. Between those mornings there is cooking in the château kitchens, the brocantes of the valley, and the long table every evening.',
+     "sample_day": 'Coffee in the Renaissance kitchen while the house wakes, then up to the salon with the conservators. An hour of scalpel and solvent under the raking lamp, lifting cream emulsion off a wall nobody has properly seen since the 1700s. A centimetre is a good morning.\n\nLunch under the lime trees. The afternoon is yours — the pool, the library, the parkland, or back to the wall if it has hold of you.\n\nAperitifs at six, dinner by candlelight, and somebody always stays up too late in the drawing room.',
+     "itinerary": "FRESCO CONSERVATION — four mornings alongside the restoration team, working on the salon and dining-room walls under the supervision of professional conservators from France, Italy and England\nTHE ARCHIVE — an afternoon with the château's own documents, plans and photographs, and what they reveal about what was here before\nLIME AND PLASTER — the traditional materials, why Monuments Historiques requires them, and how they are mixed and applied\nCOOKING IN THE CUISINE — two hands-on classes, one seasonal and one drawn from the château's eighteenth-century recipe book\nTHE BROCANTES — a full day among the antique fairs and vide-greniers of the Ariège\nGROTTE DE NIAUX — Paleolithic paintings that have survived fourteen thousand years, twenty minutes from the gates\nTHE HIGH VALLEYS — a guided walk into the Pyrénées, and a picnic where the river turns\nWINE OF THE SOUTH-WEST — a tasting in the medieval kitchen with a local producer",
+     # What was seeded before this rewrite. The catch-up replaces the
+     # description only where it still matches — copy somebody has
+     # edited by hand is left alone.
+     "was_description": "Our fullest Workshop: help restore the château's eighteenth-century frescoes, join cooking classes in between, hike and canoe the Ariège, and explore medieval towns, caves and neighbouring châteaux.",
+    },
 ]
 
 # The placeholder titles this file used before the real ones were known. Rows

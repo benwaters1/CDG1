@@ -1,20 +1,38 @@
 {% extends "public_base.html" %}
-{% block title %}Find my inquiry{% endblock %}
+{% block title %}{{ t('Find My Enquiry') }}{% endblock %}
 {% block content %}
 
-<div class="login-wrap">
-  <div class="login-card">
-    <div class="login-crest">Château de Gudanes</div>
-    <h1>Find My Event Inquiry</h1>
-    <form method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="field-label">Reference code</label>
-      <input type="text" name="reference_code" placeholder="EVT-XXXXXX" required>
-      <label class="field-label">Email you inquired with</label>
-      <input type="email" name="email" required>
-      <button type="submit" class="btn-primary btn-block">Find inquiry</button>
-    </form>
-  </div>
-</div>
+{# CONTRACT — POST with reference_code + email + csrf_token, exactly as before.
+   This is where a returning guest lands; it was styled as a staff login. #}
+
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Château de Gudanes</p>
+  <h1 class="g-display" style="font-size:clamp(30px,4.2vw,48px)">{{ t('Find My Enquiry') }}</h1>
+  <p class="g-p">Your reference code was on the confirmation email, and on the page you saw after enquiring.</p>
+
+  <form method="post" class="g-form-full g-framed" style="margin-top:var(--s6)">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="g-field">
+      <label for="ref">{{ t('Reference code') }}</label>
+      <input type="text" id="ref" name="reference_code" placeholder="CDG-XXXXXX" required autocomplete="off">
+    </div>
+    <div class="g-field">
+      <label for="em">{{ t('Email you booked with') }}</label>
+      <input type="email" id="em" name="email" required autocomplete="email">
+    </div>
+    <button type="submit" class="g-btn g-btn--solid">{{ t('Find enquiry') }}</button>
+  </form>
+
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M0 13h38"/><path d="M82 13h38"/>
+    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+    <circle cx="60" cy="13" r="1.4"/>
+  </svg>
+
+  <p class="g-hint">Cannot find it? Write to <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> and we will look it up.</p>
+</div></section>
+
+<img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1500w" alt="The gates at Château de Gudanes" loading="lazy">
 
 {% endblock %}

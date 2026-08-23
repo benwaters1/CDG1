@@ -69,9 +69,12 @@
 {% if shown_rooms %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Stay the Night</p>
-  <div class="g-orn" aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
-  </div>
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M0 13h38"/><path d="M82 13h38"/>
+  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+  <circle cx="60" cy="13" r="1.4"/>
+</svg>
   <h2 class="g-place">Rooms &amp; Suites</h2>
   <p class="g-p">Seven bedrooms, opened one at a time as the restoration reaches them. Each is different, because the house is.</p>
 
@@ -225,5 +228,44 @@
 <p class="g-p">A restoration, not a renovation — the longer course, and the only one worth taking with a house of this consequence. Fifteen years in, and she is not yet finished. We should be glad to welcome you while the work is still unfolding.</p>
 <p style="margin-top:32px"><a href="{{ url_for('book_rooms') }}" class="g-btn">Réserver</a></p>
 </div></div></section>
+
+
+<!-- ============ WHAT GUESTS SAY ============ -->
+{# Verbatim from the château's own Booking.com listing, which scores 10/10
+   across all six categories. Short quotes, attributed, nothing invented. #}
+<section class="g-sec g-says"><div class="g-wrap">
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M0 13h38"/><path d="M82 13h38"/>
+  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+  <circle cx="60" cy="13" r="1.4"/>
+</svg>
+  <h2 class="g-place">What Guests Say</h2>
+
+  <div class="g-says__grid">
+    <figure class="g-say">
+      <blockquote class="g-say__q">Loved everything about the Chateau de Gudanes</blockquote>
+      <figcaption class="g-say__by">Cynthia<span class="g-say__src">United States · Booking.com</span></figcaption>
+    </figure>
+    <figure class="g-say">
+      <blockquote class="g-say__q">Spacious rooms with private, well-equipped bathrooms</blockquote>
+      <figcaption class="g-say__by">A guest from the Netherlands<span class="g-say__src">Booking.com</span></figcaption>
+    </figure>
+    <figure class="g-say">
+      <blockquote class="g-say__q">Der liebevolle Empfang, das leckere Abendessen und das Ambiente</blockquote>
+      <figcaption class="g-say__by">Martin<span class="g-say__src">Germany · Booking.com</span></figcaption>
+    </figure>
+  </div>
+
+  <div class="g-scores">
+    <div class="g-score"><b>10</b><span>Location</span></div>
+    <div class="g-score"><b>10</b><span>Cleanliness</span></div>
+    <div class="g-score"><b>10</b><span>Comfort</span></div>
+    <div class="g-score"><b>10</b><span>Staff</span></div>
+    <div class="g-score"><b>10</b><span>Facilities</span></div>
+    <div class="g-score"><b>10</b><span>Value</span></div>
+  </div>
+  <p class="g-hint" style="margin-top:var(--s5)">Guest ratings on Booking.com.</p>
+</div></section>
 
 {% endblock %}
