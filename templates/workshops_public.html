@@ -2,6 +2,8 @@
 {% block title %}Château Workshops{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% set crumbs = [('Workshops', None)] %}
+
 {# Content and voice from vicente-yuste-2air.squarespace.com/workshops — the
    .net page — not the .com. Structure: choose, then the region, then each
    workshop in full with a sample day, then stay/arrival/inclusions. #}
@@ -23,11 +25,11 @@
 
   <div class="g-split" style="margin-top:var(--s6)">
     <div>
-      <p class="g-p">A château is not a hotel that happens to be old. There is no reception desk, no lift, and no evening turndown. There is a house that has been standing since 1741, four of whose ninety-four rooms were habitable when the family bought it, and a decade of work since to bring back the rest — approved intervention by approved intervention, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
+      <p class="g-p">A château is not a hotel that happens to be old. There is no reception desk, no lift, and no turndown service. There is a house that has been standing since 1741, four of whose ninety-four rooms were habitable when the family bought it, and a decade of work since to bring back the rest — approved intervention by approved intervention, because France does not allow a Class I monument to be renovated in the ordinary sense.</p>
       <p class="g-p">What that means for a guest is unusual. You are not visiting a finished thing. Bare plaster and weathered stone are protected and will stay; the beds, the linen, the floors and the bathrooms are new and are very good indeed. Both facts are true at once, and neither is an apology.</p>
     </div>
     <div>
-      <p class="g-p">Meals matter here more than the schedule does. The chefs cook from the Sunday market in the village square, from producers they have used for years, and in summer from the château's own gardens. Breakfast runs long. Lunch is often outside under the lime trees. Dinner is by candlelight at one table, because there is only one table.</p>
+      <p class="g-p">Meals matter here more than the schedule does. The chefs cook from the Sunday market in the village square, from producers they have used for years, and in summer from the château's own gardens. Breakfast runs long. Lunch is often outside under the lime trees. Dinner is by candlelight in the dining room.</p>
       <p class="g-p">Between the working hours there is a pool below the formal gardens, a tennis court in the trees, six acres of parkland to walk at any hour, and the salons — the drawing room, the music room, the two dining rooms — to sit in and do nothing at all. Electricity is limited by design. In the evening the rooms are lit by candle.</p>
     </div>
   </div>
@@ -241,9 +243,9 @@
   <div>
     <p class="g-eyebrow">Dining</p>
     <h2 class="g-h2">À Table</h2>
-    <p class="g-p g-lede-first">One long table, candles down the middle, and whatever the valley gave up that morning.</p>
+    <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
     <p class="g-p">Every meal is cooked in the château's own Renaissance kitchen, still hung with the copper that came with the house. There is no fixed menu on any workshop — what appears depends on the Sunday market in the village square, on producers the chef has bought from for twenty years, and in summer on the gardens below the terrace.</p>
-    <p class="g-p">Breakfast runs long. Lunch is often outside under the lime trees, or packed and carried up the valley. Dinner is by candlelight at one long table, because there is only one table.</p>
+    <p class="g-p">Breakfast runs long. Lunch is often outside under the lime trees, or packed and carried up the valley. Dinner is by candlelight in the dining room, the whole group together.</p>
     <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written in this house in the 1700s. A private selection of local wines, spirits and soft drinks is poured with every meal and included in the price.</p>
   </div>
   <div class="g-two__media">
@@ -266,8 +268,8 @@
   <div>
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
-    <p class="g-p g-lede-first">Floral papers, a freestanding bath, and a dressing room to yourself.</p>
-    <p class="g-p">Three bathrooms on the ground floor, each with its own character — elegant fittings, deep towels, and the most recently finished rooms in the whole house.</p>
+    <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
+    <p class="g-p">Three on the ground floor, each papered differently — brass fittings, hexagonal terracotta underfoot, deep towels, and a window onto the valley. They are the most recently finished rooms in the building, and it shows.</p>
     <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules, which is why they sit together downstairs rather than off each bedroom. It also means they are among the most modern rooms in the building. On a workshop they are shared between the group and privately allocated.</p>
   </div>
 </div></section>
@@ -317,6 +319,18 @@
     <div><dt>In your room</dt><dd>Power outlets and bedside lamps</dd></div>
     <div><dt>Evenings</dt><dd>Electricity is limited by design — rooms are lit by candle</dd></div>
   </dl>
+</div></section>
+
+
+<!-- ============ A SINGLE LINE ============ -->
+{# La Maison Bleue's pattern: one quotation given a whole section rather than
+   a grid of cards. This is the château's own restoration record, which is
+   the strongest thing anyone has said about it. #}
+<section class="g-sec g-testament"><div class="g-wrap">
+  <blockquote class="g-testament__q">
+    &ldquo;One of the most closely watched private restorations in France.&rdquo;
+    <cite class="g-testament__by">Awarded the Medal of Honour, Fondation Prince Louis de Polignac, 2016</cite>
+  </blockquote>
 </div></section>
 
 {% endblock %}

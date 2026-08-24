@@ -37,8 +37,51 @@
   };
 })();
 </script>
+
+{# Structured data — LodgingBusiness. Without this a search result is a bare
+   link; with it Google can show the address, the rating and the price band.
+   Only facts that are already public on the site are included here. #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LodgingBusiness",
+  "name": "Château de Gudanes",
+  "description": "An eighteenth-century Class I Historic Monument in the French Pyrénées, open to guests while its restoration continues.",
+  "url": "https://chateaugudanes.com/",
+  "telephone": "+33 5 61 64 96 82",
+  "email": "ariege@chateaugudanes.com",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "2 Route de Beille",
+    "addressLocality": "Château-Verdun",
+    "postalCode": "09310",
+    "addressRegion": "Ariège",
+    "addressCountry": "FR"
+  },
+  "geo": { "@type": "GeoCoordinates", "latitude": 42.8083, "longitude": 1.6528 },
+  "priceRange": "€€€",
+  "currenciesAccepted": "EUR",
+  "paymentAccepted": "Credit Card",
+  "petsAllowed": false,
+  "amenityFeature": [
+    { "@type": "LocationFeatureSpecification", "name": "Swimming pool", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Tennis court", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Free parking", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Wi-Fi", "value": true },
+    { "@type": "LocationFeatureSpecification", "name": "Breakfast included", "value": true }
+  ],
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "10",
+    "bestRating": "10",
+    "ratingCount": "4",
+    "reviewCount": "4"
+  }
+}
+</script>
 </head>
 <body class="g{% block bodyclass %}{% endblock %}">
+<a class="g-skip" href="#main">Skip to content</a>
 
 <header class="g-top">
   <div class="g-top__in">
@@ -46,6 +89,17 @@
       <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
     </a>
 
+
+    <nav class="g-nav" aria-label="{{ t('Main') }}">
+      <a href="{{ url_for('book_rooms') }}">{{ t('Stay') }}</a>
+      <a href="{{ url_for('workshops_public') }}">{{ t('Workshops') }}</a>
+      <a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a>
+      <a href="{{ url_for('events_info') }}">{{ t('Events') }}</a>
+      <a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a>
+      <a href="{{ url_for('restoration_page') }}">{{ t('Restoration') }}</a>
+      <a href="{{ url_for('gallery_page') }}">{{ t('Gallery') }}</a>
+      <a href="{{ url_for('contact_page') }}">{{ t('Contact') }}</a>
+    </nav>
     <button type="button" class="g-navbtn" aria-expanded="false" aria-controls="g-mainnav">
       <span class="g-navbtn__bars"><span></span><span></span></span>
       <span class="g-navbtn__label">{{ t('Menu') }}</span>
@@ -135,7 +189,7 @@
         <p class="g-navwrap__foot-h">{{ t('Subscribe to our newsletter') }}</p>
         <form class="g-navwrap__news" method="post" action="{{ url_for('newsletter_subscribe') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="email" name="email" placeholder="{{ t('Email') }}" aria-label="{{ t('Email address') }}" required>
+          <input type="email" inputmode="email" name="email" placeholder="{{ t('Email') }}" aria-label="{{ t('Email address') }}" required>
           <button type="submit" aria-label="{{ t('Subscribe') }}">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
           </button>
@@ -229,7 +283,21 @@
   </div>
 </header>
 
-<main>
+<main id="main" tabindex="-1">
+{# Breadcrumbs. Pages set them with:
+     {% set crumbs = [('Stay', url_for('book_rooms')), ('Chambre Bleue', None)] %}
+   The last item is the current page and is not a link. #}
+{% if crumbs %}
+<nav class="g-crumbs" aria-label="Breadcrumb"><div class="g-wrap">
+  <ol>
+    <li><a href="{{ url_for('dashboard') }}">Château</a></li>
+    {% for label, href in crumbs %}
+      <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}</li>
+    {% endfor %}
+  </ol>
+</div></nav>
+{% endif %}
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="g-wrap" style="padding-top:16px;">
@@ -242,6 +310,36 @@
 
   {% block content %}{% endblock %}
 </main>
+
+
+<!-- ============ REASSURANCE ============ -->
+{# Sits immediately above the footer on every page. Four claims, each one
+   verified against what the app actually does — Stripe card payments in EUR,
+   a manage link issued with every booking, and human confirmation. #}
+<section class="g-assure"><div class="g-wrap">
+  <ul class="g-assure__grid">
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="1"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      <b>Secure payment</b>
+      <span>Card payments handled by Stripe. We never see or store your card details.</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
+      <b>Deposit, then balance</b>
+      <span>A deposit holds your dates. The balance is taken closer to the time, not up front.</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
+      <b>Change it yourself</b>
+      <span>Every booking comes with a link to see it, add to it, or tell us about a change.</span>
+    </li>
+    <li>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 5h16v12H8l-4 4z"/></svg>
+      <b>Answered by a person</b>
+      <span>Every request is read at the château. Nothing here is confirmed automatically.</span>
+    </li>
+  </ul>
+</div></section>
 
 <footer class="g-footer">
   <div class="g-crest g-crest--foot">
@@ -284,7 +382,15 @@
       </div>
     </div>
     <p class="g-footer__fine">© Château de Gudanes</p>
-  </div>
+  
+      <div class="g-pay">
+        <span class="g-pay__lbl">Payment</span>
+        <ul class="g-pay__marks">
+          <li>Visa</li><li>Mastercard</li><li>Amex</li>
+        </ul>
+        <span class="g-pay__note">Secured by Stripe · charged in euro</span>
+      </div>
+</div>
 </footer>
 
 <div class="g-stickybar">
@@ -404,6 +510,23 @@
   };
   set();
   window.addEventListener('scroll', set, { passive: true });
+})();
+</script>
+<button type="button" class="g-totop" aria-label="Back to top" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+<script>
+/* Appears once the page has scrolled past a screen and a half — long enough
+   that returning to the top by scrolling is a chore. */
+(function(){
+  var b=document.querySelector('.g-totop'); if(!b) return;
+  var show=function(){ b.hidden = window.scrollY < window.innerHeight*1.5; };
+  show(); window.addEventListener('scroll', show, {passive:true});
+  b.addEventListener('click', function(){
+    var smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({top:0, behavior: smooth ? 'smooth' : 'auto'});
+    var m=document.getElementById('main'); if(m) m.focus();
+  });
 })();
 </script>
 </body>

@@ -60,7 +60,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_nights">
     <label class="g-mb-label" style="margin:0;">{{ t('Extra nights') }}</label>
-    <input type="number" name="nights" value="1" min="1" max="30" style="width:74px;"
+    <input type="number" inputmode="numeric" name="nights" value="1" min="1" max="30" style="width:74px;"
            aria-label="How many extra nights">
     <button type="submit" class="g-btn g-btn--sm">{{ t('Add them') }}</button>
   </form>
@@ -190,7 +190,7 @@
       {{ e['name'] }} — €{{ '%.2f'|format(e['price'] or 0) }}
       {% if e['description'] %}<span class="g-hint">{{ e['description'] }}</span>{% endif %}
     </span>
-    <input type="number" name="quantity" value="1" min="1"
+    <input type="number" inputmode="numeric" name="quantity" value="1" min="1"
            {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
            style="width:64px;" aria-label="How many {{ e['name'] }}">
     <button type="submit" class="g-btn g-btn--sm">Add</button>
@@ -217,7 +217,7 @@
       </div>
       <div>
         <label class="g-mb-label">Party size</label>
-        <input type="number" name="dinner_party_size" min="1" max="{{ restaurant_settings['capacity'] }}" value="{{ booking['party_size'] }}" required>
+        <input type="number" inputmode="numeric" name="dinner_party_size" min="1" max="{{ restaurant_settings['capacity'] }}" value="{{ booking['party_size'] }}" required>
       </div>
     </div>
     <label class="g-mb-label" style="margin-top:10px; display:block;">Dietary needs or anything else?</label>

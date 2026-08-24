@@ -2,6 +2,8 @@
 {% block title %}Stay{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% set crumbs = [('Stay', None)] %}
+
 
 <section class="g-hero">
 <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="Château de Gudanes">
@@ -17,7 +19,7 @@
     <div>
       <p class="g-p g-lede-first">Seven bedrooms inside a world-renowned restoration — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
       <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new and was chosen carefully — the beds, the linen, the floors underfoot, the bathrooms.</p>
-      <p class="g-p">Both things are true at once. It is a stay with real limitations: no lift, original staircases, shared bathrooms on the ground floor, and electricity kept deliberately low so the evenings are lit by candle. If that sounds like a compromise, it is the wrong house. If it sounds like the point, it is the right one.</p>
+      <p class="g-p">Both things are true at once. It is a stay with real limitations: no lift, original staircases, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
       <blockquote class="g-quote">Every night booked pays for the next room. That is not a donation — it is how the work continues.</blockquote>
     </div>
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1500w" alt="Restoration work in progress" loading="lazy">
@@ -32,7 +34,7 @@
     <div class="g-search__f"><label for="s_departure">Departure</label>
       <input type="date" id="s_departure" name="departure" value="{{ departure }}"></div>
     <div class="g-search__f"><label for="s_party">Guests</label>
-      <input type="number" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
+      <input type="number" inputmode="numeric" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
     <button type="submit" class="g-btn g-search__go">Check availability</button>
   </form>
   <p class="g-book-bar__note">
@@ -88,9 +90,9 @@
       <input type="hidden" name="desired_arrival" value="{{ arrival }}">
       <input type="hidden" name="desired_departure" value="{{ departure }}">
       <p class="g-field"><label for="w_name">Name</label><input type="text" id="w_name" name="name" required></p>
-      <p class="g-field"><label for="w_email">Email</label><input type="email" id="w_email" name="email" required></p>
-      <p class="g-field"><label for="w_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" id="w_phone" name="phone"></p>
-      <p class="g-field g-field--narrow"><label for="w_party">Guests</label><input type="number" id="w_party" name="party_size" min="1"></p>
+      <p class="g-field"><label for="w_email">Email</label><input type="email" inputmode="email" id="w_email" name="email" required></p>
+      <p class="g-field"><label for="w_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" inputmode="tel" id="w_phone" name="phone" inputmode="tel"></p>
+      <p class="g-field g-field--narrow"><label for="w_party">Guests</label><input type="number" inputmode="numeric" id="w_party" name="party_size" min="1"></p>
       <p class="g-field"><label for="w_notes">Anything else <span class="g-opt">optional</span></label><input type="text" id="w_notes" name="notes"></p>
       <button type="submit" class="g-btn g-submit">Join the waitlist</button>
     </form>
@@ -106,10 +108,10 @@
   <div>
     <p class="g-eyebrow">Dining</p>
     <h2 class="g-h2">À Table</h2>
-    <p class="g-p g-lede-first">One long table, candles down the middle, and whatever the valley gave up that morning.</p>
+    <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
     <p class="g-p">Continental breakfast every morning, and dinner cooked in the château's own Renaissance kitchen. There is no fixed menu — what appears depends on the Sunday market in the village square, on producers the chef has bought from for twenty years, and in summer on the gardens below the terrace.</p>
     <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written in this house in the 1700s.</p>
-    <p class="g-p">Dinner is served by candlelight at a long table. In winter the fire is lit. Tell us when you book — the kitchen shops for it.</p>
+    <p class="g-p">Dinner is served by candlelight in the dining room, and in winter the fire is lit. Tell us when you book, and the kitchen buys for it.</p>
     <p style="margin-top:var(--s5)"><a href="{{ url_for('restaurant_info') }}" class="g-btn">More about La Table</a></p>
   </div>
   <div class="g-two__media">
@@ -129,7 +131,7 @@
   <div class="g-half__text">
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
-    <p class="g-p g-lede-first">Floral papers, a freestanding bath, and a dressing room to yourself.</p>
+    <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
     <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
     <p class="g-p">The King Room, Suite with Mountain View and Family Suite each have a private bathroom nearby in the area. The Double and Twin/Double rooms share a beautifully appointed modern bathroom set between the two.</p>
     <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules — which is why they sit together, and why they are the most modern rooms in the building.</p>
@@ -193,6 +195,47 @@
   <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
 </div></section>
 
+
+
+<!-- ============ COMPARE THE ROOMS ============ -->
+{# Driven by the same `rooms` the cards above use, so it can never disagree
+   with them. Scrolls sideways on a phone rather than shrinking to nothing. #}
+{% if rooms and rooms|length > 1 %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Side by Side</p>
+  <h2 class="g-place">Compare the Chambres</h2>
+  <p class="g-p">Seven rooms, each different. This is the quickest way to see which suits.</p>
+
+  <div class="g-compare-wrap">
+    <table class="g-compare">
+      <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
+      <thead>
+        <tr>
+          <th scope="col">Room</th>
+          <th scope="col">From</th>
+          <th scope="col">Sleeps</th>
+          <th scope="col">Bathroom</th>
+          <th scope="col">Minimum stay</th>
+          <th scope="col"><span class="g-vh">Book</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rooms %}
+        <tr>
+          <th scope="row">{{ r['name'] }}</th>
+          <td>{% if r['price_per_night'] %}<span class="g-fig">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
+          <td>{{ r['max_occupancy'] or '—' }}</td>
+          <td>{% if r['amenities'] and 'hared' in r['amenities'] %}Shared{% elif r['amenities'] %}Private{% else %}—{% endif %}</td>
+          <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
+          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
+</div></section>
+{% endif %}
 
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10

@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% block title %}Book {{ room['name'] }}{% endblock %}
 {% block content %}
+{% set crumbs = [('Stay', url_for('book_rooms')), (room['name'], None)] %}
+
 
 {# CONTRACT: method="post", no action (posts to /book/<room_id>).
    csrf_token first. Fields: arrival_date, departure_date, guest_name,
@@ -84,7 +86,7 @@
           </div>
           <p class="g-field g-field--narrow">
             <label for="party_size">Guests</label>
-            <input type="number" id="party_size" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
+            <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
             <span class="g-hint">Up to {{ room['max_occupancy'] }} in this room.</span>
           </p>
         </section>
@@ -98,11 +100,11 @@
           <div class="g-row">
             <p class="g-field">
               <label for="guest_email">Email</label>
-              <input type="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
+              <input type="email" inputmode="email" id="guest_email" name="guest_email" autocomplete="email" value="{{ prefill_email }}" required>
             </p>
             <p class="g-field">
               <label for="guest_phone">Phone <span class="g-opt">optional</span></label>
-              <input type="tel" id="guest_phone" name="guest_phone" autocomplete="tel" value="{{ prefill_phone }}">
+              <input type="tel" inputmode="tel" id="guest_phone" name="guest_phone" inputmode="tel" autocomplete="tel" value="{{ prefill_phone }}">
             </p>
           </div>
         </section>
@@ -435,8 +437,9 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
-    not ours to change. Everything within them is new and genuinely good: the
-    beds, the linen, the floors underfoot, the bathrooms, the food. The
+    not ours to change. Everything within them is new: antique French beds
+    dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
+    finished to a standard the rest of the house has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
 </div></section>

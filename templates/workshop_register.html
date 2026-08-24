@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% block title %}Register — {{ session['title'] }}{% endblock %}
 {% block content %}
+{% set crumbs = [('Workshops', url_for('workshops_public')), ('Register', None)] %}
+
 {# Set here rather than passed in: this template is rendered from three places in
    the register route (fresh, rate-limited and validation-error), and a variable
    passed by hand would sooner or later be missing from one of them. #}
@@ -35,7 +37,7 @@
 
           <div class="g-field g-field--narrow">
             <label for="party_size">How many of you</label>
-            <input type="number" id="party_size" name="party_size" min="1"
+            <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1"
                    max="{{ session['capacity'] }}" value="{{ prefill_party_size }}" required>
             <p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>
             {% if session['price_per_person'] %}
@@ -74,13 +76,13 @@
             </div>
             <div class="g-field">
               <label for="guest_email">Email</label>
-              <input type="email" id="guest_email" name="guest_email" value="{{ prefill_email }}" required>
+              <input type="email" inputmode="email" id="guest_email" name="guest_email" value="{{ prefill_email }}" required>
             </div>
           </div>
 
           <div class="g-field g-field--narrow">
             <label for="guest_phone">Phone <span class="g-opt">optional</span></label>
-            <input type="tel" id="guest_phone" name="guest_phone" value="{{ prefill_phone }}">
+            <input type="tel" inputmode="tel" id="guest_phone" name="guest_phone" inputmode="tel" value="{{ prefill_phone }}">
           </div>
         </section>
 
@@ -222,18 +224,18 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       </div>
       <div class="g-field">
         <label for="wl_email">Email</label>
-        <input type="email" id="wl_email" name="email" value="{{ prefill_email }}" required>
+        <input type="email" inputmode="email" id="wl_email" name="email" value="{{ prefill_email }}" required>
       </div>
     </div>
 
     <div class="g-row">
       <div class="g-field g-field--narrow">
         <label for="wl_party">How many of you</label>
-        <input type="number" id="wl_party" name="party_size" min="1" value="{{ prefill_party_size }}" required>
+        <input type="number" inputmode="numeric" id="wl_party" name="party_size" min="1" value="{{ prefill_party_size }}" required>
       </div>
       <div class="g-field g-field--narrow">
         <label for="wl_phone">Phone <span class="g-opt">optional</span></label>
-        <input type="tel" id="wl_phone" name="phone" value="{{ prefill_phone }}">
+        <input type="tel" inputmode="tel" id="wl_phone" name="phone" inputmode="tel" value="{{ prefill_phone }}">
       </div>
     </div>
 

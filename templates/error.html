@@ -1,0 +1,43 @@
+{% extends "public_base.html" %}
+{% block title %}{{ code }}{% endblock %}
+{% block content %}
+
+{# There was no error template at all — a mistyped URL or an expired manage
+   link returned the bare Flask page, which looks like the site is broken
+   rather than the address being wrong. Register with:
+     @app.errorhandler(404)
+     def not_found(e): return render_template("error.html", code=404), 404
+     @app.errorhandler(500)
+     def server_error(e): return render_template("error.html", code=500), 500 #}
+
+<section class="g-sec g-short"><div class="g-wrap">
+  <p class="g-eyebrow">Château de Gudanes</p>
+  <h1 class="g-display" style="font-size:clamp(30px,4.2vw,50px)">
+    {% if code == 404 %}That page is not here{% else %}Something went wrong{% endif %}
+  </h1>
+  <p class="g-p g-lede-first">
+    {% if code == 404 %}The address may have changed, or the link may have expired.
+    {% else %}The fault is ours, not yours. It has been logged.{% endif %}
+  </p>
+
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M0 13h38"/><path d="M82 13h38"/>
+    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+    <circle cx="60" cy="13" r="1.4"/>
+  </svg>
+
+  <div class="g-conf__acts">
+    <a href="{{ url_for('dashboard') }}" class="g-btn g-btn--solid">The château</a>
+    <a href="{{ url_for('book_rooms') }}" class="g-btn">Rooms &amp; dates</a>
+    <a href="{{ url_for('find_booking') }}" class="g-btn">Find my booking</a>
+    <a href="{{ url_for('contact_page') }}" class="g-btn">Contact</a>
+  </div>
+
+  <p class="g-hint">If you were following a link from us and it has not worked, write to
+    <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> and we will sort it out.</p>
+</div></section>
+
+<img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="The château at night" loading="lazy">
+
+{% endblock %}

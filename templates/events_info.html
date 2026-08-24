@@ -2,6 +2,8 @@
 {% block title %}Weddings & Events{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% set crumbs = [('Events', None)] %}
+
 
 {# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,
    contact_name, contact_email, contact_phone, preferred_date,
@@ -50,7 +52,7 @@
     <div class="g-two">
       <div>
         <h2 class="g-h2">A location that <em>cannot be built</em></h2>
-        <p class="g-p">Tell us what you have in mind and we will come back with what it would involve and what it would cost. Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
+        <p class="g-p">Describe what you have in mind and we will return a proposal with the arrangements and the cost. Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
         <p class="g-p">Two hours from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège.</p>
       </div>
 
@@ -72,11 +74,11 @@
         <div class="g-row">
           <p class="g-field">
             <label for="contact_email">Email</label>
-            <input type="email" id="contact_email" name="contact_email" autocomplete="email" required>
+            <input type="email" inputmode="email" id="contact_email" name="contact_email" autocomplete="email" required>
           </p>
           <p class="g-field">
             <label for="contact_phone">Phone <span class="g-opt">optional</span></label>
-            <input type="tel" id="contact_phone" name="contact_phone" autocomplete="tel">
+            <input type="tel" inputmode="tel" id="contact_phone" name="contact_phone" inputmode="tel" autocomplete="tel">
           </p>
         </div>
         <div class="g-row">
@@ -91,7 +93,7 @@
         </div>
         <p class="g-field g-field--narrow">
           <label for="guest_count">Expected guests</label>
-          <input type="number" id="guest_count" name="guest_count" min="1">
+          <input type="number" inputmode="numeric" id="guest_count" name="guest_count" min="1">
         </p>
         <p class="g-field">
           <label for="message">Tell us about your event</label>
@@ -157,8 +159,9 @@
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
-    not ours to change. Everything within them is new and genuinely good: the
-    beds, the linen, the floors underfoot, the bathrooms, the food. The
+    not ours to change. Everything within them is new: antique French beds
+    dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
+    finished to a standard the rest of the house has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
 </div></section>

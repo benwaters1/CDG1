@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% block title %}{{ t('Find My Booking') }}{% endblock %}
 {% block content %}
+{% set crumbs = [('Find my booking', None)] %}
+
 
 {# CONTRACT — POST with reference_code + email + csrf_token, exactly as before.
    This is where a returning guest lands; it was styled as a staff login. #}
@@ -18,7 +20,7 @@
     </div>
     <div class="g-field">
       <label for="em">{{ t('Email you booked with') }}</label>
-      <input type="email" id="em" name="email" required autocomplete="email">
+      <input type="email" inputmode="email" id="em" name="email" required autocomplete="email">
     </div>
     <button type="submit" class="g-btn g-btn--solid">{{ t('Find booking') }}</button>
   </form>

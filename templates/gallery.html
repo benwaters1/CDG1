@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% block title %}Gallery{% endblock %}
 {% block content %}
+{% set crumbs = [('Gallery', None)] %}
+
 
 {# `galleries` comes from gallery_page(): a list of
      { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
@@ -109,8 +111,9 @@
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
-    not ours to change. Everything within them is new and genuinely good: the
-    beds, the linen, the floors underfoot, the bathrooms, the food. The
+    not ours to change. Everything within them is new: antique French beds
+    dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
+    finished to a standard the rest of the house has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
 </div></section>

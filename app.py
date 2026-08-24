@@ -32803,6 +32803,35 @@ def preview_home():
     return render_template('home.html')
 
 
+@app.errorhandler(404)
+def not_found(e):
+    """A mistyped address, or a manage link that has expired.
+
+    JSON for anything under /api/, because two of those abort(404) and their
+    caller is a cron job, not a person — handing a machine a page of HTML to
+    parse is how a scheduled task fails silently. Everything else gets the
+    château's own page, with routes back to the house, the rooms,
+    find-my-booking and contact.
+    """
+    if request.path.startswith("/api/"):
+        return jsonify(error="not found"), 404
+    return render_template("error.html", code=404), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    """Deliberately passed nothing but the code.
+
+    A 500 handler that depends on anything which might itself be broken is a
+    500 handler that raises inside the 500. If public_base is what failed,
+    this fails too and Flask shows its own page — the right trade for the
+    route-level failures that make up almost all of them.
+    """
+    if request.path.startswith("/api/"):
+        return jsonify(error="server error"), 500
+    return render_template("error.html", code=500), 500
+
+
 def start_background_work():
     """Start the automation loop for this process.
 

@@ -2,13 +2,14 @@
 {% block title %}Your account{% endblock %}
 {% block content %}
 
+<section class="g-sec"><div class="g-wrap">
 <div class="account">
   <div class="account-head">
     <div>
       <h1 style="margin:0;">Your bookings</h1>
-      <p class="upload-hint" style="margin:4px 0 0;">{{ email }}</p>
+      <p class="g-hint" style="margin:4px 0 0;">{{ email }}</p>
     </div>
-    <a href="{{ url_for('book_rooms') }}" class="btn-mini">Book another stay</a>
+    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--sm">Book another stay</a>
   </div>
 
   {% set nothing = not (data.rooms or data.dinners or data.workshops or data.events) %}
@@ -30,16 +31,16 @@
         <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
         {% if not upcoming %}<span class="mini-status status-inactive">past</span>{% endif %}
       </div>
-      <span class="upload-hint">{{ b['reference_code'] }}</span>
+      <span class="g-hint">{{ b['reference_code'] }}</span>
     </div>
-    <p class="upload-hint" style="margin:6px 0;">
-      {{ b['arrival_date'] }} → {{ b['departure_date'] }}
+    <p class="g-hint" style="margin:6px 0;">
+      {{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}
       · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
       {%- if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
     </p>
 
     <div class="account-actions">
-      <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}" class="btn-mini">
+      <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm">
         {{ 'Manage' if upcoming else 'View' }}
       </a>
       <a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Your bill</a>
@@ -54,25 +55,25 @@
       <summary>Add something to this stay</summary>
       <div class="account-add-body">
         {% if restaurant_open %}
-        <p class="upload-hint">
+        <p class="g-hint">
           <a href="{{ url_for('restaurant_info') }}">Book dinner</a> during your stay — tables are
           limited, so earlier is better.
         </p>
         {% endif %}
         {% if extras %}
-        <p class="field-label" style="margin-top:8px;">Extras we can arrange</p>
+        <p class="g-mb-label" style="margin-top:8px;">Extras we can arrange</p>
         <ul class="account-extras">
           {% for e in extras %}
           <li>
             <span>{{ e['name'] }}</span>
-            <span class="upload-hint">
+            <span class="g-hint">
               {% if e['price'] %}€{{ '%.2f'|format(e['price']) }}{% endif %}
               {%- if e['lead_time_days'] %} · {{ e['lead_time_days'] }} days' notice{% endif %}
             </span>
           </li>
           {% endfor %}
         </ul>
-        <p class="upload-hint">
+        <p class="g-hint">
           Tell us on the <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
           and we'll add it to your bill.
         </p>
@@ -95,10 +96,10 @@
         <strong>{{ w['workshop_title'] }}</strong>
         <span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span>
       </div>
-      <span class="upload-hint">{{ w['reference_code'] }}</span>
+      <span class="g-hint">{{ w['reference_code'] }}</span>
     </div>
-    <p class="upload-hint" style="margin:6px 0;">
-      {{ w['start_date'] }} → {{ w['end_date'] }}
+    <p class="g-hint" style="margin:6px 0;">
+      {{ w['start_date']|date_short }} → {{ w['end_date']|date_short }}
       · {{ w['party_size'] }} place{{ '' if w['party_size'] == 1 else 's' }}
     </p>
 
@@ -113,8 +114,8 @@
     {% if missing %}
     <div class="account-needs">
       <strong>We still need a few things</strong>
-      <p class="upload-hint" style="margin:4px 0 8px;">{{ missing|join(', ')|capitalize }}.</p>
-      <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="btn-mini">
+      <p class="g-hint" style="margin:4px 0 8px;">{{ missing|join(', ')|capitalize }}.</p>
+      <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="g-btn g-btn--sm">
         Add your details
       </a>
     </div>
@@ -122,7 +123,7 @@
     {% endif %}
 
     <div class="account-actions">
-      <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="btn-mini">
+      <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="g-btn g-btn--sm">
         {{ 'Manage' if upcoming else 'View' }}
       </a>
     </div>
@@ -137,16 +138,16 @@
   <div class="account-card {{ 'is-past' if d['dinner_date'] < today }}">
     <div class="account-card-head">
       <div>
-        <strong>{{ d['dinner_date'] }}</strong>
+        <strong>{{ d['dinner_date']|date_short }}</strong>
         <span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span>
       </div>
-      <span class="upload-hint">{{ d['reference_code'] }}</span>
+      <span class="g-hint">{{ d['reference_code'] }}</span>
     </div>
-    <p class="upload-hint" style="margin:6px 0;">
+    <p class="g-hint" style="margin:6px 0;">
       Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '%.2f'|format(d['total_price']) }}{% endif %}
     </p>
     <div class="account-actions">
-      <a href="{{ url_for('restaurant_manage', manage_token=d['manage_token']) }}" class="btn-mini">
+      <a href="{{ url_for('restaurant_manage', manage_token=d['manage_token']) }}" class="g-btn g-btn--sm">
         {{ 'Manage' if d['dinner_date'] >= today else 'View' }}
       </a>
     </div>
@@ -164,13 +165,13 @@
         <strong>{{ e['event_type']|capitalize }}</strong>
         <span class="mini-status status-{{ 'confirmed' if e['status'] == 'confirmed' else 'pending' }}">{{ e['status'] }}</span>
       </div>
-      <span class="upload-hint">{{ e['reference_code'] }}</span>
+      <span class="g-hint">{{ e['reference_code'] }}</span>
     </div>
-    <p class="upload-hint" style="margin:6px 0;">
-      {{ e['preferred_date'] }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
+    <p class="g-hint" style="margin:6px 0;">
+      {{ e['preferred_date']|date_short }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
     </p>
     <div class="account-actions">
-      <a href="{{ url_for('event_manage', manage_token=e['manage_token']) }}" class="btn-mini">Manage</a>
+      <a href="{{ url_for('event_manage', manage_token=e['manage_token']) }}" class="g-btn g-btn--sm">Manage</a>
     </div>
   </div>
   {% endfor %}
@@ -179,14 +180,14 @@
   <!-- ---------------- the app ---------------- -->
   <h2 class="section-heading">Keep this on your phone</h2>
   <div class="account-card">
-    <p class="upload-hint" style="margin-top:0;">
+    <p class="g-hint" style="margin-top:0;">
       This page works as an app — no download, no store. On <strong>iPhone</strong>, tap Share then
       “Add to Home Screen”. On <strong>Android</strong>, tap the menu then “Install app”. It opens
       straight to your bookings.
     </p>
   </div>
 
-  <p class="upload-hint" style="margin-top:18px;">
+  <p class="g-hint" style="margin-top:18px;">
     This link is yours and expires {{ expires[:10] }}. If it stops working,
     <a href="{{ url_for('guest_account_request') }}">ask for a new one</a>.
     Please don't forward it — it opens your bookings.
@@ -215,5 +216,6 @@
   border-bottom:1px dashed var(--parchment-line); font-size:13.5px;
 }
 </style>
+</div></section>
 
 {% endblock %}
