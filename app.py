@@ -231,6 +231,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     "automation_social_horizon_days": "28",
+    "automation_maintenance_enabled": "1",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
@@ -1452,6 +1453,56 @@ def init_db():
             -- the next run.
             generated_through TEXT,
             created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Work the house needs on a rhythm, rather than when something breaks.
+        -- Room issues and vehicle maintenance are both reactive: somebody
+        -- reports a problem. A chimney nobody has swept does not report
+        -- itself, and the first anyone hears of it may be an insurer asking
+        -- for the certificate after a fire.
+        CREATE TABLE IF NOT EXISTS maintenance_schedules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'building',
+            location TEXT,
+            every_months INTEGER NOT NULL DEFAULT 12,
+            -- When it was last actually done, and when it is next owed. Kept
+            -- separately: an owner who knows the boiler was serviced in March
+            -- can say so without having to work out the next date themselves.
+            last_done_on TEXT,
+            next_due_on TEXT,
+            -- How much warning. A chimney sweep needs booking; a light bulb
+            -- does not.
+            lead_days INTEGER NOT NULL DEFAULT 21,
+            assigned_to_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+            -- Whether something outside the house requires it. Set by the
+            -- owner, never assumed: what an insurer or a commune demands
+            -- varies, and inventing a legal requirement into their data would
+            -- be worse than leaving it blank.
+            required_by TEXT NOT NULL DEFAULT 'none'
+                CHECK(required_by IN ('none', 'insurance', 'law', 'both')),
+            insurance_policy_id INTEGER REFERENCES insurance_policies(id) ON DELETE SET NULL,
+            notes TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            generated_through TEXT,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
+        -- Each time the work was actually done. The certificate matters as
+        -- much as the date: proof is the thing an insurer asks for.
+        CREATE TABLE IF NOT EXISTS maintenance_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            schedule_id INTEGER NOT NULL REFERENCES maintenance_schedules(id) ON DELETE CASCADE,
+            done_on TEXT NOT NULL,
+            done_by TEXT,
+            cost REAL,
+            certificate_filename TEXT,
+            notes TEXT,
+            task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
             created_at TEXT NOT NULL
         );
 
@@ -27988,6 +28039,420 @@ def generate_social_now():
     return redirect(url_for("social_plans"))
 
 
+# ---------------------------------------------------------------------------
+# The estate's maintenance.
+#
+# Everything the house has for upkeep is reactive: a room issue or a vehicle
+# fault is something a person noticed and reported. That works for a tap that
+# drips. It does not work for a chimney, a boiler or an extinguisher, because
+# an unswept chimney does not report itself — and the first anyone hears of it
+# can be an insurer asking for the certificate after a fire.
+#
+# So: schedules that generate their own work, the same shape as the social
+# plans. A visit is recorded when the work is actually done, the certificate
+# with it, and the next date follows from the date it was done rather than
+# from the date it was due — six weeks late does not mean the next one is six
+# weeks early.
+#
+# What is NOT here is any assertion about what French law or an insurer
+# requires. That varies by commune, by policy and by whether a house takes
+# paying guests, and writing a legal requirement into somebody's data because
+# it is usually true is how they stop checking. `required_by` is theirs to set.
+# ---------------------------------------------------------------------------
+
+MAINTENANCE_CATEGORIES = {
+    "building": "The building",
+    "heating": "Heating and hot water",
+    "safety": "Fire and safety",
+    "grounds": "Grounds and gardens",
+    "water": "Water and drainage",
+    "electrical": "Electrical",
+    "equipment": "Equipment",
+}
+
+MAINTENANCE_REQUIRED_BY = {
+    "none": "Nobody — we choose to",
+    "insurance": "Our insurer asks for it",
+    "law": "Required by law",
+    "both": "Both",
+}
+
+# Offered on the page as a starting list, never inserted on anybody's behalf.
+# Frequencies are the common ones for a house like this; the page says plainly
+# that they are a starting point to confirm, not a rule we are asserting.
+MAINTENANCE_SUGGESTIONS = [
+    ("Ramonage — chimney sweeping", "heating", 12,
+     "Usually annual, and usually the certificate an insurer asks for after a fire. "
+     "Confirm the frequency with your commune and your policy."),
+    ("Boiler service", "heating", 12, "Annual is typical for a gas or oil boiler."),
+    ("Fire extinguishers checked", "safety", 12,
+     "Annual inspection by an approved company is the usual requirement where a "
+     "house takes paying guests."),
+    ("Smoke and heat detectors tested", "safety", 6, "Tested, batteries replaced."),
+    ("Electrical installation inspected", "electrical", 60,
+     "Periodic inspection. The interval depends on the installation and on whether "
+     "the house is treated as receiving the public."),
+    ("Gutters cleared", "building", 12, "Before winter, after the leaves come down."),
+    ("Roof inspected", "building", 12, "After winter, before the next one."),
+    ("Septic tank / fosse septique emptied", "water", 48,
+     "Every three to four years is typical; the commune may set its own interval."),
+    ("Legionella — water system checked", "water", 12,
+     "Where there are guest bathrooms standing unused between stays."),
+    ("Trees inspected", "grounds", 12, "Deadwood and storm damage, before winter."),
+    ("Alarm and emergency lighting tested", "safety", 6, None),
+    ("Kitchen extraction cleaned", "safety", 12,
+     "Grease in a restaurant extraction system is a fire risk and an insurer's question."),
+]
+
+
+def maintenance_next_due(schedule):
+    """When this is next owed.
+
+    From the date it was last DONE, not from the date it was last due. A
+    service six weeks late does not make the following one six weeks early.
+    """
+    if schedule["next_due_on"]:
+        return parse_date(schedule["next_due_on"])
+    last = parse_date(schedule["last_done_on"] or "")
+    if not last:
+        return None
+    return _add_months(last, max(1, schedule["every_months"] or 12))
+
+
+def maintenance_status(schedule, today=None):
+    """overdue / due soon / scheduled / never done, with the days involved."""
+    today = today or datetime.now(LOCAL_TZ).date()
+    due = maintenance_next_due(schedule)
+    if not due:
+        return {"state": "unknown", "due": None, "days": None,
+                "label": "never recorded"}
+    days = (due - today).days
+    if days < 0:
+        return {"state": "overdue", "due": due, "days": days,
+                "label": f"{abs(days)} day{'s' if abs(days) != 1 else ''} overdue"}
+    if days <= max(0, schedule["lead_days"] or 0):
+        return {"state": "soon", "due": due, "days": days,
+                "label": "due now" if days == 0 else f"due in {days} days"}
+    return {"state": "scheduled", "due": due, "days": days,
+            "label": f"due {due.strftime('%d %b %Y')}"}
+
+
+def maintenance_task_title(schedule):
+    where = (schedule["location"] or "").strip()
+    return f"{schedule['name']}{' — ' + where if where else ''}"
+
+
+def generate_maintenance_tasks(conn, *, today=None, user_id=None):
+    """Raise a task for anything falling due inside its notice period.
+
+    One task per schedule at a time: the point is that somebody books the
+    sweep, not that the list fills with the same line every morning. A
+    schedule already carrying an open task is left alone.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(today, str):
+        today = parse_date(today)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    made = 0
+    for sched in conn.execute(
+            "SELECT * FROM maintenance_schedules WHERE active = 1 ORDER BY id").fetchall():
+        status = maintenance_status(sched, today)
+        if status["state"] not in ("overdue", "soon"):
+            continue
+        title = maintenance_task_title(sched)
+        if conn.execute(
+                """SELECT 1 FROM tasks
+                   WHERE origin = 'maintenance' AND title = ? AND status != 'done'""",
+                (title,)).fetchone():
+            continue
+        # Overdue work an insurer or the law expects is not a normal task.
+        urgent = status["state"] == "overdue" and sched["required_by"] != "none"
+        note = (sched["notes"] or "").strip() or None
+        if sched["required_by"] != "none":
+            asked = MAINTENANCE_REQUIRED_BY.get(sched["required_by"], sched["required_by"])
+            note = f"{note + chr(10) + chr(10) if note else ''}{asked}. Keep the certificate."
+        conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (?, ?, ?, ?, ?, 'open', 'maintenance', ?)""",
+            (sched["assigned_to_user_id"], title, note,
+             "high" if urgent else "normal",
+             status["due"].isoformat(), now_iso))
+        made += 1
+    conn.commit()
+    return made
+
+
+def record_maintenance_visit(conn, schedule_id, *, done_on, done_by=None, cost=None,
+                             certificate=None, notes=None, user_id=None):
+    """The work was done. Move the schedule on and close its task."""
+    sched = conn.execute("SELECT * FROM maintenance_schedules WHERE id = ?",
+                         (schedule_id,)).fetchone()
+    if not sched:
+        return None
+    done = parse_date(done_on) if isinstance(done_on, str) else done_on
+    if not done:
+        return None
+    task = conn.execute(
+        """SELECT id FROM tasks WHERE origin = 'maintenance' AND title = ?
+             AND status != 'done' ORDER BY id DESC LIMIT 1""",
+        (maintenance_task_title(sched),)).fetchone()
+    conn.execute(
+        """INSERT INTO maintenance_visits (schedule_id, done_on, done_by, cost,
+             certificate_filename, notes, task_id, recorded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (schedule_id, done.isoformat(), done_by, cost, certificate, notes,
+         task["id"] if task else None, user_id, datetime.now(timezone.utc).isoformat()))
+    # Counted from the day it was done. A sweep six weeks late does not make
+    # next year's sweep six weeks early.
+    conn.execute(
+        """UPDATE maintenance_schedules SET last_done_on = ?, next_due_on = ?
+           WHERE id = ?""",
+        (done.isoformat(),
+         _add_months(done, max(1, sched["every_months"] or 12)).isoformat(),
+         schedule_id))
+    if task:
+        conn.execute(
+            "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), task["id"]))
+    conn.commit()
+    return True
+
+
+def run_maintenance_job(conn):
+    made = generate_maintenance_tasks(conn)
+    return f"raised {made} maintenance task(s)"
+
+
+@app.route("/management/maintenance")
+@owner_required
+def maintenance_page():
+    """What the house is owed, soonest first, with anything overdue at the top."""
+    conn = get_db()
+    rows = [dict(r) for r in conn.execute(
+        """SELECT maintenance_schedules.*, users.name AS assignee_name,
+                  vendors.name AS vendor_name
+             FROM maintenance_schedules
+             LEFT JOIN users ON users.id = maintenance_schedules.assigned_to_user_id
+             LEFT JOIN vendors ON vendors.id = maintenance_schedules.vendor_id
+            ORDER BY active DESC, name""").fetchall()]
+    for r in rows:
+        r["status"] = maintenance_status(r)
+        r["last_visit"] = conn.execute(
+            """SELECT * FROM maintenance_visits WHERE schedule_id = ?
+               ORDER BY done_on DESC LIMIT 1""", (r["id"],)).fetchone()
+        r["visit_count"] = conn.execute(
+            "SELECT COUNT(*) AS c FROM maintenance_visits WHERE schedule_id = ?",
+            (r["id"],)).fetchone()["c"]
+    # Overdue first, then whatever is nearest. A list ordered by name is a list
+    # where the thing that matters is halfway down.
+    order = {"overdue": 0, "soon": 1, "unknown": 2, "scheduled": 3}
+    rows.sort(key=lambda r: (not r["active"], order.get(r["status"]["state"], 4),
+                             r["status"]["days"] if r["status"]["days"] is not None else 9999))
+    live = [r for r in rows if r["active"]]
+    overdue = [r for r in live if r["status"]["state"] == "overdue"]
+    # The two facts nobody puts together: this is overdue, AND somebody
+    # outside the house expects it to have been done.
+    exposed = [r for r in overdue if r["required_by"] != "none"]
+    employees = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    vendor_list = conn.execute("SELECT id, name FROM vendors ORDER BY name").fetchall()
+    policies = conn.execute(
+        "SELECT id, provider, coverage_type FROM insurance_policies ORDER BY provider").fetchall()
+    conn.close()
+    overview = [
+        overview_cell("On a schedule", len(live)),
+        overview_cell("Due soon", len([r for r in live if r["status"]["state"] == "soon"])),
+        overview_cell("Overdue", len(overdue), alert=bool(overdue)),
+        overview_cell("Somebody is expecting it", len(exposed), alert=bool(exposed),
+                      hint="overdue and required"),
+    ]
+    return render_template(
+        "maintenance.html", schedules=rows, overview=overview, exposed=exposed,
+        employees=employees, vendors=vendor_list, policies=policies,
+        categories=MAINTENANCE_CATEGORIES, required_by=MAINTENANCE_REQUIRED_BY,
+        suggestions=MAINTENANCE_SUGGESTIONS, today=datetime.now(LOCAL_TZ).date())
+
+
+def _maintenance_fields():
+    f = request.form
+    name = (f.get("name", "") or "").strip()
+    if not name:
+        return None, "Give it a name — it becomes the task somebody has to act on."
+    category = (f.get("category", "") or "building").strip()
+    if category not in MAINTENANCE_CATEGORIES:
+        category = "building"
+    req = (f.get("required_by", "") or "none").strip()
+    if req not in MAINTENANCE_REQUIRED_BY:
+        req = "none"
+    try:
+        months = max(1, min(120, int(f.get("every_months", "12") or 12)))
+    except ValueError:
+        months = 12
+    try:
+        lead = max(0, min(180, int(f.get("lead_days", "21") or 21)))
+    except ValueError:
+        lead = 21
+    assignee = (f.get("assigned_to_user_id", "") or "").strip()
+    vendor = (f.get("vendor_id", "") or "").strip()
+    policy = (f.get("insurance_policy_id", "") or "").strip()
+    last_done = (f.get("last_done_on", "") or "").strip() or None
+    next_due = (f.get("next_due_on", "") or "").strip() or None
+    # If they know when it was last done but not when it is next owed, work it
+    # out rather than making them do the arithmetic.
+    if last_done and not next_due:
+        d = parse_date(last_done)
+        if d:
+            next_due = _add_months(d, months).isoformat()
+    return {
+        "name": name, "category": category, "location": (f.get("location", "") or "").strip() or None,
+        "every_months": months, "last_done_on": last_done, "next_due_on": next_due,
+        "lead_days": lead,
+        "assigned_to_user_id": int(assignee) if assignee.isdigit() else None,
+        "vendor_id": int(vendor) if vendor.isdigit() else None,
+        "required_by": req,
+        "insurance_policy_id": int(policy) if policy.isdigit() else None,
+        "notes": (f.get("notes", "") or "").strip() or None,
+        "active": 1 if f.get("active") else 0,
+    }, None
+
+
+@app.route("/management/maintenance/new", methods=["POST"])
+@owner_required
+def new_maintenance_schedule():
+    fields, error = _maintenance_fields()
+    if error:
+        flash(error, "error")
+        return redirect(url_for("maintenance_page"))
+    conn = get_db()
+    cols = list(fields) + ["created_by_user_id", "created_at"]
+    conn.execute(
+        f"INSERT INTO maintenance_schedules ({', '.join(cols)}) "
+        f"VALUES ({', '.join('?' * len(cols))})",
+        list(fields.values()) + [session.get("user_id"),
+                                 datetime.now(timezone.utc).isoformat()])
+    conn.commit()
+    log_audit(conn, "maintenance_schedule_created", target=fields["name"])
+    conn.commit()
+    made = generate_maintenance_tasks(conn, user_id=session.get("user_id"))
+    conn.close()
+    flash(f"Added.{f' {made} task raised.' if made else ''}", "success")
+    return redirect(url_for("maintenance_page"))
+
+
+@app.route("/management/maintenance/<int:schedule_id>/edit", methods=["POST"])
+@owner_required
+def edit_maintenance_schedule(schedule_id):
+    fields, error = _maintenance_fields()
+    if error:
+        flash(error, "error")
+        return redirect(url_for("maintenance_page"))
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM maintenance_schedules WHERE id = ?",
+                        (schedule_id,)).fetchone():
+        conn.close()
+        abort(404)
+    conn.execute(
+        f"UPDATE maintenance_schedules SET {', '.join(k + ' = ?' for k in fields)} "
+        f"WHERE id = ?", list(fields.values()) + [schedule_id])
+    conn.commit()
+    generate_maintenance_tasks(conn, user_id=session.get("user_id"))
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("maintenance_page"))
+
+
+@app.route("/management/maintenance/<int:schedule_id>/done", methods=["POST"])
+@owner_required
+def record_maintenance_done(schedule_id):
+    """It was done. Moves the next date on and ticks the task off."""
+    done_on = (request.form.get("done_on", "") or "").strip()
+    if not parse_date(done_on):
+        flash("When was it done?", "error")
+        return redirect(url_for("maintenance_page"))
+    cost = (request.form.get("cost", "") or "").strip().replace(",", ".")
+    try:
+        cost = round(float(cost), 2) if cost else None
+    except ValueError:
+        cost = None
+    # The certificate is the point for anything an insurer asks about, so it
+    # is stored with the visit rather than left in somebody's email.
+    filename = None
+    upload = request.files.get("certificate")
+    if upload and upload.filename:
+        if not allowed_file(upload.filename):
+            flash(f"That file type is not allowed. Allowed: "
+                  f"{', '.join(sorted(ALLOWED_EXTENSIONS))}", "error")
+            return redirect(url_for("maintenance_page"))
+        safe_name = secure_filename(upload.filename)
+        filename = f"maint{schedule_id}_{secrets.token_hex(6)}_{safe_name}"
+        upload.save(os.path.join(UPLOAD_DIR, filename))
+    conn = get_db()
+    ok = record_maintenance_visit(
+        conn, schedule_id, done_on=done_on,
+        done_by=(request.form.get("done_by", "") or "").strip() or None,
+        cost=cost, certificate=filename,
+        notes=(request.form.get("notes", "") or "").strip() or None,
+        user_id=session.get("user_id"))
+    if ok:
+        log_audit(conn, "maintenance_recorded", target=str(schedule_id), details=done_on)
+        conn.commit()
+    conn.close()
+    flash("Recorded." if ok else "That schedule no longer exists.",
+          "success" if ok else "error")
+    return redirect(url_for("maintenance_page"))
+
+
+@app.route("/management/maintenance/certificate/<int:visit_id>")
+@owner_required
+def maintenance_certificate(visit_id):
+    """The proof, served by the visit it belongs to.
+
+    Keyed on the visit rather than the filename on purpose: a route that takes
+    a filename is a route somebody can walk out of the uploads directory with,
+    and this one only ever serves a name the database already holds.
+    """
+    conn = get_db()
+    visit = conn.execute(
+        "SELECT certificate_filename FROM maintenance_visits WHERE id = ?",
+        (visit_id,)).fetchone()
+    conn.close()
+    if not visit or not visit["certificate_filename"]:
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, visit["certificate_filename"],
+                               as_attachment=False)
+
+
+@app.route("/management/maintenance/<int:schedule_id>/delete", methods=["POST"])
+@owner_required
+def delete_maintenance_schedule(schedule_id):
+    """Retire a schedule. Its visit history stays — that is the proof it was
+    ever done, and an insurer asking about last year does not care that the
+    schedule has since been retired."""
+    conn = get_db()
+    row = conn.execute("SELECT name FROM maintenance_schedules WHERE id = ?",
+                       (schedule_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE maintenance_schedules SET active = 0 WHERE id = ?", (schedule_id,))
+    # Any task still open for it goes too. Retiring a schedule is a decision
+    # that this work is no longer owed, so leaving somebody chasing it is
+    # asking for the one thing we just said we had stopped doing.
+    sched = conn.execute("SELECT * FROM maintenance_schedules WHERE id = ?",
+                         (schedule_id,)).fetchone()
+    conn.execute(
+        """UPDATE tasks SET status = 'done', completed_at = ?
+           WHERE origin = 'maintenance' AND title = ? AND status != 'done'""",
+        (datetime.now(timezone.utc).isoformat(), maintenance_task_title(sched)))
+    conn.commit()
+    log_audit(conn, "maintenance_schedule_retired", target=row["name"])
+    conn.commit()
+    conn.close()
+    flash("Retired. Everything recorded against it is kept.", "success")
+    return redirect(url_for("maintenance_page"))
+
+
 @app.route("/management/vehicles")
 @owner_required
 def management_vehicles():
@@ -31676,6 +32141,9 @@ AUTOMATION_JOBS = [
     # Daily is enough: it works a month ahead, so a missed day costs
     # nothing and a slot is never generated at short notice.
     ("social_schedule", "automation_social_schedule_enabled", None, 24 * 3600, run_social_schedule_job),
+    # Daily. Everything here has weeks of notice, so a missed run costs
+    # nothing and nothing is ever raised at short notice.
+    ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
 ]
 
 
@@ -31758,6 +32226,7 @@ AUTOMATION_JOB_LABELS = {
     "campaign_triggers": "Automated guest emails (before arrival, after departure)",
     "backup_email": "Automated backup email (database + uploads, to the owner)",
     "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
+    "maintenance": "Estate upkeep (raise tasks for work falling due)",
 }
 
 

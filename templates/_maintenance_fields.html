@@ -1,0 +1,97 @@
+{# The schedule form, shared by the add form and every edit form on the page so
+   the two cannot drift. Expects `sched` (a row, or None for a new one), plus
+   `categories`, `required_by`, `employees`, `vendors` and `policies`. #}
+<div class="refund-fields">
+  <div>
+    <label class="field-label">What</label>
+    <input type="text" name="name" value="{{ sched.name if sched else '' }}"
+           placeholder="Ramonage — chimney sweeping" required>
+  </div>
+  <div>
+    <label class="field-label">Where</label>
+    <input type="text" name="location" value="{{ sched.location if sched else '' }}"
+           placeholder="The whole house, or a room">
+  </div>
+  <div>
+    <label class="field-label">Kind</label>
+    <select name="category">
+      {% for key, label in categories.items() %}
+      <option value="{{ key }}" {{ 'selected' if sched and sched.category == key }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">How often (months)</label>
+    <input type="number" name="every_months" min="1" max="120"
+           value="{{ sched.every_months if sched else 12 }}">
+  </div>
+  <div>
+    <label class="field-label">Last done</label>
+    <input type="date" name="last_done_on" value="{{ sched.last_done_on if sched else '' }}">
+    <p class="field-hint">Fill this in and the next date works itself out.</p>
+  </div>
+  <div>
+    <label class="field-label">Next due</label>
+    <input type="date" name="next_due_on" value="{{ sched.next_due_on if sched else '' }}">
+    <p class="field-hint">Only if it differs from the interval above.</p>
+  </div>
+  <div>
+    <label class="field-label">Days of notice</label>
+    <input type="number" name="lead_days" min="0" max="180"
+           value="{{ sched.lead_days if sched else 21 }}">
+    <p class="field-hint">A sweep needs booking. Three weeks is usually enough.</p>
+  </div>
+  <div>
+    <label class="field-label">Who chases it</label>
+    <select name="assigned_to_user_id">
+      <option value="">— nobody yet —</option>
+      {% for e in employees %}
+      <option value="{{ e['id'] }}" {{ 'selected' if sched and sched.assigned_to_user_id == e['id'] }}>{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Who does it</label>
+    <select name="vendor_id">
+      <option value="">— not decided —</option>
+      {% for v in vendors %}
+      <option value="{{ v['id'] }}" {{ 'selected' if sched and sched.vendor_id == v['id'] }}>{{ v['name'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label">Who expects it</label>
+    <select name="required_by">
+      {% for key, label in required_by.items() %}
+      <option value="{{ key }}" {{ 'selected' if sched and sched.required_by == key }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <p class="field-hint">
+      Yours to set. Nothing here assumes what your insurer or your commune requires — check, then
+      say so, and overdue work of that kind is called out at the top of the page.
+    </p>
+  </div>
+  <div>
+    <label class="field-label">Against which policy</label>
+    <select name="insurance_policy_id">
+      <option value="">— none —</option>
+      {% for p in policies %}
+      <option value="{{ p['id'] }}" {{ 'selected' if sched and sched.insurance_policy_id == p['id'] }}>
+        {{ p['provider'] }}{% if p['coverage_type'] %} — {{ p['coverage_type'] }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="grid-column:1 / -1;">
+    <label class="field-label">Notes</label>
+    <textarea name="notes" rows="2"
+              placeholder="Which company, what they need access to, anything the next person should know.">{{ sched.notes if sched else '' }}</textarea>
+    <p class="field-hint">Copied onto the task each time it comes round.</p>
+  </div>
+  <div style="grid-column:1 / -1;">
+    <label class="amenity" style="max-width:220px;">
+      <input type="checkbox" name="active" {{ 'checked' if (sched is none) or sched.active }}>
+      <span>On the schedule</span>
+    </label>
+  </div>
+</div>
