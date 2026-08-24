@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}The estate's upkeep{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>The estate's upkeep</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('room_issues') }}" class="btn-ghost">Room issues</a>
+    <a href="{{ url_for('management_vehicles') }}" class="btn-ghost">Vehicles</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Work the house needs on a rhythm, rather than when something breaks. Each one raises a task
+  before it falls due, so it lands on somebody's list and on the
+  <a href="{{ url_for('ops_calendar') }}">calendar</a>. Recording it done moves the next date on
+  and keeps the certificate.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# Overdue is one fact. Overdue AND somebody outside the house expects it is a
+   different one, and the only reason this page exists. #}
+{% if exposed %}
+<div class="pass-short">
+  <strong>Overdue, and expected by somebody outside the house</strong>
+  {% for e in exposed %}
+  <span class="pass-short-row">
+    {{ e.name }} — {{ e.status.label }}
+    · {{ required_by.get(e.required_by, e.required_by) }}
+    {%- if e.last_visit %} · last done {{ e.last_visit['done_on']|date_short }}
+    {%- else %} · never recorded{% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    A certificate you cannot produce is the same as work you did not do, as far as a claim is
+    concerned.
+  </span>
+</div>
+{% endif %}
+
+{% if not schedules %}
+  <div class="empty-state">
+    Nothing on a schedule yet. Start from the list below, or add your own.
+  </div>
+{% else %}
+<div class="doc-list" style="max-width:940px;">
+  {% for sc in schedules %}
+  <details class="doc-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+    <summary style="display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; cursor:pointer;">
+      <strong style="flex:1;">
+        {{ sc.name }}{% if sc.location %} <span class="upload-hint">{{ sc.location }}</span>{% endif %}
+      </strong>
+      {% if not sc.active %}
+        <span class="mini-status status-inactive">retired</span>
+      {% elif sc.status.state == 'overdue' %}
+        <span class="mini-status status-declined">{{ sc.status.label }}</span>
+      {% elif sc.status.state == 'soon' %}
+        <span class="mini-status status-pending">{{ sc.status.label }}</span>
+      {% elif sc.status.state == 'unknown' %}
+        <span class="mini-status status-pending">never recorded</span>
+      {% else %}
+        <span class="mini-status status-onshift">{{ sc.status.label }}</span>
+      {% endif %}
+      {% if sc.required_by != 'none' %}
+      <span class="mini-status status-pending">{{ required_by.get(sc.required_by) }}</span>
+      {% endif %}
+      <span class="upload-hint">
+        every {{ sc.every_months }} month{{ '' if sc.every_months == 1 else 's' }}
+        {%- if sc.assignee_name %} · {{ sc.assignee_name }}{% endif %}
+        {%- if sc.vendor_name %} · {{ sc.vendor_name }}{% endif %}
+      </span>
+    </summary>
+
+    <p class="field-hint" style="margin:0;">
+      {% if sc.last_visit %}
+        Last done {{ sc.last_visit['done_on']|date_short }}
+        {%- if sc.last_visit['done_by'] %} by {{ sc.last_visit['done_by'] }}{% endif %}
+        {%- if sc.last_visit['cost'] %} · €{{ '%.2f'|format(sc.last_visit['cost']) }}{% endif %}
+        {%- if sc.last_visit['certificate_filename'] %}
+          · <a href="{{ url_for('maintenance_certificate', visit_id=sc.last_visit['id']) }}"
+               target="_blank">certificate</a>
+        {%- else %} · no certificate kept{% endif %}
+        {%- if sc.visit_count > 1 %} · {{ sc.visit_count }} recorded in all{% endif %}
+      {% else %}
+        Never recorded here. If it has been done, saying when sets the next date.
+      {% endif %}
+    </p>
+
+    {% if sc.active %}
+    <form method="post" action="{{ url_for('record_maintenance_done', schedule_id=sc.id) }}"
+          enctype="multipart/form-data" class="detail-card" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h3 style="margin-top:0;">Record it done</h3>
+      <div class="refund-fields">
+        <div><label class="field-label">When</label>
+          <input type="date" name="done_on" value="{{ today.isoformat() }}" required></div>
+        <div><label class="field-label">Who by</label>
+          <input type="text" name="done_by" placeholder="{{ sc.vendor_name or 'the company or person' }}"></div>
+        <div><label class="field-label">Cost (€)</label>
+          <input type="text" name="cost" inputmode="decimal"></div>
+        <div><label class="field-label">Certificate</label>
+          <input type="file" name="certificate">
+          <p class="field-hint">Kept against this visit, not left in an inbox.</p></div>
+        <div style="grid-column:1 / -1;"><label class="field-label">Notes</label>
+          <input type="text" name="notes"></div>
+      </div>
+      <button type="submit" class="btn-primary" style="margin-top:8px;">
+        Done — next one falls {{ sc.every_months }} month{{ '' if sc.every_months == 1 else 's' }} later
+      </button>
+    </form>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('edit_maintenance_schedule', schedule_id=sc.id) }}"
+          class="detail-card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% with sched = sc %}{% include "_maintenance_fields.html" %}{% endwith %}
+      <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+        <button type="submit" class="btn-mini">Save</button>
+        {% if sc.active %}
+        <button type="submit" class="btn-mini btn-mini-danger"
+                formaction="{{ url_for('delete_maintenance_schedule', schedule_id=sc.id) }}"
+                formnovalidate
+                onclick="return confirm('Retire this? Everything recorded against it is kept.')">
+          Retire
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="section-heading">Add something</h2>
+{# Suggestions, not assertions. What a commune or an insurer actually requires
+   varies, and writing a legal requirement into somebody's data because it is
+   usually true is how they stop checking for themselves. #}
+<details class="detail-card" style="max-width:940px;">
+  <summary style="cursor:pointer;"><strong>Common for a house like this</strong></summary>
+  <p class="field-hint">
+    A starting list, with the intervals usually seen. They are a prompt to check, not a rule —
+    confirm the frequency and whether it is required with your insurer and your commune, then set
+    “who expects it” yourself.
+  </p>
+  <div class="doc-list">
+    {% for name, cat, months, why in suggestions %}
+    <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+      <strong style="min-width:250px;">{{ name }}</strong>
+      <span class="upload-hint">every {{ months }} months · {{ categories.get(cat, cat) }}</span>
+      {% if why %}<span class="upload-hint" style="flex:1;">{{ why }}</span>{% endif %}
+      <form method="post" action="{{ url_for('new_maintenance_schedule') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="name" value="{{ name }}">
+        <input type="hidden" name="category" value="{{ cat }}">
+        <input type="hidden" name="every_months" value="{{ months }}">
+        <input type="hidden" name="active" value="on">
+        <button type="submit" class="btn-mini">Add</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</details>
+
+<form method="post" action="{{ url_for('new_maintenance_schedule') }}" class="detail-card"
+      style="max-width:940px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% with sched = None %}{% include "_maintenance_fields.html" %}{% endwith %}
+  <button type="submit" class="btn-primary" style="margin-top:10px;">Add to the schedule</button>
+</form>
+
+{% endblock %}
