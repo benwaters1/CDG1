@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Money ahead{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Money ahead</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [30, 90, 180, 365] %}
+    <a href="{{ url_for('money_ahead_page', days=n) }}"
+       class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
+    {% endfor %}
+    <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Everything already promised, on one timeline: what guests still owe, what standing costs and
+  renewals will take, and which month is tight. Nothing here is forecast from averages or last
+  year — only money somebody has actually committed to.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The most important honesty on the page. Without an opening figure the
+   running column is a change, not a balance, and calling it a balance would
+   be inventing the number the owner most needs to trust. #}
+{% if ahead.opening is none %}
+<form method="post" action="{{ url_for('set_opening_balance') }}" class="detail-card"
+      style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h3 style="margin-top:0;">What is in the bank today?</h3>
+  <p class="field-hint" style="margin-top:0;">
+    This app has never known that, so the running column below is a
+    <strong>change</strong>, not a balance. Put today's figure in and it becomes
+    the real thing. It is only used here.
+  </p>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input type="text" name="opening" inputmode="decimal" placeholder="42000"
+           style="max-width:180px; margin:0;">
+    <button type="submit" class="btn-mini">Save</button>
+  </div>
+</form>
+{% endif %}
+
+<h2 class="section-heading">Month by month</h2>
+<table class="data-table" style="max-width:840px;">
+  <thead>
+    <tr>
+      <th>Month</th><th class="num">In</th><th class="num">Out</th>
+      <th class="num">Net</th>
+      <th class="num">{{ 'Balance' if ahead.opening is not none else 'Running change' }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for mo in ahead.months %}
+    <tr class="{{ 'row-alert' if mo.short }}">
+      <td>{{ mo.label }}</td>
+      <td class="num">{% if mo['in'] %}€{{ '%.2f'|format(mo['in']) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if mo.out %}€{{ '%.2f'|format(mo.out) }}{% else %}—{% endif %}</td>
+      <td class="num">€{{ '%.2f'|format(mo.net) }}</td>
+      <td class="num">
+        €{{ '%.2f'|format(mo.running) }}
+        {% if mo.short %}<span class="mini-status status-declined">below zero</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if ahead.opening is none %}
+<p class="field-hint" style="max-width:840px;">
+  The last column adds up the months from zero. It says how much better or worse off the house is
+  by then — not what will be in the account.
+</p>
+{% endif %}
+
+<div class="pos-layout" style="margin-top:22px;">
+  <div>
+    <h2 class="section-heading" style="margin-top:0;">Expected in</h2>
+    {% if not ahead.incoming %}
+      <div class="empty-state">Nothing outstanding in this window.</div>
+    {% else %}
+    <div class="doc-list">
+      {% for i in ahead.incoming %}
+      <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+        <span style="min-width:104px;">{{ i.date|date_short }}</span>
+        <strong style="flex:1;">{{ i.label }}</strong>
+        <span class="mini-status status-inactive">{{ i.kind }}</span>
+        <span class="room-price">€{{ '%.2f'|format(i.amount) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <h2 class="section-heading" style="margin-top:0;">Expected out</h2>
+    {% if not ahead.outgoing %}
+      <div class="empty-state">
+        Nothing scheduled. If that seems wrong, standing costs and insurance renewals are what
+        this reads — <a href="{{ url_for('management_recurring_costs') }}">add them</a> and they
+        appear here.
+      </div>
+    {% else %}
+    <div class="doc-list">
+      {% for o in ahead.outgoing %}
+      <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+        <span style="min-width:104px;">{{ o.date|date_short }}</span>
+        <strong style="flex:1;">{{ o.label }}</strong>
+        <span class="mini-status status-inactive">{{ o.kind }}</span>
+        <span class="room-price">€{{ '%.2f'|format(o.amount) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  What is <em>not</em> in here, so it is not mistaken for a full picture: wages, which the app has
+  no standing monthly figure for; restaurant covers nobody has booked yet; and anything bought on
+  the day. Supplier invoices still waiting on your decision sit on today, because that is when
+  they are owed.
+</p>
+
+{% endblock %}

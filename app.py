@@ -26698,6 +26698,242 @@ def management():
     )
 
 
+@app.route("/management/money-ahead")
+@owner_required
+def money_ahead_page():
+    days = request.args.get("days", "90")
+    days = int(days) if days.isdigit() else 90
+    conn = get_db()
+    ahead = money_ahead(conn, days=days)
+    conn.close()
+    overview = [
+        overview_cell("Expected in", euro(ahead["total_in"]),
+                      hint=f"over {ahead['days']} days"),
+        overview_cell("Expected out", euro(ahead["total_out"])),
+        overview_cell("Difference", euro(ahead["net"]), alert=ahead["net"] < 0,
+                      hint="not a balance" if ahead["opening"] is None else None),
+    ]
+    if ahead["opening"] is not None:
+        overview.append(overview_cell("Where that leaves you", euro(ahead["closing"]),
+                                      alert=ahead["closing"] < 0))
+    return render_template("money_ahead.html", ahead=ahead, overview=overview, days=days)
+
+
+@app.route("/management/money-ahead/opening", methods=["POST"])
+@owner_required
+def set_opening_balance():
+    raw = (request.form.get("opening", "") or "").strip().replace(",", ".").replace(" ", "")
+    conn = get_db()
+    if not raw:
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (OPENING_BALANCE_SETTING,))
+        conn.commit()
+        conn.close()
+        flash("Opening balance cleared — the page is back to showing change only.", "success")
+        return redirect(url_for("money_ahead_page"))
+    try:
+        value = round(float(raw), 2)
+    except ValueError:
+        conn.close()
+        flash("That is not a number.", "error")
+        return redirect(url_for("money_ahead_page"))
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (OPENING_BALANCE_SETTING, f"{value:.2f}"))
+    conn.commit()
+    log_audit(conn, "opening_balance_set", details=f"€{value:.2f}")
+    conn.commit()
+    conn.close()
+    flash("Saved. The running line is now a balance rather than a change.", "success")
+    return redirect(url_for("money_ahead_page"))
+
+
+# ---------------------------------------------------------------------------
+# Money ahead.
+#
+# Every figure below already exists, on five different screens: a room booking
+# knows what it is worth and what has been paid, a workshop registration knows
+# its balance and the date that balance falls due, recurring costs know when
+# they next go out, insurance knows its renewal. Nobody has ever put them on
+# one timeline, so the question a house funding a restoration actually asks —
+# what is coming in, what is going out, and which month is tight — has no
+# answer anywhere in the app.
+#
+# What this deliberately does NOT claim: that it knows the bank balance. It
+# does not. Without an opening figure the running line is a CHANGE, not a
+# balance, and saying otherwise would be inventing the most important number
+# on the page. The opening balance is a setting; until it is set, the page
+# says so plainly rather than implying a total it cannot know.
+# ---------------------------------------------------------------------------
+
+OPENING_BALANCE_SETTING = "money_ahead_opening_balance"
+
+
+def _month_starts(first, last):
+    """Every month start from first to last inclusive, as dates."""
+    out, cur = [], first.replace(day=1)
+    while cur <= last:
+        out.append(cur)
+        cur = (date(cur.year + 1, 1, 1) if cur.month == 12
+               else date(cur.year, cur.month + 1, 1))
+    return out
+
+
+def _recurring_dates(next_due, frequency, first, last):
+    """When a standing cost falls due inside the window.
+
+    Walked forward from its own next-due date rather than from today, so a
+    cost due on the 8th stays on the 8th. A cost whose next-due date is in the
+    past is treated as due now — it has not stopped being owed.
+    """
+    if not next_due:
+        return []
+    step_months = 12 if frequency == "annual" else 1
+    out, cur = [], next_due
+    while cur < first:
+        cur = _add_months(cur, step_months)
+    while cur <= last:
+        out.append(cur)
+        cur = _add_months(cur, step_months)
+    return out
+
+
+def _add_months(d, months):
+    total = d.month - 1 + months
+    year, month = d.year + total // 12, total % 12 + 1
+    return date(year, month, min(d.day, monthrange(year, month)[1]))
+
+
+def money_ahead(conn, *, days=90, today=None):
+    """What is expected in and out over the window, and when.
+
+    Only money that is genuinely expected: a confirmed booking with something
+    still to pay, a workshop balance with a due date, a standing cost, an
+    insurance renewal. Nothing is forecast from averages or last year — a
+    guess dressed as a figure is worse than a gap, because it gets budgeted
+    against.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(today, str):
+        today = parse_date(today)
+    last = today + timedelta(days=max(1, min(730, days)))
+    incoming, outgoing = [], []
+
+    # Rooms. Settled on arrival, so that is the date the money is expected.
+    for b in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'
+                  AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?""",
+            (today.isoformat(), last.isoformat())).fetchall():
+        due = round((b["total_price"] or 0) + (b["city_tax"] or 0)
+                    - (b["discount_amount"] or 0) - (b["amount_paid"] or 0), 2)
+        if due > 0.01:
+            incoming.append({"date": b["arrival_date"], "amount": due,
+                             "label": f"{b['guest_name']} — {b['room_name'] or 'room'}",
+                             "kind": "Room", "ref": b["reference_code"]})
+
+    # Workshops. The deposit is due when they register and the balance on its
+    # own date, so an unpaid one of either is money genuinely still to come.
+    for w in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title,
+                      workshop_sessions.start_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status IN ('confirmed', 'pending')""").fetchall():
+        if (w["deposit_amount"] or 0) > 0 and not w["deposit_paid_at"]:
+            when = w["balance_due_date"] or w["start_date"]
+            if when and today.isoformat() <= when <= last.isoformat():
+                incoming.append({"date": when, "amount": round(w["deposit_amount"], 2),
+                                 "label": f"{w['guest_name']} — {w['title']} deposit",
+                                 "kind": "Workshop", "ref": w["reference_code"]})
+        if (w["balance_amount"] or 0) > 0 and not w["balance_paid_at"]:
+            when = w["balance_due_date"] or w["start_date"]
+            if when and today.isoformat() <= when <= last.isoformat():
+                incoming.append({"date": when, "amount": round(w["balance_amount"], 2),
+                                 "label": f"{w['guest_name']} — {w['title']} balance",
+                                 "kind": "Workshop", "ref": w["reference_code"]})
+
+    # The restaurant. Paid on the night, less any deposit already taken.
+    for r in conn.execute(
+            """SELECT * FROM restaurant_bookings
+                WHERE status = 'confirmed' AND no_show_at IS NULL
+                  AND dinner_date >= ? AND dinner_date <= ?
+                  AND COALESCE(total_price, 0) > 0""",
+            (today.isoformat(), last.isoformat())).fetchall():
+        due = round((r["total_price"] or 0) - (r["discount_amount"] or 0)
+                    - (r["deposit_amount"] or 0), 2)
+        if due > 0.01 and r["payment_status"] != "paid":
+            incoming.append({"date": r["dinner_date"], "amount": due,
+                             "label": f"{r['guest_name']} — dinner, {r['party_size']} covers",
+                             "kind": "Restaurant", "ref": r["reference_code"]})
+
+    # Standing costs, expanded across the window on their own dates.
+    for c in conn.execute(
+            "SELECT * FROM recurring_costs WHERE active = 1").fetchall():
+        for when in _recurring_dates(parse_date(c["next_due_date"] or ""),
+                                     c["frequency"], today, last):
+            outgoing.append({"date": when.isoformat(), "amount": round(c["amount"] or 0, 2),
+                             "label": c["label"], "kind": "Standing cost", "ref": None})
+
+    # Insurance renewals. The premium falls due when the policy expires.
+    for p in conn.execute(
+            "SELECT * FROM insurance_policies WHERE COALESCE(premium, 0) > 0").fetchall():
+        for when in _recurring_dates(parse_date(p["expiry_date"] or ""),
+                                     p["premium_frequency"] or "annual", today, last):
+            outgoing.append({"date": when.isoformat(), "amount": round(p["premium"], 2),
+                             "label": f"{p['provider']} — {p['coverage_type'] or 'insurance'}",
+                             "kind": "Insurance", "ref": p["policy_number"]})
+
+    # Supplier invoices waiting on a decision. They carry no due date, so they
+    # sit on today rather than being invented onto a date — they are owed now,
+    # which is exactly why they are still on the approvals queue.
+    for e in conn.execute(
+            """SELECT * FROM expenses WHERE status = 'pending'
+                 AND COALESCE(amount, 0) > 0""").fetchall():
+        outgoing.append({"date": today.isoformat(), "amount": round(e["amount"], 2),
+                         "label": f"{e['vendor_name']} — awaiting your decision",
+                         "kind": "Awaiting approval", "ref": None})
+
+    incoming.sort(key=lambda x: (x["date"], -x["amount"]))
+    outgoing.sort(key=lambda x: (x["date"], -x["amount"]))
+
+    opening = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?",
+        (OPENING_BALANCE_SETTING,)).fetchone()
+    try:
+        opening = round(float(opening["value"]), 2) if opening and opening["value"] else None
+    except (TypeError, ValueError):
+        opening = None
+
+    months, running = [], opening or 0.0
+    for start in _month_starts(today, last):
+        end = _add_months(start, 1)
+        window = (max(start, today).isoformat(), min(end, last + timedelta(days=1)).isoformat())
+        m_in = round(sum(i["amount"] for i in incoming if window[0] <= i["date"] < window[1]), 2)
+        m_out = round(sum(o["amount"] for o in outgoing if window[0] <= o["date"] < window[1]), 2)
+        running = round(running + m_in - m_out, 2)
+        months.append({"label": start.strftime("%B %Y"), "start": start.isoformat(),
+                       "in": m_in, "out": m_out, "net": round(m_in - m_out, 2),
+                       "running": running,
+                       # Only meaningful once an opening balance is known. Without
+                       # one this is a change, and calling a change a shortfall
+                       # would be the page's first lie.
+                       "short": opening is not None and running < 0})
+
+    total_in = round(sum(i["amount"] for i in incoming), 2)
+    total_out = round(sum(o["amount"] for o in outgoing), 2)
+    return {
+        "from": today.isoformat(), "to": last.isoformat(), "days": (last - today).days,
+        "incoming": incoming, "outgoing": outgoing, "months": months,
+        "total_in": total_in, "total_out": total_out,
+        "net": round(total_in - total_out, 2),
+        "opening": opening,
+        "closing": round((opening or 0) + total_in - total_out, 2) if opening is not None else None,
+    }
+
+
 @app.route("/management/financials")
 @owner_required
 def management_financials():

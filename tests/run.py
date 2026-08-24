@@ -57,6 +57,7 @@ SUITES = [
     "test_gallery",
     "test_exports",
     "test_destructive",
+    "test_money_ahead",
     "test_payments",
     "test_stripe_webhook",
     "test_stripe_price_drift",
