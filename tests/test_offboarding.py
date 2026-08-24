@@ -220,6 +220,33 @@ def run():
             [i for i in _items(person["id"]) if i["id"] == theirs_item["id"]][0]["done"]
             == theirs_item["done"])
 
+    s.section("Equipment they are still holding is named too")
+    # The same reasoning as the keys, on a different table. "Return uniform /
+    # equipment" does not say WHICH laptop, so the one that never comes back is
+    # the one nobody remembered was issued. equipment_items was not consulted.
+    holder = _employee("Amandine")
+    conn = db()
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute("""INSERT INTO equipment_items (user_id, label, notes, issued_at)
+                    VALUES (?, ?, ?, ?)""",
+                 (holder["id"], f"{TAG} work laptop", "the silver one", now))
+    conn.execute("""INSERT INTO equipment_items (user_id, label, notes, issued_at, returned_at)
+                    VALUES (?, ?, NULL, ?, ?)""",
+                 (holder["id"], f"{TAG} old phone", now, now))
+    conn.commit()
+    conn.close()
+    oc.post(f"/directory/{holder['id']}/toggle-status", follow_redirects=True)
+    kit = [i["label"] for i in _items(holder["id"])]
+    s.check("the laptop they still have is on the checklist",
+            any("work laptop" in l for l in kit),
+            detail=f"only a generic line to chase real kit: {kit}")
+    s.check("with the note that identifies which one",
+            any("silver one" in l for l in kit),
+            detail="the record says which laptop, the checklist does not")
+    s.check("but kit already handed back is not chased again",
+            not any("old phone" in l for l in kit),
+            detail=f"asking for something already returned: {kit}")
+
     s.section("Marking somebody inactive is written down")
     conn = db()
     audited = conn.execute(

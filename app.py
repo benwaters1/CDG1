@@ -6541,6 +6541,28 @@ def maybe_seed_offboarding(conn, user_id, old_status, new_status):
                     (user_id, label, now_iso),
                 )
 
+        # And the same for kit. "Return uniform / equipment" does not say WHICH
+        # laptop, so a line per item still outstanding, with the note that
+        # identifies it. Anything already handed back is left alone -- chasing
+        # something that is on the shelf is how a checklist stops being read.
+        for kit in conn.execute(
+            """SELECT label, notes FROM equipment_items
+               WHERE user_id = ? AND returned_at IS NULL ORDER BY issued_at""",
+            (user_id,),
+        ).fetchall():
+            label = (f"Recover: {kit['label']}"
+                     + (f" ({kit['notes']})" if kit["notes"] else ""))
+            already = conn.execute(
+                "SELECT 1 FROM offboarding_items WHERE user_id = ? AND label = ?",
+                (user_id, label),
+            ).fetchone()
+            if not already:
+                conn.execute(
+                    """INSERT INTO offboarding_items (user_id, label, done, sort_order, created_at)
+                       VALUES (?, ?, 0, 0, ?)""",
+                    (user_id, label, now_iso),
+                )
+
 
 def create_draft_agreement(conn, employee):
     """Writes a plain-text employment summary — reference only, NOT a binding
