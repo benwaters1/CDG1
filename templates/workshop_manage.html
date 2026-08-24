@@ -59,6 +59,42 @@
     <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:12px;">Pay deposit — €{{ '%.2f'|format(booking['deposit_amount']) }}</a>
     {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}
     <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:12px;">Pay balance — €{{ '%.2f'|format(balance_due) }}</a>
+
+    {# Or part of it. The same route as the button above: no amount means the
+       whole balance, so the two are one code path. #}
+    <form method="post" action="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-field" style="margin-top:var(--s4)">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="part_amount">Or pay part of it</label>
+      <div class="g-promo">
+        <input type="number" inputmode="decimal" id="part_amount" name="amount"
+               min="{{ part_payment_minimum }}" max="{{ '%.2f'|format(balance_due) }}"
+               step="0.01" placeholder="{{ '%.2f'|format(balance_due) }}">
+        <button type="submit">Pay this amount</button>
+      </div>
+      <p class="g-hint">Anything from €{{ '%.0f'|format(part_payment_minimum) }} upwards — what is left stays on your balance.</p>
+    </form>
+
+    {# Said plainly and before the day: being charged unexpectedly is worse than
+       being asked. The toggle is here rather than by email so the guest can
+       settle it themselves. #}
+    {% if booking['balance_due_date'] and autocharge_enabled %}
+    <p class="g-hint" style="margin-top:var(--s4)">
+      {% if booking['autocharge_opt_out'] %}
+        We will not take this automatically — please pay it by {{ booking['balance_due_date']|date_short }}.
+      {% else %}
+        Whatever is left on {{ booking['balance_due_date']|date_short }} will be charged to the card you paid the deposit with.
+      {% endif %}
+    </p>
+    <form method="post" style="margin-top:var(--s2)">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="autocharge">
+      <label class="g-check">
+        <input type="checkbox" name="autocharge_opt_out" {{ 'checked' if booking['autocharge_opt_out'] }}>
+        <span class="g-check__t"><b>I would rather pay it myself</b></span>
+      </label>
+      <button type="submit" class="g-btn" style="margin-top:var(--s3)">Save</button>
+    </form>
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}
