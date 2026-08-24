@@ -50,6 +50,7 @@ SUITES = [
     "test_beverage_pours",
     "test_packages",
     "test_insurance",
+    "test_vault",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",
