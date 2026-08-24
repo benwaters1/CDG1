@@ -66,6 +66,7 @@ SUITES = [
     "test_destructive",
     "test_money_ahead",
     "test_maintenance",
+    "test_backup_alert",
     "test_payments",
     "test_stripe_webhook",
     "test_stripe_price_drift",

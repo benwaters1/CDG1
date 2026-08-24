@@ -29899,6 +29899,57 @@ def readiness_checks(conn):
     add("warn", "Workshops", "Private rooms arranged by hand", unpriced_solo == 0,
         "Every solo registration carries a supplement." if not unpriced_solo else solo_detail)
 
+    # The backup job writes an audit line only when a send SUCCEEDS. With no
+    # mail account configured it returns "no owner email configured" into the
+    # automation log and stops — no error, no flag, nothing on any page. The
+    # only honest question is therefore not "did it fail" but "did it happen":
+    # if something scheduled every 24 hours has not happened in twice that,
+    # it is broken whether or not anything ever complained.
+    #
+    # Deliberately measured against the configured interval rather than a
+    # fixed number of days, so slowing the job down doesn't turn this check
+    # into a permanent red light.
+    auto = get_automation_settings(conn)
+    backup_on = auto.get("automation_backup_email_enabled") == "1"
+    try:
+        interval_h = max(1.0, float(auto.get("automation_backup_interval_hours") or 24))
+    except (TypeError, ValueError):
+        interval_h = 24.0
+    grace_h = max(48.0, interval_h * 2)
+
+    last_backup = conn.execute(
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', 'backup_auto_sent') "
+        "ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    last_backup_at = last_backup["created_at"] if last_backup else None
+
+    age_h = None
+    if last_backup_at:
+        stamp = parse_datetime_iso(last_backup_at)
+        if stamp:
+            age_h = (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+
+    if not backup_on:
+        # Off on purpose is a decision, not a fault. Still worth stating,
+        # because "we have backups" and "backups are running" differ.
+        add("warn", "Data", "Backups arriving", False,
+            "Automatic backups are switched off. Nothing is being copied off the server — "
+            "if the volume goes, so do the records. Admin - Automation turns it back on.")
+    elif age_h is None:
+        add("warn", "Data", "Backups arriving", False,
+            "No backup has ever been taken. The job is switched on, so either it has not run "
+            "yet or it cannot send — check Admin - Automation for what it last returned.")
+    elif age_h > grace_h:
+        days = age_h / 24
+        add("warn", "Data", "Backups arriving", False,
+            f"Last backup was {days:.0f} day(s) ago, but one is meant to be taken every "
+            f"{interval_h:.0f}h. It is failing silently — the job only records a success, so "
+            "a mail account that stopped working leaves no error anywhere. "
+            "Check Admin - Automation.")
+    else:
+        add("warn", "Data", "Backups arriving", True,
+            f"Last backup {age_h:.0f}h ago, on a {interval_h:.0f}h schedule.")
+
     for label, token, why in (
         ("Kiosk display token", OFFICE_DISPLAY_TOKEN,
          "the wall display has to be logged in by hand and drops out after 12 hours"),
