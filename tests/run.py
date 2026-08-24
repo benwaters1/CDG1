@@ -51,6 +51,7 @@ SUITES = [
     "test_packages",
     "test_insurance",
     "test_vault",
+    "test_contract_deadlines",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",
