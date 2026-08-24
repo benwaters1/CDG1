@@ -77,6 +77,7 @@ SUITES = [
     "test_design",
     "test_links",
     "test_error_pages",
+    "test_seo_files",
 ]
 
 

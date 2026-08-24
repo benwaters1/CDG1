@@ -22,7 +22,14 @@
   --sand-3:     #E2D5C2;   /* third step                                 */
   --stone:      #8F8C78;   /* warm stone — the second colour, from the walls */
   --stone-pale: #E8DFCC;   /* stone at a whisper, for panels                */
-  --line:       #D6CBB6;   /* hairlines — warm, to match the ground        */
+  --line:       #D6CBB6;
+  --ink-2:           #4A5A6B;   /* secondary text, softer than --ink        */
+  --steel:           #6B7A88;   /* muted UI text and metadata               */
+  --surface:         #FBF7EF;   /* same parchment as --white, aliased       */
+  --parchment-line:  #D6CBB6;   /* same hairline as --line, aliased         */
+  --success:         #5F7A55;   /* a validated field, muted enough for here */
+  --status-warn-bg:  #F6EDD8;   /* a caution panel, warm not yellow         */
+   /* hairlines — warm, to match the ground        */
   --white:      #FBF7EF;
 
   --ink:        #183456;   /* body text — the same navy, one colour       */
@@ -507,7 +514,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 }
 .g .g-stickybar__cta{
   flex: none; min-height: 46px; padding: var(--s3) var(--s5);
-  background: #FFFFFF; color: var(--blue-deep); border-color: #fff;
+  background: var(--white); color: var(--blue-deep); border-color: var(--white);
 }
 .g .g-stickybar__cta:hover{ background: var(--brass); border-color: var(--brass); color: #fff; }
 
@@ -2287,3 +2294,109 @@ html, body{ max-width: 100%; overflow-x: hidden; }
   .g .g-band{ grid-auto-columns: minmax(0, 1fr); }
   .g .g-band img{ max-width: 100%; }
 }
+
+/* Inline field errors. Quiet until they matter, then unmissable — but never
+   before the guest has tried to submit once. */
+.g-err{
+  font-family: var(--ui); font-size: 13px; line-height: 1.4;
+  color: #8A2B22; margin: var(--s2) 0 0;
+}
+.g-err[hidden]{ display: none; }
+.g [aria-invalid="true"]{
+  border-color: #8A2B22;
+  box-shadow: inset 0 -2px 0 #8A2B22;
+}
+.g [aria-busy="true"]{ opacity: .72; cursor: progress; }
+
+/* ==========================================================================
+   PRINT
+   Guests do print confirmations and statements — to carry, to claim on
+   expenses, to hand to whoever is driving. Printed as it stands, a
+   confirmation wastes two pages on navigation and a photo band before
+   reaching the reference code.
+   ========================================================================== */
+@media print{
+  .g-top, .g-navwrap, .g-panel-overlay, .g-nav, .g-navbtn,
+  .g-totop, .g-skip, .g-assure, .g-band, .g-formhero, .g-fleur,
+  .g-crumbs, .g-book-bar, .g-stickybar, .g-cta, video,
+  .g-footer__grid, .g-crest--foot, .g-pay{ display: none !important; }
+
+  html, body{ background: #fff !important; color: #000 !important; font-size: 12pt; }
+  .g-sec{ padding: 0 0 12pt !important; }
+  .g-wrap{ max-width: none !important; padding: 0 !important; }
+
+  /* The reference code is the reason the page is being printed. */
+  .g-conf, .g-mb-card, .g-framed{
+    border: 1px solid #999 !important; padding: 10pt !important;
+    background: #fff !important; break-inside: avoid;
+  }
+  .g-facts-list{ grid-template-columns: 1fr 1fr !important; }
+  .g-display, .g-place, .g-h2{ font-size: 20pt !important; color: #000 !important; }
+
+  /* A printed link to a token URL is useless unless the URL is visible. */
+  .g-sharelink{ font-size: 9pt; border: 0 !important; padding: 0 !important; }
+  a[href^="http"]::after{ content: " (" attr(href) ")"; font-size: 9pt; word-break: break-all; }
+  .g-btn::after{ content: none !important; }
+  .g-btn{ border: 1px solid #999 !important; color: #000 !important; background: #fff !important; }
+
+  h1, h2, h3{ break-after: avoid; }
+  img{ max-width: 100% !important; break-inside: avoid; }
+  @page{ margin: 15mm; }
+}
+
+/* ==========================================================================
+   ENGRAVED DEVICES — second set
+   Drawn from what is actually on the building and in the record: the iron
+   gates, the fresco medallion, the coat of arms scratched off the beams in
+   1793, and the mountain the house looks at. Line only, no fills.
+   ========================================================================== */
+
+/* A band of the château's own ironwork, repeated as a rule. */
+.g-iron{
+  height: 26px; width: 100%; color: var(--stone); opacity: .55;
+  background-repeat: repeat-x; background-position: center; background-size: auto 26px;
+  margin: var(--s7) 0;
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='60' height='26' fill='none' \
+stroke='%238F8C78' stroke-width='1'>\
+<path d='M0 13h60'/><path d='M15 13c0-5 4-8 8-8M45 13c0-5-4-8-8-8'/>\
+<path d='M15 13c0 5 4 8 8 8M45 13c0 5-4 8-8 8'/><circle cx='30' cy='13' r='3'/>\
+<path d='M30 4v4M30 18v4'/></svg>");
+}
+
+/* The medallion under the overpaint — used as a section mark. */
+.g-medallion{ display:block; margin: var(--s6) auto; width: 46px; height: 46px; color: var(--stone); }
+
+/* The mountain line, as a section foot. */
+.g-ridge{ display:block; width: 100%; max-width: 30rem; margin: var(--s6) auto 0; color: var(--line); }
+
+/* A corner flourish for a framed panel — quarter-arcs at each corner. */
+.g-corners{ position: relative; }
+.g-corners::before, .g-corners::after{
+  content:''; position:absolute; width: 26px; height: 26px; pointer-events:none;
+  border-color: var(--stone); border-style: solid; border-width: 0;
+}
+.g-corners::before{ top:-1px; left:-1px; border-top-width:1px; border-left-width:1px; }
+.g-corners::after{ bottom:-1px; right:-1px; border-bottom-width:1px; border-right-width:1px; }
+
+/* An initial set as a printed capital in a ruled box. */
+.g-versal::first-letter{
+  font-family: var(--display); font-weight: 400; font-size: 3.1em;
+  line-height: .78; float: left; margin: .08em var(--s4) 0 0;
+  color: var(--blue-deep); border: 1px solid var(--line);
+  padding: .12em .16em 0;
+}
+
+/* ==========================================================================
+   CHAMBRE EMBLEMS
+   Domaine des Etangs names its seven rooms after planets so each has an
+   identity of its own. Gudanes already names its chambres — des Fleurs,
+   Bleue, du Parc, Émeraude — but they were only words. Each now carries a
+   drawn mark, matched to its name, engraved rather than illustrated.
+   ========================================================================== */
+.g-emblem{
+  width: 34px; height: 34px; color: var(--stone); flex: none;
+  display: block;
+}
+.g-room__head .g-emblem, .g-homeroom .g-emblem{ margin-bottom: var(--s3); }
+.g-emblem--lg{ width: 52px; height: 52px; }

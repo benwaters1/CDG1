@@ -10,6 +10,7 @@
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
+{% if request %}<link rel="canonical" href="{{ request.base_url }}">{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %} — Château de Gudanes">
@@ -526,6 +527,88 @@
     var smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({top:0, behavior: smooth ? 'smooth' : 'auto'});
     var m=document.getElementById('main'); if(m) m.focus();
+  });
+})();
+</script>
+
+<script>
+/* Inline form validation.
+   The server remains the authority; this only saves a round trip and tells
+   the guest which field is wrong before they lose their place. Fields are
+   only marked after a first submit attempt, so nothing shouts at someone who
+   is still typing. */
+(function(){
+  var MSG = {
+    valueMissing:    'This one is needed.',
+    typeMismatch:    'That does not look right — check the format.',
+    patternMismatch: 'That does not look right — check the format.',
+    tooShort:        'A little more detail, please.',
+    rangeUnderflow:  'That is below the minimum.',
+    rangeOverflow:   'That is above the maximum.',
+    badInput:        'Numbers only here.'
+  };
+  function messageFor(el){
+    var v = el.validity;
+    for (var k in MSG) if (v[k]) return MSG[k];
+    return el.validationMessage || 'Please check this.';
+  }
+  function slot(el){
+    var id = (el.id || el.name || 'f') + '-err';
+    var n = document.getElementById(id);
+    if (!n){
+      n = document.createElement('p');
+      n.id = id; n.className = 'g-err'; n.setAttribute('role','alert');
+      (el.closest('.g-field, .g-mb-card, label') || el.parentNode).appendChild(n);
+    }
+    return n;
+  }
+  function mark(el){
+    var n = slot(el);
+    if (el.checkValidity()){
+      el.removeAttribute('aria-invalid');
+      n.textContent = ''; n.hidden = true;
+    } else {
+      el.setAttribute('aria-invalid','true');
+      el.setAttribute('aria-describedby', n.id);
+      n.textContent = messageFor(el); n.hidden = false;
+    }
+  }
+  document.querySelectorAll('form[method="post"]').forEach(function(form){
+    form.setAttribute('novalidate','');       /* we show our own */
+    var tried = false;
+    form.addEventListener('submit', function(e){
+      tried = true;
+      var bad = [].slice.call(form.elements).filter(function(el){
+        return el.willValidate && !el.checkValidity();
+      });
+      bad.forEach(mark);
+      if (bad.length){
+        e.preventDefault();
+        bad[0].focus();
+        bad[0].scrollIntoView({block:'center', behavior:
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+        return;
+      }
+      /* Valid: stop a second submit and say something is happening. */
+      var btn = form.querySelector('[type="submit"]');
+      if (btn && !btn.dataset.busy){
+        btn.dataset.busy = '1';
+        btn.setAttribute('aria-busy','true');
+        btn.dataset.label = btn.textContent;
+        btn.textContent = 'One moment…';
+        /* If the server errors and returns us here, restore it. */
+        setTimeout(function(){
+          btn.removeAttribute('data-busy'); btn.removeAttribute('aria-busy');
+          if (btn.dataset.label) btn.textContent = btn.dataset.label;
+        }, 12000);
+      }
+    });
+    form.addEventListener('input', function(e){
+      if (tried && e.target.willValidate) mark(e.target);
+    }, true);
+    form.addEventListener('blur', function(e){
+      if (tried && e.target.willValidate) mark(e.target);
+    }, true);
   });
 })();
 </script>

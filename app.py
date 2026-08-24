@@ -143,7 +143,7 @@ from calendar import monthrange
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, send_from_directory, abort, jsonify,
-    has_request_context, g,
+    has_request_context, g, Response,
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -3445,21 +3445,25 @@ def init_db():
             print(f"Added {len(added)} atelier(s) missing from this database: "
                   f"{', '.join(added)}")
 
-    # 2a. Rewritten copy. Applied only where the text is still exactly what we
-    #     last seeded, so a description somebody has edited by hand survives a
-    #     deploy. `was_description` is the previous wording, kept for precisely
-    #     this comparison.
+    # 2a. Rewritten copy. Applied only where the description is still one of
+    #     the wordings WE seeded, so anything written by hand survives a
+    #     deploy. Matched against the whole list rather than the most recent
+    #     one: the copy has been revised twice now, and a single "previous
+    #     wording" only ever works for the first revision — a database
+    #     carrying revision one would sit at revision one forever.
     for workshop in DEFAULT_WORKSHOPS:
-        if not workshop.get("was_description"):
+        seeded = [w.strip() for w in (workshop.get("was_descriptions") or []) if w]
+        if not seeded:
             continue
+        marks = ",".join("?" * len(seeded))
         for field in ("description", "sample_day", "itinerary"):
             if field not in ws_cols or not workshop.get(field):
                 continue
             conn.execute(
                 f"""UPDATE workshops SET {field} = ?
                      WHERE title = ? AND (COALESCE(TRIM({field}), '') = ''
-                                          OR TRIM(description) = ?)""",
-                (workshop[field], workshop["title"], workshop["was_description"].strip()))
+                                          OR TRIM(description) IN ({marks}))""",
+                [workshop[field], workshop["title"]] + seeded)
     conn.commit()
 
     # 2. Blank copy fields. Only where blank: if somebody has written their own,
@@ -5574,97 +5578,201 @@ DEFAULT_EXTRAS = [
 # were known. Five of these already exist in the database at these exact prices
 # and dates — the handover's INSERTs would have created a second copy of each,
 # so the backfill below matches on `was` and renames in place instead.
-DEFAULT_WORKSHOPS = [
-    {"title": "The Long Weekender", "price_per_person": 2400.0, "sort_order": 0,
-     "inclusions": "Per person, sharing a room.",
-     "nights_label": "3 nights / 4 days",
-     "sessions": [("2026-06-06", "2026-06-09"), ("2026-07-04", "2026-07-07"),
-                  ("2026-08-01", "2026-08-04")],
-     "description": "Bric-a-brac and brocante hunting through the region's best "
-                    "antique markets, a private tour of a neighbouring château, "
-                    "and long, laissez-faire days spent wandering village "
-                    "vide-greniers.",
-     "sample_day": "After breakfast, a gentle stroll to the local market — stalls "
-                   "brimming with fresh produce and local crafts. In the afternoon, "
-                   "choose your adventure: join the restoration team working on the "
-                   "château's eighteenth-century frescoes, take a dip in the pool, "
-                   "play pickleball or tennis, or simply unwind.\n\n"
-                   "Aperitifs in the atmospheric Renaissance kitchen, dinner en plein "
-                   "air under the open sky, and an outdoor film to close the night."},
-    {"title": "Immersive Artisan Workshops", "was": "Autumn Atelier 2026",
-     "price_per_person": 2600.0, "sort_order": 1,
-     "inclusions": "Per person, sharing a room.",
-     "nights_label": "4 nights / 5 days",
-     "sessions": [("2026-10-23", "2026-10-27")],
-     "description": "Gather, create and restore amidst the golden landscapes of the "
-                    "French Pyrénées. Centuries-old skills taught by the artisans who "
-                    "still practise them — hands-on, in a house being restored by the "
-                    "same methods."},
-    {"title": "Noël at Gudanes", "was": "Noël Atelier 2026",
-     "price_per_person": 3200.0, "sort_order": 2,
-     "inclusions": "Per person, sharing a room.",
-     "nights_label": "4 nights / 5 days",
-     "sessions": [("2026-12-05", "2026-12-09")],
-     "description": "The château as a sanctuary of gentle anticipation. Four nights of "
-                    "making heirlooms by hand, long festive meals, champagne jellies "
-                    "set in historic moulds, and candlelight against a Pyrenean "
-                    "winter."},
-    {"title": "Cooking in the Cuisine", "was": "Cooking in the Cuisine 2027",
-     "price_per_person": 3800.0, "sort_order": 3,
-     "inclusions": "Per person, sharing a room.",
-     "nights_label": '5 nights / 6 days',
-     "sessions": [("2026-06-12", "2026-06-17"), ("2026-07-10", "2026-07-15"),
-                  ("2027-06-25", "2027-06-30")],
-     "sample_day": "A stroll to the local market for fresh produce and crafts, then "
-                   "sweet and savoury cooking classes inspired by the "
-                   "eighteenth-century Château Gudanes cookbook, with a picnic "
-                   "lunch.\n\nAperitifs with a talk on French table-setting and "
-                   "dining history, followed by an informal dinner of the day's "
-                   "creations.",
-     "description": 'Five days in the château kitchens, cooking the way this house has always cooked — from the market that morning, from the garden if it is summer, and from a recipe book written here in the 1700s. You will also spend a morning on the frescoes, because it is difficult to eat in a room and not want to know how it was saved.',
-     "sample_day": 'Down to the village market before the good things go. The chef points, you carry, and somebody explains what a cardoon is.\n\nBack in the Renaissance kitchen until lunch — knife work, a sauce that cannot be hurried, and the copper pans that came with the house. You eat what you have made, outside if the weather allows.\n\nThe afternoon drifts. Aperitifs at six. Dinner is the thing you cooked at noon, and it is better than you expected.',
-     "itinerary": "SEASONAL FRENCH COOKING — four hands-on classes with the château chefs, built around whatever the Ariège is giving that week\nTHE 1700s COOKBOOK — historic dishes from the château's own recipe book, including ices set in antique copper moulds\nA MORNING AT THE MARKET — Les Cabannes on a Sunday, or Tarascon midweek, with the chef doing the buying\nBREAD AND PASTRY — at the boulangerie below the gates, three minutes down the hill, while it is still dark\nFRESCO CONSERVATION — one morning with the restoration team, on the walls of the room you have been eating in\nSETTING THE FRENCH TABLE — the etiquette, the history, and laying one properly for the last night\nWINE OF THE SOUTH-WEST — a tasting with a local producer, matched to what you have been cooking\nA PRIVATE CHÂTEAU LUNCHEON — at a neighbouring house, in its own dining room",
-     # What was seeded before this rewrite. The catch-up replaces the
-     # description only where it still matches — copy somebody has
-     # edited by hand is left alone.
-     "was_description": "Hands-on classes and live demonstrations in the château's own kitchens, market mornings for seasonal produce, and evenings spent eating what you have made — from eighteenth-century recipes to modern French classics.",
-    },
-    {"title": "Antique & French Finds", "was": "Antique & French Finds 2027",
-     "price_per_person": 2800.0, "sort_order": 4,
-     "inclusions": "Per person, sharing a room.",
-     "nights_label": '3 nights / 4 days',
-     "sessions": [("2027-07-03", "2027-07-06")],
-     "description": "A treasure hunt through the Ariège. The brocantes and "
-                    "vide-greniers of Mirepoix and beyond, a private château visit, "
-                    "and the quiet pleasure of finding something with a history you "
-                    "will never fully know. A second date follows in late July.",
-     "description": 'A long weekend of hunting. The Ariège is thick with brocantes, vide-greniers and antique fairs, and this is three days of working through them properly — with someone who knows which dealers are worth the detour, what things are worth, and how to get them home. Cooking and long lunches in between, because you cannot hunt on an empty stomach.',
-     "sample_day": 'An early start for the fair at Mirepoix — timbered arcades, four hundred years old, and dealers setting up in the dark. You are there before the good linen goes.\n\nCoffee and a pain aux raisins standing up. Then the hidden ones: two dealers in a barn outside a village you would never find, and a vide-grenier in a churchyard.\n\nBack for a late lunch, everything spread out on the terrace, and somebody explaining what you actually bought.',
-     "itinerary": 'THE BROCANTES — our own dealers and vide-greniers across the valley, including the ones that are not advertised\nMIREPOIX — the medieval bastide and its market, among the best preserved in France\nTHE GRAND ANTIQUE FAIRE AT FOIX — for the late-July sitting, timed to it deliberately\nWHAT IS IT WORTH — an hour on marks, makers, period and repair, so you buy well rather than often\nLINENS AND MONOGRAMS — the French domestic textiles worth looking for, and how to read them\nSEASONAL COOKING — a hands-on class with the château chefs, using the market you walked through that morning\nA PRIVATE CHÂTEAU LUNCHEON — at a neighbouring house\nGETTING IT HOME — packing, shipping and the paperwork, handled before you leave',
-     # What was seeded before this rewrite. The catch-up replaces the
-     # description only where it still matches — copy somebody has
-     # edited by hand is left alone.
-     "was_description": 'A treasure hunt through the Ariège. The brocantes and vide-greniers of Mirepoix and beyond, a private château visit, and the quiet pleasure of finding something with a history you will never fully know. A second date follows in late July.',
-    },
-    {"title": "Seven Starry Nights", "was": "Summer Starry Nights 2027",
-     "price_per_person": 4800.0, "sort_order": 5,
-     "inclusions": "Per person, sharing a room.",
-     "nights_label": '7 nights / 8 days',
-     "sessions": [("2026-06-20", "2026-06-27"), ("2027-07-10", "2027-07-17")],
-     "sample_day": "Crêpe-making and a mimosa breakfast, a riverside picnic at the "
-                   "Pont du Diable, and an afternoon exploring the 17,000-year-old "
-                   "Niaux Cave and its Paleolithic paintings.\n\nA wine-tasting "
-                   "aperitif in the drawing room, followed by dinner and an evening "
-                   "of poetry and prose.",
-     "description": 'A week inside the restoration itself. You will spend real hours beside the artisans lifting eighteenth-century frescoes out from under a century of overpaint — the slowest, most exacting work in the house, and the reason it is taking a decade. Between those mornings there is cooking in the château kitchens, the brocantes of the valley, and the long table every evening.',
-     "sample_day": 'Coffee in the Renaissance kitchen while the house wakes, then up to the salon with the conservators. An hour of scalpel and solvent under the raking lamp, lifting cream emulsion off a wall nobody has properly seen since the 1700s. A centimetre is a good morning.\n\nLunch under the lime trees. The afternoon is yours — the pool, the library, the parkland, or back to the wall if it has hold of you.\n\nAperitifs at six, dinner by candlelight, and somebody always stays up too late in the drawing room.',
-     "itinerary": "FRESCO CONSERVATION — four mornings alongside the restoration team, working on the salon and dining-room walls under the supervision of professional conservators from France, Italy and England\nTHE ARCHIVE — an afternoon with the château's own documents, plans and photographs, and what they reveal about what was here before\nLIME AND PLASTER — the traditional materials, why Monuments Historiques requires them, and how they are mixed and applied\nCOOKING IN THE CUISINE — two hands-on classes, one seasonal and one drawn from the château's eighteenth-century recipe book\nTHE BROCANTES — a full day among the antique fairs and vide-greniers of the Ariège\nGROTTE DE NIAUX — Paleolithic paintings that have survived fourteen thousand years, twenty minutes from the gates\nTHE HIGH VALLEYS — a guided walk into the Pyrénées, and a picnic where the river turns\nWINE OF THE SOUTH-WEST — a tasting in the medieval kitchen with a local producer",
-     # What was seeded before this rewrite. The catch-up replaces the
-     # description only where it still matches — copy somebody has
-     # edited by hand is left alone.
-     "was_description": "Our fullest Workshop: help restore the château's eighteenth-century frescoes, join cooking classes in between, hike and canoe the Ariège, and explore medieval towns, caves and neighbouring châteaux.",
-    },
-]
+# The six ateliers, from the live product pages on chateaugudanes.com.
+#
+# `was` is the working title the row was seeded under before the public
+# names were known. `was_descriptions` is every wording we have ever
+# seeded for that atelier, oldest first — the catch-up in init_db
+# replaces a description matching any of them, and leaves anything a
+# human has written alone. A list rather than one string because the
+# copy has now been revised twice, and one string only works once.
+DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
+  'price_per_person': 2400.0,
+  'sort_order': 0,
+  'inclusions': 'Per person, sharing a room.',
+  'nights_label': '3 nights / 4 days',
+  'sessions': [('2026-06-06', '2026-06-09'),
+               ('2026-07-04', '2026-07-07'),
+               ('2026-08-01', '2026-08-04')],
+  'description': "Bric-a-brac and brocante hunting through the region's best antique "
+                 'markets, a private tour of a neighbouring château, and long, '
+                 'laissez-faire days spent wandering village vide-greniers.',
+  'sample_day': 'After breakfast, a gentle stroll to the local market — stalls '
+                'brimming with fresh produce and local crafts. In the afternoon, '
+                'choose your adventure: join the restoration team working on the '
+                "château's eighteenth-century frescoes, take a dip in the pool, play "
+                'pickleball or tennis, or simply unwind.\n'
+                '\n'
+                'Aperitifs in the atmospheric Renaissance kitchen, dinner en plein air '
+                'under the open sky, and an outdoor film to close the night.'},
+ {'title': 'Immersive Artisan Workshops',
+  'was': 'Autumn Atelier 2026',
+  'price_per_person': 2600.0,
+  'sort_order': 1,
+  'inclusions': 'Per person, sharing a room.',
+  'nights_label': '4 nights / 5 days',
+  'sessions': [('2026-10-23', '2026-10-27')],
+  'description': 'Gather, create and restore amidst the golden landscapes of the '
+                 'French Pyrénées. Centuries-old skills taught by the artisans who '
+                 'still practise them — hands-on, in a house being restored by the '
+                 'same methods.'},
+ {'title': 'Noël at Gudanes',
+  'was': 'Noël Atelier 2026',
+  'price_per_person': 3200.0,
+  'sort_order': 2,
+  'inclusions': 'Per person, sharing a room.',
+  'nights_label': '4 nights / 5 days',
+  'sessions': [('2026-12-05', '2026-12-09')],
+  'description': 'The château as a sanctuary of gentle anticipation. Four nights of '
+                 'making heirlooms by hand, long festive meals, champagne jellies set '
+                 'in historic moulds, and candlelight against a Pyrenean winter.'},
+ {'title': 'Cooking in the Cuisine',
+  'was': 'Cooking in the Cuisine 2027',
+  'price_per_person': 3800.0,
+  'sort_order': 3,
+  'inclusions': 'Per person, sharing a room.',
+  'nights_label': '5 nights / 6 days',
+  'sessions': [('2026-06-12', '2026-06-17'),
+               ('2026-07-10', '2026-07-15'),
+               ('2027-06-25', '2027-06-30')],
+  'sample_day': 'Down to the village market early with the chef, before the best of it '
+                'goes.\n'
+                '\n'
+                'The Renaissance kitchen until lunch: knife work, a sauce that cannot '
+                'be hurried, and the copper that came with the house. You eat what you '
+                'have made, outside when the weather allows.\n'
+                '\n'
+                'The afternoon drifts. Aperitifs at six, and dinner is what you made '
+                'at noon.',
+  'description': 'Five days in the château kitchens, cooking the way this house has '
+                 'always cooked — from the market that morning, from the garden if it '
+                 'is summer, and from a recipe book written here in the 1700s. You '
+                 'will also spend a morning on the frescoes, because it is difficult '
+                 'to eat in a room and not want to know how it was saved.',
+  'itinerary': 'SEASONAL FRENCH COOKING — four hands-on classes with the château '
+               'chefs, built around whatever the Ariège is giving that week\n'
+               "THE 1700s COOKBOOK — historic dishes from the château's own recipe "
+               'book, including ices set in antique copper moulds\n'
+               'A MORNING AT THE MARKET — Les Cabannes on a Sunday, or Tarascon '
+               'midweek, with the chef doing the buying\n'
+               'BREAD AND PASTRY — at the boulangerie below the gates, three minutes '
+               'down the hill, while it is still dark\n'
+               'FRESCO CONSERVATION — one morning with the restoration team, on the '
+               'walls of the room you have been eating in\n'
+               'SETTING THE FRENCH TABLE — the etiquette, the history, and laying one '
+               'properly for the last night\n'
+               'WINE OF THE SOUTH-WEST — a tasting with a local producer, matched to '
+               'what you have been cooking\n'
+               'A PRIVATE CHÂTEAU LUNCHEON — at a neighbouring house, in its own '
+               'dining room',
+  'was_descriptions': ["Hands-on classes and live demonstrations in the château's own "
+                       'kitchens, market mornings for seasonal produce, and evenings '
+                       'spent eating what you have made — from eighteenth-century '
+                       'recipes to modern French classics.',
+                       'Five days in the château kitchens, cooking the way this house '
+                       'has always cooked — from the market that morning, from the '
+                       'garden if it is summer, and from a recipe book written here in '
+                       'the 1700s. You will also spend a morning on the frescoes, '
+                       'because it is difficult to eat in a room and not want to know '
+                       'how it was saved.']},
+ {'title': 'Antique & French Finds',
+  'was': 'Antique & French Finds 2027',
+  'price_per_person': 2800.0,
+  'sort_order': 4,
+  'inclusions': 'Per person, sharing a room.',
+  'nights_label': '3 nights / 4 days',
+  'sessions': [('2027-07-03', '2027-07-06')],
+  'description': 'A long weekend of hunting. The Ariège is thick with brocantes, '
+                 'vide-greniers and antique fairs, and this is three days of working '
+                 'through them properly — with someone who knows which dealers are '
+                 'worth the detour, what things are worth, and how to get them home. '
+                 'Cooking and long lunches between, and a chef who knows the region as '
+                 'well as the dealers do.',
+  'sample_day': 'An early start for the fair at Mirepoix — timbered arcades, four '
+                'hundred years old, and dealers setting up before light. You arrive '
+                'ahead of the crowd.\n'
+                '\n'
+                'Coffee and pastry, then the dealers who are not advertised: a barn '
+                'outside the village, and a vide-grenier in a churchyard.\n'
+                '\n'
+                "A late lunch on the terrace, the morning's finds laid out, and an "
+                'honest appraisal of what you have bought.',
+  'itinerary': 'THE BROCANTES — our own dealers and vide-greniers across the valley, '
+               'including the ones that are not advertised\n'
+               'MIREPOIX — the medieval bastide and its market, among the best '
+               'preserved in France\n'
+               'THE GRAND ANTIQUE FAIRE AT FOIX — for the late-July sitting, timed to '
+               'it deliberately\n'
+               'WHAT IS IT WORTH — an hour on marks, makers, period and repair, so you '
+               'buy well rather than often\n'
+               'LINENS AND MONOGRAMS — the French domestic textiles worth looking for, '
+               'and how to read them\n'
+               'SEASONAL COOKING — a hands-on class with the château chefs, using the '
+               'market you walked through that morning\n'
+               'A PRIVATE CHÂTEAU LUNCHEON — at a neighbouring house\n'
+               'GETTING IT HOME — packing, shipping and the paperwork, handled before '
+               'you leave',
+  'was_descriptions': ['A treasure hunt through the Ariège. The brocantes and '
+                       'vide-greniers of Mirepoix and beyond, a private château visit, '
+                       'and the quiet pleasure of finding something with a history you '
+                       'will never fully know. A second date follows in late July.',
+                       'A long weekend of hunting. The Ariège is thick with brocantes, '
+                       'vide-greniers and antique fairs, and this is three days of '
+                       'working through them properly — with someone who knows which '
+                       'dealers are worth the detour, what things are worth, and how '
+                       'to get them home. Cooking and long lunches in between, because '
+                       'you cannot hunt on an empty stomach.']},
+ {'title': 'Seven Starry Nights',
+  'was': 'Summer Starry Nights 2027',
+  'price_per_person': 4800.0,
+  'sort_order': 5,
+  'inclusions': 'Per person, sharing a room.',
+  'nights_label': '7 nights / 8 days',
+  'sessions': [('2026-06-20', '2026-06-27'), ('2027-07-10', '2027-07-17')],
+  'sample_day': 'Coffee in the Renaissance kitchen while the house wakes, then up to '
+                'the salon with the conservators. An hour of scalpel and solvent under '
+                'the raking lamp, lifting cream emulsion from a wall unseen since the '
+                '1700s. A centimetre is a good morning.\n'
+                '\n'
+                'Lunch under the lime trees. The afternoon is yours — the pool, the '
+                'library, the parkland, or back to the wall if it has hold of you.\n'
+                '\n'
+                'Aperitifs at six, dinner by candlelight, and the drawing room until '
+                'somebody remembers the time.',
+  'description': 'A week inside the restoration itself. You will spend real hours '
+                 'beside the artisans lifting eighteenth-century frescoes out from '
+                 'under a century of overpaint — the slowest, most exacting work in '
+                 'the house, and the reason it is taking a decade. Between those '
+                 'mornings there is cooking in the château kitchens, the brocantes of '
+                 'the valley, and dinner by candlelight every evening.',
+  'itinerary': 'FRESCO CONSERVATION — four mornings alongside the restoration team, '
+               'working on the salon and dining-room walls under the supervision of '
+               'professional conservators from France, Italy and England\n'
+               "THE ARCHIVE — an afternoon with the château's own documents, plans and "
+               'photographs, and what they reveal about what was here before\n'
+               'LIME AND PLASTER — the traditional materials, why Monuments '
+               'Historiques requires them, and how they are mixed and applied\n'
+               'COOKING IN THE CUISINE — two hands-on classes, one seasonal and one '
+               "drawn from the château's eighteenth-century recipe book\n"
+               'THE BROCANTES — a full day among the antique fairs and vide-greniers '
+               'of the Ariège\n'
+               'GROTTE DE NIAUX — Paleolithic paintings that have survived fourteen '
+               'thousand years, twenty minutes from the gates\n'
+               'THE HIGH VALLEYS — a guided walk into the Pyrénées, and a picnic where '
+               'the river turns\n'
+               'WINE OF THE SOUTH-WEST — a tasting in the medieval kitchen with a '
+               'local producer',
+  'was_descriptions': ["Our fullest Workshop: help restore the château's "
+                       'eighteenth-century frescoes, join cooking classes in between, '
+                       'hike and canoe the Ariège, and explore medieval towns, caves '
+                       'and neighbouring châteaux.',
+                       'A week inside the restoration itself. You will spend real '
+                       'hours beside the artisans lifting eighteenth-century frescoes '
+                       'out from under a century of overpaint — the slowest, most '
+                       'exacting work in the house, and the reason it is taking a '
+                       'decade. Between those mornings there is cooking in the château '
+                       'kitchens, the brocantes of the valley, and the long table '
+                       'every evening.']}]
 
 # The placeholder titles this file used before the real ones were known. Rows
 # with these exact names and no price were created by an earlier deploy and
@@ -32868,6 +32976,80 @@ def server_error(e):
     if request.path.startswith("/api/"):
         return jsonify(error="server error"), 500
     return render_template("error.html", code=500), 500
+
+
+@app.route("/robots.txt")
+def robots():
+    """Keep crawlers out of anything token-shaped or staff-only.
+
+    The manage links are unguessable, but they leak into referrer headers and
+    analytics, and a crawler that found one would index a guest's booking.
+    """
+    body = "\n".join([
+        "User-agent: *",
+        "Disallow: /admin",
+        "Disallow: /staff",
+        "Disallow: /pos",
+        "Disallow: /management",
+        "Disallow: /book/manage",
+        "Disallow: /book/confirmation",
+        "Disallow: /workshops/confirmation",
+        "Disallow: /restaurant/confirmation",
+        "Disallow: /events/confirmation",
+        "Disallow: /my",
+        "Disallow: /feedback",
+        "Disallow: /login",
+        "Disallow: /api",
+        "",
+        f"Sitemap: {url_for('sitemap', _external=True)}",
+        "",
+    ])
+    return Response(body, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    """The public pages, with each room and each atelier listed individually —
+    those are what people actually search for.
+
+    Endpoints are looked up defensively: one renamed page should cost that
+    page's line, not the whole sitemap.
+    """
+    pages = [
+        ("dashboard", "1.0"), ("book_rooms", "0.9"), ("workshops_public", "0.9"),
+        ("restaurant_info", "0.8"), ("events_info", "0.8"), ("facilities_page", "0.7"),
+        ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
+        ("whats_on", "0.5"), ("terms_page", "0.3"),
+    ]
+    urls = []
+    for endpoint, priority in pages:
+        try:
+            urls.append((url_for(endpoint, _external=True), priority))
+        except Exception:
+            continue
+
+    conn = get_db()
+    # `active`, not `is_active`. SEO_FILES.md uses the latter and says to check
+    # it — neither table has such a column, so it would have raised on every
+    # request rather than returning a sitemap missing a few lines.
+    for r in conn.execute("SELECT id FROM rooms WHERE active = 1").fetchall():
+        urls.append((url_for("book_room", room_id=r["id"], _external=True), "0.8"))
+    # Only ateliers with a date still ahead. A sitemap advertising a workshop
+    # that finished in June is the same mistake the front page used to make.
+    for w in conn.execute(
+            """SELECT DISTINCT workshops.id FROM workshops
+                 JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
+                WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?""",
+            (service_day_iso(),)).fetchall():
+        urls.append((url_for("workshop_detail", workshop_id=w["id"], _external=True), "0.8"))
+    conn.close()
+
+    body = ['<?xml version="1.0" encoding="UTF-8"?>',
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for loc, pri in urls:
+        body.append(f"  <url><loc>{loc.replace("&", "&amp;")}</loc><priority>{pri}</priority></url>")
+    body.append("</urlset>")
+    return Response("\n".join(body), mimetype="application/xml")
 
 
 def start_background_work():

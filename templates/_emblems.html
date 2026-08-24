@@ -1,0 +1,43 @@
+{# Per-chambre emblems. Matched on the room name, so a room renamed in the
+   admin simply falls back to the fleuron rather than showing a wrong mark.
+   Line only, no fills — the same register as the fleuron and medallion. #}
+{% macro emblem(name, cls='') %}
+{%- set n = (name or '')|lower -%}
+<svg class="g-emblem {{ cls }}" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+{%- if 'fleur' in n %}
+  {# des Fleurs — a five-petal rose, the wallpaper it is named for #}
+  <circle cx="17" cy="17" r="3"/>
+  <path d="M17 14c0-4 2.6-6 5-5s2.4 4-1 6M17 14c0-4-2.6-6-5-5s-2.4 4 1 6"/>
+  <path d="M20 18c3.4 1.6 4.6 4.4 3 6.2s-4.4.6-5.4-3M14 18c-3.4 1.6-4.6 4.4-3 6.2s4.4.6 5.4-3"/>
+  <path d="M17 20v9M13 27h8"/>
+{%- elif 'bleu' in n %}
+  {# Bleue — the window, and the valley light through it #}
+  <rect x="8" y="5" width="18" height="24"/><path d="M17 5v24M8 17h18"/>
+  <path d="M8 24l5-4 4 3 4-5 5 4" stroke-linejoin="round"/>
+{%- elif 'parc' in n %}
+  {# du Parc — the parkland tree #}
+  <path d="M17 29V16"/><circle cx="17" cy="11" r="7"/>
+  <path d="M17 16l-5-4M17 18l5-4"/><path d="M12 29h10"/>
+{%- elif 'emeraude' in n or 'émeraude' in n %}
+  {# Émeraude — a cut stone, table facet uppermost #}
+  <path d="M11 9h12l5 6-11 12L6 15z"/><path d="M6 15h22M11 9l3 6M23 9l-3 6M14 15l3 12M20 15l-3 12"/>
+{%- elif 'suite' in n or 'mountain' in n %}
+  {# the mountain the window looks at #}
+  <path d="M3 26 L11 12 L16 19 L22 7 L31 26 Z"/><path d="M3 26h28"/>
+  <path d="M19 12l3-5 3 5" opacity=".6"/>
+{%- elif 'family' in n or 'famille' in n %}
+  {# two beds under one roof #}
+  <path d="M4 13 L17 5 L30 13"/><path d="M7 13v14h20V13"/>
+  <path d="M11 20h5v7h-5zM18 20h5v7h-5z"/>
+{%- elif 'king' in n or 'double' in n or 'twin' in n %}
+  {# a bed, drawn plainly #}
+  <path d="M4 24V13a2 2 0 0 1 2-2h22a2 2 0 0 1 2 2v11"/><path d="M4 18h26"/>
+  <path d="M9 18v6M25 18v6M4 24v4M30 24v4"/>
+{%- else %}
+  {# fallback — the fleuron lozenge #}
+  <path d="M17 6c-4 4-6 7-6 11s2 7 6 11c4-4 6-7 6-11s-2-7-6-11z"/>
+  <path d="M6 17c4-3 7-4.4 11-4.4S24 14 28 17M6 17c4 3 7 4.4 11 4.4S24 20 28 17"/>
+  <circle cx="17" cy="17" r="1.6"/>
+{%- endif %}
+</svg>
+{% endmacro %}

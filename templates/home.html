@@ -2,6 +2,8 @@
 {% block title %}Home{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_emblems.html' import emblem %}
+
 
 <section class="g-hero">
   <video class="g-hero__video" autoplay muted loop playsinline
@@ -90,6 +92,7 @@
            ][loop.index0 % 4] }}{% endif %}"
            alt="{{ r['name'] }}" loading="lazy">
       <div class="g-homeroom__b">
+        {{ emblem(r['name']) }}
         <h3 class="g-homeroom__name">{{ r['name'] }}</h3>
         {% if r.get('spec') %}<p class="g-p">{{ r['spec'] }}</p>
         {% elif r['description'] %}<p class="g-p">{{ r['description']|truncate(120) }}</p>{% endif %}

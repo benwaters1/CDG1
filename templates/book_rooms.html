@@ -2,6 +2,8 @@
 {% block title %}Stay{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_emblems.html' import emblem %}
+
 {% set crumbs = [('Stay', None)] %}
 
 
@@ -58,6 +60,7 @@
       <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" loading="lazy">
       {% endif %}
       <div class="g-card__b">
+        {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room['name'] }}</h3>
         {% if room['price_per_night'] %}
         <p class="g-card__rate"><b>From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
@@ -237,6 +240,7 @@
 </div></section>
 {% endif %}
 
+<div class="g-iron" aria-hidden="true"></div>
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
    across all six categories. Short quotes, attributed, nothing invented. #}

@@ -112,6 +112,27 @@ def run():
                 row and (row["itinerary"] or "").strip(),
                 detail="itinerary is empty — the column was never filled")
 
+    # A database still carrying an EARLIER seeded wording must catch up too.
+    # The first version of this held one "previous wording" per atelier, which
+    # works for exactly one revision: after a second, a database sitting on the
+    # first would match nothing and stay there forever. was_descriptions is a
+    # list for that reason, and this is the check that would have caught it.
+    entry = next(w for w in m.DEFAULT_WORKSHOPS if w["title"] == "Seven Starry Nights")
+    s.check("more than one previous wording is remembered",
+            len(entry.get("was_descriptions") or []) >= 2,
+            detail=f"{len(entry.get('was_descriptions') or [])} remembered")
+    oldest = entry["was_descriptions"][0]
+    conn.execute("UPDATE workshops SET description = ? WHERE title = ?",
+                 (oldest, "Seven Starry Nights"))
+    conn.commit()
+    m.init_db()
+    caught_up = conn.execute(
+        "SELECT description FROM workshops WHERE title = ?",
+        ("Seven Starry Nights",)).fetchone()["description"]
+    s.check("a database on the oldest wording is brought to the newest",
+            caught_up == entry["description"],
+            detail=f"still on {caught_up[:45]!r}")
+
     mine = "We rewrote this ourselves and it must survive a deploy."
     conn.execute("UPDATE workshops SET description = ? WHERE title = ?",
                  (mine, "Cooking in the Cuisine"))
