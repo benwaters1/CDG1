@@ -27070,8 +27070,40 @@ def money_ahead(conn, *, days=90, today=None):
                        "short": opening is not None and running < 0})
 
     total_in = round(sum(i["amount"] for i in incoming), 2)
+    # Work already on the upkeep schedule that falls due inside the window.
+    #
+    # Kept OUT of the totals and out of the running line, deliberately. The
+    # rest of this page is money somebody has committed to; this is money the
+    # house has committed to SPENDING, priced from what the same job cost last
+    # time. That is a projection from last year, which is exactly what the
+    # figures above promise not to be — so it sits in its own list, with its
+    # own subtotal, and the reader is told which is which.
+    upcoming_work = []
+    for sched in conn.execute(
+            "SELECT * FROM maintenance_schedules WHERE active = 1").fetchall():
+        due = maintenance_next_due(sched)
+        if not due or not (today <= due <= last):
+            continue
+        # Only where a real cost was recorded. Inventing a price for a job
+        # nobody has ever paid for would be a guess inside a guess.
+        priced = conn.execute(
+            """SELECT cost, done_on FROM maintenance_visits
+               WHERE schedule_id = ? AND COALESCE(cost, 0) > 0
+               ORDER BY done_on DESC LIMIT 1""", (sched["id"],)).fetchone()
+        upcoming_work.append({
+            "date": due.isoformat(), "label": sched["name"],
+            "amount": round(priced["cost"], 2) if priced else None,
+            "since": priced["done_on"] if priced else None,
+            "required": sched["required_by"] != "none",
+        })
+    upcoming_work.sort(key=lambda w: w["date"])
+    work_total = round(sum(w["amount"] for w in upcoming_work if w["amount"]), 2)
+    work_unpriced = len([w for w in upcoming_work if not w["amount"]])
+
     total_out = round(sum(o["amount"] for o in outgoing), 2)
     return {
+        "upcoming_work": upcoming_work, "work_total": work_total,
+        "work_unpriced": work_unpriced,
         "from": today.isoformat(), "to": last.isoformat(), "days": (last - today).days,
         "incoming": incoming, "outgoing": outgoing, "months": months,
         "total_in": total_in, "total_out": total_out,
