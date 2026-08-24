@@ -39,7 +39,7 @@
       <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}" loading="lazy">
       {% endfor %}
     {% else %}
-      {# Until room photography is uploaded, show the house: the bathrooms
+      {# Until room photography is uploaded, show the château: the bathrooms
          guests actually use, the dining room, the gardens. #}
       <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1000w" alt="The bathrooms" loading="lazy">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg?format=1000w" alt="La Table" loading="lazy">
@@ -92,6 +92,9 @@
           </p>
         </section>
 
+<div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
+
+
         <section class="g-step">
           <h2 class="g-step__h"><span class="g-num">02</span> Who is coming</h2>
           <p class="g-field">
@@ -111,7 +114,13 @@
         </section>
 
         {% if extras %}
-        <section class="g-step">
+        <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M0 13h38"/><path d="M82 13h38"/>
+  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+  <circle cx="60" cy="13" r="1.4"/>
+</svg>
+<section class="g-step">
           <h2 class="g-step__h"><span class="g-num">03</span> Add to your stay</h2>
           <ul class="g-extras">
             {% for e in extras %}
@@ -446,7 +455,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
     dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the house has not reached yet. The
+    finished to a standard the rest of the château has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
 </div></section>

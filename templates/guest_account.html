@@ -87,6 +87,7 @@
 
   <!-- ---------------- workshops ---------------- -->
   {% if data.workshops %}
+  <hr class="g-rule--double">
   <h2 class="section-heading">Workshops</h2>
   {% for w in data.workshops %}
   {% set upcoming = (w['end_date'] or w['start_date']) >= today %}
@@ -133,6 +134,7 @@
 
   <!-- ---------------- dinners ---------------- -->
   {% if data.dinners %}
+  <hr class="g-rule--double">
   <h2 class="section-heading">Dinners</h2>
   {% for d in data.dinners %}
   <div class="account-card {{ 'is-past' if d['dinner_date'] < today }}">
@@ -216,7 +218,11 @@
   border-bottom:1px dashed var(--parchment-line); font-size:13.5px;
 }
 </style>
+
 </div></section>
+
+<div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
+
 
 
 <div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">

@@ -18,11 +18,11 @@
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       <div class="g-herosearch__f">
         <label for="hs_arrival">{{ t('Arrival') }}</label>
-        <input type="date" id="hs_arrival" name="arrival_date">
+        <input type="date" id="hs_arrival" name="arrival">
       </div>
       <div class="g-herosearch__f">
         <label for="hs_departure">{{ t('Departure') }}</label>
-        <input type="date" id="hs_departure" name="departure_date">
+        <input type="date" id="hs_departure" name="departure">
       </div>
       <div class="g-herosearch__f g-herosearch__f--n">
         <label for="hs_guests">{{ t('Guests') }}</label>
@@ -78,7 +78,7 @@
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
   <h2 class="g-place">Rooms &amp; Suites</h2>
-  <p class="g-p">Seven bedrooms, opened one at a time as the restoration reaches them. Each is different, because the house is.</p>
+  <p class="g-p">Seven bedrooms, opened one at a time as the restoration reaches them. Each is different, because the château is.</p>
 
   <div class="g-homerooms">
     {% for r in shown_rooms %}
@@ -114,7 +114,7 @@
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">Château Workshops</p>
   <h2 class="g-place">The Next Dates</h2>
-  <p class="g-p">Three to seven nights, a small group, and the house given over to it entirely.</p>
+  <p class="g-p">Three to seven nights, a small group, and the château given over to it entirely.</p>
 
   {% set WS_PIC = {
     'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w",
@@ -163,7 +163,7 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A Place To Create" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Château Workshops</h2>
-    <p class="g-p"><em>Three to seven nights, a small group, and the house given over to it entirely.</em></p>
+    <p class="g-p"><em>Three to seven nights, a small group, and the château given over to it entirely.</em></p>
     <p class="g-p">Cook in the château kitchens, hunt the brocantes of the Ariège, or work on the eighteenth-century frescoes alongside the restoration team. Full board, château beverages and every excursion included — and staying helps fund the work itself.</p>
     <p style="margin-top:32px"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
   </div>
@@ -172,8 +172,8 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="A Place To Dine" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Dine at La Table</h2>
-    <p class="g-p"><em>Dinner cooked by the château chefs, served by candlelight in the dining room.</em></p>
-    <p class="g-p">There is a chef, a dining room recovered over many years, and dinner arranged in advance — drawn from the Sunday market in the village square, the producers of the Ariège, and in summer the château's own gardens.</p>
+    <p class="g-p"><em>A table laid by candlelight, in a dining room brought back from ruin — and cooking that answers to the valley rather than a menu.</em></p>
+    <p class="g-p">The dining room took years to recover; the cooking in it is worth the wait. Mountain cheeses, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them — bought that morning at the village market, from producers the chef has used for twenty years, and in summer cut from the gardens below the terrace.</p>
     <p style="margin-top:32px"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
   </div>
 </div></section>
@@ -206,7 +206,7 @@
   </svg>
 </div>
 
-<p class="g-p"><em>The house is not finished and does not pretend to be. Guests arrive into the middle of the work, and the work continues because they do.</em></p>
+<p class="g-p"><em>The château is not finished and does not pretend to be. Guests arrive into the middle of the work, and the work continues because they do.</em></p>
 </div></section>
 
 <ul class="g-facts">
@@ -270,5 +270,12 @@
   </div>
   <p class="g-hint" style="margin-top:var(--s5)">Guest ratings on Booking.com.</p>
 </div></section>
+
+
+<div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
+  <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
+  <path d="M20 8v-3M32 5v-3M44 8v-3"/>
+</svg></div>
 
 {% endblock %}

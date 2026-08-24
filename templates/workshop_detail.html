@@ -31,6 +31,9 @@
   </div>
 </section>
 
+<div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
+
+
 <!-- ============ THE INVITATION ============ -->
 {% if workshop['description'] %}
 <section class="g-sec"><div class="g-wrap">
@@ -101,6 +104,12 @@
 {% if workshop['inclusions'] %}
 <section class="g-sec"><div class="g-wrap g-wrap--narrow">
   <p class="g-eyebrow">Included</p>
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M0 13h38"/><path d="M82 13h38"/>
+  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+  <circle cx="60" cy="13" r="1.4"/>
+</svg>
   <h2 class="g-h2">What the price carries</h2>
   <ul class="g-tags g-tags--lg">
     {% for item in workshop['inclusions'].split(',') %}<li>{{ item.strip() }}</li>{% endfor %}
@@ -114,12 +123,12 @@
   <h2 class="g-h2">There is an itinerary. There is no obligation to it.</h2>
   <div class="g-split">
     <div>
-      <p class="g-p">Only a small number of guests join each workshop, so the days stay unhurried. There is time to slow down, to settle in, and to let the house set the pace rather than a schedule.</p>
+      <p class="g-p">Only a small number of guests join each workshop, so the days stay unhurried. There is time to slow down, to settle in, and to let the château set the pace rather than a schedule.</p>
       <p class="g-p">Whilst there is an itinerary, there is no expectation to follow it. Join an experience, gather at the table with the others, or spend an afternoon beside the pool. The rhythm of your days is entirely your own.</p>
     </div>
     <div>
       <p class="g-p">Wander through centuries of history, walk beneath ancient trees, or lose yourself in the gardens and salons that have become the heart of the château.</p>
-      <p class="g-p">Above all, the house is meant to feel like a home — a place to embrace each day exactly as you wish.</p>
+      <p class="g-p">Above all, the château is meant to feel lived in — a place to embrace each day exactly as you wish.</p>
     </div>
   </div>
 </div></section>
@@ -176,7 +185,7 @@
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
     dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the house has not reached yet. The
+    finished to a standard the rest of the château has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
 </div></section>

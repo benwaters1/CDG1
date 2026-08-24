@@ -17,8 +17,8 @@
     <p class="g-hint" style="margin-bottom:var(--s5)">Nothing is published without asking you first.</p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="g-mb-label">Rating</label>
-      <select name="rating" required>
+      <label class="g-mb-label" for="wf_rating">Rating</label>
+      <select id="wf_rating" name="rating" required>
         <option value="">Choose a rating</option>
         <option value="5">5 — Excellent</option>
         <option value="4">4 — Very good</option>
@@ -26,8 +26,8 @@
         <option value="2">2 — Fair</option>
         <option value="1">1 — Poor</option>
       </select>
-      <label class="g-mb-label">Comments (optional)</label>
-      <textarea name="comment" placeholder="Anything you'd like us to know"></textarea>
+      <label class="g-mb-label" for="wf_comment">Comments (optional)</label>
+      <textarea id="wf_comment" name="comment" placeholder="Anything you'd like us to know"></textarea>
       <button type="submit" class="g-btn g-btn--solid">Send feedback</button>
     </form>
   </div>

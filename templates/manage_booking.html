@@ -47,7 +47,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="arrival_time">
     <div style="flex:1 1 200px;">
-      <input type="text" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 4pm">
+      <input type="text" id="mb_estimated_arrival_time" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 4pm">
     </div>
     <button type="submit" class="g-btn g-btn--sm">{{ t('Save') }}</button>
   </form>
@@ -59,8 +59,8 @@
   <form method="post" class="g-mb-acts" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_nights">
-    <label class="g-mb-label" style="margin:0;">{{ t('Extra nights') }}</label>
-    <input type="number" inputmode="numeric" name="nights" value="1" min="1" max="30" style="width:74px;"
+    <label for="mb_nights" class="g-mb-label" style="margin:0;">{{ t('Extra nights') }}</label>
+    <input type="number" inputmode="numeric" id="mb_nights" name="nights" value="1" min="1" max="30" style="width:74px;"
            aria-label="How many extra nights">
     <button type="submit" class="g-btn g-btn--sm">{{ t('Add them') }}</button>
   </form>
@@ -80,12 +80,12 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="change_dates">
     <div>
-      <label class="g-mb-label">{{ t('New arrival') }}</label>
-      <input type="date" name="new_arrival_date" value="{{ booking['arrival_date']|date_short }}" required>
+      <label for="mb_new_arrival_date" class="g-mb-label">{{ t('New arrival') }}</label>
+      <input type="date" id="mb_new_arrival_date" name="new_arrival_date" value="{{ booking['arrival_date']|date_short }}" required>
     </div>
     <div>
-      <label class="g-mb-label">{{ t('New departure') }}</label>
-      <input type="date" name="new_departure_date" value="{{ booking['departure_date']|date_short }}" required>
+      <label for="mb_new_departure_date" class="g-mb-label">{{ t('New departure') }}</label>
+      <input type="date" id="mb_new_departure_date" name="new_departure_date" value="{{ booking['departure_date']|date_short }}" required>
     </div>
     <button type="submit" class="g-btn g-btn--sm">{{ t('Update dates') }}</button>
   </form>
@@ -104,16 +104,16 @@
     <input type="hidden" name="action" value="transfer">
     <div class="g-row">
       <div>
-        <label class="g-mb-label">{{ t('Flight number') }}</label>
-        <input type="text" name="flight_number" value="{{ booking['transfer_flight_number'] or '' }}" placeholder="e.g. AF1234">
+        <label for="mb_flight_number" class="g-mb-label">{{ t('Flight number') }}</label>
+        <input type="text" id="mb_flight_number" name="flight_number" value="{{ booking['transfer_flight_number'] or '' }}" placeholder="e.g. AF1234">
       </div>
       <div>
-        <label class="g-mb-label">Arrival date &amp; time</label>
-        <input type="text" name="arrival_time" value="{{ booking['transfer_arrival_time'] or '' }}" placeholder="e.g. 12 May, 14:30">
+        <label for="mb_arrival_time" class="g-mb-label">Arrival date &amp; time</label>
+        <input type="text" id="mb_arrival_time" name="arrival_time" value="{{ booking['transfer_arrival_time'] or '' }}" placeholder="e.g. 12 May, 14:30">
       </div>
     </div>
-    <label class="g-mb-label" style="margin-top:10px; display:block;">Notes</label>
-    <textarea name="notes" rows="2" placeholder="Anything else the driver should know">{{ booking['transfer_notes'] or '' }}</textarea>
+    <label for="mb_notes" class="g-mb-label" style="margin-top:10px; display:block;">Notes</label>
+    <textarea id="mb_notes" name="notes" rows="2" placeholder="Anything else the driver should know">{{ booking['transfer_notes'] or '' }}</textarea>
     <button type="submit" class="g-btn g-btn--solid" style="margin-top:10px;">{{ t('Save transfer details') }}</button>
   </form>
 </div>
@@ -125,7 +125,7 @@
   <form method="post" style="margin-top:10px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="request">
-    <textarea name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
+    <textarea id="mb_message" name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
     <button type="submit" class="g-btn g-btn--solid" style="margin-top:10px;">{{ t('Send request') }}</button>
   </form>
   {% if guest_requests %}
@@ -190,7 +190,7 @@
       {{ e['name'] }} — €{{ '%.2f'|format(e['price'] or 0) }}
       {% if e['description'] %}<span class="g-hint">{{ e['description'] }}</span>{% endif %}
     </span>
-    <input type="number" inputmode="numeric" name="quantity" value="1" min="1"
+    <input type="number" inputmode="numeric" id="mb_quantity" name="quantity" value="1" min="1"
            {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
            style="width:64px;" aria-label="How many {{ e['name'] }}">
     <button type="submit" class="g-btn g-btn--sm">Add</button>
@@ -212,16 +212,16 @@
     <input type="hidden" name="action" value="book_dinner">
     <div class="g-row">
       <div>
-        <label class="g-mb-label">Date</label>
-        <input type="date" name="dinner_date" min="{{ dinner_min_date }}" max="{{ dinner_max_date }}" required>
+        <label for="mb_dinner_date" class="g-mb-label">Date</label>
+        <input type="date" id="mb_dinner_date" name="dinner_date" min="{{ dinner_min_date }}" max="{{ dinner_max_date }}" required>
       </div>
       <div>
-        <label class="g-mb-label">Party size</label>
-        <input type="number" inputmode="numeric" name="dinner_party_size" min="1" max="{{ restaurant_settings['capacity'] }}" value="{{ booking['party_size'] }}" required>
+        <label for="mb_dinner_party_size" class="g-mb-label">Party size</label>
+        <input type="number" inputmode="numeric" id="mb_dinner_party_size" name="dinner_party_size" min="1" max="{{ restaurant_settings['capacity'] }}" value="{{ booking['party_size'] }}" required>
       </div>
     </div>
-    <label class="g-mb-label" style="margin-top:10px; display:block;">Dietary needs or anything else?</label>
-    <textarea name="dinner_dietary_notes" rows="2" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
+    <label for="mb_dinner_dietary_notes" class="g-mb-label" style="margin-top:10px; display:block;">Dietary needs or anything else?</label>
+    <textarea id="mb_dinner_dietary_notes" name="dinner_dietary_notes" rows="2" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
     <button type="submit" class="g-btn g-btn--solid" style="margin-top:10px;">Request a table</button>
   </form>
   {% if dinner_bookings %}

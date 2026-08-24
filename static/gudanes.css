@@ -279,7 +279,12 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 /* ---- Two-column prose -------------------------------------------------- */
 
-.g-two{ display: grid; gap: var(--s8); align-items: center; }
+.g-two{
+  display: grid; gap: var(--s8); align-items: center;
+  /* Used directly inside <section> as a page container, so it needs the
+     same measure and gutters as .g-wrap or the text touches the edge. */
+  max-width: var(--wrap); margin: 0 auto; padding: 0 var(--s5);
+}
 /* A raw <img> has no intrinsic size before it loads. .g-band already gets
    one further down this file (grid-auto-flow + .g .g-band img), which is
    why only the workshops intro photo, not the five-photo strip, actually
@@ -1678,15 +1683,15 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    the photograph so the first act available is looking for a date.
    ========================================================================== */
 .g-herosearch{
-  display: grid; gap: 1px; background: rgba(255,255,255,.28);
-  border: 1px solid rgba(255,255,255,.4);
+  display: grid; gap: 1px; background: rgba(246,241,231,.32);
+  border: 1px solid rgba(246,241,231,.46);
   margin-top: var(--s6); max-width: 46rem;
 }
 @media (min-width: 46rem){
   .g-herosearch{ grid-template-columns: 1fr 1fr 7rem auto; align-items: stretch; }
 }
 .g-herosearch__f{
-  background: rgba(255,255,255,.94); padding: var(--s3) var(--s4);
+  background: rgba(246,241,231,.96); padding: var(--s3) var(--s4);
   display: flex; flex-direction: column; justify-content: center; min-width: 0;
 }
 .g-herosearch__f label{
@@ -2163,8 +2168,20 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 /* Above 68rem the row carries every destination, so the panel toggle is
    redundant — it was still rendering alongside the full nav. */
+/* The row carries the eight most-used destinations; the panel holds all
+   sixteen with their groups and icons. Both stay — the row is a shortcut,
+   not a replacement, and hiding the toggle made the panel unreachable on
+   desktop. */
 @media (min-width: 68.0625rem){
-  .g .g-navbtn{ display: none !important; }
+  .g .g-navbtn{
+    display: inline-flex !important; align-items: center; gap: var(--s2);
+    order: 3; min-height: 44px; background: none; border: 0; cursor: pointer;
+    font-family: var(--ui); font-size: 13px; font-weight: 500;
+    letter-spacing: .09em; text-transform: uppercase; color: var(--ink);
+    margin-left: var(--s5);
+  }
+  .g.has-hero.at-top .g-navbtn{ color: #fff; }
+  .g .g-navbtn__label{ display: inline; }
 }
 
 /* ==========================================================================
@@ -2424,3 +2441,133 @@ stroke='%238F8C78' stroke-width='1'>\
    follows the guest down every page. */
 .g .g-stickybar__t, .g .g-stickybar__t span, .g .g-stickybar__t b{ font-size: 13px; }
 .g .g-stickybar__t b{ font-size: 15px; }
+
+/* ==========================================================================
+   ENGRAVED DEVICES — third set
+   The fleuron was doing too much work. Two more marks so a long page has
+   variety rather than the same lozenge four times.
+   ========================================================================== */
+
+/* A ruled band with a small centred lozenge — quieter than the fleuron,
+   for separating two parts of the same idea. */
+.g-hairs{
+  display: flex; align-items: center; gap: var(--s5);
+  margin: var(--s7) 0; color: var(--line);
+}
+.g-hairs::before, .g-hairs::after{ content:''; flex:1; height:1px; background: currentColor; }
+.g-hairs i{
+  width: 7px; height: 7px; flex: none; transform: rotate(45deg);
+  border: 1px solid var(--stone); font-style: normal;
+}
+
+/* A section number set as an engraved figure in a ruled circle — for pages
+   that walk a guest through steps. */
+.g-numeral{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border: 1px solid var(--stone); border-radius: 50%;
+  font-family: var(--display); font-weight: 400; font-size: 19px;
+  color: var(--blue-deep); margin-bottom: var(--s3);
+}
+
+/* The key motif: the château's own silhouette, very small, as a closing mark. */
+.g-house{ display:block; margin: var(--s6) auto 0; width: 64px; height: 30px; color: var(--stone); }
+
+/* After a date search, say plainly what was searched and what came back.
+   Previously the only acknowledgement was a raw ISO pair in a small note. */
+.g-searched{
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3) var(--s6);
+  background: var(--stone-pale); border: 1px solid var(--line);
+  padding: var(--s4) var(--s5); margin: var(--s5) 0 0;
+}
+.g-searched__dates{ margin: 0; font-size: 17px; color: var(--blue-deep); }
+.g-searched__dates strong{ font-family: var(--display); font-weight: 400; font-size: 20px; }
+.g-searched__count{
+  margin: 0; font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--stone);
+}
+.g-searched__clear{
+  margin-left: auto; display: inline-flex; align-items: center; min-height: 44px;
+  font-family: var(--ui); font-size: 13px; color: var(--ink-soft);
+  border-bottom: 1px solid var(--line);
+}
+.g-searched__clear:hover{ border-bottom-color: var(--stone); }
+@media (max-width: 40rem){ .g-searched__clear{ margin-left: 0; } }
+
+
+/* ==========================================================================
+   HEADER LEGIBILITY
+   The header was transparent with white text over a dark hero, and relied on
+   a scroll listener to switch. If that listener does not fire — and it did
+   not on the live site — the wordmark and nav stay white over cream and the
+   page content shows through. Solid by default; transparent only while
+   genuinely over the hero.
+   ========================================================================== */
+.g .g-top{
+  background: var(--sand);
+  border-bottom: 1px solid var(--line);
+  transition: background .2s ease, border-color .2s ease;
+}
+/* Over the hero, at the very top only. */
+.g.has-hero.at-top .g-top{ background: transparent; border-bottom-color: transparent; }
+
+/* Where scroll-driven animations exist, drive it from CSS so no script is
+   needed at all. */
+@supports (animation-timeline: scroll()){
+  .g.has-hero .g-top{
+    animation: g-header-solid linear both;
+    animation-timeline: scroll();
+    animation-range: 0 220px;
+  }
+  @keyframes g-header-solid{
+    from{ background: transparent; border-bottom-color: transparent; }
+    to  { background: var(--sand); border-bottom-color: var(--line); }
+  }
+}
+
+/* ==========================================================================
+   THE ATELIER GLOSS
+   A word set as it would be in a printed glossary — the French, a phonetic
+   line, the part of speech, and the English beneath a rule. Gives the page a
+   moment of stillness and quietly teaches the word the programme uses.
+   ========================================================================== */
+.g-gloss{
+  max-width: 34rem; margin: var(--s7) auto; padding: var(--s6) var(--s5);
+  border-top: 1px solid var(--stone); border-bottom: 1px solid var(--stone);
+  text-align: center; position: relative;
+}
+.g-gloss__word{
+  display: block; font-family: var(--display); font-weight: 400;
+  font-size: clamp(30px, 3.6vw, 44px); line-height: 1.05;
+  letter-spacing: .012em; color: var(--blue-deep); margin: 0;
+}
+.g-gloss__say{
+  display: block; font-family: var(--ui); font-size: 13px;
+  letter-spacing: .06em; color: var(--stone); margin-top: var(--s2);
+}
+.g-gloss__pos{
+  display: block; font-family: var(--display); font-style: italic;
+  font-size: 15px; color: var(--ink-faint); margin-top: var(--s3);
+}
+.g-gloss__rule{
+  width: 44px; height: 1px; background: var(--stone);
+  margin: var(--s4) auto; border: 0;
+}
+.g-gloss__en{
+  display: block; font-size: 17px; line-height: 1.55; color: var(--ink);
+  margin: 0 auto; max-width: 26rem;
+}
+.g-gloss__en b{ font-weight: 500; color: var(--blue-deep); }
+/* A small mark in each upper corner, as a printed entry would carry. */
+.g-gloss::before, .g-gloss::after{
+  content: '·'; position: absolute; top: var(--s3);
+  color: var(--stone); font-size: 20px; line-height: 1;
+}
+.g-gloss::before{ left: var(--s5); }
+.g-gloss::after{ right: var(--s5); }
+
+/* Room card image. Every card had none, because the template only rendered
+   one when a photo had been uploaded and none had been. */
+.g .g-card__img{
+  width: 100%; height: clamp(11rem, 18vw, 15rem);
+  object-fit: cover; display: block;
+}

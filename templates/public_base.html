@@ -326,8 +326,8 @@
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
-      <b>Deposit, then balance</b>
-      <span>A deposit holds your dates. The balance is taken closer to the time, not up front.</span>
+      <b>Pay when it suits</b>
+      <span>Rooms settle on arrival or in advance, as you prefer. Ateliers hold with a deposit and take the balance closer to the time.</span>
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -337,7 +337,7 @@
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 5h16v12H8l-4 4z"/></svg>
       <b>Answered by a person</b>
-      <span>Every request is read at the château. Nothing here is confirmed automatically.</span>
+      <span>Every request is read at the château and answered by someone who knows the rooms — not by a booking engine.</span>
     </li>
   </ul>
 </div></section>
@@ -507,10 +507,17 @@
 (function(){
   if (!document.body.classList.contains('has-hero')) return;
   var set = function(){
-    document.body.classList.toggle('at-top', window.scrollY < 80);
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    document.body.classList.toggle('at-top', y < 80);
   };
   set();
   window.addEventListener('scroll', set, { passive: true });
+  window.addEventListener('resize', set, { passive: true });
+  window.addEventListener('load', set);
+  /* A programmatic scroll does not always fire a scroll event before paint,
+     so re-check on each frame while the page is settling. */
+  var settle = 0;
+  (function tick(){ set(); if (settle++ < 90) requestAnimationFrame(tick); })();
 })();
 </script>
 <button type="button" class="g-totop" aria-label="Back to top" hidden>

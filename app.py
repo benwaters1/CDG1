@@ -5637,6 +5637,14 @@ DEFAULT_EXTRAS = [
 # replaces a description matching any of them, and leaves anything a
 # human has written alone. A list rather than one string because the
 # copy has now been revised twice, and one string only works once.
+# The six ateliers, from the live product pages on chateaugudanes.com.
+#
+# `was` is the working title the row was seeded under before the public
+# names were known. `was_descriptions` is every wording we have ever
+# seeded for that atelier, oldest first — the catch-up in init_db
+# replaces a description matching any of them, and leaves anything a
+# human has written alone. A list rather than one string because the
+# copy has now been revised twice, and one string only works once.
 DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
   'price_per_person': 2400.0,
   'sort_order': 0,
@@ -5690,16 +5698,16 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                 'goes.\n'
                 '\n'
                 'The Renaissance kitchen until lunch: knife work, a sauce that cannot '
-                'be hurried, and the copper that came with the house. You eat what you '
-                'have made, outside when the weather allows.\n'
+                'be hurried, and the copper that came with the château. You eat what '
+                'you have made, outside when the weather allows.\n'
                 '\n'
                 'The afternoon drifts. Aperitifs at six, and dinner is what you made '
                 'at noon.',
   'description': 'Five days in the château kitchens, cooking the way this house has '
                  'always cooked — from the market that morning, from the garden if it '
-                 'is summer, and from a recipe book written here in the 1700s. You '
-                 'will also spend a morning on the frescoes, because it is difficult '
-                 'to eat in a room and not want to know how it was saved.',
+                 'is summer, and from a recipe book written at Gudanes in the 1700s. '
+                 'You will also spend a morning on the frescoes, because it is '
+                 'difficult to eat in a room and not want to know how it was saved.',
   'itinerary': 'SEASONAL FRENCH COOKING — four hands-on classes with the château '
                'chefs, built around whatever the Ariège is giving that week\n'
                "THE 1700s COOKBOOK — historic dishes from the château's own recipe "
@@ -5780,7 +5788,7 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
   'inclusions': 'Per person, sharing a room.',
   'nights_label': '7 nights / 8 days',
   'sessions': [('2026-06-20', '2026-06-27'), ('2027-07-10', '2027-07-17')],
-  'sample_day': 'Coffee in the Renaissance kitchen while the house wakes, then up to '
+  'sample_day': 'Coffee in the Renaissance kitchen while the château wakes, then up to '
                 'the salon with the conservators. An hour of scalpel and solvent under '
                 'the raking lamp, lifting cream emulsion from a wall unseen since the '
                 '1700s. A centimetre is a good morning.\n'
@@ -5793,7 +5801,7 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
   'description': 'A week inside the restoration itself. You will spend real hours '
                  'beside the artisans lifting eighteenth-century frescoes out from '
                  'under a century of overpaint — the slowest, most exacting work in '
-                 'the house, and the reason it is taking a decade. Between those '
+                 'the château, and the reason it is taking a decade. Between those '
                  'mornings there is cooking in the château kitchens, the brocantes of '
                  'the valley, and dinner by candlelight every evening.',
   'itinerary': 'FRESCO CONSERVATION — four mornings alongside the restoration team, '
@@ -5823,7 +5831,15 @@ DEFAULT_WORKSHOPS = [{'title': 'The Long Weekender',
                        'exacting work in the house, and the reason it is taking a '
                        'decade. Between those mornings there is cooking in the château '
                        'kitchens, the brocantes of the valley, and the long table '
-                       'every evening.']}]
+                       'every evening.',
+                       'A week inside the restoration itself. You will spend real '
+                       'hours beside the artisans lifting eighteenth-century frescoes '
+                       'out from under a century of overpaint — the slowest, most '
+                       'exacting work in the house, and the reason it is taking a '
+                       'decade. Between those mornings there is cooking in the château '
+                       'kitchens, the brocantes of the valley, and dinner by '
+                       'candlelight every evening.']}]
+
 
 # The placeholder titles this file used before the real ones were known. Rows
 # with these exact names and no price were created by an earlier deploy and

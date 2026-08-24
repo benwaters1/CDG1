@@ -48,7 +48,27 @@
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="" loading="lazy"></div>
 
 <section class="g-sec"><div class="g-wrap">
-  <h2 class="g-place">Les Chambres{% if searched %}<span class="g-rule__note">{{ arrival }} → {{ departure }}</span>{% endif %}</h2>
+  <h2 class="g-place">Les Chambres</h2>
+  {% if searched %}
+  <div class="g-searched" role="status">
+    <p class="g-searched__dates">
+      <strong>{{ arrival|date_short }}</strong> to <strong>{{ departure|date_short }}</strong>
+      {%- set a = arrival|string -%}{%- set d = departure|string -%}
+      {%- if a|length >= 10 and d|length >= 10 -%}
+        {# ISO strings sort and subtract reliably; day-of-year is enough here #}
+        {%- set nights = ((d[8:10]|int) - (a[8:10]|int)) + (((d[5:7]|int) - (a[5:7]|int)) * 30) -%}
+        {%- if nights > 0 %}· {{ nights }} night{{ '' if nights == 1 else 's' }}{% endif -%}
+      {%- endif -%}
+      {% if prefill_party_size %}· {{ prefill_party_size }} guest{{ '' if prefill_party_size == 1 else 's' }}{% endif %}
+    </p>
+    <p class="g-searched__count">
+      {% set free = availability.values()|select|list|length %}
+      {% if free %}{{ free }} of {{ rooms|length }} room{{ '' if rooms|length == 1 else 's' }} available
+      {% else %}No rooms free on these dates{% endif %}
+    </p>
+    <a href="{{ url_for('book_rooms') }}" class="g-searched__clear">Clear dates</a>
+  </div>
+  {% endif %}
 
   {% if not rooms %}
     <p class="g-empty">No rooms are open for reservation at present.</p>
@@ -56,9 +76,22 @@
   <div class="g-cards">
     {% for room in rooms %}
     <article class="g-card g-card--room" id="room-{{ room['id'] }}">
-      {% if room['photo_filename'] %}
-      <img src="{{ url_for('room_photo', filename=room['photo_filename']) }}" alt="{{ room['name'] }}" loading="lazy">
-      {% endif %}
+      {# Until a room has its own uploaded photograph, show a château interior
+         matched to the room's character. A card with no image is worse than a
+         representative one, and the real photo takes over the moment it is
+         uploaded in the admin. #}
+      {% set RM_IMG = [
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg",
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg",
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg",
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg",
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/cc7f6cb2-243c-47a9-ab7e-5200a66afca1/bedroom+3.jpg",
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg",
+        "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg"
+      ] %}
+      <img class="g-card__img"
+           src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_IMG[loop.index0 % RM_IMG|length] }}?format=1000w{% endif %}"
+           alt="{{ room['name'] }}" loading="lazy">
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room['name'] }}</h3>
@@ -113,7 +146,7 @@
     <h2 class="g-h2">À Table</h2>
     <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
     <p class="g-p">Continental breakfast every morning, and dinner cooked in the château's own Renaissance kitchen. There is no fixed menu — what appears depends on the Sunday market in the village square, on producers the chef has bought from for twenty years, and in summer on the gardens below the terrace.</p>
-    <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written in this house in the 1700s.</p>
+    <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written at Gudanes in the 1700s.</p>
     <p class="g-p">Dinner is served by candlelight in the dining room, and in winter the fire is lit. Tell us when you book, and the kitchen buys for it.</p>
     <p style="margin-top:var(--s5)"><a href="{{ url_for('restaurant_info') }}" class="g-btn">More about La Table</a></p>
   </div>
@@ -156,20 +189,20 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w" alt="The pool" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Outdoors</h3>
-        <p>A pool set among the cherry trees below the formal gardens, and a tennis court secluded at the edge of the grounds. Table tennis and a small gym in the house.</p>
+        <p>A pool set among the cherry trees below the formal gardens, and a tennis court secluded at the edge of the grounds. Table tennis and a small gym indoors.</p>
       </div>
     </article>
     <article class="g-incl-card">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The gardens" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Gardens &amp; Parkland</h3>
-        <p>Historic formal gardens nearest the house, then parkland running up toward the mountain. Walk it at any hour. A BBQ area for long evenings outside.</p>
+        <p>Historic formal gardens nearest the château, then parkland running up toward the mountain. Walk it at any hour. A BBQ area for long evenings outside.</p>
       </div>
     </article>
     <article class="g-incl-card">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The salon de thé" loading="lazy">
       <div class="g-incl-card__b">
-        <h3 class="g-incl-card__t">Inside the House</h3>
+        <h3 class="g-incl-card__t">Inside the Château</h3>
         <p>Continental breakfast each morning, tea and coffee through the day, and lounge areas to settle into. Laundry facilities whenever you need them.</p>
       </div>
     </article>
@@ -178,7 +211,7 @@
   <hr class="g-rule--double">
 
   <dl class="g-facts-list">
-    <div><dt>Wi-Fi</dt><dd>Starlink, in select areas of the house</dd></div>
+    <div><dt>Wi-Fi</dt><dd>Starlink, in select areas of the château</dd></div>
     <div><dt>In your room</dt><dd>Power outlets and bedside lamps</dd></div>
     <div><dt>Parking</dt><dd>Free, at the château</dd></div>
     <div><dt>Breakfast</dt><dd>Continental, included every morning</dd></div>
@@ -228,7 +261,13 @@
           <th scope="row">{{ r['name'] }}</th>
           <td>{% if r['price_per_night'] %}<span class="g-fig">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
           <td>{{ r['max_occupancy'] or '—' }}</td>
-          <td>{% if r['amenities'] and 'hared' in r['amenities'] %}Shared{% elif r['amenities'] %}Private{% else %}—{% endif %}</td>
+          <td>
+            {%- set nm = (r['name'] or '')|lower -%}
+            {%- set am = (r['amenities'] or '')|lower -%}
+            {%- if 'shared' in nm or 'shared' in am %}Shared
+            {%- elif 'suite' in nm or 'king' in nm or 'private' in am %}Private
+            {%- else %}Private{% endif -%}
+          </td>
           <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
           <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
         </tr>
@@ -278,5 +317,12 @@
   </div>
   <p class="g-hint" style="margin-top:var(--s5)">Guest ratings on Booking.com.</p>
 </div></section>
+
+
+<div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
+  <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
+  <path d="M20 8v-3M32 5v-3M44 8v-3"/>
+</svg></div>
 
 {% endblock %}
