@@ -26,6 +26,32 @@
     </div>
     {% endif %}
 
+    {% if can_reset_signin %}
+    {# The only way back in for somebody locked out. /forgot-password needs an
+       email provider, and while there isn't one it tells them to ask the owner
+       to reset it directly -- so this has to exist for a claimed account, not
+       just for an invitation still pending. It is destructive, so it asks
+       first, and the copy says what it does rather than "regenerate". No Jinja
+       inside the onsubmit attribute: interpolating a name into a confirm()
+       broke a page once already. #}
+    <div class="detail-card">
+      <h3>{{ t('Sign-in trouble') }}</h3>
+      <p class="pay-disclaimer" style="margin-top:0;">
+        {% if email_enabled %}
+        {{ t("They can reset their own password from the login page. Use this only if they can't.") }}
+        {% else %}
+        {{ t('No email provider is configured, so nobody can reset their own password yet. This is the only way back in.') }}
+        {% endif %}
+      </p>
+      <p class="pay-disclaimer">{{ t('This voids the password they use now and gives you a fresh link to send them.') }}</p>
+      <form method="post" action="{{ url_for('regenerate_invite', user_id=person['id']) }}"
+            onsubmit="return confirm('This stops their current password working. You will need to send them the new link. Continue?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini">{{ t('Reset their sign-in') }}</button>
+      </form>
+    </div>
+    {% endif %}
+
     {% if user['role'] == 'owner' %}
     {# The PIN they use on the shared iPad by the door. Set here rather than by
        the staff member, because it is what puts them on the timesheet — if they

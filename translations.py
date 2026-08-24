@@ -270,6 +270,18 @@ FR = {
     "Invitation pending": "Invitation en attente",
     "Generate a new link": "Générer un nouveau lien",
     "Arrival PIN": "Code d'arrivée",
+    # Resetting a sign-in: the copy has to be blunt in every language,
+    # because the button stops somebody's password working.
+    "Sign-in trouble": "Problème de connexion",
+    "Reset their sign-in": "Réinitialiser sa connexion",
+    "They can reset their own password from the login page. Use this only if they can't.":
+        "Il ou elle peut réinitialiser son mot de passe depuis la page de connexion. "
+        "N'utilisez ceci que si ce n'est pas possible.",
+    "No email provider is configured, so nobody can reset their own password yet. This is the only way back in.":
+        "Aucun service d'e-mail n'est configuré : personne ne peut encore réinitialiser "
+        "son mot de passe. C'est le seul moyen de rétablir l'accès.",
+    "This voids the password they use now and gives you a fresh link to send them.":
+        "Cela annule le mot de passe actuel et vous donne un nouveau lien à lui envoyer.",
     "Remove it": "Le supprimer",
     "Stored hashed — nobody can read it back, so write it down for them or set a new one if they forget.": "Stocké sous forme hachée — personne ne peut le relire : notez-le pour la personne concernée, ou définissez-en un nouveau si elle l'oublie.",
     "+ Add": "Ajouter",
@@ -636,6 +648,18 @@ ES = {
     "Invitation pending": "Invitación pendiente",
     "Generate a new link": "Generar un enlace nuevo",
     "Arrival PIN": "PIN de llegada",
+    # Resetting a sign-in: the copy has to be blunt in every language,
+    # because the button stops somebody's password working.
+    "Sign-in trouble": "Problemas para iniciar sesión",
+    "Reset their sign-in": "Restablecer su acceso",
+    "They can reset their own password from the login page. Use this only if they can't.":
+        "Puede restablecer su contraseña desde la página de inicio de sesión. "
+        "Use esto solo si no puede.",
+    "No email provider is configured, so nobody can reset their own password yet. This is the only way back in.":
+        "No hay proveedor de correo configurado, así que nadie puede restablecer su "
+        "propia contraseña todavía. Esta es la única forma de recuperar el acceso.",
+    "This voids the password they use now and gives you a fresh link to send them.":
+        "Esto anula la contraseña que usa ahora y le da un enlace nuevo para enviarle.",
     "Remove it": "Eliminarlo",
     "Stored hashed — nobody can read it back, so write it down for them or set a new one if they forget.": "Se guarda cifrado — nadie puede volver a leerlo: anótelo para la persona, o asigne uno nuevo si lo olvida.",
     "+ Add": "Añadir",

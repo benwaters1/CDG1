@@ -12890,9 +12890,17 @@ def profile(user_id):
     onboarding_url = None
     if user["role"] == "owner" and not person["account_claimed"]:
         onboarding_url = url_for("onboard", token=person["invite_token"], _external=True)
+    # Whether to offer a sign-in reset. /forgot-password needs an email
+    # provider, and until one is configured it tells the employee to ask the
+    # owner to reset it directly -- so the owner needs a control for an account
+    # that is already claimed, not only for an invitation still pending.
+    # Otherwise somebody locked out has no route back in at all.
+    can_reset_signin = (user["role"] == "owner" and person["role"] == "employee"
+                        and bool(person["account_claimed"]))
 
     return render_template(
         "profile.html", person=person, docs=docs, onboarding_url=onboarding_url,
+        can_reset_signin=can_reset_signin, email_enabled=email_enabled(),
         recent_shifts=recent_shifts, week_total_hours=round(week_total_hours, 2),
         expense_claims=expense_claims, onboarding_items=onboarding_items, check_in_notes=check_in_notes,
         task_stats=task_stats, leave=leave, offboarding_items=offboarding_items,
@@ -13021,15 +13029,28 @@ def regenerate_invite(user_id):
     if not person:
         conn.close()
         abort(404)
+    was_claimed = bool(person["account_claimed"])
     new_token = secrets.token_urlsafe(24)
     conn.execute(
         "UPDATE users SET invite_token = ?, account_claimed = 0, password_hash = ? WHERE id = ?",
         (new_token, generate_password_hash(secrets.token_hex(32)), user_id),
     )
+    # This overwrites a password hash with random bytes, which is the most
+    # destructive thing on the page. Deactivating somebody was already audited;
+    # taking their sign-in away was not.
+    log_audit(
+        conn, "invite_regenerated", target=person["name"],
+        details=("sign-in reset — their existing password stopped working"
+                 if was_claimed else "invitation re-issued before it was claimed"),
+    )
     conn.commit()
     conn.close()
     onboarding_url = url_for("onboard", token=new_token, _external=True)
-    flash(f"New onboarding link ready: {onboarding_url}", "success")
+    if was_claimed:
+        flash(f"{person['name']}'s old password no longer works. Send them this "
+              f"link to set a new one: {onboarding_url}", "success")
+    else:
+        flash(f"New onboarding link ready: {onboarding_url}", "success")
     return redirect(url_for("profile", user_id=user_id))
 
 
