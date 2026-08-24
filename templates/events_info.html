@@ -1,8 +1,9 @@
 {% extends "public_base.html" %}
+{% set crumbs = [('Events', None)] %}
 {% block title %}Weddings & Events{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% set crumbs = [('Events', None)] %}
+
 
 
 {# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,

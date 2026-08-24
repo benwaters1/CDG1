@@ -1,8 +1,9 @@
 {% extends "public_base.html" %}
+{% set crumbs = [('The Estate', None)] %}
 {% block title %}Facilities &amp; Activities{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% set crumbs = [('The Estate', None)] %}
+
 
 
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}

@@ -1,7 +1,8 @@
 {% extends "public_base.html" %}
+{% set crumbs = [('Workshops', url_for('workshops_public')), ('Register', None)] %}
 {% block title %}Register — {{ session['title'] }}{% endblock %}
 {% block content %}
-{% set crumbs = [('Workshops', url_for('workshops_public')), ('Register', None)] %}
+
 
 {# Set here rather than passed in: this template is rendered from three places in
    the register route (fresh, rate-limited and validation-error), and a variable
