@@ -27,7 +27,8 @@ def _cleanup(conn):
     conn.execute("DELETE FROM recurring_costs WHERE label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM insurance_policies WHERE provider LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
-    conn.execute("DELETE FROM app_settings WHERE key = ?", (m.OPENING_BALANCE_SETTING,))
+    conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)",
+                 (m.OPENING_BALANCE_SETTING, m.MONTHLY_STAFF_COST_SETTING))
     conn.commit()
 
 
@@ -200,6 +201,50 @@ def run():
             b"not a number" in r.data.lower()
             or m.money_ahead(conn, days=90, today=today)["opening"] is None)
 
+    s.section("Wages are the owner's figure, and only theirs")
+    # The one big number this app will not derive. Pay rates are free text,
+    # estimated_hourly_cost() says in its own docstring that it is never a
+    # payroll figure, and most people on the books have no usable rate — so a
+    # derived wage bill would be a guess on the page that promises otherwise.
+    ahead = m.money_ahead(conn, days=90, today=today)
+    s.check("nothing is assumed until it is set",
+            ahead["monthly_staff"] is None
+            and not any(o["kind"] == "Wages" for o in ahead["outgoing"]),
+            detail="a wage figure appeared that nobody entered")
+
+    oc.post("/management/money-ahead/staff-cost", data={"monthly_staff": "6500"},
+            follow_redirects=True)
+    ahead = m.money_ahead(conn, days=90, today=today)
+    wages = [o for o in ahead["outgoing"] if o["kind"] == "Wages"]
+    s.check("once set it is used", ahead["monthly_staff"] == 6500.0,
+            detail=str(ahead["monthly_staff"]))
+    s.check("once a month, not once per anything else", len(wages) == 3,
+            detail=f"{len(wages)} over 90 days: {[w['date'] for w in wages]}")
+    s.check("at the end of each month, when salaries are paid",
+            all(m.parse_date(w["date"]).day >= 28 for w in wages),
+            detail=str([w["date"] for w in wages]))
+    s.check("and it says whose figure it is",
+            all("you set" in w["label"] for w in wages),
+            detail=str(wages[0]["label"]) if wages else "")
+    s.check("the total went up by three months of it",
+            ahead["total_out"] >= 3 * 6500, detail=str(ahead["total_out"]))
+
+    # A part month at either end must not carry a full month of wages — that
+    # is a figure nobody could reconcile against a bank statement.
+    short = m.money_ahead(conn, days=20, today=today)
+    short_wages = [o for o in short["outgoing"] if o["kind"] == "Wages"]
+    s.check("a window shorter than a month carries at most one payday",
+            len(short_wages) <= 1, detail=f"{len(short_wages)} in 20 days")
+    s.check("and any it does carry falls inside the window",
+            all(short["from"] <= w["date"] <= short["to"] for w in short_wages))
+
+    oc.post("/management/money-ahead/staff-cost", data={"monthly_staff": ""},
+            follow_redirects=True)
+    ahead = m.money_ahead(conn, days=90, today=today)
+    s.check("clearing it takes wages back out",
+            ahead["monthly_staff"] is None
+            and not any(o["kind"] == "Wages" for o in ahead["outgoing"]))
+
     s.section("On the page")
     r = oc.get("/management/money-ahead")
     s.check("it opens", r.status_code == 200, detail=str(r.status_code))
@@ -218,6 +263,9 @@ def run():
     s.check("nor set the opening balance",
             ec.post("/management/money-ahead/opening",
                     data={"opening": "1"}).status_code in (302, 403))
+    s.check("nor the wage figure",
+            ec.post("/management/money-ahead/staff-cost",
+                    data={"monthly_staff": "1"}).status_code in (302, 403))
 
     _cleanup(conn)
     conn.close()

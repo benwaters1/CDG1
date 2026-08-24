@@ -26815,32 +26815,54 @@ def money_ahead_page():
     return render_template("money_ahead.html", ahead=ahead, overview=overview, days=days)
 
 
-@app.route("/management/money-ahead/opening", methods=["POST"])
-@owner_required
-def set_opening_balance():
-    raw = (request.form.get("opening", "") or "").strip().replace(",", ".").replace(" ", "")
+def _save_money_setting(key, raw, *, cleared_msg, saved_msg, audit):
+    """Store one of the two figures the owner sets, or clear it."""
+    raw = (raw or "").strip().replace(",", ".").replace(" ", "")
     conn = get_db()
     if not raw:
-        conn.execute("DELETE FROM app_settings WHERE key = ?", (OPENING_BALANCE_SETTING,))
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
         conn.commit()
         conn.close()
-        flash("Opening balance cleared — the page is back to showing change only.", "success")
-        return redirect(url_for("money_ahead_page"))
+        flash(cleared_msg, "success")
+        return
     try:
         value = round(float(raw), 2)
     except ValueError:
         conn.close()
         flash("That is not a number.", "error")
-        return redirect(url_for("money_ahead_page"))
+        return
     conn.execute(
         """INSERT INTO app_settings (key, value) VALUES (?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
-        (OPENING_BALANCE_SETTING, f"{value:.2f}"))
+        (key, f"{value:.2f}"))
     conn.commit()
-    log_audit(conn, "opening_balance_set", details=f"€{value:.2f}")
+    log_audit(conn, audit, details=f"€{value:.2f}")
     conn.commit()
     conn.close()
-    flash("Saved. The running line is now a balance rather than a change.", "success")
+    flash(saved_msg, "success")
+
+
+@app.route("/management/money-ahead/opening", methods=["POST"])
+@owner_required
+def set_opening_balance():
+    _save_money_setting(
+        OPENING_BALANCE_SETTING, request.form.get("opening"),
+        cleared_msg="Opening balance cleared — the page is back to showing change only.",
+        saved_msg="Saved. The running line is now a balance rather than a change.",
+        audit="opening_balance_set")
+    return redirect(url_for("money_ahead_page"))
+
+
+@app.route("/management/money-ahead/staff-cost", methods=["POST"])
+@owner_required
+def set_monthly_staff_cost():
+    """Wages as a monthly figure. Deliberately typed rather than derived —
+    see MONTHLY_STAFF_COST_SETTING."""
+    _save_money_setting(
+        MONTHLY_STAFF_COST_SETTING, request.form.get("monthly_staff"),
+        cleared_msg="Wages removed from the forecast.",
+        saved_msg="Saved. Wages now appear at the end of each month.",
+        audit="monthly_staff_cost_set")
     return redirect(url_for("money_ahead_page"))
 
 
@@ -26863,6 +26885,16 @@ def set_opening_balance():
 # ---------------------------------------------------------------------------
 
 OPENING_BALANCE_SETTING = "money_ahead_opening_balance"
+# Wages, as a figure the owner sets rather than one this app works out.
+#
+# It could try: there are hours, shifts and pay rates. But pay_rate and
+# pay_type are free text, estimated_hourly_cost() says in its own docstring
+# that it is "never a payroll or payslip figure", and most people on the books
+# have no usable rate at all. Deriving a wage bill from that would put a guess
+# on the one page that promises only money somebody has committed to. A figure
+# the owner types is worth more than a figure we infer, because they know
+# which it is.
+MONTHLY_STAFF_COST_SETTING = "money_ahead_monthly_staff"
 
 
 def _month_starts(first, last):
@@ -26992,6 +27024,25 @@ def money_ahead(conn, *, days=90, today=None):
                          "label": f"{e['vendor_name']} — awaiting your decision",
                          "kind": "Awaiting approval", "ref": None})
 
+    # Wages, if a monthly figure has been set. Dated to the end of each month,
+    # which is when French salaries are usually paid, and only for whole months
+    # inside the window — half a month of wages on a part month would be a
+    # figure nobody could check against a bank statement.
+    staff = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?",
+        (MONTHLY_STAFF_COST_SETTING,)).fetchone()
+    try:
+        staff = round(float(staff["value"]), 2) if staff and staff["value"] else None
+    except (TypeError, ValueError):
+        staff = None
+    if staff:
+        for start in _month_starts(today, last):
+            payday = date(start.year, start.month, monthrange(start.year, start.month)[1])
+            if today <= payday <= last:
+                outgoing.append({"date": payday.isoformat(), "amount": staff,
+                                 "label": "Wages — the monthly figure you set",
+                                 "kind": "Wages", "ref": None})
+
     incoming.sort(key=lambda x: (x["date"], -x["amount"]))
     outgoing.sort(key=lambda x: (x["date"], -x["amount"]))
 
@@ -27025,7 +27076,7 @@ def money_ahead(conn, *, days=90, today=None):
         "incoming": incoming, "outgoing": outgoing, "months": months,
         "total_in": total_in, "total_out": total_out,
         "net": round(total_in - total_out, 2),
-        "opening": opening,
+        "opening": opening, "monthly_staff": staff,
         "closing": round((opening or 0) + total_in - total_out, 2) if opening is not None else None,
     }
 

@@ -41,6 +41,32 @@
 </form>
 {% endif %}
 
+{# Always shown, pre-filled once set. Both figures on this page are the
+   owner's own rather than ones the app derives, so changing one should not
+   mean hunting for where it was entered. #}
+<form method="post" action="{{ url_for('set_monthly_staff_cost') }}" class="detail-card"
+      style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h3 style="margin-top:0;">What do wages cost in a normal month?</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {% if ahead.monthly_staff is none %}
+      Left out until you say, because it is the one big number this app cannot work out
+      honestly — pay rates here are free text and most people on the books have none, so
+      anything derived would be a guess sitting on a page that promises only committed
+      money. Yours goes in at the end of each month.
+    {% else %}
+      Your figure, not one worked out from hours. It goes in at the end of each month.
+      Clear the box and save to take it out again.
+    {% endif %}
+  </p>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input type="text" name="monthly_staff" inputmode="decimal" placeholder="6500"
+           value="{{ '%.2f'|format(ahead.monthly_staff) if ahead.monthly_staff is not none else '' }}"
+           style="max-width:180px; margin:0;">
+    <button type="submit" class="btn-mini">Save</button>
+  </div>
+</form>
+
 <h2 class="section-heading">Month by month</h2>
 <table class="data-table" style="max-width:840px;">
   <thead>
@@ -115,10 +141,10 @@
 </div>
 
 <p class="pay-disclaimer" style="margin-top:20px;">
-  What is <em>not</em> in here, so it is not mistaken for a full picture: wages, which the app has
-  no standing monthly figure for; restaurant covers nobody has booked yet; and anything bought on
-  the day. Supplier invoices still waiting on your decision sit on today, because that is when
-  they are owed.
+  What is <em>not</em> in here, so it is not mistaken for a full picture:
+  {% if ahead.monthly_staff is none %}wages, until you set a monthly figure above;{% endif %}
+  restaurant covers nobody has booked yet; and anything bought on the day. Supplier invoices
+  still waiting on your decision sit on today, because that is when they are owed.
 </p>
 
 {% endblock %}
