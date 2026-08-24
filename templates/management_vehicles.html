@@ -112,7 +112,14 @@
         <div class="mini-row" style="padding:4px 0;">
           <span class="mini-name">{{ p['provider'] }}</span>
           <span class="upload-hint">{% if p['expiry_date'] %}Expires {{ p['expiry_date'] }}{% else %}No expiry set{% endif %}</span>
-          <form method="post" action="{{ url_for('renew_insurance_policy', policy_id=p['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Renew</button></form>
+          {# The server rejects a CONCURRENT double-write via its expiry_date guard,
+         but two clicks one after the other each renew legitimately, so the
+         second quietly adds another year. For a field where being wrong means
+         believing you are covered when you are not, the click is worth making
+         deliberate. No Jinja in the attribute: interpolating the provider name
+         here broke the page once already. #}
+        <form method="post" action="{{ url_for('renew_insurance_policy', policy_id=p['id']) }}"
+              onsubmit="return confirm('Move this policy&#39;s expiry forward one term?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Renew</button></form>
         </div>
         {% endfor %}
         <form method="post" action="{{ url_for('new_insurance_policy') }}" class="upload-form" style="margin-top:6px;">
