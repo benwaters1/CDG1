@@ -3700,7 +3700,7 @@ NAV_AREAS = {
         # and this entry only decides where it sits in the menu.
         "absence_return_to_work", "admin_compliance", "admin_hr",
         "admin_incidents", "ask_hr", "candidates", "delete_candidate",
-        "delete_certification", "delete_check_in_note", "delete_employee",
+        "delete_certification", "delete_employee",
         "delete_equipment_item", "delete_offboarding_item", "delete_onboarding_item",
         "delete_role_requirement", "directory", "edit_candidate", "edit_employee",
         "edit_own_contact_info", "equipment_overview", "export_candidates_csv",
@@ -3711,7 +3711,14 @@ NAV_AREAS = {
         # the payroll pack back to anyone with team access.
         "export_equipment_csv", "export_pay_history_csv",
         "export_team_csv", "new_absence", "new_candidate",
-        "new_certification", "new_check_in_note", "new_employee", "new_equipment_item",
+        # new_check_in_note / delete_check_in_note are deliberately NOT here.
+        # Reading a 1:1 note is gated by ROLE -- profile() allows the owner or
+        # the person themselves and nobody else -- while these two were gated
+        # by AREA, so anybody with `team` could write, and delete, the owner's
+        # private record about a colleague on a page they cannot even open.
+        # Unmapped means owner-only (see can_reach), which is what the read
+        # side already does.
+        "new_certification", "new_employee", "new_equipment_item",
         "new_incident", "new_offboarding_item", "new_onboarding_item",
         "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
         "share_performance_review", "toggle_employee_status", "toggle_equipment_returned",
