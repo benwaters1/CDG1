@@ -6493,6 +6493,21 @@ def maybe_seed_offboarding(conn, user_id, old_status, new_status):
         ).fetchone()
         if not existing:
             seed_offboarding_checklist(conn, user_id)
+        else:
+            # Seasonal staff leave in September and come back in June. Not
+            # seeding twice is right, but leaving September's ticks in place
+            # meant the second departure read as already done — and nobody
+            # chases keys that a screen says are already back. A fresh
+            # departure reopens the list. This only runs on a real
+            # active -> inactive transition, so re-saving the form while
+            # somebody is already inactive does not undo today's work.
+            reopened = conn.execute(
+                "UPDATE offboarding_items SET done = 0 WHERE user_id = ? AND done = 1",
+                (user_id,),
+            ).rowcount
+            if reopened:
+                log_audit(conn, "offboarding_checklist_reopened", target=f"user {user_id}",
+                          details=f"{reopened} item(s) from a previous departure reopened")
         # A generic "return keys" line doesn't say WHICH keys, so the one that
         # never comes back is the one nobody remembered was issued. Add a real
         # line per item the leaver is actually holding. Codes get different
