@@ -55,6 +55,7 @@ SUITES = [
     "test_performance_reviews",
     "test_offboarding",
     "test_account_access",
+    "test_hr_notes",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",

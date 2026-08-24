@@ -177,7 +177,12 @@
     {% set till_endpoints = ['pos_home','pos_order','pos_open_tab','pos_add_item','pos_void_item','pos_settle_tab','pos_pay_link'] %}
     {% if user_areas %}
     <a href="{{ url_for('ops_calendar') }}" class="{{ 'active' if request.endpoint=='ops_calendar' }}">{{ icon('calendar') }}Calendar</a>
-    <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>
+    {# Shown for any non-empty access, but the page itself is unmapped in
+       NAV_AREAS, which can_reach treats as owner-only -- so every member of
+       staff was offered Overview and got a 403 on it. can() asks the page,
+       not the group. Whether managers SHOULD see the overview is a decision
+       for the owner; until it is made, do not offer a locked door. #}
+    {% if can('admin_overview') %}<a href="{{ url_for('admin_overview') }}" class="{{ 'active' if request.endpoint in ['admin_overview','admin_overview_status'] }}">{{ icon('eye') }}Overview</a>{% endif %}
 
     {# Events (weddings, photoshoots) are bookings of the house, so they sit
        with Guests rather than as their own top-level entry. Either area
@@ -212,10 +217,16 @@
         <a href="{{ url_for('directory') }}" class="{{ 'active' if request.endpoint in ['directory','new_employee','profile','edit_employee'] }}">{{ icon('employee') }}Who works here</a>
         <a href="{{ url_for('candidates') }}" class="{{ 'active' if request.endpoint=='candidates' }}">{{ icon('guests') }}Candidates</a>
         <a href="{{ url_for('equipment_overview') }}" class="{{ 'active' if request.endpoint in ['equipment_overview','export_equipment_csv'] }}">{{ icon('shopping') }}Equipment</a>
-        <a href="{{ url_for('admin_hr_notes') }}" class="{{ 'active' if request.endpoint=='admin_hr_notes' }}">{{ icon('contacts') }}Ask HR{% if open_hr_notes_count %} ({{ open_hr_notes_count }}){% endif %}</a>
+        {# Ask HR and the Payroll Pack live in other areas (management and
+           payroll). This menu only asks about `team`, so both were drawn for
+           somebody who could not open them -- 'visible in the menu but
+           forbidden when clicked', which is the case NAV_AREAS' comment calls
+           the worst of both. can() asks the same question owner_required does,
+           per page, so these cannot drift again when an area moves. #}
+        {% if can('admin_hr_notes') %}<a href="{{ url_for('admin_hr_notes') }}" class="{{ 'active' if request.endpoint=='admin_hr_notes' }}">{{ icon('contacts') }}Ask HR{% if open_hr_notes_count %} ({{ open_hr_notes_count }}){% endif %}</a>{% endif %}
         <a href="{{ url_for('admin_hr') }}" class="{{ 'active' if request.endpoint=='admin_hr' }}">{{ icon('approvals') }}HR &amp; Compliance</a>
         <a href="{{ url_for('admin_compliance') }}" class="{{ 'active' if request.endpoint=='admin_compliance' }}">{{ icon('shield') }}Role Compliance</a>
-        <a href="{{ url_for('admin_payroll') }}" class="{{ 'active' if request.endpoint=='admin_payroll' }}">{{ icon('financial') }}Payroll Pack</a>
+        {% if can('admin_payroll') %}<a href="{{ url_for('admin_payroll') }}" class="{{ 'active' if request.endpoint=='admin_payroll' }}">{{ icon('financial') }}Payroll Pack</a>{% endif %}
         <a href="{{ url_for('admin_incidents') }}" class="{{ 'active' if request.endpoint=='admin_incidents' }}">{{ icon('wrench') }}Incidents</a>
       </div>
     </div>
@@ -279,7 +290,7 @@
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
         <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
-        <a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>
+        {% if can('admin_tax') %}<a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>{% endif %}
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
       </div>
     </div>

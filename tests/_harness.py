@@ -139,6 +139,42 @@ def flashes(response):
             for x in re.findall(r'class="flash flash-\w+">(.*?)</div>', html, re.S)]
 
 
+def ensure_owner():
+    """An owner to act as, created if the database has none.
+
+    app.py decides whether to bootstrap the first owner with
+    `fresh = not os.path.exists(DB_PATH)`. The scratch copy always exists by
+    the time the app imports, so a SOURCE database that has a schema but no
+    owner produces a test database with no owner either -- and every suite
+    then dies on `clients()` with "no owner", which says nothing about why.
+
+    That is not hypothetical. A single `python -c "import app"` run outside
+    this harness creates an empty gudanes_hr.db in the working tree, and from
+    then on every test run in that clone copies it and fails the same way.
+    Rather than depend on nobody ever doing that, make the owner a thing the
+    harness guarantees, exactly as it already does for the employee below.
+    """
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT id, name FROM users WHERE role='owner' ORDER BY id LIMIT 1").fetchone()
+        if row:
+            return row
+        from werkzeug.security import generate_password_hash
+        conn.execute(
+            """INSERT INTO users (email, password_hash, role, name, job_role, status, created_at)
+               VALUES (?, ?, 'owner', 'Test Owner', 'Owner', 'active', ?)""",
+            ("test.owner@example.invalid",
+             generate_password_hash(secrets_token()), datetime_now()),
+        )
+        conn.commit()
+        return conn.execute(
+            "SELECT id, name FROM users WHERE email = 'test.owner@example.invalid'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+
 def ensure_employee():
     """An employee to act as, created if the database has none.
 
@@ -200,6 +236,7 @@ def datetime_now():
 
 def clients():
     """Logged-in test clients: (owner, employee)."""
+    ensure_owner()
     ensure_employee()
     conn = db()
     owner = conn.execute("SELECT id, name FROM users WHERE role='owner' LIMIT 1").fetchone()

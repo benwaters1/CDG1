@@ -3691,7 +3691,14 @@ NAV_AREAS = {
         "vehicle_transfers_page"
     ],
     "team": [
-        "absence_return_to_work", "admin_compliance", "admin_hr", "admin_hr_notes",
+        # admin_hr_notes / handle_hr_note are deliberately NOT here, for the
+        # same reason export_payroll_csv is not (see below). Ask HR tells the
+        # person writing "only the owner can see this", and `team` is granted
+        # by three presets in the live config -- so a grievance about a manager
+        # was readable by that manager. They live in `management` now, with the
+        # vault and the audit log. ask_hr itself stays: it is @login_required,
+        # and this entry only decides where it sits in the menu.
+        "absence_return_to_work", "admin_compliance", "admin_hr",
         "admin_incidents", "ask_hr", "candidates", "delete_candidate",
         "delete_certification", "delete_check_in_note", "delete_employee",
         "delete_equipment_item", "delete_offboarding_item", "delete_onboarding_item",
@@ -3703,7 +3710,7 @@ NAV_AREAS = {
         # team in the dict. Reordering these areas would have quietly handed
         # the payroll pack back to anyone with team access.
         "export_equipment_csv", "export_pay_history_csv",
-        "export_team_csv", "handle_hr_note", "new_absence", "new_candidate",
+        "export_team_csv", "new_absence", "new_candidate",
         "new_certification", "new_check_in_note", "new_employee", "new_equipment_item",
         "new_incident", "new_offboarding_item", "new_onboarding_item",
         "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
@@ -3777,6 +3784,10 @@ NAV_AREAS = {
         "admin_payroll", "export_payroll_csv"
     ],
     "management": [
+        # Private HR notes sit here rather than in `team`: the employee is
+        # promised that only the owner sees them, and this is the only area no
+        # non-owner preset grants.
+        "admin_hr_notes", "handle_hr_note",
         "admin_automation", "admin_deposit_rules", "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
         "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
@@ -11477,6 +11488,21 @@ def inject_user():
         """
         return "*" in areas or area in areas
 
+    def can(endpoint):
+        """Whether this person can actually open one particular page.
+
+        may() answers for a whole group, which is right for deciding if a menu
+        appears at all -- but a group's menu can contain links to pages that
+        live in OTHER areas, and those were drawn unconditionally. Somebody
+        with team-but-not-payroll access was shown a Payroll Pack link inside
+        the Team menu that answered 403 when clicked, which NAV_AREAS' own
+        comment calls the worst of both.
+
+        This asks the same function owner_required asks, per endpoint, so a
+        link cannot drift from the permission behind it when an area moves.
+        """
+        return can_reach(user, endpoint) if user else False
+
     if user:
         conn = get_db()
         unread_notifications_count = conn.execute(
@@ -11530,7 +11556,7 @@ def inject_user():
         "pending_events_count": pending_events_count,
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
-        "may": may, "user_areas": areas, "area_titles": AREA_TITLES,
+        "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
         # Translation, available to every template rather than passed in by
         # each route — a page that forgot it would silently render English.
         "t": t, "lang": current_language(), "languages": translations.LANGUAGES,

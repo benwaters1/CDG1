@@ -158,4 +158,65 @@ def run():
     s.check("and none of its pages leaked into team", not (team_pages & payroll_pages),
             detail=", ".join(sorted(team_pages & payroll_pages)))
 
+    s.section("Private HR notes are held where no preset reaches them")
+    # Ask HR promises the person writing that only the owner sees it. `team` is
+    # granted by three presets in the live config, so the page has to live in an
+    # area none of them grant, or the promise is just wording.
+    s.check("the notes page is not in team",
+            "admin_hr_notes" not in m.NAV_AREAS.get("team", []),
+            detail="a grievance about a manager is readable by that manager")
+    s.check("nor is the reply route", "handle_hr_note" not in m.NAV_AREAS.get("team", []))
+    conn = _harness.db()
+    granting = [r["slug"] for r in conn.execute(
+        "SELECT slug, areas, is_full_access FROM access_presets").fetchall()
+        if not r["is_full_access"]
+        and (r["areas"] or "").strip() != "*"
+        and m.ENDPOINT_AREA.get("admin_hr_notes") in
+            {a.strip() for a in (r["areas"] or "").split(",") if a.strip()}]
+    conn.close()
+    s.check("and no partial-access preset grants the area it now lives in",
+            not granting, detail=f"granted by {granting}")
+
+    s.section("No menu offers a door the viewer cannot open")
+    # Written as a rule rather than a list. A menu group is shown by may(<area>),
+    # but a group's links can point at pages in OTHER areas -- those were drawn
+    # unconditionally, so team-without-payroll saw a Payroll Pack link that
+    # 403s. This walks every real preset, reads the menu it is actually served,
+    # and follows every admin link in it.
+    # A real employee, not the owner with a borrowed preset: some templates
+    # also test user['role'] == 'owner' directly, so an owner carrying a
+    # limited preset is a person who cannot exist and reports links that
+    # nobody is actually shown.
+    conn = _harness.db()
+    conn.execute(
+        """INSERT INTO users (name, email, role, status, job_role, password_hash, created_at)
+           VALUES ('ZZNAV Probe', 'zznav.probe@example.invalid', 'employee', 'active',
+                   'General', 'x', ?)
+           ON CONFLICT(email) DO UPDATE SET status = 'active'""",
+        (_harness.datetime_now(),))
+    conn.commit()
+    probe = conn.execute(
+        "SELECT id FROM users WHERE email = 'zznav.probe@example.invalid'").fetchone()["id"]
+    presets = [r["slug"] for r in conn.execute(
+        "SELECT slug FROM access_presets WHERE is_full_access = 0 AND TRIM(COALESCE(areas,'')) <> ''"
+    ).fetchall()]
+    broken = []
+    for slug in presets:
+        conn.execute("UPDATE users SET access_preset = ? WHERE id = ?", (slug, probe))
+        conn.commit()
+        client = m.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = probe
+        nav = client.get("/today").get_data(as_text=True)
+        # Only the nav itself, not page content, and only real admin targets.
+        for href in sorted(set(re.findall(r'href="(/admin/[a-z0-9\-/]+)"', nav))):
+            code = client.get(href).status_code
+            if code == 403:
+                broken.append(f"{slug} -> {href}")
+    conn.execute("DELETE FROM users WHERE email = 'zznav.probe@example.invalid'")
+    conn.commit()
+    conn.close()
+    s.check(f"every admin link shown to {len(presets)} preset(s) opens for them",
+            not broken, detail="; ".join(broken[:6]))
+
     return s
