@@ -13611,19 +13611,32 @@ def share_performance_review(review_id):
     if not review:
         conn.close()
         abort(404)
-    conn.execute(
-        "UPDATE performance_reviews SET status = 'shared', shared_at = ? WHERE id = ? AND status = 'draft'",
+    # Only a draft can be shared, and only the press that actually moves it
+    # should tell the employee anything. Notifying regardless meant a second
+    # press sent somebody back to re-read a review they had already signed,
+    # while this page reported it as freshly shared either way.
+    cur = conn.execute(
+        "UPDATE performance_reviews SET status = 'shared', shared_at = ? "
+        "WHERE id = ? AND status = 'draft'",
         (datetime.now(timezone.utc).isoformat(), review_id),
     )
-    send_notification(
-        conn, review["user_id"], "performance_review",
-        "Your performance review is ready",
-        body="Your manager has shared a review with you. Please read it and confirm you've seen it.",
-        link="/my-reviews",
-    )
+    if cur.rowcount:
+        send_notification(
+            conn, review["user_id"], "performance_review",
+            "Your performance review is ready",
+            body="Your manager has shared a review with you. Please read it and confirm you've seen it.",
+            link="/my-reviews",
+        )
+        # Sharing is the moment the review becomes usable in a promotion or a
+        # dismissal, so it is worth a record of its own. Writing it already was.
+        log_audit(conn, "performance_review_shared", target=f"user {review['user_id']}")
     conn.commit()
     conn.close()
-    flash("Review shared with the employee.", "success")
+    if cur.rowcount:
+        flash("Review shared with the employee.", "success")
+    else:
+        flash(f"That review was already shared — it is {review['status']} now, "
+              "so nothing was sent.", "error")
     return redirect(url_for("admin_hr"))
 
 
