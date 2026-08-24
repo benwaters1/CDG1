@@ -2158,7 +2158,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g .g-nav a:hover, .g .g-nav a.is-on{ border-bottom-color: var(--stone); }
 .g.has-hero.at-top .g-nav a{ color: #fff; }
-@media (max-width: 78rem){ .g .g-nav{ gap: 14px; } .g .g-nav a{ font-size: 12px; letter-spacing: .06em; } }
+@media (max-width: 78rem){ .g .g-nav{ gap: 12px; } .g .g-nav a{ font-size: 13px; letter-spacing: .04em; } }
 
 
 /* Above 68rem the row carries every destination, so the panel toggle is
@@ -2229,14 +2229,18 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 /* Breadcrumbs — quiet, above the content, so a guest deep in a room or a
    workshop page knows where they are and can climb back a level. */
-.g-crumbs{ padding: var(--s4) 0 0; }
+.g-crumbs{ padding: var(--s2) 0 0; }
 .g-crumbs ol{
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
   font-family: var(--ui); font-size: 13px; color: var(--ink-faint);
 }
 .g-crumbs li + li::before{ content: '›'; margin-right: var(--s2); color: var(--line); }
-.g-crumbs a{ color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid transparent; }
+.g-crumbs a, .g-crumbs [aria-current]{
+  display: inline-flex; align-items: center; min-height: 44px;
+  color: var(--ink-soft); text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
 .g-crumbs a:hover{ border-bottom-color: var(--stone); }
 .g-crumbs [aria-current]{ color: var(--blue-deep); }
 .g.has-hero .g-crumbs{ padding-top: var(--s5); }
@@ -2400,3 +2404,23 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-room__head .g-emblem, .g-homeroom .g-emblem{ margin-bottom: var(--s3); }
 .g-emblem--lg{ width: 52px; height: 52px; }
+
+/* The slide-out navigation panel was left at 12px throughout — its links,
+   group headings, item labels and the feature caption. It is the primary way
+   to move around the site on a phone, so it is the last place to be small.
+   Only visible once the review harness rendered the real header. */
+.g .g-navwrap a,
+.g .g-navwrap__item,
+.g .g-navwrap__group,
+.g .g-navwrap__feature em,
+.g .g-navwrap__legal a,
+.g .g-navwrap span{
+  font-size: 13px;
+}
+.g .g-navwrap__item{ font-size: 15px; }
+.g .g-navwrap__group{ font-size: 13px; }
+
+/* The sticky booking bar's title was 12px — it names the house on a bar that
+   follows the guest down every page. */
+.g .g-stickybar__t, .g .g-stickybar__t span, .g .g-stickybar__t b{ font-size: 13px; }
+.g .g-stickybar__t b{ font-size: 15px; }

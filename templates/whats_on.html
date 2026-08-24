@@ -1,8 +1,9 @@
 {% extends "public_base.html" %}
+{% set crumbs = [('What\'s On', None)] %}
 {% block title %}What's On{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% set crumbs = [('What\'s On', None)] %}
+
 
 
 {# Needs route /whats-on — see WHATS_ON_SETUP.md for the table, routes and admin. #}

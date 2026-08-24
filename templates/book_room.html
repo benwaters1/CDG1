@@ -1,7 +1,8 @@
 {% extends "public_base.html" %}
+{% set crumbs = [('Stay', url_for('book_rooms')), (room['name'], None)] %}
 {% block title %}Book {{ room['name'] }}{% endblock %}
 {% block content %}
-{% set crumbs = [('Stay', url_for('book_rooms')), (room['name'], None)] %}
+
 
 
 {# CONTRACT: method="post", no action (posts to /book/<room_id>).
