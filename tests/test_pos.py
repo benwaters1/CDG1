@@ -49,7 +49,12 @@ def run():
     oc, _ec, _owner, _emp = clients()
     conn = db()
     now = datetime_now()
-    today = datetime.now(timezone.utc).date()
+    # The service day, not the calendar date. The app buckets a night's
+    # trade by service_day(), which runs to 05:00 — so between midnight and
+    # five these two differ, and a fixture built on the calendar date lands
+    # on the wrong night. That is five hours every day where this suite
+    # would fail for no reason.
+    today = m.service_day()
     _cleanup(conn)
     dish = _menu(conn, now)
 

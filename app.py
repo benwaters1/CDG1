@@ -14281,8 +14281,13 @@ def pos_open_tab():
            VALUES (?, ?, ?, 'open', 'seated', ?, ?, ?, ?)""",
         (label, covers, booking["id"] if booking else None, deposit,
          # The night it belongs to, fixed at open. A tab started at 23:50 and
-         # settled at 00:10 belongs to one service, not two.
-         datetime.now(timezone.utc).date().isoformat(),
+         # settled at 00:10 belongs to one service, not two — which is what
+         # service_day_iso() gives and the UTC calendar date does not: past
+         # midnight it rolls, so a tab opened at half past one was stamped
+         # with tomorrow and landed on tomorrow's takings, tomorrow's closure
+         # and tomorrow's menu. That is the bug the service day exists to
+         # remove, and this line was still the old way round.
+         service_day_iso(),
          session.get("user_id"), datetime.now(timezone.utc).isoformat()))
     order_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
     conn.commit()
@@ -14915,7 +14920,15 @@ def pos_reopen(order_id):
     # change is not a closed period, and the whole point of the closure is that
     # yesterday's cash-up gives the same answer today.
     order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
-    day = (order["closed_at"] or "")[:10] if order else ""
+    # The tab's own service_date, not the first ten characters of closed_at.
+    # Closures are keyed by service day; closed_at is a UTC timestamp, so past
+    # midnight its date prefix is the NEXT day and this lookup found no closure
+    # at all — the guard quietly did nothing and a closed day could be reopened
+    # into, which is the one thing a closure exists to prevent. The fallback is
+    # for rows written before service_date was stamped correctly.
+    day = ""
+    if order:
+        day = order["service_date"] or service_day_iso(order["closed_at"]) or ""
     if day and conn.execute("SELECT 1 FROM pos_closures WHERE kind='day' AND period = ?",
                             (day,)).fetchone():
         conn.close()

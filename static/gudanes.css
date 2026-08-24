@@ -17,13 +17,13 @@
   --blue-pale:  #F5F5F3;   /* pale panel ground                           */
   --blue-line:  #DEDBD4;   /* hairlines                                    */
 
-  --sand:       #FAF7F2;   /* page ground — warm off-white, paper not screen */
-  --sand-2:     #F2EDE4;   /* alternate section — a shade deeper           */
-  --sand-3:     #E7DCD0;   /* third step                                 */
+  --sand:       #F6F1E7;   /* page ground — warm off-white, paper not screen */
+  --sand-2:     #EDE5D6;   /* alternate section — a shade deeper           */
+  --sand-3:     #E2D5C2;   /* third step                                 */
   --stone:      #8F8C78;   /* warm stone — the second colour, from the walls */
-  --stone-pale: #EDE8DC;   /* stone at a whisper, for panels                */
-  --line:       #DED7CB;   /* hairlines — warm, to match the ground        */
-  --white:      #FDFBF8;
+  --stone-pale: #E8DFCC;   /* stone at a whisper, for panels                */
+  --line:       #D6CBB6;   /* hairlines — warm, to match the ground        */
+  --white:      #FBF7EF;
 
   --ink:        #183456;   /* body text — the same navy, one colour       */
   --ink-soft:   #4A6076;
@@ -41,7 +41,8 @@
   --measure: 52rem;
 
   /* ---- Type -------------------------------------------------------- */
-  --serif: 'Inter', -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --serif: 'EB Garamond', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --ui:    'Inter', -apple-system, 'Helvetica Neue', Arial, sans-serif;
   --display: 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
 
@@ -106,7 +107,7 @@
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 16px; font-weight: 400; line-height: 1.5; max-width: var(--measure); margin: 0 0 var(--s4); color: var(--blue-deep); }
+.g-p{ font-size: 18px; font-weight: 400; line-height: 1.5; max-width: var(--measure); margin: 0 0 var(--s4); color: var(--blue-deep); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
 .g-lede{ font-size: clamp(17px, 1.3vw, 19px); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
@@ -666,7 +667,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 .g-drop{
   position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  min-width: 15rem; background: #fff;
+  min-width: 15rem; background: var(--white);
   border: 1px solid var(--blue-line); border-top: 2px solid var(--brass);
   padding: var(--s2) 0; margin-top: 0;
   opacity: 0; visibility: hidden; transition: opacity .16s ease;
@@ -694,7 +695,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   border: 1px solid rgba(255,255,255,.4); border-radius: 0;
   padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
 }
-.g-cur select option{ color: var(--ink); background: #fff; }
+.g-cur select option{ color: var(--ink); background: var(--white); }
 .g-approx{ font-family: var(--serif); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
 
 /* ---- Filter chips ------------------------------------------------------- */
@@ -1121,7 +1122,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-bookmenu{
   position: absolute; top: calc(100% + 10px); right: 0; z-index: 70;
   width: min(24rem, calc(100vw - 2rem));
-  background: #fff; border: 1px solid var(--line);
+  background: var(--white); border: 1px solid var(--line);
   box-shadow: 0 18px 44px rgba(20,30,45,.16);
   opacity: 0; visibility: hidden; transform: translateY(-4px);
   transition: opacity .18s ease, transform .18s ease, visibility .18s;
@@ -2050,3 +2051,25 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   text-align: left; padding: 0 var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line);
 }
 .g .data-table td{ padding: var(--s3) var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line); }
+
+/* Form controls and uppercase micro-labels stay on the sans — a Garamond at
+   13px in caps with wide tracking is genuinely hard to read, and an input
+   should look like an input. */
+.g input, .g select, .g textarea,
+.g .g-eyebrow, .g dl dt, .g .g-facts-list dt, .g .g-mb-dt, .g .g-mb-label,
+.g .g-field label, .g .g-num, .g .g-dossier__k, .g .g-sit__name,
+.g .g-sit__flag, .g .g-wscard__len, .g .g-score span, .g .g-say__by,
+.g .g-dates-table th, .g .g-chip, .g .g-footer h4, .g .g-navwrap__group,
+.g .g-hint, .g .g-opt, .g .g-foot-note, .g .g-herosearch__f label{
+  font-family: var(--ui);
+}
+
+/* An embedded map, framed like everything else — hairline, square corners,
+   and a fixed aspect so it does not jump as it loads. */
+.g-map{
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  border: 1px solid var(--line); background: var(--sand-2);
+  margin-top: var(--s5);
+}
+.g-map iframe{ position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+@media (max-width: 46rem){ .g-map{ aspect-ratio: 4 / 3; } }

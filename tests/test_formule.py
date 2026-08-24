@@ -15,8 +15,13 @@ m = _harness.m
 TAG = "formule-"
 
 
+# The service day, not the calendar date. The app buckets a night's
+# trade by service_day(), which runs to 05:00 — so between midnight and
+# five these two differ, and a fixture built on the calendar date lands
+# on the wrong night. That is five hours every day where this suite
+# would fail for no reason.
 def _iso(days=0):
-    return (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
+    return (m.service_day() + timedelta(days=days)).isoformat()
 
 
 def _cleanup(conn):
