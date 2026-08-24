@@ -201,6 +201,9 @@ MAX_UPLOAD_MB = 15
 LOGIN_LOCKOUT_THRESHOLD = 5
 LOGIN_LOCKOUT_MINUTES = 15
 BOOKING_RATE_LIMIT_PER_HOUR = 5
+# The smallest part-payment worth taking: below this the card fee is a
+# large share of the amount settled.
+PART_PAYMENT_MINIMUM = 20.0
 STALE_PENDING_BOOKING_HOURS = 48
 AUTOMATION_TICK_SECONDS = 300
 VEHICLE_TRANSFER_BUFFER_HOURS = 2
@@ -217,6 +220,8 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
     "automation_workshop_balance_reminder_enabled": "1",
+    # Off by default. See AUTOMATION_JOBS for why.
+    "automation_workshop_autocharge_enabled": "0",
     "automation_workshop_balance_reminder_days_before": "7",
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
@@ -2494,6 +2499,16 @@ def init_db():
         # workshop's supplement later must not silently re-price a registration
         # somebody has already paid a deposit against.
         ("workshop_bookings_single_supplement", "ALTER TABLE workshop_bookings ADD COLUMN single_supplement REAL"),
+        # Taking the balance on the due date without the guest present needs
+        # both halves of the Stripe identity kept from the deposit.
+        ("workshop_bookings_stripe_customer_id", "ALTER TABLE workshop_bookings ADD COLUMN stripe_customer_id TEXT"),
+        ("workshop_bookings_stripe_payment_method_id", "ALTER TABLE workshop_bookings ADD COLUMN stripe_payment_method_id TEXT"),
+        # One failed attempt, then stop and ask. A declined card retried daily
+        # is a guest woken by six bank alerts and still not paid.
+        ("workshop_bookings_autocharge_failed_at", "ALTER TABLE workshop_bookings ADD COLUMN autocharge_failed_at TEXT"),
+        # For a guest who would rather pay by transfer, without anybody having
+        # to edit the database to arrange it.
+        ("workshop_bookings_autocharge_opt_out", "ALTER TABLE workshop_bookings ADD COLUMN autocharge_opt_out INTEGER NOT NULL DEFAULT 0"),
         ("workshop_bookings_requested_roommate", "ALTER TABLE workshop_bookings ADD COLUMN requested_roommate TEXT"),
         ("workshop_bookings_dietary_notes", "ALTER TABLE workshop_bookings ADD COLUMN dietary_notes TEXT"),
         ("workshop_bookings_medical_notes", "ALTER TABLE workshop_bookings ADD COLUMN medical_notes TEXT"),
@@ -21433,7 +21448,7 @@ def workshop_email_context(booking):
     }
 
 
-def start_workshop_stripe_payment(conn, booking_id, kind):
+def start_workshop_stripe_payment(conn, booking_id, kind, amount_override=None):
     """Builds a Stripe Checkout Session for a workshop registration's
     deposit or balance and returns its URL, or None if Stripe isn't
     configured, nothing is due, or that amount is already paid — callers
@@ -21459,8 +21474,10 @@ def start_workshop_stripe_payment(conn, booking_id, kind):
         # discount, extra charge, or partial payment — pull the live figure
         # from the ledger rather than the value computed at registration time.
         amount, _, _ = workshop_balance_due(conn, booking_id)
+        if amount_override is not None:
+            amount = amount_override
         blocked = not booking["deposit_paid_at"]  # can't pay the balance before the deposit
-        label = "Balance"
+        label = "Part payment" if amount_override is not None else "Balance"
     if not amount or amount <= 0 or blocked:
         return None
     try:
@@ -21475,6 +21492,14 @@ def start_workshop_stripe_payment(conn, booking_id, kind):
                 },
                 "quantity": 1,
             }],
+            # Keep the card at deposit time so the balance can be taken on the
+            # due date without the guest coming back. Only on the deposit —
+            # later payments reuse what this saved. A guest who has opted out
+            # of automatic payment gets an ordinary one-off charge, so nothing
+            # is stored that we have said we would not use.
+            payment_intent_data=(
+                {"setup_future_usage": "off_session"}
+                if kind == "deposit" and not booking["autocharge_opt_out"] else {}),
             customer_email=booking["guest_email"],
             success_url=url_for("workshop_stripe_success", manage_token=booking["manage_token"], kind=kind, _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
             cancel_url=url_for("workshop_stripe_cancel", manage_token=booking["manage_token"], _external=True),
@@ -21483,6 +21508,32 @@ def start_workshop_stripe_payment(conn, booking_id, kind):
     except Exception:
         return None
     return checkout_session.url
+
+
+def remember_workshop_card(conn, booking_id, session):
+    """Store the Stripe customer and payment method from a deposit.
+
+    Split out so the failure is contained: if Stripe cannot be reached, or the
+    PaymentIntent has no card attached (a guest who opted out of automatic
+    payment), the deposit stays recorded and the balance is simply paid the
+    ordinary way. Losing a €600 deposit record to a lookup failure would be a
+    far worse trade than losing the convenience.
+    """
+    intent_id = sval(session, "payment_intent")
+    if not intent_id or not stripe_enabled():
+        return
+    try:
+        intent = stripe.PaymentIntent.retrieve(intent_id)
+        customer_id = sval(intent, "customer")
+        method_id = sval(intent, "payment_method")
+    except Exception as e:
+        print(f"[workshop card] could not read {intent_id}: {e}")
+        return
+    if not customer_id or not method_id:
+        return
+    conn.execute(
+        "UPDATE workshop_bookings SET stripe_customer_id = ?, stripe_payment_method_id = ? "
+        "WHERE id = ?", (customer_id, method_id, booking_id))
 
 
 def mark_workshop_payment_paid(conn, session):
@@ -21514,6 +21565,12 @@ def mark_workshop_payment_paid(conn, session):
         amount = (sval(session, "amount_total") or 0) / 100
         add_workshop_transaction(conn, booking_id, "payment", f"{label} — Stripe", amount, method="stripe")
         if kind == "workshop_deposit":
+            # Keep the customer and the card the deposit was taken on, so the
+            # balance can be charged on the due date. Both come off the
+            # PaymentIntent rather than the session; a failure to fetch them
+            # must not lose the payment we have just recorded, so it is caught
+            # — the balance simply falls back to being paid by hand.
+            remember_workshop_card(conn, booking_id, session)
             booking = conn.execute(
                 """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
                    FROM workshop_bookings
@@ -21575,14 +21632,26 @@ def workshop_pay_deposit(manage_token):
     return redirect(checkout_url, code=303)
 
 
-@app.route("/workshops/pay-balance/<manage_token>")
+@app.route("/workshops/pay-balance/<manage_token>", methods=["GET", "POST"])
 def workshop_pay_balance(manage_token):
     conn = get_db()
     booking = conn.execute("SELECT id FROM workshop_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
     if not booking:
         conn.close()
         abort(404)
-    checkout_url = start_workshop_stripe_payment(conn, booking["id"], "balance")
+
+    # An optional part-payment. Absent or unparseable means the whole balance,
+    # which keeps every link already in a guest's inbox working unchanged.
+    part = parse_money(request.form.get("amount")) if request.method == "POST" else None
+    if part is not None:
+        due, _, _ = workshop_balance_due(conn, booking["id"])
+        # Never take more than is owed, and never take an amount so small the
+        # card fee eats most of it.
+        if part < PART_PAYMENT_MINIMUM or part > due:
+            conn.close()
+            flash(f"Enter an amount between €{PART_PAYMENT_MINIMUM:.0f} and €{due:.2f}.", "error")
+            return redirect(url_for("workshop_manage", manage_token=manage_token))
+    checkout_url = start_workshop_stripe_payment(conn, booking["id"], "balance", amount_override=part)
     conn.close()
     if not checkout_url:
         flash("This balance can't be paid online right now — contact the château directly.", "error")
@@ -21910,6 +21979,22 @@ def workshop_manage(manage_token):
         conn.close()
         return redirect(url_for("workshop_manage", manage_token=manage_token))
 
+    if request.method == "POST" and request.form.get("action") == "autocharge":
+        # A guest saying "don't take it automatically, I'll pay it myself".
+        # Worth having as a button rather than an email exchange: being charged
+        # when you expected to arrange a transfer is the complaint this avoids,
+        # and it also clears any earlier failure so the choice is unambiguous.
+        wants = request.form.get("autocharge_opt_out") == "on"
+        conn.execute(
+            "UPDATE workshop_bookings SET autocharge_opt_out = ?, autocharge_failed_at = NULL "
+            "WHERE id = ?", (1 if wants else 0, booking["id"]))
+        conn.commit()
+        conn.close()
+        flash("We won't take the balance automatically — please pay it when you're ready."
+              if wants else
+              "The balance will be taken from your card on the due date.", "success")
+        return redirect(url_for("workshop_manage", manage_token=manage_token))
+
     if request.method == "POST" and request.form.get("action") == "change_session":
         new_session_id_raw = request.form.get("new_session_id", "").strip()
         if booking["status"] not in ("pending", "confirmed"):
@@ -22016,9 +22101,14 @@ def workshop_manage(manage_token):
             if workshop_session_remaining_capacity(conn, s["id"]) >= booking["party_size"]
         ]
 
+    # Read before the connection closes — whether the job is switched on is
+    # what decides whether this page promises the guest anything.
+    autocharge_enabled = (
+        get_automation_settings(conn)["automation_workshop_autocharge_enabled"] == "1")
     conn.close()
     return render_template(
         "workshop_manage.html", booking=booking, stripe_enabled=stripe_enabled(), guests=guests,
+        part_payment_minimum=PART_PAYMENT_MINIMUM, autocharge_enabled=autocharge_enabled,
         custom_fields=custom_fields, custom_responses=custom_responses,
         balance_due=balance_due, total_charged=total_charged, total_paid=total_paid,
         other_sessions=other_sessions,
@@ -32045,6 +32135,122 @@ def run_workshop_balance_reminder_job(conn, days_before):
     return f"reminded {sent} of {len(due)} due booking(s)"
 
 
+def run_workshop_autocharge_job(conn):
+    """Takes whatever is still owed on any registration whose balance is due.
+
+    This is the only place in the app that moves money without somebody
+    present, so every guard here matters more than the happy path:
+
+      - `idempotency_key` — if this job runs twice, from a retry, a restart or
+        two workers, Stripe returns the first charge rather than making a
+        second. Without it the château could take €4,800 twice.
+      - `autocharge_failed_at` — one attempt, then stop. A declined card
+        retried daily is a guest with six bank alerts who still has not paid.
+      - `autocharge_opt_out` — somebody who said they would rather pay by
+        transfer is never charged.
+      - the amount is read from the ledger at the moment of charging, so a
+        guest who part-paid last week is charged only what is left.
+
+    A card that declines, or a European card that wants authentication the
+    guest has to complete, both need the guest. Both get the same email
+    asking them to pay in their own time, and the château sees the failure.
+    """
+    if not stripe_enabled():
+        return {"charged": 0, "failed": 0, "skipped": "stripe not configured"}
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.balance_due_date IS NOT NULL
+              AND workshop_bookings.balance_due_date <= ?
+              AND workshop_bookings.status = 'confirmed'
+              AND workshop_bookings.autocharge_opt_out = 0
+              AND workshop_bookings.autocharge_failed_at IS NULL
+              AND workshop_bookings.stripe_payment_method_id IS NOT NULL""",
+        (today,),
+    ).fetchall()
+
+    charged, failed = 0, 0
+    for row in rows:
+        due, _, _ = workshop_balance_due(conn, row["id"])
+        if due <= 0:
+            continue                       # already settled, in part or in full
+        try:
+            stripe.PaymentIntent.create(
+                amount=int(round(due * 100)),
+                currency="eur",
+                customer=row["stripe_customer_id"],
+                payment_method=row["stripe_payment_method_id"],
+                off_session=True,
+                confirm=True,
+                description=f"Balance — {row['reference_code']}",
+                idempotency_key=f"wsbal-{row['id']}-{today}",
+            )
+        except Exception as e:
+            # Declined, or authentication required. Either way the guest has to
+            # act, so record it, tell them, and never try again unprompted.
+            conn.execute(
+                "UPDATE workshop_bookings SET autocharge_failed_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), row["id"]))
+            conn.commit()
+            send_autocharge_failed_email(conn, row, due, str(getattr(e, "user_message", None) or e))
+            failed += 1
+            continue
+        add_workshop_transaction(conn, row["id"], "payment",
+                                 "Balance — charged automatically", due, method="stripe")
+        conn.commit()
+        send_autocharge_taken_email(conn, row, due)
+        charged += 1
+    conn.commit()
+    return {"charged": charged, "failed": failed}
+
+
+def send_autocharge_taken_email(conn, booking, amount):
+    """A receipt. Being charged with no word about it is the complaint this
+    avoids — the money left their account either way."""
+    send_email(
+        booking["guest_email"],
+        f"Balance paid — {booking['title']}",
+        f"Hi {booking['guest_name']},\n\n"
+        f"As arranged, we have taken the remaining €{amount:.2f} for "
+        f"{booking['title']} ({booking['reference_code']}) from the card you "
+        f"registered with. Nothing further is owed.\n\n"
+        f"{url_for('workshop_manage', manage_token=booking['manage_token'], _external=True)}\n\n"
+        f"— Château de Gudanes",
+    )
+
+
+def send_autocharge_failed_email(conn, booking, amount, reason):
+    """The card did not go through. Tells the guest what to do rather than what
+    went wrong internally — "authentication_required" means nothing to them."""
+    send_email(
+        booking["guest_email"],
+        f"Payment did not go through — {booking['title']}",
+        f"Hi {booking['guest_name']},\n\n"
+        f"We tried to take the remaining €{amount:.2f} for {booking['title']} "
+        f"({booking['reference_code']}) from the card you registered with, and it "
+        f"did not go through. Nothing has been taken.\n\n"
+        f"You can pay it here whenever suits you:\n"
+        f"{url_for('workshop_manage', manage_token=booking['manage_token'], _external=True)}\n\n"
+        f"If it keeps refusing, reply to this email and we will sort it out "
+        f"another way.\n\n"
+        f"— Château de Gudanes",
+    )
+    owner_to = owner_email(conn)
+    if owner_to:
+        send_email(
+            owner_to,
+            f"Balance auto-charge failed — {booking['reference_code']}",
+            f"{booking['guest_name']} — €{amount:.2f} for {booking['title']}.\n"
+            f"Stripe said: {reason}\n\n"
+            f"They have been emailed a link to pay it themselves. This booking "
+            f"will not be tried again automatically.\n",
+        )
+
+
+
 def run_workshop_feedback_request_job(conn):
     """Emails a feedback request once per confirmed registration, a day
     after the session ends — mirrors the room booking's checkout-time
@@ -32391,6 +32597,11 @@ AUTOMATION_JOBS = [
     # Daily. Everything here has weeks of notice, so a missed run costs
     # nothing and nothing is ever raised at short notice.
     ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
+    # Deliberately shipped disabled: this is the only job that takes money
+    # with nobody present. Turn it on under Automation once a test booking
+    # has been charged end to end in Stripe test mode, including a card
+    # made to decline on purpose.
+    ("workshop_autocharge", "automation_workshop_autocharge_enabled", None, 24 * 3600, run_workshop_autocharge_job),
 ]
 
 
@@ -32464,6 +32675,7 @@ def automation_loop():
 AUTOMATION_JOB_LABELS = {
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
+    "workshop_autocharge": "Workshop: charge the balance on its due date",
     "ical_sync": "iCal sync",
     "workshop_balance_reminder": "Workshop balance-due reminders",
     "workshop_feedback_request": "Workshop feedback requests",
