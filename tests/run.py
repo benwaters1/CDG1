@@ -33,6 +33,7 @@ SUITES = [
     "test_solo_occupancy",
     "test_workflows",
     "test_operations",
+    "test_approvals_money",
     "test_closing_loops",
     "test_list_view",
     "test_consequences",
