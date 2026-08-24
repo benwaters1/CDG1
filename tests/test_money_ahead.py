@@ -27,6 +27,9 @@ def _cleanup(conn):
     conn.execute("DELETE FROM recurring_costs WHERE label LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM insurance_policies WHERE provider LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM expenses WHERE vendor_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM maintenance_visits WHERE schedule_id IN "
+                 "(SELECT id FROM maintenance_schedules WHERE name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM maintenance_schedules WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM app_settings WHERE key IN (?, ?)",
                  (m.OPENING_BALANCE_SETTING, m.MONTHLY_STAFF_COST_SETTING))
     conn.commit()
@@ -244,6 +247,65 @@ def run():
     s.check("clearing it takes wages back out",
             ahead["monthly_staff"] is None
             and not any(o["kind"] == "Wages" for o in ahead["outgoing"]))
+
+    s.section("Scheduled upkeep is shown, but never counted")
+    # The distinction the whole page rests on. Everything above is money
+    # somebody has committed to PAYING. This is money the house has committed
+    # to SPENDING, priced from what the same job cost last time — a projection,
+    # which is the one thing the figures promise not to be. So it is listed and
+    # excluded, and the page says which.
+    conn.execute(
+        """INSERT INTO maintenance_schedules (name, category, every_months,
+             next_due_on, lead_days, required_by, active, created_at)
+           VALUES (?, 'heating', 12, ?, 21, 'insurance', 1, ?)""",
+        (TAG + "Ramonage", d(35), now))
+    sched_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.execute(
+        """INSERT INTO maintenance_schedules (name, category, every_months,
+             next_due_on, lead_days, required_by, active, created_at)
+           VALUES (?, 'building', 12, ?, 21, 'none', 1, ?)""",
+        (TAG + "Gutters", d(50), now))
+    conn.execute(
+        """INSERT INTO maintenance_visits (schedule_id, done_on, done_by, cost, created_at)
+           VALUES (?, ?, 'Le ramoneur', 180.0, ?)""", (sched_id, d(-330), now))
+    conn.commit()
+
+    before = m.money_ahead(conn, days=90, today=today)
+    work = {w["label"]: w for w in before["upcoming_work"]}
+    s.check("both jobs are listed", len(work) == 2, detail=str(list(work)))
+    s.check("the one with a history carries last time's price",
+            work.get(TAG + "Ramonage", {}).get("amount") == 180.0,
+            detail=str(work.get(TAG + "Ramonage")))
+    s.check("and says when that price is from",
+            work.get(TAG + "Ramonage", {}).get("since") == d(-330))
+    s.check("the one never costed is listed without a number rather than a guess",
+            work.get(TAG + "Gutters", {}).get("amount") is None,
+            detail=str(work.get(TAG + "Gutters")))
+    s.check("and it is counted as unpriced", before["work_unpriced"] == 1,
+            detail=str(before["work_unpriced"]))
+    s.check("the subtotal is only what has a price", before["work_total"] == 180.0,
+            detail=str(before["work_total"]))
+    s.check("one is marked as expected of you", work.get(TAG + "Ramonage", {}).get("required"))
+    s.check("the other is not", not work.get(TAG + "Gutters", {}).get("required"))
+
+    # The property that matters most.
+    s.check("none of it reaches the outgoing total",
+            not any(TAG + "Ramonage" in o["label"] for o in before["outgoing"]),
+            detail="scheduled work leaked into committed spend")
+    s.check("nor the months", round(sum(mo["out"] for mo in before["months"]), 2)
+            == before["total_out"], detail="the months stopped adding up")
+    s.check("and the net is untouched by it",
+            before["net"] == round(before["total_in"] - before["total_out"], 2))
+
+    s.section("A retired schedule stops appearing")
+    conn.execute("UPDATE maintenance_schedules SET active = 0 WHERE id = ?", (sched_id,))
+    conn.commit()
+    s.check("it is gone from the list",
+            not any(TAG + "Ramonage" in w["label"]
+                    for w in m.money_ahead(conn, days=90, today=today)["upcoming_work"]))
+    conn.execute("DELETE FROM maintenance_visits WHERE schedule_id = ?", (sched_id,))
+    conn.execute("DELETE FROM maintenance_schedules WHERE name LIKE ?", (TAG + "%",))
+    conn.commit()
 
     s.section("On the page")
     r = oc.get("/management/money-ahead")

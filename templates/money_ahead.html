@@ -140,6 +140,41 @@
   </div>
 </div>
 
+{# Deliberately below the totals and not inside them. The figures above are
+   money somebody has committed to paying; this is money the house has
+   committed to spending, priced from last time — a projection, which is the
+   one thing the rest of the page promises not to be. #}
+{% if ahead.upcoming_work %}
+<h2 class="section-heading">Work already scheduled</h2>
+<p class="field-hint" style="max-width:900px; margin-top:-6px;">
+  From <a href="{{ url_for('maintenance_page') }}">the upkeep schedule</a>, falling due inside
+  this window. <strong>Not counted in any figure above</strong> — there is no invoice for it yet,
+  and the prices are what the same job cost last time rather than what it will cost.
+</p>
+<div class="doc-list" style="max-width:900px;">
+  {% for w in ahead.upcoming_work %}
+  <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+    <span style="min-width:104px;">{{ w.date|date_short }}</span>
+    <strong style="flex:1;">{{ w.label }}</strong>
+    {% if w.required %}<span class="mini-status status-pending">expected of you</span>{% endif %}
+    {% if w.amount %}
+      <span class="room-price">€{{ '%.2f'|format(w.amount) }}</span>
+      <span class="upload-hint">cost last time, {{ w.since|date_short }}</span>
+    {% else %}
+      <span class="upload-hint">never priced here</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+<p class="field-hint" style="max-width:900px;">
+  {% if ahead.work_total %}€{{ '%.2f'|format(ahead.work_total) }} of it has a price from last
+  time{% else %}None of it has been priced here yet{% endif %}{% if ahead.work_unpriced %},
+  and {{ ahead.work_unpriced }} job{{ '' if ahead.work_unpriced == 1 else 's' }}
+  {{ 'has' if ahead.work_unpriced == 1 else 'have' }} never been costed — recording what you pay
+  makes the next one of these worth reading{% endif %}.
+</p>
+{% endif %}
+
 <p class="pay-disclaimer" style="margin-top:20px;">
   What is <em>not</em> in here, so it is not mistaken for a full picture:
   {% if ahead.monthly_staff is none %}wages, until you set a monthly figure above;{% endif %}
