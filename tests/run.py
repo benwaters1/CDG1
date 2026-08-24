@@ -61,6 +61,7 @@ SUITES = [
     "test_stripe_webhook",
     "test_stripe_price_drift",
     "test_promo_privacy",
+    "test_promo_blast",
     "test_terminal",
     "test_arrive",
     "test_timesheet_repair",

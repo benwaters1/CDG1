@@ -25604,6 +25604,35 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
             params.append(since_date_iso)
         for row in conn.execute(query, params).fetchall():
             recipients.setdefault(row["guest_email"], row["guest_name"])
+
+    # Anyone who has unsubscribed comes back out.
+    #
+    # This was missing entirely. The segments are built from confirmed
+    # bookings, and only the workshop one looked at do_not_email - a room or
+    # restaurant guest had no equivalent, and email_optouts, which is where
+    # "unsubscribe" in a campaign email actually writes, was never consulted
+    # by this path at all. So a guest could unsubscribe and still be sent the
+    # next promo code, which is both rude and, for marketing mail, not
+    # lawful.
+    #
+    # Filtered here rather than at the send site because both the preview
+    # count and the send go through this function: doing it at the send would
+    # show the owner a recipient count larger than what actually goes out.
+    #
+    # Compared case-insensitively. Every path lowercases before storing, so
+    # this should be redundant - but an address the owner types into the
+    # opt-out box by hand is the one that would silently fail to match, and
+    # that is exactly the case that matters.
+    if recipients:
+        opted_out = {
+            (r["email"] or "").strip().lower()
+            for r in conn.execute("SELECT email FROM email_optouts").fetchall()
+        }
+        if opted_out:
+            recipients = {
+                email: name for email, name in recipients.items()
+                if (email or "").strip().lower() not in opted_out
+            }
     return recipients
 
 
