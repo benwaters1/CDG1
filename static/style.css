@@ -1399,7 +1399,9 @@ a.cal-ev:hover{ filter:brightness(0.97); transform:translateY(-1px); box-shadow:
      chips — are the two things staff touch most on the page they open first,
      and neither uses the generic button classes above. */
   .segmented a{ min-height:40px; display:inline-flex; align-items:center; }
-  .cal-chip{ min-height:38px; display:inline-flex; align-items:center; }
+  /* 38px was under the 44px finger minimum, same fault as the events
+     below — raised for the same reason. */
+  .cal-chip{ min-height:44px; display:inline-flex; align-items:center; }
   /* Week-view day headings double as links to that day. */
   .week-day-head{ min-height:38px; display:flex; align-items:center; }
 
@@ -2249,3 +2251,63 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .staff-lang{ display:inline-flex; gap:2px; align-items:center; }
 .staff-lang__opt{ padding:2px 5px; border-radius:4px; font-size:11px; letter-spacing:0.04em; }
 .staff-lang__opt.is-on{ background:var(--parchment-line); color:var(--ink); font-weight:600; }
+
+
+/* ==========================================================================
+   CALENDAR — touch targets and small screens
+   --------------------------------------------------------------------------
+   Measured before writing this. On a phone the calendar's own controls were
+   the smallest things on it:
+
+     .cal-ev      11.5px text + 4px padding  ~23px tall
+     .cal-daynum  11.5px text + 1px padding  ~18px tall
+     .cal-more    10.5px text, no padding    ~14px tall
+
+   44px is the accepted minimum for a finger, and every one of those is the
+   thing you are actually trying to hit — an event, the day it sits on, and
+   the link to the rest of the day. The existing coarse-pointer block covered
+   .cal-chip, which is a filter, and nothing you navigate with.
+
+   The month grid was also pinned to min-width:640px below 900px, so a 375px
+   phone side-scrolled to reach the end of the week. Below 560px it now fits
+   the screen and trades event text for a count: seven columns of legible dots
+   beats four columns of readable text and a swipe to find Saturday. Tapping a
+   day still opens the day view, which is where the detail lives.
+   ========================================================================== */
+
+@media (pointer: coarse){
+  /* The row itself grows rather than the text, so the calendar keeps its
+     density on a laptop and only loosens where a finger is involved. */
+  .cal-ev{ min-height:44px; padding:8px 10px; font-size:13px; border-radius:12px; }
+  .cal-ev-dot{ width:9px; height:9px; }
+  .cal-daynum{ min-height:44px; min-width:44px; display:inline-flex;
+               align-items:center; justify-content:center; font-size:13px; padding:0 6px; }
+  .cal-more{ min-height:44px; display:inline-flex; align-items:center;
+             padding:0 10px; font-size:12.5px; }
+  .cal-day{ gap:6px; }
+}
+
+@media (max-width: 560px){
+  /* Fit the week on the screen instead of scrolling sideways for it. */
+  .cal-month{ overflow-x:visible; }
+  .cal-month-head, .cal-month-row{ min-width:0; }
+  .cal-day{ min-height:64px; padding:4px 3px; }
+
+  /* A cell this narrow cannot hold a label, so it holds the shape of the day:
+     one dot per item, in the lane colour, and the day number. The words are
+     one tap away in the day view rather than truncated to nothing here. */
+  .cal-month .cal-ev{ min-height:0; padding:0; background:none; border-radius:0; }
+  .cal-month .cal-ev-text,
+  .cal-month .cal-ev-who{ display:none; }
+  .cal-month .cal-day-events{ flex-direction:row; flex-wrap:wrap; gap:3px; align-items:center; }
+  .cal-month .cal-ev-dot{ width:7px; height:7px; }
+  .cal-month .cal-more{ min-height:0; font-size:10px; padding:0 2px; }
+
+  /* The day number stays the tap target for opening the day. */
+  .cal-month .cal-daynum{ min-height:26px; min-width:26px; font-size:12px; }
+
+  /* The toolbar had view switcher, arrows, a date label and a Today link on
+     one line; below this width it wraps into a mess unless told how. */
+  .cal-toolbar{ flex-wrap:wrap; gap:8px; }
+  .cal-month-label{ order:-1; width:100%; }
+}
