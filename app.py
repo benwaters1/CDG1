@@ -19032,7 +19032,13 @@ def stripe_webhook():
     except Exception:
         abort(400)
 
-    if event["type"] == "checkout.session.completed":
+    # Both events, because they mean the same thing at different times. A card
+    # pays during checkout and completes the session already paid; a method
+    # that settles later completes it "unpaid" and arrives days afterwards as
+    # async_payment_succeeded. Listening only for the first loses the second
+    # entirely — the guest has paid and there is no booking.
+    if event["type"] in ("checkout.session.completed",
+                         "checkout.session.async_payment_succeeded"):
         session = event["data"]["object"]
         meta = smeta(session)
         conn = get_db()
@@ -19074,6 +19080,38 @@ def stripe_webhook():
             # Stripe sees a 500 and retries, which is the correct behaviour
             # for a payment we may not have recorded.
             print(f"[stripe webhook] {event['type']} failed: {e}")
+            raise
+        finally:
+            conn.close()
+
+    elif event["type"] == "checkout.session.async_payment_failed":
+        # A delayed payment that did not arrive. Nothing was created for it —
+        # the branches above only act on "paid" — so there is no booking to
+        # cancel. What there is, is a guest who believes they have paid and a
+        # bank that has said otherwise, and nobody would ever find out.
+        session = event["data"]["object"]
+        meta = smeta(session)
+        who = (meta.get("guest_name") or meta.get("contact_name")
+               or sval(session, "customer_email") or "someone")
+        conn = get_db()
+        try:
+            log_audit(conn, "stripe_payment_failed", target=who,
+                      details=f"{meta.get('kind') or 'booking'} — "
+                              f"session {session['id']}")
+            # A task rather than only a log line, because the log is somewhere
+            # nobody looks until they already know something is wrong.
+            conn.execute(
+                """INSERT INTO tasks (title, notes, priority, due_date, status,
+                     origin, created_at)
+                   VALUES (?, ?, 'high', ?, 'open', 'payment', ?)""",
+                (f"A payment from {who} failed after checkout",
+                 "They completed checkout with a method that settles later, and "
+                 "the payment did not arrive. Nothing was booked. Stripe session "
+                 f"{session['id']}.",
+                 service_day_iso(), datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+        except Exception as e:
+            print(f"[stripe webhook] async_payment_failed handling failed: {e}")
             raise
         finally:
             conn.close()
