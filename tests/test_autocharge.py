@@ -248,5 +248,22 @@ def run():
     conn.close()
     s.check("and they can change their mind back", opted == 0, detail=f"got {opted}")
 
+    s.section("The guest can still find the opt-out")
+    # The control and its notice live in workshop_manage.html, which keeps
+    # arriving in handover zips from before this feature existed. Charging a
+    # card automatically with no visible way to decline is the failure worth
+    # catching loudly, so this names it rather than leaving it to a route test.
+    import os as _os
+    tpl = open(_os.path.join(_harness.ROOT, "templates", "workshop_manage.html"),
+               encoding="utf-8").read()
+    s.check("the opt-out checkbox is on the page",
+            'name="autocharge_opt_out"' in tpl,
+            detail="the opt-out has been deleted from templates/workshop_manage.html "
+                   "— the balance is charged automatically with no way for the "
+                   "guest to decline")
+    s.check("and the notice saying what will happen is with it",
+            "balance_due_date" in tpl and "autocharge_enabled" in tpl,
+            detail="the guest is not told their card will be charged")
+
     _cleanup()
     return s

@@ -1806,10 +1806,27 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 /* The wordmark asset is white-on-transparent. The header is cream, so on its
    own it was invisible on every page. Invert it to the brand navy; the only
    place it should stay white is over a dark hero. */
-.g .g-brand img{
-  filter: invert(11%) sepia(37%) saturate(1946%) hue-rotate(190deg) brightness(96%) contrast(93%);
+/* The wordmark PNG is white-on-transparent. An invert/hue-rotate chain was
+   producing purple rather than navy; a mask uses the file's alpha channel and
+   fills it with an exact colour instead. */
+.g .g-logo img, .g .g-brand img{
+  filter: none;
+  background-color: var(--blue-deep);
+  -webkit-mask-image: var(--logo-src); mask-image: var(--logo-src);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-size: contain; mask-size: contain;
+  -webkit-mask-position: left center; mask-position: left center;
 }
-.g.has-hero.at-top .g-brand img{ filter: none; }
+/* Over the hero the white original is correct — no mask, no colour. */
+.g.has-hero.at-top .g-logo img, .g.has-hero.at-top .g-brand img{
+  background-color: transparent;
+  -webkit-mask-image: none; mask-image: none;
+}
+/* Where mask is unsupported, fall back to the untouched white file rather
+   than to a wrong colour. */
+@supports not ((-webkit-mask-image: url()) or (mask-image: url())){
+  .g .g-logo img, .g .g-brand img{ background-color: transparent; }
+}
 
 /* ==========================================================================
    TESTIMONIALS
@@ -2681,7 +2698,8 @@ stroke='%238F8C78' stroke-width='1'>\
    Virginia creeper on the gates, and the verdigris of the copper. Used for
    accents only — a rule, a mark, a hover — never a surface. */
 :root{
-  --gilt:      #B08D57;   /* the gilding on the salon medallion   */
+  --gilt:      #8C6A38;   /* gold for text — 4.4:1 on parchment, passes AA */
+  --gilt-leaf: #B08D57;   /* the true leaf colour — marks, and text on navy */
   --creeper:   #8C3A2B;   /* the Virginia creeper on the gates    */
   --verdigris: #5F7A6E;   /* aged copper from the kitchen         */
 }
@@ -2744,3 +2762,76 @@ stroke='%238F8C78' stroke-width='1'>\
 .g .g-close__acts .g-btn--solid{ background: var(--sand); color: var(--blue-deep); border-color: var(--sand); }
 .g .g-close__acts .g-btn:hover{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
 @media (max-width: 40rem){ .g .g-close__acts .g-btn{ width: 100%; } }
+
+/* ==========================================================================
+   GOLD
+   The gilding is on the medallion, the mirror frames and the salon mouldings
+   — it belongs on the site too. Used the way a gilder uses it: on the line,
+   the mark and the moment of emphasis, never on a surface. A château is
+   stone and plaster with gold in the details, not a gold building.
+   ========================================================================== */
+
+/* The devices take gilt rather than stone — they are the drawn ornament, and
+   ornament in this building is gilded. */
+.g .g-fleur, .g .g-medallion, .g .g-monogram,
+.g .g-house, .g .g-hairs i, .g .g-orn svg{ color: var(--gilt-leaf); }
+.g .g-iron{ color: var(--gilt-leaf); opacity: .42; }
+
+/* A gilt hairline above a section eyebrow — the way a plate is ruled. */
+.g-eyebrow{ position: relative; }
+.g-sec .g-wrap > .g-eyebrow::before,
+.g-sec .g-two > div > .g-eyebrow::before{
+  content: ''; display: block; width: 26px; height: 1px;
+  background: var(--gilt); margin-bottom: var(--s3);
+}
+
+/* Figures — prices, room counts, the scale panel — set in gilt so the number
+   carries rather than the label. */
+.g .g-fig{ color: var(--gilt); }
+.g .g-figure b{ color: var(--gilt); }
+.g .g-score b{ color: var(--gilt); }
+.g .g-timeline b{ color: var(--gilt); }
+.g .g-num{ border-color: var(--gilt); color: var(--gilt); }
+
+/* Rules that separate rather than divide. */
+.g .g-rule--double{ border-top-color: var(--gilt); border-bottom-color: var(--gilt); opacity: .55; }
+.g .g-gloss{ border-top-color: var(--gilt); border-bottom-color: var(--gilt); }
+.g .g-gloss__rule{ background: var(--gilt); }
+.g .g-gloss::before, .g .g-gloss::after{ color: var(--gilt); }
+
+/* The engraved corner ticks on cards and plates. */
+.g .g-plate-edge::before, .g .g-plate-edge::after,
+.g .g-corners::before, .g .g-corners::after{ border-color: var(--gilt); }
+
+/* Interaction: gold is what happens when you touch something. */
+.g .g-btn:not(.g-btn--solid):hover{ border-color: var(--gilt); color: var(--gilt); }
+.g .g-nav a:hover, .g .g-nav a.is-on{ border-bottom-color: var(--gilt); }
+.g .g-crumbs a:hover{ border-bottom-color: var(--gilt); }
+.g .g-card:hover, .g .g-sit:hover, .g .g-wscard:hover{ border-color: var(--gilt); }
+.g a:focus-visible, .g button:focus-visible,
+.g input:focus-visible, .g select:focus-visible, .g textarea:focus-visible{
+  outline: 2px solid var(--gilt); outline-offset: 3px;
+}
+
+/* On navy the same gold, lifted so it reads against the dark. */
+.g .g-close__mark{ color: rgba(176,141,87,.72); }
+/* On navy the leaf colour reaches 4.08:1 — the readable gold would not. */
+.g .g-footer h4, .g .g-testament__by{ color: var(--gilt-leaf); }
+.g .g-footer h4{ color: var(--gilt); }
+.g .g-testament__by{ color: var(--gilt); }
+
+/* The drop capital and the versal — a gilded initial is the oldest use of
+   gold on a page there is. */
+.g .g-drop-cap::first-letter, .g .g-versal::first-letter{ color: var(--gilt); }
+.g .g-versal::first-letter{ border-color: var(--gilt); }
+
+/* Prices are set in several different ways across the templates — .g-fig, a
+   bare <b> in a rate line, the compare table. All of them are the number a
+   guest is deciding on, so all of them take the gilt. */
+.g .g-card__rate b,
+.g .g-room__rate b,
+.g .g-homeroom__rate b,
+.g .g-wscard__price b,
+.g .g-sit__rate .g-fig,
+.g .g-compare .g-fig,
+.g .g-ledger .g-fig{ color: var(--gilt); }

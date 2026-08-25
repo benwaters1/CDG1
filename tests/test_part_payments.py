@@ -165,5 +165,26 @@ def run():
     s.check("and the route hands it over", "part_payment_minimum=PART_PAYMENT_MINIMUM"
             in open(os.path.join(_harness.ROOT, "app.py"), encoding="utf-8").read())
 
+    # These three exist because the block really does keep getting lost. A
+    # handover zip (final_17) arrived carrying a workshop_manage.html from
+    # before part-payments landed -- 35 lines of pure deletion -- and only the
+    # `min=` check above failed, with a message about the floor drifting. That
+    # reads like a rounding quibble, not "the guest can no longer pay part of
+    # their balance". Each of these names the actual loss instead.
+    s.check("the part-payment form is still on the page",
+            "workshop_pay_balance" in tpl and "Or pay part of it" in tpl,
+            detail="the part-payment form has been deleted from "
+                   "templates/workshop_manage.html — a guest can no longer pay "
+                   "part of a balance. Likely a handover template from before "
+                   "the feature landed.")
+    s.check("it still posts the amount field the route reads",
+            'name="amount"' in tpl,
+            detail="the amount input was renamed or removed, so every "
+                   "part-payment silently becomes a full one")
+    s.check("and it still carries a CSRF token",
+            tpl.count("csrf_token()") >= 2,
+            detail=f"only {tpl.count('csrf_token()')} csrf_token() call(s) in the "
+                   "template — a form has lost its token and will be rejected")
+
     _cleanup()
     return s
