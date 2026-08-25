@@ -2197,16 +2197,11 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    sixteen with their groups and icons. Both stay — the row is a shortcut,
    not a replacement, and hiding the toggle made the panel unreachable on
    desktop. */
-@media (min-width: 68.0625rem){
-  .g .g-navbtn{
-    display: inline-flex !important; align-items: center; gap: var(--s2);
-    order: 3; min-height: 44px; background: none; border: 0; cursor: pointer;
-    font-family: var(--ui); font-size: 13px; font-weight: 500;
-    letter-spacing: .09em; text-transform: uppercase; color: var(--ink);
-    margin-left: var(--s5);
-  }
-  .g.has-hero.at-top .g-navbtn{ color: #fff; }
-  .g .g-navbtn__label{ display: inline; }
+/* The eight-item row reaches every destination, so a MENU toggle beside it
+   is redundant — and it was the main thing making the header look busy.
+   The panel is still there below 84rem where the row is hidden. */
+@media (min-width: 84.0625rem){
+  .g .g-navbtn{ display: none !important; }
 }
 
 /* ==========================================================================
@@ -2400,7 +2395,10 @@ html, body{ max-width: 100%; overflow-x: hidden; }
 /* A band of the château's own ironwork, repeated as a rule. */
 .g-iron{
   height: 26px; width: 100%; color: var(--stone); opacity: .55;
-  background-repeat: repeat-x; background-position: center; background-size: auto 26px;
+  /* A single centred motif, not a repeating fence. The lines either side are
+     drawn with borders so the ornament reads as a rule with a mark in it. */
+  display: flex; align-items: center;
+  background-repeat: no-repeat; background-position: center; background-size: auto 26px;
   margin: var(--s7) 0;
   background-image: url("data:image/svg+xml;utf8,\
 <svg xmlns='http://www.w3.org/2000/svg' width='60' height='26' fill='none' \
@@ -2750,7 +2748,11 @@ stroke='%238F8C78' stroke-width='1'>\
    ========================================================================== */
 .g-close{ background: var(--blue-deep); color: #fff; }
 .g-close .g-wrap{ text-align: center; }
-.g-close__mark{ display: block; margin: 0 auto var(--s5); width: 54px; height: 54px; color: rgba(255,255,255,.42); }
+/* The real wordmark, white on navy — no mask or filter needed here. */
+.g-close__mark{
+  display: block; margin: 0 auto var(--s6);
+  width: auto; height: 62px; opacity: .8;
+}
 .g-close__h{
   font-family: var(--display); font-weight: 300;
   font-size: clamp(28px, 3.4vw, 42px); line-height: 1.12;
@@ -2814,7 +2816,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 
 /* On navy the same gold, lifted so it reads against the dark. */
-.g .g-close__mark{ color: rgba(176,141,87,.72); }
+
 /* On navy the leaf colour reaches 4.08:1 — the readable gold would not. */
 .g .g-footer h4, .g .g-testament__by{ color: var(--gilt-leaf); }
 .g .g-footer h4{ color: var(--gilt); }
@@ -2835,3 +2837,113 @@ stroke='%238F8C78' stroke-width='1'>\
 .g .g-sit__rate .g-fig,
 .g .g-compare .g-fig,
 .g .g-ledger .g-fig{ color: var(--gilt); }
+
+
+/* The hero video was centre-cropped, which put the gates across the frame and
+   the château small in the middle. Biasing the crop upward keeps the building
+   in view at every aspect ratio. */
+.g .g-hero video, .g .g-hero__media video, .g .g-hero img{
+  object-position: center 32%;
+}
+@media (max-width: 46rem){
+  .g .g-hero video, .g .g-hero__media video, .g .g-hero img{ object-position: center 28%; }
+}
+
+/* ==========================================================================
+   THE HERO, REBUILT
+   It held a twelve-word headline at 76px, a thirty-four word paragraph and a
+   form, all ranged left — busy and plain at the same time. Centred, with the
+   name alone as the title, one line beneath it, and the photograph doing the
+   work. The type comes down; the composition does more.
+   ========================================================================== */
+.g .g-hero__in{
+  text-align: center;
+  max-width: 54rem; margin-inline: auto;
+  padding-inline: var(--s5);
+}
+.g .g-hero__eyebrow{
+  font-family: var(--ui); font-size: 13px; font-weight: 500;
+  letter-spacing: .28em; text-transform: uppercase;
+  color: rgba(255,255,255,.82); margin: 0 0 var(--s5);
+}
+.g .g-hero__title{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(38px, 6.4vw, 88px); line-height: 1;
+  letter-spacing: .015em; color: #fff; margin: 0;
+  text-shadow: 0 1px 30px rgba(12,26,44,.4);
+}
+/* A gilt rule beneath the name, the way a plate is ruled. */
+.g .g-hero__title::after{
+  content: ''; display: block; width: 64px; height: 1px;
+  background: var(--gilt-leaf); opacity: .85;
+  margin: var(--s6) auto 0;
+}
+.g .g-hero__lede{
+  font-size: clamp(16px, 1.5vw, 19px); line-height: 1.65;
+  color: rgba(255,255,255,.9); max-width: 34rem;
+  margin: var(--s5) auto 0; text-shadow: 0 1px 20px rgba(12,26,44,.45);
+}
+/* The search sits centred beneath, and stops looking like a plain box. */
+.g .g-herosearch{
+  margin: var(--s7) auto 0; max-width: 44rem;
+  border: 1px solid rgba(246,241,231,.5);
+  box-shadow: 0 18px 50px rgba(12,26,44,.28);
+}
+@media (max-width: 46rem){
+  .g .g-hero__eyebrow{ letter-spacing: .18em; font-size: 13px; }
+  .g .g-hero__title::after{ margin-top: var(--s5); }
+}
+
+/* ==========================================================================
+   ONE CARD FAMILY
+   The workshops page carries two card systems — .g-wscard for the ateliers
+   and .g-sit for the bookable dates. They do different jobs, but they were
+   drawn differently enough to look like a mistake. Same frame, same rhythm,
+   same gilt on hover; the difference is the content, not the styling.
+   ========================================================================== */
+.g .g-wscard, .g .g-sit, .g .g-card{
+  background: var(--white);
+  border: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  transition: border-color .18s ease;
+}
+.g .g-wscard__img, .g .g-sit__img, .g .g-card__img{
+  width: 100%; height: clamp(10rem, 15vw, 13rem);
+  object-fit: cover; display: block; flex: none;
+}
+/* The label above the name: same size, same tracking, same colour. */
+.g .g-wscard__len, .g .g-sit__name{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--stone); margin: 0 0 var(--s3);
+}
+/* The line that carries the dates. */
+.g .g-wscard__name, .g .g-sit__when{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(21px, 2vw, 27px); line-height: 1.15;
+  letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
+}
+/* Prices sit at the same place in both. */
+.g .g-wscard__price, .g .g-sit__rate{ margin: auto 0 var(--s5); }
+/* The action fills the width in both. */
+.g .g-wscard__foot .g-btn, .g .g-sit .g-btn{ width: 100%; }
+
+/* The hero CTA was added before the hero became centred, so it still ranged
+   left under centred type. */
+.g .g-hero__cta{ text-align: center; }
+
+/* On a hero page main has padding-top:0 so the hero can run under the fixed
+   header — which sent the breadcrumb under it too, colliding with the logo.
+   The trail is only ever above the hero on pages without one; on hero pages
+   it sits below, where it belongs. */
+.g.has-hero .g-crumbs{ padding-top: calc(86px + var(--s3)); }
+/* Without a hero, main already carries the 84px offset. */
+.g:not(.has-hero) .g-crumbs{ padding-top: var(--s3); }
+
+
+/* The line either side of the single ironwork motif. */
+.g-iron::before, .g-iron::after{
+  content: ''; flex: 1; height: 1px; background: var(--line);
+}
+.g-iron::before{ margin-right: 78px; }
+.g-iron::after{ margin-left: 78px; }

@@ -3,8 +3,6 @@
 {% block title %}Stay{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_devices.html' import monogram, crown %}
-
 {% from '_emblems.html' import emblem %}
 
 
@@ -13,8 +11,8 @@
 <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="Château de Gudanes">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
-  <p class="g-eyebrow">Château de Gudanes</p>
-  <h1 class="g-display">Stay the Night</h1>
+  <p class="g-hero__eyebrow">Seven Chambres · Ariège</p>
+    <h1 class="g-hero__title">Stay the Night</h1>
     <p class="g-hero__cta"><a href="#rooms" class="g-btn g-btn--solid">See the rooms</a></p>
 </div>
 </section>
@@ -51,7 +49,6 @@
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="" loading="lazy"></div>
 
 <section class="g-sec"><div class="g-wrap">
-  {{ monogram() }}
   <h2 id="rooms" class="g-place">Les Chambres</h2>
   {% if searched %}
   <div class="g-searched" role="status">
@@ -173,7 +170,7 @@
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
     <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
-    <p class="g-p">The King Room, Suite with Mountain View and Family Suite each have a private bathroom nearby in the area. The Double and Twin/Double rooms share a beautifully appointed modern bathroom set between the two.</p>
+    <p class="g-p">The King Room, Suite with Mountain View and Family Suite each have a private bathroom nearby in the area. The Double and The two Twin/Double rooms share a bathroom set between them — brass fittings, hexagonal terracotta, and among the most recently finished rooms in the building.</p>
     <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules — which is why they sit together, and why they are the most modern rooms in the building.</p>
   </div>
 </div></section>
@@ -225,7 +222,7 @@
 <section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
   <h2 class="g-place">Experiences &amp; Extras</h2>
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
-  <div class="g-incs g-incs--3" style="margin-top:var(--s6)"><div class='g-inc'><h3>Skiing (Winter)</h3><p>Ski transport and lift passes arranged for you.</p></div><div class='g-inc'><h3>Airport Transfer</h3><p>Private vehicle, up to three people, Toulouse Airport — €350.</p></div><div class='g-inc'><h3>Yoga</h3><p>On-site sessions set against the château and mountains.</p></div><div class='g-inc'><h3>Guided Walks</h3><p>Explore the surrounding valleys and trails with a guide.</p></div><div class='g-inc'><h3>Market Tours</h3><p>Visit the region's local markets and producers.</p></div><div class='g-inc'><h3>Antique &amp; Brocante Tours</h3><p>Discover the area's antique fairs and brocante finds.</p></div><div class='g-inc'><h3>Electric Bikes</h3><p>Explore further afield with an assisted ride.</p></div><div class='g-inc'><h3>Mountain Bikes</h3><p>Take on the surrounding trails at your own pace.</p></div><div class='g-inc'><h3>Kayaking</h3><p>Paddle the nearby waters, weather dependent.</p></div><div class='g-inc'><h3>Karaoke</h3><p>An evening of song, set up on request.</p></div><div class='g-inc'><h3>Private Meals</h3><p>A curated dining experience, arranged just for you.</p></div></div>
+  <div class="g-incs g-incs--3" style="margin-top:var(--s6)"><div class='g-inc'><h3>Skiing (Winter)</h3><p>Ski transport and lift passes arranged for you.</p></div><div class='g-inc'><h3>Airport Transfer</h3><p>Private vehicle, up to three people, Toulouse Airport — €350.</p></div><div class='g-inc'><h3>Yoga</h3><p>On-site sessions set against the château and mountains.</p></div><div class='g-inc'><h3>Guided Walks</h3><p>Explore the surrounding valleys and trails with a guide.</p></div><div class='g-inc'><h3>Market Tours</h3><p>Visit the region's local markets and producers.</p></div><div class='g-inc'><h3>Antique &amp; Brocante Tours</h3><p>Discover the area's antique fairs and brocante finds.</p></div><div class='g-inc'><h3>Electric Bikes</h3><p>Explore further afield with an assisted ride.</p></div><div class='g-inc'><h3>Mountain Bikes</h3><p>Take on the surrounding trails at your own pace.</p></div><div class='g-inc'><h3>Kayaking</h3><p>Paddle the nearby waters, weather dependent.</p></div><div class='g-inc'><h3>Karaoke</h3><p>A singer brought up from the valley, and the drawing room turned over to it for the evening.</p></div><div class='g-inc'><h3>Private Meals</h3><p>A curated dining experience, arranged just for you.</p></div></div>
 </div></section>
 
 <section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
@@ -315,7 +312,7 @@
       </p>
       <ul>
         <li>Dinner at La Table — booked in advance, priced per person</li>
-        <li>Transfers from Toulouse — arranged on request</li>
+        <li>Transfers from Toulouse or the train at Foix — we will arrange the car</li>
         <li>Carriage rides, market mornings, brocante tours</li>
         <li>Tourist tax — charged locally, as French law requires</li>
       </ul>
@@ -374,12 +371,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
-    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
-    <path d="M23 53c5 3 11 3 16 0"/>
-    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
-  </svg>
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Take a room</h2>
   <p class="g-close__p">Seven bedrooms, opened one at a time as the restoration reaches them. Every night booked pays for the next room.</p>
   <div class="g-close__acts">

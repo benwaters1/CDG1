@@ -56,12 +56,17 @@ def run():
     s.section("The public form does not offer a private room")
     page = pub.get(f"/workshops/register/{ses['id']}").get_data(as_text=True)
     s.check("no solo option in the markup", 'value="solo"' not in page)
-    # Their own WORKSHOP_OCCUPANCY.md replaced the "write to us for a private
-    # room" line with the arrangements sentence, so this now checks the guest is
-    # still told how rooms work rather than looking for the removed wording.
+    # Assert the SUBSTANCE, not the sentence. This matched a literal phrase and
+    # broke on a handover that merely reworded it -- "Rooms are arranged for two,
+    # with a third bed available on request" became "Arranged for two, and a
+    # third bed goes in if you need it", which tells the guest exactly the same
+    # thing. A copy edit failing a test teaches people to override tests. What
+    # must not vanish is the two facts: shared by default, third bed possible.
+    low = page.lower()
     s.check("but it says how rooms are arranged",
-            "rooms are arranged for two" in page.lower(),
-            detail="nothing explains the sleeping arrangements")
+            "third bed" in low and "two" in low,
+            detail="nothing explains the sleeping arrangements — a guest booking "
+                   "alone is not told they will be sharing")
 
     s.section("And the server refuses one even if it is posted")
     r = pub.post(f"/workshops/register/{ses['id']}", data={

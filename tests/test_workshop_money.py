@@ -386,8 +386,12 @@ def run():
     s.check("nor asks the guest to choose an occupancy at all",
             'name="occupancy_type"' not in pub_page,
             detail="the occupancy selector is back on the public form")
+    # The substance, not the sentence -- see the same check in
+    # test_solo_occupancy: a handover reworded this and failed the literal match
+    # while saying exactly the same thing.
+    _low = pub_page.lower()
     s.check("but it does say how rooms are arranged",
-            "rooms are arranged for two" in pub_page.lower(),
+            "third bed" in _low and "two" in _low,
             detail="nothing on the page explains the sleeping arrangements")
 
     conn = db()

@@ -2,11 +2,6 @@
 {% set crumbs = [('Gallery', None)] %}
 {% block title %}Gallery{% endblock %}
 {% block content %}
-{% from '_devices.html' import monogram, crown %}
-
-
-
-
 {# `galleries` comes from gallery_page(): a list of
      { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
    The slug is the anchor id, because the site menu links to #inside, #grounds,
@@ -55,8 +50,8 @@
 
 <section class="g-sec g-sec--tight">
   <div class="g-wrap">
-    <p class="g-eyebrow">Gallery</p>
-    <h1 class="g-display">The château, <em>as it is</em></h1>
+    <p class="g-hero__eyebrow">The Record · Fifteen Years</p>
+    <h1 class="g-hero__title">The château, as it is</h1>
   <p class="g-roomtop__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   <p class="g-p g-lede-first">Photographs taken across the seasons, mostly by guests and by the family, over a decade of work.</p>
   <p class="g-p">There is no styling here and very little tidying. Rooms are photographed as they are on the day — some finished, some with the plaster still open and the scaffolding up. That is the point of the record.</p>
@@ -107,13 +102,6 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-  <path d="M0 13h38"/><path d="M82 13h38"/>
-  <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-  <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-  <circle cx="60" cy="13" r="1.4"/>
-</svg>
-  {{ monogram() }}
   <h2 class="g-h2">Stay while the <em>work continues</em></h2>
       <p class="g-p">Every photograph here is a room that was, at some point, unusable. Four of the ninety-four were habitable in 2013; the rest had caved-in roofs and trees growing through them.</p>
       <p class="g-p">The work continues because people come. A night booked, a table taken, a week on a workshop — each pays for the next room, the next window, the next stretch of fresco lifted out from under a century of overpaint.</p>
@@ -140,12 +128,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
-    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
-    <path d="M23 53c5 3 11 3 16 0"/>
-    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
-  </svg>
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Photographs only go so far</h2>
   <p class="g-close__p">None of this reads on a screen the way it does from the drive. Come and stand in it.</p>
   <div class="g-close__acts">

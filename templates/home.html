@@ -2,8 +2,6 @@
 {% block title %}Home{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_devices.html' import monogram, crown %}
-
 {% from '_emblems.html' import emblem %}
 
 
@@ -14,8 +12,9 @@
   </video>
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <h1 class="g-display"><em>Château de Gudanes, Where History Becomes Home</em></h1>
-    <p class="g-hero__lede">Stay inside one of the most closely followed restorations in France — a Class I Historic Monument still being brought back, room by room, and open to guests while the work continues.</p>
+    <p class="g-hero__eyebrow">Ariège · Pyrénées · Since 1741</p>
+    <h1 class="g-hero__title">Château de Gudanes</h1>
+    <p class="g-hero__lede">A Class I Historic Monument, still being brought back — and open to guests while the work continues.</p>
   
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       <div class="g-herosearch__f">
@@ -51,8 +50,7 @@
 </script>
 
 <section class="g-sec g-sec--plate"><div class="g-wrap">
-{{ monogram() }}
-  <h2 class="g-h2 g-h2--lead">Bienvenue</h2>
+<h2 class="g-h2 g-h2--lead">Bienvenue</h2>
 <p class="g-p g-drop-cap g-lede-first">Château de Gudanes stands above the valley at Château-Verdun in the Ariège, an hour and three quarters south of Toulouse. Built in 1741, abandoned in 1850, and under restoration since 2013 — a restoration, not a renovation, and one of the most closely followed private projects in France.</p>
 <p class="g-p">She was designed in 1741 by Ange-Jacques Gabriel, principal architect to King Louis XV and the hand behind Marie Antoinette's own Petit Trianon at Versailles. That royal lineage endures today: Gudanes holds the same Class I Historic Monument classification as the Palace of Versailles and the Eiffel Tower.</p>
 <p class="g-p">Abandoned in 1850 and very nearly lost, she has been returned to life since 2013 — room by room, and always by hand. Five hundred tonnes of fallen stone were cleared before the work could begin. Overpaint is lifted patiently to reveal frescoes hidden for generations, and every intervention is approved by France's Monuments Historiques before a tool is lifted. The restoration has been followed by hundreds of thousands, photographed for Vogue, and honoured with the Medal of Honour of the Fondation Prince Louis de Polignac.</p>
@@ -286,12 +284,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
-    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
-    <path d="M23 53c5 3 11 3 16 0"/>
-    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
-  </svg>
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">Come and see it</h2>
   <p class="g-close__p">The rooms are few and the ateliers smaller still. If a date suits, take it — the work continues because people come.</p>
   <div class="g-close__acts">

@@ -285,15 +285,16 @@
 </header>
 
 <main id="main" tabindex="-1">
-{# Breadcrumbs. Pages set them with:
-     {% set crumbs = [('Stay', url_for('book_rooms')), ('Chambre Bleue', None)] %}
-   The last item is the current page and is not a link. #}
 {% if crumbs %}
 <nav class="g-crumbs" aria-label="Breadcrumb"><div class="g-wrap">
   <ol>
     <li><a href="{{ url_for('dashboard') }}">Château</a></li>
     {% for label, href in crumbs %}
-      <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}</li>
+      <li>{% if href and not loop.last %}<a href="{{ href }}">{{ label }}</a>{% else %}<span aria-current="page">{{ label }}</span>{% endif %}
+{# Breadcrumbs. Pages set them with:
+     {% set crumbs = [('Stay', url_for('book_rooms')), ('Chambre Bleue', None)] %}
+   The last item is the current page and is not a link. #}
+</li>
     {% endfor %}
   </ol>
 </div></nav>
@@ -309,7 +310,8 @@
     {% endif %}
   {% endwith %}
 
-  {% block content %}{% endblock %}
+  
+{% block content %}{% endblock %}
 </main>
 
 

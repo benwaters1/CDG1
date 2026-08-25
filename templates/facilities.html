@@ -3,18 +3,14 @@
 {% block title %}Facilities &amp; Activities{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_devices.html' import monogram, crown %}
-
-
-
-
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
 <section class="g-hero">
   <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château grounds">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <h1 class="g-display">{{ t('Facilities & Activities') }}</h1>
+    <p class="g-hero__eyebrow">Le Domaine · Six Acres</p>
+    <h1 class="g-hero__title">{{ t('Facilities & Activities') }}</h1>
     <p class="g-hero__lede">Six acres of parkland, a pool among the fruit trees, and a valley that rewards every season differently.</p>
     <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
@@ -23,7 +19,6 @@
 <!-- ====================== AT THE CHÂTEAU ====================== -->
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">At the Château</p>
-  {{ monogram() }}
   <h2 class="g-h2">Yours, simply by staying</h2>
   <p class="g-p">Nothing below is charged as an extra. It is part of the château, as it would be if you were staying with friends who happened to own a château.</p>
 
@@ -31,21 +26,21 @@
     <article class="g-card">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The pool" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
       <div class="g-card__b">
-        <h3 class="g-h3">Grounds &amp; Pool</h3>
+        <h3 class="g-h3">La Piscine</h3>
         <p class="g-p">Set below the formal gardens among cherry and plum trees, out of sight of the château. Open through the warmer months.</p>
       </div>
     </article>
     <article class="g-card">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The gardens" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
       <div class="g-card__b">
-        <h3 class="g-h3">Gardens &amp; Parkland</h3>
+        <h3 class="g-h3">Les Jardins</h3>
         <p class="g-p">Formal beds nearest the château, then six acres of parkland running up toward the mountain. Walk it at any hour.</p>
       </div>
     </article>
     <article class="g-card">
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="The grounds at dusk" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
       <div class="g-card__b">
-        <h3 class="g-h3">Tennis Court</h3>
+        <h3 class="g-h3">Le Court</h3>
         <p class="g-p">At the far edge of the grounds, screened by trees. Lined for both tennis and pickleball; rackets, balls and paddles are kept in the hall. Nobody books it — if it is free, it is yours.</p>
       </div>
     </article>
@@ -82,7 +77,7 @@
       <p class="g-p" style="color:rgba(255,255,255,.88)">A gondola runs from the centre of Ax-les-Thermes to the slopes in under ten minutes, so there is no mountain road to drive in the morning. The climb has finished a Tour de France stage five times.</p>
     </div>
     <div>
-      <p class="g-p" style="color:rgba(255,255,255,.88)"><b style="color:#fff">We arrange the whole of it.</b> Lift passes bought and in your hand before you leave. Transport there and back each day. Hire fitted at the resort — skis, boards, boots, poles, helmets — and lessons with the ESF or ESI schools if you would like them, for any age or level.</p>
+      <p class="g-p" style="color:rgba(255,255,255,.88)"><b style="color:#fff">We arrange the whole of it.</b> Lift passes bought and in your hand before you leave. Transport there and back each day. Hire fitted at the resort — skis, boards, boots, poles, helmets — and an ESF or ESI instructor for any age and any standard.</p>
       <p class="g-p" style="color:rgba(255,255,255,.88)">Tell us when you book and it is simply organised. You come down to breakfast and the day is already arranged.</p>
     </div>
   </div>
@@ -109,29 +104,28 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-  <div class="g-hairs" aria-hidden="true"><i></i></div>
   <h2 class="g-h2">Ask, and it is organised</h2>
-  <p class="g-p">Any of the below can be arranged before you arrive or once you are here. Some carry a cost, some do not — we will tell you plainly which when you ask.</p>
+  <p class="g-p">Say the word before you come, or on the morning. Some carry a cost and some do not; we will tell you which without being asked twice.</p>
 
   <div class="g-cards" style="margin-top:var(--s7)">
     <article class="g-card">
       <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The drive at dusk" loading="lazy">
       <div class="g-card__b">
-        <h3 class="g-h3">Carriage Rides</h3>
-        <p class="g-p">The château's own carriage and horses, up the drive and through the parkland — the same arrival the château has always had. Particularly good at dusk, and for a wedding or a proposal.</p>
+        <h3 class="g-h3">L'Arrivée</h3>
+        <p class="g-p">Two horses and the château's own carriage, up the gravel drive and out through the parkland. It is how every guest arrived here for two centuries, and it is still the only way to watch the façade rise through the limes. Best an hour before dinner, when the stone goes gold.</p>
       </div>
     </article>
     <article class="g-card">
       <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Copper at the market" loading="lazy">
       <div class="g-card__b">
-        <h3 class="g-h3">Market Mornings</h3>
+        <h3 class="g-h3">Le Marché</h3>
         <p class="g-p">Les Cabannes on a Sunday, three minutes below the gates. Tarascon-sur-Ariège on Wednesday and Saturday. Cheese from the mountain farms, charcuterie, and whatever the season has decided.</p>
       </div>
     </article>
     <article class="g-card">
       <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
       <div class="g-card__b">
-        <h3 class="g-h3">Antique &amp; Brocante Tours</h3>
+        <h3 class="g-h3">Les Brocantes</h3>
         <p class="g-p">The brocantes and vide-greniers of the Ariège, with someone who knows which ones are worth the drive.</p>
       </div>
     </article>
@@ -207,12 +201,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
-    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
-    <path d="M23 53c5 3 11 3 16 0"/>
-    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
-  </svg>
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
   <h2 class="g-close__h">It is all included</h2>
   <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. Nothing above appears on your bill.</p>
   <div class="g-close__acts">
