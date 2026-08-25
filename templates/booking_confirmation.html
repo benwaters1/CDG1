@@ -1,5 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}{{ t('Booking request received') }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 {# CONTRACT — read-only. Uses booking.* and the same url_for endpoints as

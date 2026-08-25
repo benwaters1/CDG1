@@ -5,6 +5,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{# Pages that show somebody's booking, bill or account are unlisted
+   rather than private, and unlisted is not hidden — robots.txt only
+   asks crawlers not to fetch a path, while a URL that leaks into a
+   referrer or a forwarded email can be indexed without ever being
+   crawled. Each such page overrides this. #}
+{% block robots %}{% endblock %}
 <title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
 <meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
 

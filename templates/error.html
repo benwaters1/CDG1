@@ -1,5 +1,6 @@
 {% extends "public_base.html" %}
 {% block title %}{{ code }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 {# There was no error template at all — a mistyped URL or an expired manage

@@ -96,6 +96,7 @@ SUITES = [
     "test_links",
     "test_error_pages",
     "test_seo_files",
+    "test_noindex_meta",
 ]
 
 
