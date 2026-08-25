@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Floor plan{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ t('Floor plan') }}</h1>
+  <a href="{{ url_for('pos_home') }}" class="btn-ghost">{{ t('Back to service') }}</a>
+</div>
+
+<p class="pay-disclaimer">
+  {{ t('Laying the room out once is what makes seating a single touch — the till takes the table name and the covers from here, so nobody types on a tablet during service.') }}
+</p>
+
+<div class="detail-card">
+  <h3>{{ t('Add a table') }}</h3>
+  <form method="post" action="{{ url_for('new_dining_table') }}" class="search-bar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div>
+      <label class="field-label">{{ t('Number or name') }}</label>
+      <input type="text" name="label" required placeholder="6" autocomplete="off">
+    </div>
+    <div>
+      <label class="field-label">{{ t('Where') }}</label>
+      <select name="area">
+        {% for key, title in areas %}<option value="{{ key }}">{{ t(title) }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label">{{ t('Seats') }}</label>
+      <input type="number" name="seats" min="1" step="1" value="2">
+    </div>
+    <button type="submit" class="btn-primary" style="margin-top:0;">{{ t('Add') }}</button>
+  </form>
+</div>
+
+{% if not tables %}
+  <div class="empty-state">{{ t('No tables yet. Add the first one above.') }}</div>
+{% else %}
+<div class="task-list">
+  {% for x in tables %}
+  {% set r = x.row %}
+  <div class="task-row {{ 'is-muted' if not r['active'] }}">
+    <form method="post" action="{{ url_for('save_dining_table', table_id=r['id']) }}"
+          style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; flex:1;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="field-label">{{ t('Table') }}</label>
+        <input type="text" name="label" value="{{ r['label'] }}" style="width:110px;">
+      </div>
+      <div>
+        <label class="field-label">{{ t('Where') }}</label>
+        <select name="area">
+          {% for key, title in areas %}
+          <option value="{{ key }}" {{ 'selected' if r['area'] == key }}>{{ t(title) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">{{ t('Seats') }}</label>
+        <input type="number" name="seats" min="1" value="{{ r['seats'] }}" style="width:80px;">
+      </div>
+      <button type="submit" class="btn-mini">{{ t('Save') }}</button>
+    </form>
+    {% if r['active'] %}
+    <form method="post" action="{{ url_for('retire_dining_table', table_id=r['id']) }}"
+          onsubmit="return confirm('Take this table off the floor plan?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {# A table that has carried a tab is retired, not deleted, because the
+         closed tabs reference it. One nobody ever sat at is just a typo. #}
+      <button type="submit" class="btn-mini btn-mini-danger">
+        {{ t('Take off the floor') if x.has_history else t('Remove') }}
+      </button>
+    </form>
+    {% else %}
+    <span class="mini-status status-pending">{{ t('off the floor') }}</span>
+    <form method="post" action="{{ url_for('restore_dining_table', table_id=r['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn-mini">{{ t('Put back') }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

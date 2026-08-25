@@ -493,6 +493,12 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="field-label">Part payment (€) — leave blank for the lot</label>
         <input type="text" name="amount" inputmode="decimal" placeholder="{{ '%.2f'|format(bill.outstanding) }}">
+        {# What was handed over. Optional — a card or an exact-change tab needs
+           nothing here — but it is what turns "cash taken" into "change €7.50"
+           at the moment somebody is standing there waiting for it. #}
+        <label class="field-label" for="cash_received">Cash handed over (€) — for the change</label>
+        <input type="text" id="cash_received" name="cash_received" inputmode="decimal"
+               placeholder="{{ '%.2f'|format(bill.outstanding) }}">
         <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
           <button type="submit" name="method" value="cash" class="btn-primary" style="margin-top:0;">Cash</button>
           <button type="submit" name="method" value="card_terminal" class="btn-primary" style="margin-top:0;">Card on terminal</button>

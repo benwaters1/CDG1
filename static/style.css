@@ -2311,3 +2311,31 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   .cal-toolbar{ flex-wrap:wrap; gap:8px; }
   .cal-month-label{ order:-1; width:100%; }
 }
+
+/* A free table is a button, not an absence. The service screen used to list
+   open tabs only, so an empty restaurant showed an empty page and the only way
+   to start was typing a table name into a box. These are deliberately the same
+   size and shape as an occupied tile, so the floor reads as one room. */
+.floor-free-form{ display:flex; }
+.floor-tile.is-free{
+  flex:1; align-items:flex-start; justify-content:center; gap:5px;
+  font:inherit; text-align:left; cursor:pointer;
+  background:transparent; border-style:dashed; border-left-style:dashed;
+  border-color:var(--parchment-line); color:var(--steel);
+}
+.floor-tile.is-free:hover, .floor-tile.is-free:focus-visible{
+  border-color:var(--gold); color:var(--ink); background:var(--surface);
+}
+.floor-tile.is-free .floor-table{ color:var(--ink); }
+.floor-free-hint{ font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; }
+.task-row.is-muted{ opacity:.6; }
+.pos-offplan{ margin-top:22px; }
+.pos-offplan > summary{ cursor:pointer; font-size:13px; color:var(--steel); min-height:44px;
+  display:flex; align-items:center; }
+
+@media (pointer: coarse){
+  /* Seating is the one thing done at a run, holding plates. */
+  .floor-tile{ min-height:132px; }
+  .floor-tile.is-free{ min-height:132px; }
+  .floor-expected-table{ min-height:44px; }
+}

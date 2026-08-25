@@ -2922,6 +2922,26 @@ def init_db():
         # balance at all, while a workshop did. Everything a guest might add to
         # their stay needs somewhere to put what it now costs them.
         ("bookings_amount_paid", "ALTER TABLE bookings ADD COLUMN amount_paid REAL NOT NULL DEFAULT 0"),
+        # The room, as tables. The till used to carry only a free-text
+        # `table_label` on the order, which meant three things: the floor
+        # screen could show occupied tables and nothing else (an empty
+        # restaurant showed an empty page, so you could not see your own
+        # room), seating meant typing on a tablet mid-service, and "Terrace",
+        # "terrace" and "Table 4" became three different tables inside a week.
+        ("restaurant_tables", """CREATE TABLE IF NOT EXISTS restaurant_tables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL UNIQUE,
+            area TEXT NOT NULL DEFAULT 'salle',
+            seats INTEGER NOT NULL DEFAULT 2,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        )"""),
+        # The order still keeps its own `table_label` as frozen text, for the
+        # same reason it freezes settled_total: renaming or retiring a table
+        # must not rewrite what last August's closed tabs say they were.
+        ("table_id", "ALTER TABLE pos_orders ADD COLUMN table_id INTEGER "
+                     "REFERENCES restaurant_tables(id) ON DELETE SET NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -3587,6 +3607,11 @@ def init_db():
             )
     conn.commit()
 
+    # A default room for the restaurant, so the service screen shows a floor
+    # on the first night instead of an empty page and a text box.
+    seed_dining_tables(conn)
+    conn.commit()
+
     # The standing markets. Seeded by title, so one the owner edits or deletes
     # is not put back on the next restart — this is a starting point, not a
     # fixture the app keeps reasserting.
@@ -3780,6 +3805,8 @@ NAV_AREAS = {
         "new_recurring_cost", "regenerate_supplier_link", "toggle_recurring_cost"
     ],
     "restaurant": [
+        "admin_dining_tables", "new_dining_table", "save_dining_table",
+        "retire_dining_table", "restore_dining_table",
         "admin_terminal", "admin_extras", "admin_restaurant", "admin_restaurant_settings",
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
@@ -3796,8 +3823,16 @@ NAV_AREAS = {
         "update_workshop_waitlist_status"
     ],
     "till": [
-        "pos_add_item", "pos_home", "pos_open_tab", "pos_order", "pos_pay_link",
-        "pos_settle_tab", "pos_void_item"
+        # Everything a section actually touches during service. pos_day and
+        # pos_close_day are deliberately absent: the cash-up is the owner's.
+        # pos_settle_tab used to be listed here and has no route -- a name in
+        # the access map pointing at nothing, which only misleads whoever reads
+        # it next.
+        "pos_add_item", "pos_adjust", "pos_card_status", "pos_cancel_card",
+        "pos_choose_formule_dish_route", "pos_home", "pos_kitchen", "pos_line_state",
+        "pos_move_table", "pos_open_formule_route", "pos_open_tab", "pos_order",
+        "pos_pay_link", "pos_receipt", "pos_send", "pos_service_state",
+        "pos_set_package", "pos_take_card", "pos_take_payment_route", "pos_void_item"
     ],
     "events": [
         "admin_events", "export_events_csv", "update_event_inquiry"
@@ -9053,6 +9088,81 @@ def pos_table_context(conn, order):
         "previous_no_shows": prior_no_shows(conn, [b["guest_email"]]).get(
             (b["guest_email"] or "").lower(), 0),
     }
+
+
+DINING_AREAS = (
+    ("salle", "Salle"),
+    ("terrace", "Terrace"),
+    ("bar", "Bar"),
+    ("private", "Private"),
+)
+
+# A room to start from, so the floor screen is a floor on the first night
+# rather than an empty page with a text box. Every one of these is editable
+# and can be retired; the point is only that the default is a restaurant.
+DEFAULT_DINING_TABLES = [
+    ("1", "salle", 2), ("2", "salle", 2), ("3", "salle", 4), ("4", "salle", 4),
+    ("5", "salle", 6),
+    ("T1", "terrace", 2), ("T2", "terrace", 4), ("T3", "terrace", 4),
+    ("B1", "bar", 2), ("B2", "bar", 2),
+]
+
+
+def seed_dining_tables(conn):
+    """Lay out a default room, once, if nobody has laid one out."""
+    if conn.execute("SELECT 1 FROM restaurant_tables LIMIT 1").fetchone():
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    for i, (label, area, seats) in enumerate(DEFAULT_DINING_TABLES):
+        conn.execute(
+            """INSERT INTO restaurant_tables (label, area, seats, sort_order, active, created_at)
+               VALUES (?, ?, ?, ?, 1, ?)""",
+            (label, area, seats, i, now),
+        )
+
+
+def dining_tables(conn, *, include_retired=False):
+    return conn.execute(
+        f"""SELECT * FROM restaurant_tables
+            {'' if include_retired else 'WHERE active = 1'}
+            ORDER BY sort_order, label""").fetchall()
+
+
+def pos_floor(conn):
+    """The whole room, free tables included.
+
+    The floor screen used to list open tabs only, so an empty restaurant showed
+    an empty page and the only way to start was to type a table name into a box.
+    A service screen should show the room: which tables exist, which are free,
+    and what is happening on the ones that are not.
+
+    Tabs opened before the room was laid out -- or opened off-plan, two terrace
+    tables pushed together for a party of nine -- have no table_id. They are
+    returned separately rather than dropped, because a tab you cannot see is a
+    tab nobody settles.
+    """
+    open_orders = {}
+    off_plan = []
+    for o in conn.execute(
+        "SELECT * FROM pos_orders WHERE status = 'open' ORDER BY opened_at"
+    ).fetchall():
+        try:
+            tid = o["table_id"]
+        except (KeyError, IndexError):
+            tid = None
+        if tid:
+            open_orders[tid] = o
+        else:
+            off_plan.append(o)
+
+    areas = []
+    for key, title in DINING_AREAS:
+        tiles = [{"table": t, "order": open_orders.get(t["id"])}
+                 for t in dining_tables(conn) if t["area"] == key]
+        if tiles:
+            areas.append({"key": key, "title": title, "tiles": tiles})
+    return {"areas": areas, "off_plan": off_plan,
+            "free": sum(1 for a in areas for x in a["tiles"] if not x["order"])}
 
 
 def pos_open_tickets(conn):
@@ -14568,6 +14678,17 @@ def pos_home():
 
     report = pos_day_report(conn, today)
     settled_today = report["taken"]
+
+    # The room itself. Each tile carries the live figures worked out above when
+    # the table is occupied, so a free table and a busy one are the same object
+    # to the template and the floor reads as one grid.
+    by_order_id = {t["order"]["id"]: t for t in tables}
+    floor = pos_floor(conn)
+    for area in floor["areas"]:
+        for tile in area["tiles"]:
+            tile["live"] = by_order_id.get(tile["order"]["id"]) if tile["order"] else None
+    off_plan = [by_order_id[o["id"]] for o in floor["off_plan"] if o["id"] in by_order_id]
+    free_tables = [t for a in floor["areas"] for t in a["tiles"] if not t["order"]]
     conn.close()
 
     overview = [
@@ -14579,7 +14700,135 @@ def pos_home():
     ]
     return render_template(
         "pos_home.html", tables=tables, expected=expected, overview=overview,
-        today=today, service_states=POS_SERVICE_STATES)
+        today=today, service_states=POS_SERVICE_STATES,
+        floor=floor, off_plan=off_plan, free_tables=free_tables)
+
+
+@app.route("/admin/restaurant/tables")
+@owner_required
+def admin_dining_tables():
+    """The room. Laying it out once is what makes seating a single touch."""
+    conn = get_db()
+    rows = dining_tables(conn, include_retired=True)
+    in_use = {r["table_id"] for r in conn.execute(
+        "SELECT DISTINCT table_id FROM pos_orders WHERE table_id IS NOT NULL").fetchall()}
+    conn.close()
+    tables = [{"row": r, "has_history": r["id"] in in_use} for r in rows]
+    return render_template("admin_dining_tables.html", tables=tables,
+                           areas=DINING_AREAS)
+
+
+@app.route("/admin/restaurant/tables/new", methods=["POST"])
+@owner_required
+def new_dining_table():
+    label = (request.form.get("label", "") or "").strip()
+    area = (request.form.get("area", "") or "salle").strip()
+    if not label:
+        flash("Give the table a number or a name.", "error")
+        return redirect(url_for("admin_dining_tables"))
+    if area not in dict(DINING_AREAS):
+        area = "salle"
+    try:
+        seats = max(1, int(request.form.get("seats", "2") or 2))
+    except ValueError:
+        seats = 2
+    conn = get_db()
+    # The label is what the floor screen and every closed tab shows, so two
+    # tables called "4" would make the room unreadable rather than just untidy.
+    if conn.execute("SELECT 1 FROM restaurant_tables WHERE label = ?", (label,)).fetchone():
+        conn.close()
+        flash(f"There is already a table called {label}.", "error")
+        return redirect(url_for("admin_dining_tables"))
+    nxt = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM restaurant_tables").fetchone()["n"]
+    conn.execute(
+        """INSERT INTO restaurant_tables (label, area, seats, sort_order, active, created_at)
+           VALUES (?, ?, ?, ?, 1, ?)""",
+        (label, area, seats, nxt, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"Table {label} added.", "success")
+    return redirect(url_for("admin_dining_tables"))
+
+
+@app.route("/admin/restaurant/tables/<int:table_id>/save", methods=["POST"])
+@owner_required
+def save_dining_table(table_id):
+    conn = get_db()
+    table = conn.execute("SELECT * FROM restaurant_tables WHERE id = ?", (table_id,)).fetchone()
+    if not table:
+        conn.close()
+        abort(404)
+    label = (request.form.get("label", "") or "").strip() or table["label"]
+    area = (request.form.get("area", "") or table["area"]).strip()
+    if area not in dict(DINING_AREAS):
+        area = table["area"]
+    try:
+        seats = max(1, int(request.form.get("seats", "") or table["seats"]))
+    except ValueError:
+        seats = table["seats"]
+    clash = conn.execute(
+        "SELECT 1 FROM restaurant_tables WHERE label = ? AND id != ?", (label, table_id)).fetchone()
+    if clash:
+        conn.close()
+        flash(f"There is already a table called {label}.", "error")
+        return redirect(url_for("admin_dining_tables"))
+    conn.execute(
+        "UPDATE restaurant_tables SET label = ?, area = ?, seats = ? WHERE id = ?",
+        (label, area, seats, table_id))
+    conn.commit()
+    conn.close()
+    flash("Floor plan updated.", "success")
+    return redirect(url_for("admin_dining_tables"))
+
+
+@app.route("/admin/restaurant/tables/<int:table_id>/retire", methods=["POST"])
+@owner_required
+def retire_dining_table(table_id):
+    """Take a table off the floor, or delete one added by mistake.
+
+    A table that has carried a tab is retired rather than deleted: the orders
+    reference it, and last August's closed tabs are payroll-grade history in the
+    same way a settled total is. One nobody ever sat at is just a typo, so it
+    goes.
+    """
+    conn = get_db()
+    table = conn.execute("SELECT * FROM restaurant_tables WHERE id = ?", (table_id,)).fetchone()
+    if not table:
+        conn.close()
+        abort(404)
+    running = conn.execute(
+        "SELECT 1 FROM pos_orders WHERE table_id = ? AND status = 'open'", (table_id,)).fetchone()
+    if running:
+        conn.close()
+        flash(f"Table {table['label']} has a tab open on it. Settle that first.", "error")
+        return redirect(url_for("admin_dining_tables"))
+    used = conn.execute(
+        "SELECT 1 FROM pos_orders WHERE table_id = ? LIMIT 1", (table_id,)).fetchone()
+    if used:
+        conn.execute("UPDATE restaurant_tables SET active = 0 WHERE id = ?", (table_id,))
+        msg = f"Table {table['label']} taken off the floor. Its past tabs are untouched."
+    else:
+        conn.execute("DELETE FROM restaurant_tables WHERE id = ?", (table_id,))
+        msg = f"Table {table['label']} removed."
+    conn.commit()
+    conn.close()
+    flash(msg, "success")
+    return redirect(url_for("admin_dining_tables"))
+
+
+@app.route("/admin/restaurant/tables/<int:table_id>/restore", methods=["POST"])
+@owner_required
+def restore_dining_table(table_id):
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM restaurant_tables WHERE id = ?", (table_id,)).fetchone():
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE restaurant_tables SET active = 1 WHERE id = ?", (table_id,))
+    conn.commit()
+    conn.close()
+    flash("Table back on the floor.", "success")
+    return redirect(url_for("admin_dining_tables"))
 
 
 @app.route("/pos/open", methods=["POST"])
@@ -14587,31 +14836,60 @@ def pos_home():
 def pos_open_tab():
     label = (request.form.get("table_label", "") or "").strip()
     booking_id = (request.form.get("restaurant_booking_id", "") or "").strip()
+    table_id = (request.form.get("table_id", "") or "").strip()
     try:
         covers = max(1, int(request.form.get("covers", "2") or 2))
     except ValueError:
         covers = 2
     conn = get_db()
+    # Tapping a table is the normal way to open a tab: the label comes off the
+    # table and the covers default to what it seats, so seating a walk-in is one
+    # touch and nobody types on a tablet in the middle of service. A table that
+    # is already occupied is refused rather than opening a second tab on it.
+    table = None
+    if table_id.isdigit():
+        table = conn.execute(
+            "SELECT * FROM restaurant_tables WHERE id = ? AND active = 1",
+            (int(table_id),)).fetchone()
+        if not table:
+            conn.close()
+            flash("That table is not on the floor plan.", "error")
+            return redirect(url_for("pos_home"))
+        busy = conn.execute(
+            "SELECT id FROM pos_orders WHERE table_id = ? AND status = 'open'",
+            (table["id"],)).fetchone()
+        if busy:
+            conn.close()
+            flash(f"Table {table['label']} is already open — that tab is still running.",
+                  "error")
+            return redirect(url_for("pos_order", order_id=busy["id"]))
+        label = label or table["label"]
+        if not request.form.get("covers"):
+            covers = table["seats"] or covers
+
     booking = None
     if booking_id.isdigit():
         booking = conn.execute("SELECT * FROM restaurant_bookings WHERE id = ?",
                                (booking_id,)).fetchone()
         if booking:
+            # The reservation knows how many are coming; the table only knows
+            # how many it holds.
             covers = booking["party_size"] or covers
             label = label or booking["guest_name"]
     if not label:
         conn.close()
-        flash("Give the table a name or pick a reservation.", "error")
+        flash("Pick a table, or name one.", "error")
         return redirect(url_for("pos_home"))
     # A deposit already taken at booking is credited to the tab, so a table
     # that paid to reserve is not charged for it twice. The old till had no
     # idea a deposit existed.
     deposit = round(booking["deposit_amount"] or 0, 2) if booking else 0
     conn.execute(
-        """INSERT INTO pos_orders (table_label, covers, restaurant_booking_id, status,
+        """INSERT INTO pos_orders (table_label, table_id, covers, restaurant_booking_id, status,
            service_state, deposit_credit, service_date, opened_by_user_id, opened_at)
-           VALUES (?, ?, ?, 'open', 'seated', ?, ?, ?, ?)""",
-        (label, covers, booking["id"] if booking else None, deposit,
+           VALUES (?, ?, ?, ?, 'open', 'seated', ?, ?, ?, ?)""",
+        (label, table["id"] if table else None, covers,
+         booking["id"] if booking else None, deposit,
          # The night it belongs to, fixed at open. A tab started at 23:50 and
          # settled at 00:10 belongs to one service, not two — which is what
          # service_day_iso() gives and the UTC calendar date does not: past
@@ -15213,6 +15491,26 @@ def pos_take_payment_route(order_id):
         flash(f"That's more than the €{bill['outstanding']:.2f} outstanding.", "error")
         return redirect(url_for("pos_order", order_id=order_id))
 
+    # Cash: what was handed over, and what goes back. The till recorded that
+    # cash had been taken and left the arithmetic to whoever was holding the
+    # notes, at the end of a service, in their head. Optional -- a tab paid to
+    # the penny needs nothing typed -- but when a fifty is put down for a
+    # EUR 42.50 bill, the change is on the screen rather than in the arithmetic.
+    change_due = None
+    raw_cash = (request.form.get("cash_received", "") or "").strip().replace(",", ".")
+    if method == "cash" and raw_cash:
+        try:
+            received = round(float(raw_cash), 2)
+        except ValueError:
+            conn.close()
+            flash("Enter what they handed over as a number, or leave it blank.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        if received + 0.01 < amount:
+            conn.close()
+            flash(f"That is €{amount - received:.2f} short of the €{amount:.2f} due.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
+        change_due = round(received - amount, 2)
+
     room_booking_id = None
     if method == "room":
         rb = (request.form.get("room_booking_id", "") or "").strip()
@@ -15228,13 +15526,24 @@ def pos_take_payment_route(order_id):
                               unit_price=l["unit_price"], user_id=session.get("user_id"),
                               notes=f"Table {bill['order']['table_label']}")
 
+    reference = (request.form.get("reference", "") or "").strip() or None
+    if change_due is not None:
+        # On the payment itself, so the journal and the cash-up can both show
+        # what was tendered rather than only what the bill came to.
+        tendered = round(amount + change_due, 2)
+        reference = " · ".join(x for x in (
+            reference, f"tendered €{tendered:.2f}, change €{change_due:.2f}") if x)
     pos_take_payment(conn, order_id, amount, method,
-                     reference=(request.form.get("reference", "") or "").strip() or None,
+                     reference=reference,
                      seats=seats, room_booking_id=room_booking_id,
                      user_id=session.get("user_id"))
     after = pos_close_if_settled(conn, order_id, method, user_id=session.get("user_id"))
     conn.commit()
     conn.close()
+    # The change goes first and on its own. It is the one number somebody is
+    # waiting on with their hand out.
+    if change_due:
+        flash(f"Change €{change_due:.2f}", "success")
     if after["outstanding"] > 0.01:
         flash(f"€{amount:.2f} taken. €{after['outstanding']:.2f} still to pay.", "success")
         return redirect(url_for("pos_order", order_id=order_id))
