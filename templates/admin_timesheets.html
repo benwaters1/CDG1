@@ -56,6 +56,13 @@
   <div class="task-list">
     {% for e in entries %}
     {% set impossible = e['clock_out_at'] and e['clock_out_at'] < e['clock_in_at'] %}
+    {# Three ways an entry is unsafe for payroll, and all three now block the
+       export — so all three need the repair form here. Offering it only for
+       the backwards case left the other two flagged on this page and fixable
+       nowhere, which is the gap repair_time_entry was written to close. #}
+    {% set unclocked = not e['clock_out_at'] %}
+    {% set guessed = e['auto_closed'] and e['clock_out_at'] %}
+    {% set needs_fixing = impossible or unclocked or guessed %}
     <div class="task-row">
       <span class="task-title" style="flex:0 0 160px;">{{ e['user_name'] }}</span>
       <span class="upload-hint" style="flex:1;">
@@ -68,13 +75,22 @@
         {% if e['auto_closed'] %}<span class="mini-status status-pending" style="margin-left:6px;">auto-closed — forgot to log out?</span>{% endif %}
       </span>
     </div>
-    {% if impossible %}
+    {% if needs_fixing %}
     {# Excluded from every hours total, so it can't quietly distort pay or the
        labour cost — but it stays visible and fixable until someone deals with it. #}
     <div class="refund-box" style="margin:-4px 0 10px;">
       <p class="upload-hint" style="margin-top:0;">
+        {% if impossible %}
         This shift is recorded as ending before it started, so it counts as zero hours everywhere.
         Set the real clock-out, or void it if nobody can remember.
+        {% elif unclocked %}
+        Nobody clocked out of this shift, so it counts as zero hours and payroll won't export
+        until it's settled. Set the real clock-out, or void it.
+        {% else %}
+        This was closed automatically at their next login, so the end time is a guess rather
+        than a record — it counts as zero hours and payroll won't export until it's settled.
+        Set the real clock-out, or void it.
+        {% endif %}
       </p>
       <form method="post" action="{{ url_for('repair_time_entry', entry_id=e['id']) }}"
             style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">

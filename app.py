@@ -9585,6 +9585,35 @@ def payroll_period_rows(conn, period):
                  AND clock_in_at >= ? AND clock_in_at < ?""",
             (p["id"], start_iso, end_iso),
         ).fetchone()["c"]
+        # A shift nobody clocked out of. The app closes it on their next login
+        # and stamps auto_closed, so the real end time is unknown -- a Friday
+        # clock-in closed on Monday reads as 72 hours of continuous work, and
+        # it used to be priced and exported like any other shift. That is the
+        # exact wrong number this function exists to refuse.
+        #
+        # The hours are still counted in the figure above, deliberately.
+        # labour_hours_by_person is THE definition of hours worked for costing
+        # and filtering here alone would put two different numbers on the same
+        # shifts. The blocker is what protects the accountant: the row shows
+        # the raw 72 hours next to the reason they cannot be trusted, and the
+        # export refuses until somebody sets the real clock-out or voids it.
+        # Excluding auto-closed hours everywhere would lower the wage bill on
+        # the money page too, which is a decision for the owner, not a
+        # side effect of this fix.
+        auto_closed_count = conn.execute(
+            """SELECT COUNT(*) AS c FROM time_entries
+               WHERE user_id = ? AND auto_closed = 1
+                 AND clock_in_at >= ? AND clock_in_at < ?""",
+            (p["id"], start_iso, end_iso),
+        ).fetchone()["c"]
+        # And the mirror of it: still running when payroll was drawn, so the
+        # hours are incomplete. Silently worth zero means quietly underpaid.
+        open_count = conn.execute(
+            """SELECT COUNT(*) AS c FROM time_entries
+               WHERE user_id = ? AND clock_out_at IS NULL
+                 AND clock_in_at >= ? AND clock_in_at < ?""",
+            (p["id"], start_iso, end_iso),
+        ).fetchone()["c"]
         absence_days = conn.execute(
             """SELECT COALESCE(SUM(julianday(MIN(end_date, ?)) - julianday(MAX(start_date, ?)) + 1), 0) AS d
                FROM absences WHERE user_id = ? AND start_date < ? AND end_date >= ?""",
@@ -9602,6 +9631,15 @@ def payroll_period_rows(conn, period):
         blockers = []
         if broken:
             blockers.append(f"{broken} impossible shift{'s' if broken != 1 else ''}")
+        if auto_closed_count:
+            blockers.append(
+                f"{auto_closed_count} auto-closed shift"
+                f"{'s' if auto_closed_count != 1 else ''} — nobody clocked out, "
+                "so the hours are a guess")
+        if open_count:
+            blockers.append(
+                f"{open_count} shift{'s' if open_count != 1 else ''} still open — "
+                "not clocked out yet")
         if worked > 0 and cost is None:
             blockers.append("no usable hourly rate on file")
         rows.append({
