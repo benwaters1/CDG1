@@ -81,6 +81,7 @@ SUITES = [
     "test_timesheet_repair",
     "test_staff_lifecycle",
     "test_hr_records",
+    "test_vehicles",
     "test_offline",
     "test_translations",
     "test_staff_language",
