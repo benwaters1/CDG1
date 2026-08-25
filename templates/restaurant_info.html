@@ -3,13 +3,17 @@
 {% block title %}La Table{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_devices.html' import monogram, crown %}
+
 
 
 
 <section class="g-hero">
 <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes">
 <div class="g-hero__wash"></div>
-<div class="g-hero__in"><h1 class="g-display"><em>La Table</em></h1></div>
+<div class="g-hero__in"><h1 class="g-display"><em>La Table</em></h1>
+    <p class="g-hero__cta"><a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a></p>
+  </div>
 </section>
 
 <section class="g-sec"><div class="g-wrap"><p class="g-p g-lede-first">Dinner at the château, cooked by our own chefs and served in the dining room by candlelight.</p>
@@ -53,6 +57,7 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
+  {{ monogram() }}
   <h2 class="g-place">La Salle à Manger</h2><p class="g-p"><em>The room in which dinner is served was among the most damaged in the château.</em></p>
 <p class="g-p">Its ceiling had gone. What remained of the panelling was under later paint, and the floor beneath it had rotted through in places. It took several years to bring back — the plaster consolidated rather than replaced, the panelling cleaned by hand, and a new floor laid in oak beneath walls left deliberately as they were found.</p>
 <p class="g-p">Dinner is served by candlelight in the dining room. In winter the fire is lit.</p></div>
@@ -109,7 +114,7 @@
 </div></section>
 
 
-<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
@@ -118,6 +123,23 @@
     finished to a standard the rest of the château has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
+</div></section>
+
+
+<!-- ============ THE CLOSE ============ -->
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">Come to the table</h2>
+  <p class="g-close__p">Meals are arranged in advance so the kitchen buys for the table it is cooking for. Tell us when you book.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night</a>
+  </div>
 </div></section>
 
 {% endblock %}

@@ -3,6 +3,8 @@
 {% block title %}Stay{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_devices.html' import monogram, crown %}
+
 {% from '_emblems.html' import emblem %}
 
 
@@ -13,6 +15,7 @@
 <div class="g-hero__in">
   <p class="g-eyebrow">Château de Gudanes</p>
   <h1 class="g-display">Stay the Night</h1>
+    <p class="g-hero__cta"><a href="#rooms" class="g-btn g-btn--solid">See the rooms</a></p>
 </div>
 </section>
 
@@ -48,7 +51,8 @@
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="" loading="lazy"></div>
 
 <section class="g-sec"><div class="g-wrap">
-  <h2 class="g-place">Les Chambres</h2>
+  {{ monogram() }}
+  <h2 id="rooms" class="g-place">Les Chambres</h2>
   {% if searched %}
   <div class="g-searched" role="status">
     <p class="g-searched__dates">
@@ -189,7 +193,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1000w" alt="The pool" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Outdoors</h3>
-        <p>A pool set among the cherry trees below the formal gardens, and a tennis court secluded at the edge of the grounds. Table tennis and a small gym indoors.</p>
+        <p>The pool sits below the formal gardens among the cherry trees, out of sight of the château and open through the warm months. The tennis court is at the far edge of the grounds, screened by trees, and lined for pickleball as well as tennis — rackets, balls and paddles are in the hall. Table tennis and a small gym indoors.</p>
       </div>
     </article>
     <article class="g-incl-card">
@@ -280,6 +284,46 @@
 {% endif %}
 
 <div class="g-iron" aria-hidden="true"></div>
+
+<!-- ============ WHAT THE PRICE INCLUDES ============ -->
+{# The commonest reason a luxury booking is abandoned is not knowing what the
+   number covers. Both columns, stated before anyone reaches a payment page.
+   Every line below is checked against what the app actually does. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">No Surprises</p>
+  <h2 class="g-place">What the Rate Covers</h2>
+
+  <div class="g-ledger">
+    <div class="g-ledger__col g-ledger--in">
+      <p class="g-ledger__h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>
+        Included
+      </p>
+      <ul>
+        <li><b>Breakfast</b> — continental, every morning</li>
+        <li><b>The grounds</b> — pool, tennis, six acres of parkland</li>
+        <li><b>The salons</b> — drawing room, music room, both dining rooms</li>
+        <li><b>Tea and coffee</b> — laid out through the day</li>
+        <li><b>Wi-Fi and parking</b> — Starlink in select areas, parking free</li>
+        <li><b>Laundry</b> — available throughout your stay</li>
+      </ul>
+    </div>
+    <div class="g-ledger__col g-ledger--out">
+      <p class="g-ledger__h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        Arranged separately
+      </p>
+      <ul>
+        <li>Dinner at La Table — booked in advance, priced per person</li>
+        <li>Transfers from Toulouse — arranged on request</li>
+        <li>Carriage rides, market mornings, brocante tours</li>
+        <li>Tourist tax — charged locally, as French law requires</li>
+      </ul>
+    </div>
+    <p class="g-ledger__note">Rates are per room per night. Nothing above appears on your bill unless you ask for it.</p>
+  </div>
+</div></section>
+
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
    across all six categories. Short quotes, attributed, nothing invented. #}
@@ -324,5 +368,25 @@
   <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
   <path d="M20 8v-3M32 5v-3M44 8v-3"/>
 </svg></div>
+
+
+<!-- ============ THE CLOSE ============ -->
+{# The page ended with nothing to do. Written for this page rather than
+   generic, and set on navy so it reads as a full stop. #}
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">Take a room</h2>
+  <p class="g-close__p">Seven bedrooms, opened one at a time as the restoration reaches them. Every night booked pays for the next room.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check your dates</a>
+      <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Add dinner</a>
+      <a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">See the estate</a>
+  </div>
+</div></section>
 
 {% endblock %}

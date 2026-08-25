@@ -28,6 +28,8 @@
       €{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['instructor_name'] %} · with {{ workshop['instructor_name'] }}{% endif %}
     </p>
     {% endif %}
+  
+    <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">Choose your dates</a></p>
   </div>
 </section>
 
@@ -46,7 +48,7 @@
 <!-- ============ DATES — the decision ============ -->
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
   <p class="g-eyebrow">Dates</p>
-  <h2 class="g-h2">Choose your stay</h2>
+  <h2 id="dates" class="g-h2">Choose your stay</h2>
 
   {% if not session_rows %}
     <p class="g-p">No dates are open just yet. They are released here first, and to the newsletter before that.</p>
@@ -179,7 +181,7 @@
 </div></section>
 
 
-<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
@@ -188,6 +190,23 @@
     finished to a standard the rest of the château has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
+</div></section>
+
+
+<!-- ============ THE CLOSE ============ -->
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">Hold your place</h2>
+  <p class="g-close__p">Registration is a request, not an instant confirmation. We will confirm your place by email.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">Compare the ateliers</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us first</a>
+  </div>
 </div></section>
 
 {% endblock %}

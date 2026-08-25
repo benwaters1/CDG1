@@ -27,6 +27,7 @@
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
     <p class="g-eyebrow">Ariège · French Pyrénées</p>
     <h1 class="g-display" style="font-size:clamp(28px,5vw,46px);">{{ room['name'] }}</h1>
+  <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
     <p class="g-room__meta">
       For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
     </p>
@@ -61,7 +62,7 @@
       <div>
 
         <section class="g-step">
-          <h2 class="g-step__h"><span class="g-num">01</span> Your dates</h2>
+          <h2 id="book" class="g-step__h"><span class="g-num">01</span> Your dates</h2>
           <div class="g-row">
             <p class="g-field">
               <label for="arrival_date">Arrival</label>
@@ -238,7 +239,11 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 });
 
 (function () {
-  var f = document.querySelector('form[method="post"]');
+  /* Two POST forms live on this page. Pick the one that actually carries the
+     dates rather than whichever comes first in the document. */
+  var arrivalField = document.querySelector('[name="arrival_date"]');
+  var f = arrivalField ? arrivalField.closest('form')
+                       : document.querySelector('form[method="post"]');
   if (!f) return;
   var arrive = f.querySelector('#arrival_date'), depart = f.querySelector('#departure_date');
   var party = f.querySelector('#party_size'), hint = f.querySelector('#nights_hint');
@@ -252,17 +257,40 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     if (arrive.value){
       var n=new Date(arrive.value); n.setDate(n.getDate()+1);
       depart.min=n.toISOString().slice(0,10);
-      if (depart.value && depart.value<=arrive.value) depart.value='';
+      if (depart.value && depart.value<=arrive.value) {
+        depart.value='';
+        /* Say why it went, rather than letting the field empty itself in
+           silence. Cleared again as soon as a valid date is chosen. */
+        hint.textContent='Departure must be after arrival — choose a later date.';
+        hint.classList.add('is-warn');
+        depart.setAttribute('aria-invalid','true');
+        return;
+      }
+      depart.removeAttribute('aria-invalid');
     }
     var nt=nights();
     if(nt===null){ hint.textContent=''; hint.classList.remove('is-warn'); }
     else if(nt<minN){ hint.textContent='Minimum stay is '+minN+' nights.'; hint.classList.add('is-warn'); }
     else { hint.textContent=nt+(nt===1?' night':' nights'); hint.classList.remove('is-warn'); }
-    f.querySelectorAll('[data-mirror]').forEach(function(el){
-      var src=f.querySelector('#'+el.getAttribute('data-mirror'));
-      el.textContent = src && src.value ? src.value : '—';
+    /* The summary panel sits outside the <form>, so these must be looked up
+       on the document; only the source fields are scoped to the form. */
+    document.querySelectorAll('[data-mirror]').forEach(function(el){
+      var name = el.getAttribute('data-mirror');
+      var src = f.querySelector('#'+name) || f.querySelector('[name="'+name+'"]');
+      if (!src || !src.value) { el.textContent = '—'; return; }
+      /* Show a date the way a person writes one, not as an ISO string. */
+      if (src.type === 'date') {
+        var p = src.value.split('-');
+        if (p.length === 3) {
+          var MON = ['January','February','March','April','May','June','July',
+                     'August','September','October','November','December'];
+          el.textContent = parseInt(p[2],10)+' '+MON[parseInt(p[1],10)-1]+' '+p[0];
+          return;
+        }
+      }
+      el.textContent = src.value;
     });
-    var nEl=f.querySelector('[data-nights]'); if(nEl) nEl.textContent = nt===null?'—':nt;
+    var nEl=document.querySelector('[data-nights]'); if(nEl) nEl.textContent = nt===null?'—':nt;
   }
   [arrive,depart,party].forEach(function(el){ el.addEventListener('change',sync); el.addEventListener('input',sync); });
 
@@ -449,7 +477,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 </script>
 
 
-<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
@@ -458,6 +486,25 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     finished to a standard the rest of the château has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
+</div></section>
+
+
+<!-- ============ THE CLOSE ============ -->
+{# The page ended with nothing to do. Written for this page rather than
+   generic, and set on navy so it reads as a full stop. #}
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">Not this room?</h2>
+  <p class="g-close__p">There are seven, and they are not alike. The comparison table is the quickest way to see which suits.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See every room</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>
+  </div>
 </div></section>
 
 {% endblock %}

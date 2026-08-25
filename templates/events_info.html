@@ -3,6 +3,8 @@
 {% block title %}Weddings & Events{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_devices.html' import monogram, crown %}
+
 
 
 
@@ -17,6 +19,7 @@
     <p class="g-eyebrow">Private celebrations</p>
     <h1 class="g-display" style="font-size:clamp(30px,5.5vw,52px);">Marry in <em>a monument</em></h1>
     <p>The whole château, the valley, and rooms most people will never enter.</p>
+    <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a></p>
   </div>
 </section>
 
@@ -31,6 +34,7 @@
 </svg>
   <div class="g-iron" aria-hidden="true"></div>
 <div class="g-hairs" aria-hidden="true"><i></i></div>
+  {{ monogram() }}
   <h2 class="g-place">Three Ways to Take the Château</h2>
   <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
     <div class="g-grid g-grid--3">
@@ -61,7 +65,7 @@
 
       <form method="post" action="{{ url_for('submit_event_inquiry') }}" class="g-panel" style="background:var(--white); border:1px solid var(--line);">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <h3 class="g-h3">Make an enquiry</h3>
+        <h3 id="enquire" class="g-h3">Make an enquiry</h3>
 
         <p class="g-field">
           <label for="event_type">What kind of event?</label>
@@ -158,7 +162,7 @@
 </div></section>
 
 
-<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
@@ -167,6 +171,25 @@
     finished to a standard the rest of the château has not reached yet. The
     imperfection is deliberate, and staying here pays for the next room.
   </p>
+</div></section>
+
+
+<!-- ============ THE CLOSE ============ -->
+{# The page ended with nothing to do. Written for this page rather than
+   generic, and set on navy so it reads as a full stop. #}
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">Tell us what you have in mind</h2>
+  <p class="g-close__p">A wedding, a birthday, a shoot. Describe it and we will come back with what it would involve and what it would cost.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('events_info') }}" class="g-btn g-btn--solid">Make an enquiry</a>
+      <a href="{{ url_for('gallery_page') }}" class="g-btn g-btn">See the château</a>
+  </div>
 </div></section>
 
 {% endblock %}

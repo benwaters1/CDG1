@@ -471,17 +471,28 @@
 
 <script>
 (function(){
-  if (!document.body.classList.contains('has-hero')) return;
+  /* One listener drives both flags. `is-solid` sits on the header and carries
+     the original nine CSS rules; `at-top` sits on the body for the newer ones.
+     Two separate listeners with opposite polarity used to fight over this. */
   var top = document.querySelector('.g-top');
-  var hero = document.querySelector('.g-hero');
   if (!top) return;
+  var hasHero = document.body.classList.contains('has-hero');
+  var hero = document.querySelector('.g-hero');
   function set(){
-    var trigger = hero ? hero.offsetHeight - 90 : 10;
-    top.classList.toggle('is-solid', window.scrollY > trigger);
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    /* Without a hero the header is always solid — white text on cream is the
+       failure this whole mechanism exists to prevent. */
+    var overHero = hasHero && y < (hero ? hero.offsetHeight - 90 : 80);
+    top.classList.toggle('is-solid', !overHero);
+    document.body.classList.toggle('at-top', overHero);
   }
-  window.addEventListener('scroll', set, {passive:true});
-  window.addEventListener('resize', set);
   set();
+  window.addEventListener('scroll', set, {passive:true});
+  window.addEventListener('resize', set, {passive:true});
+  window.addEventListener('load', set);
+  /* A programmatic scroll does not reliably fire a scroll event before paint. */
+  var n = 0;
+  (function tick(){ set(); if (n++ < 90) requestAnimationFrame(tick); })();
 })();
 </script>
 <script>
@@ -501,24 +512,7 @@
 </script>
 
 <script>
-/* The wordmark is white-on-transparent. It reads over a dark hero and vanishes
-   against the cream header, so track whether the page is still at the top and
-   let the CSS decide which version to show. */
-(function(){
-  if (!document.body.classList.contains('has-hero')) return;
-  var set = function(){
-    var y = window.scrollY || document.documentElement.scrollTop || 0;
-    document.body.classList.toggle('at-top', y < 80);
-  };
-  set();
-  window.addEventListener('scroll', set, { passive: true });
-  window.addEventListener('resize', set, { passive: true });
-  window.addEventListener('load', set);
-  /* A programmatic scroll does not always fire a scroll event before paint,
-     so re-check on each frame while the page is settling. */
-  var settle = 0;
-  (function tick(){ set(); if (settle++ < 90) requestAnimationFrame(tick); })();
-})();
+/* Header legibility is handled by the single listener above. */
 </script>
 <button type="button" class="g-totop" aria-label="Back to top" hidden>
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>

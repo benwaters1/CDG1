@@ -395,7 +395,14 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   color: var(--blue-deep); margin: 0 0 var(--s5);
   display: flex; align-items: baseline; gap: var(--s3);
 }
-.g-num{ font-family: var(--serif); font-size: 12px; color: var(--brass); letter-spacing: .08em; }
+.g-num{
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; flex: none;
+  border: 1px solid var(--stone); border-radius: 50%;
+  font-family: var(--display); font-weight: 400; font-size: 17px;
+  letter-spacing: 0; color: var(--stone); background: transparent;
+  margin-right: var(--s4); vertical-align: middle;
+}
 
 .g-row{ display: grid; gap: var(--s4); }
 .g-field{ display: flex; flex-direction: column; margin: 0 0 var(--s5); }
@@ -2151,8 +2158,9 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 /* The header row, measured against chateaudelacouronne.com: small, letter-
    spaced, quiet until hovered. Sits between the wordmark and the Book button. */
 .g .g-nav{
-  gap: clamp(14px, 1.5vw, 26px); align-items: center; margin-left: auto;
-  margin-right: var(--s5);
+  gap: clamp(10px, 1.1vw, 20px); align-items: center;
+  margin-left: auto; margin-right: var(--s4);
+  min-width: 0; flex-wrap: nowrap;
 }
 .g .g-nav a{
   font-family: var(--ui); font-size: 13px; font-weight: 500;
@@ -2508,21 +2516,13 @@ stroke='%238F8C78' stroke-width='1'>\
   transition: background .2s ease, border-color .2s ease;
 }
 /* Over the hero, at the very top only. */
-.g.has-hero.at-top .g-top{ background: transparent; border-bottom-color: transparent; }
+.g.has-hero .g-top:not(.is-solid){ background: transparent; border-bottom-color: transparent; }
 
 /* Where scroll-driven animations exist, drive it from CSS so no script is
    needed at all. */
-@supports (animation-timeline: scroll()){
-  .g.has-hero .g-top{
-    animation: g-header-solid linear both;
-    animation-timeline: scroll();
-    animation-range: 0 220px;
-  }
-  @keyframes g-header-solid{
-    from{ background: transparent; border-bottom-color: transparent; }
-    to  { background: var(--sand); border-bottom-color: var(--line); }
-  }
-}
+/* The scroll-driven version was removed deliberately: it faded the background
+   over 0–220px while the text colour only flipped at hero-height, leaving a
+   band where white text sat on solid parchment. One class, both properties. */
 
 /* ==========================================================================
    THE ATELIER GLOSS
@@ -2571,3 +2571,176 @@ stroke='%238F8C78' stroke-width='1'>\
   width: 100%; height: clamp(11rem, 18vw, 15rem);
   object-fit: cover; display: block;
 }
+
+/* Workshop card image — one card in five rendered without any picture. */
+.g .g-wscard__img{
+  width: 100%; height: clamp(10rem, 15vw, 13rem);
+  object-fit: cover; display: block;
+}
+
+/* ==========================================================================
+   WHAT THE PRICE INCLUDES
+   The commonest reason a luxury booking is abandoned is uncertainty about
+   what the number covers. Set as a ledger — included on the left, not
+   included on the right — so nothing is discovered at checkout.
+   ========================================================================== */
+.g-ledger{
+  display: grid; gap: var(--s6); margin-top: var(--s6);
+  border-top: 1px solid var(--stone);
+}
+@media (min-width: 46rem){ .g-ledger{ grid-template-columns: 1fr 1fr; gap: var(--s8); } }
+.g-ledger__col{ padding-top: var(--s5); }
+.g-ledger__h{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--stone); margin: 0 0 var(--s4);
+  display: flex; align-items: center; gap: var(--s3);
+}
+.g-ledger__h svg{ width: 15px; height: 15px; flex: none; }
+.g-ledger ul{ list-style: none; margin: 0; padding: 0; }
+.g-ledger li{
+  padding: var(--s3) 0; border-bottom: 1px solid var(--line);
+  font-size: 16px; line-height: 1.5; display: flex; gap: var(--s4);
+}
+.g-ledger li::before{ content: ''; flex: none; width: 0; }
+.g-ledger--in li b{ font-weight: 500; color: var(--blue-deep); }
+.g-ledger--out li{ color: var(--ink-soft); }
+.g-ledger__note{
+  grid-column: 1 / -1; margin: var(--s3) 0 0;
+  font-size: 15px; color: var(--ink-soft);
+}
+
+
+/* The step heading sits beside its numeral rather than wrapping under it. */
+.g .g-step__h{ display: flex; align-items: center; gap: 0; }
+.g .g-step{ position: relative; }
+/* A hairline runs from one step to the next, so the sequence reads as a
+   sequence rather than three unrelated boxes. */
+.g .g-step + .g-step::before{
+  content: ''; position: absolute; left: 19px; top: calc(var(--s7) * -1);
+  width: 1px; height: var(--s7); background: var(--line);
+}
+
+
+/* The header must never wrap to a second row — the row of eight, the panel
+   toggle and Book together were exceeding the width at 1440. */
+.g .g-top__in{ flex-wrap: nowrap; min-height: 85px; }
+.g .g-logo{ flex: none; }
+/* Below 84rem the eight-item row is the first thing to go; the panel keeps
+   every destination anyway. */
+@media (max-width: 84rem){
+  .g .g-nav{ display: none; }
+  .g .g-navbtn{ margin-left: auto; }
+}
+
+/* ==========================================================================
+   THE MONOGRAM AND THE WALLPAPER
+   Two things the château already owns and the site was not using: the G in
+   its laurel from the crest, and the floral paper on the walls of Chambre
+   des Fleurs. Both drawn as line, both kept faint — a ground to read on,
+   never a pattern that competes with the words.
+   ========================================================================== */
+
+/* The G, in laurel. Drawn rather than the logo file so it scales, takes any
+   colour, and never fails to load. */
+.g-monogram{ display: block; margin: 0 auto; width: 62px; height: 62px; color: var(--stone); }
+.g-monogram--lg{ width: 96px; height: 96px; }
+.g-monogram--pale{ color: var(--line); }
+
+/* The wallpaper — a damask repeat taken from the paper in the Chambre des
+   Fleurs, at 4% so it reads as texture rather than decoration. */
+.g-paper{ position: relative; isolation: isolate; }
+.g-paper::before{
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  opacity: .025;
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='120' height='160' fill='none' stroke='%23183456' stroke-width='1.1'>\
+<path d='M60 12c-7 9-11 16-11 23s4 12 11 19c7-7 11-12 11-19s-4-14-11-23z'/>\
+<path d='M38 40c8-5 15-7 22-7s14 2 22 7M38 40c8 5 15 7 22 7s14-2 22-7'/>\
+<circle cx='60' cy='40' r='3'/>\
+<path d='M60 54v26M46 66c5-4 9-6 14-6M74 66c-5-4-9-6-14-6'/>\
+<path d='M0 92c7 9 11 16 11 23s-4 12-11 19M120 92c-7 9-11 16-11 23s4 12 11 19'/>\
+<path d='M0 120h18M102 120h18'/><circle cx='0' cy='120' r='3'/><circle cx='120' cy='120' r='3'/>\
+</svg>");
+  background-size: 190px 254px;
+}
+/* On navy, the same paper in a lighter ink. */
+.g-paper--dark::before{
+  opacity: .07;
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='120' height='160' fill='none' stroke='%23D6CBB6' stroke-width='1.1'>\
+<path d='M60 12c-7 9-11 16-11 23s4 12 11 19c7-7 11-12 11-19s-4-14-11-23z'/>\
+<path d='M38 40c8-5 15-7 22-7s14 2 22 7M38 40c8 5 15 7 22 7s14-2 22-7'/>\
+<circle cx='60' cy='40' r='3'/><path d='M60 54v26M46 66c5-4 9-6 14-6M74 66c-5-4-9-6-14-6'/>\
+</svg>");
+  background-size: 120px 160px;
+}
+
+/* Colour. The palette was navy, stone and parchment and almost nothing else.
+   These are drawn from the building: the gilt on the fresco medallion, the
+   Virginia creeper on the gates, and the verdigris of the copper. Used for
+   accents only — a rule, a mark, a hover — never a surface. */
+:root{
+  --gilt:      #B08D57;   /* the gilding on the salon medallion   */
+  --creeper:   #8C3A2B;   /* the Virginia creeper on the gates    */
+  --verdigris: #5F7A6E;   /* aged copper from the kitchen         */
+}
+.g-accent-gilt{ color: var(--gilt); }
+.g-rule-gilt{ height: 1px; background: var(--gilt); opacity: .5; border: 0; margin: var(--s6) 0; }
+
+/* Every hero now offers the next step. Six pages opened with a heading, a
+   sentence and nothing to act on — a guest had to scroll to find out how. */
+.g-hero__cta{ margin: var(--s6) 0 0; }
+.g.has-hero .g-hero__cta .g-btn--solid{
+  background: var(--sand); color: var(--blue-deep); border-color: var(--sand);
+}
+.g.has-hero .g-hero__cta .g-btn--solid:hover{
+  background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep);
+}
+
+/* Pages without a hero open straight into content — the action still needs
+   to sit with the title rather than below a screen of text. */
+.g-roomtop__cta{ margin: var(--s5) 0 var(--s6); }
+
+/* ==========================================================================
+   BY THE NUMBERS
+   The château's real figures — 94 rooms, five floors, 43,000 sq ft — were
+   only ever mentioned in passing prose. Set as engraved figures they carry
+   the scale that a photograph cannot.
+   ========================================================================== */
+.g-figures{
+  display: grid; gap: var(--s6) var(--s7); margin-top: var(--s7);
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  border-top: 1px solid var(--line); padding-top: var(--s6);
+}
+.g-figure b{
+  display: block; font-family: var(--display); font-weight: 400;
+  font-size: clamp(34px, 4vw, 52px); line-height: 1;
+  letter-spacing: .012em; color: var(--blue-deep);
+}
+.g-figure span{
+  display: block; margin-top: var(--s3);
+  font-family: var(--ui); font-size: 13px; line-height: 1.45;
+  letter-spacing: .06em; color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   THE CLOSE
+   Seven pages ran out with nothing to do — a guest reached the bottom and
+   had only the footer. Each page now ends by offering the obvious next move,
+   set quietly on navy so it reads as a full stop rather than another pitch.
+   ========================================================================== */
+.g-close{ background: var(--blue-deep); color: #fff; }
+.g-close .g-wrap{ text-align: center; }
+.g-close__mark{ display: block; margin: 0 auto var(--s5); width: 54px; height: 54px; color: rgba(255,255,255,.42); }
+.g-close__h{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.12;
+  letter-spacing: .012em; color: #fff; margin: 0 0 var(--s4);
+}
+.g-close__p{ font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.78); max-width: 38rem; margin: 0 auto var(--s6); }
+.g-close__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); justify-content: center; }
+.g .g-close__acts .g-btn{ border-color: rgba(255,255,255,.5); color: #fff; }
+.g .g-close__acts .g-btn--solid{ background: var(--sand); color: var(--blue-deep); border-color: var(--sand); }
+.g .g-close__acts .g-btn:hover{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
+@media (max-width: 40rem){ .g .g-close__acts .g-btn{ width: 100%; } }

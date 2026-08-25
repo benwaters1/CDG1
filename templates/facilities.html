@@ -3,6 +3,8 @@
 {% block title %}Facilities &amp; Activities{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_devices.html' import monogram, crown %}
+
 
 
 
@@ -14,12 +16,14 @@
   <div class="g-hero__in">
     <h1 class="g-display">{{ t('Facilities & Activities') }}</h1>
     <p class="g-hero__lede">Six acres of parkland, a pool among the fruit trees, and a valley that rewards every season differently.</p>
+    <p class="g-hero__cta"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a></p>
   </div>
 </section>
 
 <!-- ====================== AT THE CHÂTEAU ====================== -->
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">At the Château</p>
+  {{ monogram() }}
   <h2 class="g-h2">Yours, simply by staying</h2>
   <p class="g-p">Nothing below is charged as an extra. It is part of the château, as it would be if you were staying with friends who happened to own a château.</p>
 
@@ -42,7 +46,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1000w" alt="The grounds at dusk" loading="lazy" style="width:100%;height:14rem;object-fit:cover">
       <div class="g-card__b">
         <h3 class="g-h3">Tennis Court</h3>
-        <p class="g-p">Secluded in the trees at the edge of the grounds. Rackets in the hall.</p>
+        <p class="g-p">At the far edge of the grounds, screened by trees. Lined for both tennis and pickleball; rackets, balls and paddles are kept in the hall. Nobody books it — if it is free, it is yours.</p>
       </div>
     </article>
   </div>
@@ -53,12 +57,15 @@
     <div><dt>Salon de thé</dt><dd>Tea and coffee laid out through the day, and somewhere quiet to drink it</dd></div>
     <div><dt>Breakfast</dt><dd>Continental, included every morning</dd></div>
     <div><dt>Lounges</dt><dd>Four salons — the drawing room, the music room and two dining rooms</dd></div>
-    <div><dt>Games</dt><dd>Table tennis, pickleball, and a small gym</dd></div>
+    <div><dt>Games</dt><dd>The tennis court is lined for pickleball too. Table tennis and a small gym indoors</dd></div>
     <div><dt>Outdoors</dt><dd>A BBQ area, and six acres to walk at any hour</dd></div>
     <div><dt>Laundry</dt><dd>Facilities available throughout your stay</dd></div>
     <div><dt>Wi-Fi</dt><dd>Starlink, in select areas of the château</dd></div>
     <div><dt>In your room</dt><dd>Power outlets and bedside lamps</dd></div>
     <div><dt>Parking</dt><dd>Free, at the château</dd></div>
+    <div><dt>The pool</dt><dd>Below the formal gardens, unheated, open through the warm months</dd></div>
+    <div><dt>The court</dt><dd>Lined for tennis and pickleball. Rackets and paddles in the hall</dd></div>
+    <div><dt>The gym</dt><dd>Small, indoors, and enough to keep a routine going</dd></div>
     <div><dt>Evenings</dt><dd>Electricity is limited by design — rooms are lit by candle</dd></div>
   </dl>
 </div></section>
@@ -108,18 +115,21 @@
 
   <div class="g-cards" style="margin-top:var(--s7)">
     <article class="g-card">
+      <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The drive at dusk" loading="lazy">
       <div class="g-card__b">
         <h3 class="g-h3">Carriage Rides</h3>
         <p class="g-p">The château's own carriage and horses, up the drive and through the parkland — the same arrival the château has always had. Particularly good at dusk, and for a wedding or a proposal.</p>
       </div>
     </article>
     <article class="g-card">
+      <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Copper at the market" loading="lazy">
       <div class="g-card__b">
         <h3 class="g-h3">Market Mornings</h3>
         <p class="g-p">Les Cabannes on a Sunday, three minutes below the gates. Tarascon-sur-Ariège on Wednesday and Saturday. Cheese from the mountain farms, charcuterie, and whatever the season has decided.</p>
       </div>
     </article>
     <article class="g-card">
+      <img class="g-card__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
       <div class="g-card__b">
         <h3 class="g-h3">Antique &amp; Brocante Tours</h3>
         <p class="g-p">The brocantes and vide-greniers of the Ariège, with someone who knows which ones are worth the drive.</p>
@@ -153,7 +163,7 @@
 </div>
 
 
-<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
   <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
@@ -169,5 +179,46 @@
   <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
   <path d="M0 33.5h480" opacity=".5"/>
 </svg></div>
+
+
+<!-- ============ BY THE NUMBERS ============ -->
+{# Every figure here is from the public record: Wikipedia's monument entry
+   (floor count, floor area, room count, architect) and the Monuments
+   Historiques listing PA00132943. Nothing estimated. #}
+<section class="g-sec g-paper"><div class="g-wrap">
+  <p class="g-eyebrow">The Building</p>
+  <h2 class="g-place">A Sense of the Scale</h2>
+  <p class="g-p">It is difficult to photograph how large the château is. These are the figures.</p>
+
+  <div class="g-figures">
+    <div class="g-figure"><b>94</b><span>Rooms</span></div>
+    <div class="g-figure"><b>5</b><span>Floors</span></div>
+    <div class="g-figure"><b>43,000</b><span>Square feet · about 4,000 m²</span></div>
+    <div class="g-figure"><b>6</b><span>Acres of grounds · 2.4 hectares</span></div>
+    <div class="g-figure"><b>1741</b><span>Begun, to a design by Ange-Jacques Gabriel</span></div>
+    <div class="g-figure"><b>7</b><span>Bedrooms open to guests so far</span></div>
+  </div>
+
+  <p class="g-hint" style="margin-top:var(--s6)">Classified a Class I Historic Monument on 14 June 1994 — reference PA00132943 — the same designation as Versailles and the Eiffel Tower.</p>
+</div></section>
+
+
+<!-- ============ THE CLOSE ============ -->
+{# The page ended with nothing to do. Written for this page rather than
+   generic, and set on navy so it reads as a full stop. #}
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">It is all included</h2>
+  <p class="g-close__p">The pool, the court, the parkland and the salons come with the room. Nothing above appears on your bill.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join an atelier</a>
+  </div>
+</div></section>
 
 {% endblock %}

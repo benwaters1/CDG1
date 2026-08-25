@@ -60,8 +60,10 @@
     {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}
     <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:12px;">Pay balance — €{{ '%.2f'|format(balance_due) }}</a>
 
-    {# Or part of it. The same route as the button above: no amount means the
-       whole balance, so the two are one code path. #}
+    {# Part-payments and the auto-charge notice. These keep being lost when this
+       template is handed over, so if they vanish again tests/test_part_payments
+       and tests/test_autocharge are what catch it. Same route as the button
+       above — no amount means the whole balance, so the two are one path. #}
     <form method="post" action="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-field" style="margin-top:var(--s4)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="part_amount">Or pay part of it</label>
@@ -74,9 +76,6 @@
       <p class="g-hint">Anything from €{{ '%.0f'|format(part_payment_minimum) }} upwards — what is left stays on your balance.</p>
     </form>
 
-    {# Said plainly and before the day: being charged unexpectedly is worse than
-       being asked. The toggle is here rather than by email so the guest can
-       settle it themselves. #}
     {% if booking['balance_due_date'] and autocharge_enabled %}
     <p class="g-hint" style="margin-top:var(--s4)">
       {% if booking['autocharge_opt_out'] %}

@@ -3,6 +3,8 @@
 {% block title %}Château Workshops{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_devices.html' import monogram, crown %}
+
 
 
 {# Content and voice from vicente-yuste-2air.squarespace.com/workshops — the
@@ -18,6 +20,8 @@
     <p class="g-eyebrow" style="color:rgba(255,255,255,.75)">Château de Gudanes</p>
     <h1 class="g-display">Château Workshops</h1>
     <p class="g-hero__lede">Three ways to spend time inside a working restoration — raw, unfinished, and utterly alive — mixed with the real luxury of French food, antiques and craft.</p>
+  
+    <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a></p>
   </div>
 </section>
 
@@ -49,6 +53,7 @@
 
 <!-- ============ CHOOSE — the three, side by side ============ -->
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
+  {{ monogram() }}
   <h2 class="g-place">Choose Your Workshop</h2>
   <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
   <dl class="g-facts-list" style="margin-bottom:var(--s7)">
@@ -62,7 +67,17 @@
   {% if workshops %}
   <div class="g-wscards">
     {% for w in workshops %}
+    {% set WS_CARD_IMG = {
+      'Antique': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg",
+      'Artisan': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg",
+      'Noël':    "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png",
+      'Cooking': "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG",
+      'Seven':   "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg"
+    } %}
+    {% set wp = namespace(u=None) %}
+    {% for k, v in WS_CARD_IMG.items() %}{% if k in w['title'] %}{% set wp.u = v %}{% endif %}{% endfor %}
     <article class="g-wscard">
+      <img class="g-wscard__img" src="{{ wp.u or WS_CARD_IMG['Cooking'] }}?format=1000w" alt="{{ w['title'] }}" loading="lazy">
       <div class="g-wscard__top">
         {% set rows = sessions_by_workshop.get(w['id'], []) %}
         {% if rows and rows[0].session['end_date'] and rows[0].session['end_date'] != rows[0].session['start_date'] %}
@@ -299,7 +314,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The pool and formal gardens from above" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">Outdoors</h3>
-        <p>A pool set among the cherry trees below the formal gardens, and a tennis court secluded at the edge of the grounds. Table tennis and a small gym indoors.</p>
+        <p>The pool sits below the formal gardens among the cherry trees, out of sight of the château and open through the warm months. The tennis court is at the far edge of the grounds, screened by trees, and lined for pickleball as well as tennis — rackets, balls and paddles are in the hall. Table tennis and a small gym indoors.</p>
       </div>
     </article>
     <article class="g-incl-card">
@@ -322,7 +337,7 @@
 
   <dl class="g-facts-list">
     <div><dt>Salon de thé</dt><dd>Tea and coffee through the day, and somewhere quiet to drink it</dd></div>
-    <div><dt>Games</dt><dd>Table tennis, pickleball, and a small gym</dd></div>
+    <div><dt>Games</dt><dd>The tennis court is lined for pickleball too. Table tennis and a small gym indoors</dd></div>
     <div><dt>Laundry</dt><dd>Facilities available throughout your stay</dd></div>
     <div><dt>Wi-Fi</dt><dd>Starlink, in select areas of the château</dd></div>
     <div><dt>In your room</dt><dd>Power outlets and bedside lamps</dd></div>
@@ -363,6 +378,24 @@
     <span class="g-gloss__en">A <b>workshop</b> — but properly, the room where a craft is
       practised and taught. Not a class you attend; a place you work in
       alongside the people who do it for a living.</span>
+  </div>
+</div></section>
+
+
+<!-- ============ THE CLOSE ============ -->
+<section class="g-sec g-close"><div class="g-wrap">
+  <svg class="g-close__mark" viewBox="0 0 62 62" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M31 5c-9 0-15 5-18 11M31 5c9 0 15 5 18 11"/>
+    <path d="M13 16c-3 6-4 13-2 20s6 13 12 17M49 16c3 6 4 13 2 20s-6 13-12 17"/>
+    <path d="M23 53c5 3 11 3 16 0"/>
+    <path d="M38 24c-1.6-2.4-4.2-3.8-7-3.8-4.8 0-8.6 4-8.6 10.8s3.8 10.8 8.6 10.8c4.2 0 7.4-2.6 7.4-7.4v-2h-6.6"/>
+  </svg>
+  <h2 class="g-close__h">Take a week of it</h2>
+  <p class="g-close__p">Fifteen guests at most, and the château takes no others while an atelier runs. The dates that suit you are unlikely to come round twice.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See every date</a>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
   </div>
 </div></section>
 
