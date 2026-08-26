@@ -28,6 +28,22 @@
   {{ closure.ticket_count }} ticket{{ '' if closure.ticket_count == 1 else 's' }},
   {{ closure.covers }} cover{{ '' if closure.covers == 1 else 's' }}.
   Anything found afterwards belongs to today with a note pointing back here.
+  {% if closure.counted_cash is not none %}
+  {# Kept on the record, not only flashed at the moment of closing. A difference
+     is the thing somebody looks up a week later. #}
+  <div style="margin-top:8px;">
+    Drawer counted at €{{ '%.2f'|format(closure.counted_cash) }}
+    {%- if closure.opening_float %} (float €{{ '%.2f'|format(closure.opening_float) }}){% endif %} —
+    {% if closure.cash_variance is not none and closure.cash_variance|abs >= 0.01 %}
+    <span class="till-variance is-off">€{{ '%.2f'|format(closure.cash_variance|abs) }}
+      {{ 'over' if closure.cash_variance > 0 else 'short' }}</span>
+    {% else %}
+    <span class="till-variance">counts exactly</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <div style="margin-top:8px;" class="upload-hint">The drawer was not counted.</div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -42,6 +58,29 @@
   <h3 style="margin-top:0;">Close the day</h3>
   <p class="upload-hint" style="margin-top:0;">
     Freezes the totals so they cannot change afterwards. Every tab has to be settled first.
+  </p>
+  {#
+    Counting the drawer. Without this the closure recorded what the till THOUGHT
+    it had taken and never asked what was actually there, so a short night was
+    invisible — and a cash difference is only findable while somebody still
+    remembers the evening. The float matters: without it the difference is
+    always wrong by exactly the float, which is worse than not asking.
+  #}
+  <div class="till-count">
+    <div>
+      <label class="field-label" for="opening_float">Float you started with (€)</label>
+      <input type="text" id="opening_float" name="opening_float" inputmode="decimal"
+             placeholder="0.00" autocomplete="off">
+    </div>
+    <div>
+      <label class="field-label" for="counted_cash">Counted in the drawer now (€)</label>
+      <input type="text" id="counted_cash" name="counted_cash" inputmode="decimal"
+             placeholder="{{ '%.2f'|format(report.by_method.get('cash', 0)) }}" autocomplete="off">
+    </div>
+  </div>
+  <p class="upload-hint">
+    The till took <strong>€{{ '%.2f'|format(report.by_method.get('cash', 0)) }}</strong> in cash today.
+    With the float, that is what should be in the drawer. Leave both blank to close without counting.
   </p>
   {% if is_today %}
   <label style="display:flex; gap:8px; align-items:center; font-size:14px; margin-bottom:8px;">

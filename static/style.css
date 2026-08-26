@@ -2550,3 +2550,9 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .till-shell .till-total-row{ display:flex; justify-content:space-between; gap:14px;
   padding:9px 0; border-bottom:1px solid var(--till-line); }
 .till-shell .till-total-row.is-total{ font:700 20px/1 'Inter Tight',sans-serif; border-bottom:0; }
+
+.till-count{ display:flex; gap:12px; flex-wrap:wrap; margin:12px 0 6px; }
+.till-count > div{ flex:1 1 190px; }
+.till-count input{ width:100%; }
+.till-variance{ font:700 19px/1.2 'Inter Tight',sans-serif; }
+.till-variance.is-off{ color:var(--danger); }

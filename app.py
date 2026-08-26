@@ -2929,6 +2929,13 @@ def init_db():
         # restaurant showed an empty page, so you could not see your own
         # room), seating meant typing on a tablet mid-service, and "Terrace",
         # "terrace" and "Table 4" became three different tables inside a week.
+        # Counting the drawer. The closure recorded what the till THOUGHT it had
+        # taken and never asked what was actually in the drawer, so a short
+        # night was invisible -- and a cash difference is only findable while
+        # somebody still remembers the evening.
+        ("opening_float", "ALTER TABLE pos_closures ADD COLUMN opening_float REAL"),
+        ("counted_cash", "ALTER TABLE pos_closures ADD COLUMN counted_cash REAL"),
+        ("cash_variance", "ALTER TABLE pos_closures ADD COLUMN cash_variance REAL"),
         ("restaurant_tables", """CREATE TABLE IF NOT EXISTS restaurant_tables (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL UNIQUE,
@@ -9336,7 +9343,8 @@ def pos_period_bounds(kind, period):
     return f"{period}-01-01", f"{period}-12-31"
 
 
-def pos_close_period(conn, kind, period, user_id=None):
+def pos_close_period(conn, kind, period, user_id=None, *,
+                     opening_float=None, counted_cash=None):
     """Freeze a period's totals. Once closed, the figure cannot move.
 
     Anything arriving afterwards belongs to the next period with a reference to
@@ -9400,26 +9408,38 @@ def pos_close_period(conn, kind, period, user_id=None):
     perpetual = pos_perpetual_total(conn)
     now = datetime.now(timezone.utc).isoformat()
 
+    # What the drawer should hold: the float it started with, plus every cash
+    # payment taken. Counted against it, the difference is the only number that
+    # says a night went wrong -- and it goes INSIDE the hash, because a count
+    # somebody can quietly change afterwards is not a count.
+    expected_cash = round((opening_float or 0) + methods.get("cash", 0), 2)
+    variance = (round(counted_cash - expected_cash, 2)
+                if counted_cash is not None else None)
+
     body = _canonical({
         "kind": kind, "period": period, "gross": round(gross, 2),
         "discount": round(discount, 2), "service": round(service, 2),
         "taken": taken, "vat": vat, "methods": methods,
         "tickets": len(orders), "covers": covers, "perpetual": perpetual,
+        "float": opening_float, "counted": counted_cash, "variance": variance,
     })
     digest = hashlib.sha256(f"{prev_hash}|{kind}|{period}|{body}".encode("utf-8")).hexdigest()
 
     conn.execute(
         """INSERT INTO pos_closures (kind, period, first_sequence, last_sequence, gross_total,
            discount_total, service_total, taken_total, vat_json, by_method_json,
-           ticket_count, covers, perpetual_total, prev_hash, hash, closed_by_user_id, closed_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           ticket_count, covers, perpetual_total, opening_float, counted_cash,
+           cash_variance, prev_hash, hash, closed_by_user_id, closed_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (kind, period, first_seq, last_seq, round(gross, 2), round(discount, 2),
          round(service, 2), taken, json.dumps(vat), json.dumps(methods),
-         len(orders), covers, perpetual, prev_hash, digest, user_id, now))
+         len(orders), covers, perpetual, opening_float, counted_cash, variance,
+         prev_hash, digest, user_id, now))
     pos_journal_append(conn, f"closure_{kind}",
                        {"period": period, "gross": round(gross, 2), "taken": taken,
                         "tickets": len(orders), "covers": covers,
-                        "perpetual": perpetual, "hash": digest},
+                        "perpetual": perpetual, "counted": counted_cash,
+                        "variance": variance, "hash": digest},
                        user_id=user_id)
     return conn.execute("SELECT * FROM pos_closures WHERE kind = ? AND period = ?",
                         (kind, period)).fetchone(), True
@@ -16178,13 +16198,42 @@ def pos_close_day():
         flash(f"{open_tabs} tab{'' if open_tabs == 1 else 's'} still open. "
               "Settle or void them before closing the day.", "error")
         return redirect(url_for("pos_day", date=on.isoformat()))
-    closure, created = pos_close_period(conn, "day", on.isoformat(), session.get("user_id"))
+    def _money(field):
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        if not raw:
+            return None
+        try:
+            return round(float(raw), 2)
+        except ValueError:
+            return "bad"
+
+    opening_float, counted = _money("opening_float"), _money("counted_cash")
+    if "bad" in (opening_float, counted):
+        conn.close()
+        flash("Enter the float and the count as numbers, or leave them blank.", "error")
+        return redirect(url_for("pos_day", date=on.isoformat()))
+
+    closure, created = pos_close_period(conn, "day", on.isoformat(), session.get("user_id"),
+                                        opening_float=opening_float, counted_cash=counted)
     log_audit(conn, "pos_day_closed", target=on.isoformat(),
-              details=f"€{closure['taken_total']:.2f} taken")
+              details=f"€{closure['taken_total']:.2f} taken"
+                      + ("" if closure["cash_variance"] is None
+                         else f", drawer {closure['cash_variance']:+.2f}"))
     conn.commit()
     conn.close()
-    flash(f"{on.isoformat()} closed — €{closure['taken_total']:.2f} taken." if created
-          else f"{on.isoformat()} was already closed.", "success" if created else "error")
+    if not created:
+        flash(f"{on.isoformat()} was already closed.", "error")
+        return redirect(url_for("pos_day", date=on.isoformat()))
+    flash(f"{on.isoformat()} closed — €{closure['taken_total']:.2f} taken.", "success")
+    # The difference gets its own message, and says which way it went. "Short"
+    # and "over" are the words used at the end of a service; a signed number on
+    # its own gets read as either.
+    v = closure["cash_variance"]
+    if v is not None:
+        if abs(v) < 0.01:
+            flash("The drawer counts exactly.", "success")
+        else:
+            flash(f"The drawer is €{abs(v):.2f} {'over' if v > 0 else 'short'}.", "error")
     return redirect(url_for("pos_day", date=on.isoformat()))
 
 

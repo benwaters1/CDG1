@@ -306,6 +306,96 @@ def run():
     conn.close()
     s.check("and it can be put back", back == 1)
 
+    s.section("Counting the drawer at the end of the night")
+    # The closure recorded what the till THOUGHT it had taken and never asked
+    # what was in the drawer, so a short night was invisible. A cash difference
+    # is only findable while somebody still remembers the evening.
+    conn = db()
+    spare = conn.execute(
+        "SELECT id FROM restaurant_tables WHERE active = 1 ORDER BY id LIMIT 1").fetchone()["id"]
+    conn.execute("DELETE FROM pos_closures WHERE period = ?", (m.service_day().isoformat(),))
+    conn.commit()
+    conn.close()
+    oc.post("/pos/open", data={"table_id": str(spare)}, follow_redirects=True)
+    cash_tab = _latest_order()["id"]
+    oc.post(f"/pos/{cash_tab}/add",
+            data={"name": f"{TAG} Menu", "unit_price": "40.00", "quantity": "1"},
+            follow_redirects=True)
+    oc.post(f"/pos/{cash_tab}/pay", data={"method": "cash"}, follow_redirects=True)
+
+    # Everything else this suite left open, settled — the day rightly refuses to
+    # close over a running tab, and that refusal is checked in its own suite.
+    conn = db()
+    still_open = [r["id"] for r in conn.execute(
+        "SELECT id FROM pos_orders WHERE status = 'open'").fetchall()]
+    conn.close()
+    for oid in still_open:
+        oc.post(f"/pos/{oid}/pay", data={"method": "comp"}, follow_redirects=True)
+
+    today = m.service_day().isoformat()
+    page = oc.get("/pos/day").get_data(as_text=True)
+    s.check("the cash-up asks what is in the drawer", "counted_cash" in page,
+            detail="it records what the till thinks and never asks what is there")
+    s.check("and what the float was", "opening_float" in page,
+            detail="without the float the difference is always wrong by the float")
+
+    bad = oc.post("/pos/day/close",
+                  data={"date": today, "confirm": "yes", "counted_cash": "abc"},
+                  follow_redirects=True)
+    s.check("nonsense is refused rather than read as zero",
+            any("as numbers" in x for x in flashes(bad)), detail=f"{flashes(bad)[:1]}")
+
+    r = oc.post("/pos/day/close",
+                data={"date": today, "confirm": "yes",
+                      "opening_float": "100", "counted_cash": "138"},
+                follow_redirects=True)
+    said = flashes(r)
+    conn = db()
+    closure = conn.execute("SELECT * FROM pos_closures WHERE kind='day' AND period=?",
+                           (today,)).fetchone()
+    conn.close()
+    s.check("the day closes", closure is not None, detail=f"{said[:2]}")
+    if closure:
+        s.check("the count is kept, not just flashed", closure["counted_cash"] == 138.0)
+        s.check("with the float it was counted against", closure["opening_float"] == 100.0)
+        # The relationship, not a magic number: other cash taken earlier in this
+        # suite counts toward today too, which is exactly right and is what made
+        # a hardcoded figure wrong here the first time.
+        import json as _json
+        cash_taken = _json.loads(closure["by_method_json"]).get("cash", 0)
+        expected = round(100.0 + cash_taken, 2)
+        s.check("and the difference is counted minus what should be there",
+                closure["cash_variance"] == round(138.0 - expected, 2),
+                detail=f"variance {closure['cash_variance']}, cash taken {cash_taken}, "
+                       f"float 100, counted 138")
+        s.check("which is short, because 138 is less than that",
+                closure["cash_variance"] < 0, detail=f"got {closure['cash_variance']}")
+        s.check("said in the words used at the end of a service, not a signed number",
+                any("short" in x for x in said), detail=f"{said}")
+        # This one earns its place. Editing the stored count must break the
+        # journal's own verification, because a figure somebody can quietly
+        # change afterwards is not a count -- it is a note. Checked by actually
+        # doing it and putting it back.
+        conn = db()
+        before = m.pos_journal_verify(conn)
+        conn.execute("UPDATE pos_closures SET counted_cash = 9999 WHERE id = ?",
+                     (closure["id"],))
+        conn.commit()
+        recomputed = m.pos_journal_verify(conn)
+        conn.execute("UPDATE pos_closures SET counted_cash = ? WHERE id = ?",
+                     (closure["counted_cash"], closure["id"]))
+        conn.commit()
+        conn.close()
+        s.check("the journal verified before anybody touched it", before is None,
+                detail=f"{before}")
+        s.check("and the count is written into the journal entry, not just the row",
+                _journal_records_count(closure["counted_cash"]),
+                detail="the closure entry does not carry the count, so the chain "
+                       "says nothing about whether it was altered")
+    s.check("and it stays on the record afterwards",
+            "counted" in oc.get("/pos/day").get_data(as_text=True).lower(),
+            detail="a difference is what somebody looks up a week later")
+
     s.section("Guards")
     s.check("an employee cannot lay out the room",
             ec.get("/admin/restaurant/tables").status_code in (302, 403))
@@ -328,3 +418,23 @@ def _order_label(order_id):
                             (order_id,)).fetchone()["table_label"]
     finally:
         conn.close()
+
+
+def _journal_records_count(counted):
+    """Is the drawer count actually in the closure's journal entry?
+
+    Replaces a check that hashed two different strings and asserted the digests
+    differed -- which tests hashlib, not this app, and passed happily with the
+    count removed from the hashed body altogether.
+    """
+    import json
+    conn = db()
+    try:
+        row = conn.execute(
+            """SELECT payload FROM pos_journal WHERE event_type = 'closure_day'
+               ORDER BY sequence DESC LIMIT 1""").fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return False
+    return json.loads(row["payload"]).get("counted") == counted
