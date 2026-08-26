@@ -1,0 +1,88 @@
+{% extends "public_base.html" %}
+{% set crumbs = [('Privacy', None)] %}
+{% block title %}Privacy{% endblock %}
+{% block description %}What Château de Gudanes does with the details you give us when you book, dine or write to us — and what we do not do.{% endblock %}
+{% block content %}
+
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Privacy</p>
+  <h1 class="g-display">What we do with <em>your details</em></h1>
+  <p class="g-p g-lede-first">Plainly, and without the usual hedging. We are a small house in the Ariège, not an advertising business, and the short version is that we ask for what a stay needs and nothing else.</p>
+  <p class="g-hint">Last reviewed {{ privacy_reviewed }}. Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège 09310, France, is the data controller.</p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">What we hold, and why</h2>
+  <dl class="g-facts-list">
+    <div>
+      <dt>A room booking</dt>
+      <dd>Your name, email, telephone, dates, how many are coming, and anything you tell us in the notes. We need it to hold the room and to write to you about it — that is the contract between us.</dd>
+    </div>
+    <div>
+      <dt>A table or an atelier</dt>
+      <dd>The same, plus what you cannot eat, and on the longer ateliers anything medical we would need to know. That is health information and we treat it as such: it goes to the chef and to whoever is looking after you, and nowhere else.</dd>
+    </div>
+    <div>
+      <dt>An event enquiry</dt>
+      <dd>Your name, how to reach you, the dates you have in mind and what you describe. We keep it so we can answer, and so the conversation makes sense if you come back to it months later.</dd>
+    </div>
+    <div>
+      <dt>The newsletter</dt>
+      <dd>Only your email address, and only if you asked for it. Every letter carries an unsubscribe link, and using it removes you.</dd>
+    </div>
+  </dl>
+  <p class="g-p">We do not buy lists, we do not sell anything to anyone, and we do not build a profile of you.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">Paying</h2>
+  <p class="g-p">Card payments are handled by Stripe. Your card number is typed into Stripe's own form and travels to Stripe, not to us — we never see it and could not store it if we wanted to. What comes back to us is whether the payment succeeded and a reference to look it up by.</p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">Cookies, and the ones we don't set</h2>
+  <p class="g-p">There is no analytics on this site. No Google Analytics, no advertising pixel, no session recorder, nothing that follows you to another website. That is not a policy position we are proud of so much as a description of the code — you can look at the page source and see it.</p>
+  <p class="g-p">Two cookies exist. One remembers your session while you are booking so the pages join up; the other is a security token that stops a third-party site submitting a form as you. Both are strictly necessary and neither tells anyone anything about you.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">Who else is involved</h2>
+  <p class="g-p">A handful of companies do specific jobs for us. They act on our instructions and may not use your details for their own purposes.</p>
+  <dl class="g-facts-list">
+    <div><dt>Stripe</dt><dd>Takes the payment. Sees your card details; we do not.</dd></div>
+    <div><dt>Resend</dt><dd>Sends our confirmations and letters, so it handles your email address.</dd></div>
+    <div><dt>Railway</dt><dd>Hosts the site and the database it reads from.</dd></div>
+  </dl>
+  <p class="g-p">Three more are simply files your browser fetches while a page loads, which means those companies can see your IP address: Google Fonts for the typefaces, Squarespace for the photographs, and Frankfurter for the exchange rate behind the currency switcher. None of them receives your name or your booking.</p>
+  <p class="g-p">Our accounting system holds supplier invoices and staff expenses. Guest bookings are not sent to it.</p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">How long we keep it</h2>
+  <dl class="g-facts-list">
+    <div><dt>Dietary and medical notes</dt><dd>Deleted once the stay is over. There is no reason to keep them and good reason not to.</dd></div>
+    <div><dt>Booking and payment records</dt><dd>Kept as long as French accounting law requires us to keep them, which is longer than we would otherwise choose.</dd></div>
+    <div><dt>Enquiries that came to nothing</dt><dd>Cleared out once it is clear nothing came of them.</dd></div>
+    <div><dt>Newsletter</dt><dd>Until you unsubscribe.</dd></div>
+  </dl>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">The link in your confirmation</h2>
+  <p class="g-p">Every booking email carries a link that opens your reservation without a password. It works because the link itself contains a long private code, so treat it the way you would treat a password — anyone holding that link can see and change the booking. Forward it only to someone you would be happy to have do that. Tell us and we will issue a new one.</p>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">What you can ask us to do</h2>
+  <p class="g-p">You may ask for a copy of what we hold, ask us to correct it, ask us to delete it, ask us to stop using it, or ask for it in a portable form. Where you gave us consent — the newsletter, the medical notes — you may withdraw it at any time, and doing so costs you nothing else.</p>
+  <p class="g-p">Write to <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a> and a person at the château will answer. If we handle it badly you can complain to the CNIL, France's data protection authority, at <a href="https://www.cnil.fr" rel="noopener">cnil.fr</a>.</p>
+</div></section>
+
+<img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1500w" alt="The château and its parkland" loading="lazy">
+
+<div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+  <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
+  <path d="M0 33.5h480" opacity=".5"/>
+</svg></div>
+
+{% endblock %}

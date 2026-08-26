@@ -233,6 +233,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_stale_shift_enabled": "1",
     "automation_stale_shift_hours": "14",
     "automation_backup_email_enabled": "1",
+    "automation_health_notes_purge_enabled": "1",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     "automation_social_horizon_days": "28",
@@ -18463,6 +18464,25 @@ def terms_page():
     return render_template("terms.html", text=text)
 
 
+# Bumped by hand when the wording changes. A privacy notice with no date on it
+# tells a reader nothing about whether it still describes the software.
+PRIVACY_LAST_REVIEWED = "24 August 2026"
+
+
+@app.route("/privacy")
+def privacy_page():
+    """The privacy notice.
+
+    A template rather than an app_settings row, unlike the terms: this one
+    describes what the code does — which processors are called, which cookies
+    are set, what is deleted after a stay — so it belongs next to the code and
+    should turn up in a diff when any of that changes. The footer linked it to
+    "#" on every page while the site took card payments and dietary and
+    medical notes from guests in the EU.
+    """
+    return render_template("privacy.html", privacy_reviewed=PRIVACY_LAST_REVIEWED)
+
+
 @app.route("/admin/pennylane", methods=["GET", "POST"])
 @owner_required
 def admin_pennylane():
@@ -31165,6 +31185,65 @@ def send_backup_email(to_address, zip_bytes, filename, note=""):
         return False, str(e)
 
 
+# The fields the privacy notice promises to clear once the event is over, and
+# the date column that says whether it is. Written as data so the notice and
+# the code can be checked against each other by reading one list.
+HEALTH_NOTE_FIELDS = [
+    ("restaurant_bookings", ["dietary_notes"], "dinner_date"),
+    ("workshop_bookings", ["dietary_notes", "medical_notes"], None),
+]
+
+
+def purge_health_notes(conn, today=None):
+    """Clear dietary and medical notes once the thing they were for has passed.
+
+    Health data under GDPR, kept only to cook for somebody safely, with no
+    reason to hold it afterwards. The privacy notice says this happens; this
+    is what makes that true.
+
+    Returns a count per table. What was deleted is never logged — an audit
+    line quoting the allergy it just removed would defeat the point.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    iso = today.isoformat()
+    cleared = {}
+
+    n = conn.execute(
+        """UPDATE restaurant_bookings SET dietary_notes = NULL
+            WHERE dinner_date < ?
+              AND dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''""",
+        (iso,)).rowcount
+    cleared["restaurant_bookings"] = n
+
+    # Workshops date through their session rather than carrying one.
+    n = conn.execute(
+        """UPDATE workshop_bookings
+              SET dietary_notes = NULL, medical_notes = NULL
+            WHERE session_id IN (
+                    SELECT id FROM workshop_sessions
+                     WHERE COALESCE(end_date, start_date) < ?)
+              AND ((dietary_notes IS NOT NULL AND TRIM(dietary_notes) != '')
+                OR (medical_notes IS NOT NULL AND TRIM(medical_notes) != ''))""",
+        (iso,)).rowcount
+    cleared["workshop_bookings"] = n
+
+    total = sum(cleared.values())
+    if total:
+        log_audit(conn, "health_notes_purged", details=f"{total} record(s)")
+    conn.commit()
+    return cleared
+
+
+def run_health_notes_purge_job(conn):
+    """Daily. Nothing here is urgent to the hour, and a day late is a day of
+    data nobody needed rather than a service failure."""
+    cleared = purge_health_notes(conn)
+    total = sum(cleared.values())
+    if not total:
+        return "nothing to clear"
+    return ", ".join(f"{k}: {v}" for k, v in cleared.items() if v)
+
+
 def run_backup_email_job(conn):
     """Emails a backup zip to the owner on a schedule, so a lost or
     corrupted Railway volume isn't the only copy. Falls back to the
@@ -33564,6 +33643,10 @@ AUTOMATION_JOBS = [
     # has been charged end to end in Stripe test mode, including a card
     # made to decline on purpose.
     ("workshop_autocharge", "automation_workshop_autocharge_enabled", None, 24 * 3600, run_workshop_autocharge_job),
+    # Daily, and deliberately not switchable per-interval: the privacy notice
+    # states this happens once the event is over, so it is not a preference.
+    ("health_notes_purge", "automation_health_notes_purge_enabled", None, 24 * 3600,
+     run_health_notes_purge_job),
 ]
 
 

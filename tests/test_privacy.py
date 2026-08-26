@@ -1,0 +1,135 @@
+"""The privacy notice, and whether the software actually does what it says.
+
+The page was written and never routed — the footer linked "Privacy Policy" to
+"#" on every public page while the site took card payments and dietary and
+medical notes from guests in the EU.
+
+The more interesting half is the second one. A privacy notice is a set of
+factual claims about the code, and a notice that says something the software
+does not do is worse than no notice: it is a written statement to guests
+about health data that is not true. So the claims are checked, not trusted.
+"""
+import re
+from datetime import datetime, timedelta, timezone
+
+from _harness import Suite, clients, db
+import _harness
+
+m = _harness.m
+TAG = "ztest-priv-"
+
+
+def _iso(days):
+    return (datetime.now(m.LOCAL_TZ).date() + timedelta(days=days)).isoformat()
+
+
+def _cleanup(conn):
+    conn.execute("DELETE FROM restaurant_bookings WHERE reference_code LIKE ?",
+                 (TAG + "%",))
+    conn.execute("DELETE FROM workshop_bookings WHERE guest_email LIKE ? "
+                 "OR reference_code LIKE ?", (TAG + "%", TAG + "%"))
+    conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
+    conn.commit()
+
+
+def run():
+    s = Suite("privacy notice")
+    anon = m.app.test_client()
+    conn = db()
+    _cleanup(conn)
+    now = datetime.now(timezone.utc).isoformat()
+
+    s.section("It is reachable at all")
+    r = anon.get("/privacy")
+    s.check("the page is served", r.status_code == 200, detail=str(r.status_code))
+    page = r.get_data(as_text=True)
+    s.check("it is the notice, not a redirect to something else",
+            "data controller" in page)
+    s.check("it carries a review date, so a reader can judge whether it is current",
+            bool(re.search(r"Last reviewed \d{1,2} \w+ \d{4}", page)))
+
+    s.section("Every public page can reach it")
+    # The specific failure this replaces: the link existed and went nowhere.
+    for path in ("/", "/book", "/contact", "/restaurant"):
+        body = anon.get(path, follow_redirects=True).get_data(as_text=True)
+        if "Privacy" not in body:
+            s.check(f"{path} links to it", False, detail="no privacy link at all")
+            continue
+        s.check(f"{path} links to it, not to '#'", 'href="/privacy"' in body,
+                detail="the footer link is still a dead anchor")
+
+    s.section("It does not promise a tracker-free site while carrying one")
+    for bad, what in (("google-analytics.com", "Google Analytics"),
+                      ("googletagmanager.com", "Tag Manager"),
+                      ("connect.facebook.net", "the Facebook pixel"),
+                      ("hotjar", "Hotjar")):
+        s.check(f"no {what} on the public site", bad not in page.lower())
+
+    s.section("Dietary and medical notes really are deleted afterwards")
+    # The claim: "Deleted once the stay is over." Health data under GDPR, and
+    # nothing in the app cleared it until this was checked.
+    conn.execute(
+        """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,
+           guest_email, party_size, dinner_date, status, dietary_notes, created_at)
+           VALUES (?, ?, 'Diner', 'd@example.invalid', 2, ?, 'confirmed', ?, ?)""",
+        (TAG + "PAST", TAG + "tok1", _iso(-3), "severe nut allergy", now))
+    conn.execute(
+        """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,
+           guest_email, party_size, dinner_date, status, dietary_notes, created_at)
+           VALUES (?, ?, 'Diner', 'd@example.invalid', 2, ?, 'confirmed', ?, ?)""",
+        (TAG + "SOON", TAG + "tok2", _iso(3), "coeliac", now))
+    conn.commit()
+
+    ws = conn.execute("SELECT id FROM workshops LIMIT 1").fetchone()["id"]
+    conn.execute(
+        """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
+           notes, created_at) VALUES (?, ?, ?, 8, ?, ?)""",
+        (ws, _iso(-10), _iso(-6), TAG + "over", now))
+    conn.commit()
+    done = conn.execute("SELECT id FROM workshop_sessions WHERE notes = ?",
+                        (TAG + "over",)).fetchone()["id"]
+    conn.execute(
+        """INSERT INTO workshop_bookings (session_id, reference_code, manage_token,
+           guest_name, guest_email, status, dietary_notes, medical_notes, created_at)
+           VALUES (?, ?, ?, 'Maker', ?, 'confirmed', ?, ?, ?)""",
+        (done, TAG + "WB", TAG + "wbtok", TAG + "m@example.invalid", "vegetarian",
+         "carries an epipen", now))
+    conn.commit()
+
+    # Inside a request context because that is how it really runs: the
+    # automation tick wraps every job in one, so log_audit can resolve who
+    # (nobody, here) triggered it.
+    with m.app.test_request_context():
+        cleared = m.purge_health_notes(conn)
+    s.check("something was cleared", sum(cleared.values()) >= 2, detail=str(cleared))
+
+    past = conn.execute("SELECT dietary_notes FROM restaurant_bookings WHERE reference_code = ?",
+                        (TAG + "PAST",)).fetchone()["dietary_notes"]
+    soon = conn.execute("SELECT dietary_notes FROM restaurant_bookings WHERE reference_code = ?",
+                        (TAG + "SOON",)).fetchone()["dietary_notes"]
+    s.check("a dinner that has happened has its allergy removed", not past,
+            detail=str(past))
+    # The other half, and the one that would actually hurt somebody: a purge
+    # that ran early would delete the allergy of a guest still to be cooked for.
+    s.check("a dinner still to come keeps it", soon == "coeliac", detail=str(soon))
+
+    wb = conn.execute(
+        "SELECT dietary_notes, medical_notes FROM workshop_bookings WHERE guest_email = ?",
+        (TAG + "m@example.invalid",)).fetchone()
+    s.check("a finished atelier's dietary note is removed", not wb["dietary_notes"])
+    s.check("and the medical note with it", not wb["medical_notes"])
+
+    # What was deleted must not survive in the audit trail.
+    leaked = conn.execute(
+        """SELECT COUNT(*) AS c FROM audit_log
+            WHERE action = 'health_notes_purged'
+              AND (COALESCE(details, '') LIKE '%epipen%'
+                OR COALESCE(details, '') LIKE '%allergy%')""").fetchone()["c"]
+    s.check("the audit line does not quote what it deleted", leaked == 0)
+
+    _cleanup(conn)
+    return s
+
+
+if __name__ == "__main__":
+    print(run().report())
