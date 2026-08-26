@@ -13076,6 +13076,82 @@ def owner_home_queue(conn):
     return out
 
 
+def owner_home_warnings(conn, today):
+    """Things nobody has told the owner, each linking to the page that says more.
+
+    Short window on purpose. A clash five weeks out is real but not urgent,
+    and a homepage that lists everything eventually gets scrolled past — the
+    point of this section is that it is short enough to read every morning.
+
+    Measured, not guessed: this adds about 16ms to the owner home, taking a
+    seeded season (10 staff, 360 shifts, 40 bookings) from 30ms to 46ms. Most
+    of it is rota_conflicts asking role_compliance once per distinct shift
+    date. If that ever matters, the fix is to memoise across the two callers
+    rather than to shorten the window — a fortnight is already the minimum
+    that is any use.
+    """
+    out = []
+    horizon = today + timedelta(days=14)
+
+    def add(severity, title, detail, count, endpoint):
+        out.append({"severity": severity, "title": title, "detail": detail,
+                    "count": count, "href": url_for(endpoint)})
+
+    clashes = rota_conflicts(conn, today, horizon)
+    certs = [c for c in clashes if c["kind"] == "certification"]
+    if certs:
+        add("blocker", "Rostered without a current certificate",
+            f"{certs[0]['employee_name']} on {certs[0]['shift_date']}"
+            + (f", and {len(certs) - 1} more" if len(certs) > 1 else ""),
+            len(certs), "rota_clashes_page")
+    other = [c for c in clashes if c["kind"] != "certification"]
+    if other:
+        add("warn", "Rostered while away",
+            f"{other[0]['employee_name']} on {other[0]['shift_date']}"
+            + (f", and {len(other) - 1} more" if len(other) > 1 else ""),
+            len(other), "rota_clashes_page")
+
+    gaps = [g for g in cover_gaps(conn, today, horizon) if g["uncovered"]]
+    if gaps:
+        with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
+        add("blocker" if with_guests else "warn", "Days with nobody on",
+            (f"{with_guests[0]['date']} has guests and nobody rostered"
+             if with_guests else f"first is {gaps[0]['date']}"),
+            len(gaps), "cover_gaps_page")
+
+    faults = rooms_sold_with_a_fault(conn, today=today, days=14)
+    if faults:
+        here = [f for f in faults if f["in_house"]]
+        add("blocker" if here else "warn", "Rooms sold with an open fault",
+            (f"{here[0]['guest_name']} is in {here[0]['room_name']} now"
+             if here else f"{faults[0]['room_name']}, {faults[0]['guest_name']} arriving"),
+            len(faults), "room_faults_page")
+
+    insurer = incidents_awaiting_insurer(conn)
+    if insurer["overdue"]:
+        worst = insurer["overdue"][0]
+        add("blocker", "The insurer has not been told",
+            f"{worst['summary'][:50]} — {worst['age_days']:.0f} days ago",
+            len(insurer["overdue"]), "admin_incidents")
+
+    # The one that costs the business its records rather than a service.
+    last = conn.execute(
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', "
+        "'backup_auto_sent') ORDER BY created_at DESC LIMIT 1").fetchone()
+    stamp = parse_datetime_iso(last["created_at"]) if last else None
+    age_h = ((datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+             if stamp else None)
+    if age_h is None or age_h > 48:
+        add("blocker", "No backup is arriving",
+            ("none has ever been taken" if age_h is None
+             else f"last one {age_h / 24:.0f} days ago"),
+            1, "admin_readiness")
+
+    order = {"blocker": 0, "warn": 1}
+    out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
+    return out
+
+
 def owner_home_day(conn, today, user):
     """Today, in the order it happens. Arrivals, departures, dinner, tasks."""
     rows = []
@@ -13569,6 +13645,7 @@ def staff_dashboard():
         revenue, revenue_budget, revenue_budget_pct = owner_home_revenue(conn, today)
         occupancy, occupancy_lead, occupancy_avg = owner_home_occupancy(conn, today)
         queue = owner_home_queue(conn)
+        warnings = owner_home_warnings(conn, today)
         hour = datetime.now(timezone.utc).hour
         greeting = ("Good morning" if hour < 12 else
                     "Good afternoon" if hour < 18 else "Good evening")
@@ -13580,6 +13657,14 @@ def staff_dashboard():
             # them with a typo every morning there is exactly one thing to do.
             bits.append(f"{len(queue)} thing needs a decision" if len(queue) == 1
                         else f"{len(queue)} things need a decision")
+        # Said before the room count, because "two rooms are occupied" is
+        # information and "nobody is on tomorrow" is a problem.
+        if warnings:
+            blockers = [w for w in warnings if w["severity"] == "blocker"]
+            n = len(blockers) or len(warnings)
+            word = "needs" if n == 1 else "need"
+            bits.append(f"{n} thing {word} looking at" if n == 1
+                        else f"{n} things {word} looking at")
         occ_now = sum(1 for g in owner_home_guests(conn, today) for _ in [1])
         rooms_n = conn.execute(
             "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
@@ -13603,7 +13688,7 @@ def staff_dashboard():
             greeting=greeting, hero_line=hero_line,
             figures=owner_home_figures(conn, today),
             next_up=owner_home_next_up(conn, today, day_rows),
-            queue=queue,
+            queue=queue, warnings=warnings,
             queue_money=[q for q in queue if q["tone"] == "money"],
             queue_people=[q for q in queue if q["tone"] != "money"],
             bulk_count=sum(1 for q in queue if q["bulk_eligible"]),

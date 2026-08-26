@@ -33,6 +33,27 @@
       </div>
     </div>
 
+    {# Six pages each answer a real question and each has to be remembered and
+       visited. This is the line that makes them reachable. Deliberately NOT in
+       the decision queue below: that is things waiting on a yes or no, and
+       these are things nobody has said out loud. #}
+    {% if warnings %}
+    <div class="pass-short" style="margin:0 0 18px;">
+      <strong>Nobody has told you this</strong>
+      {% for w in warnings %}
+      <span class="pass-short-row">
+        <a href="{{ w.href }}">{{ w.title }}</a>
+        {%- if w.count > 1 %} <span class="mini-status {{ 'status-declined' if w.severity == 'blocker' else 'status-pending' }}">{{ w.count }}</span>{% endif %}
+        — {{ w.detail }}
+      </span>
+      {% endfor %}
+      <span class="upload-hint">
+        Each one is two things this system already knew, sitting in different
+        places. Nothing here needs a decision from you — it needs a look.
+      </span>
+    </div>
+    {% endif %}
+
     {# The only dark surface on the page, and it earns it: this is the one
        thing the owner needs to know without reading. #}
     <div class="oh-next">
