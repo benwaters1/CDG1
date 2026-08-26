@@ -75,6 +75,47 @@ and invoices via zips the owner downloads and applies here.
 - **Refunds are a manual call.** Non-refundable as standard with
   discretionary exceptions. A policy engine was considered and rejected.
 
+## Things that break quietly, so check them
+
+These all failed silently once. Nothing errored, no test went red, and the
+page rendered perfectly while doing the wrong thing.
+
+- **`{% block robots %}`.** `public_base.html` defines it; 25 templates that
+  show one person's booking, bill or account override it with `noindex`.
+  If the base ever loses the block, all 25 overrides become dead markup and
+  guests' pages quietly become indexable. `robots.txt` does not cover this —
+  it asks crawlers not to FETCH a path, while a URL that leaks into a
+  referrer or a forwarded email can be indexed without ever being crawled.
+  Guarded by `test_noindex_meta`, which also checks the public pages are
+  NOT noindex — that mistake is the more expensive one.
+
+- **The privacy notice is a set of testable claims about this code**, not
+  marketing copy. It says dietary and medical notes are deleted once the
+  event is over, and that dead enquiries go after twelve months. Both are
+  true because `run_health_notes_purge_job` makes them true. If you change
+  what the app does with guest data, change `templates/privacy.html` in the
+  same commit — and if you change the notice, make the code match. Shipping
+  a notice that overstates what the software does is worse than having none.
+  `test_privacy` checks the claims, not just that the page renders.
+
+- **Every `<table>` goes in `<div class="table-wrap">`.** A wide table drags
+  the whole document sideways on a phone and takes the header and nav with
+  it. Fifteen pages missed this, six of them written in one sitting, which
+  is what a convention nothing enforces gets you. `test_table_overflow` now
+  enforces it on the source.
+
+- **A check nobody opens is worth nothing.** Findings surface on the owner
+  home (`owner_home_warnings`, a fortnight's window) and become tasks
+  (`generate_watch_tasks`) so they reach the calendar. Those tasks CLOSE
+  THEMSELVES: nothing in that set has a "done" action of its own, so every
+  run rebuilds the picture and ticks off anything no longer true. Remove
+  that half and the list becomes a record of every problem the house has
+  ever had, which nobody reads twice — including the morning it lists a
+  real one.
+
+- **The warnings panel must be able to be empty.** If it can never be empty
+  it becomes furniture. There is a test for exactly that.
+
 ## Tone
 
 Commit messages and user-facing copy say what changed and why it mattered,
