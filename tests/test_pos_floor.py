@@ -142,6 +142,40 @@ def run():
             f"{TAG} two together" in oc.get("/pos").get_data(as_text=True),
             detail="an off-plan tab has vanished from the floor screen")
 
+    s.section("A tab opened before the floor plan existed lands on its table")
+    # How this actually looked on the real till: the band said three tables were
+    # open and six covers were sitting, and every table in the room said TAP TO
+    # SEAT, because those tabs predate table_id. The counters and the room
+    # disagreed, and the tabs themselves were under a heading below the fold.
+    legacy = _table("-L", area="salle", seats=2)
+    conn = db()
+    conn.execute(
+        """INSERT INTO pos_orders (table_label, covers, status, service_state,
+           service_date, opened_at)
+           VALUES (?, 2, 'open', 'seated', date('now'), datetime('now'))""",
+        (legacy["label"],))
+    conn.commit()
+    legacy_order = conn.execute(
+        "SELECT id FROM pos_orders ORDER BY id DESC LIMIT 1").fetchone()["id"]
+    conn.close()
+    page = oc.get("/pos").get_data(as_text=True)
+    import re as _re
+    free_now = _re.findall(
+        r'class="floor-tile is-free">\s*<span class="floor-table">([^<]+)', page)
+    s.check("its table is not still offered as free",
+            legacy["label"] not in free_now,
+            detail=f"a tab is running on {legacy['label']} and the floor offers it "
+                   "as empty — the counters and the room disagree")
+    s.check("and seating it again is refused rather than opening a second tab",
+            any("already open" in x for x in flashes(
+                oc.post("/pos/open", data={"table_id": str(legacy["id"])},
+                        follow_redirects=True))),
+            detail="the same table can be sat twice")
+    conn = db()
+    conn.execute("DELETE FROM pos_orders WHERE id = ?", (legacy_order,))
+    conn.commit()
+    conn.close()
+
     s.section("Cash: what was handed over, and what goes back")
     bar = _table("-B", area="bar", seats=2)
     oc.post("/pos/open", data={"table_id": str(bar["id"])}, follow_redirects=True)

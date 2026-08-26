@@ -3612,6 +3612,19 @@ def init_db():
     seed_dining_tables(conn)
     conn.commit()
 
+    # Tabs opened before tables existed carry the table's name and no id. Link
+    # them where the name matches exactly, so the floor, the seating check and
+    # anything else counting by table all agree rather than each guessing.
+    conn.execute(
+        """UPDATE pos_orders SET table_id = (
+               SELECT rt.id FROM restaurant_tables rt
+               WHERE lower(trim(rt.label)) = lower(trim(pos_orders.table_label))
+           )
+           WHERE table_id IS NULL
+             AND EXISTS (SELECT 1 FROM restaurant_tables rt2
+                         WHERE lower(trim(rt2.label)) = lower(trim(pos_orders.table_label)))""")
+    conn.commit()
+
     # The standing markets. Seeded by title, so one the owner edits or deletes
     # is not put back on the next restart — this is a starting point, not a
     # fixture the app keeps reasserting.
@@ -9142,7 +9155,7 @@ def pos_floor(conn):
     tab nobody settles.
     """
     open_orders = {}
-    off_plan = []
+    unplaced = []
     for o in conn.execute(
         "SELECT * FROM pos_orders WHERE status = 'open' ORDER BY opened_at"
     ).fetchall():
@@ -9151,6 +9164,23 @@ def pos_floor(conn):
         except (KeyError, IndexError):
             tid = None
         if tid:
+            open_orders[tid] = o
+        else:
+            unplaced.append(o)
+
+    # A tab opened before the floor plan existed carries the table's name and no
+    # id. Left unmatched it did the one thing this screen is for stopping: the
+    # counters said three tables were open while the room showed every table
+    # free, and the tabs themselves sat under a heading below the fold. If the
+    # label names a real table that nothing else is on, that is where it goes.
+    by_label = {}
+    for t in dining_tables(conn):
+        if t["id"] not in open_orders:
+            by_label.setdefault((t["label"] or "").strip().lower(), t["id"])
+    off_plan = []
+    for o in unplaced:
+        tid = by_label.get((o["table_label"] or "").strip().lower())
+        if tid and tid not in open_orders:
             open_orders[tid] = o
         else:
             off_plan.append(o)
@@ -14856,8 +14886,12 @@ def pos_open_tab():
             flash("That table is not on the floor plan.", "error")
             return redirect(url_for("pos_home"))
         busy = conn.execute(
-            "SELECT id FROM pos_orders WHERE table_id = ? AND status = 'open'",
-            (table["id"],)).fetchone()
+            """SELECT id FROM pos_orders
+               WHERE status = 'open'
+                 AND (table_id = ?
+                      OR (table_id IS NULL
+                          AND lower(trim(table_label)) = lower(trim(?))))""",
+            (table["id"], table["label"])).fetchone()
         if busy:
             conn.close()
             flash(f"Table {table['label']} is already open — that tab is still running.",
