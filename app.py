@@ -4015,6 +4015,29 @@ def break_minutes_for_entry(conn, time_entry_id):
     return row["m"] or 0.0
 
 
+def break_minutes_for_entries(conn, entries):
+    """{entry_id: break minutes} for a whole list, in ONE query.
+
+    Split out of net_hours_for_entries, which computed exactly this and kept
+    it private — so the first caller that needed the minutes themselves, and
+    not the net figure, had no batched way to ask and fell back to the
+    per-entry helper on a loop.
+    """
+    ids = [e["id"] for e in entries]
+    minutes = {}
+    # Chunked to stay under SQLite's variable limit on a long date range.
+    for i in range(0, len(ids), 400):
+        chunk = ids[i:i + 400]
+        marks = ",".join("?" * len(chunk))
+        for r in conn.execute(
+            f"""SELECT time_entry_id, COALESCE(SUM((julianday(end_at) - julianday(start_at)) * 1440), 0) AS m
+                FROM breaks WHERE end_at IS NOT NULL AND time_entry_id IN ({marks})
+                GROUP BY time_entry_id""", chunk,
+        ).fetchall():
+            minutes[r["time_entry_id"]] = r["m"] or 0.0
+    return minutes
+
+
 def net_hours_for_entries(conn, entries):
     """{entry_id: worked hours minus breaks} for a whole list, in ONE query.
 
@@ -4028,18 +4051,7 @@ def net_hours_for_entries(conn, entries):
     entries = [e for e in entries if e["clock_out_at"]]
     if not entries:
         return {}
-    ids = [e["id"] for e in entries]
-    minutes = {}
-    # Chunked to stay under SQLite's variable limit on a long date range.
-    for i in range(0, len(ids), 400):
-        chunk = ids[i:i + 400]
-        marks = ",".join("?" * len(chunk))
-        for r in conn.execute(
-            f"""SELECT time_entry_id, COALESCE(SUM((julianday(end_at) - julianday(start_at)) * 1440), 0) AS m
-                FROM breaks WHERE end_at IS NOT NULL AND time_entry_id IN ({marks})
-                GROUP BY time_entry_id""", chunk,
-        ).fetchall():
-            minutes[r["time_entry_id"]] = r["m"] or 0.0
+    minutes = break_minutes_for_entries(conn, entries)
     return {
         e["id"]: max(0.0, round(hours_between(e["clock_in_at"], e["clock_out_at"])
                                 - minutes.get(e["id"], 0.0) / 60, 2))
@@ -7515,6 +7527,11 @@ CERT_EXPIRY_WARNING_DAYS = 60
 # able to find them.
 MIN_REST_HOURS_BETWEEN_SHIFTS = 11
 MAX_CONSECUTIVE_DAYS_WORKED = 6
+# Art. L3121-16: twenty consecutive minutes once six hours are worked. Kept as
+# constants rather than inline so the figures can be read off in one place
+# when somebody asks what the app is enforcing.
+BREAK_REQUIRED_AFTER_HOURS = 6.0
+MIN_BREAK_MINUTES = 20
 MAX_WEEKLY_HOURS = 48
 
 
@@ -7659,6 +7676,372 @@ def role_compliance(conn, today):
                         "state": state, "detail": detail})
     order = {"missing": 0, "expired": 1, "expiring": 2}
     return sorted(out, key=lambda x: (order[x["state"]], x["name"]))
+
+
+# ---------------------------------------------------------------------------
+# The rota against everything else the system already knows.
+#
+# Each of these is one fact checked against another fact, both of which were
+# already recorded and never compared. Leave gets approved and the rota still
+# shows the person on. An absence is entered and the shift it covers stays
+# assigned. A certificate lapses on the 14th and somebody is rostered to work
+# a role that requires it on the 15th.
+#
+# None of that fails loudly. The rota renders, the shift looks staffed, and
+# the first anyone knows is the morning nobody arrives — or an inspection.
+# ---------------------------------------------------------------------------
+
+ROTA_CONFLICT_KINDS = {
+    "leave": "Approved leave",
+    "absence": "Recorded absence",
+    "certification": "Cannot legally work this",
+}
+
+
+def rota_conflicts(conn, start, end):
+    """Shifts that clash with something else on record, soonest first.
+
+    `start`/`end` are inclusive dates. Returns one row per clash, carrying
+    the shift, the person and what it collides with, so a caller can render
+    it without going back to the database.
+
+    Deliberately reads the rota rather than worked time: the point is to
+    catch this BEFORE the day, while there is still time to move somebody.
+    The working-time checker does the opposite job, after the fact.
+    """
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    if not start or not end or end < start:
+        return []
+
+    shifts = conn.execute(
+        """SELECT shifts.*, users.name AS employee_name, users.job_role
+             FROM shifts JOIN users ON users.id = shifts.user_id
+            WHERE shifts.shift_date >= ? AND shifts.shift_date <= ?
+            ORDER BY shifts.shift_date, shifts.start_time""",
+        (start.isoformat(), end.isoformat()),
+    ).fetchall()
+    if not shifts:
+        return []
+
+    lo, hi = start.isoformat(), end.isoformat()
+
+    # Approved leave only. A pending request is not yet a clash — declining it
+    # is a perfectly good resolution, and flagging it would train people to
+    # ignore the list.
+    leave = conn.execute(
+        """SELECT * FROM leave_requests
+            WHERE status = 'approved' AND start_date <= ? AND end_date >= ?""",
+        (hi, lo),
+    ).fetchall()
+    absences = conn.execute(
+        """SELECT * FROM absences WHERE start_date <= ? AND end_date >= ?""",
+        (hi, lo),
+    ).fetchall()
+
+    by_user_leave, by_user_absence = {}, {}
+    for r in leave:
+        by_user_leave.setdefault(r["user_id"], []).append(r)
+    for r in absences:
+        by_user_absence.setdefault(r["user_id"], []).append(r)
+
+    # Compliance is asked as at the SHIFT's date, not today: a certificate
+    # that is valid now and expires on the 14th does not cover the 15th, and
+    # asking "is this person compliant today" would miss exactly that.
+    # Memoised because a month of shifts shares very few distinct dates.
+    compliance_on = {}
+
+    def unmet_on(day):
+        key = day.isoformat()
+        if key not in compliance_on:
+            by_person = {}
+            for row in role_compliance(conn, day):
+                # 'expiring' is a warning about the future, not a bar on
+                # working. Only missing and expired stop somebody.
+                if row["state"] in ("missing", "expired"):
+                    by_person.setdefault(row["user_id"], []).append(row)
+            compliance_on[key] = by_person
+        return compliance_on[key]
+
+    def covers(row, day):
+        return (row["start_date"] or "") <= day <= (row["end_date"] or "")
+
+    out = []
+    for sh in shifts:
+        day = sh["shift_date"]
+        base = {
+            "shift_id": sh["id"], "user_id": sh["user_id"],
+            "employee_name": sh["employee_name"], "job_role": sh["job_role"],
+            "shift_date": day, "start_time": sh["start_time"],
+            "end_time": sh["end_time"], "role_note": sh["role_note"],
+        }
+
+        for lv in by_user_leave.get(sh["user_id"], []):
+            if covers(lv, day):
+                out.append(dict(base, kind="leave", severity="blocker",
+                                detail=(f"{sh['employee_name']} has approved "
+                                        f"{(lv['leave_type'] or 'leave').replace('_', ' ')} "
+                                        f"from {lv['start_date']} to {lv['end_date']}."),
+                                ref_id=lv["id"]))
+
+        for ab in by_user_absence.get(sh["user_id"], []):
+            if covers(ab, day):
+                out.append(dict(base, kind="absence", severity="blocker",
+                                detail=(f"{sh['employee_name']} is recorded absent "
+                                        f"({(ab['kind'] or 'absence').replace('_', ' ')}) "
+                                        f"from {ab['start_date']} to {ab['end_date']}."),
+                                ref_id=ab["id"]))
+
+        d = parse_date(day)
+        if d:
+            for req in unmet_on(d).get(sh["user_id"], []):
+                out.append(dict(base, kind="certification", severity="blocker",
+                                detail=(f"{req['requirement']} is {req['detail']} — "
+                                        f"required for {req['job_role']}."),
+                                ref_id=req.get("user_id")))
+
+    order = {"certification": 0, "leave": 1, "absence": 2}
+    out.sort(key=lambda r: (r["shift_date"], order.get(r["kind"], 9),
+                            r["employee_name"] or ""))
+    return out
+
+
+def rooms_sold_with_a_fault(conn, *, today=None, days=30):
+    """Confirmed arrivals into a room that has an unresolved fault logged.
+
+    Both halves are recorded and never compared: somebody logs that a shutter
+    is broken, somebody else confirms a booking into that room, and the two
+    facts sit in different tables until the guest finds out.
+
+    Only unresolved faults, and only bookings that are actually confirmed —
+    a pending request is not yet a promise, and flagging it would bury the
+    ones that are.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    horizon = (today + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.id AS booking_id, bookings.reference_code,
+                  bookings.guest_name, bookings.arrival_date, bookings.departure_date,
+                  rooms.id AS room_id, rooms.name AS room_name,
+                  room_issues.id AS issue_id, room_issues.title, room_issues.description,
+                  room_issues.created_at AS reported_at,
+                  users.name AS reported_by
+             FROM room_issues
+             JOIN rooms ON rooms.id = room_issues.room_id
+             JOIN bookings ON bookings.room_id = rooms.id
+             LEFT JOIN users ON users.id = room_issues.reported_by_user_id
+            WHERE room_issues.status = 'open'
+              AND bookings.status = 'confirmed'
+              AND bookings.departure_date >= ?
+              AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, rooms.name""",
+        (today.isoformat(), horizon),
+    ).fetchall()
+    out = []
+    for r in rows:
+        arrival = parse_date(r["arrival_date"])
+        out.append(dict(r, days_away=(arrival - today).days if arrival else None,
+                        in_house=bool(arrival and arrival <= today)))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Money that was always recorded and never totalled.
+# ---------------------------------------------------------------------------
+
+def spend_by_vendor(conn, *, start=None, end=None):
+    """What each supplier has actually been paid, most first.
+
+    expenses.vendor_name is free text while vendors is a table, so the two are
+    matched on a normalised name rather than a key. That match is reported
+    rather than assumed: a supplier typed three ways is three rows here, and
+    saying so is the only honest option — silently merging them would invent
+    a total nobody can check, and silently splitting them hides the real one.
+    """
+    where, params = ["status IN ('approved', 'paid')"], []
+    if start:
+        where.append("submitted_at >= ?")
+        params.append(start if isinstance(start, str) else start.isoformat())
+    if end:
+        where.append("submitted_at < ?")
+        params.append(end if isinstance(end, str) else end.isoformat())
+
+    rows = conn.execute(
+        f"""SELECT vendor_name, COUNT(*) AS invoices,
+                   COALESCE(SUM(amount), 0) AS total,
+                   MIN(submitted_at) AS first_seen, MAX(submitted_at) AS last_seen
+              FROM expenses
+             WHERE {' AND '.join(where)}
+             GROUP BY LOWER(TRIM(COALESCE(vendor_name, '')))
+             ORDER BY total DESC""",
+        params,
+    ).fetchall()
+
+    known = {(" ".join((v["name"] or "").split())).lower(): v
+             for v in conn.execute("SELECT id, name FROM vendors").fetchall()}
+
+    out, unnamed = [], None
+    for r in rows:
+        name = (r["vendor_name"] or "").strip()
+        key = " ".join(name.split()).lower()
+        row = {"vendor_name": name or "(not named)", "invoices": r["invoices"],
+               "total": r["total"] or 0.0, "first_seen": r["first_seen"],
+               "last_seen": r["last_seen"],
+               "vendor_id": known[key]["id"] if key in known else None,
+               "on_file": key in known}
+        if not name:
+            unnamed = row
+        else:
+            out.append(row)
+    if unnamed:
+        out.append(unnamed)
+
+    total = sum(r["total"] for r in out)
+    return {"rows": out, "total": total,
+            "vendors": len([r for r in out if r["vendor_name"] != "(not named)"]),
+            "unmatched": [r for r in out if not r["on_file"]
+                          and r["vendor_name"] != "(not named)"],
+            "unnamed_total": unnamed["total"] if unnamed else 0.0}
+
+
+def discount_cost(conn, *, start=None, end=None):
+    """What was given away, by code — revenue that was earned and not taken.
+
+    Read from promo_code_redemptions, which records the amount at the moment
+    it was applied. bookings.discount_amount also exists, but a booking that
+    was later edited no longer proves what the code was worth on the day, and
+    a discount given without a code is not this report's subject.
+    """
+    where, params = ["1=1"], []
+    if start:
+        where.append("promo_code_redemptions.redeemed_at >= ?")
+        params.append(start if isinstance(start, str) else start.isoformat())
+    if end:
+        where.append("promo_code_redemptions.redeemed_at < ?")
+        params.append(end if isinstance(end, str) else end.isoformat())
+
+    rows = conn.execute(
+        f"""SELECT promo_codes.id, promo_codes.code, promo_codes.description,
+                   promo_codes.discount_type, promo_codes.discount_value,
+                   promo_codes.active, promo_codes.valid_until,
+                   COUNT(promo_code_redemptions.id) AS uses,
+                   COALESCE(SUM(promo_code_redemptions.discount_amount), 0) AS given,
+                   COALESCE(SUM(promo_code_redemptions.original_amount), 0) AS gross,
+                   COALESCE(SUM(promo_code_redemptions.final_amount), 0) AS net,
+                   MAX(promo_code_redemptions.redeemed_at) AS last_used
+              FROM promo_code_redemptions
+              JOIN promo_codes ON promo_codes.id = promo_code_redemptions.promo_code_id
+             WHERE {' AND '.join(where)}
+             GROUP BY promo_codes.id
+             ORDER BY given DESC""",
+        params,
+    ).fetchall()
+
+    out = []
+    for r in rows:
+        gross = r["gross"] or 0.0
+        out.append(dict(r, share=(r["given"] / gross * 100) if gross else 0.0))
+
+    # Codes that exist and have never been used. Worth showing: an unused code
+    # is either dead weight or a campaign that never reached anybody.
+    unused = conn.execute(
+        """SELECT code, description, valid_until, active FROM promo_codes
+            WHERE id NOT IN (SELECT DISTINCT promo_code_id FROM promo_code_redemptions)
+            ORDER BY code"""
+    ).fetchall()
+
+    return {"rows": out, "unused": unused,
+            "given": sum(r["given"] or 0.0 for r in out),
+            "gross": sum(r["gross"] or 0.0 for r in out),
+            "net": sum(r["net"] or 0.0 for r in out),
+            "uses": sum(r["uses"] or 0 for r in out)}
+
+
+def money_held_not_earned(conn, *, today=None):
+    """Cash taken for something that has not happened yet.
+
+    It is in the account, and it is not income. Until the guest stays, the
+    dinner is served or the atelier runs, it is money owed back if the thing
+    does not happen — a liability sitting in the same balance as revenue.
+
+    Money Ahead deliberately counts this as incoming, because for cash-flow
+    that is exactly right. This is the other question about the same euros,
+    and the two must not be added together.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    iso = today.isoformat()
+    out = {"rooms": [], "workshops": [], "restaurant": []}
+
+    for r in conn.execute(
+        """SELECT id, reference_code, guest_name, arrival_date, departure_date,
+                  COALESCE(total_price, 0) AS total_price,
+                  COALESCE(amount_paid, 0) AS paid
+             FROM bookings
+            WHERE status = 'confirmed' AND arrival_date > ?
+              AND COALESCE(amount_paid, 0) > 0
+            ORDER BY arrival_date""", (iso,)).fetchall():
+        out["rooms"].append(dict(r, on=r["arrival_date"], label=r["guest_name"]))
+
+    for r in conn.execute(
+        """SELECT workshop_bookings.id, workshop_bookings.guest_name,
+                  workshops.title, workshop_sessions.start_date,
+                  COALESCE(workshop_bookings.total_price, 0) AS total_price,
+                  COALESCE(workshop_bookings.deposit_amount, 0) AS deposit,
+                  workshop_bookings.deposit_paid_at,
+                  COALESCE(workshop_bookings.balance_amount, 0) AS balance,
+                  workshop_bookings.balance_paid_at
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.status NOT IN ('declined', 'cancelled')
+              AND workshop_sessions.start_date > ?
+            ORDER BY workshop_sessions.start_date""", (iso,)).fetchall():
+        paid = (r["deposit"] if r["deposit_paid_at"] else 0.0) + \
+               (r["balance"] if r["balance_paid_at"] else 0.0)
+        if paid > 0:
+            out["workshops"].append(dict(r, paid=paid, on=r["start_date"],
+                                         label=f"{r['guest_name']} — {r['title']}"))
+
+    for r in conn.execute(
+        """SELECT id, reference_code, guest_name, dinner_date, party_size,
+                  COALESCE(deposit_amount, 0) AS paid,
+                  COALESCE(total_price, 0) AS total_price
+             FROM restaurant_bookings
+            WHERE status = 'confirmed' AND dinner_date > ?
+              AND COALESCE(deposit_amount, 0) > 0
+            ORDER BY dinner_date""", (iso,)).fetchall():
+        out["restaurant"].append(dict(r, on=r["dinner_date"], label=r["guest_name"]))
+
+    totals = {k: sum(r["paid"] for r in v) for k, v in out.items()}
+    everything = out["rooms"] + out["workshops"] + out["restaurant"]
+
+    # When it stops being a liability and becomes income: the month the thing
+    # actually happens. An owner asking "is this a good year" needs to know
+    # how much of the balance belongs to next year.
+    by_month = {}
+    for r in everything:
+        d = parse_date(r["on"])
+        if d:
+            by_month[d.replace(day=1).isoformat()] = \
+                by_month.get(d.replace(day=1).isoformat(), 0.0) + r["paid"]
+
+    return {"rooms": out["rooms"], "workshops": out["workshops"],
+            "restaurant": out["restaurant"], "totals": totals,
+            "total": sum(totals.values()), "count": len(everything),
+            "by_month": sorted(by_month.items()),
+            "furthest": max((r["on"] for r in everything), default=None)}
+
+
+def rota_conflict_summary(conn, start, end):
+    """Counts by kind, for a band or a badge, without the rows."""
+    rows = rota_conflicts(conn, start, end)
+    counts = {k: 0 for k in ROTA_CONFLICT_KINDS}
+    for r in rows:
+        counts[r["kind"]] = counts.get(r["kind"], 0) + 1
+    return {"total": len(rows), "counts": counts,
+            "people": len({r["user_id"] for r in rows})}
 
 
 EXTRA_CATEGORIES = {
@@ -10191,6 +10574,7 @@ def working_time_violations(conn, from_date, to_date):
     # used to call net_hours() per entry, so a month of compliance checking ran
     # ~170 break lookups on a page that already does plenty.
     hours_by_entry = net_hours_for_entries(conn, rows)
+    break_mins = break_minutes_for_entries(conn, [r for r in rows if r["clock_out_at"]])
 
     violations = []
     for (uid, name), entries in by_user.items():
@@ -10245,6 +10629,31 @@ def working_time_violations(conn, from_date, to_date):
                               f"(maximum {MAX_WEEKLY_HOURS}h)",
                     "on_date": date.fromisocalendar(iso_year, iso_week, 1).isoformat(),
                 })
+
+        # 4. the break the law requires, on shifts long enough to need one.
+        # The data was already being read to take breaks OFF paid hours; it
+        # was never used to ask whether one happened. A shift over six hours
+        # with no break recorded is either a compliance breach or a clocking
+        # habit nobody has corrected — both worth seeing, neither visible now.
+        for e in entries:
+            in_at = parse_datetime_iso(e["clock_in_at"])
+            out_at = parse_datetime_iso(e["clock_out_at"])
+            if not (in_at and out_at):
+                continue
+            span = (out_at - in_at).total_seconds() / 3600
+            if span <= BREAK_REQUIRED_AFTER_HOURS:
+                continue
+            taken = break_mins.get(e["id"], 0.0)
+            if taken >= MIN_BREAK_MINUTES:
+                continue
+            had = f"only {taken:.0f} min" if taken else "no break"
+            violations.append({
+                "user_id": uid, "employee_name": name, "rule": "break",
+                "detail": f"{span:.1f}h worked with {had} recorded "
+                          f"(at least {MIN_BREAK_MINUTES} min required after "
+                          f"{BREAK_REQUIRED_AFTER_HOURS}h)",
+                "on_date": in_at.astimezone(LOCAL_TZ).date().isoformat(),
+            })
 
     violations.sort(key=lambda v: (v["on_date"], v["employee_name"]))
     return violations
@@ -16292,6 +16701,8 @@ PALETTE_PAGES = [
     ("Booking calendar", "admin_calendar", "availability"),
     ("Rooms", "admin_rooms", "bedrooms suites"),
     ("Room issues", "room_issues", "maintenance faults"),
+    ("Rooms sold with a fault", "room_faults_page",
+     "broken guest arriving unresolved"),
     ("Guest feedback", "admin_feedback", "reviews"),
     ("Waitlist", "admin_waitlist", ""),
     ("Breakfast", "breakfast", "orders"),
@@ -16303,6 +16714,8 @@ PALETTE_PAGES = [
     ("Incidents", "admin_incidents", "accidents injuries register"),
     ("Tasks", "admin_tasks", "jobs to do"),
     ("Shifts", "admin_shifts", "rota scheduling"),
+    ("Rota clashes", "rota_clashes_page",
+     "conflict leave absence certificate cannot work double booked"),
     ("Timesheets", "admin_timesheets", "hours clock in out"),
     ("Time off", "admin_leave", "holiday leave vacation"),
     ("Ask HR", "admin_hr_notes", "questions"),
@@ -16314,6 +16727,10 @@ PALETTE_PAGES = [
     ("Approvals", "admin_approvals", "expenses leave pending decide"),
     ("Expenses & invoices", "expenses", "receipts supplier bills"),
     ("Financials", "management_financials", "revenue profit money"),
+    ("Spend by supplier", "spend_by_vendor_page", "vendor paid purchase totals"),
+    ("What discounts cost", "discount_cost_page", "promo codes given away"),
+    ("Held, not earned", "held_not_earned_page",
+     "deposits deferred liability unearned advance"),
     ("Refunds", "admin_refunds", "money back"),
     ("Reports", "admin_reports", "financial occupancy labour guest"),
     ("Emails", "admin_emails", "campaigns templates marketing"),
@@ -28952,6 +29369,151 @@ def maintenance_page():
         employees=employees, vendors=vendor_list, policies=policies,
         categories=MAINTENANCE_CATEGORIES, required_by=MAINTENANCE_REQUIRED_BY,
         suggestions=MAINTENANCE_SUGGESTIONS, today=datetime.now(LOCAL_TZ).date())
+
+
+@app.route("/admin/rota-clashes")
+@owner_required
+def rota_clashes_page():
+    """Shifts that collide with something already on record.
+
+    Forward-looking on purpose. The working-time checker answers "what went
+    wrong last month"; this answers "what is about to", while there is still
+    time to move somebody.
+    """
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        days = max(1, min(180, int(request.args.get("days", 28))))
+    except (TypeError, ValueError):
+        days = 28
+    end = today + timedelta(days=days)
+    rows = rota_conflicts(conn, today, end)
+
+    # Behind as well as ahead. A clash that already happened is not fixable,
+    # but it is the evidence that this list is worth reading.
+    past = rota_conflicts(conn, today - timedelta(days=14), today - timedelta(days=1))
+    shifts_ahead = conn.execute(
+        "SELECT COUNT(*) AS c FROM shifts WHERE shift_date >= ? AND shift_date <= ?",
+        (today.isoformat(), end.isoformat())).fetchone()["c"]
+    conn.close()
+
+    by_kind = {}
+    for r in rows:
+        by_kind.setdefault(r["kind"], []).append(r)
+
+    overview = [
+        overview_cell("Shifts in the window", shifts_ahead),
+        overview_cell("Cannot legally work", len(by_kind.get("certification", [])),
+                      alert=bool(by_kind.get("certification")),
+                      hint="a requirement of the role is missing or expired"),
+        overview_cell("Rostered on approved leave", len(by_kind.get("leave", [])),
+                      alert=bool(by_kind.get("leave"))),
+        overview_cell("Rostered while absent", len(by_kind.get("absence", [])),
+                      alert=bool(by_kind.get("absence"))),
+        overview_cell("Went unnoticed", len(past), hint="last fortnight"),
+    ]
+    return render_template("rota_clashes.html", rows=rows, overview=overview,
+                           by_kind=by_kind, kinds=ROTA_CONFLICT_KINDS,
+                           past=past, days=days, today=today, end=end)
+
+
+@app.route("/admin/room-faults")
+@owner_required
+def room_faults_page():
+    """Guests confirmed into rooms with an unresolved fault."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    rows = rooms_sold_with_a_fault(conn, today=today, days=60)
+    open_issues = conn.execute(
+        "SELECT COUNT(*) AS c FROM room_issues WHERE status = 'open'").fetchone()["c"]
+    conn.close()
+    imminent = [r for r in rows if r["days_away"] is not None and r["days_away"] <= 7]
+    overview = [
+        overview_cell("Faults open", open_issues),
+        overview_cell("Rooms sold with one", len({r["room_id"] for r in rows}),
+                      alert=bool(rows)),
+        overview_cell("Guest already in the room",
+                      len([r for r in rows if r["in_house"]]),
+                      alert=any(r["in_house"] for r in rows)),
+        overview_cell("Arriving within a week", len(imminent), alert=bool(imminent)),
+    ]
+    return render_template("room_faults.html", rows=rows, overview=overview,
+                           imminent=imminent, today=today)
+
+
+@app.route("/management/spend-by-vendor")
+@owner_required
+def spend_by_vendor_page():
+    """What each supplier has been paid, and which ones aren't on file."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        months = max(1, min(120, int(request.args.get("months", 12))))
+    except (TypeError, ValueError):
+        months = 12
+    start = _add_months(today.replace(day=1), -months + 1)
+    data = spend_by_vendor(conn, start=start.isoformat())
+    conn.close()
+    biggest = data["rows"][0] if data["rows"] else None
+    overview = [
+        overview_cell("Paid out", f"EUR {data['total']:,.2f}"),
+        overview_cell("Suppliers", data["vendors"]),
+        overview_cell("Biggest", biggest["vendor_name"] if biggest else "—",
+                      sub=f"EUR {biggest['total']:,.2f}" if biggest else None),
+        overview_cell("Not on the vendor list", len(data["unmatched"]),
+                      alert=bool(data["unmatched"]),
+                      hint="paid, but no record of who they are"),
+    ]
+    return render_template("spend_by_vendor.html", data=data, overview=overview,
+                           months=months, start=start.isoformat(), today=today)
+
+
+@app.route("/management/discounts")
+@owner_required
+def discount_cost_page():
+    """What the discounting actually cost, by code."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        months = max(1, min(120, int(request.args.get("months", 12))))
+    except (TypeError, ValueError):
+        months = 12
+    start = _add_months(today.replace(day=1), -months + 1)
+    data = discount_cost(conn, start=start.isoformat())
+    conn.close()
+    share = (data["given"] / data["gross"] * 100) if data["gross"] else 0.0
+    overview = [
+        overview_cell("Given away", f"EUR {data['given']:,.2f}",
+                      alert=data["given"] > 0 and share >= 15,
+                      hint="revenue earned and not taken"),
+        overview_cell("Share of those sales", f"{share:.1f}%"),
+        overview_cell("Times used", data["uses"]),
+        overview_cell("Codes never used", len(data["unused"])),
+    ]
+    return render_template("discount_cost.html", data=data, overview=overview,
+                           months=months, start=start.isoformat(), share=share,
+                           today=today)
+
+
+@app.route("/management/held-not-earned")
+@owner_required
+def held_not_earned_page():
+    """Cash taken for something that has not happened yet."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    data = money_held_not_earned(conn, today=today)
+    conn.close()
+    this_year = sum(v for k, v in data["by_month"] if k[:4] == str(today.year))
+    overview = [
+        overview_cell("Held, not earned", f"EUR {data['total']:,.2f}",
+                      hint="in the bank, not yet income"),
+        overview_cell("Becomes income this year", f"EUR {this_year:,.2f}"),
+        overview_cell("Carries into next", f"EUR {data['total'] - this_year:,.2f}",
+                      alert=(data["total"] - this_year) > 0),
+        overview_cell("Bookings involved", data["count"]),
+    ]
+    return render_template("held_not_earned.html", data=data, overview=overview,
+                           today=today, this_year=this_year)
 
 
 def _maintenance_fields():

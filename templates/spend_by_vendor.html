@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Spend by supplier{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Spend by supplier</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [3, 12, 24] %}
+    <a href="{{ url_for('spend_by_vendor_page', months=n) }}"
+       class="{{ 'btn-mini' if n == months else 'btn-ghost' }}">{{ n }} months</a>
+    {% endfor %}
+    <a href="{{ url_for('vendors') }}" class="btn-ghost">Suppliers</a>
+    <a href="{{ url_for('expenses') }}" class="btn-ghost">Expenses</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every invoice since {{ start|date_short }} that was approved or paid, totalled by who it went
+  to. Pending and rejected ones are left out — they are not money that has left the house.
+  This is the question that finds a supplier billing twice and a price that has crept up
+  without anyone deciding it should.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The honest caveat, stated where it matters rather than in a footnote. #}
+{% if data.unmatched %}
+<div class="pass-short">
+  <strong>Paid, but not on the supplier list</strong>
+  {% for r in data.unmatched %}
+  <span class="pass-short-row">
+    {{ r.vendor_name }} — €{{ '%.2f'|format(r.total) }}
+    across {{ r.invoices }} invoice{{ '' if r.invoices == 1 else 's' }}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    The supplier name on an invoice is typed by hand, so these are matched on the name rather
+    than by a link. A supplier typed three ways is three rows here — saying so is the only
+    honest option, because quietly merging them would invent a total nobody could check.
+  </span>
+</div>
+{% endif %}
+
+{% if not data.rows %}
+  <div class="empty-state">
+    Nothing approved or paid in this window. A longer one may have something.
+  </div>
+{% else %}
+<h2 class="section-heading">Most paid first</h2>
+<table class="data-table" style="max-width:900px;">
+  <thead>
+    <tr>
+      <th>Supplier</th><th class="num">Invoices</th>
+      <th class="num">Total</th><th class="num">Share</th><th>Last</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in data.rows %}
+    <tr>
+      <td>
+        {% if r.vendor_id %}
+          <a href="{{ url_for('vendors') }}">{{ r.vendor_name }}</a>
+        {% else %}
+          {{ r.vendor_name }}
+          <span class="mini-status status-pending">not on file</span>
+        {% endif %}
+      </td>
+      <td class="num">{{ r.invoices }}</td>
+      <td class="num">€{{ '%.2f'|format(r.total) }}</td>
+      <td class="num">
+        {%- if data.total %}{{ '%.1f'|format(r.total / data.total * 100) }}%{% else %}—{% endif -%}
+      </td>
+      <td>{{ r.last_seen|date_short }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th>Total</th><th class="num"></th>
+      <th class="num">€{{ '%.2f'|format(data.total) }}</th>
+      <th class="num">100%</th><th></th>
+    </tr>
+  </tfoot>
+</table>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  Rows add up to the total, and the total is every approved or paid invoice in the window —
+  nothing is grouped into an "other" bucket that hides a name.
+  {% if data.unnamed_total %}
+    €{{ '%.2f'|format(data.unnamed_total) }} was recorded with no supplier named at all; it is
+    the last row rather than being dropped.
+  {% endif %}
+</p>
+
+{% endblock %}

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}What discounts cost{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What discounts cost</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [3, 12, 24] %}
+    <a href="{{ url_for('discount_cost_page', months=n) }}"
+       class="{{ 'btn-mini' if n == months else 'btn-ghost' }}">{{ n }} months</a>
+    {% endfor %}
+    <a href="{{ url_for('admin_promo_codes') }}" class="btn-ghost">Promo codes</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The codes page says a code exists and how often it was used. It has never said what that cost.
+  This is revenue that was earned and not taken — recorded at the moment each code was applied,
+  so a booking edited afterwards cannot change what the code was worth on the day.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not data.rows %}
+  <div class="empty-state">
+    No code has been redeemed since {{ start|date_short }}.
+    {% if data.unused %}
+      {{ data.unused|length }} code{{ '' if data.unused|length == 1 else 's' }} exist and
+      {{ 'has' if data.unused|length == 1 else 'have' }} never been used — listed below.
+    {% endif %}
+  </div>
+{% else %}
+<h2 class="section-heading">Most given away first</h2>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Code</th><th class="num">Used</th><th class="num">Sold for</th>
+      <th class="num">Given away</th><th class="num">Of that sale</th><th>Last used</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in data.rows %}
+    <tr class="{{ 'row-alert' if r.share >= 25 }}">
+      <td>
+        <strong>{{ r.code }}</strong>
+        {% if r.description %}<span class="upload-hint">{{ r.description }}</span>{% endif %}
+        {% if not r.active %}<span class="mini-status status-inactive">off</span>{% endif %}
+      </td>
+      <td class="num">{{ r.uses }}</td>
+      <td class="num">€{{ '%.2f'|format(r.gross) }}</td>
+      <td class="num">€{{ '%.2f'|format(r.given) }}</td>
+      <td class="num">{{ '%.1f'|format(r.share) }}%</td>
+      <td>{{ r.last_used|date_short }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th>Total</th><th class="num">{{ data.uses }}</th>
+      <th class="num">€{{ '%.2f'|format(data.gross) }}</th>
+      <th class="num">€{{ '%.2f'|format(data.given) }}</th>
+      <th class="num">{{ '%.1f'|format(share) }}%</th><th></th>
+    </tr>
+  </tfoot>
+</table>
+<p class="field-hint" style="max-width:900px;">
+  "Sold for" is what those bookings were worth before the code, so the two columns and the
+  percentage describe the same sales — the discount is not measured against revenue it had
+  nothing to do with.
+</p>
+{% endif %}
+
+{% if data.unused %}
+<h2 class="section-heading">Never used</h2>
+<p class="field-hint" style="margin-top:-6px; max-width:900px;">
+  Either dead weight, or a campaign that never reached anybody. Worth knowing which.
+</p>
+<div class="doc-list" style="max-width:900px;">
+  {% for r in data.unused %}
+  <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+    <strong style="min-width:140px;">{{ r['code'] }}</strong>
+    <span style="flex:1;">{{ r['description'] or '—' }}</span>
+    {% if not r['active'] %}<span class="mini-status status-inactive">off</span>{% endif %}
+    {% if r['valid_until'] %}
+      <span class="upload-hint">until {{ r['valid_until']|date_short }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  A discount given without a code — a rate agreed by hand, a goodwill gesture on a bill — is not
+  in here, because there is nothing recorded to count. This page is only as complete as the
+  codes people actually use.
+</p>
+
+{% endblock %}

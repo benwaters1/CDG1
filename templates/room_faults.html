@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Rooms sold with a fault{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Rooms sold with a fault</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('room_issues') }}" class="btn-ghost">All room issues</a>
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Somebody logs that something is broken. Somebody else confirms a booking into that room. Both
+  are recorded properly, in different tables, and never compared — so the first person to put
+  them together is the guest. This is only confirmed bookings against unresolved faults; a
+  request nobody has accepted yet is not a promise.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if imminent %}
+<div class="pass-short">
+  <strong>Arriving within the week, or already here</strong>
+  {% for r in imminent %}
+  <span class="pass-short-row">
+    {{ r.room_name }} — {{ r.title }}
+    · {{ r.guest_name }} {% if r.in_house %}is in the room now{%
+      else %}arrives {{ r.arrival_date|date_short }}{% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Either the fault gets fixed before they arrive or somebody tells them — both are fine,
+    finding out on the day is not.
+  </span>
+</div>
+{% endif %}
+
+{% if not rows %}
+  <div class="empty-state">
+    No confirmed guest is booked into a room with an open fault. Every unresolved issue was
+    checked against every confirmed arrival for the next sixty days.
+  </div>
+{% else %}
+<h2 class="section-heading">Every one, soonest arrival first</h2>
+<table class="data-table">
+  <thead>
+    <tr><th>Room</th><th>Fault</th><th>Guest</th><th>Arrives</th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{{ 'row-alert' if r.in_house or (r.days_away is not none and r.days_away <= 7) }}">
+      <td><strong>{{ r.room_name }}</strong></td>
+      <td>
+        {{ r.title }}
+        {% if r.description %}<span class="upload-hint">{{ r.description|truncate(90) }}</span>{% endif %}
+        <span class="upload-hint">
+          reported {{ r.reported_at|date_short }}{% if r.reported_by %} by {{ r.reported_by }}{% endif %}
+        </span>
+      </td>
+      <td>
+        <a href="{{ url_for('admin_bookings') }}?q={{ r.reference_code }}">{{ r.guest_name }}</a>
+        <span class="upload-hint">{{ r.reference_code }}</span>
+      </td>
+      <td>
+        {% if r.in_house %}
+          <span class="mini-status status-declined">in the room now</span>
+        {% else %}
+          {{ r.arrival_date|date_short }}
+          <span class="upload-hint">
+            {% if r.days_away == 0 %}today{% elif r.days_away == 1 %}tomorrow{%
+              else %}in {{ r.days_away }} days{% endif %}
+          </span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  A fault marked resolved drops off here on its own. Nothing on this page changes a booking or a
+  room — deciding between fixing it, moving the guest and telling them is a judgement, and the
+  app has no business making it.
+</p>
+
+{% endblock %}

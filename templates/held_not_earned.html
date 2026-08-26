@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Held, not earned{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Held, not earned</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('money_ahead_page') }}" class="btn-ghost">Money ahead</a>
+    <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Cash that is in the account and is not income. Until the guest stays, the dinner is served or
+  the atelier runs, it is money owed back if the thing does not happen. It sits in the same
+  balance as revenue and looks exactly like it.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The whole point of the page, said once, plainly. #}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">This is not the same money as Money ahead</h3>
+  <p class="field-hint" style="margin-top:0;">
+    <a href="{{ url_for('money_ahead_page') }}">Money ahead</a> counts these euros as
+    <em>incoming</em>, which for cash flow is exactly right — they have arrived and they are
+    yours to spend. This page asks the other question about the same euros: how much of the
+    balance has actually been <em>earned</em>. Do not add the two together.
+  </p>
+</div>
+
+{% if not data.count %}
+  <div class="empty-state">
+    Nothing has been paid in advance for anything still to come. Every confirmed stay, atelier
+    and table in the future was checked.
+  </div>
+{% else %}
+
+<h2 class="section-heading">When it becomes income</h2>
+<table class="data-table" style="max-width:560px;">
+  <thead><tr><th>Month</th><th class="num">Becomes income</th></tr></thead>
+  <tbody>
+    {% for month, amount in data.by_month %}
+    <tr class="{{ 'row-alert' if month[:4] != today.year|string }}">
+      <td>{{ month|date_short }}</td>
+      <td class="num">€{{ '%.2f'|format(amount) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr><th>Held today</th><th class="num">€{{ '%.2f'|format(data.total) }}</th></tr>
+  </tfoot>
+</table>
+<p class="field-hint" style="max-width:560px;">
+  Rows outside {{ today.year }} are marked: that money is in the bank now and belongs to next
+  year's trading. If the year closes with a large forward book, the figures overstate what the
+  house actually earned.
+</p>
+
+{% for key, label, note in [
+     ('rooms', 'Stays', 'paid against a confirmed booking that has not arrived'),
+     ('workshops', 'Ateliers', 'deposit or balance settled for a session still to run'),
+     ('restaurant', 'The table', 'deposit taken for a dinner still to be served')] %}
+  {% if data[key] %}
+  <h2 class="section-heading">{{ label }} — €{{ '%.2f'|format(data.totals[key]) }}</h2>
+  <p class="field-hint" style="margin-top:-6px; max-width:900px;">{{ note }}.</p>
+  <div class="doc-list" style="max-width:900px;">
+    {% for r in data[key] %}
+    <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+      <span style="min-width:104px;">{{ r['on']|date_short }}</span>
+      <strong style="flex:1;">{{ r['label'] }}</strong>
+      {% if r['total_price'] and r['paid'] < r['total_price'] %}
+        <span class="upload-hint">
+          of €{{ '%.2f'|format(r['total_price']) }} agreed
+        </span>
+      {% endif %}
+      <span class="room-price">€{{ '%.2f'|format(r['paid']) }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endfor %}
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  Anything that has already happened is gone from here, because by then it is simply income.
+  A cancelled or declined booking is excluded too — that money is either refunded or kept under
+  the terms, and neither is a liability waiting on a service.
+  {% if data.furthest %}
+    The furthest thing paid for in advance is {{ data.furthest|date_short }}.
+  {% endif %}
+</p>
+
+{% endblock %}

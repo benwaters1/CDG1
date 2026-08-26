@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Rota clashes{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Rota clashes</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [7, 28, 90] %}
+    <a href="{{ url_for('rota_clashes_page', days=n) }}"
+       class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
+    {% endfor %}
+    <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
+    <a href="{{ url_for('admin_leave') }}" class="btn-ghost">Time off</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every one of these is two things the system already knew, never put side by side. Leave gets
+  approved and the rota still shows the person on. An absence is recorded and the shift it covers
+  stays assigned. A certificate lapses on the 14th and somebody is rostered to a role that needs
+  it on the 15th. None of it fails loudly — the rota renders, the shift looks staffed, and the
+  first anyone knows is the morning nobody arrives.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The legal one first and separately. The others cost you a service; this one
+   can cost you the insurance behind it. #}
+{% if by_kind.get('certification') %}
+<div class="pass-short">
+  <strong>Rostered to work something they are not currently qualified for</strong>
+  {% for r in by_kind['certification'] %}
+  <span class="pass-short-row">
+    {{ r.shift_date|date_short }} · {{ r.employee_name }}
+    {%- if r.start_time %} · {{ r.start_time }}–{{ r.end_time or '' }}{% endif %}
+    — {{ r.detail }}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Checked as at the date of the shift, not today — a certificate valid this morning does not
+    cover a shift after it expires.
+  </span>
+</div>
+{% endif %}
+
+{% if not rows %}
+  <div class="empty-state">
+    Nothing clashes in the next {{ days }} days. That is the answer, not an empty page —
+    every rostered shift was checked against approved leave, recorded absence and what the
+    role requires.
+  </div>
+{% else %}
+
+<h2 class="section-heading">Every clash, soonest first</h2>
+<table class="data-table">
+  <thead>
+    <tr><th>Date</th><th>Who</th><th>Shift</th><th>What it collides with</th></tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{{ 'row-alert' if r.kind == 'certification' }}">
+      <td>{{ r.shift_date|date_short }}</td>
+      <td>
+        <a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.employee_name }}</a>
+        {% if r.job_role %}<span class="upload-hint">{{ r.job_role }}</span>{% endif %}
+      </td>
+      <td>
+        {% if r.start_time %}{{ r.start_time }}–{{ r.end_time or '' }}{% else %}—{% endif %}
+        {% if r.role_note %}<span class="upload-hint">{{ r.role_note }}</span>{% endif %}
+      </td>
+      <td>
+        <span class="mini-status {{ 'status-declined' if r.kind == 'certification' else 'status-pending' }}">
+          {{ kinds.get(r.kind, r.kind) }}
+        </span>
+        {{ r.detail }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{# Deliberately shown even though nothing can be done about it. It is the
+   evidence that the list above is worth reading: these already happened. #}
+{% if past %}
+<h2 class="section-heading">Already went past unnoticed</h2>
+<p class="field-hint" style="margin-top:-6px; max-width:900px;">
+  The last fortnight, for scale. Nothing to fix here — this is what the page above is for.
+</p>
+<div class="doc-list" style="max-width:900px;">
+  {% for r in past %}
+  <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+    <span style="min-width:104px;">{{ r.shift_date|date_short }}</span>
+    <strong style="flex:1;">{{ r.employee_name }}</strong>
+    <span class="mini-status status-inactive">{{ kinds.get(r.kind, r.kind) }}</span>
+    <span class="upload-hint">{{ r.detail }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  What this does <em>not</em> check: whether enough people are on at all, or whether the right
+  mix of roles is covered. It only answers whether the people who <em>are</em> rostered can
+  actually work the shift they are down for. Pending leave is left out on purpose — declining it
+  is a perfectly good answer, and flagging it would train everyone to ignore the list.
+</p>
+
+{% endblock %}
