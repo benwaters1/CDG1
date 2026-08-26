@@ -114,6 +114,22 @@
 
   </div>
 
+  <h3 style="margin-top:26px; margin-bottom:4px;">Who gets a blocking finding</h3>
+  <p class="upload-hint" style="margin-top:0;">Each morning the blocking items from the home page are raised as tasks, and ticked off again when they stop being true. Name the person who can actually end each one &mdash; the task then shows on their dashboard and their calendar, on the day it matters. Left as <em>nobody yet</em> it stays on the owner&rsquo;s list only, which is where the warning already was.</p>
+  <div style="display:grid; gap:10px; margin-top:10px;">
+    {% for kind, label in watch_kinds.items() %}
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <label class="field-label" style="flex:1 1 240px; margin:0;">{{ label }}</label>
+      <select name="watch_task_assignee_{{ kind }}" style="flex:0 1 220px;">
+        <option value="">&mdash; nobody yet &mdash;</option>
+        {% for e in employees %}
+        <option value="{{ e['id'] }}" {{ 'selected' if watch_routing.get(kind) == e['id'] }}>{{ e['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endfor %}
+  </div>
+
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>
 </form>
 

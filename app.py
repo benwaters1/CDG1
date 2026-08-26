@@ -13169,6 +13169,35 @@ def owner_home_queue(conn):
     return out
 
 
+# Two days. The backup email runs daily, so one missed run is a hiccup and two
+# is nobody watching.
+BACKUP_STALE_HOURS = 48
+
+
+def backup_age_hours(conn):
+    """Hours since a backup last left the building, or None if none ever has.
+
+    Read from the audit log rather than from a file on disk on purpose: what
+    counts is that a copy went somewhere else, not that one was written to the
+    same volume that would be lost along with it.
+    """
+    last = conn.execute(
+        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', "
+        "'backup_auto_sent') ORDER BY created_at DESC LIMIT 1").fetchone()
+    stamp = parse_datetime_iso(last["created_at"]) if last else None
+    if stamp is None:
+        return None
+    return (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+
+
+def backup_gap_detail(age_h):
+    """One sentence, so the panel and the task it raises cannot word it
+    differently and read as two separate problems."""
+    if age_h is None:
+        return "none has ever been taken"
+    return f"last one {age_h / 24:.0f} days ago"
+
+
 def owner_home_warnings(conn, today):
     """Things nobody has told the owner, each linking to the page that says more.
 
@@ -13228,16 +13257,9 @@ def owner_home_warnings(conn, today):
             len(insurer["overdue"]), "admin_incidents")
 
     # The one that costs the business its records rather than a service.
-    last = conn.execute(
-        "SELECT created_at FROM audit_log WHERE action IN ('backup_downloaded', "
-        "'backup_auto_sent') ORDER BY created_at DESC LIMIT 1").fetchone()
-    stamp = parse_datetime_iso(last["created_at"]) if last else None
-    age_h = ((datetime.now(timezone.utc) - stamp).total_seconds() / 3600
-             if stamp else None)
-    if age_h is None or age_h > 48:
-        add("blocker", "No backup is arriving",
-            ("none has ever been taken" if age_h is None
-             else f"last one {age_h / 24:.0f} days ago"),
+    age_h = backup_age_hours(conn)
+    if age_h is None or age_h > BACKUP_STALE_HOURS:
+        add("blocker", "No backup is arriving", backup_gap_detail(age_h),
             1, "admin_readiness")
 
     order = {"blocker": 0, "warn": 1}
@@ -30043,13 +30065,55 @@ WATCH_TASK_ORIGIN = "watch"
 # than silently trimmed — the pages carry the full set.
 WATCH_TASK_CAP = 5
 
+# Each blocking finding has a kind, and each kind has somebody who can actually
+# end it. The owner reads the warnings panel; the owner is rarely the person who
+# moves a shift, fixes a radiator or rings the insurer. Routing is what makes a
+# task different from the panel it came from — without it every one of these
+# lands on nobody's list and the whole generator is the panel again, in a
+# second place.
+WATCH_TASK_KINDS = {
+    "certification": "Rostered without a current certificate",
+    "cover": "A day with guests and nobody on",
+    "fault": "A sold room with an open fault",
+    "insurer": "The insurer has not been told",
+    "backup": "No backup is arriving",
+}
+WATCH_ASSIGNEE_PREFIX = "watch_task_assignee_"
+
+
+def watch_task_assignees(conn):
+    """kind -> user id, for kinds the owner has routed to somebody.
+
+    Deliberately joined against users rather than read raw: a route pointing at
+    somebody who has since left would otherwise send the task to an account
+    nobody opens, which is worse than leaving it unassigned — unassigned at
+    least still shows on the owner's own list. Someone leaving silently hands
+    their routes back.
+    """
+    rows = conn.execute(
+        """SELECT app_settings.key AS key, users.id AS uid
+             FROM app_settings
+             JOIN users ON users.id = CAST(app_settings.value AS INTEGER)
+            WHERE app_settings.key LIKE ? AND users.status = 'active'""",
+        (WATCH_ASSIGNEE_PREFIX + "%",)).fetchall()
+    out = {}
+    for r in rows:
+        kind = r["key"][len(WATCH_ASSIGNEE_PREFIX):]
+        if kind in WATCH_TASK_KINDS:
+            out[kind] = r["uid"]
+    return out
+
 
 def watch_task_findings(conn, today=None):
-    """The blocking findings, as (title, note, due, priority) tuples.
+    """The blocking findings, as (kind, title, note, due, priority) tuples.
 
     Titles have to be stable: they are the dedupe key, so the same problem on
     the same day must produce the same string every run or the list grows a
-    duplicate every morning.
+    duplicate every morning. That is also why nothing that moves on its own —
+    an age in days, a countdown — belongs in a title; it goes in the note,
+    which is rewritten in place instead.
+
+    The kind is who it goes to: see WATCH_TASK_KINDS.
     """
     today = today or datetime.now(LOCAL_TZ).date()
     horizon = today + timedelta(days=14)
@@ -30064,6 +30128,7 @@ def watch_task_findings(conn, today=None):
                if c["kind"] == "certification"]
     for c in take("certification", clashes):
         found.append((
+            "certification",
             f"Not qualified for the shift — {c['employee_name']}, {c['shift_date']}",
             f"{c['detail']}\n\nMove the shift or get the certificate renewed before then.",
             c["shift_date"], "high"))
@@ -30074,6 +30139,7 @@ def watch_task_findings(conn, today=None):
         who = (f"{g['in_house']} guest(s) in the house" if g["in_house"]
                else f"{g['arrivals']} arriving")
         found.append((
+            "cover",
             f"Nobody rostered — {g['date']}",
             f"{who}, and nobody on the rota who can work that day.",
             g["date"], "high"))
@@ -30082,6 +30148,7 @@ def watch_task_findings(conn, today=None):
               if f["in_house"] or (f["days_away"] or 99) <= 7]
     for f in take("fault", faults):
         found.append((
+            "fault",
             f"Open fault in a sold room — {f['room_name']}, {f['reference_code']}",
             f"{f['title']}. {f['guest_name']} "
             + ("is in the room now." if f["in_house"]
@@ -30092,11 +30159,26 @@ def watch_task_findings(conn, today=None):
     overdue = incidents_awaiting_insurer(conn)["overdue"]
     for i in take("insurer", overdue):
         found.append((
+            "insurer",
             f"Insurer not told — incident {i['id']}",
             f"{i['summary']}\n\n{i['age_days']:.0f} days ago; the window was "
             f"{i['allowed_days']}."
             + (" 48 hours is statutory for a workplace accident."
                if i["statutory"] else ""),
+            today.isoformat(), "high"))
+
+    # A blocker on the panel since the panel existed, and the only one that was
+    # never raised as a job. It is also the one nobody trips over in the course
+    # of a day: a broken radiator announces itself, a backup that stopped
+    # arriving four months ago announces itself once, on the morning the
+    # database is gone.
+    age_h = backup_age_hours(conn)
+    if age_h is None or age_h > BACKUP_STALE_HOURS:
+        found.append((
+            "backup", "No backup is arriving",
+            f"The last full backup: {backup_gap_detail(age_h)}.\n\n"
+            "Admin → Backup takes one now. Admin → Automation says whether the "
+            "scheduled one is switched on and whether it is failing.",
             today.isoformat(), "high"))
 
     return found, dropped
@@ -30108,39 +30190,61 @@ def generate_watch_tasks(conn, today=None):
     Self-healing on purpose: nothing here has a "done" action of its own, so
     the second half is what stops the list rotting. A task raised for Tuesday
     disappears when Tuesday is covered, without anybody closing it by hand.
+
+    Now that these are routed to a person they do carry a tick box, on that
+    person's own list. Ticking one is not wrong and is not blocked: it just
+    does not settle anything, because the next run finds the problem still
+    true and raises it again. Which is the honest answer — the shift is still
+    uncovered whatever the list says about it.
     """
     today = today or datetime.now(LOCAL_TZ).date()
     now_iso = datetime.now(timezone.utc).isoformat()
     found, dropped = watch_task_findings(conn, today)
-    wanted = {title: (note, due, prio) for title, note, due, prio in found}
+    wanted = {title: (kind, note, due, prio) for kind, title, note, due, prio in found}
+    routing = watch_task_assignees(conn)
 
-    open_now = {r["title"]: r["id"] for r in conn.execute(
-        "SELECT id, title FROM tasks WHERE origin = ? AND status != 'done'",
+    open_now = {r["title"]: r for r in conn.execute(
+        """SELECT id, title, notes, priority, due_date, assigned_to_user_id
+             FROM tasks WHERE origin = ? AND status != 'done'""",
         (WATCH_TASK_ORIGIN,)).fetchall()}
 
-    made = 0
-    for title, (note, due, prio) in wanted.items():
-        if title in open_now:
+    made, moved = 0, 0
+    for title, (kind, note, due, prio) in wanted.items():
+        who = routing.get(kind)
+        row = open_now.get(title)
+        if row is None:
+            conn.execute(
+                """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                     status, origin, created_at)
+                   VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
+                (who, title, note, prio, due, WATCH_TASK_ORIGIN, now_iso))
+            made += 1
             continue
-        conn.execute(
-            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
-                 status, origin, created_at)
-               VALUES (NULL, ?, ?, ?, ?, 'open', ?, ?)""",
-            (title, note, prio, due, WATCH_TASK_ORIGIN, now_iso))
-        made += 1
+        # The task is already open and stays open, but what it says about the
+        # problem may have moved on — an age in days, or a route the owner has
+        # since changed. Rewriting in place beats closing and re-raising, which
+        # would read as the problem having been fixed and come back.
+        if (row["assigned_to_user_id"] != who or row["notes"] != note
+                or row["priority"] != prio or row["due_date"] != due):
+            conn.execute(
+                """UPDATE tasks SET assigned_to_user_id = ?, notes = ?, priority = ?,
+                     due_date = ? WHERE id = ?""",
+                (who, note, prio, due, row["id"]))
+            moved += 1
 
     # The half that matters. Without it the list is a record of every problem
     # the house has ever had, which nobody reads twice.
     closed = 0
-    for title, task_id in open_now.items():
+    for title, row in open_now.items():
         if title not in wanted:
             conn.execute(
                 "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?",
-                (now_iso, task_id))
+                (now_iso, row["id"]))
             closed += 1
 
     conn.commit()
-    return {"made": made, "closed": closed, "open": len(wanted), "dropped": dropped}
+    return {"made": made, "closed": closed, "moved": moved,
+            "open": len(wanted), "dropped": dropped}
 
 
 def run_watch_tasks_job(conn):
@@ -30152,6 +30256,8 @@ def run_watch_tasks_job(conn):
         bits.append(f"{r['made']} raised")
     if r["closed"]:
         bits.append(f"{r['closed']} closed — no longer true")
+    if r["moved"]:
+        bits.append(f"{r['moved']} rewritten (reassigned or restated)")
     if r["dropped"]:
         # Never silent: the pages carry the full set, and a capped list that
         # says nothing reads as a complete one.
@@ -34783,6 +34889,7 @@ AUTOMATION_JOB_LABELS = {
     "backup_email": "Automated backup email (database + uploads, to the owner)",
     "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
     "maintenance": "Estate upkeep (raise tasks for work falling due)",
+    "watch_tasks": "Blocking findings (raise a task, and close it when it stops being true)",
 }
 
 
@@ -34792,10 +34899,14 @@ def admin_automation():
     conn = get_db()
     settings = get_automation_settings(conn)
     last_runs = {r["job_name"]: r["last_ran_at"] for r in conn.execute("SELECT job_name, last_ran_at FROM automation_runs").fetchall()}
+    employees = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    watch_routing = watch_task_assignees(conn)
     conn.close()
     return render_template(
         "admin_automation.html", settings=settings, last_runs=last_runs, job_labels=AUTOMATION_JOB_LABELS,
-        graph_enabled=graph_enabled(),
+        graph_enabled=graph_enabled(), employees=employees,
+        watch_kinds=WATCH_TASK_KINDS, watch_routing=watch_routing,
     )
 
 
@@ -34847,6 +34958,18 @@ def update_automation_settings():
 
     for key, value in updates.items():
         conn.execute("UPDATE app_settings SET value = ? WHERE key = ?", (value, key))
+
+    # Who each kind of blocking finding goes to. Upserted rather than updated:
+    # these keys have no shipped default, because "nobody yet" is a real answer
+    # and guessing a route would put somebody's name on work they never agreed
+    # to. A blank clears the route and the task falls back to the owner's list.
+    for kind in WATCH_TASK_KINDS:
+        raw = (request.form.get(WATCH_ASSIGNEE_PREFIX + kind) or "").strip()
+        conn.execute(
+            "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (WATCH_ASSIGNEE_PREFIX + kind, raw if raw.isdigit() else ""))
+
     log_audit(conn, "automation_settings_updated")
     conn.commit()
     conn.close()
