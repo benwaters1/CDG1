@@ -24,6 +24,20 @@
       </div>
       {% if a['body'] %}<p class="manual-body" style="margin:0;">{{ a['body'] }}</p>{% endif %}
       <span class="upload-hint">{{ a['posted_by_name'] or 'Owner' }} · {{ a['created_at'][:10] }}{% if a['expires_date'] %} · Until {{ a['expires_date'] }}{% endif %}</span>
+      {# Who has NOT seen it is the half worth having. The list of people who
+         have is reassuring and mostly useless. #}
+      {% if user['role'] == 'owner' and readership.get(a['id']) %}
+      {% set r = readership[a['id']] %}
+      <span class="upload-hint" style="display:block; margin-top:6px;">
+        {% if r['not_seen'] %}
+          <strong>Not seen by {{ r['not_seen']|length }} of {{ r['total'] }}:</strong>
+          {{ r['not_seen']|join(', ') }}
+        {% else %}
+          Seen by everyone ({{ r['total'] }}).
+        {% endif %}
+      </span>
+      {% endif %}
+
       {% if user['role'] == 'owner' %}
       <div id="announcement-edit-{{ a['id'] }}" style="display:none; width:100%; margin-top:8px; padding-top:8px; border-top:1px dashed var(--parchment-line);">
         <form method="post" action="{{ url_for('edit_announcement', announcement_id=a['id']) }}" class="upload-form">

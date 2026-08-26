@@ -108,6 +108,7 @@ SUITES = [
     "test_rota_clashes",
     "test_cover_gaps",
     "test_rota_vs_clock",
+    "test_hr_management_links",
     "test_insurer_notice",
     "test_home_warnings",
     "test_watch_tasks",

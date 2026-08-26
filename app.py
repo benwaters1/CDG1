@@ -1408,6 +1408,18 @@ def init_db():
             sort_order INTEGER NOT NULL DEFAULT 0
         );
 
+        -- Posting an announcement and everybody having read it are different
+        -- facts, and only the first was recorded. Seen, not agreed: the manual
+        -- has its own "read and understood" tick and this must not stand in
+        -- for it.
+        CREATE TABLE IF NOT EXISTS announcement_reads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            announcement_id INTEGER NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            seen_at TEXT NOT NULL,
+            UNIQUE(announcement_id, user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS manual_acknowledgments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -2482,6 +2494,10 @@ def init_db():
         ("repeat_weekly", "ALTER TABLE tasks ADD COLUMN repeat_weekly INTEGER NOT NULL DEFAULT 0"),
         ("expiry_date_docs", "ALTER TABLE documents ADD COLUMN expiry_date TEXT"),
         ("expiry_date_company_docs", "ALTER TABLE company_documents ADD COLUMN expiry_date TEXT"),
+        # A standing cost is money going to somebody, and the somebody was
+        # never recorded — so "what do we pay this supplier" could be answered
+        # from invoices and never included the subscription that renews itself.
+        ("recurring_costs_vendor", "ALTER TABLE recurring_costs ADD COLUMN vendor_id INTEGER"),
         ("skills", "ALTER TABLE users ADD COLUMN skills TEXT"),
         ("emergency_contact_name", "ALTER TABLE users ADD COLUMN emergency_contact_name TEXT"),
         ("emergency_contact_phone", "ALTER TABLE users ADD COLUMN emergency_contact_phone TEXT"),
@@ -4934,6 +4950,44 @@ def upcoming_anniversaries(conn, today, days_ahead=14):
                 results.append({"employee": e, "date": anniversary, "days_away": days_away, "years": years})
     results.sort(key=lambda r: r["days_away"])
     return results
+
+
+def annual_reviews_due(conn, today, days_ahead=30):
+    """Annual reviews coming up, before they are late.
+
+    The escalation already catches "no review in twelve months" — but only
+    once that is true, which is the first moment it is too late to have done
+    it on time. This looks forward from the last review (or from the first
+    anniversary of joining, for somebody who has never had one) so it can be
+    booked rather than apologised for.
+
+    Anything already overdue is left to the escalation. Two systems reporting
+    the same fact in different words is how people learn to read neither.
+    """
+    out = []
+    for e in conn.execute(
+        """SELECT users.id, users.name, users.job_role, users.start_date,
+                  MAX(performance_reviews.review_date) AS last_review
+             FROM users
+             LEFT JOIN performance_reviews ON performance_reviews.user_id = users.id
+            WHERE users.role = 'employee' AND users.status = 'active'
+            GROUP BY users.id""").fetchall():
+        last = parse_date(e["last_review"]) if e["last_review"] else None
+        started = parse_date(e["start_date"]) if e["start_date"] else None
+        if last:
+            due = last + timedelta(days=365)
+        elif started:
+            due = started + timedelta(days=365)
+        else:
+            continue                      # no date to reason from; not a guess to make
+        days_away = (due - today).days
+        if 0 <= days_away <= days_ahead:
+            out.append({"user_id": e["id"], "name": e["name"], "job_role": e["job_role"],
+                        "due": due.isoformat(), "days_away": days_away,
+                        "last_review": e["last_review"],
+                        "first": last is None})
+    out.sort(key=lambda r: r["days_away"])
+    return out
 
 
 def probation_reviews_due(conn, today, probation_days=90, days_ahead=14):
@@ -8451,8 +8505,30 @@ def spend_by_vendor(conn, *, start=None, end=None):
     if unnamed:
         out.append(unnamed)
 
+    # Standing costs are money going to the same suppliers and were invisible
+    # here: an invoice gets totalled, a subscription that renews itself never
+    # did. Reported alongside rather than added in — one is what has been paid,
+    # the other is what will be, and adding them would answer neither question.
+    committed = {}
+    for r in conn.execute(
+        """SELECT vendors.id, vendors.name, recurring_costs.label,
+                  recurring_costs.amount, recurring_costs.frequency
+             FROM recurring_costs
+             JOIN vendors ON vendors.id = recurring_costs.vendor_id
+            WHERE recurring_costs.active = 1""").fetchall():
+        key = " ".join((r["name"] or "").split()).lower()
+        yearly = (r["amount"] or 0) * (12 if r["frequency"] == "monthly" else 1)
+        c = committed.setdefault(key, {"name": r["name"], "yearly": 0.0, "items": []})
+        c["yearly"] += yearly
+        c["items"].append(f"{r['label']} ({r['frequency']})")
+    for row in out:
+        c = committed.get(" ".join(row["vendor_name"].split()).lower())
+        row["standing_yearly"] = c["yearly"] if c else 0.0
+        row["standing_items"] = c["items"] if c else []
+
     total = sum(r["total"] for r in out)
     return {"rows": out, "total": total,
+            "standing_total": sum(c["yearly"] for c in committed.values()),
             "vendors": len([r for r in out if r["vendor_name"] != "(not named)"]),
             "unmatched": [r for r in out if not r["on_file"]
                           and r["vendor_name"] != "(not named)"],
@@ -13564,6 +13640,7 @@ def staff_dashboard():
         ).fetchall()
         anniversaries = upcoming_anniversaries(conn, today)
         probation_due = probation_reviews_due(conn, today)
+        reviews_due = annual_reviews_due(conn, today)
         unstaffed_days = unstaffed_activity_days(conn, today)
         overtime = week_overtime(conn, today)
         activity = recent_activity(conn)
@@ -13656,6 +13733,7 @@ def staff_dashboard():
         low_ratings = []
         anniversaries = []
         probation_due = []
+        reviews_due = []
         unstaffed_days = []
         expiring_docs = []
         overtime = []
@@ -13830,6 +13908,7 @@ def staff_dashboard():
         my_upcoming_shifts=my_upcoming_shifts, who_is_off_today=who_is_off_today,
         on_shift_by_user=on_shift_by_user, on_shift_now=on_shift_now, my_shift=my_shift,
         anniversaries=anniversaries, probation_due=probation_due, unstaffed_days=unstaffed_days,
+        reviews_due=reviews_due,
         expiring_docs=expiring_docs, overtime=overtime,
         my_open_break=my_open_break, activity=activity, announcements_current=announcements_current,
         my_expiring_docs=my_expiring_docs, my_week_hours=my_week_hours, my_month_hours=my_month_hours,
@@ -18428,7 +18507,14 @@ def current_announcements(conn, today):
 def announcements():
     conn = get_db()
     today = datetime.now(timezone.utc).date()
+    user = current_user()
     current = current_announcements(conn, today)
+    # Recorded on the way in: the owner opening their own board should not
+    # count as the staff having read it, so only employees mark it.
+    if user and user["role"] != "owner":
+        mark_announcements_seen(conn, user["id"], current)
+    readership = announcement_readership(
+        conn, [a["id"] for a in current]) if user and user["role"] == "owner" else {}
     past = []
     if current_user()["role"] == "owner":
         past = conn.execute(
@@ -18438,7 +18524,63 @@ def announcements():
             (today.isoformat(),),
         ).fetchall()
     conn.close()
-    return render_template("announcements.html", current=current, past=past)
+    return render_template("announcements.html", current=current, past=past,
+                           readership=readership)
+
+
+def mark_announcements_seen(conn, user_id, announcements):
+    """Record that this person has now had these in front of them.
+
+    One row per person per announcement, ever — the first sighting is the
+    interesting one. Re-reading it a week later does not move the date, so
+    "seen on the 3rd" keeps meaning what it says.
+    """
+    if not user_id or not announcements:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    n = 0
+    for a in announcements:
+        cur = conn.execute(
+            """INSERT INTO announcement_reads (announcement_id, user_id, seen_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(announcement_id, user_id) DO NOTHING""",
+            (a["id"], user_id, now))
+        n += cur.rowcount or 0
+    conn.commit()
+    return n
+
+
+def announcement_readership(conn, announcement_ids):
+    """{announcement_id: {"seen": [...], "not_seen": [...]}} for active staff.
+
+    Who has NOT seen it is the half worth having. A list of names that have
+    is reassuring and mostly useless; the four people who have not are the
+    reason anybody opens this.
+    """
+    if not announcement_ids:
+        return {}
+    people = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    marks = ",".join("?" * len(announcement_ids))
+    seen = {}
+    for r in conn.execute(
+        f"""SELECT announcement_reads.announcement_id AS aid, announcement_reads.user_id,
+                   announcement_reads.seen_at, users.name
+              FROM announcement_reads JOIN users ON users.id = announcement_reads.user_id
+             WHERE announcement_reads.announcement_id IN ({marks})""",
+            list(announcement_ids)).fetchall():
+        seen.setdefault(r["aid"], {})[r["user_id"]] = r
+
+    out = {}
+    for aid in announcement_ids:
+        got = seen.get(aid, {})
+        out[aid] = {
+            "seen": [{"name": got[p["id"]]["name"], "at": got[p["id"]]["seen_at"]}
+                     for p in people if p["id"] in got],
+            "not_seen": [p["name"] for p in people if p["id"] not in got],
+            "total": len(people),
+        }
+    return out
 
 
 @app.route("/announcements/new", methods=["POST"])
@@ -29059,8 +29201,18 @@ def export_vendors_csv():
 def management_recurring_costs():
     conn = get_db()
     costs = conn.execute(
-        "SELECT * FROM recurring_costs ORDER BY (active = 0), category, label"
+        """SELECT recurring_costs.*, vendors.name AS vendor_name,
+                  vendors.payment_terms, vendors.email AS vendor_email
+             FROM recurring_costs
+             LEFT JOIN vendors ON vendors.id = recurring_costs.vendor_id
+            ORDER BY (recurring_costs.active = 0), recurring_costs.category,
+                     recurring_costs.label"""
     ).fetchall()
+    vendor_list = conn.execute("SELECT id, name FROM vendors ORDER BY name").fetchall()
+    # Standing costs with nobody attached. Not a fault — most were entered
+    # before there was anywhere to put it — but it is the reason the supplier
+    # totals are short, so it is worth saying rather than leaving to be noticed.
+    unattached = [c for c in costs if c["active"] and not c["vendor_id"]]
     conn.close()
     monthly_equivalent = round(sum(
         c["amount"] if c["frequency"] == "monthly" else c["amount"] / 12
@@ -29095,6 +29247,11 @@ def management_recurring_costs():
             facet("coded", "Account code",
                   lambda c: "Coded" if (c["ledger_code"] or "").strip() else "Not coded yet",
                   order=["Not coded yet", "Coded"]),
+            # Who it goes to, so the ones with nobody attached can be found
+            # and fixed rather than only counted.
+            facet("supplier", "Supplier",
+                  lambda c: c["vendor_name"] or "Not linked",
+                  order=["Not linked"], limit=10),
         ],
         sorts=[
             sort_option("cost", "Most expensive a year",
@@ -29109,8 +29266,23 @@ def management_recurring_costs():
     )
     return render_template(
         "management_recurring_costs.html", costs=lv["rows"], lv=lv,
-        monthly_equivalent=monthly_equivalent,
+        monthly_equivalent=monthly_equivalent, vendors=vendor_list,
+        unattached=unattached,
     )
+
+
+def _recurring_vendor_id(conn):
+    """The supplier chosen on the form, if it is a real one.
+
+    Silently dropping an id that does not exist rather than storing it: a
+    dangling vendor_id would show as "not linked" on the page while looking
+    set in the database, which is the worst of both.
+    """
+    raw = (request.form.get("vendor_id", "") or "").strip()
+    if not raw.isdigit():
+        return None
+    row = conn.execute("SELECT id FROM vendors WHERE id = ?", (int(raw),)).fetchone()
+    return row["id"] if row else None
 
 
 @app.route("/management/recurring-costs/new", methods=["POST"])
@@ -29133,10 +29305,11 @@ def new_recurring_cost():
         return redirect(url_for("management_recurring_costs"))
     conn = get_db()
     conn.execute(
-        """INSERT INTO recurring_costs (label, amount, frequency, category, next_due_date, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO recurring_costs (label, amount, frequency, category, next_due_date,
+             notes, vendor_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (label, amount_val, frequency, category or None, next_due_date or None, notes or None,
-         datetime.now(timezone.utc).isoformat()),
+         _recurring_vendor_id(conn), datetime.now(timezone.utc).isoformat()),
     )
     log_audit(conn, "recurring_cost_created", target=label)
     conn.commit()
@@ -29166,8 +29339,9 @@ def edit_recurring_cost(cost_id):
     conn = get_db()
     conn.execute(
         """UPDATE recurring_costs SET label = ?, amount = ?, frequency = ?, category = ?,
-           next_due_date = ?, notes = ? WHERE id = ?""",
-        (label, amount_val, frequency, category or None, next_due_date or None, notes or None, cost_id),
+           next_due_date = ?, notes = ?, vendor_id = ? WHERE id = ?""",
+        (label, amount_val, frequency, category or None, next_due_date or None, notes or None,
+         _recurring_vendor_id(conn), cost_id),
     )
     log_audit(conn, "recurring_cost_edited", target=label)
     conn.commit()

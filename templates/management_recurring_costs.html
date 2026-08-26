@@ -57,6 +57,15 @@
         <label class="field-label">Next due (optional)</label>
         <input type="date" name="next_due_date" value="{{ c['next_due_date'] or '' }}">
       </div>
+      <div>
+        <label class="field-label">Supplier (optional)</label>
+        <select name="vendor_id">
+          <option value="">Not linked</option>
+          {% for v in vendors %}
+          <option value="{{ v['id'] }}" {{ 'selected' if c['vendor_id'] == v['id'] }}>{{ v['name'] }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <input type="text" name="notes" value="{{ c['notes'] or '' }}" placeholder="Notes (optional)">
       <button type="submit" class="btn-mini">Save</button>
     </form>
@@ -70,6 +79,15 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="label" placeholder="e.g. Property insurance" required>
     <input type="number" name="amount" step="0.01" min="0" placeholder="Amount" required>
+    <div>
+      <label class="field-label">Supplier (optional)</label>
+      <select name="vendor_id">
+        <option value="">Not linked</option>
+        {% for v in vendors %}
+        <option value="{{ v['id'] }}" {{ 'selected' if False }}>{{ v['name'] }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <select name="frequency">
       <option value="monthly">Monthly</option>
       <option value="annual">Annual</option>
