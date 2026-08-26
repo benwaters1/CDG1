@@ -92,6 +92,27 @@ def run():
     s.check("and they are grouped by where they are",
             "Salle" in html or "Terrace" in html, detail="no areas rendered")
 
+    s.section("The till is not a page in the admin app")
+    # It used to extend base.html, so a waitress on the floor got the whole
+    # management shell: a sidebar with Payroll Pack and Role Compliance in it, a
+    # search box, a notifications bell, language links. None of it belongs on a
+    # screen used between carrying plates, and on an iPad it ate the width the
+    # room is read in.
+    conn = db()
+    seat_me = conn.execute(
+        "SELECT id FROM restaurant_tables WHERE active = 1 ORDER BY id LIMIT 1").fetchone()["id"]
+    conn.close()
+    oc.post("/pos/open", data={"table_id": str(seat_me)}, follow_redirects=True)
+    a_tab = _latest_order()["id"]
+    for path in ("/pos", f"/pos/{a_tab}", "/pos/kitchen"):
+        body = oc.get(path).get_data(as_text=True)
+        s.check(f"{path} runs on the till shell", "till-shell" in body,
+                detail="it is still rendering inside the admin layout")
+        s.check(f"{path} has no admin sidebar", "app-sidebar" not in body,
+                detail="Payroll Pack is in the menu of a screen a waitress uses")
+        s.check(f"{path} has no search box", "topbar-search" not in body)
+    oc.post(f"/pos/{a_tab}/pay", data={"method": "comp"}, follow_redirects=True)
+
     s.section("Seating a walk-in is one touch")
     four = _table("-4", area="salle", seats=4)
     r = oc.post("/pos/open", data={"table_id": str(four["id"])}, follow_redirects=True)

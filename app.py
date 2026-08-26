@@ -14731,7 +14731,13 @@ def pos_home():
     return render_template(
         "pos_home.html", tables=tables, expected=expected, overview=overview,
         today=today, service_states=POS_SERVICE_STATES,
-        floor=floor, off_plan=off_plan, free_tables=free_tables)
+        floor=floor, off_plan=off_plan, free_tables=free_tables,
+        # Worked out here rather than in the template: the till bar is a strip
+        # of four figures, and a strip is not the place for arithmetic.
+        open_count=len(orders),
+        covers_sitting=sum(t["order"]["covers"] or 0 for t in tables),
+        on_tabs=round(sum(t["total"] for t in tables), 2),
+        taken_today=settled_today)
 
 
 @app.route("/admin/restaurant/tables")

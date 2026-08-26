@@ -2339,3 +2339,214 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   .floor-tile.is-free{ min-height:132px; }
   .floor-expected-table{ min-height:44px; }
 }
+
+/* ==========================================================================
+   The till.
+
+   A control surface, not a document. Dark because a dining room is dim and a
+   parchment page glares; solid because a dashed outline reads as "nothing
+   here" rather than "press this"; big because it is used at arm's length,
+   one-handed, by somebody carrying plates.
+   ========================================================================== */
+.till-shell{
+  --till-bg:#16181c; --till-panel:#1e2127; --till-line:#2b3038;
+  --till-text:#f2f0ec; --till-dim:#9aa2ad; --till-gold:#c9a227;
+
+  /* The palette itself, re-pointed. Every shared component in this stylesheet
+     is built on these tokens, so redefining them here turns the cards, tables,
+     buttons, labels and status pills on the order and pass screens dark in one
+     move -- and keeps doing it for components added later, instead of a list
+     of overrides that goes stale the first time somebody adds a card. Found by
+     measuring: light text was landing on white panels at a contrast ratio of
+     1.1, which is invisible. */
+  --surface:#1e2127;
+  --paper:#1a1d22;
+  --parchment:#16181c;
+  --parchment-line:#2b3038;
+  --ivory:#20242b;
+  --ink:#f2f0ec;
+  --ink-soft:#c9ced6;
+  --ink-faint:#9aa2ad;
+  --steel:#9aa2ad;
+  --steel-deep:#c9ced6;
+  --gold:#c9a227;
+  --gold-soft:#8a6f20;
+  --gold-on-warn:#f3d98a;
+  /* #a33 and #3d6b3d are tuned for text on parchment; on this surface they
+     come out at 2.5:1, which is a destructive button nobody can read. */
+  --danger:#ff9b92;
+  --success:#7dc98c;
+  --shadow:0 2px 10px rgba(0,0,0,0.35);
+  --focus-ring:rgba(201,162,39,0.45);
+  --status-success-bg:#1f3524; --status-danger-bg:#3d1f1c;
+  --status-info-bg:#1e2c3a;   --status-warn-bg:#3a3113;
+  --status-neutral-bg:#262b33;
+  --flash-error-bg:#3d1f1c; --flash-error-border:#5a2b26;
+  --flash-success-bg:#1f3524; --flash-success-border:#2f5138;
+  --body-bg:#16181c;
+
+  margin:0; background:var(--till-bg); color:var(--till-text);
+  font-family:'Inter','Inter Tight',system-ui,sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+.till-bar{
+  position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:18px;
+  padding:10px max(14px, env(safe-area-inset-left)) 10px max(14px, env(safe-area-inset-right));
+  background:var(--till-panel); border-bottom:1px solid var(--till-line);
+}
+.till-bar__home{
+  font:700 20px/1 'Inter Tight',sans-serif; color:var(--till-text);
+  text-decoration:none; letter-spacing:-.01em; min-height:44px;
+  display:inline-flex; align-items:center; padding-right:6px;
+}
+.till-bar__figures{ display:flex; gap:22px; flex:1; flex-wrap:wrap; align-items:center; }
+.till-figure{ display:flex; flex-direction:column; line-height:1.1; }
+.till-figure b{ font:600 18px/1 'Inter Tight',sans-serif; font-variant-numeric:tabular-nums; }
+.till-figure span{ font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--till-dim); }
+.till-bar__actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.till-bar__actions a, .till-bar__actions button{
+  min-height:44px; display:inline-flex; align-items:center; padding:0 14px;
+  border-radius:10px; border:1px solid var(--till-line); background:transparent;
+  color:var(--till-text); text-decoration:none; font:500 14px/1 'Inter',sans-serif;
+  cursor:pointer;
+}
+.till-bar__actions a:hover, .till-bar__actions button:hover{ border-color:var(--till-gold); }
+.till-bar__exit{ font-size:17px; padding:0 13px !important; color:var(--till-dim) !important; }
+
+.till-flashes{ padding:12px max(14px, env(safe-area-inset-left)) 0; }
+.till-shell .flash{
+  padding:16px 18px; border-radius:12px; margin-bottom:8px;
+  font:600 19px/1.25 'Inter Tight',sans-serif; background:var(--till-panel);
+  color:var(--till-text); border:0; border-left:5px solid var(--till-gold);
+}
+.till-shell .flash-error{ border-left-color:#e2574c; }
+
+.till-main{ padding:14px max(14px, env(safe-area-inset-left)) 40px max(14px, env(safe-area-inset-right)); }
+.till-area{
+  font:600 12px/1 'Inter',sans-serif; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--till-dim); margin:22px 0 10px;
+}
+.till-area:first-of-type{ margin-top:6px; }
+
+/* The room. Wider minimum than the admin grid: a table tile is a target. */
+.till-floor{ display:grid; grid-template-columns:repeat(auto-fill, minmax(178px, 1fr)); gap:10px; }
+.till-tile{
+  display:flex; flex-direction:column; gap:5px; min-height:132px; padding:14px;
+  border-radius:14px; border:1px solid var(--till-line); background:var(--till-panel);
+  color:var(--till-text); text-decoration:none; text-align:left; font:inherit;
+  cursor:pointer; position:relative; overflow:hidden;
+}
+.till-tile:hover{ border-color:var(--till-gold); }
+/* State is colour, read before any word on the tile is. */
+.till-tile::before{ content:""; position:absolute; inset:0 auto 0 0; width:5px; background:transparent; }
+.till-tile.is-seated::before{ background:#5b7fa6; }
+.till-tile.is-ordered::before{ background:var(--till-gold); }
+.till-tile.is-starters::before, .till-tile.is-mains::before{ background:#5aa36f; }
+.till-tile.is-bill::before{ background:#d8d2c4; }
+.till-tile.is-late::before{ background:#e2574c; }
+.till-tile.is-late{ border-color:#e2574c; }
+
+.till-tile__label{ font:700 26px/1 'Inter Tight',sans-serif; letter-spacing:-.02em; }
+.till-tile__total{ font:600 20px/1 'Inter Tight',sans-serif; font-variant-numeric:tabular-nums; }
+.till-tile__top{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.till-tile__guest{ font-size:13px; color:var(--till-text); }
+.till-tile__meta{ font-size:12px; color:var(--till-dim); margin-top:auto; }
+.till-tile__flag{
+  font:600 11px/1.3 'Inter',sans-serif; letter-spacing:.04em; text-transform:uppercase;
+  padding:5px 8px; border-radius:7px; background:#2b3038; color:var(--till-text);
+}
+.till-tile__flag.is-unsent{ background:#4a3d12; color:#f3d98a; }
+.till-tile__flag.is-late{ background:#4a1f1c; color:#ffb4ad; }
+.till-tile__flag.is-allergy{ background:#3a2340; color:#e6c4f0; }
+
+/* A free table is an invitation, not an absence. Solid, same size, quieter. */
+.till-tile.is-free{
+  background:#1a1d22; border-style:dashed; border-color:#333a44;
+  align-items:flex-start; justify-content:center; gap:3px;
+}
+.till-tile.is-free:hover, .till-tile.is-free:focus-visible{
+  background:#20242b; border-style:solid; border-color:var(--till-gold);
+}
+.till-tile.is-free .till-tile__label{ color:var(--till-dim); }
+.till-tile.is-free:hover .till-tile__label{ color:var(--till-text); }
+.till-free-form{ display:flex; }
+.till-free-form > .till-tile{ flex:1; }
+
+.till-expected{
+  display:flex; flex-direction:column; gap:8px; padding:14px; border-radius:14px;
+  background:var(--till-panel); border:1px solid var(--till-line);
+}
+.till-expected__name{ font:700 17px/1.15 'Inter Tight',sans-serif; }
+.till-expected__meta{ font-size:12.5px; color:var(--till-dim); }
+.till-expected select{
+  min-height:44px; border-radius:10px; border:1px solid var(--till-line);
+  background:#14161a; color:var(--till-text); padding:0 10px; font-size:15px; width:100%;
+}
+.till-expected button{
+  min-height:44px; border-radius:10px; border:0; background:var(--till-gold);
+  color:#1a1a1a; font:600 15px/1 'Inter',sans-serif; cursor:pointer; width:100%;
+}
+.till-empty{ padding:26px; border-radius:14px; background:var(--till-panel);
+  color:var(--till-dim); border:1px dashed var(--till-line); }
+.till-offplan{ margin-top:26px; }
+.till-offplan > summary{
+  cursor:pointer; color:var(--till-dim); font-size:13.5px; min-height:44px;
+  display:flex; align-items:center;
+}
+.till-offplan form{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:10px; }
+.till-offplan label{ display:block; font-size:11px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--till-dim); margin-bottom:5px; }
+.till-offplan input{
+  min-height:44px; border-radius:10px; border:1px solid var(--till-line);
+  background:#14161a; color:var(--till-text); padding:0 12px; font-size:15px;
+}
+.till-offplan button{
+  min-height:44px; border-radius:10px; border:1px solid var(--till-gold);
+  background:transparent; color:var(--till-gold); padding:0 18px; font-size:15px; cursor:pointer;
+}
+
+@media (max-width: 560px){
+  .till-bar{ gap:12px; }
+  .till-bar__figures{ gap:14px; }
+  .till-floor{ grid-template-columns:repeat(auto-fill, minmax(148px, 1fr)); }
+  .till-tile{ min-height:118px; }
+}
+
+/* The order, pass and cash-up screens share components with the admin app —
+   cards, tables, buttons, labels. On the till's dark surface those render as
+   near-black text on near-black, so they are re-skinned here rather than
+   forked into a second set of templates that would then drift. */
+.till-shell .page-head{ border:0; padding:0; margin:0 0 12px; }
+.till-shell .page-head h1{ font:700 22px/1.15 'Inter Tight',sans-serif; color:var(--till-text); }
+.till-shell .section-heading{
+  font:600 12px/1 'Inter',sans-serif; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--till-dim); border:0; margin:22px 0 10px; padding:0;
+}
+.till-shell .num, .till-shell .is-total{ font-variant-numeric:tabular-nums; }
+.till-shell input[type="text"], .till-shell input[type="number"],
+.till-shell input[type="datetime-local"], .till-shell select, .till-shell textarea{
+  background:#14161a; color:var(--till-text); border:1px solid var(--till-line);
+  border-radius:10px; min-height:44px; padding:0 12px; font-size:16px;
+}
+.till-shell textarea{ padding:10px 12px; min-height:72px; }
+.till-shell .btn-mini, .till-shell .btn-ghost{
+  min-height:44px; display:inline-flex; align-items:center; padding:0 14px;
+  border-radius:10px; border:1px solid var(--till-line); background:transparent;
+  color:var(--till-text); font:500 14px/1 'Inter',sans-serif; text-decoration:none;
+}
+.till-shell .btn-mini:hover, .till-shell .btn-ghost:hover{ border-color:var(--till-gold); }
+.till-shell .btn-primary{
+  min-height:48px; display:inline-flex; align-items:center; padding:0 20px;
+  border-radius:10px; border:0; background:var(--till-gold); color:#1a1a1a;
+  font:600 16px/1 'Inter',sans-serif; text-decoration:none;
+}
+.till-shell .btn-mini-danger{ border-color:#5a2b26; color:#ffb4ad; }
+.till-shell .data-table{ width:100%; border-collapse:collapse; color:var(--till-text); }
+.till-shell .data-table th{ color:var(--till-dim); font-size:11.5px;
+  text-transform:uppercase; letter-spacing:.07em; }
+.till-shell .data-table th, .till-shell .data-table td{
+  border-bottom:1px solid var(--till-line); padding:11px 10px; }
+.till-shell a{ color:var(--till-gold); }
+.till-shell .till-total-row{ display:flex; justify-content:space-between; gap:14px;
+  padding:9px 0; border-bottom:1px solid var(--till-line); }
+.till-shell .till-total-row.is-total{ font:700 20px/1 'Inter Tight',sans-serif; border-bottom:0; }

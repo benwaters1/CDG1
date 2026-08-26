@@ -1,55 +1,51 @@
-{% extends "base.html" %}
-{% block title %}Restaurant POS{% endblock %}
+{% extends "pos_base.html" %}
+{% block title %}Service{% endblock %}
+{% block bartitle %}{{ t('Service') }}{% endblock %}
+
+{% block barfigures %}
+  {# The four a section actually glances at. Not a stat band across the page —
+     a strip, so the room starts at the top of the screen. #}
+  <span class="till-figure"><b>{{ open_count }}</b><span>{{ t('open') }}</span></span>
+  <span class="till-figure"><b>{{ covers_sitting }}</b><span>{{ t('covers') }}</span></span>
+  <span class="till-figure"><b>€{{ '%.0f'|format(on_tabs) }}</b><span>{{ t('on tabs') }}</span></span>
+  <span class="till-figure"><b>€{{ '%.0f'|format(taken_today) }}</b><span>{{ t('taken') }}</span></span>
+  {% if expected %}<span class="till-figure"><b>{{ expected|length }}</b><span>{{ t('to arrive') }}</span></span>{% endif %}
+{% endblock %}
+
+{% block baractions %}
+  <a href="{{ url_for('pos_kitchen') }}">{{ t('The pass') }}</a>
+  {% if can('pos_day') %}<a href="{{ url_for('pos_day') }}">{{ t('Cash up') }}</a>{% endif %}
+  {% if can('admin_dining_tables') %}<a href="{{ url_for('admin_dining_tables') }}">{{ t('Floor plan') }}</a>{% endif %}
+{% endblock %}
+
 {% block content %}
 
-<div class="page-head">
-  <h1>Service</h1>
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('pos_kitchen') }}" class="btn-ghost">{{ t('The pass') }}</a>
-    <a href="{{ url_for('admin_restaurant_menu') }}" class="btn-ghost">{{ t('Menu') }}</a>
-    {% if can('admin_dining_tables') %}
-    <a href="{{ url_for('admin_dining_tables') }}" class="btn-ghost">{{ t('Floor plan') }}</a>
-    {% endif %}
-    {% if can('pos_day') %}
-    <a href="{{ url_for('pos_day') }}" class="btn-ghost">{{ t('Cash up') }}</a>
-    {% endif %}
-  </div>
-</div>
-
-{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
-
-{#
-  The room, not a list of tabs. This screen used to show open tables only, so an
-  empty restaurant showed an empty page and the only way to start service was to
-  type a table name into a text box. A free table is a button: one touch seats a
-  walk-in, with the covers taken from what the table holds.
-#}
 {% if expected %}
-<h2 class="section-heading">{{ t('Booked in tonight, not seated') }}</h2>
+<div class="till-area">{{ t('Booked in tonight, not seated') }}</div>
 {# Seating against the reservation is what carries the guest's name, their
    allergies and any deposit they already paid onto the tab. #}
-<div class="floor">
+<div class="till-floor">
   {% for b in expected %}
-  <form method="post" action="{{ url_for('pos_open_tab') }}" class="floor-expected">
+  <form method="post" action="{{ url_for('pos_open_tab') }}" class="till-expected">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="restaurant_booking_id" value="{{ b['id'] }}">
-    <span class="floor-expected-name">{{ b['guest_name'] }}</span>
-    <span class="floor-expected-meta">
+    <span class="till-expected__name">{{ b['guest_name'] }}</span>
+    <span class="till-expected__meta">
       {{ b['party_size'] }} cover{{ '' if b['party_size'] == 1 else 's' }}
-      {%- if b['deposit_amount'] %} · €{{ '%.2f'|format(b['deposit_amount']) }} deposit paid{% endif %}
+      {%- if b['deposit_amount'] %} · €{{ '%.2f'|format(b['deposit_amount']) }} deposit{% endif %}
     </span>
     {% if b['dietary_notes'] %}
-    <span class="floor-flag is-allergy">{{ b['dietary_notes']|truncate(70) }}</span>
+    <span class="till-tile__flag is-allergy">{{ b['dietary_notes']|truncate(60) }}</span>
     {% endif %}
     {% if free_tables %}
-    <select name="table_id" class="floor-expected-table" aria-label="Table for {{ b['guest_name'] }}">
+    <select name="table_id" aria-label="Table for {{ b['guest_name'] }}">
       {% for x in free_tables %}
       <option value="{{ x.table['id'] }}">{{ x.table['label'] }} · {{ x.table['seats'] }}</option>
       {% endfor %}
     </select>
-    <button type="submit" class="btn-mini">{{ t('Seat them') }}</button>
+    <button type="submit">{{ t('Seat them') }}</button>
     {% else %}
-    <span class="floor-flag">{{ t('Every table is occupied') }}</span>
+    <span class="till-tile__flag">{{ t('Every table is occupied') }}</span>
     {% endif %}
   </form>
   {% endfor %}
@@ -57,45 +53,47 @@
 {% endif %}
 
 {% for area in floor.areas %}
-<h2 class="section-heading">{{ t(area.title) }}</h2>
-<div class="floor">
+<div class="till-area">{{ t(area.title) }}</div>
+<div class="till-floor">
   {% for tile in area.tiles %}
     {% if tile.order %}
       {% set live = tile.live %}
+      {% set late = live and live.waiting_minutes and live.waiting_minutes > 20 %}
       {#
-        An occupied tile has to answer, without being opened: how long have they
-        been sitting, is anything waiting on the kitchen, and is the bill ready.
+        Colour before words: the stripe says which stage the table is at, and
+        turns red when food has been away too long. The tile answers, without
+        being opened, how long they have been sitting, whether the kitchen has
+        it, and what it owes.
       #}
       <a href="{{ url_for('pos_order', order_id=tile.order['id']) }}"
-         class="floor-tile state-{{ live.state if live else 'seated' }} {{ 'is-waiting' if live and live.waiting_minutes and live.waiting_minutes > 20 }}">
-        <span class="floor-tile-top">
-          <span class="floor-table">{{ tile.table['label'] }}</span>
-          <span class="floor-total">€{{ '%.2f'|format(live.total if live else 0) }}</span>
+         class="till-tile is-{{ 'late' if late else (live.state if live else 'seated') }}">
+        <span class="till-tile__top">
+          <span class="till-tile__label">{{ tile.table['label'] }}</span>
+          <span class="till-tile__total">€{{ '%.2f'|format(live.total if live else 0) }}</span>
         </span>
-        {% if live and live.guest %}<span class="floor-guest">{{ live.guest }}</span>{% endif %}
-        <span class="floor-state">{{ service_states.get(live.state, live.state) if live else '' }}</span>
-        <span class="floor-meta">
-          {{ tile.order['covers'] }} cover{{ '' if tile.order['covers'] == 1 else 's' }}
-          {%- if live and live.sitting_minutes is not none %} · sitting {{ live.sitting_minutes }} min{% endif %}
-        </span>
+        {% if live and live.guest %}<span class="till-tile__guest">{{ live.guest }}</span>{% endif %}
         {% if live and live.unsent %}
-        <span class="floor-flag is-unsent">{{ live.unsent }} not sent to the kitchen</span>
-        {% elif live and live.waiting_minutes is not none %}
-        <span class="floor-flag {{ 'is-late' if live.waiting_minutes > 20 }}">
-          food away {{ live.waiting_minutes }} min
-        </span>
+        <span class="till-tile__flag is-unsent">{{ live.unsent }} not sent to the kitchen</span>
+        {% elif late %}
+        <span class="till-tile__flag is-late">food away {{ live.waiting_minutes }} min</span>
         {% endif %}
-        {% if live and live.dietary %}<span class="floor-flag is-allergy">{{ live.dietary|truncate(60) }}</span>{% endif %}
+        {% if live and live.dietary %}
+        <span class="till-tile__flag is-allergy">{{ live.dietary|truncate(40) }}</span>
+        {% endif %}
+        <span class="till-tile__meta">
+          {{ tile.order['covers'] }} cover{{ '' if tile.order['covers'] == 1 else 's' }}
+          {%- if live and live.sitting_minutes is not none %} · {{ live.sitting_minutes }} min{% endif %}
+          {%- if live and live.state %} · {{ service_states.get(live.state, live.state) }}{% endif %}
+        </span>
       </a>
     {% else %}
       {# One touch. No typing, no second screen. #}
-      <form method="post" action="{{ url_for('pos_open_tab') }}" class="floor-free-form">
+      <form method="post" action="{{ url_for('pos_open_tab') }}" class="till-free-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="table_id" value="{{ tile.table['id'] }}">
-        <button type="submit" class="floor-tile is-free">
-          <span class="floor-table">{{ tile.table['label'] }}</span>
-          <span class="floor-meta">{{ t('seats') }} {{ tile.table['seats'] }}</span>
-          <span class="floor-free-hint">{{ t('Tap to seat') }}</span>
+        <button type="submit" class="till-tile is-free">
+          <span class="till-tile__label">{{ tile.table['label'] }}</span>
+          <span class="till-tile__meta">{{ t('seats') }} {{ tile.table['seats'] }}</span>
         </button>
       </form>
     {% endif %}
@@ -104,7 +102,7 @@
 {% endfor %}
 
 {% if not floor.areas %}
-<div class="empty-state">
+<div class="till-empty">
   {{ t('No tables on the floor plan yet.') }}
   {% if can('admin_dining_tables') %}
   <a href="{{ url_for('admin_dining_tables') }}">{{ t('Lay out the room') }}</a>
@@ -113,42 +111,41 @@
 {% endif %}
 
 {% if off_plan %}
-<h2 class="section-heading">{{ t('Off the floor plan') }}</h2>
-{# Tabs opened before the room was laid out, or deliberately off-plan — two
-   terrace tables pushed together for a party of nine. Shown because a tab
-   nobody can see is a tab nobody settles. #}
-<div class="floor">
+<div class="till-area">{{ t('Off the floor plan') }}</div>
+{# Two terrace tables pushed together for nine. Shown because a tab nobody can
+   see is a tab nobody settles. #}
+<div class="till-floor">
   {% for x in off_plan %}
-  <a href="{{ url_for('pos_order', order_id=x.order['id']) }}" class="floor-tile state-{{ x.state }}">
-    <span class="floor-tile-top">
-      <span class="floor-table">{{ x.order['table_label'] }}</span>
-      <span class="floor-total">€{{ '%.2f'|format(x.total) }}</span>
+  <a href="{{ url_for('pos_order', order_id=x.order['id']) }}" class="till-tile is-{{ x.state }}">
+    <span class="till-tile__top">
+      <span class="till-tile__label">{{ x.order['table_label']|truncate(16) }}</span>
+      <span class="till-tile__total">€{{ '%.2f'|format(x.total) }}</span>
     </span>
-    {% if x.guest %}<span class="floor-guest">{{ x.guest }}</span>{% endif %}
-    <span class="floor-meta">
+    {% if x.guest %}<span class="till-tile__guest">{{ x.guest }}</span>{% endif %}
+    {% if x.unsent %}<span class="till-tile__flag is-unsent">{{ x.unsent }} not sent to the kitchen</span>{% endif %}
+    <span class="till-tile__meta">
       {{ x.order['covers'] }} cover{{ '' if x.order['covers'] == 1 else 's' }}
-      {%- if x.sitting_minutes is not none %} · sitting {{ x.sitting_minutes }} min{% endif %}
+      {%- if x.sitting_minutes is not none %} · {{ x.sitting_minutes }} min{% endif %}
     </span>
-    {% if x.unsent %}<span class="floor-flag is-unsent">{{ x.unsent }} not sent to the kitchen</span>{% endif %}
   </a>
   {% endfor %}
 </div>
 {% endif %}
 
-<details class="pos-offplan">
+<details class="till-offplan">
   <summary>{{ t('Open something off the plan') }}</summary>
-  <p class="upload-hint">{{ t('For tables pushed together, or a party somewhere the plan does not cover.') }}</p>
-  <form method="post" action="{{ url_for('pos_open_tab') }}" class="search-bar">
+  <form method="post" action="{{ url_for('pos_open_tab') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
-      <label class="field-label">{{ t('Call it') }}</label>
-      <input type="text" name="table_label" required placeholder="{{ t('Terrace, two together') }}" autocomplete="off">
+      <label for="offplan_label">{{ t('Call it') }}</label>
+      <input type="text" id="offplan_label" name="table_label" required
+             placeholder="{{ t('Terrace, two together') }}" autocomplete="off">
     </div>
     <div>
-      <label class="field-label">{{ t('Covers') }}</label>
-      <input type="number" name="covers" min="1" step="1" value="2">
+      <label for="offplan_covers">{{ t('Covers') }}</label>
+      <input type="number" id="offplan_covers" name="covers" min="1" step="1" value="2" style="width:92px;">
     </div>
-    <button type="submit" class="btn-primary" style="margin-top:0;">{{ t('Open it') }}</button>
+    <button type="submit">{{ t('Open it') }}</button>
   </form>
 </details>
 

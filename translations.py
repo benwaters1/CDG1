@@ -35,6 +35,13 @@ LANGUAGES = {
 }
 
 FR = {
+    # The till bar.
+    'Service': 'Service',
+    'open': 'ouvertes',
+    'covers': 'couverts',
+    'on tabs': 'en cours',
+    'taken': 'encaissé',
+    'to arrive': 'à venir',
     # The till's floor plan: the room, and seating somebody in it.
     'Floor plan': 'Plan de salle',
     'Back to service': 'Retour au service',
@@ -446,6 +453,13 @@ FR = {
 }
 
 ES = {
+    # The till bar.
+    'Service': 'Servicio',
+    'open': 'abiertas',
+    'covers': 'comensales',
+    'on tabs': 'en cuentas',
+    'taken': 'cobrado',
+    'to arrive': 'por llegar',
     # The till's floor plan: the room, and seating somebody in it.
     'Floor plan': 'Plano de sala',
     'Back to service': 'Volver al servicio',

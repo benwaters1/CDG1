@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{% block title %}Till{% endblock %} — Gudanes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+{# No Playfair here. A serif heading is right for a page somebody reads and
+   wrong for a control surface somebody hits at arm's length in bad light. #}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#16181c">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-192.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gudanes Till">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script>
+(function() {
+  var token = document.querySelector('meta[name="csrf-token"]').content;
+  var originalFetch = window.fetch;
+  window.fetch = function(input, init) {
+    init = init || {};
+    var method = (init.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+      init.headers = new Headers(init.headers || {});
+      if (!init.headers.has('X-CSRFToken')) init.headers.set('X-CSRFToken', token);
+    }
+    return originalFetch(input, init);
+  };
+})();
+</script>
+</head>
+{#
+  The till is not a page in the admin app. It used to extend base.html, so a
+  waitress on the floor got the whole management shell: a sidebar with Payroll
+  Pack and Role Compliance in it, a search box, a notifications bell, language
+  links. None of that belongs on a screen somebody hits between carrying
+  plates, and all of it costs width on the iPad the floor is read from.
+#}
+<body class="till-shell">
+
+<header class="till-bar">
+  <a class="till-bar__home" href="{{ url_for('pos_home') }}">{% block bartitle %}Service{% endblock %}</a>
+  <div class="till-bar__figures">{% block barfigures %}{% endblock %}</div>
+  <div class="till-bar__actions">
+    {% block baractions %}{% endblock %}
+    <a class="till-bar__exit" href="{{ url_for('dashboard') }}" title="Back to the staff app">✕</a>
+  </div>
+</header>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  {# Loud on purpose. The one that matters most here is the change owed to
+     somebody standing with their hand out. #}
+  {# Same class names as every other screen. Renaming them here quietly broke
+     the one helper the whole suite reads flashes with, and would have broken
+     anything else that looks for a message on a page. Styled per shell
+     instead, which is what a shell is for. #}
+  <div class="till-flashes flash-wrap">
+    {% for category, message in messages %}
+    <div class="flash flash-{{ category }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+
+<main class="till-main">
+  {% block content %}{% endblock %}
+</main>
+
+</body>
+</html>
