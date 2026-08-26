@@ -21,6 +21,7 @@ earns nothing. The statutory test is finer than that — four weeks, or 24 days
 actually worked, makes a month — so this reads low rather than high, and says
 so rather than presenting itself as payroll.
 """
+import os as _os
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
@@ -177,6 +178,81 @@ def run():
     s.check("with the number, not just a reminder",
             any(ch.isdigit() for l in labels if "leave earned" in l for ch in l),
             detail="a checklist line with no figure is the same reminder as before")
+
+    s.section("Leaving also produces the paperwork they are owed")
+    # The app drafted what a new employee needs and nothing for somebody going,
+    # which is the harder half: it happens at short notice and two of these are
+    # statutory rather than courteous.
+    conn = db()
+    conn.execute(
+        """INSERT INTO company_info (id, legal_name, registered_address, registration_number)
+           VALUES (1, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET legal_name = excluded.legal_name,
+             registered_address = excluded.registered_address,
+             registration_number = excluded.registration_number""",
+        ("SCI Torrents", "Chateau de Gudanes, 09140", "812 345 678 00019"))
+    conn.commit()
+    docs = conn.execute("SELECT title, filename FROM documents WHERE user_id = ?",
+                        (leaver["id"],)).fetchall()
+    conn.close()
+    titles = [d["title"] for d in docs]
+    s.check("a certificat de travail is drafted",
+            any("Certificat de travail" in t for t in titles), detail=f"{titles}")
+    s.check("and a solde de tout compte",
+            any("Solde de tout compte" in t for t in titles), detail=f"{titles}")
+    s.check("both are marked as drafts, because neither is ready to sign",
+            all("DRAFT" in t for t in titles if "de tra" in t or "tout compte" in t),
+            detail=f"{titles}")
+
+    body = {}
+    for d in docs:
+        with open(_os.path.join(m.UPLOAD_DIR, d["filename"]), encoding="utf-8") as f:
+            body[d["title"]] = f.read()
+    cert = next((v for k, v in body.items() if "Certificat" in k), "")
+    solde = next((v for k, v in body.items() if "Solde" in k), "")
+
+    s.check("the certificat names the employee", leaver["name"] in cert)
+    s.check("and the dates employed", (leaver["start_date"] or "") in cert,
+            detail="a certificat without the dates is not a certificat")
+    s.check("and the job held", "Front of house" in cert)
+    # The law is specific: it carries the dates and the work, and nothing that
+    # could count against the person holding it.
+    s.check("and carries no judgement of the person",
+            not any(w in cert.lower() for w in
+                    ("dismiss", "misconduct", "performance", "reason for leaving",
+                     "resigned", "sacked")),
+            detail="a certificat de travail must not say why they left")
+
+    s.check("the solde carries the leave figure this app worked out",
+            "Leave earned and not taken" in solde, detail=solde[:120])
+    s.check("and says plainly that it is not the receipt",
+            "NOT the receipt" in solde,
+            detail="a draft that reads as final is worse than no draft")
+    s.check("and leaves the payroll figures blank rather than inventing them",
+            "__________" in solde)
+    s.check("the attestation France Travail is deliberately NOT drafted",
+            "deliberately does not draft one" in solde,
+            detail="a plausible-looking draft of a filed declaration is worse than none")
+
+    conn = db()
+    labels = [r["label"] for r in conn.execute(
+        "SELECT label FROM offboarding_items WHERE user_id = ?", (leaver["id"],)).fetchall()]
+    conn.close()
+    s.check("and it is on the checklist instead",
+            any("attestation France Travail" in l for l in labels), detail=f"{labels}")
+    s.check("with handing over the certificat",
+            any("certificat de travail" in l for l in labels))
+
+    s.section("The documents are not written twice")
+    oc.post(f"/directory/{leaver['id']}/toggle-status", follow_redirects=True)
+    oc.post(f"/directory/{leaver['id']}/toggle-status", follow_redirects=True)
+    conn = db()
+    again = conn.execute(
+        "SELECT COUNT(*) AS c FROM documents WHERE user_id = ? AND title LIKE 'Certificat%'",
+        (leaver["id"],)).fetchone()["c"]
+    conn.close()
+    s.check("coming back and leaving again does not stack up copies", again == 1,
+            detail=f"{again} certificats on file")
 
     s.section("The rate and the leave year are settings, not code")
     page = oc.get("/admin/leave")

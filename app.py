@@ -6757,6 +6757,21 @@ def maybe_seed_offboarding(conn, user_id, old_status, new_status):
         # figure was worked out somewhere, which is exactly how it gets missed.
         person_row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         if person_row:
+            # The paperwork they are owed, drafted the moment they are marked as
+            # gone rather than remembered later. Two of these are statutory.
+            create_leaver_documents(conn, person_row)
+            for label in ("File the attestation France Travail",
+                          "Hand over the certificat de travail",
+                          "Have payroll complete and sign the solde de tout compte"):
+                if not conn.execute(
+                    "SELECT 1 FROM offboarding_items WHERE user_id = ? AND label = ?",
+                    (user_id, label),
+                ).fetchone():
+                    conn.execute(
+                        """INSERT INTO offboarding_items (user_id, label, done, sort_order, created_at)
+                           VALUES (?, ?, 0, 0, ?)""",
+                        (user_id, label, now_iso),
+                    )
             acc = leave_accrual(conn, person_row)
             if acc["owed_on_departure"] > 0:
                 label = (f"Pay {acc['owed_on_departure']:g} day"
@@ -6824,6 +6839,134 @@ def create_draft_agreement(conn, employee):
         (employee["id"], "Draft employment summary (needs lawyer review — not binding)",
          stored_name, datetime.now(timezone.utc).isoformat()),
     )
+
+
+def _employer_identity(conn):
+    """Who the employer is, off the company record rather than a constant.
+
+    A certificat de travail has to identify the employer properly, and the
+    hardcoded name is a fallback for a database that has not been filled in
+    rather than the answer.
+    """
+    row = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    name = (row["legal_name"] if row and row["legal_name"] else EMPLOYER_LEGAL_NAME)
+    return {
+        "name": name,
+        "address": (row["registered_address"] if row else None) or "(address not set)",
+        "siret": (row["registration_number"] if row else None) or "(SIRET not set)",
+    }
+
+
+def create_leaver_documents(conn, employee, on_date=None):
+    """The paperwork somebody is owed on the day they leave.
+
+    The app already drafts what a new employee needs and drafted nothing for
+    somebody going, which is the harder half: it happens at short notice, often
+    badly, and two of these are statutory rather than courteous.
+
+    Both are DRAFTS. The certificat is close to complete because the law says
+    exactly what belongs on it -- employer, employee, dates in and out, and the
+    jobs held, and deliberately nothing else, since it must not carry anything
+    that could count against the person. The solde de tout compte cannot be
+    complete here: this app is not payroll and does not know the final salary
+    or the deductions, so it lists what it does know, marks the rest, and says
+    who has to finish it.
+
+    The attestation France Travail is NOT written here on purpose. It is a
+    declaration filed through the employer's own channel, not a letter, and a
+    plausible-looking draft of one would be worse than none.
+    """
+    today = on_date or datetime.now(timezone.utc).date()
+    who = _employer_identity(conn)
+    started = employee["start_date"] or "(not recorded)"
+    ended = employee["contract_end_date"] or today.isoformat()
+    accrual = leave_accrual(conn, employee, today)
+    stamp = datetime.now(timezone.utc).isoformat()
+    made = []
+
+    certificat = [
+        f"CERTIFICAT DE TRAVAIL — DRAFT",
+        "=" * 62,
+        "Draft for review. Check it against your obligations before issuing.",
+        "",
+        f"{who['name']}",
+        f"{who['address']}",
+        f"SIRET {who['siret']}",
+        "",
+        "certifies that",
+        "",
+        f"    {employee['name']}",
+        "",
+        f"was employed from {started} to {ended}",
+        f"in the capacity of: {employee['job_role'] or '(role not recorded)'}",
+        "",
+        "This certificate states the dates of employment and the work done, and",
+        "nothing further — that is what it is for, and anything else on it can",
+        "count against the person holding it.",
+        "",
+        f"Issued at {who['address'].splitlines()[0] if who['address'] else ''}, {today.isoformat()}",
+        "",
+        "Signature: ______________________",
+        "",
+        f"(Draft generated {stamp}.)",
+    ]
+
+    solde = [
+        "SOLDE DE TOUT COMPTE — DRAFT, NOT A STATEMENT OF ACCOUNT",
+        "=" * 62,
+        "This is NOT the receipt. It is what this app can work out, so that",
+        "whoever runs payroll starts from a figure rather than a blank page.",
+        "It does not know the final salary, the notice, the deductions or the",
+        "social contributions, and it must not be signed as it stands.",
+        "",
+        f"Employer:  {who['name']} (SIRET {who['siret']})",
+        f"Employee:  {employee['name']}",
+        f"Employed:  {started} to {ended}",
+        "",
+        "WHAT THIS APP KNOWS",
+        "-" * 62,
+        f"Leave earned and not taken:  {accrual['owed_on_departure']:g} day(s)",
+        f"  earned {accrual['accrued']:g} over {accrual['months_worked']} month(s) "
+        f"from {accrual['year_start'].isoformat()}",
+        f"  taken  {accrual['taken']}",
+        f"  at {accrual['rate']:g} day(s) per month worked",
+        "",
+        "STILL TO BE ADDED BY WHOEVER RUNS PAYROLL",
+        "-" * 62,
+        "  Final salary to the last day worked ....... __________",
+        "  Notice, or payment in lieu ................ __________",
+        "  Any bonus or commission owed .............. __________",
+        "  Expenses not yet reimbursed ............... __________",
+        "  Deductions and social contributions ....... __________",
+        "  ------------------------------------------------------",
+        "  TOTAL PAID .................................. __________",
+        "",
+        "Also required, and not produced here: the attestation France Travail.",
+        "It is filed through your own declaration channel, not written as a",
+        "letter, so this app deliberately does not draft one.",
+        "",
+        f"(Draft generated {stamp}. Figures for leave come from this app's own",
+        " records and should be checked against payroll.)",
+    ]
+
+    for title, lines, slug in (
+        ("Certificat de travail (DRAFT — check before issuing)", certificat, "certificat_de_travail"),
+        ("Solde de tout compte (DRAFT — payroll must complete it)", solde, "solde_de_tout_compte"),
+    ):
+        if conn.execute(
+            "SELECT 1 FROM documents WHERE user_id = ? AND title = ?",
+            (employee["id"], title),
+        ).fetchone():
+            continue
+        stored_name = f"{employee['id']}_{secrets.token_hex(6)}_{slug}.txt"
+        with open(os.path.join(UPLOAD_DIR, stored_name), "w", encoding="utf-8") as f:
+            f.write(chr(10).join(lines))
+        conn.execute(
+            "INSERT INTO documents (user_id, title, filename, uploaded_at) VALUES (?, ?, ?, ?)",
+            (employee["id"], title, stored_name, stamp),
+        )
+        made.append(title)
+    return made
 
 
 # ---------------------------------------------------------------------------
