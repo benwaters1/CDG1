@@ -9,6 +9,7 @@
     <a href="{{ url_for('rota_clashes_page', days=n) }}"
        class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
     {% endfor %}
+    <a href="{{ url_for('cover_gaps_page') }}" class="btn-ghost">Nobody on</a>
     <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
     <a href="{{ url_for('admin_leave') }}" class="btn-ghost">Time off</a>
   </div>
@@ -99,9 +100,11 @@
 {% endif %}
 
 <p class="pay-disclaimer" style="margin-top:20px;">
-  What this does <em>not</em> check: whether enough people are on at all, or whether the right
-  mix of roles is covered. It only answers whether the people who <em>are</em> rostered can
-  actually work the shift they are down for. Pending leave is left out on purpose — declining it
+  This only answers whether the people who <em>are</em> rostered can actually work the shift
+  they are down for. Whether anybody is on at all is
+  <a href="{{ url_for('cover_gaps_page') }}">the other page</a>. Neither judges whether the
+  number on is <em>enough</em> — a quiet arrival and a twenty-cover dinner need different
+  things, and that is a call about the day rather than something to compute. Pending leave is left out on purpose — declining it
   is a perfectly good answer, and flagging it would train everyone to ignore the list.
 </p>
 

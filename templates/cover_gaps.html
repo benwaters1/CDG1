@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Nobody on{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Nobody on</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [7, 28, 90] %}
+    <a href="{{ url_for('cover_gaps_page', days=n) }}"
+       class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
+    {% endfor %}
+    <a href="{{ url_for('rota_clashes_page') }}" class="btn-ghost">Rota clashes</a>
+    <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The rota has never been compared with what is actually happening. A day can have guests in the
+  house, a table booked and an atelier running, and nobody rostered at all — and nothing says so,
+  because the two live in different tables. This asks the blunt question only: is there
+  <em>anybody</em>. Whether the number on is <em>enough</em> is a judgement about the day, and
+  not one this app should be making.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The nastiest case, and the reason this is not just "count the shifts": the
+   rota looks staffed. Somebody is on it. They just cannot work. #}
+{% if hollow %}
+<div class="pass-short">
+  <strong>Looks staffed on the rota, but nobody can actually work it</strong>
+  {% for r in hollow %}
+  <span class="pass-short-row">
+    {{ r.date|date_short }} —
+    {{ r.people_count }} rostered, all {{ 'of them' if r.people_count > 1 else 'of them' }}
+    on leave, absent or not currently qualified
+    {%- if r.in_house %} · {{ r.in_house }} guest{{ '' if r.in_house == 1 else 's' }} in the house{% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Counted net of what <a href="{{ url_for('rota_clashes_page') }}">Rota clashes</a> finds, so
+    the two pages can never disagree about who is available.
+  </span>
+</div>
+{% endif %}
+
+{% if not gaps %}
+  <div class="empty-state">
+    Every day with something happening in the next {{ days }} days has somebody on it. That is
+    the answer, not an empty page — arrivals, guests already in the house, dinners and ateliers
+    were all checked against the rota.
+  </div>
+{% endif %}
+
+<h2 class="section-heading">Day by day</h2>
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Date</th><th>What is on</th>
+      <th class="num">Rostered</th><th class="num">Can work it</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{{ 'row-alert' if r.uncovered }}">
+      <td>{{ r.date|date_short }}</td>
+      <td>
+        {% set bits = [] %}
+        {% if r.arrivals %}{% set _ = bits.append(r.arrivals ~ ' arriving') %}{% endif %}
+        {% if r.departures %}{% set _ = bits.append(r.departures ~ ' leaving') %}{% endif %}
+        {% if r.in_house %}{% set _ = bits.append(r.in_house ~ ' in the house') %}{% endif %}
+        {% if r.dinners %}{% set _ = bits.append(r.covers ~ ' covers') %}{% endif %}
+        {{ bits|join(' · ') or '—' }}
+        {% if r.workshops %}
+          <span class="upload-hint">{{ r.workshops|join(', ') }}</span>
+        {% endif %}
+      </td>
+      <td class="num">{{ r.people_count or '—' }}</td>
+      <td class="num">
+        {{ r.effective if r.effective > 0 else '0' }}
+        {% if r.blocked_count %}
+          <span class="upload-hint">{{ r.blocked_count }} cannot</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if r.uncovered %}
+          <span class="mini-status status-declined">nobody on</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  A day with nothing booked is not listed at all — an empty house needing nobody is not a gap.
+  Guests already staying count as work on every night of their stay, not only the day they
+  arrive: that is the case a list built on arrivals alone quietly misses, and the one where
+  somebody is actually in the building.
+</p>
+
+{% endblock %}
