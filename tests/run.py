@@ -104,6 +104,7 @@ SUITES = [
     "test_seo_files",
     "test_rota_clashes",
     "test_cover_gaps",
+    "test_rota_vs_clock",
     "test_insurer_notice",
     "test_home_warnings",
     "test_watch_tasks",

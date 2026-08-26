@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Rota vs clock{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Rota vs clock</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [7, 30, 90] %}
+    <a href="{{ url_for('rota_vs_clock_page', days=n) }}"
+       class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
+    {% endfor %}
+    <a href="{{ url_for('admin_timesheets') }}" class="btn-ghost">Timesheets</a>
+    <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The rota is what somebody intended. The clock is what payroll actually pays from. They have
+  never been compared, so when they disagree nobody finds out — and it costs something in both
+  directions.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# Said once, plainly, at the top. The distinction is the whole reason this
+   page can exist without being unfair to anybody. #}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">This says the records disagree, not that anybody did anything wrong</h3>
+  <p class="field-hint" style="margin-top:0;">
+    A shift with no clock entry is at least as likely to be a forgotten button as an absence —
+    and if they did work it, those hours will never be paid. A clock entry with no shift may be
+    somebody covering at short notice that nobody wrote down. Either way the useful fact is the
+    same: these two records disagree, and one of them is wrong.
+  </p>
+</div>
+
+{% if not rows %}
+  <div class="empty-state">
+    Over the last {{ days }} days the rota and the clock agree on every day. Days somebody was
+    on approved leave or recorded absent are left out — the rota being wrong about those is
+    <a href="{{ url_for('rota_clashes_page') }}">a clash</a>, not a missing clock-in.
+  </div>
+{% else %}
+
+{% if no_shift %}
+<h2 class="section-heading">Worked with nothing on the rota</h2>
+<p class="field-hint" style="margin-top:-6px; max-width:900px;">
+  Hours that were paid and never planned. This is the half that moves the wage bill without
+  anybody deciding it should.
+</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Date</th><th>Who</th><th class="num">Hours</th><th>What it says</th></tr></thead>
+  <tbody>
+    {% for r in no_shift %}
+    <tr>
+      <td>{{ r.date|date_short }}</td>
+      <td><a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.employee_name }}</a></td>
+      <td class="num">{% if r.hours %}{{ '%.1f'|format(r.hours) }}{% else %}—{% endif %}</td>
+      <td>{{ r.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if no_clock %}
+<h2 class="section-heading">Rostered, but no clock entry</h2>
+<p class="field-hint" style="margin-top:-6px; max-width:900px;">
+  Either the service went uncovered, or somebody worked and will not be paid for it. Both are
+  worth a minute of somebody's time; neither is visible anywhere else.
+</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Date</th><th>Who</th><th>Was down for</th><th>What it says</th></tr></thead>
+  <tbody>
+    {% for r in no_clock %}
+    <tr>
+      <td>{{ r.date|date_short }}</td>
+      <td><a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.employee_name }}</a></td>
+      <td>
+        {{ r.planned }}
+        {% if r.role_note %}<span class="upload-hint">{{ r.role_note }}</span>{% endif %}
+      </td>
+      <td>{{ r.detail }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  Only days that have already happened — a shift tomorrow is not yet anything. Approved leave and
+  recorded absence are excluded, so somebody rostered while legitimately away appears on
+  <a href="{{ url_for('rota_clashes_page') }}">Rota clashes</a> and not here, rather than twice in
+  different words.
+</p>
+
+{% endblock %}

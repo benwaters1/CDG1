@@ -8166,6 +8166,97 @@ def rota_conflicts(conn, start, end):
     return out
 
 
+def rota_vs_clock(conn, start, end, *, today=None):
+    """Days where the rota and the clock tell different stories.
+
+    Past days only: a shift tomorrow is not yet anything. Days the person
+    was on approved leave or recorded absent are skipped — the rota being
+    wrong about those is already the rota-clash page's job, and saying it
+    twice in different words trains people to ignore both.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    if not start or not end:
+        return []
+    end = min(end, today - timedelta(days=1))      # yesterday at the latest
+    if end < start:
+        return []
+    lo, hi = start.isoformat(), end.isoformat()
+
+    rostered = {}
+    for r in conn.execute(
+        """SELECT shifts.*, users.name AS employee_name FROM shifts
+             JOIN users ON users.id = shifts.user_id
+            WHERE shifts.shift_date BETWEEN ? AND ?""", (lo, hi)).fetchall():
+        rostered.setdefault((r["user_id"], r["shift_date"]), []).append(r)
+
+    # Clock entries bucketed by the LOCAL day they started on, because a
+    # shift is planned in local time and clock_in_at is stored in UTC — an
+    # evening shift would otherwise land on the following day.
+    worked = {}
+    for r in conn.execute(
+        """SELECT time_entries.*, users.name AS employee_name FROM time_entries
+             JOIN users ON users.id = time_entries.user_id
+            WHERE time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?""",
+        (start.isoformat(), (end + timedelta(days=2)).isoformat())).fetchall():
+        started = parse_datetime_iso(r["clock_in_at"])
+        if not started:
+            continue
+        day = started.astimezone(LOCAL_TZ).date()
+        if lo <= day.isoformat() <= hi:
+            worked.setdefault((r["user_id"], day.isoformat()), []).append(r)
+
+    # Anybody legitimately away. Their rota being wrong is a clash, not a
+    # missing clock-in, and it is already reported as one.
+    away = set()
+    for table, s_col, e_col, extra in (
+            ("leave_requests", "start_date", "end_date", "AND status = 'approved'"),
+            ("absences", "start_date", "end_date", "")):
+        for r in conn.execute(
+            f"""SELECT user_id, {s_col} AS a, {e_col} AS b FROM {table}
+                 WHERE {s_col} <= ? AND {e_col} >= ? {extra}""", (hi, lo)).fetchall():
+            a, b = parse_date(r["a"]), parse_date(r["b"])
+            if not (a and b):
+                continue
+            d = max(a, start)
+            while d <= min(b, end):
+                away.add((r["user_id"], d.isoformat()))
+                d += timedelta(days=1)
+
+    out = []
+    for key, shifts in rostered.items():
+        if key in worked or key in away:
+            continue
+        sh = shifts[0]
+        out.append({
+            "kind": "no_clock", "user_id": key[0], "date": key[1],
+            "employee_name": sh["employee_name"],
+            "planned": f"{sh['start_time'] or '?'}–{sh['end_time'] or '?'}",
+            "role_note": sh["role_note"],
+            "detail": "Rostered, but the clock has no entry for that day.",
+        })
+
+    for key, entries in worked.items():
+        if key in rostered:
+            continue
+        e = entries[0]
+        hours = sum(net_hours_for_entries(conn, entries).values())
+        out.append({
+            "kind": "no_shift", "user_id": key[0], "date": key[1],
+            "employee_name": e["employee_name"],
+            "planned": None, "role_note": None,
+            "hours": round(hours, 2),
+            "detail": (f"Clocked {hours:.1f}h with nothing on the rota for that day."
+                       if hours else "Clocked in with nothing on the rota for that day."),
+        })
+
+    out.sort(key=lambda r: (r["date"], r["employee_name"] or ""), reverse=True)
+    return out
+
+
 def cover_gaps(conn, start, end):
     """What is happening each day, and who is actually on to do it.
 
@@ -17315,6 +17406,8 @@ PALETTE_PAGES = [
      "conflict leave absence certificate cannot work double booked"),
     ("Nobody on", "cover_gaps_page",
      "cover gaps unstaffed rota empty who is working"),
+    ("Rota vs clock", "rota_vs_clock_page",
+     "no show unrostered timesheet planned actual hours"),
     ("Timesheets", "admin_timesheets", "hours clock in out"),
     ("Time off", "admin_leave", "holiday leave vacation"),
     ("Ask HR", "admin_hr_notes", "questions"),
@@ -30235,6 +30328,33 @@ def cover_gaps_page():
     ]
     return render_template("cover_gaps.html", rows=rows, gaps=gaps, hollow=hollow,
                            overview=overview, days=days, today=today, end=end)
+
+
+@app.route("/admin/rota-vs-clock")
+@owner_required
+def rota_vs_clock_page():
+    """Where the rota and the clock disagree."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        days = max(7, min(365, int(request.args.get("days", 30))))
+    except (TypeError, ValueError):
+        days = 30
+    rows = rota_vs_clock(conn, today - timedelta(days=days), today, today=today)
+    conn.close()
+
+    no_clock = [r for r in rows if r["kind"] == "no_clock"]
+    no_shift = [r for r in rows if r["kind"] == "no_shift"]
+    unplanned_hours = sum(r.get("hours") or 0 for r in no_shift)
+    overview = [
+        overview_cell("Days checked", days),
+        overview_cell("Rostered, no clock entry", len(no_clock), alert=bool(no_clock)),
+        overview_cell("Clocked, not rostered", len(no_shift), alert=bool(no_shift)),
+        overview_cell("Unplanned hours", f"{unplanned_hours:.1f}",
+                      hint="worked with nothing on the rota"),
+    ]
+    return render_template("rota_vs_clock.html", rows=rows, overview=overview,
+                           no_clock=no_clock, no_shift=no_shift, days=days, today=today)
 
 
 @app.route("/admin/room-faults")
