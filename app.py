@@ -35244,6 +35244,45 @@ def vat_working(conn, start, end):
         (s_iso, e_iso)).fetchone()["t"]
     _estimate("Extras", extras, tax_rate(conn, "vat_extras"))
 
+    # Events. The rates table showed a rate for these while no line used it,
+    # which reads as "included" and understated the total. Same definition
+    # financial_month_summary uses, so the two pages cannot disagree.
+    events = conn.execute(
+        """SELECT COALESCE(SUM(quoted_price), 0) AS t FROM event_inquiries
+           WHERE status = 'confirmed' AND quoted_price IS NOT NULL
+             AND preferred_date >= ? AND preferred_date < ?""",
+        (s_iso, e_iso)).fetchone()["t"]
+    _estimate("Events", events, tax_rate(conn, "vat_events"))
+
+    # Money given back is money not earned, and the VAT on it is not owed. A
+    # refund never changes a booking's total_price, so without this a refunded
+    # stay sits in the figure at full value and the VAT is overstated. Booked
+    # to the period the refund was ISSUED, which is when it left the business
+    # and is how every other money page here treats it.
+    refund_rates = {
+        "room": tax_rate(conn, "vat_accommodation"),
+        "restaurant": tax_rate(conn, "vat_food"),
+        "workshop": tax_rate(conn, "vat_workshops"),
+        "event": tax_rate(conn, "vat_events"),
+    }
+    labels = {"room": "Rooms", "restaurant": "Restaurant", "workshop": "Ateliers",
+              "event": "Events"}
+    for row in conn.execute(
+        """SELECT category, COALESCE(SUM(amount), 0) AS t FROM refunds
+           WHERE created_at >= ? AND created_at < ? GROUP BY category""",
+        (s_iso, e_iso)).fetchall():
+        given_back = round(row["t"] or 0, 2)
+        if given_back <= 0:
+            continue
+        rate = refund_rates.get(row["category"], 0)
+        net = round(given_back / (1 + rate / 100), 2) if rate else given_back
+        lines.append({
+            "source": f"Refunded — {labels.get(row['category'], row['category'])}",
+            "rate": rate, "gross": -given_back, "net": -net,
+            "vat": -round(given_back - net, 2),
+            "basis": "refund issued in this period", "exact": False,
+        })
+
     total_vat = round(sum(l["vat"] or 0 for l in lines), 2)
     return {
         "start": start, "end": end, "lines": lines, "total_vat": total_vat,

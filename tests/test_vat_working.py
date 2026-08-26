@@ -37,6 +37,8 @@ TAG = "ZZVAT"
 def _cleanup():
     conn = db()
     conn.execute("DELETE FROM pos_closures WHERE period LIKE '2031-%'")
+    conn.execute("DELETE FROM refunds WHERE reason LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
@@ -137,11 +139,68 @@ def run():
                 rooms["exact"] is False,
                 detail="an estimate that does not say so gets filed as a return")
 
+    s.section("Events are in the figure, not just in the rates table")
+    # The rates table showed an Events rate while no line used it, which reads
+    # as "included" and understated the total.
+    conn = db()
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+           contact_name, contact_email, preferred_date, guest_count, status,
+           quoted_price, created_at)
+           VALUES (?, ?, 'wedding', ?, 'e@example.invalid', '2031-03-20', 40,
+                   'confirmed', 2400, ?)""",
+        (f"{TAG}-EV", f"tok{TAG}ev", f"{TAG} Wedding",
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    ev = next((l for l in _working(start, end)["lines"] if l["source"] == "Events"), None)
+    s.check("a confirmed event appears", ev is not None,
+            detail="the page shows a rate for events that nothing uses")
+    if ev:
+        s.check("with VAT out of the quoted price", abs(ev["vat"] - 400.0) < 0.01,
+                detail=f"got {ev['vat']} on 2400 at 20%")
+
+    s.section("A refund takes its VAT back out")
+    before_refund = _working(start, end)["total_vat"]
+    # Money given back is money not earned, and the VAT on it is not owed. A
+    # refund never changes a booking's total_price, so without this the figure
+    # keeps the tax on a stay that was handed back.
+    conn = db()
+    booked = conn.execute("SELECT id FROM bookings WHERE guest_name LIKE ?",
+                          (TAG + "%",)).fetchone()["id"]
+    conn.execute(
+        """INSERT INTO refunds (category, booking_id, amount, reason, method, created_at)
+           VALUES ('room', ?, 550, ?, 'bank_transfer', '2031-03-22T10:00:00+00:00')""",
+        (booked, f"{TAG} guest cancelled"))
+    conn.commit()
+    conn.close()
+    w3 = _working(start, end)
+    refund_line = next((l for l in w3["lines"] if l["source"].startswith("Refunded")), None)
+    s.check("the refund shows as its own line", refund_line is not None,
+            detail=f"{[l['source'] for l in w3['lines']]}")
+    if refund_line:
+        s.check("as a negative, so it comes off the total", refund_line["vat"] < 0,
+                detail=f"got {refund_line['vat']}")
+        s.check("at the accommodation rate it was charged at",
+                abs(refund_line["vat"] + 50.0) < 0.01,
+                detail=f"got {refund_line['vat']} on 550 at 10%")
+    # Compare the real before and after. The first version of this line read
+    # `w3["total_vat"] < w3["total_vat"] + 50.0`, which is true of any number
+    # and tested nothing.
+    s.check("and the total drops by exactly that much",
+            abs((before_refund - w3["total_vat"]) - 50.0) < 0.01,
+            detail=f"{before_refund} -> {w3['total_vat']}")
+
     s.section("The totals separate what is sealed from what is estimated")
     w2 = _working(start, end)
-    s.check("sealed and estimated are both reported",
-            abs(w2["exact_vat"] - 38.0) < 0.01 and abs(w2["estimated_vat"] - 100.0) < 0.01,
-            detail=f"sealed {w2['exact_vat']}, estimated {w2['estimated_vat']}")
+    # Sealed stays at the till figure; estimated now carries rooms, events and
+    # the refund, so assert the relationship rather than a frozen number.
+    s.check("the sealed half is only the till", abs(w2["exact_vat"] - 38.0) < 0.01,
+            detail=f"sealed {w2['exact_vat']}")
+    s.check("and the estimated half is everything else",
+            abs(w2["estimated_vat"] - round(sum(
+                l["vat"] for l in w2["lines"] if not l["exact"]), 2)) < 0.01,
+            detail=f"estimated {w2['estimated_vat']}")
     s.check("and the total is the two together",
             abs(w2["total_vat"] - (w2["exact_vat"] + w2["estimated_vat"])) < 0.01)
 
