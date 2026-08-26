@@ -20,8 +20,8 @@
   </p>
   {% else %}
   <p class="g-hint">
-    Everything you've booked with us — stays, dinners, workshops — in one place. Tell us your email
-    and we'll send you a link. No password to remember.
+    Everything you have booked with us — stays, dinners, workshops — in one place. Tell us your email
+    and we will send you a link. No password to remember.
   </p>
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -30,7 +30,7 @@
            placeholder="the address you booked with">
     <button type="submit" class="g-btn g-btn--solid">Send me the link</button>
   </form>
-  <p class="g-hint" style="margin-top:14px;">
+  <p class="g-hint" style="margin-top:var(--s3);">
     Have a reference code instead? <a href="{{ url_for('find_booking') }}">Find a single booking</a>.
   </p>
   {% endif %}

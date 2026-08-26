@@ -16,8 +16,8 @@
 <div class="g-wrap" style="padding-top:clamp(2rem,5vw,3.5rem)">
 
   <p class="g-eyebrow">La Table · Château de Gudanes</p>
-  <h1 class="g-display" style="font-size:clamp(28px,4.4vw,48px)">Reserve a table</h1>
-  <p class="g-lede" style="margin-bottom:8px">
+  <h1 class="g-display" >Reserve a table</h1>
+  <p class="g-lede" style="margin-bottom:var(--s2)">
     {% if settings['price_per_person'] %}<span class="g-fig">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{% endif %}
   </p>
 
@@ -103,14 +103,14 @@
           {% if stripe_enabled and settings['price_per_person'] %}
             {% if settings['deposit_percent'] %}
             <button type="submit" class="g-btn g-submit">Pay deposit &amp; request a table</button>
-            <p class="g-foot-note">You'll be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. This still isn't an instant confirmation — the château reviews every request. If it's declined, your deposit is refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+            <p class="g-foot-note">You will be taken to a secure payment page to pay a {{ settings['deposit_percent']|int }}% deposit now — the rest is due at the restaurant. This still is not an instant confirmation — the château reviews every request. If it is declined, your deposit is refunded automatically. You will get a reference code and a link to manage your reservation.</p>
             {% else %}
             <button type="submit" class="g-btn g-submit">Pay &amp; request a table</button>
-            <p class="g-foot-note">You'll be taken to a secure payment page to pay the total now. This still isn't an instant confirmation — the château reviews every request. If it's declined, you're refunded automatically. You'll get a reference code and a link to manage your reservation.</p>
+            <p class="g-foot-note">You will be taken to a secure payment page to pay the total now. This still is not an instant confirmation — the château reviews every request. If it is declined, you are refunded automatically. You will get a reference code and a link to manage your reservation.</p>
             {% endif %}
           {% else %}
             <button type="submit" class="g-btn g-submit">Request a table</button>
-            <p class="g-foot-note">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You'll get a reference code and a link to manage your reservation.</p>
+            <p class="g-foot-note">This is a reservation request, not an instant confirmation — the château will review and confirm it. Payment is taken at the restaurant. You will get a reference code and a link to manage your reservation.</p>
           {% endif %}
         </div>
       </aside>
@@ -128,8 +128,8 @@
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
   <h2 class="g-h3">That evening is fully seated</h2>
-    <p class="g-p" style="font-size:16px">Leave your details and we shall write to you should a place open.</p>
-    <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:18px">
+    <p class="g-p" >Leave your details and we shall write to you should a place open.</p>
+    <form method="post" action="{{ url_for('join_restaurant_waitlist') }}" style="margin-top:var(--s4)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="desired_date" value="{{ prefill_date }}">
       <p class="g-field"><label for="rw_name">Name</label><input type="text" id="rw_name" name="name" value="{{ prefill_name }}" required></p>

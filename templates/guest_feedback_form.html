@@ -9,9 +9,9 @@
 </div>
 
 {% if too_early %}
-  <div class="empty-state">This link opens once your stay has ended — we'd love to hear from you after {{ booking['departure_date']|date_short }}.</div>
+  <div class="empty-state">This link opens once your stay has ended — we would love to hear from you after {{ booking['departure_date']|date_short }}.</div>
 {% elif already_submitted %}
-  <div class="empty-state">You've already sent feedback for this stay — thank you!</div>
+  <div class="empty-state">You have already sent feedback for this stay — thank you!</div>
 {% else %}
   <div class="g-mb-card" style="max-width:520px;">
     <p class="g-p" style="margin-top:0;">{{ booking['guest_name'] }}, thank you for coming. Two minutes here genuinely changes what we do next — we read every one, and the château is still being shaped by what guests tell us.</p>

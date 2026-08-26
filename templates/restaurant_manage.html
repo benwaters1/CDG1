@@ -28,7 +28,7 @@
   </div>
 
   {% if booking['status'] in ('pending', 'confirmed') %}
-  <form method="post" onsubmit="return confirm('Cancel this reservation? This cannot be undone.');" style="margin-top:16px;">
+  <form method="post" onsubmit="return confirm('Cancel this reservation? This cannot be undone.');" style="margin-top:var(--s4);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="cancel">
     <button type="submit" class="btn-text-danger">Cancel this reservation</button>
@@ -44,6 +44,28 @@
 <div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
   <path d="M0 33.5h480" opacity=".5"/>
-</svg></div>
+</svg>
+  {% if booking['status'] in ('pending', 'confirmed') %}
+  <div class="g-mb-card" style="margin-top:var(--s4)">
+    <p class="g-mb-dt">Change your reservation</p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="update">
+      <p class="g-field">
+        <label for="rm_party_size">How many at the table</label>
+        <input type="number" inputmode="numeric" id="rm_party_size" name="party_size"
+               min="1" max="20" value="{{ booking['party_size'] }}">
+      </p>
+      <p class="g-field">
+        <label for="rm_dietary">Dietary needs or anything else</label>
+        <textarea id="rm_dietary" name="dietary_notes" rows="3"
+                  placeholder="Allergies, restrictions, a birthday">{{ booking['dietary_notes'] or '' }}</textarea>
+      </p>
+      <p class="g-hint">Tell us early and they are designed around rather than worked around.</p>
+      <button type="submit" class="g-btn g-btn--solid">Save these changes</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
 
 {% endblock %}

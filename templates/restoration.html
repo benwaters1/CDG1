@@ -1,6 +1,9 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Restoration', None)] %}
 {% block title %}The Restoration{% endblock %}
+{% block description %}Bought derelict in 2013, five hundred tonnes of fallen stone cleared, and fifteen years of work approved intervention by intervention. A restoration, not a renovation.{% endblock %}
+{% block og_desc %}Bought derelict in 2013, five hundred tonnes of fallen stone cleared, and fifteen years of work approved intervention by intervention. A restoration, not a renovation.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {# Needs a route, e.g.:
@@ -52,8 +55,8 @@
   <div class="g-wrap">
     <div class="g-panel g-panel--dark">
       <h2 class="g-h2">A restoration, <em>not a renovation</em></h2>
-      <p style="font-size:16px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Restoration answers for every decision: each intervention approved by the Monuments Historiques before a tool is lifted, overpaint lifted by hand, original stone and timber conserved rather than replaced. It is the slower and more exacting course, and the only one worth taking with a house of this consequence.</p>
-      <a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#E4D2A8; color:#23201C;">See rooms and rates</a>
+      <p style="line-height:1.8; max-width:52ch; margin:0 0 24px;">Restoration answers for every decision: each intervention approved by the Monuments Historiques before a tool is lifted, overpaint lifted by hand, original stone and timber conserved rather than replaced. It is the slower and more exacting course, and the only one worth taking with a house of this consequence.</p>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See rooms and rates</a>
     </div>
   </div>
 </section>
@@ -228,7 +231,7 @@
 
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
+  <p class="g-p" style="text-align:center;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
@@ -245,6 +248,30 @@
   <path d="M20 8v-3M32 5v-3M44 8v-3"/>
 </svg></div>
 
+
+
+<!-- ============ THE FIGURES ============ -->
+{# Twelve hundred words on the restoration and not one number. These are the
+   documented facts — the tonnage and the dates are from the château's own
+   record, the classification from the Monuments Historiques listing. #}
+<section class="g-sec g-paper"><div class="g-wrap">
+  <p class="g-eyebrow">The Work</p>
+  <h2 class="g-place">What It Has Taken</h2>
+  <blockquote class="g-pull">
+    <p>A centimetre is a good morning.</p>
+    <cite>What the conservators say about lifting overpaint from a fresco</cite>
+  </blockquote>
+
+  <div class="g-figures">
+    <div class="g-figure"><b>2013</b><span>Bought derelict, after two years of negotiation</span></div>
+    <div class="g-figure"><b>500</b><span>Tonnes of fallen stone cleared before work could begin</span></div>
+    <div class="g-figure"><b>15</b><span>Years in, and not finished</span></div>
+    <div class="g-figure"><b>94</b><span>Rooms, of which seven are ready for guests</span></div>
+    <div class="g-figure"><b>1994</b><span>Classified a Class I Historic Monument</span></div>
+    <div class="g-figure"><b>2016</b><span>Medal of Honour, Fondation Prince Louis de Polignac</span></div>
+  </div>
+  <p class="g-hint" style="margin-top:var(--s6)">Every intervention is approved by France's Monuments Historiques before a tool is lifted. Reference PA00132943.</p>
+</div></section>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">

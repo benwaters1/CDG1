@@ -5,14 +5,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-{# Pages that show somebody's booking, bill or account are unlisted
-   rather than private, and unlisted is not hidden — robots.txt only
-   asks crawlers not to fetch a path, while a URL that leaks into a
-   referrer or a forwarded email can be indexed without ever being
-   crawled. Each such page overrides this. #}
-{% block robots %}{% endblock %}
 <title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
 <meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
+{% block robots %}{% endblock %}
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -92,8 +87,8 @@
 
 <header class="g-top">
   <div class="g-top__in">
-    <a href="/" class="g-logo" aria-label="Château de Gudanes">
-      <img style="--logo-src:url('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w')" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
+    <a href="/" class="g-logo" aria-label="Château de Gudanes" style="--logo-src:url('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w')">
+      <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
     </a>
 
 
@@ -334,8 +329,8 @@
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M4 6h16v14H4z"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>
-      <b>Pay when it suits</b>
-      <span>Rooms settle on arrival or in advance, as you prefer. Ateliers hold with a deposit and take the balance closer to the time.</span>
+      <b>Clear at the point of booking</b>
+      <span>A room is paid in full when you book it. An atelier holds with a deposit, and the balance is taken closer to the date.</span>
     </li>
     <li>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.4 8-8 9-4.6-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -360,7 +355,7 @@
     <div class="g-footer__grid">
       <div>
         <p class="g-footer__brand">Château de Gudanes</p>
-        <p class="g-footer__contact" style="font-size:13px; line-height:2.1; margin:0;">
+        <p class="g-footer__contact" style="line-height:2.1; margin:0;">
           2 Route de Beille<br>
           Château-Verdun, Ariège 09310, France<br>
           <a href="tel:+33628069776">+33 6 28 06 97 76</a><br>

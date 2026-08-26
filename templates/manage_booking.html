@@ -33,18 +33,18 @@
   </div>
 
   {% if booking['status'] in ('pending', 'confirmed') %}
-  <p class="g-hint" style="margin-top:16px;"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
+  <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('booking_calendar_ics', manage_token=booking['manage_token']) }}" style="color:var(--steel);">{{ t('Add to calendar (.ics)') }}</a></p>
   {% endif %}
   {% if booking['status'] == 'confirmed' %}
-  <p class="g-hint" style="margin-top:16px;"><a href="{{ url_for('guest_feedback', token=booking['manage_token']) }}" style="color:var(--steel);">Share feedback about your stay</a></p>
+  <p class="g-hint" style="margin-top:var(--s4);"><a href="{{ url_for('guest_feedback', token=booking['manage_token']) }}" style="color:var(--steel);">Share feedback about your stay</a></p>
   {% endif %}
 
 {% if booking['status'] in ('pending', 'confirmed') %}
 
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Estimated arrival time') }}</h3>
   <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone's ready.") }}</p>
-  <form method="post" class="g-row" style="margin-top:10px;">
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="arrival_time">
     <div style="flex:1 1 200px;">
@@ -54,10 +54,10 @@
   </form>
 </div>
 
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Stay longer') }}</h3>
-  <p class="g-hint">If the room is free we'll extend it straight away, and the extra nights go on your bill.</p>
-  <form method="post" class="g-mb-acts" style="margin-top:10px;">
+  <p class="g-hint">If the room is free we will extend it straight away, and the extra nights go on your bill.</p>
+  <form method="post" class="g-mb-acts" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_nights">
     <label for="mb_nights" class="g-mb-label" style="margin:0;">{{ t('Extra nights') }}</label>
@@ -67,17 +67,17 @@
   </form>
 </div>
 
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Change your dates') }}</h3>
   <p class="g-hint">
     {% if booking['status'] == 'pending' and booking['payment_status'] != 'paid' %}
       Pick new dates and they'll update right away, as long as the room is free.
     {% else %}
-      Pick new dates and we'll confirm availability and get back to you — this booking is already {{ 'confirmed' if booking['status'] == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
+      Pick new dates and we will confirm availability and get back to you — this booking is already {{ 'confirmed' if booking['status'] == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
     {% endif %}
     {% if room and room['min_nights'] and room['min_nights'] > 1 %} This room requires a {{ room['min_nights'] }}-night minimum stay.{% endif %}
   </p>
-  <form method="post" class="g-row" style="margin-top:10px;">
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="change_dates">
     <div>
@@ -93,14 +93,14 @@
 </div>
 
 {% if has_transfer %}
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Airport transfer') }}</h3>
   {% if booking['transfer_flight_number'] or booking['transfer_arrival_time'] %}
   <p class="g-hint">On file: {{ booking['transfer_flight_number'] or 'no flight number' }}{% if booking['transfer_arrival_time'] %}, arriving {{ booking['transfer_arrival_time'] }}{% endif %}{% if booking['transfer_notes'] %} — {{ booking['transfer_notes'] }}{% endif %}. Update below if anything changes.</p>
   {% else %}
   <p class="g-hint">Your booking includes an airport transfer — tell us your flight details so we can plan the pickup.</p>
   {% endif %}
-  <form method="post" style="margin-top:10px;">
+  <form method="post" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="transfer">
     <div class="g-row">
@@ -113,24 +113,24 @@
         <input type="text" id="mb_arrival_time" name="arrival_time" value="{{ booking['transfer_arrival_time'] or '' }}" placeholder="e.g. 12 May, 14:30">
       </div>
     </div>
-    <label for="mb_notes" class="g-mb-label" style="margin-top:10px; display:block;">Notes</label>
+    <label for="mb_notes" class="g-mb-label" style="margin-top:var(--s2); display:block;">Notes</label>
     <textarea id="mb_notes" name="notes" rows="2" placeholder="Anything else the driver should know">{{ booking['transfer_notes'] or '' }}</textarea>
-    <button type="submit" class="g-btn g-btn--solid" style="margin-top:10px;">{{ t('Save transfer details') }}</button>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Save transfer details') }}</button>
   </form>
 </div>
 {% endif %}
 
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Requests') }}</h3>
   <p class="g-hint">Need something for your stay — a bottle of wine waiting in the room, a late checkout, dietary notes? Tell us here.</p>
-  <form method="post" style="margin-top:10px;">
+  <form method="post" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="request">
     <textarea id="mb_message" name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
-    <button type="submit" class="g-btn g-btn--solid" style="margin-top:10px;">{{ t('Send request') }}</button>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Send request') }}</button>
   </form>
   {% if guest_requests %}
-  <div class="g-mb-list" style="margin-top:16px;">
+  <div class="g-mb-list" style="margin-top:var(--s4);">
     {% for r in guest_requests %}
     <div class="g-mb-row">
       <span class="g-mb-rowt">{{ r['notes'] or r['title'] }}</span>
@@ -144,7 +144,7 @@
 {# What the stay costs and what is still owed. A guest could previously see
    neither, which is also why they could not add anything to it. #}
 {% if bill and bill.lines %}
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>Your bill</h3>
   <div class="quote-box" style="margin-top:0;">
     {% for line in bill.lines %}
@@ -152,7 +152,7 @@
     {% endfor %}
     <div class="g-mb-total"><span>{{ t('Total') }}</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
     {% if bill.paid %}
-    <div class="g-mb-line" style="margin-top:6px;">
+    <div class="g-mb-line" style="margin-top:var(--s1);">
       <span>{{ t('Received') }}</span><span>&minus;€{{ '%.2f'|format(bill.paid) }}</span>
     </div>
     {% endif %}
@@ -162,15 +162,15 @@
     {% if bill.owed > 0 %}
     <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
     {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
-    <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:10px; display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
-    <p class="g-hint">Or we'll take it on arrival — whichever you prefer.</p>
+    <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
+    <p class="g-hint">Or we will take it on arrival — whichever you prefer.</p>
     {% else %}
-    <p class="g-hint">We'll take this on arrival unless you hear otherwise.</p>
+    <p class="g-hint">We will take this on arrival unless you hear otherwise.</p>
     {% endif %}
     {% elif bill.overpaid > 0 %}
     <div class="g-mb-total"><span>{{ t('In credit') }}</span><span>€{{ '%.2f'|format(bill.overpaid) }}</span></div>
     {% else %}
-    <p class="g-hint" style="margin-top:8px;">{{ t('Paid in full — thank you.') }}</p>
+    <p class="g-hint" style="margin-top:var(--s2);">{{ t('Paid in full — thank you.') }}</p>
     {% endif %}
   </div>
 </div>
@@ -179,11 +179,11 @@
 {# Things a guest can add to a stay they have already booked. Goes on the bill
    rather than asking for a card each time — the balance is settled once. #}
 {% if addable and booking['status'] in ('pending', 'confirmed') %}
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Add to your stay') }}</h3>
   <p class="g-hint">Added to your bill, settled with the rest.</p>
   {% for e in addable %}
-  <form method="post" class="g-mb-acts" style="margin-bottom:8px;">
+  <form method="post" class="g-mb-acts" style="margin-bottom:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_extra">
     <input type="hidden" name="extra_id" value="{{ e['id'] }}">
@@ -201,14 +201,14 @@
 {% endif %}
 
 {% if dinner_available %}
-<div class="g-mb-card" style="margin-top:20px;">
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>Book dinner</h3>
   <p class="g-hint">
     Join us in the dining room during your stay.
     {% if restaurant_settings['price_per_person'] %}€{{ '%.0f'|format(restaurant_settings['price_per_person']) }} per person, {% endif %}
     payment at the restaurant.
   </p>
-  <form method="post" style="margin-top:10px;">
+  <form method="post" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="book_dinner">
     <div class="g-row">
@@ -221,12 +221,12 @@
         <input type="number" inputmode="numeric" id="mb_dinner_party_size" name="dinner_party_size" min="1" max="{{ restaurant_settings['capacity'] }}" value="{{ booking['party_size'] }}" required>
       </div>
     </div>
-    <label for="mb_dinner_dietary_notes" class="g-mb-label" style="margin-top:10px; display:block;">Dietary needs or anything else?</label>
+    <label for="mb_dinner_dietary_notes" class="g-mb-label" style="margin-top:var(--s2); display:block;">Dietary needs or anything else?</label>
     <textarea id="mb_dinner_dietary_notes" name="dinner_dietary_notes" rows="2" placeholder="Allergies, vegetarian, celebrating an occasion..."></textarea>
-    <button type="submit" class="g-btn g-btn--solid" style="margin-top:10px;">Request a table</button>
+    <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">Request a table</button>
   </form>
   {% if dinner_bookings %}
-  <div class="g-mb-list" style="margin-top:16px;">
+  <div class="g-mb-list" style="margin-top:var(--s4);">
     {% for d in dinner_bookings %}
     <div class="g-mb-row">
       <span class="g-mb-rowt">{{ d['dinner_date']|date_short }} — party of {{ d['party_size'] }}</span>
@@ -238,19 +238,19 @@
 </div>
 {% endif %}
 
-<div style="margin-top:24px;">
+<div style="margin-top:var(--s5);">
   <form method="post" onsubmit="return confirm('Cancel this booking? This cannot be undone.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="cancel">
     <button type="submit" class="btn-text-danger">{{ t('Cancel this booking') }}</button>
   </form>
-  {% if booking['payment_status'] == 'paid' %}<p class="g-hint">Cancelling doesn't automatically refund a payment — contact the château about your refund.</p>{% endif %}
+  {% if booking['payment_status'] == 'paid' %}<p class="g-hint">Cancelling does not automatically refund a payment — contact the château about your refund.</p>{% endif %}
 </div>
 
 {% endif %}
 
 {% if portal_token %}
-<p class="g-hint" style="margin-top:18px;">
+<p class="g-hint" style="margin-top:var(--s4);">
   <a href="{{ url_for('guest_portal', token=portal_token) }}" class="small-link">{{ t('See everything you have with us →') }}</a>
 </p>
 {% endif %}
@@ -260,7 +260,7 @@
 {# The bill. A guest who paid deserves to see what for, and a business guest
    needs it to reclaim their VAT — it was previously reachable only if you
    guessed the URL. #}
-<p style="margin-top:14px;">
+<p style="margin-top:var(--s3);">
   <a href="{{ url_for('booking_statement', manage_token=booking['manage_token']) }}" class="g-btn g-btn--sm">
     View your bill
   </a>

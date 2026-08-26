@@ -1,6 +1,9 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('The Estate', None)] %}
 {% block title %}Facilities &amp; Activities{% endblock %}
+{% block description %}Six acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
+{% block og_desc %}Six acres, a pool among the cherry trees, a tennis court lined for pickleball, and the Ariège valley beyond. All of it included with the room.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
@@ -66,9 +69,9 @@
 </div></section>
 
 <!-- ====================== WINTER / SKIING ====================== -->
-<section class="g-sec" style="background:var(--blue-deep);color:#fff"><div class="g-wrap">
+<section class="g-sec" style="background:var(--blue-deep);color:var(--sand)"><div class="g-wrap">
   <p class="g-eyebrow" style="color:rgba(255,255,255,.7)">Winter · December to March</p>
-  <h2 class="g-h2" style="color:#fff">Skiing at Ax 3 Domaines</h2>
+  <h2 class="g-h2" style="color:var(--sand)">Skiing at Ax 3 Domaines</h2>
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1500w" alt="The château under snow"
        style="width:100%;height:clamp(14rem,32vh,22rem);object-fit:cover;display:block;margin:var(--s5) 0 var(--s6)">
   <div class="g-split">
@@ -77,12 +80,12 @@
       <p class="g-p" style="color:rgba(255,255,255,.88)">A gondola runs from the centre of Ax-les-Thermes to the slopes in under ten minutes, so there is no mountain road to drive in the morning. The climb has finished a Tour de France stage five times.</p>
     </div>
     <div>
-      <p class="g-p" style="color:rgba(255,255,255,.88)"><b style="color:#fff">We arrange the whole of it.</b> Lift passes bought and in your hand before you leave. Transport there and back each day. Hire fitted at the resort — skis, boards, boots, poles, helmets — and an ESF or ESI instructor for any age and any standard.</p>
+      <p class="g-p" style="color:rgba(255,255,255,.88)"><b style="color:var(--sand)">We arrange the whole of it.</b> Lift passes bought and in your hand before you leave. Transport there and back each day. Hire fitted at the resort — skis, boards, boots, poles, helmets — and an ESF or ESI instructor for any age and any standard.</p>
       <p class="g-p" style="color:rgba(255,255,255,.88)">Tell us when you book and it is simply organised. You come down to breakfast and the day is already arranged.</p>
     </div>
   </div>
 
-  <h3 class="g-h3" style="color:#fff;margin-top:var(--s7)">Beyond the pistes</h3>
+  <h3 class="g-h3" style="color:var(--sand);margin-top:var(--s7)">Beyond the pistes</h3>
   <ul class="g-tags g-tags--lg g-tags--onblue">
     <li>Plateau de Beille — 70 km of Nordic trails, the leading cross-country area in the Pyrénées</li>
     <li>Snowshoeing at Col de Chioula</li>
@@ -92,7 +95,7 @@
     <li>Bains du Couloubret — thermal spa, 33–38°C</li>
     <li>Ice rink at Ax-les-Thermes</li>
   </ul>
-  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#fff;color:var(--blue-deep);border-color:#fff">{{ t('Stay in Winter') }}</a></p>
+  <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay in Winter') }}</a></p>
 </div></section>
 
 <!-- ====================== ARRANGED FOR YOU ====================== -->
@@ -158,7 +161,7 @@
 
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
+  <p class="g-p" style="text-align:center;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
@@ -174,6 +177,41 @@
   <path d="M0 33.5h480" opacity=".5"/>
 </svg></div>
 
+
+
+<!-- ============ WINTER ============ -->
+{# The Ariège is a ski valley and the site sold it in one buried line. Every
+   figure here is checked: Ax 3 Domaines and Beille are the two nearest
+   stations, and both are a short drive from Château-Verdun. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">L'Hiver</p>
+  <h2 class="g-place">Winter in the Valley</h2>
+  <p class="g-p g-lede-first">Snow to the gates, fires lit in the salons, and a lift twenty-five minutes up the road.</p>
+  <p class="g-p">The château does not close for winter. It is arguably the better season — the valley empties, the mountain fills, and the house is at its warmest when it is cold outside. Skis, boots and helmets are arranged before you arrive, and an ESF or ESI instructor for any age and any standard.</p>
+
+  <div class="g-figures" style="margin-top:var(--s6)">
+    <div class="g-figure"><b>25</b><span>Minutes to Ax 3 Domaines</span></div>
+    <div class="g-figure"><b>80</b><span>Kilometres of piste</span></div>
+    <div class="g-figure"><b>2,400</b><span>Metres at the summit</span></div>
+    <div class="g-figure"><b>Dec–Apr</b><span>The usual season</span></div>
+  </div>
+
+  <hr class="g-rule--double">
+
+  <dl class="g-facts-list">
+    <div><dt>Ax 3 Domaines</dt><dd>The nearest station and the largest — all levels, and a thermal spa in the town below</dd></div>
+    <div><dt>Plateau de Beille</dt><dd>Cross-country and snowshoeing, twenty minutes the other way. Quieter, and better with children</dd></div>
+    <div><dt>Getting there</dt><dd>We will arrange the car, or the equipment, or both</dd></div>
+    <div><dt>Coming back</dt><dd>The fire is lit, the kitchen is warm, and dinner is at the usual hour</dd></div>
+  </dl>
+</div></section>
+
+<div class="g-band">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/ad2839d0-7d37-4b37-914d-46ccbe96cc09/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="The château in snow" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1000w" alt="Winter light on the façade" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen table in winter" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The château at night" loading="lazy">
+</div>
 
 <!-- ============ BY THE NUMBERS ============ -->
 {# Every figure here is from the public record: Wikipedia's monument entry

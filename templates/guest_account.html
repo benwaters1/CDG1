@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set crumbs = [('Your bookings', None)] %}
 {% block title %}Your account{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
@@ -8,7 +9,7 @@
   <div class="account-head">
     <div>
       <h1 style="margin:0;">Your bookings</h1>
-      <p class="g-hint" style="margin:4px 0 0;">{{ email }}</p>
+      <p class="g-hint" style="margin:var(--s1) 0 0;">{{ email }}</p>
     </div>
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--sm">Book another stay</a>
   </div>
@@ -34,7 +35,7 @@
       </div>
       <span class="g-hint">{{ b['reference_code'] }}</span>
     </div>
-    <p class="g-hint" style="margin:6px 0;">
+    <p class="g-hint" style="margin:var(--s1) 0;">
       {{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}
       · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
       {%- if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
@@ -62,7 +63,7 @@
         </p>
         {% endif %}
         {% if extras %}
-        <p class="g-mb-label" style="margin-top:8px;">Extras we can arrange</p>
+        <p class="g-mb-label" style="margin-top:var(--s2);">Extras we can arrange</p>
         <ul class="account-extras">
           {% for e in extras %}
           <li>
@@ -76,7 +77,7 @@
         </ul>
         <p class="g-hint">
           Tell us on the <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
-          and we'll add it to your bill.
+          and we will add it to your bill.
         </p>
         {% endif %}
       </div>
@@ -100,7 +101,7 @@
       </div>
       <span class="g-hint">{{ w['reference_code'] }}</span>
     </div>
-    <p class="g-hint" style="margin:6px 0;">
+    <p class="g-hint" style="margin:var(--s1) 0;">
       {{ w['start_date']|date_short }} → {{ w['end_date']|date_short }}
       · {{ w['party_size'] }} place{{ '' if w['party_size'] == 1 else 's' }}
     </p>
@@ -108,7 +109,7 @@
     {% if upcoming %}
     {# Workshops need more from a guest than a room does — dietary needs, who
        they're sharing with, anything medical the instructor should know. If
-       that's missing it's chased by hand, so it's asked for here plainly. #}
+       that is missing gets chased by hand, so it is asked for here plainlyly. #}
     {% set missing = [] %}
     {% if not w['dietary_notes'] %}{% set _ = missing.append('dietary requirements') %}{% endif %}
     {% if w['party_size'] > 1 and not w['other_guest_names'] %}{% set _ = missing.append('who else is coming') %}{% endif %}
@@ -116,7 +117,7 @@
     {% if missing %}
     <div class="account-needs">
       <strong>We still need a few things</strong>
-      <p class="g-hint" style="margin:4px 0 8px;">{{ missing|join(', ')|capitalize }}.</p>
+      <p class="g-hint" style="margin:var(--s1) 0 8px;">{{ missing|join(', ')|capitalize }}.</p>
       <a href="{{ url_for('workshop_manage', manage_token=w['manage_token']) }}" class="g-btn g-btn--sm">
         Add your details
       </a>
@@ -146,7 +147,7 @@
       </div>
       <span class="g-hint">{{ d['reference_code'] }}</span>
     </div>
-    <p class="g-hint" style="margin:6px 0;">
+    <p class="g-hint" style="margin:var(--s1) 0;">
       Table for {{ d['party_size'] }}{% if d['total_price'] %} · €{{ '%.2f'|format(d['total_price']) }}{% endif %}
     </p>
     <div class="account-actions">
@@ -170,7 +171,7 @@
       </div>
       <span class="g-hint">{{ e['reference_code'] }}</span>
     </div>
-    <p class="g-hint" style="margin:6px 0;">
+    <p class="g-hint" style="margin:var(--s1) 0;">
       {{ e['preferred_date']|date_short }}{% if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
     </p>
     <div class="account-actions">
@@ -190,10 +191,10 @@
     </p>
   </div>
 
-  <p class="g-hint" style="margin-top:18px;">
+  <p class="g-hint" style="margin-top:var(--s4);">
     This link is yours and expires {{ expires[:10] }}. If it stops working,
     <a href="{{ url_for('guest_account_request') }}">ask for a new one</a>.
-    Please don't forward it — it opens your bookings.
+    Please do not forward it — it opens your bookings.
   </p>
 </div>
 
@@ -202,18 +203,18 @@
 .account-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap; }
 .account-card{
   background:var(--surface); border:1px solid var(--parchment-line); border-radius:11px;
-  padding:16px 18px; margin-bottom:12px;
+  padding:16px 18px; margin-bottom:var(--s3);
 }
 .account-card.is-past{ opacity:.66; }
 .account-card-head{ display:flex; justify-content:space-between; gap:14px; align-items:baseline; flex-wrap:wrap; }
-.account-actions{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.account-actions{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:var(--s2); }
 .account-needs{
-  background:var(--status-warn-bg); border-radius:8px; padding:11px 13px; margin-top:10px;
+  background:var(--status-warn-bg); border-radius:8px; padding:11px 13px; margin-top:var(--s2);
 }
-.account-add{ margin-top:12px; border-top:1px solid var(--parchment-line); padding-top:10px; }
+.account-add{ margin-top:var(--s3); border-top:1px solid var(--parchment-line); padding-top:10px; }
 .account-add summary{ cursor:pointer; font-size:13px; color:var(--steel); }
 .account-add-body{ padding-top:8px; }
-.account-extras{ list-style:none; padding:0; margin:6px 0; }
+.account-extras{ list-style:none; padding:0; margin:var(--s1) 0; }
 .account-extras li{
   display:flex; justify-content:space-between; gap:12px; padding:6px 0;
   border-bottom:1px dashed var(--parchment-line); font-size:13.5px;

@@ -35,6 +35,9 @@ LANGUAGES = {
 }
 
 FR = {
+    # Booking confirmation, from the final_20 handover.
+    'Your stay is booked': 'Votre séjour est réservé',
+    'Save this link, or write down your reference code and the email you booked with — that is how you check in and manage this booking later.': "Conservez ce lien, ou notez votre code de référence et l'adresse e-mail utilisée — c'est ainsi que vous vous enregistrez et gérez cette réservation par la suite.",
     # The VAT working paper.
     'VAT': 'TVA',
     'VAT collected': 'TVA collectée',
@@ -474,6 +477,9 @@ FR = {
 }
 
 ES = {
+    # Booking confirmation, from the final_20 handover.
+    'Your stay is booked': 'Su estancia está reservada',
+    'Save this link, or write down your reference code and the email you booked with — that is how you check in and manage this booking later.': 'Guarde este enlace, o apunte su código de referencia y el correo con el que reservó: así es como hace el check-in y gestiona esta reserva más adelante.',
     # The VAT working paper.
     'VAT': 'IVA',
     'VAT collected': 'IVA cobrado',

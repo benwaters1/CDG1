@@ -1,0 +1,36 @@
+{# Frequently asked questions, as a reusable block. Every answer here is
+   checked against what the site and the app actually do — a FAQ that
+   contradicts the booking flow is worse than no FAQ. #}
+{% macro faq(items, eyebrow='Before You Book', heading='Questions') %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">{{ eyebrow }}</p>
+  <h2 class="g-place">{{ heading }}</h2>
+  <div class="g-faq">
+    {% for q, a in items %}
+    <details>
+      <summary>{{ q }}</summary>
+      <p class="g-faq__a">{{ a|safe }}</p>
+    </details>
+    {% endfor %}
+  </div>
+
+  {# FAQPage schema — Google renders these straight into results, which is
+     free visibility for questions people actually type. Text only, so the
+     markup can never disagree with what is on the page. #}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {%- for q, a in items %}
+      {
+        "@type": "Question",
+        "name": {{ q|tojson }},
+        "acceptedAnswer": { "@type": "Answer", "text": {{ (a|striptags)|tojson }} }
+      }{{ "," if not loop.last }}
+      {%- endfor %}
+    ]
+  }
+  </script>
+</div></section>
+{% endmacro %}

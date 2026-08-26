@@ -19,7 +19,7 @@
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0">
     <p class="g-eyebrow">Château Workshop</p>
-    <h1 class="g-display" style="font-size:clamp(28px,5vw,46px)">{{ session['title'] }}</h1>
+    <h1 class="g-display" >{{ session['title'] }}</h1>
     <p class="g-room__meta">
       {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
     </p>

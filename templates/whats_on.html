@@ -1,6 +1,9 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('What\'s On', None)] %}
 {% block title %}What's On{% endblock %}
+{% block description %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
+{% block og_desc %}Markets, brocantes, mountain days and the fairs of the Ariège — everything within an hour of Château de Gudanes, and when to catch it.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
@@ -66,7 +69,8 @@
   {% if not this_week and not upcoming %}
   <p class="g-eyebrow">This Week</p>
   <h2 class="g-h2">The week ahead</h2>
-  <p class="g-p">Nothing is listed yet. Add markets, fairs and château events in the staff area and they appear here automatically, week by week.</p>
+  <p class="g-p">The calendar is being set for the season. The fixed points do not change: Les Cabannes market on a Sunday, Tarascon on Wednesday and Saturday, the brocante at Mirepoix through the summer, and the mountain open from December to April.</p>
+  <p class="g-p">Write to us with your dates and we will tell you what falls in them.</p>
   {% endif %}
 
 </div></section>
@@ -159,7 +163,7 @@
 
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
+  <p class="g-p" style="text-align:center;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds

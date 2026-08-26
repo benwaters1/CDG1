@@ -11,7 +11,7 @@
      dark panels. It sits on a warm parchment ground — the warmth is the
      building, the blue is the discipline. Brass is used only for small
      marks: eyebrows, figures, the rule under a heading.                */
-  --blue-deep:  #183456;   /* the ONE colour — headings, body, links, buttons */
+  --blue-deep:  #14305F;   /* bleu de Sèvres — royal, not slate. 65% sat */
   --blue:       #14213D;   /* solid Book/Filters buttons                   */
   --blue-mid:   #14213D;   /* room names, accent headings                 */
   --blue-pale:  #F5F5F3;   /* pale panel ground                           */
@@ -32,7 +32,7 @@
    /* hairlines — warm, to match the ground        */
   --white:      #FBF7EF;
 
-  --ink:        #183456;   /* body text — the same navy, one colour       */
+  --ink:        #14305F;   /* body text — the same navy, one colour       */
   --ink-soft:   #4A6076;
   --ink-faint:  #7C8CA0;
   --brass:      #8A8578;   /* whisper only — never a rule or fill */
@@ -45,7 +45,7 @@
   /* ---- Measures ---------------------------------------------------- */
   --wrap: 76rem;
   --wrap-narrow: 54rem;
-  --measure: 52rem;
+  --measure: 38rem;   /* ~68 characters at 18px Garamond, not 91 */
 
   /* ---- Type -------------------------------------------------------- */
   --serif: 'EB Garamond', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
@@ -87,7 +87,7 @@
 
 .g-h2{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(30px, 3.2vw, 44px); line-height: 1.15;
+  font-size: clamp(30px, 3.2vw, 42px); line-height: 1.15;
   color: var(--blue-deep); margin: 0 0 var(--s4);
 }
 .g-h2 em{ font-style: normal; font-weight: 300; }
@@ -109,12 +109,12 @@
 }
 
 .g-eyebrow{
-  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: var(--measure); margin: 0 0 var(--s4); color: var(--blue-deep); }
+.g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: 52ch; margin: 0 0 var(--s4); color: var(--blue-deep); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
 .g-lede{ font-size: clamp(17px, 1.3vw, 19px); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
@@ -128,7 +128,7 @@
   padding-bottom: var(--s4); border-bottom: 1px solid var(--line);
   margin: 0 0 var(--s7);
 }
-.g-rule__note{ font-family: var(--serif); font-size: 12px; color: var(--brass); margin-left: auto; }
+.g-rule__note{ font-family: var(--serif); font-size: 13px; color: var(--brass); margin-left: auto; }
 
 /* ---- Header ------------------------------------------------------------ */
 
@@ -157,7 +157,7 @@ body.has-hero main{ padding-top: 0; }
   display: inline-flex; flex-direction: column; justify-content: center;
 }
 .g-brand small{
-  display: block; font-family: var(--serif); font-size: 12px;
+  display: block; font-family: var(--serif); font-size: 13px;
   letter-spacing: .08em; color: var(--ink-faint); margin-top: 2px;
 }
 .g-nav{ display: flex; gap: var(--s6); align-items: center; }
@@ -202,7 +202,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g .g-reserve{
   min-height: 44px; padding: var(--s3) var(--s5); flex: none;
   background: var(--blue-deep); color: #fff; border: 1px solid var(--blue-deep);
-  font-family: var(--serif); font-size: 14px; font-weight: 600;
+  font-family: var(--serif); font-size: 15px; font-weight: 600;
 }
 .g .g-reserve:hover{ background: #0F1830; border-color: var(--blue-deep); }
 
@@ -330,7 +330,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-room__img--none{ background: var(--sand-3); }
 .g-flag{
   position: absolute; top: var(--s3); left: var(--s3);
-  font-family: var(--serif); font-size: 12px;
+  font-family: var(--serif); font-size: 13px;
   letter-spacing: .1em; text-transform: uppercase; padding: var(--s2) var(--s3);
 }
 .g-flag--free{ background: var(--blue-deep); color: var(--sand); }
@@ -343,8 +343,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 }
 .g-room__name{ font-family: var(--display); font-weight: 400; font-size: clamp(21px, 2vw, 26px); line-height: 1.25; color: var(--blue-deep); margin: 0; }
 .g-room__rate{ margin: 0; text-align: right; }
-.g-room__rate .g-fig{ font-size: 20px; display: block; line-height: 1.1; }
-.g-room__rate span:last-child{ font-family: var(--serif); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.g-room__rate .g-fig{ font-size: 22px; display: block; line-height: 1.1; }
+.g-room__rate span:last-child{ font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
 .g-room__meta{ font-family: var(--serif); font-size: 13px; color: var(--ink-faint); margin: 0 0 var(--s4); }
 .g-room__desc{ font-size: 16px; line-height: 1.62; margin: 0 0 var(--s4); }
 .g-room__cta{ margin-top: var(--s5); display: flex; gap: var(--s3); flex-wrap: wrap; }
@@ -353,7 +353,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 .g-tags{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); padding: 0; list-style: none; }
 .g-tags li{
-  font-size: 14px; color: var(--ink); background: transparent;
+  font-size: 15px; color: var(--ink); background: transparent;
   border: none; border-radius: 0; padding: 0; margin-right: var(--s5);
   display: inline-flex; align-items: center; gap: 6px;
 }
@@ -372,7 +372,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-search{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 .g-search__f{ display: flex; flex-direction: column; min-width: 0; }
 .g-search label{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .14em;
   text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--s2);
 }
 .g-search input{
@@ -399,7 +399,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; flex: none;
   border: 1px solid var(--stone); border-radius: 50%;
-  font-family: var(--display); font-weight: 400; font-size: 17px;
+  font-family: var(--display); font-weight: 400; font-size: 18px;
   letter-spacing: 0; color: var(--stone); background: transparent;
   margin-right: var(--s4); vertical-align: middle;
 }
@@ -408,7 +408,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-field{ display: flex; flex-direction: column; margin: 0 0 var(--s5); }
 .g-field--narrow{ max-width: 14rem; }
 .g-field label{
-  font-family: var(--serif); font-size: 14px; font-weight: 500;
+  font-family: var(--serif); font-size: 15px; font-weight: 500;
   letter-spacing: .01em; text-transform: none;
   color: var(--ink-soft); margin-bottom: var(--s2);
 }
@@ -427,7 +427,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-promo input{ text-transform: uppercase; }
 .g-promo button{
   flex-shrink: 0; min-height: 52px; padding: 0 var(--s5);
-  font-family: var(--serif); font-size: 14px; font-weight: 500; letter-spacing: 0;
+  font-family: var(--serif); font-size: 15px; font-weight: 500; letter-spacing: 0;
   color: var(--blue-deep); background: transparent;
   border: 1px solid var(--blue-deep); cursor: pointer;
 }
@@ -448,7 +448,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 .g-dossier{ background: var(--blue-deep); color: #C9D4DF; padding: var(--s6); }
 .g-dossier__k{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .18em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .18em;
   text-transform: uppercase; color: #D9C79B; margin: 0 0 var(--s1);
 }
 .g-dossier__room{ font-family: var(--display); font-size: 24px; line-height: 1.2; color: var(--white); margin: 0 0 var(--s5); }
@@ -457,20 +457,20 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   display: flex; justify-content: space-between; gap: var(--s3);
   padding: var(--s2) 0; border-top: 1px solid rgba(255,255,255,.16);
 }
-.g-dossier__l dt{ font-family: var(--serif); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
+.g-dossier__l dt{ font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
 .g-dossier__l dd{ margin: 0; font-family: var(--serif); font-size: 13px; color: var(--white); }
-.g-terms{ display: flex; gap: var(--s3); align-items: flex-start; font-size: 14px; margin-bottom: var(--s5); cursor: pointer; }
+.g-terms{ display: flex; gap: var(--s3); align-items: flex-start; font-size: 15px; margin-bottom: var(--s5); cursor: pointer; }
 .g-terms input{ width: 18px; height: 18px; margin-top: 3px; accent-color: #D9C79B; flex: none; }
 .g-terms a{ color: #D9C79B; }
 .g-dossier .g-submit{ background: #D9C79B; color: var(--blue-deep); border-color: #D9C79B; }
 .g-dossier .g-submit:hover{ background: var(--white); color: var(--blue-deep); border-color: var(--white); }
-.g-foot-note{ font-size: 12px; line-height: 1.55; color: #93A5B6; margin: var(--s4) 0 0; }
+.g-foot-note{ font-size: 13px; line-height: 1.55; color: #93A5B6; margin: var(--s4) 0 0; }
 
 /* ---- Reviews ----------------------------------------------------------- */
 
 .g-reviews{ display: grid; gap: var(--s4); }
 .g-review{ margin: 0; background: var(--white); border: 1px solid var(--line); padding: var(--s6); }
-.g-review__s{ font-family: var(--serif); font-size: 12px; color: var(--brass); margin: 0 0 var(--s3); }
+.g-review__s{ font-family: var(--serif); font-size: 13px; color: var(--brass); margin: 0 0 var(--s3); }
 .g-review blockquote{ margin: 0 0 var(--s3); font-size: 16px; line-height: 1.6; font-style: italic; }
 .g-review figcaption{ font-size: 13px; color: var(--ink-faint); }
 
@@ -481,7 +481,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-footer a:hover{ color: var(--white); }
 .g-footer__grid{ display: grid; gap: var(--s6); }
 .g-footer h4{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .14em;
   text-transform: uppercase; color: #D9C79B; margin: 0 0 var(--s4); font-weight: 400;
 }
 .g-footer ul{ list-style: none; margin: 0; padding: 0; }
@@ -491,7 +491,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-footer__contact a{ display: inline-flex; align-items: center; min-height: 44px; }
 .g-footer__fine{
   margin-top: var(--s8); padding-top: var(--s5);
-  border-top: 1px solid rgba(255,255,255,.16); font-size: 12px; color: #8798A7;
+  border-top: 1px solid rgba(255,255,255,.16); font-size: 13px; color: #8798A7;
 }
 
 /* Standalone inline links (manage a booking, manage a registration). */
@@ -521,7 +521,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   font-weight: 400; color: #fff; line-height: 1.2;
 }
 .g-stickybar__t span{
-  display: block; font-family: var(--display); font-size: 12px;
+  display: block; font-family: var(--display); font-size: 13px;
   letter-spacing: .12em; text-transform: uppercase; color: #A9C8DA; margin-top: 2px;
 }
 .g .g-stickybar__cta{
@@ -602,7 +602,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   .g-navtoggle > summary{
     display: flex; align-items: center; gap: var(--s2);
     list-style: none; cursor: pointer; min-height: 44px;
-    font-family: var(--display); font-size: 12px;
+    font-family: var(--display); font-size: 13px;
     letter-spacing: .16em; text-transform: uppercase; color: #D6E4EC;
   }
   .g-navtoggle > summary::-webkit-details-marker{ display: none; }
@@ -657,7 +657,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 /* Session date buttons on a workshop. */
 .g-dates{ display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
-.g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 12px; }
+.g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 13px; }
 .g .g-book-bar__note a{ display: inline-block; padding: 12px 0; min-height: 44px; }
 
 /* ==========================================================================
@@ -673,13 +673,13 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-nav__item{ position: relative; }
 .g-nav__top{
   display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--serif); font-size: 14px;
+  font-family: var(--serif); font-size: 15px;
   letter-spacing: .1em; text-transform: uppercase;
   color: #D6E4EC; background: none; border: 0; cursor: pointer;
   min-height: 44px; padding: 0; text-decoration: none;
   border-bottom: 1px solid transparent;
 }
-.g-nav__top::after{ content: '⌄'; font-size: 12px; line-height: 1; transform: translateY(-2px); }
+.g-nav__top::after{ content: '⌄'; font-size: 13px; line-height: 1; transform: translateY(-2px); }
 .g-nav__top--plain::after{ content: none; }
 .g-nav__item:hover .g-nav__top,
 .g-nav__top:focus-visible{ color: #fff; border-bottom-color: var(--brass); }
@@ -702,25 +702,25 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-drop a:hover{ background: var(--blue-pale); color: var(--blue-mid); }
 .g-drop__note{
   padding: var(--s2) var(--s5) var(--s3);
-  font-family: var(--serif); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .14em;
   text-transform: uppercase; color: var(--ink-faint);
 }
 
 /* ---- Currency selector -------------------------------------------------- */
 .g-cur{ display: inline-flex; align-items: center; gap: var(--s2); }
 .g-cur select{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .1em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .1em;
   color: #D6E4EC; background: transparent;
   border: 1px solid rgba(255,255,255,.4); border-radius: 0;
   padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
 }
 .g-cur select option{ color: var(--ink); background: var(--white); }
-.g-approx{ font-family: var(--serif); font-size: 12px; color: var(--ink-faint); display: block; margin-top: 2px; }
+.g-approx{ font-family: var(--serif); font-size: 13px; color: var(--ink-faint); display: block; margin-top: 2px; }
 
 /* ---- Filter chips ------------------------------------------------------- */
 .g-filters{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s6); }
 .g-filter{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .12em; text-transform: uppercase;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
   min-height: 44px; padding: var(--s3) var(--s5);
   color: var(--blue-mid); background: transparent;
   border: 1px solid var(--blue-line); cursor: pointer;
@@ -736,7 +736,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
 }
 .g-refine label{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .14em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .14em;
   text-transform: uppercase; color: var(--ink-faint);
 }
 .g-refine select{
@@ -744,7 +744,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s2) var(--s3); min-height: 44px; border-radius: 0;
 }
-.g-refine__count{ margin-left: auto; font-family: var(--serif); font-size: 12px; color: var(--ink-faint); }
+.g-refine__count{ margin-left: auto; font-family: var(--serif); font-size: 13px; color: var(--ink-faint); }
 
 /* ---- Gallery sections --------------------------------------------------- */
 .g-galsec{ padding: var(--s8) 0; border-top: 1px solid var(--line); }
@@ -772,7 +772,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   .g-navbtn{
     display: inline-flex; align-items: center; gap: var(--s2);
     order: 3; min-height: 44px; padding: 0;
-    font-family: var(--serif); font-size: 12px;
+    font-family: var(--serif); font-size: 13px;
     letter-spacing: .16em; text-transform: uppercase;
     color: #D6E4EC; background: none; border: 0; cursor: pointer;
   }
@@ -899,7 +899,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   font-size: 24px; line-height: 1; color: var(--ink-faint); cursor: pointer;
 }
 .g-navwrap__group{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .16em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .16em;
   text-transform: uppercase; color: var(--ink-faint);
   margin: var(--s7) 0 var(--s3); font-weight: 400;
 }
@@ -914,7 +914,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__item:hover{ color: var(--blue-deep); }
 
 .g-navwrap__item--sm{
-  font-size: 14px; min-height: 44px; justify-content: space-between;
+  font-size: 15px; min-height: 44px; justify-content: space-between;
   color: var(--ink-soft);
 }
 .g-navwrap__chev{ width: 16px; height: 16px; color: var(--ink-faint); flex: none; }
@@ -922,7 +922,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__item--sm:hover .g-navwrap__chev{ color: var(--blue-deep); }
 
 .g-navwrap__item--plain{
-  font-family: var(--serif); font-size: 12px; letter-spacing: .08em;
+  font-family: var(--serif); font-size: 13px; letter-spacing: .08em;
   text-transform: uppercase; color: var(--ink-soft); min-height: 44px;
 }
 .g-navwrap__divider{ border-top: 1px solid var(--line); margin: var(--s6) 0; }
@@ -938,7 +938,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   display: block; font-family: var(--serif); font-weight: 600; font-size: 15px; color: var(--ink);
 }
 .g-navwrap__feature em{
-  display: block; font-style: italic; font-size: 12px; color: var(--ink-faint); margin-top: 2px;
+  display: block; font-style: italic; font-size: 13px; color: var(--ink-faint); margin-top: 2px;
 }
 .g-navwrap__feature:hover b{ color: var(--blue-deep); }
 
@@ -980,7 +980,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   margin-bottom: var(--s2);
 }
 .g-navwrap__linkgrid a{
-  color: var(--ink-soft); text-decoration: none; font-size: 14px;
+  color: var(--ink-soft); text-decoration: none; font-size: 15px;
   min-height: 44px; display: flex; align-items: center;
 }
 .g-navwrap__linkgrid a:hover{ color: var(--blue-deep); }
@@ -991,7 +991,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__legal{
   display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4);
   margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid var(--line);
-  font-size: 12px;
+  font-size: 13px;
 }
 .g-navwrap__legal a{ color: var(--ink-faint); min-height: 44px; display: inline-flex; align-items: center; }
 .g-navwrap__legal a:hover{ color: var(--blue-deep); }
@@ -1015,7 +1015,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .g-hero__lede{
-  color: #EAE4DC; max-width: 42rem; font-size: 20px; font-weight: 300;
+  color: #EAE4DC; max-width: 42rem; font-size: 22px; font-weight: 300;
   line-height: 1.6; margin: var(--s5) 0 0;
 }
 
@@ -1035,9 +1035,9 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-cal__swatch{ width: 12px; height: 12px; background: var(--sand-3); border: 1px solid var(--line); display: inline-block; }
 .g-cal__months{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s4); }
 .g-cal__month{ flex: 1 1 240px; min-width: 0; }
-.g-cal__title{ margin: 0 0 var(--s2); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
+.g-cal__title{ margin: 0 0 var(--s2); font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
 .g-cal__grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.g-cal__dow{ font-size: 12px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
+.g-cal__dow{ font-size: 13px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
 .g-cal__day{
   font: inherit; font-size: 13px; aspect-ratio: 1; min-height: 34px; padding: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1113,13 +1113,13 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-family: var(--serif); font-size: 13px; font-weight: 500; color: var(--ink-faint);
 }
 .g-navwrap__prefs select{
-  font-family: var(--serif); font-size: 14px; color: var(--ink);
+  font-family: var(--serif); font-size: 15px; color: var(--ink);
   background: transparent; border: 1px solid var(--line); border-radius: 0;
   padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
 }
 .g-lang{ display: inline-flex; align-items: center; gap: var(--s3); }
 .g-lang__opt{
-  font-family: var(--serif); font-size: 14px; color: var(--ink-faint);
+  font-family: var(--serif); font-size: 15px; color: var(--ink-faint);
   text-decoration: none; min-height: 44px; display: inline-flex; align-items: center;
 }
 .g-lang__opt.is-on{ color: var(--blue-deep); font-weight: 500; }
@@ -1167,7 +1167,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-weight: 600; color: var(--blue-deep);
 }
 .g-bookmenu__txt em{
-  display: block; font-style: normal; font-size: 14px;
+  display: block; font-style: normal; font-size: 15px;
   color: var(--ink-soft); margin-top: 1px;
 }
 .g-bookmenu__meta{
@@ -1175,7 +1175,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-bookmenu__opt--sm{
   display: block; padding: var(--s4) var(--s5);
-  font-size: 14px; color: var(--ink-soft);
+  font-size: 15px; color: var(--ink-soft);
 }
 .g-bookmenu__opt--sm:last-child{ border-bottom: none; }
 
@@ -1231,16 +1231,16 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-agenda__when{ display: flex; flex-direction: column; gap: 2px; }
 .g-agenda__day{ font-family: var(--display); font-size: 15px; font-weight: 600; color: var(--blue-deep); }
-.g-agenda__time{ font-size: 14px; color: var(--ink-faint); }
+.g-agenda__time{ font-size: 15px; color: var(--ink-faint); }
 .g-agenda__title{
   font-family: var(--display); font-size: 18px; font-weight: 400;
   color: var(--blue-deep); margin: 0 0 2px;
 }
-.g-agenda__loc{ font-size: 14px; color: var(--ink-faint); margin: 0 0 var(--s2); }
+.g-agenda__loc{ font-size: 15px; color: var(--ink-faint); margin: 0 0 var(--s2); }
 .g-agenda__row.is-today{ background: var(--sand-2); }
 .g-agenda__row.is-today .g-agenda__when{ padding-left: var(--s4); }
 .g-agenda__flag{
-  align-self: center; font-family: var(--serif); font-size: 12px; font-weight: 600;
+  align-self: center; font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase;
   color: #fff; background: var(--blue-deep); padding: 4px var(--s3);
 }
@@ -1271,7 +1271,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-wscard__top{ flex: none; }
 .g-wscard__len{
-  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--ink-faint); margin: 0 0 var(--s3);
 }
@@ -1280,12 +1280,12 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-size: clamp(24px, 2.2vw, 30px); line-height: 1.15;
   color: var(--blue-deep); margin: 0 0 var(--s2);
 }
-.g-wscard__dates{ font-size: 14px; color: var(--ink-soft); margin: 0 0 var(--s4); }
+.g-wscard__dates{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); }
 .g-wscard__blurb{ flex: 1; font-size: 15px; }
 .g-wscard__foot{ margin-top: var(--s5); }
 .g-wscard__price{ margin: 0 0 var(--s4); }
 .g-wscard__price .g-fig{ font-size: 24px; margin-right: var(--s2); }
-.g-wscard__price span:last-child{ font-size: 14px; color: var(--ink-faint); }
+.g-wscard__price span:last-child{ font-size: 15px; color: var(--ink-faint); }
 .g .g-wscard .g-btn{ width: 100%; }
 
 /* A single line of the château's own words, given room to be read. */
@@ -1330,10 +1330,10 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-sitting:first-child{ border-top: 1px solid var(--line); }
 .g-sitting__when{
-  font-family: var(--display); font-size: 20px; font-weight: 400;
+  font-family: var(--display); font-size: 22px; font-weight: 400;
   color: var(--blue-deep); flex: 1 1 14rem;
 }
-.g-sitting__left{ font-size: 14px; color: var(--ink-faint); flex: 0 0 auto; }
+.g-sitting__left{ font-size: 15px; color: var(--ink-faint); flex: 0 0 auto; }
 .g-sitting__cta{ flex: 0 0 auto; margin-left: auto; }
 
 
@@ -1365,7 +1365,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-crest--foot img{ max-width: 18rem; min-height: 0; opacity: .92; }
 .g-crest--foot .g-crest__note{
-  font-size: 12px; letter-spacing: .16em; color: rgba(255,255,255,.5);
+  font-size: 13px; letter-spacing: .16em; color: rgba(255,255,255,.5);
   margin-top: var(--s4);
 }
 
@@ -1429,7 +1429,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 .g-datefilter{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-bottom: var(--s6); }
 .g-chip{
-  font-family: var(--serif); font-size: 14px; font-weight: 500;
+  font-family: var(--serif); font-size: 15px; font-weight: 500;
   padding: var(--s2) var(--s4); min-height: 44px;
   background: transparent; color: var(--ink-soft);
   border: 1px solid var(--line); border-radius: 0; cursor: pointer;
@@ -1439,7 +1439,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 .g-dates-table{ width: 100%; border-collapse: collapse; }
 .g-dates-table th{
-  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
   text-align: left; padding: 0 var(--s4) var(--s3) 0;
   border-bottom: 1px solid var(--line);
@@ -1449,7 +1449,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   border-bottom: 1px solid var(--line); vertical-align: middle;
 }
 .g-dates-table__when{
-  font-family: var(--display); font-size: 20px; font-weight: 400;
+  font-family: var(--display); font-size: 22px; font-weight: 400;
   color: var(--blue-deep); white-space: nowrap;
 }
 /* The workshop name in a row is a real link people tap — give it a target,
@@ -1475,7 +1475,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   .g-dates-table td{ border: 0; padding: var(--s1) 0; }
   .g-dates-table td[data-label]::before{
     content: attr(data-label) " · ";
-    font-family: var(--serif); font-size: 12px; letter-spacing: .1em;
+    font-family: var(--serif); font-size: 13px; letter-spacing: .1em;
     text-transform: uppercase; color: var(--ink-faint);
   }
   .g-dates-table__when::before{ display: none; }
@@ -1488,7 +1488,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 @media (min-width: 46rem){ .g-facts-list{ grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s7); } }
 .g-facts-list > div{ display: grid; grid-template-columns: 8rem 1fr; gap: var(--s4); align-items: baseline; }
 .g-facts-list dt{
-  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
 }
 .g-facts-list dd{ margin: 0; font-size: 15px; color: var(--ink); line-height: 1.5; }
@@ -1500,7 +1500,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-family: var(--display); color: var(--blue-deep);
   font-weight: 400; line-height: 1.2; margin: 0 0 var(--s3);
 }
-.g main h1:not([class]){ font-size: clamp(30px, 3.4vw, 44px); }
+.g main h1:not([class]){ font-size: clamp(30px, 3.4vw, 42px); }
 .g main h2:not([class]){ font-size: clamp(26px, 2.8vw, 32px); }
 .g main h3:not([class]){ font-size: 24px; }
 
@@ -1515,7 +1515,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-contact-link:hover{ border-color: var(--blue-deep); }
 .g-contact-link b{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: 20px; color: var(--blue-deep);
+  font-size: 22px; color: var(--blue-deep);
 }
 .g-contact-link span{ display: block; font-size: 15px; color: var(--ink-soft); margin-top: 2px; }
 
@@ -1539,7 +1539,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-homeroom__b .g-p{ flex: 1; font-size: 15px; }
 .g-homeroom__rate{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); }
-.g-homeroom__rate .g-fig{ font-size: 20px; }
+.g-homeroom__rate .g-fig{ font-size: 22px; }
 .g .g-homeroom .g-btn{ width: 100%; }
 
 /* Inclusions as photographic cards. A list of seven bullet points is the
@@ -1575,7 +1575,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   .g-dates-table th,
   .g-dossier__k{ font-size: 13px; }
 
-  .g-facts li span{ font-size: 14px; }
+  .g-facts li span{ font-size: 15px; }
 
   /* A button is the thing being tapped — it should never be the smallest
      text on the screen. */
@@ -1589,7 +1589,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   .g-crest__note, .g-footer span{ font-size: 13px; }
 
   /* Sections stack full-width on a phone, so the desktop rhythm compounds. */
-  .g-sec{ padding: clamp(36px, 9vw, 52px) 0; }
+  .g-sec{ padding: clamp(36px, 9vw, 42px) 0; }
   .g-sec--tight{ padding: var(--s5) 0; }
   .g-half__text{ padding: var(--s5) var(--s4); }
   .g-crest--foot{ padding-bottom: var(--s5); margin-bottom: var(--s5); }
@@ -1631,10 +1631,10 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   padding: var(--s4) 0; border-bottom: 1px solid var(--line);
 }
 .g-press b{
-  font-family: var(--display); font-weight: 400; font-size: 20px;
+  font-family: var(--display); font-weight: 400; font-size: 22px;
   color: var(--blue-deep); flex: 0 0 auto;
 }
-.g-press span{ font-size: 14px; color: var(--ink-soft); }
+.g-press span{ font-size: 15px; color: var(--ink-soft); }
 
 /* An email address inside a hint line is still a link people tap. */
 .g-hint a{ display: inline-flex; align-items: center; min-height: 44px; }
@@ -1669,16 +1669,16 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--stone); margin: 0 0 var(--s4);
 }
-.g-sit__meta{ font-size: 14px; color: var(--ink-soft); margin: 0 0 var(--s4); flex: 1; }
+.g-sit__meta{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); flex: 1; }
 .g-sit__rate{ margin: 0 0 var(--s4); }
 .g-sit__rate .g-fig{ font-size: 24px; }
-.g-sit__rate span:last-child{ font-size: 14px; color: var(--ink-faint); }
+.g-sit__rate span:last-child{ font-size: 15px; color: var(--ink-faint); }
 .g .g-sit .g-btn{ width: 100%; }
 .g-sit--full{ opacity: .72; }
 .g-sit__flag{
   position: absolute; top: 0; left: 0;
   background: var(--blue-deep); color: #fff;
-  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase;
   padding: var(--s2) var(--s4);
 }
@@ -1702,7 +1702,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   display: flex; flex-direction: column; justify-content: center; min-width: 0;
 }
 .g-herosearch__f label{
-  font-family: var(--serif); font-size: 12px; font-weight: 600;
+  font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase;
   color: var(--ink-faint); margin-bottom: 2px;
 }
@@ -1720,7 +1720,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   letter-spacing: .06em; padding: var(--s4) var(--s6); min-height: 56px;
   white-space: nowrap;
 }
-.g-herosearch__go:hover{ background: #0F2440; }
+.g-herosearch__go:hover{ background: #0D2851; }
 @media (max-width: 46rem){
   .g-herosearch{ margin-top: var(--s5); }
   .g-herosearch__go{ width: 100%; }
@@ -1736,7 +1736,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 @media (min-width: 40rem){ .g-timeline li{ grid-template-columns: 7rem 1fr; } }
 .g-timeline li:first-child{ border-top: 1px solid var(--line); }
 .g-timeline b{
-  font-family: var(--display); font-weight: 400; font-size: 30px;
+  font-family: var(--display); font-weight: 400; font-size: 28px;
   color: var(--stone); line-height: 1;
 }
 .g-timeline span{ font-size: 16px; line-height: 1.6; color: var(--ink); }
@@ -1809,24 +1809,37 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 /* The wordmark PNG is white-on-transparent. An invert/hue-rotate chain was
    producing purple rather than navy; a mask uses the file's alpha channel and
    fills it with an exact colour instead. */
-.g .g-logo img, .g .g-brand img{
-  filter: none;
+/* The wordmark PNG is white-on-transparent. Colouring it by filter produced
+   purple; masking the <img> left its own white bitmap painting on top. The
+   mask and the colour belong on the LINK, with the image inside it hidden —
+   the mask reads from the CSS url, so nothing of the raster shows through. */
+.g .g-logo, .g .g-brand{
+  display: inline-block;
+  width: var(--logo-w, 240px); height: 52px;
   background-color: var(--blue-deep);
   -webkit-mask-image: var(--logo-src); mask-image: var(--logo-src);
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
   -webkit-mask-size: contain; mask-size: contain;
   -webkit-mask-position: left center; mask-position: left center;
 }
-/* Over the hero the white original is correct — no mask, no colour. */
-.g.has-hero.at-top .g-logo img, .g.has-hero.at-top .g-brand img{
+.g .g-logo img, .g .g-brand img{ opacity: 0; width: 100%; height: 100%; display: block; }
+
+/* Over a dark hero the white original is correct — drop the mask and colour
+   and let the image itself show. */
+.g.has-hero.at-top .g-logo, .g.has-hero.at-top .g-brand{
   background-color: transparent;
   -webkit-mask-image: none; mask-image: none;
 }
-/* Where mask is unsupported, fall back to the untouched white file rather
-   than to a wrong colour. */
-@supports not ((-webkit-mask-image: url()) or (mask-image: url())){
-  .g .g-logo img, .g .g-brand img{ background-color: transparent; }
+.g.has-hero.at-top .g-logo img, .g.has-hero.at-top .g-brand img{ opacity: 1; }
+
+/* Without mask support, show the untouched white file rather than a wrong
+   colour or an invisible one. */
+@supports not ((-webkit-mask-image: url("")) or (mask-image: url(""))){
+  .g .g-logo, .g .g-brand{ background-color: transparent; }
+  .g .g-logo img, .g .g-brand img{ opacity: 1; }
 }
+@media (max-width: 60rem){ .g .g-logo, .g .g-brand{ width: var(--logo-w, 180px); height: 40px; } }
+
 
 /* ==========================================================================
    TESTIMONIALS
@@ -1872,7 +1885,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-size: 34px; line-height: 1; color: var(--blue-deep);
 }
 .g-score span{
-  display: block; font-family: var(--serif); font-size: 12px; font-weight: 600;
+  display: block; font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
   margin-top: var(--s2);
 }
@@ -1939,7 +1952,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-mb-card textarea{ min-height: 6rem; resize: vertical; }
 .g-mb-dt{
-  display: block; font-family: var(--serif); font-size: 12px; font-weight: 600;
+  display: block; font-family: var(--serif); font-size: 13px; font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
 }
 .g-mb-note{
@@ -1954,7 +1967,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   display: flex; justify-content: space-between; gap: var(--s5);
   padding: var(--s4) 0 0; margin-top: var(--s3);
   border-top: 2px solid var(--blue-deep);
-  font-family: var(--display); font-size: 20px; color: var(--blue-deep);
+  font-family: var(--display); font-size: 22px; color: var(--blue-deep);
 }
 .g-mb-list{ list-style: none; margin: 0; padding: 0; }
 .g-mb-row{
@@ -1963,7 +1976,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-mb-rowt{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); flex: 1 1 12rem; }
 .g-mb-acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0; }
-.g .g-btn--sm{ padding: var(--s2) var(--s4); font-size: 14px; min-height: 44px; }
+.g .g-btn--sm{ padding: var(--s2) var(--s4); font-size: 15px; min-height: 44px; }
 @media (max-width: 40rem){
   .g-mb-card input, .g-mb-card select, .g-mb-card textarea{ max-width: 100%; }
   .g .g-mb-acts .g-btn{ width: 100%; }
@@ -1975,7 +1988,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .g-btn--danger{
   display: inline-flex; align-items: center; justify-content: center;
   min-height: 44px; padding: var(--s2) var(--s5);
-  font-family: var(--serif); font-size: 14px; font-weight: 500;
+  font-family: var(--serif); font-size: 15px; font-weight: 500;
   background: transparent; color: #8A2B22;
   border: 1px solid #D9C2BE; cursor: pointer; text-decoration: none;
 }
@@ -2022,7 +2035,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    full section reads as an error page. Tighten the section, cap the measure,
    and let the photograph below carry the weight.
    ========================================================================== */
-.g-short{ padding: clamp(40px, 6vw, 72px) 0 clamp(28px, 4vw, 44px); }
+.g-short{ padding: clamp(40px, 6vw, 72px) 0 clamp(28px, 4vw, 42px); }
 .g-short .g-wrap{ max-width: 40rem; }
 .g-short .g-display{ font-size: clamp(28px, 3.4vw, 42px); }
 .g-short .g-framed{ margin-top: var(--s6); }
@@ -2059,7 +2072,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   border-bottom: 1px solid var(--line);
 }
 .g .statement td{ padding: var(--s3) var(--s4) var(--s3) 0; border-bottom: 1px solid var(--line); }
-.g .num{ text-align: right; font-family: var(--display); font-size: 17px; white-space: nowrap; }
+.g .num{ text-align: right; font-family: var(--display); font-size: 18px; white-space: nowrap; }
 
 .g .section-heading{
   font-family: var(--display); font-weight: 400; font-size: 24px;
@@ -2072,7 +2085,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g .small-link{
   display: inline-flex; align-items: center; min-height: 44px;
-  padding: 0 var(--s2); font-size: 14px; color: var(--ink-soft);
+  padding: 0 var(--s2); font-size: 15px; color: var(--ink-soft);
 }
 
 /* Six classes in use with no rule — found by diffing every class attribute in
@@ -2159,7 +2172,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   margin-bottom: var(--s3);
 }
 .g .account-card-head strong{
-  font-family: var(--display); font-weight: 400; font-size: 20px;
+  font-family: var(--display); font-weight: 400; font-size: 22px;
   letter-spacing: .012em; color: var(--blue-deep);
 }
 .g .account-actions{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s4); }
@@ -2213,7 +2226,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-skip{
   position: absolute; left: var(--s4); top: -100px; z-index: 200;
   background: var(--blue-deep); color: #fff; padding: var(--s3) var(--s5);
-  font-family: var(--ui); font-size: 14px; text-decoration: none;
+  font-family: var(--ui); font-size: 15px; text-decoration: none;
   transition: top .15s;
 }
 .g-skip:focus{ top: var(--s4); }
@@ -2224,11 +2237,11 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   z-index: 90; width: 46px; height: 46px;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--blue-deep); color: #fff; border: 0; cursor: pointer;
-  box-shadow: 0 1px 10px rgba(24,52,86,.22);
+  box-shadow: 0 1px 10px rgba(20,48,95,.22);
 }
 .g-totop[hidden]{ display: none; }
 .g-totop svg{ width: 19px; height: 19px; }
-.g-totop:hover{ background: #0F2440; }
+.g-totop:hover{ background: #0D2851; }
 @media (max-width: 46rem){ .g-totop{ bottom: 78px; } }
 
 /* ==========================================================================
@@ -2244,7 +2257,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-assure__grid li{ display: grid; gap: var(--s2); }
 .g-assure__grid svg{ width: 24px; height: 24px; color: var(--stone); }
 .g-assure__grid b{
-  font-family: var(--display); font-weight: 400; font-size: 19px;
+  font-family: var(--display); font-weight: 400; font-size: 18px;
   letter-spacing: .012em; color: var(--blue-deep);
 }
 .g-assure__grid span{ font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
@@ -2308,11 +2321,11 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   border-bottom: 1px solid var(--blue-deep); padding-bottom: var(--s3);
 }
 .g-compare tbody th{
-  font-family: var(--display); font-weight: 400; font-size: 19px;
+  font-family: var(--display); font-weight: 400; font-size: 18px;
   letter-spacing: .012em; color: var(--blue-deep); white-space: nowrap;
 }
 .g-compare td{ font-size: 15px; color: var(--ink); }
-.g-compare .g-fig{ font-size: 19px; }
+.g-compare .g-fig{ font-size: 18px; }
 .g-compare tbody tr:hover{ background: var(--white); }
 /* Visually hidden, still read aloud. */
 .g-vh{
@@ -2488,7 +2501,7 @@ stroke='%238F8C78' stroke-width='1'>\
 .g-numeral{
   display: inline-flex; align-items: center; justify-content: center;
   width: 40px; height: 40px; border: 1px solid var(--stone); border-radius: 50%;
-  font-family: var(--display); font-weight: 400; font-size: 19px;
+  font-family: var(--display); font-weight: 400; font-size: 18px;
   color: var(--blue-deep); margin-bottom: var(--s3);
 }
 
@@ -2502,8 +2515,8 @@ stroke='%238F8C78' stroke-width='1'>\
   background: var(--stone-pale); border: 1px solid var(--line);
   padding: var(--s4) var(--s5); margin: var(--s5) 0 0;
 }
-.g-searched__dates{ margin: 0; font-size: 17px; color: var(--blue-deep); }
-.g-searched__dates strong{ font-family: var(--display); font-weight: 400; font-size: 20px; }
+.g-searched__dates{ margin: 0; font-size: 18px; color: var(--blue-deep); }
+.g-searched__dates strong{ font-family: var(--display); font-weight: 400; font-size: 22px; }
 .g-searched__count{
   margin: 0; font-family: var(--ui); font-size: 13px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--stone);
@@ -2552,7 +2565,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-gloss__word{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: clamp(30px, 3.6vw, 44px); line-height: 1.05;
+  font-size: clamp(30px, 3.6vw, 42px); line-height: 1.05;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0;
 }
 .g-gloss__say{
@@ -2568,14 +2581,14 @@ stroke='%238F8C78' stroke-width='1'>\
   margin: var(--s4) auto; border: 0;
 }
 .g-gloss__en{
-  display: block; font-size: 17px; line-height: 1.55; color: var(--ink);
+  display: block; font-size: 18px; line-height: 1.55; color: var(--ink);
   margin: 0 auto; max-width: 26rem;
 }
 .g-gloss__en b{ font-weight: 500; color: var(--blue-deep); }
 /* A small mark in each upper corner, as a printed entry would carry. */
 .g-gloss::before, .g-gloss::after{
   content: '·'; position: absolute; top: var(--s3);
-  color: var(--stone); font-size: 20px; line-height: 1;
+  color: var(--stone); font-size: 22px; line-height: 1;
 }
 .g-gloss::before{ left: var(--s5); }
 .g-gloss::after{ right: var(--s5); }
@@ -2731,7 +2744,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-figure b{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: clamp(34px, 4vw, 52px); line-height: 1;
+  font-size: clamp(34px, 4vw, 42px); line-height: 1;
   letter-spacing: .012em; color: var(--blue-deep);
 }
 .g-figure span{
@@ -2758,7 +2771,7 @@ stroke='%238F8C78' stroke-width='1'>\
   font-size: clamp(28px, 3.4vw, 42px); line-height: 1.12;
   letter-spacing: .012em; color: #fff; margin: 0 0 var(--s4);
 }
-.g-close__p{ font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.78); max-width: 38rem; margin: 0 auto var(--s6); }
+.g-close__p{ font-size: 18px; line-height: 1.6; color: rgba(255,255,255,.78); max-width: 38rem; margin: 0 auto var(--s6); }
 .g-close__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); justify-content: center; }
 .g .g-close__acts .g-btn{ border-color: rgba(255,255,255,.5); color: #fff; }
 .g .g-close__acts .g-btn--solid{ background: var(--sand); color: var(--blue-deep); border-color: var(--sand); }
@@ -2936,8 +2949,10 @@ stroke='%238F8C78' stroke-width='1'>\
    header — which sent the breadcrumb under it too, colliding with the logo.
    The trail is only ever above the hero on pages without one; on hero pages
    it sits below, where it belongs. */
+/* main already pads 84px for the fixed header on pages without a hero, so
+   the crumb needs no extra clearance there. On hero pages main pads 0 — the
+   hero runs under the header — so the crumb must clear it itself. */
 .g.has-hero .g-crumbs{ padding-top: calc(86px + var(--s3)); }
-/* Without a hero, main already carries the 84px offset. */
 .g:not(.has-hero) .g-crumbs{ padding-top: var(--s3); }
 
 
@@ -2947,3 +2962,408 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-iron::before{ margin-right: 78px; }
 .g-iron::after{ margin-left: 78px; }
+
+/* ==========================================================================
+   LAYOUT STABILITY
+   126 images across the site had no reserved space, so every one shifted the
+   page as it loaded — text jumping under the reader's eye on a slow
+   connection. Each image class already has a fixed height in CSS; declaring
+   an aspect-ratio as well lets the browser reserve the box before the file
+   arrives, which is what actually stops the shift.
+   ========================================================================== */
+.g .g-card__img, .g .g-wscard__img, .g .g-sit__img{ aspect-ratio: 3 / 2; height: auto; }
+.g .g-band img{ aspect-ratio: 4 / 3; height: auto; }
+.g .g-two__media img{ aspect-ratio: 4 / 3; }
+.g .g-half__img{ aspect-ratio: 3 / 2; height: auto; }
+.g .g-formhero{ aspect-ratio: 21 / 9; object-fit: cover; }
+.g .g-incl-card img{ aspect-ratio: 3 / 2; }
+.g .g-gallery img, .g .g-grid img{ aspect-ratio: 3 / 2; }
+/* A hero fills its section, so its ratio comes from the section not the file. */
+.g .g-hero video, .g .g-hero img{ aspect-ratio: auto; }
+
+/* ==========================================================================
+   GOLD, PROPERLY PRESENT
+   Gold was defined and used on prices and the drawn marks only — about
+   twenty elements on a long page, which is not enough to read as a colour in
+   the scheme. It now carries every rule, every eyebrow, the section heads and
+   the navy panels, which is where a château actually gilds: the line, the
+   capital, the edge. Still never a surface.
+   ========================================================================== */
+
+/* Every eyebrow gets its gilt rule, not just those in a .g-wrap. */
+.g .g-eyebrow{ color: var(--gilt); }
+.g .g-eyebrow::before{
+  content: ''; display: block; width: 26px; height: 1px;
+  background: var(--gilt); margin-bottom: var(--s3);
+}
+.g .g-hero__eyebrow{ color: rgba(214,196,164,.95); }
+.g .g-hero__eyebrow::before{ display: none; }
+
+/* Section headings sit above a gilt hairline rather than a grey one. */
+.g .g-place{ padding-bottom: var(--s4); border-bottom: 1px solid var(--gilt); }
+.g .g-place + .g-p{ margin-top: var(--s5); }
+
+/* Every plain rule on the site. */
+.g hr, .g .g-rule{ border: 0; border-top: 1px solid var(--gilt); opacity: .55; }
+.g .g-facts-list dt{ color: var(--gilt); }
+.g .g-compare thead th{ border-bottom-color: var(--gilt); }
+.g .g-ledger{ border-top-color: var(--gilt); }
+.g .g-ledger__h{ color: var(--gilt); }
+.g .g-searched{ border-color: var(--gilt); }
+
+/* On navy, gold is the only other colour — so it does the separating. */
+.g .g-close__h::after{
+  content: ''; display: block; width: 54px; height: 1px;
+  background: var(--gilt-leaf); margin: var(--s5) auto 0;
+}
+.g .g-footer h4{ color: var(--gilt-leaf); }
+.g .g-pay__marks li{ border-color: rgba(176,141,87,.55); color: rgba(214,196,164,.95); }
+.g .g-panel-quote, .g .g-quote-band__t{ color: rgba(214,196,164,.95); }
+
+/* The solid button takes a gilt edge, so the primary action is gold-framed. */
+.g .g-btn--solid{ border-color: var(--gilt); }
+.g .g-btn--solid:hover{ background: var(--gilt); border-color: var(--gilt); color: #fff; }
+
+/* The motto. It was never a weak line — it was appended to the château's name
+   at 76px and wrapped over two, which is what made it read as filler. On its
+   own line beneath the gilt rule, in italic at a quieter size, it becomes a
+   statement instead of a suffix. */
+.g .g-hero__motto{
+  font-family: var(--display); font-weight: 300; font-style: italic;
+  font-size: clamp(21px, 2.3vw, 30px); line-height: 1.25;
+  letter-spacing: .02em; color: rgba(255,255,255,.95);
+  margin: var(--s5) 0 0; text-shadow: 0 1px 24px rgba(10,22,40,.45);
+}
+/* With the motto present the lede steps back, so the two do not compete. */
+.g .g-hero__motto + .g-hero__lede{
+  font-size: clamp(15px, 1.25vw, 17px);
+  color: rgba(255,255,255,.82);
+  margin-top: var(--s4);
+}
+
+/* Room feature tags. The markup existed but never rendered, because the
+   amenities column is empty on every room. Set as small ruled pills — the
+   facts a guest scans for before reading a word of description. */
+.g .g-tags{
+  list-style: none; margin: var(--s4) 0 var(--s5); padding: 0;
+  display: flex; flex-wrap: wrap; gap: var(--s2);
+}
+.g .g-tags li{
+  font-family: var(--ui); font-size: 13px; line-height: 1;
+  color: var(--blue-deep); background: var(--sand-2);
+  border: 1px solid var(--gilt); border-radius: 999px;
+  padding: 7px var(--s3);
+}
+
+
+/* A device placed in a bare .g-wrap at the end of a page — the closing ridge
+   and hairline — had no section padding to sit inside, so its top margin
+   opened a 300px void above the footer. Give the wrapper its own measured
+   space and take the margin off the device. */
+main > .g-wrap:last-of-type{ padding-block: var(--s6) var(--s7); }
+main > .g-wrap > .g-ridge,
+main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
+
+/* ==========================================================================
+   FAQ
+   The questions a guest asks before booking were scattered through prose or
+   absent — is there a lift, can I bring a dog, how do I get there without a
+   car. Set as ruled entries that open, so the page stays short and the
+   answers are one tap away.
+   ========================================================================== */
+.g-faq{ margin-top: var(--s6); border-top: 1px solid var(--gilt); }
+.g-faq details{ border-bottom: 1px solid var(--line); }
+.g-faq summary{
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s5);
+  padding: var(--s4) 0; min-height: 44px;
+  font-family: var(--display); font-weight: 400; font-size: 18px;
+  letter-spacing: .012em; color: var(--blue-deep);
+}
+.g-faq summary::-webkit-details-marker{ display: none; }
+.g-faq summary::after{
+  content: ''; flex: none; width: 11px; height: 11px;
+  border-right: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
+  transform: rotate(45deg) translateY(-3px); transition: transform .18s ease;
+}
+.g-faq details[open] summary::after{ transform: rotate(225deg) translateY(-3px); }
+.g-faq summary:hover{ color: var(--gilt); }
+.g-faq__a{ padding: 0 0 var(--s5); margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); max-width: 46rem; }
+.g-faq__a a{ color: var(--blue-deep); border-bottom: 1px solid var(--gilt); }
+
+/* Any <summary> is a control a guest taps, not a line of text. The FAQ ones
+   were given height; this catches every other disclosure on the site. */
+.g summary{
+  min-height: 44px; display: flex; align-items: center;
+  cursor: pointer; list-style: none;
+}
+.g summary::-webkit-details-marker{ display: none; }
+
+/* ==========================================================================
+   LINING FIGURES
+   Cormorant Garamond defaults to oldstyle figures, where 1 is barely taller
+   than x-height and 0 is a small oval — so "10" reads as "IO" and "€450" as
+   "€45O". Every number on the site is a fact a guest is deciding on; none of
+   them can be ambiguous. Lining figures everywhere numbers appear.
+   ========================================================================== */
+.g .g-fig, .g .g-figure b, .g .g-score b, .g .g-scores b,
+.g .g-num, .g .g-card__rate, .g .g-room__rate, .g .g-homeroom__rate,
+.g .g-wscard__price, .g .g-sit__rate, .g .g-compare td, .g .g-compare th,
+.g .g-hero__eyebrow, .g .g-facts-list dd, .g .g-tags li,
+.g .g-mb-dd, .g .g-timeline b, .g .g-gloss__say,
+.g table, .g time, .g .g-sit__when, .g .g-wscard__name{
+  font-variant-numeric: lining-nums tabular-nums;
+  -webkit-font-feature-settings: "lnum" 1, "tnum" 1;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
+/* Prose keeps oldstyle — a date inside a sentence should sit in the line,
+   not stand out of it. Only figures being compared need lining. */
+
+/* ==========================================================================
+   MOBILE HERO
+   The hero began at -9px — above the viewport, running under the fixed
+   header — so the title collided with the logo, the Book button and the menu
+   toggle. It needs to clear the header on a short screen rather than centre
+   itself in a box taller than the space available.
+   ========================================================================== */
+@media (max-width: 46rem){
+  .g .g-hero{ min-height: 100svh; }
+  .g .g-hero__in{
+    padding-top: calc(86px + var(--s6));
+    padding-bottom: var(--s6);
+    justify-content: flex-start;
+  }
+  .g .g-hero__title{ font-size: clamp(30px, 8.5vw, 40px); }
+  .g .g-hero__motto{ font-size: clamp(18px, 5vw, 22px); }
+  .g .g-hero__lede{ font-size: 15px; }
+  .g .g-herosearch{ margin-top: var(--s5); }
+}
+
+/* ==========================================================================
+   EXTRAS
+   These were one-line stubs — "Yoga: on-site sessions" told a guest nothing
+   they could decide on. Now full entries with a photograph, so they read as
+   things worth doing rather than a list of upsells.
+   ========================================================================== */
+.g-extras{ display: grid; gap: var(--s6); }
+@media (min-width: 52rem){ .g-extras{ grid-template-columns: 1fr 1fr; gap: var(--s7) var(--s6); } }
+.g-extra{
+  background: var(--white); border: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  transition: border-color .18s ease;
+}
+.g-extra:hover{ border-color: var(--gilt); }
+.g-extra img{ width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.g-extra__b{ padding: var(--s5); display: flex; flex-direction: column; flex: 1; }
+.g-extra__k{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--gilt); margin: 0 0 var(--s2);
+}
+.g-extra__t{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(21px, 2vw, 26px); line-height: 1.15;
+  letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
+}
+.g-extra__d{ font-size: 16px; line-height: 1.6; color: var(--ink); margin: 0 0 var(--s4); }
+.g-extra__p{
+  margin: auto 0 0; padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+  font-family: var(--ui); font-size: 15px; color: var(--ink-soft);
+}
+
+
+/* ==========================================================================
+   SECTION RHYTHM
+   Every section padded 84px top and bottom, so two adjacent ones left 168px
+   between them — a fifth of a screen of empty space, which is what makes the
+   long pages feel loose. Where the ground does not change, the pair share the
+   space instead of stacking it.
+   ========================================================================== */
+/* A plain section on the page ground gives up half its bottom padding; the
+   next section's top padding supplies the space. Sections that change ground
+   — sand, wallpaper, navy — keep the full measure both sides, because there
+   the padding is what separates the colours. */
+.g-sec:not(.g-sec--sand):not(.g-paper):not(.g-close):not(.g-sec--flush){
+  padding-bottom: clamp(24px, 3vw, 40px);
+}
+/* The last section before the footer needs its space back. */
+main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
+/* A change of ground is a deliberate break, so it keeps the full measure. */
+.g-sec + .g-sec--sand,
+.g-sec--sand + .g-sec,
+.g-sec + .g-paper,
+.g-paper + .g-sec,
+.g-sec + .g-close,
+.g-band + .g-sec{ padding-top: clamp(48px, 6vw, 84px); }
+/* And a section that follows a full-bleed image needs its own space back. */
+.g-band + .g-sec, .g-formhero + .g-sec{ padding-top: clamp(48px, 6vw, 84px); }
+
+/* ==========================================================================
+   THE TYPE SCALE
+   Fifteen distinct sizes were in use on one page, with four near-identical
+   card titles (22 / 23 / 24 / 26) and two heading sizes (42 / 44) doing the
+   same job. Sizes that differ by a point or two do not read as a hierarchy —
+   they read as an accident. Collapsed to seven steps.
+
+     13   labels, eyebrows, hints, table heads
+     15   buttons, links, secondary detail
+     16   card and list body
+     18   prose
+     24   card titles  ← was 22 / 23 / 24 / 26
+     42   section headings  ← was 42 / 44
+     88   the page title
+   ========================================================================== */
+.g .g-incl-card__t,
+.g .g-say__q,
+.g .g-card__name,
+.g .g-extra__t,
+.g .g-wscard__name,
+.g .g-sit__when,
+.g .g-homeroom__name{ font-size: clamp(20px, 1.9vw, 24px); line-height: 1.18; }
+
+.g .g-h2, .g .g-place, .g .g-close__h{
+  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.1;
+}
+/* Summary sat alone at 19px between the 18 of prose and the 20 of a card
+   title, which is a step nobody can perceive. */
+.g .g-faq summary{ font-size: 18px; }
+/* And the close paragraph at 17 was one point off the 18 of every other
+   paragraph on the site. */
+.g .g-close__p{ font-size: 18px; }
+
+/* The last strays. The hero keeps its own scale — a title page is allowed to
+   be different — but these were components inventing sizes one or two points
+   from an existing step, which reads as drift rather than hierarchy. */
+.g .g-chip, .g .g-wscard__dates{ font-size: 15px; }   /* was 14 */
+.g .g-quote-band__t{ font-size: clamp(24px, 2.6vw, 34px); }
+.g .g-gloss__word{ font-size: clamp(30px, 3.4vw, 42px); }  /* was 44 */
+
+/* The genuine last three. Each was a component setting 14 or 17px where 15
+   and 18 already existed for the same job. */
+.g .g-sit__meta{ font-size: 15px; }
+.g .g-wscard__price span, .g .g-sit__rate span, .g .g-card__rate span,
+.g .g-room__rate span, .g .g-homeroom__rate span{ font-size: 15px; }
+.g .g-hero__lede b, .g .g-p b{ font-size: inherit; }
+
+/* ==========================================================================
+   MEASURE
+   Body text ran to 92 characters a line on a desktop screen. Comfortable
+   reading is 45–75; past about 80 the eye loses its place coming back to the
+   left margin, which is why long-form pages felt like work. 66ch sits in the
+   middle and scales with the type rather than being a pixel guess.
+   ========================================================================== */
+/* 52ch in Garamond measures about 68 real characters — `ch` is the width of
+   a zero, which is narrower than the average letter, so the unit understates
+   the true line length by roughly a third. */
+.g .g-p, .g .g-faq__a, .g .g-extra__d, .g .g-card__desc,
+.g .g-close__p, .g .g-ledger li, .g .g-facts-list dd{ max-width: 52ch; }
+/* Centred text centres its measure too. */
+.g .g-hero__lede, .g .g-close__p, .g [style*="text-align:center"] .g-p{ margin-inline: auto; }
+/* In a two-column layout the column is already the measure. */
+/* A grid column is not a measure — at 1440 each column is 600px, which is
+   still 87 characters. Cap it, but let it fill a narrow column. */
+.g .g-two .g-p, .g .g-half__text .g-p{ max-width: min(100%, 52ch); }
+
+/* The hint and note classes had no measure at all, so a footnote about the
+   Monuments Historiques reference ran 180 characters across a desktop screen
+   — longer than any body paragraph on the page. */
+.g .g-hint, .g .g-ledger__note, .g .g-book-bar__note,
+.g .g-foot-note, .g .g-searched__count{ max-width: 58ch; }
+
+/* .g-field and .g-room__note had no measure at all — a form hint ran 100
+   characters across a desktop screen. */
+.g .g-field, .g .g-room__note, .g .g-lede{ max-width: 56ch; }
+.g .g-field input, .g .g-field select, .g .g-field textarea{ max-width: 100%; }
+
+/* The essence block is centred, so its measure is centred too. */
+.g .g-wrap--narrow .g-p{ margin-inline: auto; }
+
+/* A figure with its caption. Used where a photograph is making an argument
+   rather than decorating — the caption is the point, not an afterthought. */
+.g-fig-block{ margin: 0; }
+.g-fig-block img{
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+  display: block; border: 1px solid var(--line);
+}
+.g-fig-block figcaption{
+  margin-top: var(--s3); padding-top: var(--s3);
+  border-top: 1px solid var(--gilt);
+  font-size: 15px; line-height: 1.55; color: var(--ink-soft);
+  max-width: 46ch;
+}
+
+/* ==========================================================================
+   PULL QUOTE
+   The one device that breaks a long column and carries meaning at the same
+   time. Set large, in the display face, with a gilt rule above — the way a
+   printed book marks a passage worth stopping at.
+   ========================================================================== */
+.g-pull{
+  margin: var(--s7) 0; padding-top: var(--s5);
+  border-top: 1px solid var(--gilt);
+  max-width: 34ch;
+}
+.g-pull p{
+  font-family: var(--display); font-weight: 300; font-style: italic;
+  font-size: clamp(24px, 3vw, 34px); line-height: 1.2;
+  letter-spacing: .012em; color: var(--blue-deep); margin: 0;
+}
+.g-pull cite{
+  display: block; margin-top: var(--s4);
+  font-family: var(--ui); font-style: normal; font-size: 15px;
+  line-height: 1.5; color: var(--ink-soft);
+}
+@media (min-width: 60rem){
+  /* Set into the margin so the column reads around it, as a book would. */
+  .g-pull{ float: right; width: 30%; margin: var(--s5) 0 var(--s6) var(--s7); }
+}
+
+/* ==========================================================================
+   MORE GOLD
+   Present but unevenly — 11% of elements on the homepage against 26% on the
+   estate page. Gold should read as the house metal on every page, not as
+   something that happens where a section was written recently. These are the
+   remaining places a gilder would actually work: the frame, the initial, the
+   marker, the edge of a plate.
+   ========================================================================== */
+
+/* Card and figure frames take a gilt hairline at the top — the way a mounted
+   plate is ruled above the image. */
+.g .g-card, .g .g-wscard, .g .g-sit, .g .g-extra, .g .g-incl-card{
+  border-top: 2px solid var(--gilt);
+}
+.g .g-band img, .g .g-two__media img, .g .g-fig-block img{ border-color: var(--gilt); }
+
+/* The drop capital and versal, which were only on two pages. */
+.g .g-lede-first::first-letter{
+  float: left; font-family: var(--display); font-weight: 300;
+  font-size: 3.4em; line-height: .82; margin: .06em .1em 0 0;
+  color: var(--gilt);
+}
+
+/* Numerals in the step sequence, and any ordered list a guest follows. */
+.g main ol > li::marker{ color: var(--gilt); font-weight: 600; }
+.g .g-num{ background: transparent; }
+
+/* The breadcrumb separator and the current page marker. */
+.g .g-crumbs li + li::before{ color: var(--gilt); }
+
+/* Field labels on the booking forms — the one place a guest is working. */
+.g .g-field label, .g .g-mb-dt{ color: var(--gilt); }
+
+/* Table rules, so a comparison reads as a printed table rather than a grid. */
+.g .g-compare th, .g .g-compare td{ border-bottom-color: rgba(140,106,56,.28); }
+.g .g-compare tbody tr:first-child td{ border-top-color: var(--gilt); }
+
+/* The quote mark on a testimonial, and the attribution rule. */
+.g .g-say__q::before, .g .g-quote::before{ color: var(--gilt-leaf); }
+.g .g-say__by, .g .g-testament__by{ color: var(--gilt); }
+
+/* On navy: the search field edges and the reassurance row dividers. */
+.g .g-herosearch{ border-color: rgba(176,141,87,.55); }
+.g .g-herosearch__f + .g-herosearch__f{ border-left-color: rgba(140,106,56,.3); }
+.g .g-assure__grid li + li{ border-left-color: rgba(176,141,87,.3); }
+
+/* The footer heads and the top rule above it. */
+.g .g-footer{ border-top: 2px solid var(--gilt); }

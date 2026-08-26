@@ -25,13 +25,13 @@
   </div>
 
   {% if inquiry['status'] == 'quoted' %}
-  <p class="g-hint" style="margin-top:12px;">We've sent through a quote — get in touch to confirm, or reply to the email if you have questions.</p>
+  <p class="g-hint" style="margin-top:var(--s3);">We have sent through a quote — get in touch to confirm, or reply to the email if you have questions.</p>
   {% elif inquiry['status'] == 'new' %}
-  <p class="g-hint" style="margin-top:12px;">We've received your inquiry and will be in touch shortly.</p>
+  <p class="g-hint" style="margin-top:var(--s3);">We have received your inquiry and will be in touch shortly.</p>
   {% endif %}
 
   {% if inquiry['status'] not in ('declined', 'cancelled') %}
-  <form method="post" onsubmit="return confirm('Cancel this inquiry? This cannot be undone.');" style="margin-top:16px;">
+  <form method="post" onsubmit="return confirm('Cancel this inquiry? This cannot be undone.');" style="margin-top:var(--s4);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="cancel">
     <button type="submit" class="btn-text-danger">Cancel this inquiry</button>
@@ -47,6 +47,27 @@
 <div class="g-wrap"><svg class="g-ridge" viewBox="0 0 480 34" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 32 L58 18 L96 24 L150 6 L196 20 L236 11 L286 25 L330 14 L378 27 L424 19 L480 30"/>
   <path d="M0 33.5h480" opacity=".5"/>
-</svg></div>
+</svg>
+  {% if inquiry['status'] in ('pending', 'new', 'open') %}
+  <div class="g-mb-card" style="margin-top:var(--s4)">
+    <p class="g-mb-dt">Update your enquiry</p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="update">
+      <p class="g-field">
+        <label for="ev_guest_count">Roughly how many guests</label>
+        <input type="number" inputmode="numeric" id="ev_guest_count" name="guest_count"
+               min="1" max="300" value="{{ inquiry['guest_count'] or '' }}">
+      </p>
+      <p class="g-field">
+        <label for="ev_message">Anything to add</label>
+        <textarea id="ev_message" name="message" rows="5">{{ inquiry['message'] or '' }}</textarea>
+      </p>
+      <p class="g-hint">Plans move. Change this as often as you need while we are talking.</p>
+      <button type="submit" class="g-btn g-btn--solid">Save these changes</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
 
 {% endblock %}

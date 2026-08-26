@@ -7,7 +7,7 @@
   <div class="statement-head">
     <div>
       <h1 style="margin:0;">Statement</h1>
-      <p class="g-hint" style="margin:4px 0 0;">
+      <p class="g-hint" style="margin:var(--s1) 0 0;">
         {{ booking['reference_code'] }} · {{ booking['guest_name'] }}
       </p>
     </div>
@@ -29,7 +29,7 @@
   </p>
 
   <div class="table-wrap">
-<table class="data-table" style="margin-top:14px;">
+    <table class="data-table" style="margin-top:var(--s3);">
     <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
     <tbody>
       <tr>
@@ -43,13 +43,13 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
-</div>
+    </table>
+  </div>
 
   {% if s.vat %}
-  <p class="g-mb-label" style="margin-top:18px;">VAT included in the above</p>
+  <p class="g-mb-label" style="margin-top:var(--s4);">VAT included in the above</p>
   <div class="table-wrap">
-<table class="data-table">
+    <table class="data-table">
     <thead><tr><th>Rate</th><th class="num">Net</th><th class="num">VAT</th><th class="num">Gross</th></tr></thead>
     <tbody>
       {% for v in s.vat %}
@@ -61,15 +61,15 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
-</div>
+    </table>
+  </div>
   {% endif %}
 
   {% if s.city_tax %}
   {# Shown on its own, outside the VAT table, because it is collected for the
      commune rather than earned — and French rules require it stated separately. #}
   <div class="table-wrap">
-<table class="data-table" style="margin-top:18px;">
+    <table class="data-table" style="margin-top:var(--s4);">
     <tbody>
       <tr>
         <td>
@@ -84,12 +84,12 @@
         <td class="num">€{{ '%.2f'|format(s.city_tax) }}</td>
       </tr>
     </tbody>
-  </table>
-</div>
+    </table>
+  </div>
   {% endif %}
 
   <div class="table-wrap">
-<table class="data-table" style="margin-top:18px;">
+    <table class="data-table" style="margin-top:var(--s4);">
     <tbody>
       <tr>
         <td><strong>Total</strong></td>
@@ -103,10 +103,10 @@
       </tr>
       {% endif %}
     </tbody>
-  </table>
-</div>
+    </table>
+  </div>
 
-  <p class="g-hint" style="margin-top:20px;">
+  <p class="g-hint" style="margin-top:var(--s4);">
     Please keep this for your records. Any question about it, contact the château with your
     reference {{ booking['reference_code'] }}.
   </p>

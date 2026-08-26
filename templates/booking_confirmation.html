@@ -1,5 +1,5 @@
 {% extends "public_base.html" %}
-{% block title %}{{ t('Booking request received') }}{% endblock %}
+{% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
@@ -8,13 +8,15 @@
    ISO dates, on the one page a guest sees straight after committing money. #}
 
 <section class="g-sec"><div class="g-wrap g-wrap--narrow">
-  <p class="g-eyebrow">{{ t('Booking request received') }}</p>
-  <h1 class="g-display" style="font-size:clamp(32px,4.6vw,56px)">
+  <p class="g-eyebrow">{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}</p>
+  <h1 class="g-display" >
     {{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}
   </h1>
   <p class="g-p g-lede-first">
-    Your request for <strong>{{ booking['room_name'] }}</strong> has been received.
-    We will confirm by email.
+    {% if booking['payment_status'] == 'paid' %}Your stay in <strong>{{ booking['room_name'] }}</strong> is booked
+    and paid in full. There is nothing further to do — we will write again a few days before
+    you travel, with directions and arrival times.{% else %}Your request for <strong>{{ booking['room_name'] }}</strong> has been received.
+    We confirm every booking by hand, usually the same day.{% endif %}
   </p>
 
   <div class="g-conf g-plate-edge">
@@ -49,7 +51,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M12 3v18M3 12h18M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="12" cy="12" r="3.2"/></svg>
   </div>
 
-  <p class="g-hint">{{ t("Save this link, or write down your reference code and the email you booked with — that's how you check in and manage this booking later.") }}</p>
+  <p class="g-hint">{{ t("Save this link, or write down your reference code and the email you booked with — that is how you check in and manage this booking later.") }}</p>
   <p class="g-sharelink">{{ url_for('guest_checkin', manage_token=booking['manage_token'], _external=True) }}</p>
 </div></section>
 

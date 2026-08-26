@@ -1,6 +1,9 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
 {% block title %}{{ workshop['title'] }}{% endblock %}
+{% block description %}An atelier at Château de Gudanes — days spent working alongside the conservators, the chef and the dealers of the Ariège.{% endblock %}
+{% block og_desc %}An atelier at Château de Gudanes — days spent working alongside the conservators, the chef and the dealers of the Ariège.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 
@@ -126,7 +129,7 @@
   <div class="g-split">
     <div>
       <p class="g-p">Only a small number of guests join each workshop, so the days stay unhurried. There is time to slow down, to settle in, and to let the château set the pace rather than a schedule.</p>
-      <p class="g-p">Whilst there is an itinerary, there is no expectation to follow it. Join an experience, gather at the table with the others, or spend an afternoon beside the pool. The rhythm of your days is entirely your own.</p>
+      <p class="g-p">Whilst there is an itinerary, there is no expectation to follow it. Join a session, sit down at the table with the others, or spend an afternoon beside the pool. The rhythm of your days is entirely your own.</p>
     </div>
     <div>
       <p class="g-p">Wander through centuries of history, walk beneath ancient trees, or lose yourself in the gardens and salons that have become the heart of the château.</p>
@@ -156,13 +159,13 @@
   <div>
     <p class="g-eyebrow">Bathing</p>
     <h2 class="g-h2">Les Salles de Bains</h2>
-    <p class="g-p">Beautifully appointed with elegant fittings, floral wallpapers, soft towels and timeless details — a welcoming place to refresh and unwind.</p>
+    <p class="g-p">Beautifully appointed with brass fittings, the original floral papers, thick towels and hot water that arrives quickly — somewhere to wash the day off before dinner.</p>
     <p class="g-p">As a protected eighteenth-century monument, the château has been restored under historic preservation guidelines. To honour its original architecture, ensuite bathrooms are not permitted; the bathrooms sit together on the ground floor, each privately allocated, with a dressing room adjoining.</p>
   </div>
 </div></section>
 
 <!-- ============ TERMS + CTA ============ -->
-<section class="g-sec" style="background:var(--blue-deep);color:#fff"><div class="g-wrap g-wrap--narrow">
+<section class="g-sec" style="background:var(--blue-deep);color:var(--sand)"><div class="g-wrap g-wrap--narrow">
   <p class="g-eyebrow" style="color:rgba(255,255,255,.7)">Reserving</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
@@ -170,19 +173,19 @@
   <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
   <circle cx="60" cy="13" r="1.4"/>
 </svg>
-  <h2 class="g-h2" style="color:#fff">How it works</h2>
+  <h2 class="g-h2" style="color:var(--sand)">How it works</h2>
   {% if workshop['price_per_person'] %}
   <p class="g-p" style="color:rgba(255,255,255,.88)">A {{ workshop['deposit_percent'] }}% deposit reserves your place; the balance is due thirty days before the stay, or in full if you are booking within thirty days of it. Travel insurance is required.</p>
   {% endif %}
   <p class="g-p" style="color:rgba(255,255,255,.88)">Registration is a request, not an instant confirmation. We will confirm your place by email. You will receive a reference code and a link to manage your registration and payment.</p>
   {% if session_rows %}
-  <p style="margin-top:var(--s6)"><a href="#top" class="g-btn" style="background:#fff;color:var(--blue-deep);border-color:#fff">See the dates</a></p>
+  <p style="margin-top:var(--s6)"><a href="#top" class="g-btn g-btn--solid">See the dates</a></p>
   {% endif %}
 </div></section>
 
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
+  <p class="g-p" style="text-align:center;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
@@ -192,6 +195,26 @@
   </p>
 </div></section>
 
+
+
+<!-- ============ THE FACTS ============ -->
+{# The page where someone commits several thousand euro, with no scannable
+   summary. Everything here is driven from the atelier row so it can never
+   disagree with the booking. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">In Short</p>
+  <h2 class="g-place">{{ workshop['title'] }}, at a Glance</h2>
+  <dl class="g-facts-list">
+    {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
+    {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '%.0f'|format(workshop['price_per_person']) }} per person, all meals and wine included</dd></div>{% endif %}
+    <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no others while it runs</dd></div>
+    <div><dt>Where you sleep</dt><dd>In the château itself — bedrooms, not a nearby hotel</dd></div>
+    <div><dt>Meals</dt><dd>Every one, cooked in the château kitchen. Wine with dinner</dd></div>
+    <div><dt>Transfers</dt><dd>Toulouse or the train at Foix — we arrange the car</dd></div>
+    <div><dt>To hold a place</dt><dd>A deposit. The balance is taken closer to the date</dd></div>
+    <div><dt>Not included</dt><dd>Flights, insurance, and anything you buy at the brocantes</dd></div>
+  </dl>
+</div></section>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">

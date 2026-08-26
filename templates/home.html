@@ -1,5 +1,8 @@
 {% extends "public_base.html" %}
 {% block title %}Home{% endblock %}
+{% block description %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, a table, and ateliers led by the artisans doing the work.{% endblock %}
+{% block og_desc %}An eighteenth-century Class I Historic Monument in the Ariège, still under restoration and open to guests. Rooms, a table, and ateliers led by the artisans doing the work.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_emblems.html' import emblem %}
@@ -14,7 +17,8 @@
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Ariège · Pyrénées · Since 1741</p>
     <h1 class="g-hero__title">Château de Gudanes</h1>
-    <p class="g-hero__lede">A Class I Historic Monument, still being brought back — and open to guests while the work continues.</p>
+    <p class="g-hero__motto">Where History Becomes Home</p>
+    <p class="g-hero__lede">A restoration followed the world over, and an invitation extended quietly.</p>
   
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
       <div class="g-herosearch__f">
@@ -55,7 +59,7 @@
 <p class="g-p">She was designed in 1741 by Ange-Jacques Gabriel, principal architect to King Louis XV and the hand behind Marie Antoinette's own Petit Trianon at Versailles. That royal lineage endures today: Gudanes holds the same Class I Historic Monument classification as the Palace of Versailles and the Eiffel Tower.</p>
 <p class="g-p">Abandoned in 1850 and very nearly lost, she has been returned to life since 2013 — room by room, and always by hand. Five hundred tonnes of fallen stone were cleared before the work could begin. Overpaint is lifted patiently to reveal frescoes hidden for generations, and every intervention is approved by France's Monuments Historiques before a tool is lifted. The restoration has been followed by hundreds of thousands, photographed for Vogue, and honoured with the Medal of Honour of the Fondation Prince Louis de Polignac.</p>
 <p class="g-p">Much of her remains as the centuries left her: bare plaster, weathered stone, the quiet marks of two hundred and eighty years. She is protected, and so she is preserved rather than perfected. Within those walls, however, everything within them has been made anew — the floors, the bathrooms, the beds and the linen, and the food that arrives at her table.</p>
-<p class="g-p"><em>We warmly invite you to step beyond the gates, immerse yourself in centuries of history, and discover a place where beauty, craftsmanship and the art of gracious living continue to flourish.</em></p>
+<p class="g-p"><em>Come through the gates and the drive runs a quarter of a mile under the limes before the façade shows itself. Inside, the work is still going on around you — and so is dinner, and the fire, and the morning.</em></p>
 </div></section>
 
 
@@ -101,6 +105,15 @@
           {% set rate = r.get('rate') or r['price_per_night'] %}
           {% if rate %}<span class="g-fig">from €{{ '%.0f'|format(rate) }}</span> a night{% endif %}
         </p>
+        {# The homepage showed no facts and no price band — a guest could not
+           tell whether this was in their range without clicking through. #}
+        <ul class="g-tags g-tags--sm">
+          {%- set nm = (r['name'] or '')|lower -%}
+          <li>Sleeps {{ r['max_occupancy'] or 2 }}</li>
+          <li>{% if 'shared' in nm %}Shared bathroom{% else %}Private bathroom{% endif %}</li>
+          {% if 'mountain' in nm %}<li>Mountain view</li>{% endif %}
+          <li>Breakfast included</li>
+        </ul>
         <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>
       </div>
     </article>
@@ -157,7 +170,7 @@
     <h2 class="g-place">Stay the Night</h2>
     <p class="g-p"><em>Seven bedrooms, opened one at a time as the restoration reaches them.</em></p>
     <p class="g-p">The walls stay exactly as the centuries left them — protected by law, and not ours to change. Everything within them is new: the beds, the linen, the floors underfoot, the bathrooms. Breakfast is included, and the mountains are at the window.</p>
-    <p style="margin-top:32px"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
+    <p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--line">See the rooms</a></p>
   </div>
 </div></section>
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
@@ -166,7 +179,7 @@
     <h2 class="g-place">Château Workshops</h2>
     <p class="g-p"><em>Three to seven nights, a small group, and the château given over to it entirely.</em></p>
     <p class="g-p">Cook in the château kitchens, hunt the brocantes of the Ariège, or work on the eighteenth-century frescoes alongside the restoration team. Full board, château beverages and every excursion included — and staying helps fund the work itself.</p>
-    <p style="margin-top:32px"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
+    <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
   </div>
 </div></section>
 <section class="g-sec--flush"><div class="g-half">
@@ -175,7 +188,7 @@
     <h2 class="g-place">Dine at La Table</h2>
     <p class="g-p"><em>A table laid by candlelight, in a dining room brought back from ruin — and cooking that answers to the valley rather than a menu.</em></p>
     <p class="g-p">The dining room took years to recover; the cooking in it is worth the wait. Mountain cheeses, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them — bought that morning at the village market, from producers the chef has used for twenty years, and in summer cut from the gardens below the terrace.</p>
-    <p style="margin-top:32px"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
+    <p style="margin-top:var(--s6)"><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--line">Reserve a table</a></p>
   </div>
 </div></section>
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
@@ -184,7 +197,7 @@
     <h2 class="g-place">Weddings &amp; Celebrations</h2>
     <p class="g-p"><em>The whole house, for a day that belongs only to you.</em></p>
     <p class="g-p">Weddings, birthdays and gatherings of every kind. Ninety-four rooms in every state between ruin and restoration, parkland running up toward the mountain, and rooms that photograph better half-finished than most do finished.</p>
-    <p style="margin-top:32px"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Enquire about your day</a></p>
+    <p style="margin-top:var(--s6)"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Enquire about your day</a></p>
   </div>
 </div></section>
 <section class="g-sec--flush"><div class="g-half">
@@ -193,7 +206,7 @@
     <h2 class="g-place">Photography &amp; Film</h2>
     <p class="g-p"><em>Ninety-four rooms in every state between ruin and restoration.</em></p>
     <p class="g-p">Ninety-four rooms between ruin and restoration, an eighteenth-century façade by the architect of the Petit Trianon, and six acres of grounds beneath the Pyrénées. Photographed for Vogue.</p>
-    <p style="margin-top:32px"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Enquire about a shoot</a></p>
+    <p style="margin-top:var(--s6)"><a href="{{ url_for('events_info') }}" class="g-btn g-btn--line">Enquire about a shoot</a></p>
   </div>
 </div></section>
 
@@ -218,19 +231,19 @@
 <li><b>2013</b><span>Restoration begins. It has no end date.</span></li></ul>
 
 <section class="g-sec"><div class="g-wrap">
-<h2 class="g-display" style="font-size:clamp(28px,4.4vw,48px); font-style:italic; margin-bottom:34px"><em>Every château has a history. Every guest adds a chapter.</em></h2>
-<p class="g-p">Unlike a museum frozen in time, Château de Gudanes is a living estate — one where restoration continues, gardens flourish, guests gather and new memories are woven into centuries of history.</p>
-<p class="g-p">She offers the rare opportunity to live within a private French château while witnessing her remarkable restoration unfold. Once fallen into ruin, she is being brought back to life through patience, perseverance and a profound respect for the craftsmanship, traditions and heritage of France.</p>
-<p class="g-p">She is a reminder that beauty can take patience, that craftsmanship deserves time, and that preserving the past requires both perseverance and passion.</p>
-<p class="g-p"><em>To stay at Gudanes is to experience this living history intimately — and, for a little while, to call the château your home.</em></p>
+<h2 class="g-display" style="font-style:italic; margin-bottom:var(--s6)"><em>Most châteaux this size are museums, or closed.</em></h2>
+<p class="g-p">Gudanes is neither. Scaffolding stands in rooms that are not ready and dinner is served in one that is. The gardeners are in the beds by seven, the conservators are on the frescoes by eight, and you are having breakfast between the two.</p>
+<p class="g-p">Very few people have slept in a building like this while it was still being repaired. She was bought derelict in 2013, with five hundred tonnes of fallen stone to clear before anything could begin.</p>
+<p class="g-p">Fifteen years on, the conservators still measure a good morning in centimetres of fresco.</p>
+<p class="g-p"><em>Staying here pays for the next room. That is not a figure of speech — it is the arrangement.</em></p>
 </div></section>
 
 <section class="g-sec--flush"><div class="g-half g-half--flip">
 <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="" loading="lazy">
 <div class="g-half__text">
-<h2 class="g-display" style="font-size:clamp(26px,3.6vw,42px); font-style:italic; margin-bottom:26px"><em>Preserving the past. Welcoming the future.</em></h2>
+<h2 class="g-display" style="font-style:italic; margin-bottom:var(--s5)"><em>Preserving the past. Welcoming the future.</em></h2>
 <p class="g-p">A restoration, not a renovation — the longer course, and the only one worth taking with a house of this consequence. Fifteen years in, and she is not yet finished. We should be glad to welcome you while the work is still unfolding.</p>
-<p style="margin-top:32px"><a href="{{ url_for('book_rooms') }}" class="g-btn">Réserver</a></p>
+<p style="margin-top:var(--s6)"><a href="{{ url_for('book_rooms') }}" class="g-btn">Réserver</a></p>
 </div></div></section>
 
 

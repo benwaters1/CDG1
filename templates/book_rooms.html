@@ -1,6 +1,9 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Stay', None)] %}
 {% block title %}Stay{% endblock %}
+{% block description %}Seven bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block og_desc %}Seven bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_emblems.html' import emblem %}
@@ -20,7 +23,7 @@
 <section class="g-sec"><div class="g-wrap">
   <div class="g-two">
     <div>
-      <p class="g-p g-lede-first">Seven bedrooms inside a world-renowned restoration — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
+      <p class="g-p g-lede-first">Seven bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
       <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new and was chosen carefully — the beds, the linen, the floors underfoot, the bathrooms.</p>
       <p class="g-p">Both things are true at once. It is a stay with real limitations: no lift, original staircases, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
       <blockquote class="g-quote">Every night booked pays for the next room. That is not a donation — it is how the work continues.</blockquote>
@@ -100,9 +103,27 @@
         <p class="g-card__rate"><b>From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
         {% endif %}
         {% if room['description'] %}<p class="g-card__desc">{{ room['description'] }}</p>{% endif %}
-        {% if room['amenities'] %}
-        <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
-        {% endif %}
+        {# amenities is empty on every room, so this list never rendered.
+           Derive the features from facts the row does carry; a filled-in
+           amenities field overrides it the moment there is one. #}
+        <ul class="g-tags">
+          {% if room['amenities'] %}
+            {% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}
+          {% else %}
+            {%- set nm = (room['name'] or '')|lower -%}
+            <li>Sleeps {{ room['max_occupancy'] or 2 }}</li>
+            {% if 'suite' in nm and 'family' in nm %}<li>140 m²</li><li>Two bedrooms</li>{% endif %}
+            {% if 'king' in nm %}<li>King bed</li>
+            {% elif 'twin' in nm %}<li>Twin or double</li>
+            {% elif 'family' in nm %}<li>Queen &amp; doubles</li>
+            {% elif 'suite' in nm %}<li>Emperor bed</li>
+            {% else %}<li>Double bed</li>{% endif %}
+            <li>{% if 'shared' in nm %}Shared bathroom{% else %}Private bathroom{% endif %}</li>
+            {% if 'mountain' in nm %}<li>Mountain view</li>{% endif %}
+            <li>Breakfast included</li>
+            {% if (room['min_nights'] or 1) > 1 %}<li>{{ room['min_nights'] }}-night minimum</li>{% endif %}
+          {% endif %}
+        </ul>
         {% if searched %}
           {% if availability.get(room['id']) %}
             <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book in</a>
@@ -119,7 +140,7 @@
   {% endif %}
 
   {% if nothing_available %}
-  <div class="g-panel" style="max-width:40rem;margin-top:var(--s7)">
+  <div class="g-panel" style="margin-top:var(--s7)">
     <h3 class="g-h3">Nothing free for those dates</h3>
     <p class="g-p">Leave your details and we shall write to you should a cancellation open between {{ arrival }} and {{ departure }}.</p>
     <form method="post" action="{{ url_for('join_waitlist') }}" style="margin-top:var(--s5)">
@@ -222,8 +243,79 @@
 <section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
   <h2 class="g-place">Experiences &amp; Extras</h2>
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
-  <div class="g-incs g-incs--3" style="margin-top:var(--s6)"><div class='g-inc'><h3>Skiing (Winter)</h3><p>Ski transport and lift passes arranged for you.</p></div><div class='g-inc'><h3>Airport Transfer</h3><p>Private vehicle, up to three people, Toulouse Airport — €350.</p></div><div class='g-inc'><h3>Yoga</h3><p>On-site sessions set against the château and mountains.</p></div><div class='g-inc'><h3>Guided Walks</h3><p>Explore the surrounding valleys and trails with a guide.</p></div><div class='g-inc'><h3>Market Tours</h3><p>Visit the region's local markets and producers.</p></div><div class='g-inc'><h3>Antique &amp; Brocante Tours</h3><p>Discover the area's antique fairs and brocante finds.</p></div><div class='g-inc'><h3>Electric Bikes</h3><p>Explore further afield with an assisted ride.</p></div><div class='g-inc'><h3>Mountain Bikes</h3><p>Take on the surrounding trails at your own pace.</p></div><div class='g-inc'><h3>Kayaking</h3><p>Paddle the nearby waters, weather dependent.</p></div><div class='g-inc'><h3>Karaoke</h3><p>A singer brought up from the valley, and the drawing room turned over to it for the evening.</p></div><div class='g-inc'><h3>Private Meals</h3><p>A curated dining experience, arranged just for you.</p></div></div>
-</div></section>
+  <div class="g-extras" style="margin-top:var(--s7)">
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/ad2839d0-7d37-4b37-914d-46ccbe96cc09/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="The château in winter" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Winter</p>
+      <h3 class="g-extra__t">Skiing</h3>
+      <p class="g-extra__d">Ax 3 Domaines is twenty-five minutes up the valley — eighty kilometres of piste to 2,400 metres. Skis, boots and helmets brought to the château, and an ESF or ESI instructor for any age and any standard. Plateau de Beille, twenty minutes the other way, is the quieter option for cross-country and snowshoeing.</p>
+      <p class="g-extra__p">Equipment and lessons quoted on the day rate · transport arranged</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The drive at night" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Arrival</p>
+      <h3 class="g-extra__t">Airport Transfer</h3>
+      <p class="g-extra__d">A private car from Toulouse-Blagnac, an hour and three quarters each way, met at arrivals. Up to three people with luggage. We also meet the train at Foix, which is twenty minutes away and often the easier journey.</p>
+      <p class="g-extra__p"><span class="g-fig">€350</span> each way, Toulouse · Foix quoted separately</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The gardens and pool" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Mornings</p>
+      <h3 class="g-extra__t">Yoga on the Terrace</h3>
+      <p class="g-extra__d">An hour before breakfast on the terrace above the formal gardens, facing the mountain. A local teacher comes up from the valley. Mats provided; the class suits any level, and in poor weather it moves into the music room.</p>
+      <p class="g-extra__p">Per session, per group · arranged the evening before</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The valley in summer" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">The Valley</p>
+      <h3 class="g-extra__t">Guided Walks</h3>
+      <p class="g-extra__d">Half a day or a full one, with a guide who has walked these valleys all his life. The high paths above Beille, the abandoned hamlets, and the routes the Cathars took. Lunch is carried up from the château kitchen.</p>
+      <p class="g-extra__p">Half day or full day · lunch included</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Market produce" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Sunday and Wednesday</p>
+      <h3 class="g-extra__t">Market Mornings</h3>
+      <p class="g-extra__d">Les Cabannes on a Sunday, three minutes below the gates. Tarascon-sur-Ariège on Wednesday and Saturday, and much bigger. Go with the chef, who has bought from the same producers for twenty years, and bring back what you find for the kitchen to cook.</p>
+      <p class="g-extra__p">No charge to go with the chef · buy what you like</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Antiques</p>
+      <h3 class="g-extra__t">Les Brocantes</h3>
+      <p class="g-extra__d">The Ariège is thick with brocantes and vide-greniers, and most of them are not advertised. A guide who knows which dealers merit the detour, what a piece should cost, and how to have anything large shipped home. The fair at Mirepoix is the one to plan around.</p>
+      <p class="g-extra__p">Half day or full day · shipping arranged separately</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1000w" alt="The parkland" loading="lazy">
+    <div class="g-extra__b">
+      <p class="g-extra__k">The Estate</p>
+      <h3 class="g-extra__t">Electric Bikes</h3>
+      <p class="g-extra__d">The valley road runs flat along the river for miles in both directions, and the assistance makes the climbs to the villages above possible for anyone. Helmets and route notes provided.</p>
+      <p class="g-extra__p">Per bike, per day</p>
+    </div>
+  </article>
+
+</div></div></section>
 
 <section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
   <h2 class="g-place">Interiors &amp; Details</h2>
@@ -245,7 +337,7 @@
 
   <div class="g-compare-wrap">
     <div class="table-wrap">
-<table class="g-compare">
+      <table class="g-compare">
       <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
       <thead>
         <tr>
@@ -275,8 +367,8 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
-</div>
+      </table>
+    </div>
   </div>
   <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
 </div></section>
@@ -368,6 +460,31 @@
   <path d="M20 8v-3M32 5v-3M44 8v-3"/>
 </svg></div>
 
+
+
+{% from '_faq.html' import faq %}
+{{ faq([
+  ('Is there a lift?',
+   'No. Gudanes is a Class I Historic Monument and a lift cannot be installed. The staircases are the originals, and the bedrooms are up them. If stairs are difficult, write to us before booking and we will tell you honestly whether it will work.'),
+  ('Why are the walls unfinished?',
+   'Because the law requires it. Class I classification means the walls stay as the centuries left them — bare plaster, weathered stone — and every intervention is approved before a tool is lifted. Everything within them is new: the beds, the linen, the floors, the bathrooms.'),
+  ('When do I pay?',
+   'A room is paid in full when you book it, by card, through Stripe. We never see or store your card details. Ateliers hold with a deposit and take the balance closer to the date.'),
+  ('Is breakfast included?',
+   'Yes, every morning. So are the pool, the tennis court, the parkland, the salons, tea and coffee through the day, Wi-Fi and parking. Dinner at La Table is arranged separately.'),
+  ('How do I get there without a car?',
+   'Fly to Toulouse, then an hour and three quarters by road. Or take the train to Foix and we will meet it. Tell us your arrival and we will arrange the car.'),
+  ('Can I bring children?',
+   'Yes. The Family Suite sleeps five across two bedrooms, and the kitchen will cook for them. It is an old building with original staircases, so judge it against the age of yours.'),
+  ('Are dogs welcome?',
+   'Not at present. Write to us if it matters and we will tell you what is possible.'),
+  ('Is there Wi-Fi?',
+   'Starlink, in select areas of the château. Electricity is deliberately limited elsewhere — the evenings are lit by candle, which is part of the point.'),
+  ('Can I visit without staying?',
+   'The château is a private home under restoration, not a museum. Dinner at La Table is the usual way in for non-residents, subject to the night.'),
+  ('What about the tourist tax?',
+   'Charged locally on arrival, as French law requires. It is the only thing not in the rate.')
+], 'Before You Book', 'Questions We Are Asked') }}
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

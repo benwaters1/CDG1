@@ -1,6 +1,9 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Gallery', None)] %}
 {% block title %}Gallery{% endblock %}
+{% block description %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
+{% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
 {% block content %}
 {# `galleries` comes from gallery_page(): a list of
      { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
@@ -68,11 +71,11 @@
       {# The id is what the site menu's #inside, #grounds … links land on.
          scroll-margin-top clears the fixed header, which would otherwise
          sit over the heading the reader just jumped to. #}
-      <h2 class="g-h2 g-rule" id="{{ gal['slug'] }}" style="scroll-margin-top:96px;">{{ gal['title'] }}</h2>
-      {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:24px;">{{ gal['blurb'] }}</p>{% endif %}
+      <h2 class="g-h2 g-rule" id="{{ gal['slug'] }}" style="scroll-margin-top:var(--s9);">{{ gal['title'] }}</h2>
+      {% if gal['blurb'] %}<p class="g-p" style="margin-bottom:var(--s5);">{{ gal['blurb'] }}</p>{% endif %}
       {% set shown = gal['images'] or FALLBACK.get(gal['slug'], []) %}
       {% if shown %}
-      <div class="g-grid g-grid--3" style="margin-bottom:56px;">
+      <div class="g-grid g-grid--3" style="margin-bottom:var(--s7);">
         {% for img in shown %}
         <figure style="margin:0;">
           <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
@@ -82,7 +85,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <p class="g-empty" style="margin-bottom:56px;">These photographs are still being chosen. The most recent work
+      <p class="g-empty" style="margin-bottom:var(--s7);">These photographs are still being chosen. The most recent work
         is posted to <a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a>.</p>
       {% endif %}
       {% endfor %}
@@ -105,15 +108,15 @@
   <h2 class="g-h2">Stay while the <em>work continues</em></h2>
       <p class="g-p">Every photograph here is a room that was, at some point, unusable. Four of the ninety-four were habitable in 2013; the rest had caved-in roofs and trees growing through them.</p>
       <p class="g-p">The work continues because people come. A night booked, a table taken, a week on a workshop — each pays for the next room, the next window, the next stretch of fresco lifted out from under a century of overpaint.</p>
-      <p style="font-size:15.5px; line-height:1.8; max-width:52ch; margin:0 0 24px;">Seven bedrooms, open to guests. Breakfast, a private tour and a guided walk of the gardens and village are included with every one.</p>
-      <a href="{{ url_for('book_rooms') }}" class="g-btn" style="background:#E4D2A8; color:#23201C;">Check availability</a>
+      <p style="line-height:1.8; max-width:52ch; margin:0 0 24px;">Seven bedrooms, open to guests. Breakfast, a private tour and a guided walk of the gardens and village are included with every one.</p>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check availability</a>
     </div>
   </div>
 </section>
 
 
 <section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;max-width:44rem;margin:0 auto">
+  <p class="g-p" style="text-align:center;margin:0 auto">
     Gudanes is a Class I Historic Monument, which means the walls stay as the
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
@@ -123,6 +126,38 @@
   </p>
 </div></section>
 
+
+
+<!-- ============ WHO HAS PHOTOGRAPHED HER ============ -->
+{# The gallery showed pictures with nothing to anchor them. The publications
+   are real and already listed on the Restoration page; naming them here is
+   what turns a set of photographs into a record. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">The Record</p>
+  <div class="g-hairs" aria-hidden="true"><i></i></div>
+  <h2 class="g-place">Who Has Photographed Her</h2>
+  <p class="g-p">The restoration has been followed for over a decade, and the château has been chosen as a setting by names that could photograph anywhere.</p>
+
+  <dl class="g-facts-list">
+    <div><dt>Vogue</dt><dd>Netherlands — the restoration, photographed inside</dd></div>
+    <div><dt>AD Italia</dt><dd>Architectural Digest, on the work and the rooms</dd></div>
+    <div><dt>Zimmermann</dt><dd>Campaign shot in the salons and the grounds</dd></div>
+    <div><dt>Mango Home</dt><dd>Interiors campaign</dd></div>
+    <div><dt>Rosemary Hallgarten</dt><dd>Textiles, photographed against the bare plaster</dd></div>
+    <div><dt>Australian Financial Review</dt><dd>Cover feature</dd></div>
+    <div><dt>The Good Life France</dt><dd>Long-form on the restoration</dd></div>
+    <div><dt>Home Beautiful</dt><dd>Feature on the rooms as they opened</dd></div>
+  </dl>
+
+  <p class="g-hint" style="margin-top:var(--s5)">The bare walls are the reason. They photograph in a way a finished room cannot.</p>
+</div></section>
+
+<div class="g-band">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="A conservator at the fresco" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1000w" alt="A bedroom against bare plaster" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1000w" alt="The dining room" loading="lazy">
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1000w" alt="The château and wildflowers" loading="lazy">
+</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
