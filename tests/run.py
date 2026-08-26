@@ -68,6 +68,7 @@ SUITES = [
     "test_waitlist",
     "test_stock_ledger",
     "test_waitlist_other",
+    "test_house_crud",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",
