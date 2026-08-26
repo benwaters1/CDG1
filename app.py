@@ -3881,6 +3881,7 @@ NAV_AREAS = {
         # promised that only the owner sees them, and this is the only area no
         # non-owner preset grants.
         "admin_hr_notes", "handle_hr_note",
+        "admin_vat", "export_vat_csv",
         "admin_automation", "admin_deposit_rules", "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
         "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
@@ -19515,6 +19516,48 @@ def booking_statement(manage_token):
                            company=company, employer=EMPLOYER_LEGAL_NAME)
 
 
+@app.route("/admin/vat")
+@owner_required
+def admin_vat():
+    """VAT collected in a period, on one page instead of four."""
+    conn = get_db()
+    period = period_from_request()
+    working = vat_working(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    rates = {k: tax_rate(conn, k) for k in
+             ("vat_accommodation", "vat_food", "vat_alcohol", "vat_workshops",
+              "vat_extras", "vat_events")}
+    conn.close()
+    return render_template("admin_vat.html", working=working, period=period, rates=rates)
+
+
+@app.route("/admin/vat/export.csv")
+@owner_required
+def export_vat_csv():
+    conn = get_db()
+    period = period_from_request()
+    working = vat_working(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    conn.close()
+    fieldnames = ["source", "rate", "gross", "net", "vat", "basis"]
+    # Every row carries every column: csv_response indexes rows directly rather
+    # than filling blanks, which is a fair contract for a shared helper.
+    def _row(**kw):
+        base = {k: "" for k in fieldnames}
+        base.update(kw)
+        return base
+
+    rows = [_row(source=l["source"], rate=l["rate"], gross=l["gross"],
+                 net=l["net"], vat=l["vat"],
+                 basis=l["basis"] + ("" if l["exact"] else " (estimate)"))
+            for l in working["lines"]]
+    # The caveat travels with the file. A CSV lands in an accountant's inbox
+    # with none of the page around it.
+    rows.append(_row(
+        source="TOTAL", vat=working["total_vat"],
+        basis=f"working paper, not a return; "
+              f"{working['days_not_closed']} day(s) in this period never closed off"))
+    return csv_response(fieldnames, rows, f"vat-working-{period['start_iso']}.csv")
+
+
 @app.route("/admin/tax", methods=["GET", "POST"])
 @owner_required
 def admin_tax():
@@ -34835,6 +34878,7 @@ TAX_DEFAULTS = {
     "vat_alcohol": "20",
     "vat_workshops": "20",
     "vat_extras": "20",
+    "vat_events": "20",
     "city_tax_account": "",          # where the collected tax is parked
 }
 
@@ -34970,6 +35014,110 @@ def room_fields_from_form():
         "outlook": (request.form.get("outlook", "") or "").strip() or None,
         "floor": (request.form.get("floor", "") or "").strip() or None,
         "amenities": ", ".join(checked) or None,
+    }
+
+
+def vat_working(conn, start, end):
+    """VAT collected in a period, per source, with the basis of each stated.
+
+    Four streams charge VAT and the figures for a return had to be rebuilt by
+    hand from four places every quarter, which is where errors live. This puts
+    them on one page.
+
+    `end` is EXCLUSIVE, the same half-open convention resolve_period and the
+    payroll pack use. Using an inclusive end here put the 1st of September in
+    August's figures AND in September's -- a day counted twice across a quarter
+    boundary, which is the one arithmetic mistake a tax working paper must not
+    make.
+
+    It is a WORKING PAPER, not a return, and the reason is that the two halves
+    do not rest on the same thing:
+
+      - the till is exact. Every closed day seals its VAT per rate into
+        pos_closures, hashed, so those figures are read rather than recomputed
+        and they split food from alcohol properly.
+      - rooms, ateliers and events are an ESTIMATE. There is no per-line VAT on
+        them; this applies the configured rate to revenue recognised by service
+        date. French TVA on services is normally due on payment received, which
+        is a different date, and the app has no reliable receipts ledger for
+        those streams yet -- booking_payments only fills in when Stripe is live.
+
+    Days in the period that were never closed off are counted and reported, so
+    a short figure is visibly short rather than quietly wrong.
+
+    City tax is deliberately absent. Taxe de séjour is collected for the commune
+    and is not the château's VATable revenue; it is stored apart from
+    total_price, so nothing here touches it.
+    """
+    s_iso, e_iso = start.isoformat(), end.isoformat()
+    lines = []
+
+    # ---- the till: read the sealed closures, per rate -------------------
+    by_rate = {}
+    closed_days = set()
+    for row in conn.execute(
+        "SELECT period, vat_json FROM pos_closures WHERE kind = 'day' "
+        "AND period >= ? AND period < ?",
+        (s_iso, e_iso),
+    ).fetchall():
+        closed_days.add(row["period"])
+        try:
+            for rate, amount in (json.loads(row["vat_json"]) or {}).items():
+                by_rate[str(rate)] = round(by_rate.get(str(rate), 0) + (amount or 0), 2)
+        except (ValueError, TypeError):
+            continue
+    for rate, vat in sorted(by_rate.items(), key=lambda kv: float(kv[0] or 0)):
+        lines.append({
+            "source": f"Restaurant till — {float(rate):g}%", "rate": float(rate or 0),
+            "gross": None, "net": None, "vat": vat,
+            "basis": "sealed daily closure", "exact": True,
+        })
+
+    span_days = (end - start).days
+    unclosed = span_days - len(closed_days)
+
+    # ---- everything else: revenue by service date x configured rate -----
+    def _estimate(label, gross, rate):
+        gross = round(gross or 0, 2)
+        if gross <= 0:
+            return
+        # Prices here are VAT-inclusive, so the tax is the gross less the net
+        # rather than the gross times the rate.
+        net = round(gross / (1 + rate / 100), 2) if rate else gross
+        lines.append({
+            "source": label, "rate": rate, "gross": gross, "net": net,
+            "vat": round(gross - net, 2), "basis": "revenue by service date",
+            "exact": False,
+        })
+
+    rooms = conn.execute(
+        """SELECT COALESCE(SUM(total_price), 0) AS t FROM bookings
+           WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (s_iso, e_iso)).fetchone()["t"]
+    _estimate("Rooms", rooms, tax_rate(conn, "vat_accommodation"))
+
+    shops = conn.execute(
+        """SELECT COALESCE(SUM(workshop_bookings.total_price), 0) AS t
+           FROM workshop_bookings
+           JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+           WHERE workshop_bookings.status = 'confirmed'
+             AND workshop_sessions.start_date >= ? AND workshop_sessions.start_date < ?""",
+        (s_iso, e_iso)).fetchone()["t"]
+    _estimate("Ateliers", shops, tax_rate(conn, "vat_workshops"))
+
+    extras = conn.execute(
+        """SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM booking_extras
+           WHERE date(created_at) >= ? AND date(created_at) < ?""",
+        (s_iso, e_iso)).fetchone()["t"]
+    _estimate("Extras", extras, tax_rate(conn, "vat_extras"))
+
+    total_vat = round(sum(l["vat"] or 0 for l in lines), 2)
+    return {
+        "start": start, "end": end, "lines": lines, "total_vat": total_vat,
+        "exact_vat": round(sum(l["vat"] for l in lines if l["exact"]), 2),
+        "estimated_vat": round(sum(l["vat"] for l in lines if not l["exact"]), 2),
+        "days_in_period": span_days, "days_closed": len(closed_days),
+        "days_not_closed": max(0, unclosed),
     }
 
 

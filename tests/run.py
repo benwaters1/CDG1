@@ -63,6 +63,7 @@ SUITES = [
     "test_payroll_blockers",
     "test_pos_floor",
     "test_leave_accrual",
+    "test_vat_working",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",

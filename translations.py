@@ -35,6 +35,27 @@ LANGUAGES = {
 }
 
 FR = {
+    # The VAT working paper.
+    'VAT': 'TVA',
+    'VAT collected': 'TVA collectée',
+    'Rates': 'Taux',
+    'Source': 'Source',
+    'Basis': 'Base',
+    'Gross': 'Brut',
+    'Net': 'Net',
+    'estimate': 'estimation',
+    'estimated': 'estimé',
+    'sealed': 'scellé',
+    'Nothing collected in this period.': 'Rien collecté sur cette période.',
+    'The rates these figures used': 'Les taux utilisés pour ces chiffres',
+    'This is a working paper, not your VAT return.': 'Ceci est un document de travail, pas votre déclaration de TVA.',
+    'Hand it to your accountant as a starting point. Two things to tell them:': 'À remettre à votre comptable comme point de départ. Deux choses à lui dire :',
+    'The till figures are exact — each closed day seals its VAT per rate.': 'Les chiffres de la caisse sont exacts : chaque journée clôturée scelle sa TVA par taux.',
+    'Rooms, ateliers and extras are estimated: the configured rate applied to revenue by service date. French VAT on services is normally due when payment is received, which is a different date.': "Chambres, ateliers et extras sont estimés : le taux configuré appliqué au chiffre d'affaires à la date de prestation. En France, la TVA sur les services est normalement due à l'encaissement, qui est une autre date.",
+    'day(s) in this period were never closed off.': "jour(s) de cette période n'ont jamais été clôturés.",
+    'Their takings are not in the till figures below. Close them on the Cash up page and this number will change.': 'Leurs recettes ne figurent pas dans les chiffres de caisse ci-dessous. Clôturez-les sur la page Clôture de caisse et ce nombre changera.',
+    'Set on the Rates page. Only your accountant can confirm which apply here — a wrong rate is charged to every guest until somebody notices.': "Définis sur la page Taux. Seul votre comptable peut confirmer lesquels s'appliquent ici : un mauvais taux est facturé à chaque client jusqu'à ce que quelqu'un le remarque.",
+    'Taxe de séjour is not on this page. It is collected for the commune rather than earned by the château, and it is held apart from room prices — so nothing here includes it.': "La taxe de séjour ne figure pas ici. Elle est collectée pour la commune et non gagnée par le château, et elle est tenue à part du prix des chambres : rien ici ne l'inclut.",
     # The till bar.
     'Service': 'Service',
     'open': 'ouvertes',
@@ -453,6 +474,27 @@ FR = {
 }
 
 ES = {
+    # The VAT working paper.
+    'VAT': 'IVA',
+    'VAT collected': 'IVA cobrado',
+    'Rates': 'Tipos',
+    'Source': 'Origen',
+    'Basis': 'Base',
+    'Gross': 'Bruto',
+    'Net': 'Neto',
+    'estimate': 'estimación',
+    'estimated': 'estimado',
+    'sealed': 'sellado',
+    'Nothing collected in this period.': 'Nada cobrado en este período.',
+    'The rates these figures used': 'Los tipos usados en estas cifras',
+    'This is a working paper, not your VAT return.': 'Esto es un documento de trabajo, no su declaración de IVA.',
+    'Hand it to your accountant as a starting point. Two things to tell them:': 'Entréguelo a su contable como punto de partida. Dos cosas que debe saber:',
+    'The till figures are exact — each closed day seals its VAT per rate.': 'Las cifras de la caja son exactas: cada día cerrado sella su IVA por tipo.',
+    'Rooms, ateliers and extras are estimated: the configured rate applied to revenue by service date. French VAT on services is normally due when payment is received, which is a different date.': 'Habitaciones, talleres y extras son estimados: el tipo configurado aplicado a los ingresos por fecha de servicio. En Francia el IVA de servicios se devenga normalmente al cobro, que es otra fecha.',
+    'day(s) in this period were never closed off.': 'día(s) de este período nunca se cerraron.',
+    'Their takings are not in the till figures below. Close them on the Cash up page and this number will change.': 'Sus ingresos no están en las cifras de caja de abajo. Ciérrelos en la página de Cierre de caja y este número cambiará.',
+    'Set on the Rates page. Only your accountant can confirm which apply here — a wrong rate is charged to every guest until somebody notices.': 'Definidos en la página Tipos. Solo su contable puede confirmar cuáles aplican aquí: un tipo erróneo se cobra a cada huésped hasta que alguien lo note.',
+    'Taxe de séjour is not on this page. It is collected for the commune rather than earned by the château, and it is held apart from room prices — so nothing here includes it.': 'La tasa turística no aparece aquí. Se recauda para el municipio y no la gana el château, y se mantiene aparte del precio de las habitaciones: nada aquí la incluye.',
     # The till bar.
     'Service': 'Servicio',
     'open': 'abiertas',

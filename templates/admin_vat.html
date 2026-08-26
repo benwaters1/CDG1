@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}VAT{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ t('VAT collected') }}</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('export_vat_csv', period=period.period, date=period.anchor_iso) }}"
+       class="btn-ghost">{{ t('Export CSV') }}</a>
+    <a href="{{ url_for('admin_tax') }}" class="btn-ghost">{{ t('Rates') }}</a>
+  </div>
+</div>
+
+{% include "_period_bar.html" ignore missing %}
+
+{#
+  The honest framing, first and unmissable. The figures below replace a manual
+  rebuild from four places every quarter, which is worth having — but half of
+  them rest on a different basis from the other half, and a number that looks
+  like a return gets filed like one.
+#}
+<div class="alert-band">
+  <strong>{{ t('This is a working paper, not your VAT return.') }}</strong>
+  {{ t('Hand it to your accountant as a starting point. Two things to tell them:') }}
+  <ul style="margin:8px 0 0 18px;">
+    <li>{{ t('The till figures are exact — each closed day seals its VAT per rate.') }}</li>
+    <li>{{ t('Rooms, ateliers and extras are estimated: the configured rate applied to revenue by service date. French VAT on services is normally due when payment is received, which is a different date.') }}</li>
+  </ul>
+</div>
+
+{% if working.days_not_closed %}
+<div class="alert-band">
+  {# A short figure that does not say it is short is the worst kind. #}
+  <strong>{{ working.days_not_closed }}
+    {{ t('day(s) in this period were never closed off.') }}</strong>
+  {{ t('Their takings are not in the till figures below. Close them on the Cash up page and this number will change.') }}
+</div>
+{% endif %}
+
+{% if not working.lines %}
+  <div class="empty-state">{{ t('Nothing collected in this period.') }}</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>{{ t('Source') }}</th>
+        <th class="num">{{ t('Rate') }}</th>
+        <th class="num">{{ t('Gross') }}</th>
+        <th class="num">{{ t('Net') }}</th>
+        <th class="num">{{ t('VAT') }}</th>
+        <th>{{ t('Basis') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in working.lines %}
+      <tr>
+        <td>{{ l.source }}</td>
+        <td class="num">{{ '%g'|format(l.rate) }}%</td>
+        <td class="num">{% if l.gross is not none %}€{{ '%.2f'|format(l.gross) }}{% else %}—{% endif %}</td>
+        <td class="num">{% if l.net is not none %}€{{ '%.2f'|format(l.net) }}{% else %}—{% endif %}</td>
+        <td class="num">€{{ '%.2f'|format(l.vat) }}</td>
+        <td>
+          {{ l.basis }}
+          {% if not l.exact %}<span class="mini-status status-pending">{{ t('estimate') }}</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="is-total">
+        <td><strong>{{ t('Total') }}</strong></td>
+        <td class="num"></td>
+        <td class="num"></td>
+        <td class="num"></td>
+        <td class="num"><strong>€{{ '%.2f'|format(working.total_vat) }}</strong></td>
+        <td class="upload-hint">
+          €{{ '%.2f'|format(working.exact_vat) }} {{ t('sealed') }} ·
+          €{{ '%.2f'|format(working.estimated_vat) }} {{ t('estimated') }}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">{{ t('The rates these figures used') }}</h2>
+<p class="upload-hint">
+  {{ t('Set on the Rates page. Only your accountant can confirm which apply here — a wrong rate is charged to every guest until somebody notices.') }}
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      {% for key, label in [
+          ('vat_accommodation', 'Accommodation'), ('vat_food', 'Food'),
+          ('vat_alcohol', 'Alcohol'), ('vat_workshops', 'Ateliers'),
+          ('vat_extras', 'Extras'), ('vat_events', 'Events')] %}
+      <tr>
+        <td>{{ t(label) }}</td>
+        <td class="num">{{ '%g'|format(rates[key]) }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="pay-disclaimer">
+  {{ t('Taxe de séjour is not on this page. It is collected for the commune rather than earned by the château, and it is held apart from room prices — so nothing here includes it.') }}
+</p>
+
+{% endblock %}
