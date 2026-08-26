@@ -112,6 +112,7 @@ SUITES = [
     "test_hr_management_links",
     "test_skills",
     "test_overtime",
+    "test_repeat_guests",
     "test_insurer_notice",
     "test_home_warnings",
     "test_watch_tasks",

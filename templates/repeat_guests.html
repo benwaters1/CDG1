@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Regulars{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Regulars</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('guests') }}" class="btn-ghost">All guests</a>
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A returning guest is already greeted as one at the door, and the reports count new against
+  returning. Neither could tell you <em>who</em> the regulars are, or — the question that actually
+  costs money — which of them has stopped coming.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The commercial half. Nothing else in the app says this, and nobody notices
+   a guest who simply does not book. #}
+{% if data.overdue %}
+<div class="pass-short">
+  <strong>Used to come, and hasn't</strong>
+  {% for g in data.overdue %}
+  <span class="pass-short-row">
+    {{ g.name }} — {{ g.stays }} stays, last {{ g.last|date_short }}
+    ({{ (g.days_since / 30)|round|int }} months ago; they usually came about every
+    {{ (g.typical_gap / 30)|round|int }} months)
+    · worth €{{ '%.0f'|format(g.spend) }}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Measured against each guest's own rhythm, not a fixed number of months — somebody who came
+    every August is late at fourteen months, somebody who came twice in one spring is not late at
+    all. It means only that a pattern stopped; there may be an ordinary reason, and this is a
+    prompt to think of them rather than a fact about them.
+  </span>
+</div>
+{% endif %}
+
+{# A regular's history and spend were being split in two by an address typed
+   with a capital letter. Worth showing, because the merge is invisible. #}
+{% if data.split_emails %}
+<div class="pass-short">
+  <strong>Booked under more than one spelling of the same address</strong>
+  {% for g in data.split_emails %}
+  <span class="pass-short-row">{{ g.name }} — {{ g.spellings|join('  ·  ') }}</span>
+  {% endfor %}
+  <span class="upload-hint">
+    Counted as one guest here. Before this page they were two, each with half the stays and half
+    the spend.
+  </span>
+</div>
+{% endif %}
+
+{% if not data.guests %}
+  <div class="empty-state">
+    Nobody has stayed more than once yet. Every confirmed stay, dinner and atelier was checked.
+  </div>
+{% else %}
+<h2 class="section-heading">Most often first</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Guest</th><th class="num">Stays</th><th>Also</th>
+      <th class="num">Worth</th><th>Last here</th><th class="num">Rated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for g in data.guests %}
+    <tr class="{{ 'row-alert' if g.overdue }}">
+      <td>
+        <a href="{{ url_for('guest_booking_history', email=g.email) }}">{{ g.name }}</a>
+        <span class="upload-hint">{{ g.email }}</span>
+      </td>
+      <td class="num">{{ g.stays }}</td>
+      <td>
+        {% set extra = [] %}
+        {% if g.dinners %}{% set _ = extra.append(g.dinners ~ ' at the table') %}{% endif %}
+        {% if g.workshops %}{% set _ = extra.append(g.workshops ~ ' ateliers') %}{% endif %}
+        <span class="upload-hint">{{ extra|join(', ') or '—' }}</span>
+      </td>
+      <td class="num">€{{ '%.0f'|format(g.spend) }}</td>
+      <td>
+        {{ g.last|date_short }}
+        {% if g.overdue %}<span class="mini-status status-pending">overdue</span>{% endif %}
+      </td>
+      <td class="num">{{ g.rating if g.rating else '—' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  Worth to the house is rooms, the table and ateliers together — somebody who stays one night and
+  eats here four times is a regular by any reading that matters. It is what was charged, not what
+  was collected; an unpaid balance still shows here and is chased on
+  <a href="{{ url_for('money_ahead_page') }}">Money ahead</a>.
+</p>
+<p class="pay-disclaimer">
+  Guests are matched by email address. Somebody who books under a work address one year and a
+  personal one the next is two people to this page, and there is no way for the app to know
+  otherwise — so a regular you recognise and this list does not is worth a moment rather than a
+  correction.
+</p>
+
+{% endblock %}

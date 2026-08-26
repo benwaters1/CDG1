@@ -8351,6 +8351,119 @@ def week_activity(conn, monday, sunday):
     return ", ".join(bits)
 
 
+def _guest_key(email):
+    """The one place an email becomes a guest identity.
+
+    Normalised, because "Ben@Chateau.com" and "ben@chateau.com " are one
+    person and were two — which for a repeat guest splits their history and
+    halves their spend on every figure that touches it.
+    """
+    return " ".join((email or "").split()).casefold()
+
+
+def repeat_guests(conn, *, today=None, min_stays=2):
+    """Everyone who has stayed more than once, and whether they are overdue.
+
+    Spend covers rooms, the table and ateliers, because a guest who comes for
+    one night and eats here four times is a regular by any reading that
+    matters.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+
+    people = {}
+
+    def entry(email, name):
+        key = _guest_key(email)
+        e = people.setdefault(key, {
+            "key": key, "email": email, "name": name, "stays": [],
+            "spend": 0.0, "dinners": 0, "workshops": 0, "ratings": [],
+            "spellings": set(),
+        })
+        if email:
+            e["spellings"].add(email.strip())
+        # The most recently seen spelling of a name wins; people marry, and
+        # the newest is the one to greet them by.
+        if name:
+            e["name"] = name
+        return e
+
+    for r in conn.execute(
+        """SELECT guest_email, guest_name, arrival_date, departure_date,
+                  COALESCE(total_price, 0) AS price
+             FROM bookings
+            WHERE status = 'confirmed' AND guest_email IS NOT NULL
+            ORDER BY arrival_date""").fetchall():
+        e = entry(r["guest_email"], r["guest_name"])
+        e["stays"].append({"arrival": r["arrival_date"],
+                           "departure": r["departure_date"],
+                           "price": r["price"]})
+        e["spend"] += r["price"]
+
+    for r in conn.execute(
+        """SELECT guest_email, guest_name, COALESCE(total_price, 0) AS price
+             FROM restaurant_bookings
+            WHERE status = 'confirmed' AND guest_email IS NOT NULL""").fetchall():
+        e = entry(r["guest_email"], r["guest_name"])
+        e["dinners"] += 1
+        e["spend"] += r["price"]
+
+    for r in conn.execute(
+        """SELECT guest_email, guest_name, COALESCE(total_price, 0) AS price
+             FROM workshop_bookings
+            WHERE status NOT IN ('declined', 'cancelled')
+              AND guest_email IS NOT NULL""").fetchall():
+        e = entry(r["guest_email"], r["guest_name"])
+        e["workshops"] += 1
+        e["spend"] += r["price"]
+
+    for r in conn.execute(
+        """SELECT bookings.guest_email, guest_feedback.rating
+             FROM guest_feedback JOIN bookings ON bookings.id = guest_feedback.booking_id
+            WHERE guest_feedback.rating IS NOT NULL""").fetchall():
+        key = _guest_key(r["guest_email"])
+        if key in people:
+            people[key]["ratings"].append(r["rating"])
+
+    out = []
+    for e in people.values():
+        if len(e["stays"]) < min_stays:
+            continue
+        arrivals = sorted(parse_date(s["arrival"]) for s in e["stays"]
+                          if parse_date(s["arrival"]))
+        if not arrivals:
+            continue
+        last = arrivals[-1]
+        gaps = [(b - a).days for a, b in zip(arrivals, arrivals[1:])]
+        # Median, not mean: one unusual gap should not redefine the rhythm.
+        typical = sorted(gaps)[len(gaps) // 2] if gaps else None
+        since = (today - last).days
+
+        # Overdue against their own habit, with a margin so somebody a
+        # fortnight late is not chased. Only ever said about a guest with a
+        # rhythm to be late against.
+        overdue = bool(typical and since > typical * 1.5 and since > 180)
+
+        out.append({
+            "key": e["key"], "email": e["email"], "name": e["name"],
+            "stays": len(e["stays"]), "spend": round(e["spend"], 2),
+            "dinners": e["dinners"], "workshops": e["workshops"],
+            "first": arrivals[0].isoformat(), "last": last.isoformat(),
+            "days_since": since, "typical_gap": typical,
+            "overdue": overdue,
+            "rating": (round(sum(e["ratings"]) / len(e["ratings"]), 1)
+                       if e["ratings"] else None),
+            "spellings": sorted(e["spellings"]),
+        })
+
+    out.sort(key=lambda g: (-g["stays"], -g["spend"]))
+    return {
+        "guests": out,
+        "overdue": [g for g in out if g["overdue"]],
+        "total_spend": round(sum(g["spend"] for g in out), 2),
+        "split_emails": [g for g in out if len(g["spellings"]) > 1],
+    }
+
+
 def parse_skills(text):
     """Free text to a list of (key, display) pairs, in the order written.
 
@@ -17727,6 +17840,8 @@ PALETTE_PAGES = [
     ("Overview", "admin_overview", "feed activity"),
     ("Office display", "office_display", "tv kiosk wall screen"),
     ("Guests", "guests", "profiles visitors"),
+    ("Regulars", "repeat_guests_page",
+     "repeat returning loyal overdue lapsed lifetime value"),
     ("Bookings", "admin_bookings", "reservations stays rooms"),
     ("Booking calendar", "admin_calendar", "availability"),
     ("Rooms", "admin_rooms", "bedrooms suites"),
@@ -25591,9 +25706,14 @@ def guest_portal(token):
 def guest_booking_history(email):
     conn = get_db()
     bookings = conn.execute(
+        # Matched on the normalised address. An exact comparison made
+        # "Ben@Chateau.com" and "ben@chateau.com" two different guests, which
+        # for a returning one splits their history and halves the lifetime
+        # spend shown right underneath it.
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id
-           WHERE guest_email = ? ORDER BY arrival_date DESC""",
+           WHERE LOWER(TRIM(guest_email)) = LOWER(TRIM(?))
+           ORDER BY arrival_date DESC""",
         (email,),
     ).fetchall()
     dinners = conn.execute(
@@ -30885,6 +31005,29 @@ def overtime_page():
     ]
     return render_template("overtime.html", data=data, overview=overview,
                            weeks=weeks, busiest=busiest, today=today)
+
+
+@app.route("/admin/guests/regulars")
+@owner_required
+def repeat_guests_page():
+    """Who comes back, and who has stopped."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    data = repeat_guests(conn, today=today)
+    conn.close()
+    top = data["guests"][0] if data["guests"] else None
+    overview = [
+        overview_cell("Guests who came back", len(data["guests"])),
+        overview_cell("Worth to the house", f"EUR {data['total_spend']:,.0f}",
+                      hint="rooms, table and ateliers"),
+        overview_cell("Overdue a visit", len(data["overdue"]),
+                      alert=bool(data["overdue"]),
+                      hint="against their own rhythm"),
+        overview_cell("Most often", top["name"] if top else "—",
+                      sub=f"{top['stays']} stays" if top else None),
+    ]
+    return render_template("repeat_guests.html", data=data, overview=overview,
+                           today=today)
 
 
 @app.route("/admin/skills")
