@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Long weeks{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Long weeks</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [8, 12, 26, 52] %}
+    <a href="{{ url_for('overtime_page', weeks=n) }}"
+       class="{{ 'btn-mini' if n == weeks else 'btn-ghost' }}">{{ n }} weeks</a>
+    {% endfor %}
+    <a href="{{ url_for('admin_timesheets') }}" class="btn-ghost">Timesheets</a>
+    <a href="{{ url_for('cover_gaps_page') }}" class="btn-ghost">Nobody on</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The dashboard says who is over {{ '%.0f'|format(data.threshold) }} hours <em>this</em> week. One
+  week cannot tell you whether that is a bad week or simply how the house runs — and those want
+  opposite answers, one a conversation and the other another pair of hands. This is the same
+  figure with a memory, next to what was actually on.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# Several long weeks running is a different thing from one long week, and
+   only one of them is fixed by asking somebody to go home. #}
+{% if data.chronic %}
+<div class="pass-short">
+  <strong>Long several weeks in a row</strong>
+  {% for c in data.chronic %}
+  <span class="pass-short-row">
+    {{ c.name }} — {{ c.weeks }} weeks running past
+    {{ '%.0f'|format(data.threshold) }} hours
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Three weeks is where this page stops calling it a bad week. That is a judgement rather than
+    a rule — the number is in the code as CHRONIC_WEEKS and is worth arguing with.
+  </span>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Week by week</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Week</th><th class="num">Hours past {{ '%.0f'|format(data.threshold) }}</th>
+      <th>Who</th><th>What was on</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for w in data.weeks %}
+    <tr class="{{ 'row-alert' if w.extra_hours >= 10 }}">
+      <td>
+        {{ w.week_start|date_short }}
+        <span class="upload-hint">to {{ w.week_end|date_short }}</span>
+      </td>
+      <td class="num">
+        {% if w.extra_hours %}{{ '%.1f'|format(w.extra_hours) }}{% else %}—{% endif %}
+      </td>
+      <td>
+        {% for p in w.over %}
+          {{ p.name }} <span class="upload-hint">{{ '%.1f'|format(p.hours) }}h</span>{{ ', ' if not loop.last }}
+        {% else %}
+          <span class="upload-hint">nobody</span>
+        {% endfor %}
+      </td>
+      <td><span class="upload-hint">{{ w.on or '—' }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if busiest and busiest.extra_hours %}
+<p class="field-hint" style="max-width:900px;">
+  The longest week was {{ busiest.week_start|date_short }} at
+  {{ '%.1f'|format(busiest.extra_hours) }} hours past the standard week{% if busiest.on %},
+  when the house had {{ busiest.on }}{% endif %}.
+</p>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  <strong>No money on this page, deliberately.</strong> Hours past the standard week are majorées
+  under French law, but pay rates here are free text and most people on the books have none, so
+  any euro figure would be invented rather than calculated. The hours are real; a cost would not
+  be. Your accountant works from the
+  <a href="{{ url_for('admin_payroll') }}">payroll pack</a>, not from here.
+</p>
+<p class="pay-disclaimer">
+  What was on is shown beside the hours, not as an explanation of them. A busy week and a long
+  week appearing together does not prove one caused the other — it is here so somebody who knows
+  the house can recognise a pattern the app cannot.
+</p>
+
+{% endblock %}

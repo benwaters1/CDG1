@@ -110,6 +110,7 @@ SUITES = [
     "test_rota_vs_clock",
     "test_hr_management_links",
     "test_skills",
+    "test_overtime",
     "test_insurer_notice",
     "test_home_warnings",
     "test_watch_tasks",

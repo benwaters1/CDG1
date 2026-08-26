@@ -4357,10 +4357,16 @@ def week_overtime(conn, today, threshold_hours=35):
     week_end = week_start + timedelta(days=7)
     week_start_utc = datetime.combine(week_start, datetime.min.time(), tzinfo=LOCAL_TZ).astimezone(timezone.utc)
     week_end_utc = datetime.combine(week_end, datetime.min.time(), tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+    # Employees only. The 35-hour week is a protection for people who are
+    # employed; an owner working ninety hours is a different conversation and
+    # not one this figure is entitled to have. overtime_history scopes the
+    # same way, so the dashboard and the history can never disagree about who
+    # counts.
     rows = conn.execute(
         """SELECT time_entries.*, users.name AS employee_name FROM time_entries
            JOIN users ON users.id = time_entries.user_id
-           WHERE clock_in_at >= ? AND clock_in_at < ? AND clock_out_at IS NOT NULL""",
+           WHERE clock_in_at >= ? AND clock_in_at < ? AND clock_out_at IS NOT NULL
+             AND users.role = 'employee'""",
         (week_start_utc.isoformat(), week_end_utc.isoformat()),
     ).fetchall()
     hours_by_entry = net_hours_for_entries(conn, rows)
@@ -8218,6 +8224,131 @@ def rota_conflicts(conn, start, end):
     out.sort(key=lambda r: (r["shift_date"], order.get(r["kind"], 9),
                             r["employee_name"] or ""))
     return out
+
+
+# The French standard week. Hours beyond it are majorées, which is a payroll
+# matter this app deliberately does not compute — see the note in the page.
+STANDARD_WEEK_HOURS = 35.0
+
+# Long weeks in a row before it stops being a bad week and starts being how
+# the house runs. Three is a judgement, not a rule, and it is stated as one.
+CHRONIC_WEEKS = 3
+
+
+def overtime_history(conn, *, weeks=12, today=None, threshold=STANDARD_WEEK_HOURS):
+    """Week by week: who went past the standard week, and what was on.
+
+    Weeks are Monday-start local, matching how a rota is written and how
+    week_overtime already counts, so the two can never disagree about which
+    week a Sunday night belongs to.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    this_monday = today - timedelta(days=today.weekday())
+    first_monday = this_monday - timedelta(weeks=weeks - 1)
+
+    start_utc = datetime.combine(first_monday, datetime.min.time(),
+                                 tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+    end_utc = datetime.combine(this_monday + timedelta(days=7), datetime.min.time(),
+                               tzinfo=LOCAL_TZ).astimezone(timezone.utc)
+
+    rows = conn.execute(
+        """SELECT time_entries.*, users.name AS employee_name FROM time_entries
+             JOIN users ON users.id = time_entries.user_id
+            WHERE clock_in_at >= ? AND clock_in_at < ? AND clock_out_at IS NOT NULL
+              AND users.role = 'employee'""",
+        (start_utc.isoformat(), end_utc.isoformat())).fetchall()
+    hours_by_entry = net_hours_for_entries(conn, rows)
+
+    # {monday_iso: {user_id: {"name": .., "hours": ..}}}
+    by_week = {}
+    for r in rows:
+        started = parse_datetime_iso(r["clock_in_at"])
+        if not started:
+            continue
+        local_day = started.astimezone(LOCAL_TZ).date()
+        monday = local_day - timedelta(days=local_day.weekday())
+        bucket = by_week.setdefault(monday.isoformat(), {})
+        person = bucket.setdefault(r["user_id"],
+                                   {"name": r["employee_name"], "hours": 0.0})
+        person["hours"] += hours_by_entry.get(r["id"], 0.0)
+
+    out = []
+    for i in range(weeks):
+        monday = first_monday + timedelta(weeks=i)
+        iso = monday.isoformat()
+        sunday = monday + timedelta(days=6)
+        people = by_week.get(iso, {})
+        over = [{"user_id": uid, "name": v["name"], "hours": round(v["hours"], 2),
+                 "extra": round(v["hours"] - threshold, 2)}
+                for uid, v in people.items() if v["hours"] > threshold]
+        over.sort(key=lambda p: -p["extra"])
+        out.append({
+            "week_start": iso, "week_end": sunday.isoformat(),
+            "over": over,
+            "extra_hours": round(sum(p["extra"] for p in over), 2),
+            "worked_hours": round(sum(v["hours"] for v in people.values()), 2),
+            "on": week_activity(conn, monday, sunday),
+        })
+
+    # Somebody long several weeks running is a different problem from somebody
+    # long once, and only one of them is fixed by a conversation.
+    chronic, run = {}, {}
+    for week in out:
+        long_this_week = {p["user_id"] for p in week["over"]}
+        for uid in list(run):
+            if uid not in long_this_week:
+                run.pop(uid)
+        for p in week["over"]:
+            run[p["user_id"]] = run.get(p["user_id"], 0) + 1
+            if run[p["user_id"]] >= CHRONIC_WEEKS:
+                chronic[p["user_id"]] = {"name": p["name"],
+                                         "weeks": run[p["user_id"]]}
+
+    return {
+        "weeks": out,
+        "total_extra": round(sum(w["extra_hours"] for w in out), 2),
+        "weeks_with_any": len([w for w in out if w["over"]]),
+        "chronic": sorted(chronic.values(), key=lambda c: -c["weeks"]),
+        "threshold": threshold,
+    }
+
+
+def week_activity(conn, monday, sunday):
+    """What the house was doing in a week, in one short line.
+
+    Correlation and nothing more: a busy week and a long week appearing
+    together does not prove one caused the other, and the page says so. It is
+    here so somebody who knows the house can recognise the pattern.
+    """
+    lo, hi = monday.isoformat(), sunday.isoformat()
+    bits = []
+    beds = conn.execute(
+        """SELECT COUNT(*) AS n FROM bookings
+            WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date >= ?""",
+        (hi, lo)).fetchone()["n"]
+    if beds:
+        bits.append(f"{beds} stay{'s' if beds != 1 else ''}")
+    covers = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
+            WHERE status = 'confirmed' AND dinner_date BETWEEN ? AND ?""",
+        (lo, hi)).fetchone()["c"]
+    if covers:
+        bits.append(f"{covers} covers")
+    for r in conn.execute(
+        """SELECT workshops.title FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.start_date <= ?
+              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?""",
+            (hi, lo)).fetchall():
+        bits.append(r["title"])
+    events = conn.execute(
+        """SELECT COUNT(*) AS n FROM event_inquiries
+            WHERE status = 'confirmed'
+              AND COALESCE(preferred_date, '') BETWEEN ? AND ?""",
+        (lo, hi)).fetchone()["n"]
+    if events:
+        bits.append(f"{events} event{'s' if events != 1 else ''}")
+    return ", ".join(bits)
 
 
 def parse_skills(text):
@@ -17621,6 +17752,8 @@ PALETTE_PAGES = [
      "no show unrostered timesheet planned actual hours"),
     ("Who can do what", "skills_page",
      "skills cover training single point of failure substitute"),
+    ("Long weeks", "overtime_page",
+     "overtime hours 35 week chronic tired"),
     ("Timesheets", "admin_timesheets", "hours clock in out"),
     ("Time off", "admin_leave", "holiday leave vacation"),
     ("Ask HR", "admin_hr_notes", "questions"),
@@ -30725,6 +30858,33 @@ def cover_gaps_page():
     ]
     return render_template("cover_gaps.html", rows=rows, gaps=gaps, hollow=hollow,
                            overview=overview, days=days, today=today, end=end)
+
+
+@app.route("/admin/overtime")
+@owner_required
+def overtime_page():
+    """Long weeks over time, and what the house was doing in them."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        weeks = max(4, min(52, int(request.args.get("weeks", 12))))
+    except (TypeError, ValueError):
+        weeks = 12
+    data = overtime_history(conn, weeks=weeks, today=today)
+    conn.close()
+
+    busiest = max(data["weeks"], key=lambda w: w["extra_hours"], default=None)
+    overview = [
+        overview_cell("Weeks looked at", weeks),
+        overview_cell("Weeks somebody went long", data["weeks_with_any"],
+                      alert=data["weeks_with_any"] > weeks / 2),
+        overview_cell("Hours past the standard week", f"{data['total_extra']:.1f}"),
+        overview_cell("Long several weeks running", len(data["chronic"]),
+                      alert=bool(data["chronic"]),
+                      hint="not a bad week — how it runs"),
+    ]
+    return render_template("overtime.html", data=data, overview=overview,
+                           weeks=weeks, busiest=busiest, today=today)
 
 
 @app.route("/admin/skills")
