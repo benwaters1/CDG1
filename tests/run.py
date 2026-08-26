@@ -66,6 +66,7 @@ SUITES = [
     "test_vat_working",
     "test_ical_sync",
     "test_waitlist",
+    "test_stock_ledger",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",

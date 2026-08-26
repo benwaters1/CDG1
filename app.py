@@ -15733,6 +15733,14 @@ def move_stock(item_id):
         return redirect(url_for("admin_stock"))
 
     conn = get_db()
+    # A movement against an item that is not there used to reach the INSERT and
+    # raise a FOREIGN KEY error: a 500 with a stack trace instead of a 404, and
+    # -- worse -- the connection was never closed, so it held its write lock and
+    # the next query anywhere got "database is locked". Checking first is both
+    # the right answer and the safe one.
+    if not conn.execute("SELECT 1 FROM stock_items WHERE id = ?", (item_id,)).fetchone():
+        conn.close()
+        abort(404)
     if reason == "stocktake":
         # A stocktake is a COUNT, not a change: the movement is whatever it
         # takes to make the ledger agree with what's on the shelf, and the
