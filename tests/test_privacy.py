@@ -29,6 +29,8 @@ def _cleanup(conn):
     conn.execute("DELETE FROM workshop_bookings WHERE guest_email LIKE ? "
                  "OR reference_code LIKE ?", (TAG + "%", TAG + "%"))
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM event_inquiries WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM waitlist_entries WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -126,6 +128,64 @@ def run():
               AND (COALESCE(details, '') LIKE '%epipen%'
                 OR COALESCE(details, '') LIKE '%allergy%')""").fetchone()["c"]
     s.check("the audit line does not quote what it deleted", leaked == 0)
+
+    s.section("Enquiries that came to nothing really are cleared")
+    # The notice's second promise. "Once it is clear nothing came of them" was
+    # not a period anybody could check, so the notice now says twelve months
+    # and this is what makes that true.
+    old = _iso(-400)
+    recent = _iso(-30)
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+           contact_name, contact_email, preferred_date, status, created_at)
+           VALUES (?, ?, 'wedding', 'Nobody', 'n@example.invalid', ?, 'new', ?)""",
+        (TAG + "DEAD", TAG + "t1", old, now))
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+           contact_name, contact_email, preferred_date, status, created_at)
+           VALUES (?, ?, 'wedding', 'Booked', 'b@example.invalid', ?, 'confirmed', ?)""",
+        (TAG + "HELD", TAG + "t2", old, now))
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+           contact_name, contact_email, preferred_date, status, created_at)
+           VALUES (?, ?, 'party', 'Live', 'l@example.invalid', ?, 'new', ?)""",
+        (TAG + "LIVE", TAG + "t3", recent, now))
+    conn.execute(
+        """INSERT INTO waitlist_entries (name, email, desired_arrival, desired_departure,
+           party_size, status, created_at)
+           VALUES (?, 'w@example.invalid', ?, ?, 2, 'open', ?)""",
+        (TAG + "waiter", old, old, now))
+    conn.commit()
+
+    with m.app.test_request_context():
+        killed = m.purge_dead_enquiries(conn)
+
+    def _gone(ref):
+        return conn.execute(
+            "SELECT COUNT(*) AS c FROM event_inquiries WHERE reference_code = ?",
+            (ref,)).fetchone()["c"] == 0
+
+    s.check("an enquiry nobody took up is deleted", _gone(TAG + "DEAD"))
+    # The one that must survive: it happened, it has a price, and it falls
+    # under accounting retention rather than this rule.
+    s.check("one that became a confirmed event is NOT", not _gone(TAG + "HELD"),
+            detail="deleting this would destroy the record of an event that took place")
+    s.check("and a recent enquiry is left alone", not _gone(TAG + "LIVE"))
+    s.check("a waitlist request for dates long past is cleared",
+            conn.execute("SELECT COUNT(*) AS c FROM waitlist_entries WHERE name = ?",
+                         (TAG + "waiter",)).fetchone()["c"] == 0)
+    s.check("something was reported as cleared", sum(killed.values()) >= 2,
+            detail=str(killed))
+
+    s.section("The notice does not overstate what unsubscribing does")
+    # It sets a flag and keeps the address, which is right — it is what stops
+    # an old import re-adding somebody. The notice has to say so.
+    page = anon.get("/privacy").get_data(as_text=True)
+    s.check("it says the address is kept on a do-not-write list",
+            "do-not-write list" in page)
+    s.check("and that deletion can be asked for", "delete it" in page)
+    s.check("the enquiry period is a number a reader can check",
+            "twelve months" in page)
 
     _cleanup(conn)
     return s
