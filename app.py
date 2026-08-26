@@ -214,6 +214,20 @@ VEHICLE_TRANSFER_BUFFER_HOURS = 2
 HOUSE_SETTING_DEFAULTS = {
     "house_guest_capacity": "15",
 }
+# Paid leave is EARNED, month by month, not granted in a lump on the 1st of
+# January. Somebody who works June to September has earned about ten days, not a
+# year's worth, and what they have earned and not taken has to be paid when they
+# leave. Treating it as a flat annual figure is wrong in both directions and
+# gets worse with every seasonal hire.
+#
+# Held as settings because the rate and the leave year are the two things that
+# differ by convention collective, and neither should need a deploy. The French
+# statutory default is 2.5 jours ouvrables per month over a year running 1 June
+# to 31 May; your accountant is the one who confirms it applies here.
+LEAVE_SETTING_DEFAULTS = {
+    "leave_accrual_days_per_month": "2.5",
+    "leave_year_start_month": "6",
+}
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_daily_digest_enabled": "1",
@@ -3645,7 +3659,8 @@ def init_db():
                 entry + (datetime.now(timezone.utc).isoformat(),))
     conn.commit()
 
-    for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS):
+    for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
+                     LEAVE_SETTING_DEFAULTS):
         for key, default_value in defaults.items():
             if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?", (key,)).fetchone():
                 conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, default_value))
@@ -4583,6 +4598,111 @@ def auto_prep_upcoming_arrivals(conn, today, days_ahead=2):
     if prepped_count:
         conn.commit()
     return prepped_count
+
+
+def leave_setting(conn, key, cast=float):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    raw = row["value"] if row else LEAVE_SETTING_DEFAULTS[key]
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        return cast(LEAVE_SETTING_DEFAULTS[key])
+
+
+def leave_days_taken(conn, user_id, start, end):
+    """Approved, non-sick leave days between two dates.
+
+    THE definition of a day taken, shared by the balance and the accrual below.
+    Sick leave is tracked but does not eat the paid annual entitlement. Counted
+    inclusive of both ends, and clipped to the window rather than counted whole,
+    so a request straddling the end of the leave year is split across the two it
+    actually falls in instead of landing entirely in one.
+    """
+    used = 0
+    for r in conn.execute(
+        """SELECT start_date, end_date FROM leave_requests
+           WHERE user_id = ? AND status = 'approved' AND leave_type != 'sick'""",
+        (user_id,),
+    ).fetchall():
+        a, b = parse_date(r["start_date"]), parse_date(r["end_date"])
+        if not a or not b:
+            continue
+        a, b = max(a, start), min(b, end)
+        if a <= b:
+            used += (b - a).days + 1
+    return used
+
+
+def leave_year_window(conn, on_date):
+    """The leave year containing a date. Starts on the 1st of the configured
+    month -- 1 June by French default, not 1 January."""
+    start_month = int(leave_setting(conn, "leave_year_start_month", float))
+    start_month = min(max(start_month, 1), 12)
+    year = on_date.year if on_date.month >= start_month else on_date.year - 1
+    start = date(year, start_month, 1)
+    end = add_months(start, 12) - timedelta(days=1)
+    return start, end
+
+
+def leave_accrual(conn, person, on_date=None):
+    """What this person has EARNED so far, what they have taken, and what is
+    owed if they walked out today.
+
+    Whole months worked inside the leave year, times the configured rate. The
+    statutory French test is finer than that -- four weeks, or 24 days actually
+    worked, makes a month -- so this is the conservative reading of a rule your
+    accountant should confirm, and it is deliberately not presented as payroll.
+
+    Capped at the annual entitlement when one is set on the person, because an
+    agreement saying "25 days" is a ceiling and accrual is how you get there.
+    """
+    today = on_date or datetime.now(timezone.utc).date()
+    year_start, year_end = leave_year_window(conn, today)
+    rate = leave_setting(conn, "leave_accrual_days_per_month")
+
+    started = parse_date(person["start_date"]) if _has(person, "start_date") else None
+    ended = parse_date(person["contract_end_date"]) if _has(person, "contract_end_date") else None
+
+    window_start = max(year_start, started) if started else year_start
+    window_end = min(year_end, today, ended) if ended else min(year_end, today)
+
+    months = 0
+    if window_end >= window_start:
+        # Whole months only: somebody three weeks in has not earned a month.
+        cursor = add_months(window_start, 1)
+        while cursor - timedelta(days=1) <= window_end:
+            months += 1
+            cursor = add_months(cursor, 1)
+
+    accrued = round(months * rate, 1)
+    entitlement = None
+    try:
+        entitlement = person["annual_leave_days"]
+    except (KeyError, IndexError):
+        entitlement = None
+    if entitlement:
+        accrued = min(accrued, float(entitlement))
+
+    taken = leave_days_taken(conn, person["id"], year_start, year_end)
+    return {
+        "year_start": year_start, "year_end": year_end,
+        "months_worked": months, "rate": rate,
+        "accrued": accrued, "taken": taken,
+        "remaining": round(accrued - taken, 1),
+        # What has to be paid if they leave now. Never negative: leave taken in
+        # advance of earning it is a conversation, not a debt the payroll pack
+        # should quietly net off.
+        "owed_on_departure": max(0.0, round(accrued - taken, 1)),
+        "entitlement": entitlement,
+    }
+
+
+def _has(row, key):
+    try:
+        row[key]
+        return True
+    except (KeyError, IndexError):
+        return False
 
 
 def leave_balance(conn, user_id, entitlement, year=None):
@@ -6630,6 +6750,27 @@ def maybe_seed_offboarding(conn, user_id, old_status, new_status):
                        VALUES (?, ?, 0, 0, ?)""",
                     (user_id, label, now_iso),
                 )
+
+        # Leave earned and not taken has to be PAID when somebody goes. It is
+        # the one line on this list with a number attached, and "Settle final
+        # pay" does not carry it -- so whoever settles the pay has to know the
+        # figure was worked out somewhere, which is exactly how it gets missed.
+        person_row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if person_row:
+            acc = leave_accrual(conn, person_row)
+            if acc["owed_on_departure"] > 0:
+                label = (f"Pay {acc['owed_on_departure']:g} day"
+                         f"{'' if acc['owed_on_departure'] == 1 else 's'} of leave earned "
+                         f"and not taken (since {acc['year_start'].strftime('%d %b %Y')})")
+                if not conn.execute(
+                    "SELECT 1 FROM offboarding_items WHERE user_id = ? AND label LIKE ?",
+                    (user_id, "Pay % of leave earned%"),
+                ).fetchone():
+                    conn.execute(
+                        """INSERT INTO offboarding_items (user_id, label, done, sort_order, created_at)
+                           VALUES (?, ?, 0, 0, ?)""",
+                        (user_id, label, now_iso),
+                    )
 
         # And the same for kit. "Return uniform / equipment" does not say WHICH
         # laptop, so a line per item still outstanding, with the note that
@@ -32695,6 +32836,39 @@ def bulk_approve_queue():
     return redirect(url_for("admin_approvals"))
 
 
+@app.route("/admin/leave/settings", methods=["POST"])
+@owner_required
+def save_leave_settings():
+    """The two figures that differ by convention collective."""
+    raw_rate = (request.form.get("leave_accrual_days_per_month", "") or "").strip().replace(",", ".")
+    raw_month = (request.form.get("leave_year_start_month", "") or "").strip()
+    try:
+        rate = round(float(raw_rate), 3)
+    except ValueError:
+        flash("Days per month has to be a number, like 2.5.", "error")
+        return redirect(url_for("admin_leave"))
+    if not (0 < rate <= 31):
+        flash("Days per month has to be more than nothing and less than a month.", "error")
+        return redirect(url_for("admin_leave"))
+    try:
+        month = int(raw_month)
+    except ValueError:
+        month = 1
+    month = min(max(month, 1), 12)
+    conn = get_db()
+    for key, value in (("leave_accrual_days_per_month", f"{rate:g}"),
+                       ("leave_year_start_month", str(month))):
+        conn.execute(
+            """INSERT INTO app_settings (key, value) VALUES (?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (key, value))
+    log_audit(conn, "leave_settings_changed",
+              details=f"{rate:g} days per month, year starts month {month}")
+    conn.commit()
+    conn.close()
+    flash("Saved. It applies to everybody from now on.", "success")
+    return redirect(url_for("admin_leave"))
+
+
 @app.route("/admin/leave")
 @owner_required
 def admin_leave():
@@ -32729,6 +32903,16 @@ def admin_leave():
     # Only for the ones still to decide; the rest is history.
     impact = {r["id"]: leave_impact(conn, r["start_date"], r["end_date"], r["user_id"])
               for r in requests_ if r["status"] == "pending"}
+    # What each person has EARNED so far, beside what they have booked. The
+    # balance alone answers "how much of the allowance is left", which is the
+    # wrong question for anybody who did not work the whole year.
+    accrual_rate = leave_setting(conn, "leave_accrual_days_per_month")
+    leave_year_start = int(leave_setting(conn, "leave_year_start_month", float))
+    accruals = {
+        u["id"]: leave_accrual(conn, u)
+        for u in conn.execute(
+            "SELECT * FROM users WHERE role = 'employee' AND status = 'active'").fetchall()
+    }
     balances = {
         u["id"]: leave_balance(conn, u["id"], u["annual_leave_days"])
         for u in conn.execute("SELECT id, annual_leave_days FROM users WHERE role = 'employee'").fetchall()
@@ -32736,7 +32920,9 @@ def admin_leave():
     conn.close()
     return render_template(
         "admin_leave.html", requests=requests_, conflicts=conflicts, task_conflicts=task_conflicts,
-        balances=balances, impact=impact,
+        balances=balances, impact=impact, accruals=accruals, accrual_rate=accrual_rate,
+        leave_year_start=leave_year_start,
+        months_of_year=[(i, date(2000, i, 1).strftime("%B")) for i in range(1, 13)],
     )
 
 

@@ -8,6 +8,38 @@
   <a href="{{ url_for('export_leave_csv') }}" class="btn-ghost">Export CSV</a>
 </div>
 
+{% if can('save_leave_settings') %}
+{# The two figures that differ by convention collective. Held as settings so a
+   different agreement does not need a deploy, and shown here rather than buried
+   in a settings page because this is where anybody thinks about leave. #}
+<form method="post" action="{{ url_for('save_leave_settings') }}" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h3 style="margin-top:0;">How leave is earned</h3>
+  <p class="upload-hint" style="margin-top:0;">
+    Paid leave is earned month by month, not granted in a lump — so somebody who
+    works a season has earned part of a year, and what they have earned and not
+    taken is paid when they leave. The French statutory default is 2.5 days a
+    month over a year running 1 June to 31 May. Confirm both with your accountant.
+  </p>
+  <div class="search-bar">
+    <div>
+      <label class="field-label" for="rate">Days earned per month worked</label>
+      <input type="text" id="rate" name="leave_accrual_days_per_month" inputmode="decimal"
+             value="{{ '%g'|format(accrual_rate) }}" style="width:110px;">
+    </div>
+    <div>
+      <label class="field-label" for="ystart">Leave year starts</label>
+      <select id="ystart" name="leave_year_start_month">
+        {% for mnum, mname in months_of_year %}
+        <option value="{{ mnum }}" {{ 'selected' if mnum == leave_year_start }}>{{ mname }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:0;">Save</button>
+  </div>
+</form>
+{% endif %}
+
 {% set pending = requests|selectattr('status', 'equalto', 'pending')|list %}
 {% set approved = requests|selectattr('status', 'equalto', 'approved')|list %}
 <div class="stat-tiles">
@@ -41,7 +73,21 @@
         <span class="mini-status status-{{ 'rejected' if r['status'] == 'declined' else ('inactive' if r['status'] == 'cancelled' else r['status']) }}" style="margin-left:8px;">{{ r['status'] }}</span>
         <span class="upload-hint" style="margin-left:6px;">{{ r['leave_type']|default('vacation', true)|capitalize }}</span>
         {% set bal = balances.get(r['user_id']) %}
-        {% if bal and bal.entitlement is not none %}
+        {% set acc = accruals.get(r['user_id']) %}
+        {#
+          What they have EARNED, not what the allowance says. Somebody who
+          started in June has not earned a year of leave, and the balance on its
+          own answers the wrong question for anybody who did not work the whole
+          year — which, here, is most people.
+        #}
+        {% if acc %}
+        <span class="upload-hint">
+          earned {{ '%g'|format(acc.accrued) }} · taken {{ acc.taken }} ·
+          <strong>{{ '%g'|format(acc.remaining) }} left</strong>
+          <span title="{{ acc.months_worked }} month{{ '' if acc.months_worked == 1 else 's' }} worked since {{ acc.year_start.strftime('%d %b %Y') }}">
+            ({{ acc.months_worked }} mo)</span>
+        </span>
+        {% elif bal and bal.entitlement is not none %}
         <span class="upload-hint">{{ bal.used }} of {{ bal.entitlement }} days used this year</span>
         {% endif %}
       </div>
