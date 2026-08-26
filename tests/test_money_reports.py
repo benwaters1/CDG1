@@ -83,7 +83,11 @@ def run():
 
     # The same supplier typed two ways must not be silently merged, and must
     # not silently vanish either — both rows have to be visible.
-    _expense(conn, TAG + "roofer  ", 100.0)
+    # Deliberately the most RECENT invoice, and deliberately the wrong
+    # spelling. Grouping hands back a bare column from an arbitrary row, so a
+    # tie decides nothing — this makes the sloppy spelling the one a naive
+    # implementation would show, and the check below then means something.
+    _expense(conn, TAG + "roofer  ", 100.0, days_ago=1)
     data = m.spend_by_vendor(conn, start=_iso(-60))
     roofers = [r for r in data["rows"] if "roofer" in r["vendor_name"].lower()]
     s.check("a name typed differently is normalised onto one row",
@@ -91,6 +95,12 @@ def run():
     s.check("and its total includes both spellings",
             roofers and roofers[0]["total"] == 1600.0,
             detail=str(roofers[0]["total"]) if roofers else "")
+    # Which spelling gets shown must not be luck. Grouping hands back an
+    # arbitrary row's name, so the same page could name a supplier differently
+    # between two loads — and it did, until the name on the vendor list won.
+    s.check("the name shown is the one on the vendor list, not a typo of it",
+            roofers and roofers[0]["vendor_name"] == TAG + "Roofer",
+            detail=str(roofers[0]["vendor_name"]) if roofers else "")
 
     # The invariant that makes the page trustworthy.
     s.check("the rows add up to the stated total",
@@ -98,7 +108,10 @@ def run():
 
     page = oc.get("/management/spend-by-vendor?months=6").get_data(as_text=True)
     s.check("the page renders", "Spend by supplier" in page)
-    s.check("the supplier is on it", TAG + "Roofer" in page)
+    s.check("the supplier is on it", TAG + "Roofer" in page,
+            detail=("page has %d table rows; engine has %s"
+                    % (page.count("<tr>"),
+                       [r["vendor_name"] for r in data["rows"]][:6])))
     s.check("and the unmatched one is called out", "not on file" in page)
 
     # ----------------------------------------------- what discounts cost

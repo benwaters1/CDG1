@@ -7869,6 +7869,11 @@ def spend_by_vendor(conn, *, start=None, end=None):
         params.append(end if isinstance(end, str) else end.isoformat())
 
     rows = conn.execute(
+        # vendor_name is taken from the row carrying MAX(submitted_at) — SQLite's
+        # bare-column rule. Without that, the spelling shown for a supplier typed
+        # more than one way is whichever row the group happened to yield, so the
+        # same page can name them differently between two loads. The most recent
+        # spelling is at least a decision somebody made.
         f"""SELECT vendor_name, COUNT(*) AS invoices,
                    COALESCE(SUM(amount), 0) AS total,
                    MIN(submitted_at) AS first_seen, MAX(submitted_at) AS last_seen
@@ -7886,7 +7891,8 @@ def spend_by_vendor(conn, *, start=None, end=None):
     for r in rows:
         name = (r["vendor_name"] or "").strip()
         key = " ".join(name.split()).lower()
-        row = {"vendor_name": name or "(not named)", "invoices": r["invoices"],
+        display = known[key]["name"] if key in known else name
+        row = {"vendor_name": display or "(not named)", "invoices": r["invoices"],
                "total": r["total"] or 0.0, "first_seen": r["first_seen"],
                "last_seen": r["last_seen"],
                "vendor_id": known[key]["id"] if key in known else None,
