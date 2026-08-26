@@ -103,6 +103,7 @@ SUITES = [
     "test_cover_gaps",
     "test_insurer_notice",
     "test_home_warnings",
+    "test_watch_tasks",
     "test_money_reports",
     "test_noindex_meta",
     "test_privacy",

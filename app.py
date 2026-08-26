@@ -248,6 +248,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_stale_shift_hours": "14",
     "automation_backup_email_enabled": "1",
     "automation_health_notes_purge_enabled": "1",
+    "automation_watch_tasks_enabled": "1",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     "automation_social_horizon_days": "28",
@@ -29939,6 +29940,134 @@ def generate_maintenance_tasks(conn, *, today=None, user_id=None):
     return made
 
 
+# Only the blocking kind become tasks. A warning worth reading is not the same
+# as a job worth putting on somebody's list, and a task list that fills with
+# things nobody is expected to act on is a list people stop opening.
+WATCH_TASK_ORIGIN = "watch"
+
+# Per kind, not overall: one very bad week of rota should not push a fault
+# with a guest in the room off the list. Anything dropped is reported rather
+# than silently trimmed — the pages carry the full set.
+WATCH_TASK_CAP = 5
+
+
+def watch_task_findings(conn, today=None):
+    """The blocking findings, as (title, note, due, priority) tuples.
+
+    Titles have to be stable: they are the dedupe key, so the same problem on
+    the same day must produce the same string every run or the list grows a
+    duplicate every morning.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    horizon = today + timedelta(days=14)
+    found, dropped = [], {}
+
+    def take(kind, items):
+        if len(items) > WATCH_TASK_CAP:
+            dropped[kind] = len(items) - WATCH_TASK_CAP
+        return items[:WATCH_TASK_CAP]
+
+    clashes = [c for c in rota_conflicts(conn, today, horizon)
+               if c["kind"] == "certification"]
+    for c in take("certification", clashes):
+        found.append((
+            f"Not qualified for the shift — {c['employee_name']}, {c['shift_date']}",
+            f"{c['detail']}\n\nMove the shift or get the certificate renewed before then.",
+            c["shift_date"], "high"))
+
+    gaps = [g for g in cover_gaps(conn, today, horizon)
+            if g["uncovered"] and (g["in_house"] or g["arrivals"])]
+    for g in take("cover", gaps):
+        who = (f"{g['in_house']} guest(s) in the house" if g["in_house"]
+               else f"{g['arrivals']} arriving")
+        found.append((
+            f"Nobody rostered — {g['date']}",
+            f"{who}, and nobody on the rota who can work that day.",
+            g["date"], "high"))
+
+    faults = [f for f in rooms_sold_with_a_fault(conn, today=today, days=14)
+              if f["in_house"] or (f["days_away"] or 99) <= 7]
+    for f in take("fault", faults):
+        found.append((
+            f"Open fault in a sold room — {f['room_name']}, {f['reference_code']}",
+            f"{f['title']}. {f['guest_name']} "
+            + ("is in the room now." if f["in_house"]
+               else f"arrives {f['arrival_date']}.")
+            + "\n\nFix it, move them, or tell them.",
+            (today.isoformat() if f["in_house"] else f["arrival_date"]), "high"))
+
+    overdue = incidents_awaiting_insurer(conn)["overdue"]
+    for i in take("insurer", overdue):
+        found.append((
+            f"Insurer not told — incident {i['id']}",
+            f"{i['summary']}\n\n{i['age_days']:.0f} days ago; the window was "
+            f"{i['allowed_days']}."
+            + (" 48 hours is statutory for a workplace accident."
+               if i["statutory"] else ""),
+            today.isoformat(), "high"))
+
+    return found, dropped
+
+
+def generate_watch_tasks(conn, today=None):
+    """Raise a task per blocking finding, and tick off any that have gone.
+
+    Self-healing on purpose: nothing here has a "done" action of its own, so
+    the second half is what stops the list rotting. A task raised for Tuesday
+    disappears when Tuesday is covered, without anybody closing it by hand.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    found, dropped = watch_task_findings(conn, today)
+    wanted = {title: (note, due, prio) for title, note, due, prio in found}
+
+    open_now = {r["title"]: r["id"] for r in conn.execute(
+        "SELECT id, title FROM tasks WHERE origin = ? AND status != 'done'",
+        (WATCH_TASK_ORIGIN,)).fetchall()}
+
+    made = 0
+    for title, (note, due, prio) in wanted.items():
+        if title in open_now:
+            continue
+        conn.execute(
+            """INSERT INTO tasks (assigned_to_user_id, title, notes, priority, due_date,
+                 status, origin, created_at)
+               VALUES (NULL, ?, ?, ?, ?, 'open', ?, ?)""",
+            (title, note, prio, due, WATCH_TASK_ORIGIN, now_iso))
+        made += 1
+
+    # The half that matters. Without it the list is a record of every problem
+    # the house has ever had, which nobody reads twice.
+    closed = 0
+    for title, task_id in open_now.items():
+        if title not in wanted:
+            conn.execute(
+                "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?",
+                (now_iso, task_id))
+            closed += 1
+
+    conn.commit()
+    return {"made": made, "closed": closed, "open": len(wanted), "dropped": dropped}
+
+
+def run_watch_tasks_job(conn):
+    """Daily. Everything it raises has at least a day of notice, and running it
+    oftener would only mean the same list rewritten."""
+    r = generate_watch_tasks(conn)
+    bits = []
+    if r["made"]:
+        bits.append(f"{r['made']} raised")
+    if r["closed"]:
+        bits.append(f"{r['closed']} closed — no longer true")
+    if r["dropped"]:
+        # Never silent: the pages carry the full set, and a capped list that
+        # says nothing reads as a complete one.
+        bits.append("capped at %d per kind (%s not raised)" % (
+            WATCH_TASK_CAP,
+            ", ".join(f"{v} more {k}" for k, v in sorted(r["dropped"].items()))))
+    return ", ".join(bits) or "nothing to raise"
+
+
 def record_maintenance_visit(conn, schedule_id, *, done_on, done_by=None, cost=None,
                              certificate=None, notes=None, user_id=None):
     """The work was done. Move the schedule on and close its task."""
@@ -34422,6 +34551,10 @@ AUTOMATION_JOBS = [
     # states this happens once the event is over, so it is not a preference.
     ("health_notes_purge", "automation_health_notes_purge_enabled", None, 24 * 3600,
      run_health_notes_purge_job),
+    # Daily. Raises a task per blocking finding and closes the ones that have
+    # stopped being true, so the list mirrors the house rather than its history.
+    ("watch_tasks", "automation_watch_tasks_enabled", None, 24 * 3600,
+     run_watch_tasks_job),
 ]
 
 
