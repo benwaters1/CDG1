@@ -7816,6 +7816,104 @@ def rota_conflicts(conn, start, end):
     return out
 
 
+def cover_gaps(conn, start, end):
+    """What is happening each day, and who is actually on to do it.
+
+    One row per day that has work. `people` counts distinct rostered staff,
+    `blocked` those whose shift clashes with leave, absence or a lapsed
+    requirement, and `effective` is what is left. A day with work and an
+    effective count of zero is the gap.
+    """
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    if not start or not end or end < start:
+        return []
+
+    lo, hi = start.isoformat(), end.isoformat()
+    days = {}
+
+    def day(d):
+        return days.setdefault(d, {
+            "date": d, "arrivals": 0, "departures": 0, "in_house": 0,
+            "covers": 0, "dinners": 0, "workshops": [], "people": set(),
+            "blocked": set(), "shifts": [],
+        })
+
+    for r in conn.execute(
+        """SELECT arrival_date, departure_date, party_size FROM bookings
+            WHERE status = 'confirmed' AND departure_date >= ? AND arrival_date <= ?""",
+        (lo, hi)).fetchall():
+        a, dep = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if a and lo <= r["arrival_date"] <= hi:
+            day(r["arrival_date"])["arrivals"] += 1
+        if dep and lo <= r["departure_date"] <= hi:
+            day(r["departure_date"])["departures"] += 1
+        # Guests already in the house still need somebody there, which is the
+        # case a page built only on arrivals quietly misses.
+        if a and dep:
+            cur = max(a, start)
+            while cur < min(dep, end + timedelta(days=1)):
+                day(cur.isoformat())["in_house"] += r["party_size"] or 1
+                cur += timedelta(days=1)
+
+    for r in conn.execute(
+        """SELECT dinner_date, COUNT(*) AS n, COALESCE(SUM(party_size), 0) AS covers
+             FROM restaurant_bookings
+            WHERE status = 'confirmed' AND dinner_date BETWEEN ? AND ?
+            GROUP BY dinner_date""", (lo, hi)).fetchall():
+        d = day(r["dinner_date"])
+        d["dinners"] += r["n"]
+        d["covers"] += r["covers"]
+
+    for r in conn.execute(
+        """SELECT workshops.title, workshop_sessions.start_date, workshop_sessions.end_date
+             FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.start_date <= ?
+              AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) >= ?""",
+        (hi, lo)).fetchall():
+        a = parse_date(r["start_date"])
+        z = parse_date(r["end_date"] or r["start_date"])
+        if not (a and z):
+            continue
+        cur = max(a, start)
+        while cur <= min(z, end):
+            day(cur.isoformat())["workshops"].append(r["title"])
+            cur += timedelta(days=1)
+
+    for r in conn.execute(
+        """SELECT shifts.*, users.name AS employee_name FROM shifts
+             JOIN users ON users.id = shifts.user_id
+            WHERE shifts.shift_date BETWEEN ? AND ?""", (lo, hi)).fetchall():
+        d = day(r["shift_date"])
+        d["people"].add(r["user_id"])
+        d["shifts"].append({"user_id": r["user_id"], "name": r["employee_name"],
+                            "start_time": r["start_time"], "end_time": r["end_time"]})
+
+    # Rostered but unable to work it is not cover. Reuses the clash engine so
+    # the two pages can never disagree about who is actually available.
+    for c in rota_conflicts(conn, start, end):
+        if c["shift_date"] in days:
+            days[c["shift_date"]]["blocked"].add(c["user_id"])
+
+    out = []
+    for key in sorted(days):
+        d = days[key]
+        d["work"] = (d["arrivals"] + d["departures"] + d["dinners"]
+                     + len(d["workshops"]) + (1 if d["in_house"] else 0))
+        if not d["work"]:
+            continue
+        d["people_count"] = len(d["people"])
+        d["blocked_count"] = len(d["blocked"] & d["people"])
+        d["effective"] = d["people_count"] - d["blocked_count"]
+        d["uncovered"] = d["effective"] <= 0
+        d["workshops"] = sorted(set(d["workshops"]))
+        d["people"], d["blocked"] = sorted(d["people"]), sorted(d["blocked"])
+        out.append(d)
+    return out
+
+
 def rooms_sold_with_a_fault(conn, *, today=None, days=30):
     """Confirmed arrivals into a room that has an unresolved fault logged.
 
@@ -16772,6 +16870,8 @@ PALETTE_PAGES = [
     ("Shifts", "admin_shifts", "rota scheduling"),
     ("Rota clashes", "rota_clashes_page",
      "conflict leave absence certificate cannot work double booked"),
+    ("Nobody on", "cover_gaps_page",
+     "cover gaps unstaffed rota empty who is working"),
     ("Timesheets", "admin_timesheets", "hours clock in out"),
     ("Time off", "admin_leave", "holiday leave vacation"),
     ("Ask HR", "admin_hr_notes", "questions"),
@@ -29490,6 +29590,38 @@ def rota_clashes_page():
     return render_template("rota_clashes.html", rows=rows, overview=overview,
                            by_kind=by_kind, kinds=ROTA_CONFLICT_KINDS,
                            past=past, days=days, today=today, end=end)
+
+
+@app.route("/admin/cover")
+@owner_required
+def cover_gaps_page():
+    """Days with work happening and nobody on to do it."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        days = max(1, min(180, int(request.args.get("days", 28))))
+    except (TypeError, ValueError):
+        days = 28
+    end = today + timedelta(days=days)
+    rows = cover_gaps(conn, today, end)
+    conn.close()
+
+    gaps = [r for r in rows if r["uncovered"]]
+    # Somebody IS rostered, but every one of them is on leave, absent or not
+    # currently qualified. Worth separating: it reads as staffed on the rota,
+    # which is exactly why nobody catches it.
+    hollow = [r for r in gaps if r["people_count"] > 0]
+    guests = [r for r in gaps if r["in_house"] or r["arrivals"]]
+
+    overview = [
+        overview_cell("Days with work", len(rows)),
+        overview_cell("Nobody on", len(gaps), alert=bool(gaps)),
+        overview_cell("Looks staffed but isn't", len(hollow), alert=bool(hollow),
+                      hint="everyone rostered is unable to work it"),
+        overview_cell("With guests in the house", len(guests), alert=bool(guests)),
+    ]
+    return render_template("cover_gaps.html", rows=rows, gaps=gaps, hollow=hollow,
+                           overview=overview, days=days, today=today, end=end)
 
 
 @app.route("/admin/room-faults")
