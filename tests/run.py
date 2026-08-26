@@ -99,6 +99,7 @@ SUITES = [
     "test_seo_files",
     "test_rota_clashes",
     "test_cover_gaps",
+    "test_insurer_notice",
     "test_money_reports",
     "test_noindex_meta",
     "test_privacy",

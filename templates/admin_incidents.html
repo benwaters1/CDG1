@@ -19,6 +19,35 @@
 
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 
+{# The register being complete and the insurer knowing nothing are entirely
+   compatible states. This is the second one, with a clock on it. #}
+{% if insurer['all'] %}
+<div class="pass-short">
+  <strong>The insurer has not been told about these</strong>
+  {% for i in insurer['all'] %}
+  <span class="pass-short-row">
+    {{ i.occurred_at[:10]|date_short }} — {{ i.summary|truncate(70) }}
+    {%- if i.overdue %}
+      · <strong>{{ i.age_days|round|int }} days ago, window was {{ i.allowed_days }}</strong>
+      {%- if i.statutory %} · 48h is statutory for a workplace accident{% endif %}
+    {%- else %}
+      · {{ i.days_left|round|int }} day{{ '' if i.days_left|round|int == 1 else 's' }} left
+    {%- endif %}
+    {%- if not i.has_policy %} · <strong>no policy chosen</strong>{% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Late notification is how cover is lost. A workplace accident must reach the CPAM within 48
+    hours — that is law, not a policy term. The five days used for everything else is the window
+    most policies impose; check yours, because it is the policy that decides, not this page.
+    {% if insurer['no_policy'] %}
+      {{ insurer['no_policy']|length }} of these {{ 'has' if insurer['no_policy']|length == 1
+      else 'have' }} no policy attached at all, so there is nothing to report them against yet.
+    {% endif %}
+  </span>
+</div>
+{% endif %}
+
 <details class="refund-box" style="margin-bottom:20px;">
   <summary>Record an incident</summary>
   <form method="post" action="{{ url_for('new_incident') }}">
@@ -126,12 +155,20 @@
     </p>
     {% if i['detail'] %}<p class="manual-body">{{ i['detail'] }}</p>{% endif %}
     {% if i['action_taken'] %}<p class="manual-body"><strong>Action:</strong> {{ i['action_taken'] }}</p>{% endif %}
-    {% if i['insurer'] %}
+    {# Shown even with no policy attached. It used to appear only when one was
+       set, so an incident nobody had assigned a policy to said nothing about
+       insurance at all — the case most likely to be forgotten was the silent
+       one. #}
     <p class="upload-hint">
-      Policy: {{ i['insurer'] }} ·
-      {% if i['reported_to_insurer_at'] %}reported {{ local_datetime_str(i['reported_to_insurer_at'])[:10] }}{% else %}<strong>not yet reported</strong>{% endif %}
+      {% if i['insurer'] %}Policy: {{ i['insurer'] }} ·
+        {% if i['reported_to_insurer_at'] %}reported {{ local_datetime_str(i['reported_to_insurer_at'])[:10] }}
+        {%- else %}<strong>not yet reported</strong>{% endif %}
+      {% elif i['severity'] != 'near_miss' and i['kind'] != 'near_miss' %}
+        <strong>No policy chosen</strong> — nothing to report this against.
+      {% else %}
+        Near miss — nobody to tell.
+      {% endif %}
     </p>
-    {% endif %}
 
     <form method="post" action="{{ url_for('update_incident', incident_id=i['id']) }}"
           style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:8px;">

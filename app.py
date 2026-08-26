@@ -7597,6 +7597,70 @@ INCIDENT_SEVERITIES = {
     "significant": "Significant — medical attention",
     "serious": "Serious — hospital or time off work",
 }
+# How long there is to tell somebody. A workplace accident is the hard one:
+# French law gives an employer 48 hours to declare an accident du travail to
+# the CPAM, and that is statute, not a policy term. Everything else uses the
+# window most policies impose contractually — which is why the page says to
+# check the policy rather than treating this as authoritative.
+INCIDENT_NOTIFY_DAYS = {"workplace": 2}
+INCIDENT_NOTIFY_DAYS_DEFAULT = 5
+
+# A near miss injured nobody and damaged nothing; there is no claim to make
+# and no insurer to tell. Chasing it would bury the ones that matter.
+INCIDENT_NOTIFY_EXEMPT = {"near_miss"}
+
+
+def incidents_awaiting_insurer(conn, *, now=None):
+    """Incidents nobody has told the insurer about, most overdue first.
+
+    Two kinds, kept apart because they need different actions. `unreported`
+    has a policy attached and simply has not been sent. `no_policy` has none
+    chosen, so there is nothing to send it to yet — and that is the one the
+    register is currently silent about.
+    """
+    now = now or datetime.now(timezone.utc)
+    rows = conn.execute(
+        """SELECT incidents.*, insurance_policies.provider AS insurer,
+                  insurance_policies.policy_number
+             FROM incidents
+             LEFT JOIN insurance_policies
+                    ON insurance_policies.id = incidents.insurance_policy_id
+            WHERE incidents.reported_to_insurer_at IS NULL
+            ORDER BY incidents.occurred_at"""
+    ).fetchall()
+
+    out = []
+    for r in rows:
+        if (r["kind"] or "") in INCIDENT_NOTIFY_EXEMPT:
+            continue
+        if (r["severity"] or "") in INCIDENT_NOTIFY_EXEMPT:
+            continue
+        when = parse_datetime_iso(r["occurred_at"])
+        if not when:
+            continue
+        allowed = INCIDENT_NOTIFY_DAYS.get(r["kind"] or "", INCIDENT_NOTIFY_DAYS_DEFAULT)
+        age_days = (now - when).total_seconds() / 86400
+        out.append({
+            "id": r["id"], "kind": r["kind"], "severity": r["severity"],
+            "summary": r["summary"], "occurred_at": r["occurred_at"],
+            "insurer": r["insurer"], "policy_number": r["policy_number"],
+            "has_policy": r["insurance_policy_id"] is not None,
+            "allowed_days": allowed,
+            "age_days": age_days,
+            "days_left": allowed - age_days,
+            "overdue": age_days > allowed,
+            "statutory": (r["kind"] or "") == "workplace",
+        })
+
+    out.sort(key=lambda x: (not x["overdue"], -x["age_days"]))
+    return {
+        "all": out,
+        "overdue": [x for x in out if x["overdue"]],
+        "unreported": [x for x in out if x["has_policy"]],
+        "no_policy": [x for x in out if not x["has_policy"]],
+    }
+
+
 ASSET_CATEGORIES = {
     "furniture": "Furniture",
     "art": "Art",
@@ -14891,16 +14955,24 @@ def admin_incidents():
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
     policies = conn.execute(
         "SELECT id, provider, coverage_type FROM insurance_policies ORDER BY provider").fetchall()
+    # Not filtered by the status tab: an incident somebody marked closed can
+    # still be one the insurer was never told about, and hiding it behind a
+    # tab is how it stays that way.
+    insurer = incidents_awaiting_insurer(conn)
     conn.close()
     overview = [
         overview_cell("Open", open_count, alert=open_count),
         overview_cell("This year", stats["total"]),
         overview_cell("Workplace", stats["workplace"], hint="staff accidents"),
         overview_cell("Significant or worse", stats["serious"], alert=stats["serious"]),
+        overview_cell("Insurer not told", len(insurer["all"]),
+                      alert=bool(insurer["overdue"]),
+                      hint=(f"{len(insurer['overdue'])} past the window"
+                            if insurer["overdue"] else None)),
         overview_cell("Work days lost", int(stats["days_lost"] or 0)),
     ]
     return render_template("admin_incidents.html", incidents=incidents, overview=overview,
-                           employees=employees, policies=policies,
+                           employees=employees, policies=policies, insurer=insurer,
                            status_filter=status_filter, today=today)
 
 
