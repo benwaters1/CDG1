@@ -97,6 +97,7 @@ SUITES = [
     "test_whats_on",
     "test_ateliers",
     "test_navigation",
+    "test_nav_reachable",
     "test_front_page",
     "test_confirmations",
     "test_social_schedule",
