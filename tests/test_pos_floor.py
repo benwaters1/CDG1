@@ -19,6 +19,7 @@ totals — renaming a table must not rewrite what last August's tabs say.
 Cash is here too. The till recorded that cash had been taken and left the
 arithmetic to whoever was holding the notes.
 """
+import sqlite3
 from datetime import datetime, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -30,12 +31,37 @@ TAG = "ZZFLOOR"
 
 def _cleanup():
     conn = db()
+    # By label AND by who opened it: the waitress below is seated at one of the
+    # seeded tables, so her tab is called "5" and a label-only sweep leaves it
+    # behind still pointing at her — which then blocks deleting her.
     ids = [r["id"] for r in conn.execute(
-        "SELECT id FROM pos_orders WHERE table_label LIKE ?", (TAG + "%",)).fetchall()]
+        """SELECT id FROM pos_orders
+           WHERE table_label LIKE ?
+              OR opened_by_user_id IN (SELECT id FROM users WHERE name LIKE ?)""",
+        (TAG + "%", TAG + "%")).fetchall()]
     for oid in ids:
+        conn.execute("DELETE FROM pos_payments WHERE order_id = ?", (oid,))
         conn.execute("DELETE FROM pos_order_lines WHERE order_id = ?", (oid,))
         conn.execute("DELETE FROM pos_orders WHERE id = ?", (oid,))
     conn.execute("DELETE FROM restaurant_tables WHERE label LIKE ?", (TAG + "%",))
+    # The waitress cannot be deleted once she has done anything, and that is the
+    # database being right rather than in the way: audit_log.actor_user_id is
+    # ON DELETE NO ACTION on purpose, so a record of who did what cannot be
+    # erased by removing the who. Retire her instead — the same thing the app
+    # makes you do with a real employee who has history.
+    conn.execute("""DELETE FROM pos_payments WHERE order_id IN
+                    (SELECT id FROM pos_orders WHERE opened_by_user_id IN
+                     (SELECT id FROM users WHERE name LIKE ?))""", (TAG + "%",))
+    try:
+        conn.execute("DELETE FROM users WHERE name LIKE ?", (TAG + "%",))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        conn.execute(
+            "UPDATE users SET status = 'inactive', access_preset = NULL WHERE name LIKE ?",
+            (TAG + "%",))
+        conn.commit()
+    conn.execute("DELETE FROM access_presets WHERE slug = ?", (TAG.lower(),))
     conn.commit()
     conn.close()
 
@@ -305,6 +331,66 @@ def run():
                         (four["id"],)).fetchone()["active"]
     conn.close()
     s.check("and it can be put back", back == 1)
+
+    s.section("A till-only login can actually run a service")
+    # The scenario the iPad by the door is for. The `till` area used to grant
+    # six endpoints, so this account could open a tab and then not send it to
+    # the kitchen, take payment, or print a receipt — a till that cannot finish
+    # a service. Every step below is one a section does every night.
+    conn = db()
+    conn.execute(
+        """INSERT INTO access_presets (slug, name, description, areas, is_full_access,
+           built_in, sort_order, created_at)
+           VALUES (?, 'Till', '', 'till', 0, 0, 60, ?)
+           ON CONFLICT(slug) DO UPDATE SET areas = 'till'""",
+        (TAG.lower(), datetime.now(timezone.utc).isoformat()))
+    conn.execute(
+        """INSERT INTO users (name, email, role, status, job_role, password_hash,
+           access_preset, created_at)
+           VALUES (?, ?, 'employee', 'active', 'Front of house', 'x', ?, ?)""",
+        (f"{TAG} Waitress", f"{TAG.lower()}.w@example.invalid", TAG.lower(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    waitress = conn.execute("SELECT id FROM users WHERE email = ?",
+                            (f"{TAG.lower()}.w@example.invalid",)).fetchone()["id"]
+    her_table = conn.execute(
+        "SELECT id FROM restaurant_tables WHERE active = 1 ORDER BY id DESC LIMIT 1"
+    ).fetchone()["id"]
+    conn.close()
+    wc = m.app.test_client()
+    with wc.session_transaction() as sess:
+        sess["user_id"] = waitress
+
+    s.check("she can see the floor", wc.get("/pos").status_code == 200)
+    wc.post("/pos/open", data={"table_id": str(her_table)}, follow_redirects=True)
+    hers = _latest_order()
+    s.check("and seat a table", hers["table_id"] == her_table,
+            detail=f"got table_id {hers['table_id']}")
+    s.check("open the tab", wc.get(f"/pos/{hers['id']}").status_code == 200)
+    wc.post(f"/pos/{hers['id']}/add",
+            data={"name": f"{TAG} Carafe", "unit_price": "24.00", "quantity": "1"},
+            follow_redirects=True)
+    conn = db()
+    lines = conn.execute("SELECT COUNT(*) AS c FROM pos_order_lines WHERE order_id = ?",
+                         (hers["id"],)).fetchone()["c"]
+    conn.close()
+    s.check("add an item", lines == 1, detail=f"{lines} line(s)")
+    s.check("send it to the kitchen",
+            wc.post(f"/pos/{hers['id']}/send", follow_redirects=True).status_code == 200)
+    s.check("read the pass", wc.get("/pos/kitchen").status_code == 200)
+    paid = wc.post(f"/pos/{hers['id']}/pay",
+                   data={"method": "cash", "cash_received": "50"}, follow_redirects=True)
+    s.check("take the cash and be told the change",
+            any("26.00" in x for x in flashes(paid)), detail=f"{flashes(paid)[:2]}")
+    s.check("and print the receipt",
+            wc.get(f"/pos/{hers['id']}/receipt").status_code == 200)
+
+    s.check("but the cash-up is not hers", wc.get("/pos/day").status_code == 403,
+            detail="a till login can close the day and see the takings")
+    s.check("nor is the floor plan", wc.get("/admin/restaurant/tables").status_code in (302, 403))
+    s.check("nor anything else in the office",
+            wc.get("/admin/payroll").status_code in (302, 403)
+            and wc.get("/admin/hr").status_code in (302, 403))
 
     s.section("Counting the drawer at the end of the night")
     # The closure recorded what the till THOUGHT it had taken and never asked
