@@ -31487,14 +31487,79 @@ def purge_health_notes(conn, today=None):
     return cleared
 
 
-def run_health_notes_purge_job(conn):
-    """Daily. Nothing here is urgent to the hour, and a day late is a day of
-    data nobody needed rather than a service failure."""
-    cleared = purge_health_notes(conn)
+# Long enough that nobody is deleting a live conversation, short enough to be
+# a real answer to "how long do you keep it". Stated in the privacy notice, so
+# changing it here means changing it there.
+ENQUIRY_RETENTION_MONTHS = 12
+
+
+def purge_dead_enquiries(conn, today=None):
+    """Delete enquiries and waitlist requests that plainly came to nothing.
+
+    Never touches a confirmed enquiry: that is the record of an event that
+    took place, it carries a price, and it falls under accounting retention
+    rather than this rule.
+
+    A request is dead when the date it was for is long past, or when it was
+    cancelled long ago. Both are judged from the date the guest cared about,
+    not the date we happened to file it.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    cutoff = _add_months(today, -ENQUIRY_RETENTION_MONTHS).isoformat()
+    cleared = {}
+
+    # Cancelled long ago, or a request for a date that passed long ago and was
+    # never taken up. COALESCE because an enquiry may name only one date.
+    cleared["event_inquiries"] = conn.execute(
+        """DELETE FROM event_inquiries
+            WHERE status != 'confirmed'
+              AND COALESCE(end_date, preferred_date, alternate_date,
+                           SUBSTR(created_at, 1, 10)) < ?""",
+        (cutoff,)).rowcount
+
+    cleared["waitlist_entries"] = conn.execute(
+        """DELETE FROM waitlist_entries
+            WHERE COALESCE(desired_departure, desired_arrival,
+                           SUBSTR(created_at, 1, 10)) < ?""",
+        (cutoff,)).rowcount
+
+    cleared["restaurant_waitlist"] = conn.execute(
+        """DELETE FROM restaurant_waitlist
+            WHERE COALESCE(desired_date, SUBSTR(created_at, 1, 10)) < ?""",
+        (cutoff,)).rowcount
+
+    # Workshop waitlists date through their session, and a request against a
+    # session that no longer exists is dead by definition.
+    cleared["workshop_waitlist"] = conn.execute(
+        """DELETE FROM workshop_waitlist
+            WHERE session_id IS NULL
+               OR session_id NOT IN (SELECT id FROM workshop_sessions)
+               OR session_id IN (
+                    SELECT id FROM workshop_sessions
+                     WHERE COALESCE(end_date, start_date) < ?)""",
+        (cutoff,)).rowcount
+
     total = sum(cleared.values())
-    if not total:
+    if total:
+        log_audit(conn, "dead_enquiries_purged", details=f"{total} record(s)")
+    conn.commit()
+    return cleared
+
+
+def run_health_notes_purge_job(conn):
+    """The retention pass, daily. Everything the privacy notice promises to
+    delete is deleted here, so the notice can be checked against one function
+    rather than hunted for across the app.
+
+    Nothing here is urgent to the hour: a day late is a day of data nobody
+    needed rather than a service failure.
+    """
+    cleared = purge_health_notes(conn)
+    cleared.update(purge_dead_enquiries(conn))
+    done = {k: v for k, v in cleared.items() if v}
+    if not done:
         return "nothing to clear"
-    return ", ".join(f"{k}: {v}" for k, v in cleared.items() if v)
+    return ", ".join(f"{k}: {v}" for k, v in done.items())
 
 
 def run_backup_email_job(conn):
