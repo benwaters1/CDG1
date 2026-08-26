@@ -2965,6 +2965,16 @@ def init_db():
         # must not rewrite what last August's closed tabs say they were.
         ("table_id", "ALTER TABLE pos_orders ADD COLUMN table_id INTEGER "
                      "REFERENCES restaurant_tables(id) ON DELETE SET NULL"),
+        # automation_runs recorded only that a job ran, never how it went, so a
+        # job that failed and a job that worked left the identical row behind.
+        ("job_last_status", "ALTER TABLE automation_runs ADD COLUMN last_status TEXT"),
+        ("job_last_message", "ALTER TABLE automation_runs ADD COLUMN last_message TEXT"),
+        # Kept apart from last_ran_at on purpose: "it last tried at 03:00" and
+        # "it last actually worked nine days ago" are the two different facts,
+        # and only one row was ever storing either of them.
+        ("job_last_ok_at", "ALTER TABLE automation_runs ADD COLUMN last_ok_at TEXT"),
+        ("job_fail_streak", "ALTER TABLE automation_runs ADD COLUMN "
+                            "consecutive_failures INTEGER NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -13188,6 +13198,22 @@ def backup_age_hours(conn):
     if stamp is None:
         return None
     return (datetime.now(timezone.utc) - stamp).total_seconds() / 3600
+
+
+def backup_job_failure_note(conn):
+    """Why it is not arriving, if the job knows -- so one task carries both
+    halves, instead of the owner reading the age here and the reason elsewhere.
+
+    Returns "" when the job has never failed, which is its own signal: nothing
+    is failing, so either nothing is scheduled or it is switched off.
+    """
+    row = conn.execute(
+        """SELECT last_message, consecutive_failures AS fails FROM automation_runs
+            WHERE job_name = 'backup_email' AND last_status = 'failed'""").fetchone()
+    if not row:
+        return ""
+    return (f"The scheduled backup has failed {row['fails']} run(s) in a row. "
+            f"It reports: {row['last_message'] or 'no message'}\n\n")
 
 
 def backup_gap_detail(age_h):
@@ -30085,7 +30111,12 @@ WATCH_TASK_KINDS = {
     "fault": "A sold room with an open fault",
     "insurer": "The insurer has not been told",
     "backup": "No backup is arriving",
+    "job": "An automation job keeps failing",
 }
+
+# One failure is a mail server having a bad morning. Two in a row, on jobs that
+# mostly run daily, is nobody coming.
+JOB_FAILURE_STREAK = 2
 WATCH_ASSIGNEE_PREFIX = "watch_task_assignee_"
 
 
@@ -30185,8 +30216,30 @@ def watch_task_findings(conn, today=None):
         found.append((
             "backup", "No backup is arriving",
             f"The last full backup: {backup_gap_detail(age_h)}.\n\n"
-            "Admin → Backup takes one now. Admin → Automation says whether the "
-            "scheduled one is switched on and whether it is failing.",
+            + backup_job_failure_note(conn)
+            + "Admin → Backup takes one now. Admin → Automation says whether the "
+              "scheduled one is switched on and whether it is failing.",
+            today.isoformat(), "high"))
+
+    # Jobs that have failed more than once running. Excludes the backup, which
+    # the finding above already owns and describes better: "no copy has left
+    # the building since the ninth" is the fact that matters, and raising a
+    # second task saying the send failed would be the same problem twice.
+    failing = [r for r in conn.execute(
+        """SELECT job_name, last_message, consecutive_failures AS fails, last_ok_at
+             FROM automation_runs
+            WHERE last_status = 'failed' AND consecutive_failures >= ?
+            ORDER BY consecutive_failures DESC, job_name""",
+        (JOB_FAILURE_STREAK,)).fetchall() if r["job_name"] != "backup_email"]
+    for j in take("job", failing):
+        label = AUTOMATION_JOB_LABELS.get(j["job_name"], j["job_name"])
+        found.append((
+            "job", f"Automation stopped working — {j['job_name']}",
+            f"{label}.\n\nFailed {j['fails']} runs in a row. Last worked: "
+            + (j["last_ok_at"][:10] if j["last_ok_at"] else "never")
+            + f".\nIt reports: {j['last_message'] or 'no message'}"
+            + "\n\nAdmin → Automation has the switch and a Run now button to "
+              "try it while you watch.",
             today.isoformat(), "high"))
 
     return found, dropped
@@ -32345,7 +32398,7 @@ def run_backup_email_job(conn):
     one that a mail provider silently drops."""
     to_address = owner_email(conn)
     if not to_address:
-        return "no owner email configured"
+        raise JobFailed("no owner email configured, so there is nowhere to send a backup")
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     zip_bytes = build_backup_zip(include_media=True)
     note = ""
@@ -32355,14 +32408,16 @@ def run_backup_email_job(conn):
                 "left out this time because the full backup was too large to email. "
                 "Use Admin → Backup to download everything, including media.")
         if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
-            return f"skipped — even the database alone is {len(zip_bytes) // (1024 * 1024)}MB, too large to email"
+            raise JobFailed(
+                f"even the database alone is {len(zip_bytes) // (1024 * 1024)}MB, "
+                "too large to email — take one from Admin → Backup instead")
     filename = f"gudanes-backup-{date_str}.zip"
     ok, error = send_backup_email(to_address, zip_bytes, filename, note)
-    if ok:
-        log_audit(conn, "backup_auto_sent")
-        conn.commit()
-        return f"sent to {to_address} ({len(zip_bytes) // 1024}KB){' (database only)' if note else ''}"
-    return f"send failed: {error}"
+    if not ok:
+        raise JobFailed(f"send failed: {error}")
+    log_audit(conn, "backup_auto_sent")
+    conn.commit()
+    return f"sent to {to_address} ({len(zip_bytes) // 1024}KB){' (database only)' if note else ''}"
 
 
 # ---------------------------------------------------------------------------
@@ -34785,6 +34840,48 @@ def run_stale_shift_cleanup_job(conn, hours_threshold):
     return f"auto-closed {len(stale)} stale shift(s)"
 
 
+PARAMETERISED_JOBS = ("workshop_balance_reminder", "stale_shift_cleanup")
+
+
+class JobFailed(Exception):
+    """A job that finished without raising but did not do its work.
+
+    Returning a sentence that says so is not enough, which was the bug: the
+    runner could not tell "sent to the owner (412KB)" from "send failed: SMTP
+    auth rejected", because both are a str a job returned. Anything that means
+    the work did not happen raises this instead.
+    """
+
+
+def record_job_run(conn, job_name, ok, message):
+    """Store how a run went, not just that one happened.
+
+    The failure streak is what separates "the mail server hiccupped once" from
+    "nothing has left this building since the ninth", and no single run can
+    tell those apart.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    message = (message or "")[:500]
+    row = conn.execute(
+        "SELECT consecutive_failures AS f FROM automation_runs WHERE job_name = ?",
+        (job_name,)).fetchone()
+    streak = 0 if ok else ((row["f"] if row else 0) or 0) + 1
+    cur = conn.execute(
+        """UPDATE automation_runs SET last_ran_at = ?, last_status = ?, last_message = ?,
+             consecutive_failures = ?, last_ok_at = COALESCE(?, last_ok_at)
+           WHERE job_name = ?""",
+        (now_iso, "ok" if ok else "failed", message, streak,
+         now_iso if ok else None, job_name))
+    if not cur.rowcount:
+        conn.execute(
+            """INSERT INTO automation_runs (job_name, last_ran_at, last_status,
+                 last_message, consecutive_failures, last_ok_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (job_name, now_iso, "ok" if ok else "failed", message, streak,
+             now_iso if ok else None))
+    conn.commit()
+
+
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
     ("daily_digest", "automation_daily_digest_enabled", None, 24 * 3600, run_daily_digest_job),
@@ -34844,8 +34941,13 @@ def automation_tick():
                 continue
             try:
                 result = job_fn(conn)
+                record_job_run(conn, job_name, True, str(result))
                 print(f"[automation] {job_name}: {result}")
             except Exception as e:
+                # Recorded, not just printed. A Railway log line scrolls away;
+                # this is the same fact somewhere the owner can still read it
+                # next Tuesday.
+                record_job_run(conn, job_name, False, f"{type(e).__name__}: {e}")
                 print(f"[automation] {job_name} failed: {e}")
 
         if settings["automation_workshop_balance_reminder_enabled"] == "1":
@@ -34898,6 +35000,9 @@ AUTOMATION_JOB_LABELS = {
     "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
     "maintenance": "Estate upkeep (raise tasks for work falling due)",
     "watch_tasks": "Blocking findings (raise a task, and close it when it stops being true)",
+    # Runnable but unlabelled until now, so it never appeared here at all —
+    # the one job whose whole purpose is a promise made in the privacy notice.
+    "health_notes_purge": "Delete dietary and medical notes once the event is over",
 }
 
 
@@ -34906,7 +35011,8 @@ AUTOMATION_JOB_LABELS = {
 def admin_automation():
     conn = get_db()
     settings = get_automation_settings(conn)
-    last_runs = {r["job_name"]: r["last_ran_at"] for r in conn.execute("SELECT job_name, last_ran_at FROM automation_runs").fetchall()}
+    last_runs = {r["job_name"]: r for r in conn.execute(
+        "SELECT * FROM automation_runs").fetchall()}
     employees = conn.execute(
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
     watch_routing = watch_task_assignees(conn)
@@ -34990,43 +35096,45 @@ def update_automation_settings():
 def run_automation_job_now(job_name):
     conn = get_db()
     settings = get_automation_settings(conn)
+    # Dispatched from the registry, not from a hand-written chain beside it.
+    # The chain had drifted: six jobs had a row in the Job status table and a
+    # "Run now" button that answered 404, because adding a job to AUTOMATION_JOBS
+    # and adding it here were two separate acts and only one of them was
+    # remembered. Anything runnable on a timer is runnable on demand.
+    registry = {name: fn for name, _e, _i, _c, fn in AUTOMATION_JOBS}
+    # Outside the try, because abort() raises: an unknown job name caught by the
+    # handler below would be recorded as that job having run and failed, and
+    # reported to the owner as "Job failed: 404 Not Found". The old chain did
+    # exactly that, which is why a dead button looked like a broken job.
+    if job_name not in registry and job_name not in PARAMETERISED_JOBS:
+        conn.close()
+        abort(404)
     try:
-        if job_name == "housekeeping":
-            result = run_housekeeping_job(conn)
-        elif job_name == "daily_digest":
-            result = run_daily_digest_job(conn)
-        elif job_name == "ical_sync":
-            result = run_ical_sync_job(conn)
-        elif job_name == "workshop_balance_reminder":
+        if job_name == "workshop_balance_reminder":
             try:
                 days_before = int(settings["automation_workshop_balance_reminder_days_before"])
             except (TypeError, ValueError):
                 days_before = 7
             result = run_workshop_balance_reminder_job(conn, days_before)
-        elif job_name == "workshop_feedback_request":
-            result = run_workshop_feedback_request_job(conn)
-        elif job_name == "email_inbox_scan":
-            result = run_email_inbox_scan_job(conn)
         elif job_name == "stale_shift_cleanup":
             try:
                 stale_hours = float(settings["automation_stale_shift_hours"])
             except (TypeError, ValueError):
                 stale_hours = 14
             result = run_stale_shift_cleanup_job(conn, stale_hours)
-        elif job_name == "backup_email":
-            result = run_backup_email_job(conn)
         else:
-            conn.close()
-            abort(404)
+            result = registry[job_name](conn)
     except Exception as e:
+        # Recorded before it is flashed. A message that only ever appeared on
+        # the screen of whoever pressed the button is not a record of anything.
+        record_job_run(conn, job_name, False, f"{type(e).__name__}: {e}")
+        log_audit(conn, "automation_job_run_manually", target=job_name)
+        conn.commit()
         conn.close()
         flash(f"Job failed: {e}", "error")
         return redirect(url_for("admin_automation"))
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    cur = conn.execute("UPDATE automation_runs SET last_ran_at = ? WHERE job_name = ?", (now_iso, job_name))
-    if cur.rowcount == 0:
-        conn.execute("INSERT INTO automation_runs (job_name, last_ran_at) VALUES (?, ?)", (job_name, now_iso))
+    record_job_run(conn, job_name, True, str(result))
     log_audit(conn, "automation_job_run_manually", target=job_name)
     conn.commit()
     conn.close()

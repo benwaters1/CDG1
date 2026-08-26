@@ -253,6 +253,23 @@ def clients():
     return oc, ec, owner, emp
 
 
+def _print_safely(line):
+    """Print a result line even when it quotes the app's own copy.
+
+    The console here is cp1252, and user-facing strings are full of characters
+    it cannot encode -- the arrow in "Admin > Backup", the em dashes everywhere.
+    A detail containing one raised UnicodeEncodeError from inside check(),
+    which crashed the suite and took every check after it down with it. That
+    happened only on failure, i.e. only ever at the moment a suite most needed
+    to report, so it read as "the tests broke" rather than "the code did".
+    """
+    try:
+        print(line)
+    except UnicodeEncodeError:
+        enc = sys.stdout.encoding or "ascii"
+        print(line.encode(enc, "replace").decode(enc, "replace"))
+
+
 class Suite:
     """Collects results so one failure doesn't hide the rest of the run."""
 
@@ -271,7 +288,7 @@ class Suite:
                 line += f"   {detail}"
             if response is not None and flashes(response):
                 line += f"   app said: {flashes(response)[:1]}"
-        print(line)
+        _print_safely(line)
         return bool(ok)
 
     @property

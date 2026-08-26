@@ -110,6 +110,7 @@ SUITES = [
     "test_insurer_notice",
     "test_home_warnings",
     "test_watch_tasks",
+    "test_job_outcomes",
     "test_money_reports",
     "test_noindex_meta",
     "test_privacy",
