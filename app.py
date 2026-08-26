@@ -8220,6 +8220,108 @@ def rota_conflicts(conn, start, end):
     return out
 
 
+def parse_skills(text):
+    """Free text to a list of (key, display) pairs, in the order written.
+
+    Split on commas and newlines only. Splitting on spaces as well would turn
+    "pool chemicals" into two skills nobody has.
+    """
+    if not text:
+        return []
+    out, seen = [], set()
+    for piece in re.split(r"[,;\n]", text):
+        display = " ".join(piece.split())
+        if not display:
+            continue
+        key = display.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((key, display))
+    return out
+
+
+def skill_matrix(conn, *, include_inactive=False):
+    """Every skill anybody has, and who has it.
+
+    `spellings` carries each distinct way a skill has been typed. One skill
+    written three ways is one row here with three spellings listed, because
+    hiding that would make a typo look like a colleague.
+    """
+    where = "" if include_inactive else "AND users.status = 'active'"
+    rows = conn.execute(
+        f"""SELECT id, name, job_role, skills FROM users
+             WHERE role = 'employee' {where.replace('users.', '')}
+             ORDER BY name""").fetchall()
+
+    skills = {}
+    for r in rows:
+        for key, display in parse_skills(r["skills"]):
+            entry = skills.setdefault(key, {"people": [], "spellings": {}})
+            entry["people"].append({"id": r["id"], "name": r["name"],
+                                    "job_role": r["job_role"]})
+            entry["spellings"][display] = entry["spellings"].get(display, 0) + 1
+
+    out = []
+    for key, entry in skills.items():
+        # The most common spelling wins, ties broken alphabetically. Taking
+        # whichever was encountered first makes the label depend on the order
+        # people happen to be listed in, so the same page can name a skill two
+        # different ways between loads — the exact bug the supplier report had.
+        display = sorted(entry["spellings"].items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        out.append({"key": key, "display": display,
+                    "people": entry["people"], "count": len(entry["people"]),
+                    "spellings": sorted(entry["spellings"])})
+    out.sort(key=lambda s: (s["count"], s["display"].casefold()))
+    return {
+        "skills": out,
+        "people": len(rows),
+        "without_any": [r["name"] for r in rows if not parse_skills(r["skills"])],
+        # The question the field was always able to answer and never asked:
+        # if this person is away, nobody can do this at all.
+        "held_by_one": [s for s in out if s["count"] == 1],
+    }
+
+
+def who_could_cover(conn, day, *, skill=None):
+    """Active employees with nothing on the rota that day, and free to work it.
+
+    Not a recommendation — it does not know who is willing, who is nearby, or
+    whose day off it is by arrangement rather than by record. It answers the
+    narrower question the app can actually answer: who is not already booked,
+    not on leave and not recorded absent.
+    """
+    if isinstance(day, str):
+        day = parse_date(day)
+    if not day:
+        return []
+    iso = day.isoformat()
+
+    busy = {r["user_id"] for r in conn.execute(
+        "SELECT DISTINCT user_id FROM shifts WHERE shift_date = ?", (iso,)).fetchall()}
+    for table, extra in (("leave_requests", "AND status = 'approved'"),
+                         ("absences", "")):
+        for r in conn.execute(
+            f"""SELECT user_id FROM {table}
+                 WHERE start_date <= ? AND end_date >= ? {extra}""",
+                (iso, iso)).fetchall():
+            busy.add(r["user_id"])
+
+    want = (skill or "").strip().casefold() or None
+    out = []
+    for r in conn.execute(
+        """SELECT id, name, job_role, skills FROM users
+            WHERE role = 'employee' AND status = 'active' ORDER BY name""").fetchall():
+        if r["id"] in busy:
+            continue
+        theirs = parse_skills(r["skills"])
+        if want and want not in {k for k, _d in theirs}:
+            continue
+        out.append({"user_id": r["id"], "name": r["name"], "job_role": r["job_role"],
+                    "skills": [d for _k, d in theirs]})
+    return out
+
+
 def rota_vs_clock(conn, start, end, *, today=None):
     """Days where the rota and the clock tell different stories.
 
@@ -17517,6 +17619,8 @@ PALETTE_PAGES = [
      "cover gaps unstaffed rota empty who is working"),
     ("Rota vs clock", "rota_vs_clock_page",
      "no show unrostered timesheet planned actual hours"),
+    ("Who can do what", "skills_page",
+     "skills cover training single point of failure substitute"),
     ("Timesheets", "admin_timesheets", "hours clock in out"),
     ("Time off", "admin_leave", "holiday leave vacation"),
     ("Ask HR", "admin_hr_notes", "questions"),
@@ -30598,15 +30702,20 @@ def cover_gaps_page():
         days = 28
     end = today + timedelta(days=days)
     rows = cover_gaps(conn, today, end)
-    conn.close()
 
     gaps = [r for r in rows if r["uncovered"]]
+    # The obvious next question on an uncovered day, answered on the same page
+    # rather than left as an exercise. Only the nearest few: a list of every
+    # free person for every gap is a wall of names nobody reads.
+    for g in gaps[:5]:
+        g["could_cover"] = who_could_cover(conn, g["date"])[:6]
     # Somebody IS rostered, but every one of them is on leave, absent or not
     # currently qualified. Worth separating: it reads as staffed on the rota,
     # which is exactly why nobody catches it.
     hollow = [r for r in gaps if r["people_count"] > 0]
     guests = [r for r in gaps if r["in_house"] or r["arrivals"]]
 
+    conn.close()
     overview = [
         overview_cell("Days with work", len(rows)),
         overview_cell("Nobody on", len(gaps), alert=bool(gaps)),
@@ -30616,6 +30725,33 @@ def cover_gaps_page():
     ]
     return render_template("cover_gaps.html", rows=rows, gaps=gaps, hollow=hollow,
                            overview=overview, days=days, today=today, end=end)
+
+
+@app.route("/admin/skills")
+@owner_required
+def skills_page():
+    """Who can do what, and what only one person can do."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    matrix = skill_matrix(conn)
+    wanted = (request.args.get("skill", "") or "").strip()
+    day = parse_date(request.args.get("day", "")) or today
+    free = who_could_cover(conn, day, skill=wanted or None)
+    conn.close()
+
+    typos = [sk for sk in matrix["skills"] if len(sk["spellings"]) > 1]
+    overview = [
+        overview_cell("Skills recorded", len(matrix["skills"])),
+        overview_cell("Only one person can", len(matrix["held_by_one"]),
+                      alert=bool(matrix["held_by_one"]),
+                      hint="nobody else if they are away"),
+        overview_cell("Nothing recorded for", len(matrix["without_any"]),
+                      hint="of %d people" % matrix["people"]),
+        overview_cell("Spelt more than one way", len(typos), alert=bool(typos)),
+    ]
+    return render_template("skills.html", matrix=matrix, overview=overview,
+                           typos=typos, free=free, day=day, wanted=wanted,
+                           today=today)
 
 
 @app.route("/admin/rota-vs-clock")

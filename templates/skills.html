@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Who can do what{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Who can do what</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('cover_gaps_page') }}" class="btn-ghost">Nobody on</a>
+    <a href="{{ url_for('directory') }}" class="btn-ghost">Team</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every profile can hold skills. They have been typed in, shown as chips, and read by nothing —
+  so "who could actually cover Tuesday" has never been answerable, which is the question the
+  rota pages leave you to solve in your head. This is that field, asked properly.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The reason this page is worth more than a list: if that one person is on
+   leave, or leaves, nobody can do it at all. #}
+{% if matrix.held_by_one %}
+<div class="pass-short">
+  <strong>Only one person can do these</strong>
+  {% for sk in matrix.held_by_one %}
+  <span class="pass-short-row">
+    {{ sk.display }} — {{ sk.people[0].name }}
+    {%- if sk.people[0].job_role %} ({{ sk.people[0].job_role }}){% endif %} only
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Not necessarily a problem — some things only need one person. It is worth knowing which
+    ones they are before the week somebody is away.
+  </span>
+</div>
+{% endif %}
+
+{% if typos %}
+<div class="pass-short">
+  <strong>Spelt more than one way</strong>
+  {% for sk in typos %}
+  <span class="pass-short-row">{{ sk.spellings|join('  ·  ') }}</span>
+  {% endfor %}
+  <span class="upload-hint">
+    Matched ignoring case and spacing, and nothing further. "First aid" and "first aid" are the
+    same skill here; "firstaid" is a different one, and would sit in the list as its own row
+    with one person against it. Tidying the spelling on the profile merges them.
+  </span>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Every skill, rarest first</h2>
+{% if not matrix.skills %}
+  <div class="empty-state">
+    Nothing recorded yet. The field is on each person's profile under the team directory —
+    a comma-separated list, e.g. "First aid, pool chemicals, driving licence".
+  </div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Skill</th><th class="num">People</th><th>Who</th></tr></thead>
+  <tbody>
+    {% for sk in matrix.skills %}
+    <tr class="{{ 'row-alert' if sk.count == 1 }}">
+      <td>
+        <strong>{{ sk.display }}</strong>
+        {% if sk.spellings|length > 1 %}
+          <span class="upload-hint">also written {{ sk.spellings|reject('equalto', sk.display)|join(', ') }}</span>
+        {% endif %}
+      </td>
+      <td class="num">{{ sk.count }}</td>
+      <td>
+        {% for p in sk.people %}
+          <a href="{{ url_for('profile', user_id=p.id) }}">{{ p.name }}</a>{{ ', ' if not loop.last }}
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if matrix.without_any %}
+<p class="field-hint" style="max-width:900px;">
+  Nothing recorded at all for {{ matrix.without_any|join(', ') }} — which reads on this page as
+  "cannot do anything", and almost certainly means nobody has filled it in.
+</p>
+{% endif %}
+
+<h2 class="section-heading">Who is free on a day</h2>
+<form method="get" class="upload-form" style="max-width:640px;">
+  <div>
+    <label class="field-label">Day</label>
+    <input type="date" name="day" value="{{ day.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label">With this skill (optional)</label>
+    <input type="text" name="skill" value="{{ wanted }}" placeholder="e.g. first aid" list="skill-list">
+    <datalist id="skill-list">
+      {% for sk in matrix.skills %}<option value="{{ sk.display }}">{% endfor %}
+    </datalist>
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% if not free %}
+  <div class="empty-state">
+    Nobody is free on {{ day.isoformat()|date_short }}{% if wanted %} with "{{ wanted }}"{% endif %} —
+    everyone is either already rostered, on approved leave, or recorded absent.
+  </div>
+{% else %}
+<div class="doc-list" style="max-width:900px;">
+  {% for p in free %}
+  <div class="doc-row" style="gap:10px; align-items:baseline; flex-wrap:wrap;">
+    <strong style="min-width:170px;">
+      <a href="{{ url_for('profile', user_id=p.user_id) }}">{{ p.name }}</a>
+    </strong>
+    <span class="mini-status status-inactive">{{ p.job_role or '—' }}</span>
+    <span class="upload-hint" style="flex:1;">{{ p.skills|join(', ') or 'no skills recorded' }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  "Free" means only that the app has nothing else against them: no shift, no approved leave, no
+  recorded absence. It does not know whose day off is an arrangement rather than a record, who
+  lives near enough, or who is willing. This narrows the list; it does not make the decision.
+</p>
+
+{% endblock %}

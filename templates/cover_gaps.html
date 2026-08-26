@@ -10,6 +10,7 @@
        class="{{ 'btn-mini' if n == days else 'btn-ghost' }}">{{ n }} days</a>
     {% endfor %}
     <a href="{{ url_for('rota_clashes_page') }}" class="btn-ghost">Rota clashes</a>
+    <a href="{{ url_for('skills_page') }}" class="btn-ghost">Who can do what</a>
     <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Shifts</a>
   </div>
 </div>
@@ -85,6 +86,16 @@
       <td>
         {% if r.uncovered %}
           <span class="mini-status status-declined">nobody on</span>
+          {# The obvious next question, answered here rather than left as an
+             exercise. Only on the nearest few — every free name against every
+             gap is a wall nobody reads. #}
+          {% if r.could_cover %}
+            <span class="upload-hint">
+              free that day: {{ r.could_cover|map(attribute='name')|join(', ') }}
+            </span>
+          {% elif r.could_cover is defined %}
+            <span class="upload-hint">nobody is free that day</span>
+          {% endif %}
         {% endif %}
       </td>
     </tr>
