@@ -48,6 +48,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="arrival_time">
     <div style="flex:1 1 200px;">
+      <label for="mb_estimated_arrival_time">What time do you expect to arrive?</label>
       <input type="text" id="mb_estimated_arrival_time" name="estimated_arrival_time" value="{{ booking['estimated_arrival_time'] or '' }}" placeholder="e.g. around 4pm">
     </div>
     <button type="submit" class="g-btn g-btn--sm">{{ t('Save') }}</button>
@@ -126,6 +127,7 @@
   <form method="post" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="request">
+    <label for="mb_message">What can we arrange for you?</label>
     <textarea id="mb_message" name="message" rows="3" placeholder="e.g. Could we have a bottle of red waiting in the room?" required></textarea>
     <button type="submit" class="g-btn g-btn--solid" style="margin-top:var(--s2);">{{ t('Send request') }}</button>
   </form>

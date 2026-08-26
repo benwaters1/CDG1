@@ -215,7 +215,7 @@
 
           {% if stripe_enabled and room['price_per_night'] %}
           <button type="submit" class="g-btn g-submit">Pay &amp; request to book</button>
-          <p class="g-foot-note">You will be taken to a secure payment page to pay the total now. This still is not an instant confirmation — the château reviews every request. If it is declined, you are refunded automatically. You will get a reference code and a link to manage your booking.</p>
+          <p class="g-foot-note">You pay the total on the next page, through Stripe. Every request is still read at the château — if it is declined, the refund is automatic. You will get a reference code and a link to manage the booking.</p>
           {% else %}
           <button type="submit" class="g-btn g-submit">Request to book</button>
           <p class="g-foot-note">This is a booking request, not an instant confirmation — the château will review and confirm it. Your dates are held in the meantime. You will get a reference code and a link on the next page — save it, since that is how you will check your booking's status.</p>
@@ -480,16 +480,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 </script>
 
 
-<section class="g-sec g-sec--tight g-paper"><div class="g-wrap g-wrap--narrow">
-  <p class="g-p" style="text-align:center;margin:0 auto">
-    Gudanes is a Class I Historic Monument, which means the walls stay as the
-    centuries left them — bare plaster, weathered stone, protected by law and
-    not ours to change. Everything within them is new: antique French beds
-    dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the château has not reached yet. The
-    imperfection is deliberate, and staying here pays for the next room.
-  </p>
-</div></section>
+
 
 
 

@@ -20,11 +20,11 @@
   --sand:       #F6F1E7;   /* page ground — warm off-white, paper not screen */
   --sand-2:     #EDE5D6;   /* alternate section — a shade deeper           */
   --sand-3:     #E2D5C2;   /* third step                                 */
-  --stone:      #8F8C78;   /* warm stone — the second colour, from the walls */
+  --stone:      #66634F;   /* was #66634F — 3.17:1, failed AA */   /* warm stone — the second colour, from the walls */
   --stone-pale: #E8DFCC;   /* stone at a whisper, for panels                */
   --line:       #D6CBB6;
   --ink-2:           #4A5A6B;   /* secondary text, softer than --ink        */
-  --steel:           #6B7A88;   /* muted UI text and metadata               */
+  --steel:           #4F5F72;   /* was #4F5F72 — 4.12:1, under AA */   /* muted UI text and metadata               */
   --surface:         #FBF7EF;   /* same parchment as --white, aliased       */
   --parchment-line:  #D6CBB6;   /* same hairline as --line, aliased         */
   --success:         #5F7A55;   /* a validated field, muted enough for here */
@@ -34,7 +34,7 @@
 
   --ink:        #14305F;   /* body text — the same navy, one colour       */
   --ink-soft:   #4A6076;
-  --ink-faint:  #7C8CA0;
+  --ink-faint:  #4F5F72;   /* tuned against the darkest ground, not parchment */   /* was #4F5F72 — failed AA at 3.05:1 */
   --brass:      #8A8578;   /* whisper only — never a rule or fill */
 
   /* ---- Spacing scale — every margin and padding comes from here ---- */
@@ -457,14 +457,14 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   display: flex; justify-content: space-between; gap: var(--s3);
   padding: var(--s2) 0; border-top: 1px solid rgba(255,255,255,.16);
 }
-.g-dossier__l dt{ font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #93A5B6; }
+.g-dossier__l dt{ font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #4F5F72; }
 .g-dossier__l dd{ margin: 0; font-family: var(--serif); font-size: 13px; color: var(--white); }
 .g-terms{ display: flex; gap: var(--s3); align-items: flex-start; font-size: 15px; margin-bottom: var(--s5); cursor: pointer; }
 .g-terms input{ width: 18px; height: 18px; margin-top: 3px; accent-color: #D9C79B; flex: none; }
 .g-terms a{ color: #D9C79B; }
 .g-dossier .g-submit{ background: #D9C79B; color: var(--blue-deep); border-color: #D9C79B; }
 .g-dossier .g-submit:hover{ background: var(--white); color: var(--blue-deep); border-color: var(--white); }
-.g-foot-note{ font-size: 13px; line-height: 1.55; color: #93A5B6; margin: var(--s4) 0 0; }
+.g-foot-note{ font-size: 13px; line-height: 1.55; color: #4F5F72; margin: var(--s4) 0 0; }
 
 /* ---- Reviews ----------------------------------------------------------- */
 
@@ -491,7 +491,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-footer__contact a{ display: inline-flex; align-items: center; min-height: 44px; }
 .g-footer__fine{
   margin-top: var(--s8); padding-top: var(--s5);
-  border-top: 1px solid rgba(255,255,255,.16); font-size: 13px; color: #8798A7;
+  border-top: 1px solid rgba(255,255,255,.16); font-size: 13px; color: #9DAEBD;
 }
 
 /* Standalone inline links (manage a booking, manage a registration). */
@@ -2267,7 +2267,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-pay{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(255,255,255,.16); }
 .g-pay__lbl{
   display: block; font-family: var(--ui); font-size: 13px; font-weight: 600;
-  letter-spacing: .12em; text-transform: uppercase; color: #8798A7; margin-bottom: var(--s3);
+  letter-spacing: .12em; text-transform: uppercase; color: #9DAEBD; margin-bottom: var(--s3);
 }
 .g-pay__marks{ list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-wrap: wrap; gap: var(--s3); }
 .g-pay__marks li{
@@ -2275,7 +2275,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   color: rgba(255,255,255,.9); border: 1px solid rgba(255,255,255,.28);
   padding: 5px 11px;
 }
-.g-pay__note{ font-family: var(--ui); font-size: 13px; color: #8798A7; }
+.g-pay__note{ font-family: var(--ui); font-size: 13px; color: #9DAEBD; }
 
 /* Breadcrumbs — quiet, above the content, so a guest deep in a room or a
    workshop page knows where they are and can climb back a level. */
@@ -2709,7 +2709,7 @@ stroke='%238F8C78' stroke-width='1'>\
    Virginia creeper on the gates, and the verdigris of the copper. Used for
    accents only — a rule, a mark, a hover — never a surface. */
 :root{
-  --gilt:      #8C6A38;   /* gold for text — 4.4:1 on parchment, passes AA */
+  --gilt:      #73562D;   /* clears AA on sand, parchment and card alike */   /* clears AA on sand too — #73562D was 3.96:1 there */   /* gold for text — 4.4:1 on parchment, passes AA */
   --gilt-leaf: #B08D57;   /* the true leaf colour — marks, and text on navy */
   --creeper:   #8C3A2B;   /* the Virginia creeper on the gates    */
   --verdigris: #5F7A6E;   /* aged copper from the kitchen         */
@@ -3367,3 +3367,301 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 
 /* The footer heads and the top rule above it. */
 .g .g-footer{ border-top: 2px solid var(--gilt); }
+
+/* ==========================================================================
+   INK ON DARK
+   --ink-faint and --ink-soft are tuned for parchment. On the navy summary
+   panel and the close blocks they land at 2.38:1 — a label nobody can read
+   on the one panel a guest checks before paying. Light grounds keep the dark
+   inks; dark grounds get their own.
+   ========================================================================== */
+.g .g-dossier dt, .g .g-dossier__l dt, .g .g-dossier .g-hint,
+.g .g-close dt, .g .g-close .g-hint, .g .g-close .g-foot-note{
+  color: rgba(214, 196, 164, .95);
+}
+.g .g-dossier dd, .g .g-dossier__l dd{ color: #fff; }
+
+
+/* The last of the contrast failures. All at 13px and all narrowly under 4.5,
+   which at that size is exactly where it matters most. */
+.g .g-hint, .g .g-foot-note, .g .g-ledger__note,
+.g .g-card__rate span, .g .g-sit__rate span, .g .g-wscard__price span,
+.g .g-room__rate span, .g .g-homeroom__rate span{ color: var(--ink-soft); }
+.g .g-faq summary{ color: var(--blue-deep); }
+.g .g-testament__by, .g .g-say__by{ color: var(--gilt); }
+/* On navy the foot-note takes the light ink, not the dark one. */
+.g .g-dossier .g-foot-note, .g .g-close .g-foot-note,
+.g .g-sec--navy .g-foot-note{ color: rgba(214,196,164,.95); }
+
+/* The FAQ summary was still on an older grey. */
+.g summary, .g .g-faq summary{ color: var(--blue-deep); }
+
+
+/* An unclassed <summary> was inheriting an old grey at 4.12:1. Every
+   disclosure control takes the ink colour, whatever its container. */
+.g details > summary{ color: var(--blue-deep); }
+
+
+/* ==========================================================================
+   PRINT, PROPERLY
+   The existing rules hid the nav and the hero but not the footer, so a printed
+   confirmation carried the whole site footer onto a second sheet. A printed
+   page should be the booking and nothing else.
+   ========================================================================== */
+@media print{
+  .g-footer, .g-assure, .g-close, .g-band, .g-extras,
+  .g-faq, .g-figures, .g-pull, .g-paper::before,
+  .g-fleur, .g-iron, .g-hairs, .g-ridge, .g-house, .g-medallion,
+  .g-back-to-top, .g-panel, .g-overlay, .g-crumbs{ display: none !important; }
+
+  /* The reference code is the reason the page is being printed. */
+  .g-conf, .g-dossier, .g-mb-card{
+    border: 1px solid #000 !important; padding: 12pt !important;
+    background: none !important; break-inside: avoid;
+  }
+  .g-fig, .g-figure b{ color: #000 !important; }
+
+  /* Print the address behind a link, since a printed page cannot be clicked —
+     but not for in-page anchors, which would be noise. */
+  main a[href^="http"]::after{ content: " (" attr(href) ")"; font-size: 9pt; }
+
+  /* Photographs cost ink and add nothing to a confirmation. */
+  main img{ display: none !important; }
+
+  @page{ margin: 18mm; }
+  body{ font-size: 11pt; line-height: 1.45; }
+}
+
+/* Small inline links — "Add to calendar", "Share feedback" — were on an old
+   grey at 4.12:1. Every link takes an ink that clears AA. */
+/* Links on the page ground take the ink; links inside a navy panel take the
+   light one. A single blanket rule made the Terms link navy-on-navy. */
+/* A broad `main a:not():not()` rule outranked every scoped link rule after it
+   and made the Terms link navy-on-navy. Links are coloured by the ground they
+   sit on, not by a blanket rule. */
+.g main p a, .g main li a, .g main dd a{ color: var(--blue-deep); }
+.g main p a:hover, .g main li a:hover, .g main dd a:hover{ color: var(--gilt); }
+.g .g-dossier a:not(.g-btn), .g .g-close a:not(.g-btn),
+.g .g-sec--navy a:not(.g-btn), .g .g-assure a:not(.g-btn){
+  color: rgba(214,196,164,.98);
+}
+.g .g-dossier a:not(.g-btn):hover, .g .g-close a:not(.g-btn):hover{ color: #fff; }
+
+
+/* The Terms link sits in a .g-terms label inside the navy panel, so it needs
+   the light ink like everything else on that ground. It was navy on navy —
+   invisible, on the one link a guest must read before paying. */
+.g .g-terms a, .g .g-terms span{ color: rgba(214,196,164,.98); }
+.g .g-terms a{ border-bottom: 1px solid rgba(214,196,164,.5); }
+.g .g-terms a:hover{ color: #fff; border-bottom-color: #fff; }
+
+/* Small links inside a hint were on an old grey at 4.12:1. */
+.g .g-hint a{ color: var(--blue-deep); border-bottom: 1px solid var(--gilt); }
+.g .g-hint a:hover{ color: var(--gilt); }
+
+
+/* The nav panel's legal links sit on navy and were using a light-ground ink. */
+.g .g-navwrap__legal a, .g .g-navwrap__foot a{ color: rgba(214,196,164,.9); }
+.g .g-navwrap__legal a:hover, .g .g-navwrap__foot a:hover{ color: #fff; }
+
+/* ==========================================================================
+   THE FOOTER
+   Every contrast audit I ran scanned `main` only, so the footer was never
+   checked — and three of its colours sat just under AA on navy: the gilt
+   heads at 4.20:1, the fine print and the payment labels at 4.38:1. On the
+   block that carries the address, the legal links and the payment marks.
+   ========================================================================== */
+.g .g-footer h4{ color: #C4A06A; }                    /* 5.31:1, was 4.20 */
+.g .g-footer__fine, .g .g-pay__lbl,
+.g .g-footer small, .g .g-footer .g-hint{ color: #9DAEBD; }   /* 5.70:1, was 4.38 */
+.g .g-footer a{ color: rgba(226,214,192,.95); }
+.g .g-footer a:hover{ color: #fff; }
+
+
+/* Links inside a hint, and the Terms link in the navy dossier. Named rather
+   than caught by a blanket rule, which is what caused the earlier faults. */
+.g .g-mb-card .g-hint a, .g main .g-hint a{
+  color: var(--blue-deep); border-bottom: 1px solid var(--gilt);
+}
+.g .g-mb-card .g-hint a:hover, .g main .g-hint a:hover{ color: var(--gilt); }
+.g .g-dossier .g-terms a, .g .g-aside .g-terms a{
+  color: rgba(226,214,192,.98); border-bottom: 1px solid rgba(226,214,192,.55);
+}
+.g .g-dossier .g-terms a:hover{ color: #fff; }
+
+.g p.g-hint a, .g .g-hint > a{ color: var(--blue-deep); }
+
+/* ==========================================================================
+   THE DISCOVERIES GRID
+   The restoration page's strongest material is what came out of the walls,
+   and it was buried in prose. Set as findings — a period label, what it is,
+   and what it means — so the page can be read at a glance or in full.
+   ========================================================================== */
+.g-finds{
+  display: grid; gap: var(--s6) var(--s6); margin-top: var(--s7);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 44rem){ .g-finds{ grid-template-columns: 1fr 1fr; } }
+@media (min-width: 68rem){ .g-finds{ grid-template-columns: repeat(3, 1fr); } }
+.g-find{
+  border-top: 2px solid var(--gilt);
+  padding-top: var(--s4);
+}
+.g-find__k{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--gilt); margin: 0 0 var(--s2);
+}
+.g-find__t{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(20px, 1.9vw, 24px); line-height: 1.18;
+  letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
+}
+.g-find__d{ font-size: 16px; line-height: 1.6; color: var(--ink); margin: 0; max-width: 44ch; }
+
+/* In a two-column layout the pull quote should not float — it belongs in the
+   column, under the text it follows. */
+@media (min-width: 60rem){
+  .g-two .g-pull{ float: none; width: auto; margin: var(--s6) 0 0; }
+}
+
+/* ==========================================================================
+   THE CREED
+   Wabi-sabi is the argument that turns unrestored walls from a limitation
+   into a position, and it deserves the most deliberate frame on the site: a
+   ruled box on navy, the two words set as a printed glossary would set them.
+   ========================================================================== */
+.g-creed{ background: var(--blue-deep); color: #fff; }
+.g-creed__in{
+  border: 1px solid rgba(196,160,106,.55);
+  padding: clamp(28px, 5vw, 60px);
+  max-width: 60rem; margin-inline: auto; text-align: center;
+  position: relative;
+}
+/* Corner ticks, the way a printed plate is cornered. */
+.g-creed__in::before, .g-creed__in::after{
+  content: ''; position: absolute; width: 14px; height: 14px;
+  border: 1px solid var(--gilt-leaf);
+}
+.g-creed__in::before{ top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.g-creed__in::after{ bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+.g-creed .g-eyebrow{ color: var(--gilt-leaf); }
+.g-creed .g-eyebrow::before{ background: var(--gilt-leaf); margin-inline: auto; }
+.g-creed__h{
+  font-family: var(--display); font-weight: 300; font-style: italic;
+  font-size: clamp(34px, 5vw, 60px); line-height: 1;
+  letter-spacing: .015em; color: #fff; margin: var(--s3) 0 0;
+}
+.g-creed__lede{
+  font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.82);
+  max-width: 46ch; margin: var(--s5) auto 0;
+}
+.g-creed__pair{
+  display: grid; gap: var(--s6); margin-top: var(--s7);
+  text-align: left;
+}
+@media (min-width: 48rem){ .g-creed__pair{ grid-template-columns: 1fr 1fr; gap: var(--s7); } }
+.g-creed__half{ border-top: 1px solid var(--gilt-leaf); padding-top: var(--s4); }
+.g-creed__word{
+  font-family: var(--display); font-weight: 400; font-style: italic;
+  font-size: clamp(26px, 2.8vw, 34px); line-height: 1;
+  color: var(--gilt-leaf); margin: 0 0 var(--s3);
+}
+.g-creed__def{ font-size: 16px; line-height: 1.65; color: rgba(255,255,255,.88); margin: 0; }
+.g-creed__q{
+  margin: var(--s7) auto 0; padding-top: var(--s5);
+  border-top: 1px solid rgba(196,160,106,.45); max-width: 44ch;
+}
+.g-creed__q p{
+  font-family: var(--display); font-weight: 300; font-style: italic;
+  font-size: clamp(20px, 2.2vw, 26px); line-height: 1.3;
+  color: #fff; margin: 0;
+}
+.g-creed__q cite{
+  display: block; margin-top: var(--s4); font-style: normal;
+  font-family: var(--ui); font-size: 14px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--gilt-leaf);
+}
+
+/* ==========================================================================
+   THE STORY ROWS
+   A numbered sequence, ruled like a printed chronology. The numeral sits in
+   gilt in its own column so the eye can run down the years.
+   ========================================================================== */
+.g-story{ margin-top: var(--s7); border-top: 1px solid var(--gilt); }
+.g-story__row{
+  display: grid; grid-template-columns: 3.4rem 1fr; gap: var(--s5);
+  padding: var(--s5) 0; border-bottom: 1px solid var(--line);
+}
+@media (min-width: 48rem){ .g-story__row{ grid-template-columns: 5rem 1fr; gap: var(--s6); } }
+.g-story__n{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(26px, 3vw, 38px); line-height: 1;
+  color: var(--gilt); margin: 0;
+  font-variant-numeric: lining-nums;
+}
+.g-story__t{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(20px, 1.9vw, 24px); line-height: 1.18;
+  color: var(--blue-deep); margin: 0 0 var(--s3);
+}
+.g-story__d{ font-size: 16px; line-height: 1.65; color: var(--ink); margin: 0; max-width: 56ch; }
+.g-story__d em{ font-style: italic; color: var(--blue-deep); }
+
+/* ==========================================================================
+   THE PRESS WALL AND THE MEDAL
+   Set as a printed masthead list rather than logos — logos would need
+   permissions and would date. The medal gets its own bordered plate.
+   ========================================================================== */
+.g-masthead{
+  display: grid; gap: 1px; margin-top: var(--s7);
+  grid-template-columns: repeat(2, 1fr);
+  background: var(--gilt);
+  border: 1px solid var(--gilt);
+}
+@media (min-width: 48rem){ .g-masthead{ grid-template-columns: repeat(4, 1fr); } }
+.g-masthead__i{
+  background: var(--sand); padding: var(--s5) var(--s4);
+  text-align: center; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: var(--s2);
+  min-height: 6.5rem;
+}
+.g-masthead__i b{
+  font-family: var(--display); font-weight: 400;
+  font-size: clamp(17px, 1.6vw, 21px); line-height: 1.1;
+  letter-spacing: .02em; color: var(--blue-deep);
+}
+.g-masthead__i span{
+  font-family: var(--ui); font-size: 13px; line-height: 1.3;
+  color: var(--ink-soft);
+}
+
+.g-medal{
+  margin-top: var(--s7); padding: var(--s6);
+  border: 2px solid var(--gilt); text-align: center;
+  max-width: 34rem; margin-inline: auto;
+  position: relative; background: var(--white);
+}
+.g-medal::before{
+  content: ''; position: absolute; inset: 5px;
+  border: 1px solid var(--gilt); opacity: .45; pointer-events: none;
+}
+.g-medal__k{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .16em; color: var(--gilt); margin: 0 0 var(--s2);
+  font-variant-numeric: lining-nums;
+}
+.g-medal__t{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(24px, 2.8vw, 32px); line-height: 1.1;
+  color: var(--blue-deep); margin: 0 0 var(--s3);
+}
+.g-medal__d{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); margin: 0 auto; max-width: 40ch; }
+
+
+/* Leaf gold at 4.20:1 is fine for a drawn mark but under AA for small text on
+   navy. Text on a dark ground takes the lighter gold the footer already uses. */
+.g-creed .g-eyebrow, .g-creed__q cite,
+.g-close .g-eyebrow, .g-sec--navy .g-eyebrow,
+.g-creed cite, .g-close cite{ color: #C4A06A; }
