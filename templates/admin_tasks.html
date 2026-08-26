@@ -28,7 +28,8 @@
 
 {% if sheet.view == 'month' and sheet.month_grid %}
 <div style="overflow-x:auto; margin-bottom:24px;">
-  <table class="cal-table">
+  <div class="table-wrap">
+<table class="cal-table">
     <thead>
       <tr>
         <th class="cal-room-col">Employee</th>
@@ -51,6 +52,7 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
 </div>
 {% include "_task_sheet.html" %}
 

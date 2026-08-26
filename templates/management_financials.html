@@ -111,7 +111,8 @@
 </div>
 
 <div style="overflow-x:auto;">
-  <table style="width:100%; border-collapse:collapse; font-size:13px;">
+  <div class="table-wrap">
+<table style="width:100%; border-collapse:collapse; font-size:13px;">
     <thead>
       <tr style="border-bottom:1px solid var(--parchment-line);">
         <th style="text-align:left; padding:8px 6px;">Month</th>
@@ -137,6 +138,7 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
 </div>
 
 <h2 class="section-heading">{{ current.month.strftime('%B') }} revenue by room</h2>

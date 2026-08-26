@@ -28,7 +28,8 @@
     · {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }}{% if s.children %}, {{ s.children }} under 18{% endif %}
   </p>
 
-  <table class="data-table" style="margin-top:14px;">
+  <div class="table-wrap">
+<table class="data-table" style="margin-top:14px;">
     <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
     <tbody>
       <tr>
@@ -43,10 +44,12 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
 
   {% if s.vat %}
   <p class="g-mb-label" style="margin-top:18px;">VAT included in the above</p>
-  <table class="data-table">
+  <div class="table-wrap">
+<table class="data-table">
     <thead><tr><th>Rate</th><th class="num">Net</th><th class="num">VAT</th><th class="num">Gross</th></tr></thead>
     <tbody>
       {% for v in s.vat %}
@@ -59,12 +62,14 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
   {% endif %}
 
   {% if s.city_tax %}
   {# Shown on its own, outside the VAT table, because it is collected for the
      commune rather than earned — and French rules require it stated separately. #}
-  <table class="data-table" style="margin-top:18px;">
+  <div class="table-wrap">
+<table class="data-table" style="margin-top:18px;">
     <tbody>
       <tr>
         <td>
@@ -80,9 +85,11 @@
       </tr>
     </tbody>
   </table>
+</div>
   {% endif %}
 
-  <table class="data-table" style="margin-top:18px;">
+  <div class="table-wrap">
+<table class="data-table" style="margin-top:18px;">
     <tbody>
       <tr>
         <td><strong>Total</strong></td>
@@ -97,6 +104,7 @@
       {% endif %}
     </tbody>
   </table>
+</div>
 
   <p class="g-hint" style="margin-top:20px;">
     Please keep this for your records. Any question about it, contact the château with your

@@ -36,6 +36,7 @@
 {% else %}
 
 <h2 class="section-heading">When it becomes income</h2>
+<div class="table-wrap">
 <table class="data-table" style="max-width:560px;">
   <thead><tr><th>Month</th><th class="num">Becomes income</th></tr></thead>
   <tbody>
@@ -50,6 +51,7 @@
     <tr><th>Held today</th><th class="num">€{{ '%.2f'|format(data.total) }}</th></tr>
   </tfoot>
 </table>
+</div>
 <p class="field-hint" style="max-width:560px;">
   Rows outside {{ today.year }} are marked: that money is in the bank now and belongs to next
   year's trading. If the year closes with a large forward book, the figures overstate what the
