@@ -34249,7 +34249,15 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso):
             "desired_departure": entry["desired_departure"], "book_url": book_url,
         }
         subject, body = render_email_template(conn, "room_waitlist_opening", context)
-        if subject and send_email(entry["email"], subject, body):
+        # keep=False, for the same reason a password-reset link uses it: this
+        # message is only true for as long as the dates are still free. With no
+        # email provider configured, send_email would otherwise queue one of
+        # these per cancellation -- three cancellations, three identical "a room
+        # may have opened up" notices, all delivered at once the day a provider
+        # is switched on, for dates that were probably resold weeks earlier.
+        # Nothing is queued, the entry stays open, and the caller falls back to
+        # telling the owner to work the waitlist by hand.
+        if subject and send_email(entry["email"], subject, body, keep=False):
             conn.execute("UPDATE waitlist_entries SET status = 'contacted' WHERE id = ?", (entry["id"],))
             notified.append(entry)
     if notified:
@@ -34270,7 +34278,15 @@ def notify_restaurant_waitlist_opening(conn, dinner_date_iso):
             "party_size": entry["party_size"] or "?", "book_url": book_url,
         }
         subject, body = render_email_template(conn, "restaurant_waitlist_opening", context)
-        if subject and send_email(entry["email"], subject, body):
+        # keep=False, for the same reason a password-reset link uses it: this
+        # message is only true for as long as the dates are still free. With no
+        # email provider configured, send_email would otherwise queue one of
+        # these per cancellation -- three cancellations, three identical "a room
+        # may have opened up" notices, all delivered at once the day a provider
+        # is switched on, for dates that were probably resold weeks earlier.
+        # Nothing is queued, the entry stays open, and the caller falls back to
+        # telling the owner to work the waitlist by hand.
+        if subject and send_email(entry["email"], subject, body, keep=False):
             conn.execute("UPDATE restaurant_waitlist SET status = 'contacted' WHERE id = ?", (entry["id"],))
             notified.append(entry)
     if notified:
@@ -34301,7 +34317,15 @@ def notify_workshop_waitlist_opening(conn, session_id):
             "register_url": register_url,
         }
         subject, body = render_email_template(conn, "workshop_waitlist_opening", context)
-        if subject and send_email(entry["email"], subject, body):
+        # keep=False, for the same reason a password-reset link uses it: this
+        # message is only true for as long as the dates are still free. With no
+        # email provider configured, send_email would otherwise queue one of
+        # these per cancellation -- three cancellations, three identical "a room
+        # may have opened up" notices, all delivered at once the day a provider
+        # is switched on, for dates that were probably resold weeks earlier.
+        # Nothing is queued, the entry stays open, and the caller falls back to
+        # telling the owner to work the waitlist by hand.
+        if subject and send_email(entry["email"], subject, body, keep=False):
             conn.execute("UPDATE workshop_waitlist SET status = 'contacted' WHERE id = ?", (entry["id"],))
             notified.append(entry)
     if notified:
