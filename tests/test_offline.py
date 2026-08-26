@@ -15,6 +15,7 @@ import os
 import re
 
 from _harness import Suite, ROOT
+import io
 import _harness
 
 m = _harness.m
@@ -100,6 +101,28 @@ def run():
     s.check("base.html registers the worker", "serviceWorker.register" in base)
     s.check("and the manifest is linked, so it installs as an app",
             "manifest.json" in base)
+
+    s.section("Installed, it is usable on the device it is installed on")
+    # The same app is a phone in an apron pocket and a till on an iPad by the
+    # door. The manifest asked for portrait-primary, which is right for the
+    # first and wrong for the second: an installed iPad app would rotate away
+    # from the landscape a floor of table tiles is actually read in.
+    import json as _json, os as _os
+    manifest = _json.loads(io.open(
+        _os.path.join(_harness.ROOT, "static", "manifest.json"), encoding="utf-8").read())
+    s.check("it installs as a standalone app, not a browser tab",
+            manifest.get("display") == "standalone",
+            detail=f"display is {manifest.get('display')!r}")
+    s.check("and it is not locked to portrait",
+            manifest.get("orientation") not in ("portrait", "portrait-primary",
+                                                "portrait-secondary"),
+            detail=f"orientation {manifest.get('orientation')!r} — the till on an "
+                   "iPad cannot be used in landscape")
+    s.check("it has an icon to install with",
+            bool(manifest.get("icons")), detail="no icons in the manifest")
+    s.check("and Safari is told it can go full screen",
+            'apple-mobile-web-app-capable" content="yes"' in base,
+            detail="added to the home screen it still opens with browser chrome")
 
     s.section("It is served from the root, or it controls nothing")
     # Found in a browser: a worker's scope is the directory it is served from,

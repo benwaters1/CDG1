@@ -9,7 +9,7 @@ Each check below sets up the collision AND the harmless version of the same
 thing, because a rule that fires on everything is no better than one that
 fires on nothing.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 
 from _harness import Suite, clients, db, datetime_now, ensure_employee, ensure_room
 import _harness
@@ -161,11 +161,27 @@ def run():
     conn.commit()
 
     busy = m.leave_impact(conn, _iso(19), _iso(23))
-    quiet = m.leave_impact(conn, _iso(300), _iso(303))
+    # A window that is quiet by construction, not by luck. This used to be
+    # today + 300 days, which was empty when it was written and stopped being
+    # empty the morning "today" drifted onto a seeded atelier in June 2027 --
+    # the app was right and the test was wrong, which is the worst way round.
+    # leave_impact reads bookings, restaurant_bookings, workshop_sessions and
+    # leave_requests, so start after the last date any of them knows about.
+    last = max([r[0] for r in [
+        conn.execute("SELECT MAX(departure_date) FROM bookings").fetchone(),
+        conn.execute("SELECT MAX(dinner_date) FROM restaurant_bookings").fetchone(),
+        conn.execute("SELECT MAX(end_date) FROM workshop_sessions").fetchone(),
+        conn.execute("SELECT MAX(end_date) FROM leave_requests").fetchone(),
+    ] if r and r[0]] + [_iso(0)])
+    quiet_from = (date.fromisoformat(last[:10]) + timedelta(days=30)).isoformat()
+    quiet_to = (date.fromisoformat(last[:10]) + timedelta(days=33)).isoformat()
+    quiet = m.leave_impact(conn, quiet_from, quiet_to)
     s.check("a booked dinner shows up in that week",
             any("20 covers" in n for n in busy["notes"]), detail=str(busy["notes"]))
     s.check("a quiet week says so rather than inventing something",
-            quiet["notes"] == [], detail=str(quiet["notes"]))
+            quiet["notes"] == [],
+            detail=f"{quiet['notes']} in {quiet_from}..{quiet_to}, which is 30 days "
+                   f"past the last date anything is booked ({last[:10]})")
 
     conn.execute(
         """INSERT INTO leave_requests (user_id, start_date, end_date, reason, leave_type,
