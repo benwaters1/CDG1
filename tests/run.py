@@ -64,6 +64,7 @@ SUITES = [
     "test_pos_floor",
     "test_leave_accrual",
     "test_vat_working",
+    "test_ical_sync",
     "test_hr_compliance",
     "test_campaign_email",
     "test_email_outbox",
