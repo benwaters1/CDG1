@@ -97,6 +97,7 @@ SUITES = [
     "test_confirmations",
     "test_social_schedule",
     "test_design",
+    "test_table_overflow",
     "test_links",
     "test_error_pages",
     "test_seo_files",

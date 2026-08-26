@@ -106,7 +106,8 @@
   <div class="empty-state">Add employees first to build a schedule.</div>
 {% else %}
 <div style="overflow-x:auto;">
-  <table class="cal-table" style="font-size:12px;">
+  <div class="table-wrap">
+<table class="cal-table" style="font-size:12px;">
     <thead>
       <tr>
         <th class="cal-room-col">Employee</th>
@@ -146,6 +147,7 @@
       {% endfor %}
     </tbody>
   </table>
+</div>
 </div>
 {% endif %}
 
