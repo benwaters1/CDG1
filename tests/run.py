@@ -114,6 +114,7 @@ SUITES = [
     "test_overtime",
     "test_repeat_guests",
     "test_room_economics",
+    "test_still_out",
     "test_insurer_notice",
     "test_home_warnings",
     "test_watch_tasks",
