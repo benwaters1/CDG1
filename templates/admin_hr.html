@@ -352,6 +352,23 @@
 {% if absences %}
 <div class="table-wrap" style="margin-bottom:26px;">
   <table class="data-table">
+{% if uncertified %}
+<div class="pass-short">
+  <strong>Recorded as certified by a doctor, with no certificate attached</strong>
+  {% for a in uncertified %}
+  <span class="pass-short-row">
+    {{ a.employee_name }} — {{ a.kind }}, {{ a.start_date }}
+    {%- if a.days_ago %} ({{ a.days_ago }} days ago){% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    The column for it has existed since the table was made and nothing ever wrote to it. The
+    person this protects most is the employee: an absence justified by a document nobody can
+    produce is one their record cannot defend later.
+  </span>
+</div>
+{% endif %}
+
     <thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Reason</th><th>Return to work</th></tr></thead>
     <tbody>
       {% for a in absences %}
@@ -359,7 +376,24 @@
         <td>{{ a['employee_name'] }}</td>
         <td><span class="mini-status status-{{ 'pending' if a['kind'] in ('unauthorised','sick') else 'upcoming' }}">{{ a['kind']|capitalize }}</span></td>
         <td>{{ a['start_date'] }}{% if a['end_date'] != a['start_date'] %} → {{ a['end_date'] }}{% endif %}</td>
-        <td>{{ a['reason'] or '—' }}{% if not a['self_certified'] %} <span class="upload-hint">(certified)</span>{% endif %}</td>
+        <td>
+          {{ a['reason'] or '—' }}
+          {% if a['doctor_note_filename'] %}
+            <a href="{{ url_for('view_absence_note', absence_id=a['id']) }}"
+               target="_blank" rel="noopener" class="upload-hint">certificate attached</a>
+          {% elif not a['self_certified'] %}
+            {# Says a doctor certified it, with nothing behind the claim. #}
+            <span class="mini-status status-pending">certified, no note</span>
+          {% endif %}
+          {% if not a['doctor_note_filename'] %}
+          <form method="post" enctype="multipart/form-data" style="margin:4px 0 0;"
+                action="{{ url_for('upload_absence_note', absence_id=a['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="note" style="font-size:11px; max-width:150px;">
+            <button type="submit" class="btn-mini">Attach</button>
+          </form>
+          {% endif %}
+        </td>
         <td>
           {% if a['return_to_work_done_at'] %}
             ✓ {{ a['return_to_work_note'] or 'done' }}
