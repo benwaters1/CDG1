@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}What each room earns{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What each room earns</h1>
+  <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    {% for n in [3, 12, 24] %}
+    <a href="{{ url_for('room_economics_page', months=n) }}"
+       class="{{ 'btn-mini' if n == months else 'btn-ghost' }}">{{ n }} months</a>
+    {% endfor %}
+    <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Rooms</a>
+    <a href="{{ url_for('room_faults_page') }}" class="btn-ghost">Sold with a fault</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Bookings have never been grouped by room, so which rooms carry the house and which are mostly
+  empty has never been answerable. From {{ data.window[0]|date_short }}, counting only the nights
+  that fall inside the window — a stay spanning the edge contributes the nights it actually used,
+  rather than landing whole in whichever month the report happens to start.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if data.never_sold %}
+<div class="pass-short">
+  <strong>Not sold once in {{ months }} months</strong>
+  {% for r in data.never_sold %}
+  <span class="pass-short-row">
+    {{ r.name }}{% if r.list_rate %} — listed at €{{ '%.0f'|format(r.list_rate) }} a night{% endif %}
+    {%- if r.open_faults %} · {{ r.open_faults }} open fault{{ '' if r.open_faults == 1 else 's' }}{% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    A room that is listed and never booked is either priced wrong, described badly, or not
+    actually ready — and the third is worth ruling out first.
+  </span>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Most earned first</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Room</th><th class="num">Nights</th><th class="num">Full</th>
+      <th class="num">The room earned</th><th class="num">A night</th>
+      <th class="num">Listed at</th><th class="num">Extras alongside</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in data.rooms %}
+    <tr class="{{ 'row-alert' if r.active and not r.nights }}">
+      <td>
+        <strong>{{ r.name }}</strong>
+        {% if not r.active %}<span class="mini-status status-inactive">not listed</span>{% endif %}
+        {% if r.open_faults %}
+          <span class="mini-status status-declined">{{ r.open_faults }} fault{{ '' if r.open_faults == 1 else 's' }}</span>
+        {% endif %}
+      </td>
+      <td class="num">{{ r.nights or '—' }}</td>
+      <td class="num">{{ r.occupancy }}%</td>
+      <td class="num">€{{ '%.0f'|format(r.room_revenue) }}</td>
+      <td class="num">{% if r.nightly %}€{{ '%.0f'|format(r.nightly) }}{% else %}—{% endif %}</td>
+      <td class="num">{% if r.list_rate %}€{{ '%.0f'|format(r.list_rate) }}{% else %}—{% endif %}</td>
+      <td class="num">
+        {%- if r.extras_revenue %}€{{ '%.0f'|format(r.extras_revenue) }}{% else %}—{% endif -%}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <th>Total</th><th class="num">{{ data.nights }}</th><th class="num"></th>
+      <th class="num">€{{ '%.0f'|format(data.room_revenue) }}</th>
+      <th class="num"></th><th class="num"></th>
+      <th class="num">€{{ '%.0f'|format(data.extras_revenue) }}</th>
+    </tr>
+  </tfoot>
+</table>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  <strong>What is in the room figure.</strong> The room's own portion only: extras bought
+  alongside — hampers, transfers, activities — are in their own column and are not the bedroom
+  earning money. Discounts are already off, because they were genuinely given away. City tax
+  never appears anywhere here; it is collected for the commune and is not the house's money at
+  any point.
+</p>
+<p class="pay-disclaimer">
+  This is what was <em>charged</em>, not what was collected — an unpaid balance still counts here
+  and is chased on <a href="{{ url_for('money_ahead_page') }}">Money ahead</a>. And nothing on
+  this page knows what a room <em>costs</em>: heating a suite in February and the restoration
+  still owed on it are real and are not in any column, so "earns most" is not the same as "makes
+  most".
+</p>
+<p class="pay-disclaimer">
+  "Full" is nights sold against every night in the window, so a room listed halfway through the
+  period reads low for a reason that is not its fault.
+</p>
+
+{% endblock %}

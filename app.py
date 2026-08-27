@@ -8465,6 +8465,97 @@ def _guest_key(email):
     return " ".join((email or "").split()).casefold()
 
 
+def room_economics(conn, *, months=12, today=None):
+    """Per room: nights sold, what the room itself earned, and how full it was.
+
+    Nights are counted inside the window rather than by whole stay, so a
+    booking spanning the boundary contributes only the nights that fall in
+    it — otherwise a long stay in January would land entirely in whichever
+    month the report happened to start.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    start = _add_months(today.replace(day=1), -months + 1)
+    end = today
+    if end < start:
+        return {"rooms": [], "window": (start.isoformat(), end.isoformat())}
+    window_nights = (end - start).days or 1
+
+    rooms = {r["id"]: {
+        "id": r["id"], "name": r["name"], "price_per_night": r["price_per_night"],
+        "active": bool(r["active"]), "nights": 0, "room_revenue": 0.0,
+        "extras_revenue": 0.0, "stays": 0, "guests": 0, "open_faults": 0,
+    } for r in conn.execute("SELECT * FROM rooms").fetchall()}
+
+    # Extras per booking, so the room's own earnings can be separated from
+    # what was sold alongside it.
+    extras = {}
+    for r in conn.execute(
+        """SELECT booking_id, COALESCE(SUM(unit_price * COALESCE(quantity, 1)), 0) AS total
+             FROM booking_extras
+            WHERE COALESCE(status, '') != 'cancelled'
+            GROUP BY booking_id""").fetchall():
+        extras[r["booking_id"]] = r["total"] or 0.0
+
+    for b in conn.execute(
+        """SELECT id, room_id, arrival_date, departure_date, party_size,
+                  COALESCE(total_price, 0) AS total_price
+             FROM bookings
+            WHERE status = 'confirmed' AND departure_date >= ? AND arrival_date <= ?""",
+        (start.isoformat(), end.isoformat())).fetchall():
+        room = rooms.get(b["room_id"])
+        if not room:
+            continue
+        a, z = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not (a and z) or z <= a:
+            continue
+        stay_nights = (z - a).days
+        # Only the nights inside the window.
+        counted = (min(z, end + timedelta(days=1)) - max(a, start)).days
+        if counted <= 0:
+            continue
+
+        extras_total = extras.get(b["id"], 0.0)
+        room_total = max(0.0, b["total_price"] - extras_total)
+        share = counted / stay_nights
+
+        room["nights"] += counted
+        room["room_revenue"] += room_total * share
+        room["extras_revenue"] += extras_total * share
+        room["stays"] += 1
+        room["guests"] += (b["party_size"] or 0)
+
+    for r in conn.execute(
+        "SELECT room_id, COUNT(*) AS n FROM room_issues WHERE status = 'open' GROUP BY room_id"
+    ).fetchall():
+        if r["room_id"] in rooms:
+            rooms[r["room_id"]]["open_faults"] = r["n"]
+
+    out = []
+    for room in rooms.values():
+        room["room_revenue"] = round(room["room_revenue"], 2)
+        room["extras_revenue"] = round(room["extras_revenue"], 2)
+        room["nightly"] = (round(room["room_revenue"] / room["nights"], 2)
+                           if room["nights"] else None)
+        room["occupancy"] = round(100 * room["nights"] / window_nights, 1)
+        # What it would have earned at the asking price every night it sold.
+        # Not a target — the gap is discounts, seasons and negotiated rates,
+        # and it is only interesting next to the other rooms.
+        room["list_rate"] = room["price_per_night"]
+        out.append(room)
+
+    out.sort(key=lambda r: -r["room_revenue"])
+    live = [r for r in out if r["active"]]
+    return {
+        "rooms": out,
+        "window": (start.isoformat(), end.isoformat()),
+        "window_nights": window_nights,
+        "room_revenue": round(sum(r["room_revenue"] for r in out), 2),
+        "extras_revenue": round(sum(r["extras_revenue"] for r in out), 2),
+        "nights": sum(r["nights"] for r in out),
+        "never_sold": [r for r in live if not r["nights"]],
+    }
+
+
 def repeat_guests(conn, *, today=None, min_stays=2):
     """Everyone who has stayed more than once, and whether they are overdue.
 
@@ -17965,6 +18056,8 @@ PALETTE_PAGES = [
     ("Bookings", "admin_bookings", "reservations stays rooms"),
     ("Booking calendar", "admin_calendar", "availability"),
     ("Rooms", "admin_rooms", "bedrooms suites"),
+    ("What each room earns", "room_economics_page",
+     "occupancy revenue per room nightly rate empty"),
     ("Room issues", "room_issues", "maintenance faults"),
     ("Rooms sold with a fault", "room_faults_page",
      "broken guest arriving unresolved"),
@@ -31152,6 +31245,35 @@ def overtime_page():
     ]
     return render_template("overtime.html", data=data, overview=overview,
                            weeks=weeks, busiest=busiest, today=today)
+
+
+@app.route("/management/rooms-economics")
+@owner_required
+def room_economics_page():
+    """What each room earns, and how often it is empty."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    try:
+        months = max(1, min(60, int(request.args.get("months", 12))))
+    except (TypeError, ValueError):
+        months = 12
+    data = room_economics(conn, months=months, today=today)
+    conn.close()
+    live = [r for r in data["rooms"] if r["active"]]
+    best = live[0] if live else None
+    faults = [r for r in live if r["open_faults"]]
+    overview = [
+        overview_cell("Rooms earning", len([r for r in live if r["nights"]])),
+        overview_cell("From the rooms", f"EUR {data['room_revenue']:,.0f}",
+                      hint="the room itself, extras excluded"),
+        overview_cell("Best", best["name"] if best else "—",
+                      sub=f"EUR {best['room_revenue']:,.0f}" if best else None),
+        overview_cell("Never sold in the window", len(data["never_sold"]),
+                      alert=bool(data["never_sold"])),
+        overview_cell("With an open fault", len(faults), alert=bool(faults)),
+    ]
+    return render_template("room_economics.html", data=data, overview=overview,
+                           months=months, today=today, live=live)
 
 
 @app.route("/admin/guests/regulars")
