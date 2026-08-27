@@ -760,6 +760,53 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
 csrf = CSRFProtect(app)
 
 
+# Outlook renders an add-in inside its own iframe, so these paths — and only
+# these — must stay frameable. Blocking frames everywhere would not error; the
+# taskpane would simply come up blank, which is the kind of failure nobody
+# reports because it looks like the add-in was never installed.
+FRAMEABLE_PATH_PREFIX = "/outlook-addin/"
+
+
+@app.after_request
+def set_security_headers(response):
+    """Response hardening, set in the app so it travels with the code.
+
+    Deliberately NOT a full Content-Security-Policy: the templates carry 52
+    inline <script> blocks and 1,525 inline style attributes, so a script-src
+    or style-src rule would need a nonce through all 207 of them. The three
+    directives here need none of that and still close real holes.
+    """
+    if not request.path.startswith(FRAMEABLE_PATH_PREFIX):
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+
+    # A guest's manage link carries its token in the path, and a token that
+    # reaches a third party is the booking. same-origin sends no Referer off
+    # this site at all, which closes the half that noindex cannot: robots.txt
+    # asks a crawler not to fetch a path, but a URL handed over in a referrer
+    # can be indexed without ever being crawled.
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+
+    # camera is deliberately absent. Expense receipts and asset photos use
+    # <input capture="environment"> on phones, and taking that away would break
+    # photographing an invoice — quietly, and only on the devices staff use.
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=()")
+
+    # Railway terminates TLS and forwards plain HTTP, and there is no ProxyFix,
+    # so request.is_secure is False in production. The forwarded header is what
+    # actually says how the guest reached us.
+    forwarded = request.headers.get("X-Forwarded-Proto", "")
+    if request.is_secure or forwarded.split(",")[0].strip() == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+    return response
+
+
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     # Most common real-world cause: a form left open past the session
@@ -780,7 +827,54 @@ def get_db():
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA busy_timeout = 5000")
+    return track_connection(conn)
+
+
+# Closing by hand on every path covers the exits you thought of. It cannot
+# cover the one you did not.
+#
+# When an execute() itself raises — a foreign key that no longer resolves, a
+# CHECK that fails, a bad type — the traceback keeps the stack frame alive, the
+# frame keeps this connection alive, and the connection keeps the write
+# transaction it had already begun. SQLite allows one writer. So until the
+# garbage collector happens to run, nothing anywhere in the application can
+# write: not a till order, not a clock-in, not a booking. Measured at over ten
+# seconds, and production is one gunicorn worker with eight threads sharing the
+# process, so it is not one page that stops. It is all of them.
+#
+# That is not hypothetical. It took the app down once through a stock movement
+# against a deleted item, was fixed in that one route, and was still live in
+# five others until this went in. Rather than remember it in 292 write routes,
+# the request context now owns every connection get_db() hands out.
+#
+# Only request-scoped connections are tracked. The automation thread runs with
+# no request context and keeps closing its own, exactly as before.
+def track_connection(conn):
+    if has_request_context():
+        open_conns = g.get("_open_db_connections")
+        if open_conns is None:
+            open_conns = []
+            g._open_db_connections = open_conns
+        open_conns.append(conn)
     return conn
+
+
+@app.teardown_appcontext
+def close_open_connections(exc):
+    # The rollback matters as much as the close: a half-written transaction
+    # nobody committed must not sit there waiting to be committed by whoever
+    # opens the next connection. Both calls are wrapped because the ordinary
+    # case is a view that already closed this cleanly, and closing twice or
+    # rolling back a closed handle raises rather than passing quietly.
+    for conn in (g.pop("_open_db_connections", None) or []):
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 # The wording every automated guest email starts from. Module level rather
