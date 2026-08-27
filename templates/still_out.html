@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Still out{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Still out</h1>
+  <div style="display:flex; gap:10px;">
+    <a href="{{ url_for('admin_access') }}" class="btn-ghost">Keys &amp; access</a>
+    <a href="{{ url_for('equipment_overview') }}" class="btn-ghost">Equipment</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Both registers list what has been issued, ordered by name, and neither says how long it has been
+  gone. For a Class I monument, who holds a key is not a minor question — and it should not need
+  somebody to open the right screen and read carefully to answer it.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{# The security one. Sorted above everything regardless of age: one is a
+   person who can still open a door. #}
+{% if data.with_leavers %}
+<div class="pass-short">
+  <strong>Held by somebody who has left</strong>
+  {% for r in data.with_leavers %}
+  <span class="pass-short-row">
+    {{ r.what }} — {{ r.who }}
+    {%- if r.days %} · issued {{ (r.days / 30)|round|int }} months ago{% endif %}
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    Marking somebody inactive stops them signing in. It does not take anything back, and nothing
+    else in the app was going to mention it.
+  </span>
+</div>
+{% endif %}
+
+{# Two records that have never been compared. The register is the one to
+   believe: it names the specific fob. #}
+{% if contradictions %}
+<div class="pass-short">
+  <strong>The leaving checklist says returned; the register says not</strong>
+  {% for c in contradictions %}
+  <span class="pass-short-row">
+    {{ c.name }} ticked “{{ c.ticked }}” — but
+    {{ c.still_out|map(attribute='what')|join(', ') }}
+    {{ 'is' if c.still_out|length == 1 else 'are' }} still open against them
+  </span>
+  {% endfor %}
+  <span class="upload-hint">
+    The checklist is free text and proves only that somebody ticked it. Either the item came back
+    and nobody closed it here, or it did not come back at all — and those want different phone
+    calls.
+  </span>
+</div>
+{% endif %}
+
+{% if not data.lent %}
+  <div class="empty-state">
+    Nothing is out. Every key, fob and piece of kit issued has been signed back in.
+  </div>
+{% else %}
+<h2 class="section-heading">Everything out, worst first</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr><th>What</th><th>Who has it</th><th class="num">Out for</th><th>Note</th></tr>
+  </thead>
+  <tbody>
+    {% for r in data.lent %}
+    <tr class="{{ 'row-alert' if r.gone }}">
+      <td>
+        <strong>{{ r.what }}</strong>
+        <span class="upload-hint">{{ r.kind }}</span>
+      </td>
+      <td>
+        {% if r.user_id %}
+          <a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.who }}</a>
+        {% else %}{{ r.who }}{% endif %}
+        {% if r.gone %}<span class="mini-status status-declined">has left</span>{% endif %}
+      </td>
+      <td class="num">
+        {% if r.days is not none %}
+          {{ r.days }} days
+          {% if r.stale and not r.gone %}
+            <span class="mini-status status-pending">a while</span>
+          {% endif %}
+        {% else %}—{% endif %}
+      </td>
+      <td><span class="upload-hint">{{ r.note or '—' }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  "A while" means longer than {{ stale_days }} days and nothing more — plenty of things are
+  issued permanently and are meant to stay out. It is here so a loan nobody remembers making
+  surfaces while somebody still remembers making it.
+</p>
+<p class="pay-disclaimer">
+  There is no due-back date on either register, so nothing here can tell a permanent issue from a
+  contractor's loan that should have come back in March. Adding one is the obvious next
+  improvement, and until then the age column is standing in for it.
+</p>
+
+{% endblock %}

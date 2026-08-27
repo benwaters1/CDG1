@@ -8495,6 +8495,127 @@ def _guest_key(email):
     return " ".join((email or "").split()).casefold()
 
 
+# Long enough that a normal loan is not nagged about, short enough that a
+# forgotten one surfaces while somebody still remembers issuing it.
+LOAN_STALE_DAYS = 90
+
+
+def things_still_out(conn, *, today=None):
+    """Keys, fobs and kit issued and not returned, worst first.
+
+    "Worst" is not oldest. A key held by somebody who has left the house
+    outranks a laptop lent last week however long each has been gone, because
+    one is a person who can still open a door.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    out = []
+
+    def age(stamp):
+        d = parse_datetime_iso(stamp) or (parse_date((stamp or "")[:10]) and
+                                          datetime.combine(parse_date(stamp[:10]),
+                                                           datetime.min.time(),
+                                                           tzinfo=timezone.utc))
+        if not d:
+            return None
+        return (today - d.astimezone(LOCAL_TZ).date()).days
+
+    for r in conn.execute(
+        """SELECT access_holdings.id, access_holdings.issued_at, access_holdings.notes,
+                  access_holdings.holder_name, access_items.label, access_items.kind,
+                  users.id AS user_id, users.name AS holder, users.status AS holder_status
+             FROM access_holdings
+             JOIN access_items ON access_items.id = access_holdings.access_item_id
+             LEFT JOIN users ON users.id = access_holdings.user_id
+            WHERE access_holdings.returned_at IS NULL""").fetchall():
+        out.append({
+            "sort": "access", "id": r["id"], "what": r["label"],
+            "kind": r["kind"] or "access",
+            "who": r["holder"] or r["holder_name"] or "—",
+            "user_id": r["user_id"],
+            "gone": bool(r["user_id"]) and r["holder_status"] != "active",
+            "days": age(r["issued_at"]), "issued_at": r["issued_at"],
+            "note": r["notes"],
+        })
+
+    for r in conn.execute(
+        """SELECT equipment_items.id, equipment_items.label, equipment_items.notes,
+                  equipment_items.issued_at, users.id AS user_id, users.name AS holder,
+                  users.status AS holder_status
+             FROM equipment_items
+             JOIN users ON users.id = equipment_items.user_id
+            WHERE equipment_items.returned_at IS NULL""").fetchall():
+        out.append({
+            "sort": "equipment", "id": r["id"], "what": r["label"], "kind": "kit",
+            "who": r["holder"] or "—", "user_id": r["user_id"],
+            "gone": r["holder_status"] != "active",
+            "days": age(r["issued_at"]), "issued_at": r["issued_at"],
+            "note": r["notes"],
+        })
+
+    for row in out:
+        row["stale"] = bool(row["days"] and row["days"] > LOAN_STALE_DAYS)
+
+    out.sort(key=lambda r: (not r["gone"], -(r["days"] or 0)))
+    return {
+        # "lent" rather than "items": in Jinja, data.items on a dict resolves
+        # to the dict's own .items method and renders as a bound method
+        # repr — or, in a for loop, iterates key/value pairs. It fails in a
+        # way that looks like a template bug rather than a naming one.
+        "lent": out,
+        "with_leavers": [r for r in out if r["gone"]],
+        "stale": [r for r in out if r["stale"] and not r["gone"]],
+        "people": len({r["user_id"] for r in out if r["user_id"]}),
+    }
+
+
+def offboarding_contradictions(conn):
+    """People whose leaving checklist says returned, while the register says out.
+
+    offboarding_items is free text with no link to either register, so ticking
+    "hand back keys" proves only that somebody ticked it. Where the two
+    disagree the register is the one to believe: it names the specific fob.
+
+    Matched on the words in the checklist line, which is as good as free text
+    allows and no better — a line worded "sort out the office" covers a laptop
+    and this will not know.
+    """
+    words = {"key", "keys", "fob", "fobs", "badge", "alarm", "code", "codes",
+             "laptop", "phone", "kit", "equipment", "uniform", "access"}
+    still_out = things_still_out(conn)
+    by_user = {}
+    for r in still_out["lent"]:
+        if r["user_id"]:
+            by_user.setdefault(r["user_id"], []).append(r)
+    if not by_user:
+        return []
+
+    marks = ",".join("?" * len(by_user))
+    out = []
+    for r in conn.execute(
+        f"""SELECT offboarding_items.user_id, offboarding_items.label,
+                   users.name, users.status
+              FROM offboarding_items JOIN users ON users.id = offboarding_items.user_id
+             WHERE offboarding_items.done = 1
+               AND offboarding_items.user_id IN ({marks})""",
+            list(by_user)).fetchall():
+        label = (r["label"] or "").casefold()
+        if not any(w in label.split() or w in label for w in words):
+            continue
+        out.append({
+            "user_id": r["user_id"], "name": r["name"],
+            "status": r["status"], "ticked": r["label"],
+            "still_out": by_user[r["user_id"]],
+        })
+    # One row per person, however many checklist lines they ticked.
+    seen, unique = set(), []
+    for r in out:
+        if r["user_id"] in seen:
+            continue
+        seen.add(r["user_id"])
+        unique.append(r)
+    return unique
+
+
 def room_economics(conn, *, months=12, today=None):
     """Per room: nights sold, what the room itself earned, and how full it was.
 
@@ -13921,6 +14042,17 @@ def owner_home_warnings(conn, today):
              if here else f"{faults[0]['room_name']}, {faults[0]['guest_name']} arriving"),
             len(faults), "room_faults_page")
 
+    # A key held by somebody who has left belongs on the front page, not on a
+    # screen you have to remember to open.
+    lent = things_still_out(conn, today=today)
+    if lent["with_leavers"]:
+        worst = lent["with_leavers"][0]
+        add("blocker", "Somebody who has left still holds a key",
+            f"{worst['who']} — {worst['what']}"
+            + (f", and {len(lent['with_leavers']) - 1} more"
+               if len(lent["with_leavers"]) > 1 else ""),
+            len(lent["with_leavers"]), "still_out_page")
+
     insurer = incidents_awaiting_insurer(conn)
     if insurer["overdue"]:
         worst = insurer["overdue"][0]
@@ -18162,6 +18294,8 @@ PALETTE_PAGES = [
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
+    ("Still out", "still_out_page",
+     "keys fobs kit not returned leavers laptop outstanding"),
     ("Documents", "management_documents", "files"),
     ("Insurance", "management_insurance", "policies cover"),
     ("Vendors", "vendors", "suppliers"),
@@ -31312,6 +31446,30 @@ def overtime_page():
     ]
     return render_template("overtime.html", data=data, overview=overview,
                            weeks=weeks, busiest=busiest, today=today)
+
+
+@app.route("/admin/still-out")
+@owner_required
+def still_out_page():
+    """Keys, fobs and kit the house has lent and not had back."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    data = things_still_out(conn, today=today)
+    contradictions = offboarding_contradictions(conn)
+    conn.close()
+    overview = [
+        overview_cell("Still out", len(data["lent"])),
+        overview_cell("With people", data["people"]),
+        overview_cell("Held by somebody who has left", len(data["with_leavers"]),
+                      alert=bool(data["with_leavers"]),
+                      hint="they can still open the door"),
+        overview_cell("Ticked off but never returned", len(contradictions),
+                      alert=bool(contradictions),
+                      hint="the checklist and the register disagree"),
+    ]
+    return render_template("still_out.html", data=data, overview=overview,
+                           contradictions=contradictions, today=today,
+                           stale_days=LOAN_STALE_DAYS)
 
 
 @app.route("/management/rooms-economics")
