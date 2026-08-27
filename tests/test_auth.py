@@ -171,13 +171,58 @@ def run():
         m.app.config["WTF_CSRF_ENABLED"] = False
 
     s.section("Password reset does not leak who has an account")
-    fp = m.app.test_client()
-    known = fp.post("/forgot-password", data={"email": email}, follow_redirects=True)
-    unknown = fp.post("/forgot-password", data={"email": "ghost@example.invalid"},
-                      follow_redirects=True)
-    s.check("both addresses get the same answer",
-            set(flashes(known)) == set(flashes(unknown)),
-            detail=f"{flashes(known)[:1]} vs {flashes(unknown)[:1]}")
+    # This section used to prove nothing. With no email provider configured —
+    # which is the state of the harness and of the live site — the route stops
+    # at "email isn't set up" BEFORE it ever looks the address up, so the two
+    # answers being identical was two identical refusals. It would have passed
+    # with the leak wide open. Force a provider on, and capture instead of send.
+    sent = []
+
+    def capture(to, subject, body, ics_content=None, ics_filename=None, keep=True):
+        sent.append(to)
+        return True
+
+    was_enabled, was_send = m.email_enabled, m.send_email
+    m.email_enabled, m.send_email = (lambda: True), capture
+    try:
+        fp = m.app.test_client()
+        known = fp.post("/forgot-password", data={"email": email}, follow_redirects=True)
+        unknown = fp.post("/forgot-password", data={"email": "ghost@example.invalid"},
+                          follow_redirects=True)
+        s.check("both addresses get the same answer",
+                set(flashes(known)) == set(flashes(unknown)),
+                detail=f"{flashes(known)[:1]} vs {flashes(unknown)[:1]}")
+        s.check("and it is the non-committal one",
+                "has an account" in " ".join(flashes(known)).lower(),
+                detail=f"{flashes(known)[:1]} — the reply names a real address")
+        s.check("but only the address that exists is actually written to",
+                sent == [email], detail=f"{sent}")
+
+        s.section("Nor can it be used to mail somebody over and over")
+        # Login has had lockout for a while; this had nothing, so anybody who
+        # knew a staff address could make the site mail them as often as they
+        # liked.
+        conn = db()
+        conn.execute("DELETE FROM submission_log")
+        conn.commit()
+        conn.close()
+        sent.clear()
+        limit = m.PASSWORD_RESET_LIMIT_PER_HOUR
+        replies = []
+        for _ in range(limit + 3):
+            replies.append(set(flashes(
+                fp.post("/forgot-password", data={"email": email},
+                        follow_redirects=True))))
+        s.check(f"at most {limit} links go out in an hour", len(sent) <= limit,
+                detail=f"{len(sent)} emails were sent for {limit + 3} attempts")
+        s.check("the throttle actually engaged", len(sent) == limit,
+                detail=f"{len(sent)} sent — if this is {limit + 3} nothing is "
+                       "limiting it, and if it is fewer the limit is too tight")
+        s.check("and a throttled attempt still gives nothing away",
+                replies[-1] == replies[0], detail=f"{replies[-1]} vs {replies[0]}")
+    finally:
+        m.email_enabled, m.send_email = was_enabled, was_send
+
     r = fp.get("/reset-password/not-a-real-token", follow_redirects=True)
     s.check("a bogus reset token is refused",
             r.status_code in (200, 302, 404) and "new password" not in

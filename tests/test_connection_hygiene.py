@@ -23,7 +23,7 @@ which is how a test like this quietly becomes worthless.
 import gc
 import sqlite3
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, flashes
 import _harness
 
 m = _harness.m
@@ -31,12 +31,18 @@ TAG = "ZZCONN"
 
 # Each of these posts an id that no longer resolves, against a column that
 # really does carry a foreign key. Confirmed by PRAGMA foreign_key_list.
+#
+# Every payload has to be complete enough to reach the INSERT. A form missing a
+# required field stops at an earlier validation and never gets near the foreign
+# key, so the check passes without exercising anything — which is exactly what
+# the first draft of this file did, on the certification case, with no `name`.
 DANGLING = [
     ("a certification for nobody", "/admin/hr/certifications/new",
-     {"kind": "training", "user_id": "999999", "expiry_date": "2036-01-01"}),
+     {"name": TAG + " first aid", "kind": "training", "user_id": "999999",
+      "expiry_date": "2036-01-01"}),
     ("an absence for nobody", "/admin/hr/absences/new",
      {"user_id": "999999", "start_date": "2035-01-01",
-      "end_date": "2035-01-02", "absence_type": "holiday"}),
+      "end_date": "2035-01-02", "kind": "sick"}),
     ("stock from a deleted vendor", "/admin/stock/new",
      {"name": TAG + " wine", "category": "drinks", "unit": "bottle",
       "reorder_level": "1", "vendor_id": "999999"}),
@@ -50,7 +56,7 @@ DANGLING = [
 def _cleanup():
     conn = db()
     for table, col in (("stock_items", "name"), ("menu_items", "name"),
-                       ("workshops", "title")):
+                       ("workshops", "title"), ("certifications", "name")):
         try:
             conn.execute(f"DELETE FROM {table} WHERE {col} LIKE ?", (TAG + "%",))
         except sqlite3.OperationalError:
@@ -108,6 +114,33 @@ def run():
                 detail=f"HTTP {code} left the write lock held — every till "
                        "order, clock-in and booking in the house now waits "
                        "on the garbage collector")
+
+    s.section("And says so in words, rather than a stack trace")
+    # Not cosmetic. The realistic way to hit this is to delete a supplier in
+    # one tab and submit a form that was already open in another — an ordinary
+    # afternoon, not an attack — and a 500 tells the owner nothing about what
+    # they did or what to do instead.
+    for label, url, data in DANGLING:
+        gc.collect()
+        r = oc.post(url, data=data, follow_redirects=True)
+        said = " ".join(flashes(r)).lower()
+        s.check(f"{label}: not a 500", r.status_code < 500,
+                detail=f"HTTP {r.status_code}")
+        s.check(f"{label}: says the list has changed",
+                "no longer" in said,
+                detail=f"{flashes(r)[:1]} — nothing told them why it failed")
+
+    s.section("And nothing is written when it is refused")
+    conn = db()
+    leftovers = 0
+    for table, col in (("stock_items", "name"), ("menu_items", "name"),
+                       ("workshops", "title"), ("certifications", "name")):
+        leftovers += conn.execute(
+            f"SELECT COUNT(*) AS c FROM {table} WHERE {col} LIKE ?",
+            (TAG + "%",)).fetchone()["c"]
+    conn.close()
+    s.check("no half-made rows survived the refusals", leftovers == 0,
+            detail=f"{leftovers} row(s) written by a request that was rejected")
 
     s.section("And the ordinary path still works")
     # A teardown that closes too eagerly would break every page instead, which

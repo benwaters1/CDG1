@@ -201,6 +201,11 @@ MAX_UPLOAD_MB = 15
 LOGIN_LOCKOUT_THRESHOLD = 5
 LOGIN_LOCKOUT_MINUTES = 15
 BOOKING_RATE_LIMIT_PER_HOUR = 5
+# Password resets per hour from one address. Higher than it sounds: a person
+# who mistypes their address, then tries again, then finds the first mail in
+# spam and asks once more is at three, and locking them out of their own
+# account is the worse failure of the two.
+PASSWORD_RESET_LIMIT_PER_HOUR = 5
 # The smallest part-payment worth taking: below this the card fee is a
 # large share of the amount settled.
 PART_PAYMENT_MINIMUM = 20.0
@@ -875,6 +880,31 @@ def close_open_connections(exc):
             conn.close()
         except Exception:
             pass
+
+
+# The tables a form can hand us an id for. A tuple rather than an f-string
+# straight from the caller, so this can never become the one place in the app
+# where SQL is built out of something a request supplied.
+FK_CHECK_TABLES = (
+    "users", "vendors", "stock_items", "menu_items", "insurance_policies",
+    "workshop_sessions", "vehicles", "access_items", "rooms",
+)
+
+
+def missing_row(conn, table, row_id):
+    """True if that id is not in that table.
+
+    For use before an INSERT carrying an id that came off a <select>. The id
+    was correct when the page was drawn, and forms sit open — somebody deletes
+    a supplier in another tab, a leaver is archived, the browser restores a
+    form from last week. Without this the foreign key fails inside the INSERT
+    and the owner gets a stack trace instead of a sentence telling them the
+    list has changed.
+    """
+    if table not in FK_CHECK_TABLES:
+        raise ValueError(f"missing_row: {table!r} is not a checkable table")
+    return conn.execute(
+        f"SELECT 1 FROM {table} WHERE id = ?", (row_id,)).fetchone() is None
 
 
 # The wording every automated guest email starts from. Module level rather
@@ -13477,6 +13507,15 @@ def forgot_password():
             return render_template("forgot_password.html", email_enabled=email_enabled())
         email = request.form.get("email", "").strip().lower()
         conn = get_db()
+        # Login has its own lockout; this had nothing. Somebody who knows a
+        # staff address could have the site mail them a reset link as often as
+        # they liked. The message below stays identical either way, so a
+        # throttled attempt still says nothing about who has an account.
+        if rate_limited(conn, "forgot_password", PASSWORD_RESET_LIMIT_PER_HOUR):
+            conn.commit()
+            conn.close()
+            flash("If that email has an account, a reset link is on its way.", "success")
+            return redirect(url_for("login"))
         person = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if person:
             token = secrets.token_urlsafe(32)
@@ -15495,6 +15534,11 @@ def new_certification():
         flash("Choose an employee and give the certification a name.", "error")
         return redirect(url_for("admin_hr"))
     conn = get_db()
+    if missing_row(conn, "users", int(user_id)):
+        conn.close()
+        flash("That employee is no longer on the team — the list has changed "
+              "since this page was opened.", "error")
+        return redirect(url_for("admin_hr"))
     conn.execute(
         """INSERT INTO certifications (user_id, name, issuer, reference, issued_date,
            expiry_date, required, notes, created_at)
@@ -15541,6 +15585,11 @@ def new_absence():
         flash("The end date can't be before the start date.", "error")
         return redirect(url_for("admin_hr"))
     conn = get_db()
+    if missing_row(conn, "users", int(user_id)):
+        conn.close()
+        flash("That employee is no longer on the team — the list has changed "
+              "since this page was opened.", "error")
+        return redirect(url_for("admin_hr"))
     conn.execute(
         """INSERT INTO absences (user_id, start_date, end_date, kind, reason,
            self_certified, recorded_by_user_id, created_at)
@@ -16330,14 +16379,20 @@ def new_stock_item():
             return default
 
     vendor_raw = request.form.get("vendor_id", "").strip()
+    vendor_id = int(vendor_raw) if vendor_raw.isdigit() else None
     opening = num("opening_qty", 0.0)
     conn = get_db()
+    if vendor_id is not None and missing_row(conn, "vendors", vendor_id):
+        conn.close()
+        flash("That supplier no longer exists — pick another, or add the item "
+              "without one.", "error")
+        return redirect(url_for("admin_stock"))
     conn.execute(
         """INSERT INTO stock_items (name, category, unit, reorder_level, unit_cost,
            vendor_id, location, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?)""",
         (name, category, request.form.get("unit", "each").strip() or "each",
          num("reorder_level"), num("unit_cost", None) or None,
-         int(vendor_raw) if vendor_raw.isdigit() else None,
+         vendor_id,
          request.form.get("location", "").strip() or None,
          request.form.get("notes", "").strip() or None,
          datetime.now(timezone.utc).isoformat()),
@@ -27274,6 +27329,11 @@ def new_menu_item():
     pour_loss = _bev("pour_loss_percent") or 0
 
     conn = get_db()
+    if stock_item_id is not None and missing_row(conn, "stock_items", stock_item_id):
+        conn.close()
+        flash("That stock item no longer exists — pick another, or leave the "
+              "dish unlinked.", "error")
+        return redirect(url_for("admin_restaurant_menu"))
     max_order = conn.execute(
         "SELECT COALESCE(MAX(sort_order), -1) AS m FROM menu_items WHERE course = ?", (course,)
     ).fetchone()["m"]
@@ -28449,13 +28509,20 @@ def new_workshop():
             return render_template("workshop_form.html", workshop=None, instructors=known_instructor_list())
 
         conn = get_db()
+        instructor_id = int(instructor_user_id) if instructor_user_id.isdigit() else None
+        if instructor_id is not None and missing_row(conn, "users", instructor_id):
+            conn.close()
+            flash("That instructor is no longer on the team — pick another, or "
+                  "leave it blank and type a name.", "error")
+            return render_template("workshop_form.html", workshop=None,
+                                   instructors=known_instructor_list())
         max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM workshops").fetchone()["m"]
         conn.execute(
             """INSERT INTO workshops (title, description, instructor_name, instructor_user_id, price_per_person,
                default_capacity, sort_order, deposit_percent, inclusions, itinerary, single_supplement, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (title, description, instructor_name or None,
-             int(instructor_user_id) if instructor_user_id.isdigit() else None,
+             instructor_id,
              float(price_raw) if price_raw else 0,
              int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else 10,
              max_order + 1,
