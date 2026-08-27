@@ -40,7 +40,7 @@ def _person(conn, name, status="active"):
                         (f"{TAG}{name}@example.invalid",)).fetchone()["id"]
 
 
-def _key(conn, label, user_id, days_ago, returned=False):
+def _key(conn, label, user_id, days_ago, returned=False, issued_by=None):
     now = datetime.now(timezone.utc)
     conn.execute(
         "INSERT INTO access_items (label, kind, active, created_at) VALUES (?, 'fob', 1, ?)",
@@ -48,10 +48,10 @@ def _key(conn, label, user_id, days_ago, returned=False):
     item = conn.execute("SELECT id FROM access_items WHERE label = ?",
                         (TAG + label,)).fetchone()["id"]
     conn.execute(
-        """INSERT INTO access_holdings (access_item_id, user_id, issued_at, returned_at)
-           VALUES (?, ?, ?, ?)""",
+        """INSERT INTO access_holdings (access_item_id, user_id, issued_at, returned_at,
+           issued_by_user_id) VALUES (?, ?, ?, ?, ?)""",
         (item, user_id, (now - timedelta(days=days_ago)).isoformat(),
-         now.isoformat() if returned else None))
+         now.isoformat() if returned else None, issued_by))
     conn.commit()
 
 
@@ -97,6 +97,17 @@ def run():
     s.check("and a current holder is not counted as a leaver",
             _find(data, "Cellar")["gone"] is False)
 
+    s.section("Who issued it")
+    # Written on every issue since the table was made and read nowhere. On a
+    # key register, who authorised it is half the point of keeping one.
+    boss = _person(conn, "Issuer")
+    _key(conn, "Gatehouse", here, 5, issued_by=boss)
+    issued = _find(m.things_still_out(conn), "Gatehouse")
+    s.check("the issuer is named", issued and issued["issued_by"] == "Issuer",
+            detail=str(issued["issued_by"]) if issued else "")
+    s.check("a key with no issuer recorded says so rather than blank",
+            _find(m.things_still_out(conn), "Cellar")["issued_by"] is None)
+
     s.section("Kit counts too, not just keys")
     conn.execute(
         "INSERT INTO equipment_items (user_id, label, issued_at) VALUES (?, ?, ?)",
@@ -106,6 +117,10 @@ def run():
             _find(m.things_still_out(conn), "Laptop") is not None)
     s.check("but ten days is not 'a while'",
             _find(m.things_still_out(conn), "Laptop")["stale"] is False)
+    # equipment_items has no issuer column at all. That is a different fact
+    # from "nobody recorded it" and the page words them differently.
+    s.check("kit reports no issuer because the column does not exist",
+            _find(m.things_still_out(conn), "Laptop")["issued_by"] is None)
 
     s.section("The checklist says returned; the register says not")
     # The whole reason this page exists. Ticking a free-text line proves only
@@ -144,6 +159,7 @@ def run():
     s.check("it renders", "Still out" in page)
     s.check("the departed holder is called out", "Held by somebody who has left" in page)
     s.check("it admits there is no due-back date", "no due-back date" in page)
+    s.check("the issuer is shown on the page", "Issued by" in page)
 
     with m.app.test_request_context():
         warnings = m.owner_home_warnings(conn, datetime.now(m.LOCAL_TZ).date())

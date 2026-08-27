@@ -8877,12 +8877,16 @@ def things_still_out(conn, *, today=None):
         return (today - d.astimezone(LOCAL_TZ).date()).days
 
     for r in conn.execute(
+        # issued_by is written on every issue and was read nowhere. On a key
+        # register "who authorised this" is half the point of keeping one.
         """SELECT access_holdings.id, access_holdings.issued_at, access_holdings.notes,
                   access_holdings.holder_name, access_items.label, access_items.kind,
-                  users.id AS user_id, users.name AS holder, users.status AS holder_status
+                  users.id AS user_id, users.name AS holder, users.status AS holder_status,
+                  issuer.name AS issued_by
              FROM access_holdings
              JOIN access_items ON access_items.id = access_holdings.access_item_id
              LEFT JOIN users ON users.id = access_holdings.user_id
+             LEFT JOIN users AS issuer ON issuer.id = access_holdings.issued_by_user_id
             WHERE access_holdings.returned_at IS NULL""").fetchall():
         out.append({
             "sort": "access", "id": r["id"], "what": r["label"],
@@ -8891,7 +8895,7 @@ def things_still_out(conn, *, today=None):
             "user_id": r["user_id"],
             "gone": bool(r["user_id"]) and r["holder_status"] != "active",
             "days": age(r["issued_at"]), "issued_at": r["issued_at"],
-            "note": r["notes"],
+            "note": r["notes"], "issued_by": r["issued_by"],
         })
 
     for r in conn.execute(
@@ -8906,7 +8910,9 @@ def things_still_out(conn, *, today=None):
             "who": r["holder"] or "—", "user_id": r["user_id"],
             "gone": r["holder_status"] != "active",
             "days": age(r["issued_at"]), "issued_at": r["issued_at"],
-            "note": r["notes"],
+            # equipment_items has no issuer column at all, so this is None
+            # rather than unknown-but-recorded. The page distinguishes them.
+            "note": r["notes"], "issued_by": None,
         })
 
     for row in out:
