@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Outlook{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Outlook</h1>
+  <a href="{{ url_for('management_financials') }}" class="btn-mini">Financials</a>
+  <a href="{{ url_for('management_recurring_costs') }}" class="btn-mini">Recurring costs</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What the house has already promised, against what it has already been promised. Every line is
+  something somebody has agreed to: a booking taken, a cost on a contract, a shift on the rota.
+  <strong>This is not a bank balance and not a forecast of trading.</strong> Walk-in restaurant and
+  till takings are most of a quiet month's income and cannot be known in advance, so they are not
+  here — a month showing a shortfall below may well trade out of it.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="period-choices" style="margin-bottom:16px;">
+  {% for n in [3, 6, 12] %}
+    <a href="{{ url_for('management_outlook', months=n) }}"
+       class="btn-mini {{ 'btn-mini-active' if months == n }}">{{ n }} months</a>
+  {% endfor %}
+</div>
+
+{% if outlook.unpriced %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>{{ outlook.unpriced|length }}
+    {{ 'person on the rota has' if outlook.unpriced|length == 1 else 'people on the rota have' }}
+    no wage the app can use.</strong>
+  {{ outlook.unpriced|join(', ') }} — their shifts are rostered but not costed, so every
+  &ldquo;committed out&rdquo; figure below is lower than the truth.
+  <a href="{{ url_for('admin_wages') }}">Record what they are paid</a>.
+</div>
+{% endif %}
+
+{% if not outlook.employer_rate %}
+<div class="flash" style="margin-bottom:16px;">
+  <strong>Employer contributions are not set, so labour below is gross only.</strong>
+  <a href="{{ url_for('admin_wages') }}">Set the percentage</a> and the real cost of the rota appears
+  here.
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th class="num">Rooms</th><th class="num">Ateliers</th><th class="num">Events</th>
+        <th class="num">Expected in</th>
+        <th class="num">Costs</th><th class="num">Rota</th>
+        <th class="num">Committed out</th>
+        <th class="num">Difference</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in outlook.rows %}
+      <tr>
+        <td>
+          {{ r.label }}
+          {% if r.is_current %}<span class="mini-status status-onshift">this month</span>{% endif %}
+          {% if r.out_annual %}<div class="upload-hint">includes an annual bill</div>{% endif %}
+        </td>
+        <td class="num">{{ '%.0f'|format(r.in_rooms) }}</td>
+        <td class="num">{{ '%.0f'|format(r.in_ateliers) }}</td>
+        <td class="num">{{ '%.0f'|format(r.in_events) }}</td>
+        <td class="num"><strong>€{{ '%.0f'|format(r.money_in) }}</strong></td>
+        <td class="num">{{ '%.0f'|format(r.out_recurring) }}</td>
+        <td class="num">
+          {{ '%.0f'|format(r.out_labour) }}
+          {% if r.labour.hours %}<div class="upload-hint">{{ '%.0f'|format(r.labour.hours) }}h</div>{% endif %}
+        </td>
+        <td class="num"><strong>€{{ '%.0f'|format(r.money_out) }}</strong></td>
+        <td class="num">
+          {% if r.net < 0 %}
+            <span class="mini-status status-declined">−€{{ '%.0f'|format(-r.net) }}</span>
+          {% else %}
+            <strong>€{{ '%.0f'|format(r.net) }}</strong>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th>Total</th>
+        <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='in_rooms')) }}</th>
+        <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='in_ateliers')) }}</th>
+        <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='in_events')) }}</th>
+        <th class="num">€{{ '%.0f'|format(outlook.money_in) }}</th>
+        <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='out_recurring')) }}</th>
+        <th class="num">{{ '%.0f'|format(outlook.rows|sum(attribute='out_labour')) }}</th>
+        <th class="num">€{{ '%.0f'|format(outlook.money_out) }}</th>
+        <th class="num">€{{ '%.0f'|format(outlook.net) }}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<p class="upload-hint" style="margin-top:10px;">
+  Rooms are the balance still outstanding on confirmed bookings, dated by arrival. Ateliers are
+  balances not yet paid, dated by when they fall due. Events are the quoted price of a confirmed
+  enquiry, which is a quote rather than an invoice. Anything a guest has already paid is in the bank,
+  not coming in, so it is not counted twice. Enquiries that are not confirmed are not here at all —
+  a maybe is not money.
+</p>
+
+{% if outlook.worst and outlook.worst.net < 0 %}
+<h2>The tightest month</h2>
+<p>
+  On committed figures alone, <strong>{{ outlook.worst.label }}</strong> is
+  €{{ '%.0f'|format(-outlook.worst.net) }} short — €{{ '%.0f'|format(outlook.worst.money_out) }}
+  going out against €{{ '%.0f'|format(outlook.worst.money_in) }} already booked in. That is normal
+  for a quiet month and is what the restaurant and the till are for; it is worth knowing early all
+  the same.
+</p>
+{% endif %}
+
+{% if costs %}
+<h2>What is on a contract</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Cost</th><th>How often</th><th class="num">Amount</th><th>Next due</th></tr>
+    </thead>
+    <tbody>
+      {% for c in costs %}
+      <tr>
+        <td>{{ c['label'] }}{% if c['category'] %}<div class="upload-hint">{{ c['category'] }}</div>{% endif %}</td>
+        <td class="upload-hint">{{ 'Every month' if c['frequency'] == 'monthly' else 'Once a year' }}</td>
+        <td class="num">€{{ '%.2f'|format(c['amount']) }}</td>
+        <td class="upload-hint">{{ c['next_due_date'] or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

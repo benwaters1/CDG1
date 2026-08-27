@@ -6,6 +6,7 @@
   <h1>Payroll pack</h1>
   <a href="{{ url_for('export_payroll_csv', period=period.period, date=period.anchor_iso) }}"
      class="btn-mini {{ 'btn-mini-danger' if blocked }}">Export CSV</a>
+  <a href="{{ url_for('admin_wages') }}" class="btn-mini">Wages</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   What to hand whoever runs payroll: hours net of breaks, plus absence and leave for the same window.

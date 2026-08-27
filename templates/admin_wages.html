@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Wages{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Wages</h1>
+  <a href="{{ url_for('admin_payroll') }}" class="btn-mini">Payroll pack</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The pay note on somebody's profile keeps whatever the contract says, in words. This page holds the
+  figure the app is allowed to do arithmetic with. Every line below says which of the two it was
+  costed from, and every total says whether employer contributions are in it.
+</p>
+
+{% with endpoint = 'admin_wages' %}{% include "_period_selector.html" %}{% endwith %}
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if cost.unpriced %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>{{ cost.unpriced|length }}
+    {{ 'person has' if cost.unpriced|length == 1 else 'people have' }} no wage the app can use.</strong>
+  {{ cost.unpriced|join(', ') }} — their hours are counted above but their pay is not, so this period
+  cost more than the total says. Record a figure for them below.
+</div>
+{% endif %}
+
+{% if not employer_rate %}
+<div class="flash" style="margin-bottom:16px;">
+  <strong>Employer contributions are not set, so every figure here is gross.</strong>
+  That is what lands in a bank account, not what employing somebody costs the house. Set the
+  percentage at the bottom of this page and the totals split into the two.
+</div>
+{% endif %}
+
+<h2>What {{ period.label }} cost</h2>
+
+{% if not cost.rows %}
+  <div class="empty-state">Nobody was on the clock in this period, so there is nothing to cost.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Person</th><th>Paid</th><th class="num">Hours</th>
+        <th class="num">Gross</th><th class="num">Employer</th><th class="num">Total</th>
+        <th>Costed from</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in cost.rows %}
+      <tr>
+        <td><a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.name }}</a></td>
+        <td class="upload-hint">{{ 'By the hour' if r.basis == 'hourly' else 'By the month' }}</td>
+        <td class="num">{{ '%.1f'|format(r.hours) }}</td>
+        <td class="num">€{{ '%.2f'|format(r.gross) }}</td>
+        <td class="num">
+          €{{ '%.2f'|format(r.employer) }}
+          {% if r.employer_rate %}<div class="upload-hint">{{ '%g'|format(r.employer_rate) }}%</div>{% endif %}
+        </td>
+        <td class="num"><strong>€{{ '%.2f'|format(r.total) }}</strong></td>
+        <td>
+          {% if r.source == 'wage on file' %}
+            <span class="mini-status status-active">Wage on file</span>
+          {% else %}
+            <span class="mini-status status-pending">{{ r.source }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="2">Total</th>
+        <th class="num">{{ '%.1f'|format(cost.hours) }}</th>
+        <th class="num">€{{ '%.2f'|format(cost.gross) }}</th>
+        <th class="num">€{{ '%.2f'|format(cost.employer) }}</th>
+        <th class="num">€{{ '%.2f'|format(cost.total) }}</th>
+        <th></th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+<p class="upload-hint" style="margin-top:10px;">
+  Hours are net of breaks, the same definition payroll and the financials use. Somebody paid monthly
+  is apportioned by calendar day across the window rather than by hours, because a salary is not
+  bought by the hour — a quiet week does not make them cheaper.
+</p>
+{% endif %}
+
+<h2>Who is on what</h2>
+{% if lv.rows %}{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}{% endif %}
+
+{% if not lv.rows %}
+  <div class="empty-state">Nobody matches that.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Person</th><th>Role</th><th>Wage the app uses</th><th>From</th>
+          <th>The pay note on their profile</th></tr>
+    </thead>
+    <tbody>
+      {% for r in lv.rows %}
+      <tr>
+        <td>
+          <a href="{{ url_for('profile', user_id=r.person.id) }}">{{ r.person.name }}</a>
+          {% if r.person.status and r.person.status != 'active' %}
+            <span class="mini-status status-inactive">{{ r.person.status }}</span>
+          {% endif %}
+        </td>
+        <td class="upload-hint">{{ r.person.job_role or '—' }}</td>
+        <td>
+          {% if r.wage %}
+            €{{ '%.2f'|format(r.gross_amount) }}
+            <div class="upload-hint">{{ 'an hour' if r.basis == 'hourly' else 'a month' }}, gross</div>
+          {% else %}
+            <span class="mini-status status-declined">No figure on file</span>
+          {% endif %}
+        </td>
+        <td class="upload-hint">{{ r.effective_from or '—' }}</td>
+        <td class="upload-hint">{{ r.person.pay_rate or '—' }}{% if r.person.pay_type %}
+          ({{ r.person.pay_type }}){% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<details class="refund-box" style="margin-bottom:20px;">
+  <summary>Record a wage</summary>
+  <p class="upload-hint">
+    Records are added, never edited — a rise dated today leaves last month's cost exactly as it was.
+    Same reason stock is a ledger rather than a number.
+  </p>
+  <form method="post" action="{{ url_for('new_wage_record') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Who</label>
+        <select name="user_id" required>
+          <option value="">— choose —</option>
+          {% for p in people %}<option value="{{ p['id'] }}">{{ p['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Paid by</label>
+        <select name="basis" required>
+          <option value="hourly">The hour</option>
+          <option value="monthly">The month</option>
+        </select>
+      </div>
+      <div>
+        <label class="field-label">Gross amount (€)</label>
+        <input type="text" name="gross_amount" inputmode="decimal" placeholder="12.50" required>
+      </div>
+      <div>
+        <label class="field-label">Starts from</label>
+        <input type="date" name="effective_from" required>
+      </div>
+      <div>
+        <label class="field-label">Employer contributions (%)</label>
+        <input type="text" name="employer_rate" inputmode="decimal"
+               placeholder="blank uses {{ '%g'|format(employer_rate) }}%">
+      </div>
+      <div>
+        <label class="field-label">Note</label>
+        <input type="text" name="note" placeholder="e.g. end of trial period">
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Record it</button>
+  </form>
+</details>
+
+<details class="refund-box" style="margin-bottom:20px;">
+  <summary>The house figure for employer contributions</summary>
+  <p class="upload-hint">
+    A percentage on top of gross, used for anybody whose own record does not name one. Zero until you
+    set it, deliberately: the real figure depends on the contract, the exemptions claimed and the
+    salary band, and a number the app invented would read as a number the app knew.
+  </p>
+  <form method="post" action="{{ url_for('save_wage_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="refund-fields">
+      <div>
+        <label class="field-label">Employer contributions, % of gross</label>
+        <input type="text" name="employer_contribution_percent" inputmode="decimal"
+               value="{{ '%g'|format(employer_rate) }}">
+      </div>
+    </div>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+</details>
+
+{% if history %}
+<h2>What has been recorded</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Person</th><th>From</th><th>Paid</th><th class="num">Gross</th>
+          <th>Note</th><th>Recorded by</th></tr>
+    </thead>
+    <tbody>
+      {% for h in history %}
+      <tr>
+        <td>{{ h['employee_name'] }}</td>
+        <td>{{ h['effective_from'] }}</td>
+        <td class="upload-hint">{{ 'By the hour' if h['basis'] == 'hourly' else 'By the month' }}</td>
+        <td class="num">€{{ '%.2f'|format(h['gross_amount']) }}</td>
+        <td class="upload-hint">{{ h['note'] or '—' }}</td>
+        <td class="upload-hint">{{ h['set_by'] or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

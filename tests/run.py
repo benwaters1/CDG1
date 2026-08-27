@@ -122,6 +122,8 @@ SUITES = [
     "test_connection_hygiene",
     "test_security_headers",
     "test_money_routes",
+    "test_wages",
+    "test_outlook",
     "test_money_reports",
     "test_noindex_meta",
     "test_privacy",

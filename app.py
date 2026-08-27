@@ -1128,6 +1128,33 @@ def init_db():
             changed_at TEXT NOT NULL
         );
 
+        -- What somebody is actually paid, as a number.
+        --
+        -- users.pay_rate and users.pay_type are free text, on purpose: they
+        -- hold whatever the contract says, including "SMIC + 5%" and "12,50
+        -- €/h net". That is the right place for prose and the wrong place to
+        -- cost a season from, so estimated_hourly_cost() regexes a number out
+        -- of it and gives up whenever it cannot — which means a monthly-
+        -- salaried chef contributed exactly nothing to the wage bill.
+        --
+        -- One row per change, never edited in place, so last month's labour
+        -- cost does not move when somebody gets a rise this month. Same
+        -- reasoning as the stock ledger: the figure is derived from history,
+        -- and history is append-only.
+        CREATE TABLE IF NOT EXISTS wage_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            effective_from TEXT NOT NULL,
+            basis TEXT NOT NULL CHECK(basis IN ('hourly','monthly')),
+            gross_amount REAL NOT NULL,
+            employer_rate REAL,
+            note TEXT,
+            created_by_user_id INTEGER REFERENCES users(id),
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_wage_records_person
+            ON wage_records(user_id, effective_from);
+
         CREATE TABLE IF NOT EXISTS onboarding_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -3989,7 +4016,8 @@ NAV_AREAS = {
         "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
         "export_refunds_csv", "export_report_csv", "management_bank_details",
         "management_financials", "management_recurring_costs", "new_bank_details",
-        "new_recurring_cost", "regenerate_supplier_link", "toggle_recurring_cost"
+        "management_outlook", "new_recurring_cost",
+        "regenerate_supplier_link", "toggle_recurring_cost"
     ],
     "restaurant": [
         "admin_dining_tables", "new_dining_table", "save_dining_table",
@@ -4025,7 +4053,11 @@ NAV_AREAS = {
         "admin_events", "export_events_csv", "update_event_inquiry"
     ],
     "payroll": [
-        "admin_payroll", "export_payroll_csv"
+        "admin_payroll", "export_payroll_csv",
+        # Wages sit in `payroll` rather than `team`: what somebody is paid is
+        # not something everybody who can see the staff list should read, and
+        # `payroll` is granted on its own.
+        "admin_wages", "new_wage_record", "save_wage_settings"
     ],
     "management": [
         # Private HR notes sit here rather than in `team`: the employee is
@@ -4284,20 +4316,313 @@ def labour_hours_by_person(conn, start_iso, end_iso):
     ).fetchall()
 
 
-def estimated_labour_cost(conn, start_iso, end_iso):
-    """Estimated wage bill for a window. Returns (cost, hours, unpriced) where
-    cost is None when nobody on the clock has a usable hourly rate — so the UI
-    can say "not estimated" rather than showing a confident zero."""
-    total_cost, total_hours, unpriced, priced_any = 0.0, 0.0, 0, False
+WAGE_SETTING_DEFAULTS = {
+    # Employer social contributions, as a percentage on top of gross. Zero by
+    # default and deliberately so: the real French figure depends on the
+    # contract, the exemptions claimed and the salary band, and a number the
+    # app invented would be read as a number the app knows. Until the owner
+    # sets theirs, every total below says "gross only" and means it.
+    "payroll_employer_contribution_percent": "0",
+}
+
+
+def wage_setting(conn, key, cast=float):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    raw = row["value"] if row else WAGE_SETTING_DEFAULTS[key]
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        return cast(WAGE_SETTING_DEFAULTS[key])
+
+
+def wage_on(conn, user_id, on_date):
+    """The wage in force for one person on one date, or None.
+
+    Latest record whose effective_from is on or before that date. A rise dated
+    next Monday does not change what last week cost, which is the whole reason
+    these are effective-dated rather than a column on users.
+    """
+    if hasattr(on_date, "isoformat"):
+        on_date = on_date.isoformat()
+    return conn.execute(
+        """SELECT * FROM wage_records
+           WHERE user_id = ? AND effective_from <= ?
+           ORDER BY effective_from DESC, id DESC LIMIT 1""",
+        (user_id, on_date)).fetchone()
+
+
+def current_wages(conn, on_date=None):
+    """The wage in force for every employee today, keyed by user id."""
+    on_date = (on_date or datetime.now(timezone.utc).date()).isoformat()
+    out = {}
+    for row in conn.execute(
+        """SELECT w.* FROM wage_records w
+           WHERE w.effective_from <= ?
+           ORDER BY w.user_id, w.effective_from, w.id""", (on_date,)).fetchall():
+        out[row["user_id"]] = row      # later rows win, so this lands on the latest
+    return out
+
+
+def _months_overlapped(start, end):
+    """(year, month, days_of_that_month_inside_the_window) for a half-open window.
+
+    Monthly salary is not bought by the hour, so a window that covers half of
+    March costs half of March's salary. Apportioning by calendar day is the
+    ordinary treatment and, unlike hours, it does not fall to zero in a week
+    somebody happened not to clock in.
+    """
+    out, cursor = [], start
+    while cursor < end:
+        days_in_month = calendar.monthrange(cursor.year, cursor.month)[1]
+        month_end = date(cursor.year, cursor.month, days_in_month) + timedelta(days=1)
+        chunk_end = min(month_end, end)
+        out.append((cursor.year, cursor.month, (chunk_end - cursor).days, days_in_month))
+        cursor = chunk_end
+    return out
+
+
+def labour_cost_breakdown(conn, start_iso, end_iso):
+    """What the people cost for a window, per person and in total.
+
+    THE costing. Precedence per person, and it matters that it is stated:
+
+      1. a typed wage_records row in force  -> a figure, marked "wage on file"
+      2. otherwise estimated_hourly_cost()  -> a figure, marked "estimated"
+         from the free-text pay fields, which is what the whole app used to do
+      3. otherwise nothing                  -> counted as unpriced, never zero
+
+    Every figure here is GROSS unless employer contributions are configured, in
+    which case gross, employer and total are reported separately and never
+    added into one unlabelled number. The rows add up to the total: that is
+    checked by a test, because a labour report whose lines do not reconcile is
+    worse than none.
+
+    `end_iso` is exclusive, matching resolve_period.
+    """
+    start = parse_date(start_iso[:10])
+    end = parse_date(end_iso[:10])
+    employer_pct = wage_setting(conn, "payroll_employer_contribution_percent")
+    months = _months_overlapped(start, end) if (start and end and start < end) else []
+
+    rows, unpriced = [], []
+    typed_count = estimated_count = 0
     for r in labour_hours_by_person(conn, start_iso, end_iso):
-        total_hours += r["hours"]
-        cost = estimated_hourly_cost(r["hours"], r["pay_rate"], r["pay_type"])
-        if cost is None:
-            unpriced += 1
+        wage = wage_on(conn, r["id"], end - timedelta(days=1)) if end else None
+        gross, source, basis = None, "unpriced", None
+        if wage:
+            basis = wage["basis"]
+            if basis == "hourly":
+                gross = r["hours"] * (wage["gross_amount"] or 0)
+            else:
+                gross = sum((wage["gross_amount"] or 0) * days / days_in_month
+                            for _y, _m, days, days_in_month in months)
+            source = "wage on file"
+            typed_count += 1
         else:
-            total_cost += cost
-            priced_any = True
-    return (round(total_cost, 2) if priced_any else None), round(total_hours, 1), unpriced
+            gross = estimated_hourly_cost(r["hours"], r["pay_rate"], r["pay_type"])
+            if gross is not None:
+                source = "estimated from the pay note"
+                basis = "hourly"
+                estimated_count += 1
+        if gross is None:
+            unpriced.append(r["name"])
+            continue
+        rate = wage["employer_rate"] if (wage and wage["employer_rate"] is not None) else employer_pct
+        employer = gross * (rate or 0) / 100.0
+        rows.append({
+            "user_id": r["id"], "name": r["name"], "hours": round(r["hours"], 1),
+            "shifts": r["shifts"], "basis": basis, "source": source,
+            "employer_rate": rate or 0,
+            "gross": round(gross, 2), "employer": round(employer, 2),
+            "total": round(gross + employer, 2),
+        })
+
+    rows.sort(key=lambda x: -x["total"])
+    return {
+        "rows": rows,
+        "gross": round(sum(x["gross"] for x in rows), 2),
+        "employer": round(sum(x["employer"] for x in rows), 2),
+        "total": round(sum(x["total"] for x in rows), 2),
+        "hours": round(sum(x["hours"] for x in rows), 1),
+        "typed_count": typed_count,
+        "estimated_count": estimated_count,
+        "unpriced": unpriced,
+        "employer_rate": employer_pct,
+        "priced_any": bool(rows),
+    }
+
+
+def estimated_labour_cost(conn, start_iso, end_iso):
+    """Wage bill for a window. Returns (cost, hours, unpriced) where cost is
+    None when nobody on the clock could be priced at all — so the UI can say
+    "not estimated" rather than showing a confident zero.
+
+    Kept as the three-value shape every existing caller expects, but the
+    figure now comes from labour_cost_breakdown, so a typed wage is used
+    wherever one exists instead of a number regexed out of a contract note.
+    The cost returned is gross plus employer contributions, which is what a
+    wage BILL means; the breakdown separates them for anywhere that shows the
+    two.
+    """
+    b = labour_cost_breakdown(conn, start_iso, end_iso)
+    return (b["total"] if b["priced_any"] else None), b["hours"], len(b["unpriced"])
+
+
+def _shift_hours(start_time, end_time):
+    """Hours between two HH:MM strings, allowing a shift that ends after midnight."""
+    try:
+        sh, sm = (int(x) for x in (start_time or "").split(":")[:2])
+        eh, em = (int(x) for x in (end_time or "").split(":")[:2])
+    except (ValueError, AttributeError):
+        return 0.0
+    span = (eh * 60 + em) - (sh * 60 + sm)
+    if span < 0:
+        span += 24 * 60          # a close that runs past midnight
+    return round(span / 60.0, 2)
+
+
+def rostered_labour_cost(conn, start_iso, end_iso):
+    """What the shifts already on the rota will cost, before anybody works them.
+
+    labour_cost_breakdown answers the same question backwards, from hours
+    clocked. This one reads the rota, so it can answer it for a month that has
+    not happened — which is the only version any use for deciding whether to
+    put another person on Saturday.
+
+    Salaried people are apportioned by calendar day exactly as in the
+    retrospective costing, and deliberately NOT by rostered hours: putting a
+    salaried chef on one more shift does not cost the house anything extra, and
+    a forecast that says it does would argue for the wrong roster.
+    """
+    start, end = parse_date(start_iso[:10]), parse_date(end_iso[:10])
+    if not (start and end) or start >= end:
+        return {"total": 0.0, "gross": 0.0, "employer": 0.0, "hours": 0.0, "unpriced": []}
+    employer_pct = wage_setting(conn, "payroll_employer_contribution_percent")
+    months = _months_overlapped(start, end)
+
+    hourly_gross, hours_total, unpriced = 0.0, 0.0, set()
+    employer_total = 0.0
+    for r in conn.execute(
+        """SELECT shifts.user_id, shifts.shift_date, shifts.start_time, shifts.end_time,
+                  users.name, users.pay_rate, users.pay_type
+           FROM shifts JOIN users ON users.id = shifts.user_id
+           WHERE shifts.shift_date >= ? AND shifts.shift_date < ?
+             AND users.role != 'owner'""", (start.isoformat(), end.isoformat())).fetchall():
+        hours = _shift_hours(r["start_time"], r["end_time"])
+        wage = wage_on(conn, r["user_id"], r["shift_date"])
+        if wage and wage["basis"] == "monthly":
+            continue                    # counted once below, not per shift
+        hours_total += hours
+        if wage:
+            gross = hours * (wage["gross_amount"] or 0)
+            rate = wage["employer_rate"] if wage["employer_rate"] is not None else employer_pct
+        else:
+            gross = estimated_hourly_cost(hours, r["pay_rate"], r["pay_type"])
+            rate = employer_pct
+            if gross is None:
+                unpriced.add(r["name"])
+                continue
+        hourly_gross += gross
+        employer_total += gross * (rate or 0) / 100.0
+
+    # Everybody salaried, whether or not they appear on the rota — a salary is
+    # owed for the month regardless of how the shifts fall.
+    for uid, wage in current_wages(conn, end - timedelta(days=1)).items():
+        if wage["basis"] != "monthly":
+            continue
+        gross = sum((wage["gross_amount"] or 0) * days / dim
+                    for _y, _m, days, dim in months)
+        rate = wage["employer_rate"] if wage["employer_rate"] is not None else employer_pct
+        hourly_gross += gross
+        employer_total += gross * (rate or 0) / 100.0
+
+    return {
+        "gross": round(hourly_gross, 2),
+        "employer": round(employer_total, 2),
+        "total": round(hourly_gross + employer_total, 2),
+        "hours": round(hours_total, 1),
+        "unpriced": sorted(unpriced),
+    }
+
+
+def cash_outlook(conn, months=6, today=None):
+    """What is already committed out, against what is already expected in.
+
+    NOT a forecast and NOT a bank balance. The app does not know what is in the
+    account, so nothing here is a running total — inventing an opening balance
+    would turn a useful list of commitments into a figure the owner might
+    actually plan against. Every line is something already agreed by somebody:
+    a booking taken, a cost on a contract, a shift on the rota.
+
+    What is deliberately left out, and why it matters that this is stated:
+      - walk-in restaurant and till trade, which is most of a quiet month's
+        income and cannot be known in advance
+      - enquiries that are not confirmed, because a maybe is not money
+      - anything a guest has already paid, which is in the bank, not coming in
+    """
+    today = today or datetime.now(timezone.utc).date()
+    first = today.replace(day=1)
+    rows = []
+    for i in range(max(1, months)):
+        year, month = divmod(first.month - 1 + i, 12)
+        start = date(first.year + year, month + 1, 1)
+        end = (date(start.year + 1, 1, 1) if start.month == 12
+               else date(start.year, start.month + 1, 1))
+        s_iso, e_iso = start.isoformat(), end.isoformat()
+
+        rooms = conn.execute(
+            """SELECT COALESCE(SUM(MAX(COALESCE(total_price, 0)
+                                      - COALESCE(discount_amount, 0)
+                                      - COALESCE(amount_paid, 0), 0)), 0) AS due
+               FROM bookings
+               WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+            (s_iso, e_iso)).fetchone()["due"]
+        ateliers = conn.execute(
+            """SELECT COALESCE(SUM(COALESCE(balance_amount, 0)), 0) AS due
+               FROM workshop_bookings
+               WHERE status = 'confirmed' AND balance_paid_at IS NULL
+                 AND balance_due_date >= ? AND balance_due_date < ?""",
+            (s_iso, e_iso)).fetchone()["due"]
+        events = conn.execute(
+            """SELECT COALESCE(SUM(COALESCE(quoted_price, 0)), 0) AS due
+               FROM event_inquiries
+               WHERE status = 'confirmed' AND preferred_date >= ? AND preferred_date < ?""",
+            (s_iso, e_iso)).fetchone()["due"]
+
+        monthly_costs = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
+               WHERE active = 1 AND frequency = 'monthly'""").fetchone()["out"]
+        annual_costs = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
+               WHERE active = 1 AND frequency = 'annual'
+                 AND next_due_date >= ? AND next_due_date < ?""",
+            (s_iso, e_iso)).fetchone()["out"]
+        labour = rostered_labour_cost(conn, s_iso, e_iso)
+
+        money_in = round(rooms + ateliers + events, 2)
+        money_out = round(monthly_costs + annual_costs + labour["total"], 2)
+        rows.append({
+            "start": start, "end": end, "label": start.strftime("%B %Y"),
+            "is_current": start <= today < end,
+            "in_rooms": round(rooms, 2), "in_ateliers": round(ateliers, 2),
+            "in_events": round(events, 2), "money_in": money_in,
+            "out_recurring": round(monthly_costs + annual_costs, 2),
+            "out_annual": round(annual_costs, 2),
+            "out_labour": labour["total"], "labour": labour,
+            "money_out": money_out,
+            "net": round(money_in - money_out, 2),
+        })
+
+    unpriced = sorted({n for r in rows for n in r["labour"]["unpriced"]})
+    return {
+        "rows": rows,
+        "money_in": round(sum(r["money_in"] for r in rows), 2),
+        "money_out": round(sum(r["money_out"] for r in rows), 2),
+        "net": round(sum(r["net"] for r in rows), 2),
+        "worst": min(rows, key=lambda r: r["net"]) if rows else None,
+        "unpriced": unpriced,
+        "employer_rate": wage_setting(conn, "payroll_employer_contribution_percent"),
+    }
 
 
 def estimated_hourly_cost(hours, pay_rate, pay_type):
@@ -18700,6 +19025,152 @@ def admin_payroll():
                            overview=overview, blocked=blocked)
 
 
+@app.route("/admin/payroll/wages")
+@owner_required
+def admin_wages():
+    """What people are paid, as numbers, and what that made the period cost.
+
+    The pay note on somebody's profile stays exactly as it is — it holds what
+    the contract says, prose and all. This page holds the figure the app is
+    allowed to do arithmetic with, and says on every line which of the two a
+    given cost came from.
+    """
+    conn = get_db()
+    period = period_from_request()
+    in_force = current_wages(conn)
+    people = conn.execute(
+        """SELECT id, name, job_role, pay_rate, pay_type, status
+           FROM users WHERE role != 'owner' ORDER BY name""").fetchall()
+    rows = []
+    for p in people:
+        w = in_force.get(p["id"])
+        rows.append({
+            "person": p, "wage": w,
+            "basis": w["basis"] if w else None,
+            "gross_amount": w["gross_amount"] if w else None,
+            "effective_from": w["effective_from"] if w else None,
+            "state": "On file" if w else "No figure on file",
+        })
+    lv = list_view(
+        rows, request.args,
+        search=[lambda r: r["person"]["name"],
+                lambda r: r["person"]["job_role"],
+                lambda r: r["person"]["pay_rate"]],
+        search_hint="Search a name, role or pay note",
+        facets=[
+            facet("state", "Wage", lambda r: r["state"]),
+            facet("basis", "Paid", lambda r: (r["basis"] or "—").title()),
+            facet("status", "Status", lambda r: (r["person"]["status"] or "active").title()),
+        ],
+        sorts=[
+            sort_option("name", "Name", lambda r: (r["person"]["name"] or "").lower()),
+            sort_option("missing", "Missing first", lambda r: (r["wage"] is not None,
+                                                               (r["person"]["name"] or "").lower())),
+            sort_option("dear", "Highest rate first", lambda r: r["gross_amount"], reverse=True),
+        ],
+        default_sort="missing",
+    )
+    cost = labour_cost_breakdown(conn, period["start_iso"], period["end_iso"])
+    history = conn.execute(
+        """SELECT wage_records.*, users.name AS employee_name, setter.name AS set_by
+           FROM wage_records
+           JOIN users ON users.id = wage_records.user_id
+           LEFT JOIN users AS setter ON setter.id = wage_records.created_by_user_id
+           ORDER BY wage_records.effective_from DESC, wage_records.id DESC LIMIT 60"""
+    ).fetchall()
+    conn.close()
+
+    missing = [r for r in rows if not r["wage"]]
+    overview = [
+        overview_cell("On the payroll", len(rows)),
+        overview_cell("No figure on file", len(missing), alert=len(missing),
+                      hint="costed from the pay note, or not at all"),
+        overview_cell("Gross for the period", euro(cost["gross"]),
+                      sub=f"{cost['hours']}h", hint="before employer contributions"),
+        overview_cell("Employer contributions", euro(cost["employer"]),
+                      sub=f"at {cost['employer_rate']:g}%",
+                      alert=not cost["employer_rate"],
+                      hint="not set yet" if not cost["employer_rate"] else None),
+        overview_cell("Total cost of employing", euro(cost["total"]),
+                      hint="gross plus contributions"),
+    ]
+    return render_template(
+        "admin_wages.html", lv=lv, overview=overview, period=period, cost=cost,
+        history=history, people=people, missing=missing,
+        employer_rate=cost["employer_rate"])
+
+
+@app.route("/admin/payroll/wages/new", methods=["POST"])
+@owner_required
+def new_wage_record():
+    user_id = (request.form.get("user_id", "") or "").strip()
+    basis = (request.form.get("basis", "") or "").strip()
+    effective_from = (request.form.get("effective_from", "") or "").strip()
+    amount = parse_money(request.form.get("gross_amount", ""))
+    note = (request.form.get("note", "") or "").strip()
+    employer_raw = (request.form.get("employer_rate", "") or "").strip()
+
+    if not user_id.isdigit() or basis not in ("hourly", "monthly"):
+        flash("Choose somebody and whether they are paid by the hour or the month.", "error")
+        return redirect(url_for("admin_wages"))
+    if not parse_date(effective_from):
+        flash("A wage needs the date it starts from — that is what stops it "
+              "rewriting what last month cost.", "error")
+        return redirect(url_for("admin_wages"))
+    if amount is None or amount <= 0:
+        flash("Enter the gross amount as a number.", "error")
+        return redirect(url_for("admin_wages"))
+    employer_rate = None
+    if employer_raw:
+        employer_rate = parse_money(employer_raw)
+        if employer_rate is None or employer_rate < 0:
+            flash("Employer contributions must be a percentage, or left blank to "
+                  "use the house figure.", "error")
+            return redirect(url_for("admin_wages"))
+
+    conn = get_db()
+    if missing_row(conn, "users", int(user_id)):
+        conn.close()
+        flash("That employee is no longer on the team — the list has changed "
+              "since this page was opened.", "error")
+        return redirect(url_for("admin_wages"))
+    conn.execute(
+        """INSERT INTO wage_records (user_id, effective_from, basis, gross_amount,
+           employer_rate, note, created_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (int(user_id), effective_from, basis, amount, employer_rate, note or None,
+         current_user()["id"], datetime.now(timezone.utc).isoformat()))
+    person = conn.execute("SELECT name FROM users WHERE id = ?", (int(user_id),)).fetchone()
+    log_audit(conn, "wage_recorded", target=person["name"] if person else user_id,
+              details=f"{basis} {amount:.2f} from {effective_from}")
+    conn.commit()
+    conn.close()
+    flash(f"Recorded for {person['name'] if person else 'them'}, from "
+          f"{effective_from}. Earlier periods keep the figure they had.", "success")
+    return redirect(url_for("admin_wages"))
+
+
+@app.route("/admin/payroll/wages/settings", methods=["POST"])
+@owner_required
+def save_wage_settings():
+    raw = (request.form.get("employer_contribution_percent", "") or "").strip()
+    value = parse_money(raw)
+    if value is None or value < 0:
+        flash("Employer contributions must be a percentage of gross — 0 if you "
+              "want gross only.", "error")
+        return redirect(url_for("admin_wages"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO app_settings (key, value)
+           VALUES ('payroll_employer_contribution_percent', ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""", (f"{value:g}",))
+    log_audit(conn, "wage_settings_saved", details=f"employer {value:g}%")
+    conn.commit()
+    conn.close()
+    flash(f"Employer contributions set to {value:g}% of gross.", "success")
+    return redirect(url_for("admin_wages"))
+
+
 @app.route("/admin/payroll/export.csv")
 @owner_required
 def export_payroll_csv():
@@ -29805,6 +30276,41 @@ def money_ahead(conn, *, days=90, today=None):
         "opening": opening, "monthly_staff": staff,
         "closing": round((opening or 0) + total_in - total_out, 2) if opening is not None else None,
     }
+
+
+@app.route("/management/outlook")
+@owner_required
+def management_outlook():
+    """Committed out against expected in, by month.
+
+    Sits beside the financials rather than inside them because it answers a
+    different question: not what the house made, but what it has already
+    promised and been promised.
+    """
+    try:
+        months = max(1, min(12, int(request.args.get("months", "6"))))
+    except ValueError:
+        months = 6
+    conn = get_db()
+    outlook = cash_outlook(conn, months=months)
+    costs = conn.execute(
+        """SELECT * FROM recurring_costs WHERE active = 1
+           ORDER BY frequency, amount DESC""").fetchall()
+    conn.close()
+    negative = [r for r in outlook["rows"] if r["net"] < 0]
+    overview = [
+        overview_cell("Expected in", euro(outlook["money_in"]),
+                      sub=f"over {months} month{'s' if months != 1 else ''}",
+                      hint="already booked, not a forecast"),
+        overview_cell("Committed out", euro(outlook["money_out"]),
+                      hint="contracts and the rota"),
+        overview_cell("Difference", euro(outlook["net"]),
+                      alert=outlook["net"] < 0),
+        overview_cell("Months in the red", len(negative), alert=len(negative),
+                      hint="on committed figures alone"),
+    ]
+    return render_template("management_outlook.html", outlook=outlook,
+                           overview=overview, months=months, costs=costs)
 
 
 @app.route("/management/financials")
