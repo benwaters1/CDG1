@@ -3127,11 +3127,38 @@ main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
    itself in a box taller than the space available.
    ========================================================================== */
 @media (max-width: 46rem){
-  .g .g-hero{ min-height: 100svh; }
+  /* 88svh, not 100 — a full-height hero puts the first button 46px below the
+     fold, so a guest sees nothing to act on until they scroll. The gap also
+     signals there is more page below. */
+  .g .g-hero{ min-height: 88svh; }
   .g .g-hero__in{
-    padding-top: calc(86px + var(--s6));
+    padding-top: var(--s6);
     padding-bottom: var(--s6);
-    justify-content: flex-start;
+  }
+  /* The homepage hero carries a search panel and needs the room for it, but
+     it must never start above the header — that was the original mobile bug.
+     Give it height instead of pulling the content up. */
+  /* A hero must never centre content taller than itself — that pushes the
+     title above the viewport and under the fixed header. Let it grow. */
+  /* The homepage hero carries a search panel that makes its content taller
+     than a small phone screen. .g-hero__in is absolutely centred, so when the
+     content overflows, the offset goes negative and the title lands under the
+     fixed header. Removing the viewport cap lets the hero grow to fit. */
+  /* The homepage hero's content is absolutely centred over the image. When
+     the search panel makes that content taller than the image, the centring
+     offset goes negative and the title is pushed under the fixed header.
+     Anchoring to the top instead of the centre is the whole fix — the image
+     grows to match rather than the text escaping. */
+  .g .g-hero:has(.g-herosearch) .g-hero__in{
+    top: 0; transform: none;
+    padding-top: calc(86px + var(--s4)); padding-bottom: var(--s6);
+  }
+  .g .g-hero:has(.g-herosearch) .g-hero__img{ height: 100%; min-height: 34rem; }
+  /* Only the homepage hero must clear the fixed header, because only it
+     starts its content at the top rather than centred. */
+  .g .g-hero:has(.g-herosearch) .g-hero__in{
+    padding-top: calc(86px + var(--s4));
+    padding-bottom: var(--s7);
   }
   .g .g-hero__title{ font-size: clamp(30px, 8.5vw, 40px); }
   .g .g-hero__motto{ font-size: clamp(18px, 5vw, 22px); }
@@ -3665,3 +3692,48 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-creed .g-eyebrow, .g-creed__q cite,
 .g-close .g-eyebrow, .g-sec--navy .g-eyebrow,
 .g-creed cite, .g-close cite{ color: #C4A06A; }
+
+/* ==========================================================================
+   THE PLATE
+   A bordered panel for the facts a page is built on — double-ruled in gilt,
+   the way a printed plate is mounted. Used where a page needs one place a
+   reader can check rather than a paragraph they must parse.
+   ========================================================================== */
+.g-plate{
+  margin-top: var(--s7); padding: clamp(20px, 3vw, 36px);
+  border: 2px solid var(--gilt); background: var(--white);
+  position: relative;
+}
+.g-plate::before{
+  content: ''; position: absolute; inset: 6px;
+  border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
+}
+/* A row inside the plate. The markup gained this wrapper in a handover while
+   the rule did not, so ten pages were laying out against a class with nothing
+   behind it. It has one job: sit above .g-plate::before's inset rule. */
+.g-plate__row{ position: relative; }
+.g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
+@media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
+.g-plate__l > div{
+  display: grid; grid-template-columns: 8.5rem 1fr; gap: var(--s3);
+  align-items: baseline; padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+.g-plate__l dt{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--gilt); margin: 0;
+}
+.g-plate__l dd{ margin: 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
+
+
+/* ==========================================================================
+   ALTERNATING BANDS
+   The homepage runs six image-and-text bands in sequence, and every one had
+   the photograph on the same side — so the eye stopped distinguishing them.
+   Even-numbered bands now flip, which is how a printed feature would set them.
+   ========================================================================== */
+@media (min-width: 60rem){
+  /* .g-half--flip already existed and was never applied to anything. Every
+     second band uses it, so the photograph changes side down the page. */
+  .g main > .g-sec--flush:nth-of-type(even) .g-half .g-half__img{ order: 2; }
+}
