@@ -142,14 +142,33 @@
         <tr style="border-bottom:1px solid var(--parchment-line);">
           <th style="text-align:left; padding:8px 6px;">Job</th>
           <th style="text-align:left; padding:8px 6px;">Last ran</th>
+          <th style="text-align:left; padding:8px 6px;">How it went</th>
           <th style="padding:8px 6px;"></th>
         </tr>
       </thead>
       <tbody>
         {% for job_name, label in job_labels.items() %}
         <tr style="border-bottom:1px solid var(--parchment-line);">
+          {% set run = last_runs.get(job_name) %}
           <td style="padding:8px 6px;">{{ label }}</td>
-          <td style="padding:8px 6px;">{{ last_runs[job_name][:19].replace('T', ' ') if last_runs.get(job_name) else 'never' }}</td>
+          <td style="padding:8px 6px;">{{ run['last_ran_at'][:19].replace('T', ' ') if run else 'never' }}</td>
+          <td style="padding:8px 6px;">
+            {% if not run or not run['last_status'] %}
+              <span class="muted">not recorded yet</span>
+            {% elif run['last_status'] == 'ok' %}
+              Worked{% if run['last_message'] %} &mdash; {{ run['last_message'] }}{% endif %}
+            {% else %}
+              {# The whole point of the column: a job that ran and failed used to
+                 look exactly like one that ran and worked. #}
+              <strong style="color:var(--danger, #b3261e);">Failed
+                {%- if run['consecutive_failures'] and run['consecutive_failures'] > 1 %}
+                  {{ run['consecutive_failures'] }} times in a row
+                {%- endif %}</strong>
+              {% if run['last_message'] %}<br>{{ run['last_message'] }}{% endif %}
+              <br><span class="muted">Last worked:
+                {{ run['last_ok_at'][:19].replace('T', ' ') if run['last_ok_at'] else 'never' }}</span>
+            {% endif %}
+          </td>
           <td style="padding:8px 6px; text-align:right;">
             <form method="post" action="{{ url_for('run_automation_job_now', job_name=job_name) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
