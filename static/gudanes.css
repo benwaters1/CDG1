@@ -2952,7 +2952,7 @@ stroke='%238F8C78' stroke-width='1'>\
 /* main already pads 84px for the fixed header on pages without a hero, so
    the crumb needs no extra clearance there. On hero pages main pads 0 — the
    hero runs under the header — so the crumb must clear it itself. */
-.g.has-hero .g-crumbs{ padding-top: calc(86px + var(--s3)); }
+.g.has-hero .g-crumbs{ padding-top: calc(86px + 2px); padding-bottom: var(--s2); }
 .g:not(.has-hero) .g-crumbs{ padding-top: var(--s3); }
 
 
@@ -3708,9 +3708,10 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
-/* A row inside the plate. The markup gained this wrapper in a handover while
-   the rule did not, so ten pages were laying out against a class with nothing
-   behind it. It has one job: sit above .g-plate::before's inset rule. */
+/* A row inside the plate. The markup has now gained this wrapper in three
+   separate handovers while the rule did not, so twelve pages lay out against a
+   class with nothing behind it. It has one job: sit above .g-plate::before's
+   inset rule. */
 .g-plate__row{ position: relative; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
@@ -3736,4 +3737,172 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   /* .g-half--flip already existed and was never applied to anything. Every
      second band uses it, so the photograph changes side down the page. */
   .g main > .g-sec--flush:nth-of-type(even) .g-half .g-half__img{ order: 2; }
+}
+
+/* ==========================================================================
+   THE HEADER OVER A BREADCRUMB
+   `.at-top` turns the header transparent with white text, on the assumption
+   the hero photograph is behind it. On any page with a breadcrumb the hero
+   starts 142px down, so the white nav sits over the cream page instead and
+   is all but invisible. The white treatment only applies when the photograph
+   is genuinely behind the header.
+   ========================================================================== */
+.g.has-hero.at-top:has(.g-crumbs) .g-top{
+  background: var(--sand);
+  border-bottom: 1px solid var(--line);
+}
+.g.has-hero.at-top:has(.g-crumbs) .g-nav a{ color: var(--blue-deep); }
+/* The logo on a light header is simply the dark logo — the mask treatment
+   belongs only where the header is transparent over a photograph. */
+.g.has-hero.at-top:has(.g-crumbs) .g-logo,
+.g.has-hero.at-top:has(.g-crumbs) .g-brand{ background-color: transparent; }
+.g.has-hero.at-top:has(.g-crumbs) .g-burger span,
+.g.has-hero.at-top:has(.g-crumbs) .g-navbtn__bars span{ background: var(--blue-deep); }
+.g.has-hero.at-top:has(.g-crumbs) .g-burger__label,
+.g.has-hero.at-top:has(.g-crumbs) .g-navbtn__label,
+.g.has-hero.at-top:has(.g-crumbs) .g-navbtn{ color: var(--blue-deep); }
+
+/* ==========================================================================
+   THE HERO BUTTON
+   .g-hero__in centres its text, but a button is an inline-block inside a
+   block-level parent — text-align does not move it, so it sat 340px left of
+   centre under a centred title. The action on the page is what a guest looks
+   for, and it was not where the design pointed.
+   ========================================================================== */
+.g .g-hero__in > a.g-btn,
+.g .g-hero__in > p > a.g-btn,
+.g .g-hero__cta{ margin-inline: auto; }
+.g .g-hero__in > p{ text-align: center; }
+
+
+/* ==========================================================================
+   THE BREADCRUMB BAND
+   The crumb bar must clear the 86px fixed header, and its links are 44px for
+   touch — so the band is legitimately 140px tall. The problem was visual: the
+   header above it is the same cream, so the two merged into one pale strip
+   above the photograph. A rule under the header separates them, and the
+   vertical space is centred on the text rather than stacked above it.
+   ========================================================================== */
+.g.has-hero .g-crumbs{
+  padding-top: 86px;          /* exactly the header, no more */
+  padding-bottom: 0;
+  background: var(--sand);
+}
+/* One row, 46px tall, with the text centred in it — the link still fills the
+   row so the tap target is unchanged. */
+.g.has-hero .g-crumbs ol{ min-height: 46px; align-items: center; }
+.g.has-hero .g-crumbs li, .g.has-hero .g-crumbs li::before{ min-height: 0; }
+.g.has-hero .g-crumbs a{ min-height: 46px; display: inline-flex; align-items: center; }
+
+/* ==========================================================================
+   THE JOURNAL
+   The newsletter form existed only inside the slide-out menu, which almost
+   nobody opens. A reader who has just finished a page about a fifteen-year
+   restoration is the most likely subscriber on the site.
+   ========================================================================== */
+.g-journal__in{
+  max-width: 44rem; margin-inline: auto; text-align: center;
+  border-top: 2px solid var(--gilt); border-bottom: 2px solid var(--gilt);
+  padding: var(--s7) var(--s5);
+}
+.g-journal .g-eyebrow{ justify-content: center; }
+.g-journal .g-eyebrow::before{ margin-inline: auto; }
+.g-journal__h{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(26px, 3vw, 38px); line-height: 1.1;
+  color: var(--blue-deep); margin: var(--s3) 0 var(--s4);
+}
+.g-journal__p{
+  font-size: 17px; line-height: 1.6; color: var(--ink);
+  max-width: 46ch; margin: 0 auto var(--s6);
+}
+.g-journal__form{
+  display: flex; flex-wrap: wrap; gap: var(--s3);
+  justify-content: center; align-items: stretch;
+}
+.g-journal__form input[type=email]{
+  flex: 1 1 18rem; max-width: 24rem;
+  padding: 0 var(--s4); min-height: 52px;
+  border: 1px solid var(--gilt); background: var(--white);
+  font-family: var(--ui); font-size: 16px; color: var(--blue-deep);
+}
+.g-journal__form input[type=email]:focus-visible{
+  outline: 2px solid var(--gilt); outline-offset: 2px;
+}
+.g-journal__form .g-btn{ min-height: 52px; flex: 0 0 auto; }
+.g-journal__note{
+  font-family: var(--ui); font-size: 13px; color: var(--ink-soft);
+  margin: var(--s4) 0 0;
+}
+/* Visually hidden, still read aloud. */
+.g-vh{
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ==========================================================================
+   SCARCITY, STATED HONESTLY
+   Seven bedrooms, one sitting a night, fifteen on an atelier, one event at a
+   time. These are facts about what a house under restoration can hold, not
+   invented urgency — so they are set plainly, as figures, on navy.
+   ========================================================================== */
+.g-scarce{ background: var(--blue-deep); color: #fff; }
+.g-scarce__in{ max-width: 56rem; margin-inline: auto; text-align: center; }
+.g-scarce .g-eyebrow{ color: #C4A06A; }
+.g-scarce .g-eyebrow::before{ background: #C4A06A; margin-inline: auto; }
+.g-scarce__h{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.1;
+  color: #fff; margin: var(--s3) 0 var(--s4);
+}
+.g-scarce__p{
+  font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.82);
+  max-width: 44ch; margin: 0 auto;
+}
+.g-scarce__grid{
+  display: grid; gap: var(--s5); margin-top: var(--s7);
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (min-width: 48rem){ .g-scarce__grid{ grid-template-columns: repeat(4, 1fr); } }
+.g-scarce__i{ border-top: 1px solid #C4A06A; padding-top: var(--s4); }
+.g-scarce__i b, .g-scarce__i b.g-fig{
+  display: block; font-family: var(--display); font-weight: 300;
+  font-size: clamp(38px, 5vw, 56px); line-height: 1;
+  color: #C4A06A;              /* 5.31:1 on navy — --gilt is for light grounds */
+  margin-bottom: var(--s3);
+  font-variant-numeric: lining-nums;
+}
+.g-scarce__i span{
+  display: block; font-family: var(--ui); font-size: 15px; line-height: 1.45;
+  color: rgba(255,255,255,.88);
+}
+.g-scarce__note{
+  margin: var(--s7) auto 0; padding-top: var(--s5);
+  border-top: 1px solid rgba(196,160,106,.4);
+  font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.8);
+  max-width: 52ch;
+}
+
+/* ==========================================================================
+   THE CONSTRAINT LINE
+   The full scarcity block sits near the foot of a long page, which is too
+   late to frame a decision. This is the same fact in one line, directly under
+   the hero — ruled in gilt so it reads as a statement of fact rather than a
+   banner.
+   ========================================================================== */
+.g-limit{
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3);
+  margin: var(--s6) 0 0; padding: var(--s4) 0;
+  border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
+  font-size: 16px; line-height: 1.5; color: var(--ink);
+  max-width: none;
+}
+.g-limit__k{
+  flex: 0 0 auto;
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+@media (min-width: 44rem){
+  .g-limit{ gap: var(--s5); }
+  .g-limit__k{ min-width: 10rem; }
 }

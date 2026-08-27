@@ -124,6 +124,7 @@ SUITES = [
     "test_money_routes",
     "test_wages",
     "test_outlook",
+    "test_booking_email",
     "test_money_reports",
     "test_noindex_meta",
     "test_privacy",

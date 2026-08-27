@@ -13495,11 +13495,31 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         detail_lines.append(f"Discount applied ({promo['code']}): -€{discount_amount:.2f}")
     if total_price:
         detail_lines.append(f"Total: €{total_price:.2f}" + (" (paid)" if payment_status == "paid" else ""))
+    # Somebody who has just paid by card must not be told their booking is
+    # "awaiting confirmation" under a subject reading "Booking request
+    # received" — with a line further down saying "(paid)". That is what this
+    # sent, and to a guest who has handed over money it reads as though nothing
+    # happened.
+    #
+    # The dates genuinely ARE still to be confirmed: status defaults to
+    # 'pending' and paying does not change it. So this does not claim otherwise
+    # — claiming "confirmed" would be the worse error of the two. It leads with
+    # the payment, then says plainly what is left and that they need do nothing.
+    paid = payment_status == "paid"
+    if paid:
+        subject = f"Payment received — {room['name']}"
+        opening = (f"Thank you — your payment of €{total_price:.2f} has been received "
+                   f"in full.\n\nWe are confirming the dates now and will email you "
+                   f"as soon as that is done. Nothing further is needed from you.")
+    else:
+        subject = f"Booking request received — {room['name']}"
+        opening = (f"Your request for {room['name']} has been received and is "
+                   f"awaiting confirmation.")
     send_email(
         guest_email,
-        f"Booking request received — {room['name']}",
+        subject,
         f"Hi {guest_name},\n\n"
-        f"Your request for {room['name']} has been received and is awaiting confirmation.\n\n"
+        f"{opening}\n\n"
         + "\n".join(detail_lines) +
         f"\n\nReference code: {reference_code}\n"
         f"Check in online, manage your booking, or send us a request: {checkin_url}\n\n"

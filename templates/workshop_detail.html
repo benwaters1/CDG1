@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', url_for('workshops_public')), (workshop['title'], None)] %}
 {% block title %}{{ workshop['title'] }}{% endblock %}
 {% block description %}An atelier at Château de Gudanes — days spent working alongside the conservators, the chef and the dealers of the Ariège.{% endblock %}
@@ -101,8 +102,8 @@
 {% endif %}
 
 <div class="g-band">
-  {% for img in WS_IMAGES %}<img src="{{ img }}" alt="" loading="lazy">{% endfor %}
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1000w" alt="" loading="lazy">
+  {% for img in WS_IMAGES %}<img src="{{ img }}" alt="Work in progress on an eighteenth-century fresco" loading="lazy">{% endfor %}
+  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785412379425-1YELJ7RXRF6AHGQEHCF6/Chambre+Bleue+4.png?format=1000w" alt="The long table in the château kitchen" loading="lazy">
 </div>
 
 <!-- ============ INCLUDED ============ -->
@@ -190,8 +191,7 @@
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
     dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the château has not reached yet. The
-    imperfection is deliberate, and staying here pays for the next room.
+    finished to a standard the rest of the château has not reached yet. The imperfection is deliberate. It is also what you will be working on.
   </p>
 </div></section>
 

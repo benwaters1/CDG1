@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
 {% block title %}Enquiry received{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
@@ -57,5 +58,17 @@
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1000w" alt="The château" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1000w" alt="The gates in autumn" loading="lazy">
 </div>
+
+
+<!-- ============ WHAT HAPPENS NOW ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">What Happens Now</p>
+  <h2 class="g-place">We Will Write Back</h2>
+  <p class="g-p">Every enquiry is answered by hand, usually within a day or two. You will have a figure and a plan rather than a brochure.</p>
+  <p class="g-p">In the meantime, the estate is worth a look — and most couples come and stay a night before deciding.</p>
+  <p style="margin-top:var(--s6);text-align:center">
+    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('Stay a night first') }}</a>
+  </p>
+</div></section>
 
 {% endblock %}

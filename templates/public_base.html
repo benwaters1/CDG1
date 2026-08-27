@@ -397,13 +397,30 @@
 </div>
 </footer>
 
+{# The bar follows the page. A guest reading about weddings should be offered
+   an enquiry, not a bedroom — and a guest already holding a booking should not
+   be sold to at all. #}
+{% set _sb = sticky_bar | default(none) %}
+{% if _sb != 'none' %}
 <div class="g-stickybar">
   <span class="g-stickybar__t">
-    <b>{{ t('Stay the Night') }}</b>
+    <b>{% if _sb == 'dining' %}{{ t('Dine at La Table') }}
+       {%- elif _sb == 'events' %}{{ t('Weddings & Events') }}
+       {%- elif _sb == 'atelier' %}{{ t('Château Ateliers') }}
+       {%- else %}{{ t('Stay the Night') }}{% endif %}</b>
     <span>Château de Gudanes</span>
   </span>
-  <a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">{{ t('Book') }}</a>
+  {% if _sb == 'dining' %}
+    <a href="{{ url_for('restaurant_book') }}" class="g-btn g-stickybar__cta">{{ t('Reserve') }}</a>
+  {% elif _sb == 'events' %}
+    <a href="{{ url_for('events_info') }}#enquire" class="g-btn g-stickybar__cta">{{ t('Enquire') }}</a>
+  {% elif _sb == 'atelier' %}
+    <a href="{{ url_for('workshops_public') }}" class="g-btn g-stickybar__cta">{{ t('See dates') }}</a>
+  {% else %}
+    <a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">{{ t('Book') }}</a>
+  {% endif %}
 </div>
+{% endif %}
 
 
 

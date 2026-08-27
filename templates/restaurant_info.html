@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'dining' %}
 {% set crumbs = [('La Table', None)] %}
 {% block title %}La Table{% endblock %}
 {% block description %}Dinner at Château de Gudanes, cooked in the château's own Renaissance kitchen from the Sunday market and the gardens. Candlelight, and a fire in winter.{% endblock %}
@@ -14,6 +15,13 @@
     <p class="g-hero__cta"><a href="{{ url_for('restaurant_book') }}" class="g-btn g-btn--solid">Reserve a table</a></p>
   </div>
 </section>
+
+<!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
+{# The full scarcity block sits near the foot of the page, which is too late
+   to frame a decision. This is the same fact, one line, near the top. #}
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">The table</span>One sitting a night. The kitchen cooks for a single table, and residents are seated first.</p></div>
+
+
 
 <section class="g-sec"><div class="g-wrap"><p class="g-p g-lede-first">Dinner at the château, cooked by our own chefs and served in the dining room by candlelight.</p>
 <p class="g-p">Meals are arranged in advance rather than served to order, so that the kitchen buys for the table it is cooking for. Lunch runs on the same terms, and is often carried out to the terrace.</p>
@@ -39,17 +47,17 @@
   </p>
 </div></section>
 
-<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="" loading="lazy"></div>
+<div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w" alt="The dining room laid for dinner" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1500w" alt="The kitchen gardens in late summer" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="The long table before service" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1500w" alt="Produce from the Sunday market" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1728027560330-AOHMYTLQV9BVVSYW5FS3/Gardens+-+Formal+Gardens+2.jpg?format=1500w" alt="Gardens - Formal Gardens" loading="lazy"></div>
 
 <section class="g-sec--flush"><div class="g-half">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="Gardens In Fall" loading="lazy">
   <div class="g-half__text"><h2 class="g-place">Where It Comes From</h2><p class="g-p"><em>Most of it comes from within a few miles.</em></p>
 <p class="g-p">Bread and pastries come from the boulangerie in Les Cabannes, three minutes' walk below the gates, and arrive while they are still warm. The Sunday morning market in the village square supplies most of the rest — vegetables, cheeses from the mountain farms, and charcuterie.</p>
 <p class="g-p">The château gardens give herbs through the year, and in summer cherries, plums and raspberries. Trout comes from the Ariège. Lamb comes from the Pyrénées, sometimes from the valley visible out of the dining room windows.</p></div>
 </div></section>
 
 <section class="g-sec--flush" style="background:var(--sand-2)"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w" alt="" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1500w" alt="Gardens In September" loading="lazy">
   <div class="g-half__text"><svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
@@ -103,7 +111,7 @@
 </div></section>
 
 <section class="g-sec--flush"><div class="g-half g-half--flip">
-  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="" loading="lazy">
+  <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d4a9d2a2-4fad-4e0a-86e0-6aa32341aeb5/Chateau+de+Gudanes+Spring+Gates+-+A5+Postcard.jpg?format=1500w" alt="Chateau de Gudanes Spring Gates - A5 Postcard" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-display" style="font-style:italic;margin-bottom:var(--s5)"><em>The kitchen was the first room brought back</em></h2>
     <p class="g-p">It was recovered before the bedrooms, before the salons, and before anything else that guests now see. A house of this kind is organised around its table, and always has been.</p>
@@ -118,8 +126,7 @@
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
     dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the château has not reached yet. The
-    imperfection is deliberate, and staying here pays for the next room.
+    finished to a standard the rest of the château has not reached yet. The imperfection is deliberate. You will eat extremely well in a room that is not finished.
   </p>
 </div></section>
 
@@ -343,6 +350,43 @@
     <p>It is a department that runs quite wild and free.</p>
     <cite>Karina Waters, on the Ariège</cite>
   </blockquote>
+</div></section>
+
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+
+<!-- ============ ONE TABLE ============ -->
+<section class="g-sec g-scarce"><div class="g-wrap">
+  <div class="g-scarce__in">
+    <p class="g-eyebrow">Worth Knowing</p>
+    <h2 class="g-scarce__h">One Sitting a Night</h2>
+    <p class="g-scarce__p">The kitchen cooks for one table. When it is taken, it is taken, and there is no second service.</p>
+    <div class="g-scarce__grid">
+      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting each evening</span></div>
+      <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated at most, in the main salon</span></div>
+      <div class="g-scarce__i"><b class="g-fig">7:30</b><span>At table, by candlelight</span></div>
+      <div class="g-scarce__i"><b class="g-fig">317</b><span>People in the village that feeds it</span></div>
+    </div>
+    <p class="g-scarce__note">Residents are seated first. Non-residents are welcome when there is room, which in summer means asking early.</p>
+  </div>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->

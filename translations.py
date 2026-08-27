@@ -35,6 +35,15 @@ LANGUAGES = {
 }
 
 FR = {
+    # The nav and its calls to action, from the final_25 handover.
+    "See the rooms": "Voir les chambres",
+    "Stay a night first": "Séjournez une nuit",
+    "Your email": "Votre adresse e-mail",
+    "Château Ateliers": "Ateliers du Château",
+    "Dine at La Table": "Dîner à La Table",
+    "Enquire": "Se renseigner",
+    "Reserve": "Réserver",
+    "See dates": "Voir les dates",
     # Booking confirmation, from the final_20 handover.
     'Your stay is booked': 'Votre séjour est réservé',
     'Save this link, or write down your reference code and the email you booked with — that is how you check in and manage this booking later.': "Conservez ce lien, ou notez votre code de référence et l'adresse e-mail utilisée — c'est ainsi que vous vous enregistrez et gérez cette réservation par la suite.",
@@ -477,6 +486,15 @@ FR = {
 }
 
 ES = {
+    # The nav and its calls to action, from the final_25 handover.
+    "See the rooms": "Ver las habitaciones",
+    "Stay a night first": "Quédese una noche",
+    "Your email": "Su correo electrónico",
+    "Château Ateliers": "Talleres del Château",
+    "Dine at La Table": "Comer en La Table",
+    "Enquire": "Consultar",
+    "Reserve": "Reservar",
+    "See dates": "Ver fechas",
     # Booking confirmation, from the final_20 handover.
     'Your stay is booked': 'Su estancia está reservada',
     'Save this link, or write down your reference code and the email you booked with — that is how you check in and manage this booking later.': 'Guarde este enlace, o apunte su código de referencia y el correo con el que reservó: así es como hace el check-in y gestiona esta reserva más adelante.',

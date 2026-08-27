@@ -12,7 +12,7 @@ one sentence upstream: regenerate from current main before exporting. Until that
 happens, this script and the suite are what stand between a handover and a
 regression.
 
-The four:
+The five:
 
   1. noindex. 24 guest pages carry `{% block robots %}` overriding the empty
      block in public_base. The handovers strip the block from the parent too,
@@ -23,6 +23,8 @@ The four:
   3. .table-wrap around the tables in guest_statement.html, without which a
      wide table drags the whole page sideways on a phone.
   4. The footer's Privacy Policy link, which comes back as href="#".
+  5. A hardcoded market list in whats_on.html, duplicating the editable,
+     translated rows in the `whats_on` table.
 
 Each is also guarded by a test (test_noindex_meta, test_part_payments,
 test_autocharge, test_table_overflow, test_privacy), so a handover that breaks
@@ -157,6 +159,36 @@ def repair_table_wrappers():
     return fixed
 
 
+def repair_hardcoded_markets():
+    """Remove the hardcoded market list from whats_on.html.
+
+    Three handovers have now shipped a "Which Market, Which Day" block in
+    static HTML. The markets are already in the `whats_on` table, where the
+    owner edits them and where t() translates them, so the page showed Les
+    Cabannes and Tarascon twice — once in French, once not — and editing them on
+    the admin page changed only one of the two.
+
+    The block also names four markets the table does not carry: Foix, St Girons,
+    Mirepoix and the farm shop at Les Cabannes. Those are worth having and are
+    NOT invented here — a market day is a fact about the valley, not something
+    this script should assert. They belong in the table with the other four,
+    entered once by somebody who knows, after which this removal costs nothing.
+    """
+    rel = "templates/whats_on.html"
+    src = _read(rel)
+    marker = '<h2 class="g-place">Which Market, Which Day</h2>'
+    if marker not in src:
+        return 0
+    # Cut the whole <section> the heading sits in, not just the heading.
+    start = src.rindex("<section", 0, src.index(marker))
+    end = src.index("</section>", start) + len("</section>")
+    tail = src[end:]
+    if tail.startswith(chr(10)):
+        tail = tail[1:]
+    _write(rel, src[:start] + tail)
+    return 1
+
+
 def repair_privacy_link():
     rel = "templates/public_base.html"
     src = _read(rel)
@@ -174,6 +206,7 @@ def main():
         ("noindex on guest pages", repair_child_noindex),
         ("part-payments and auto-charge", repair_workshop_payments),
         ("table wrappers", repair_table_wrappers),
+        ("the hardcoded market list", repair_hardcoded_markets),
         ("the privacy footer link", repair_privacy_link),
     ]
     total = 0

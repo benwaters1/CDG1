@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
@@ -67,5 +68,37 @@
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1000w" alt="The grounds from above" loading="lazy">
 </div>
+
+
+<!-- ============ WHILE YOU ARE HERE ============ -->
+{# Each of these is an action manage_booking() already handles: book_dinner,
+   add_extra and transfer. The page simply never offered them. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">While You Are Here</p>
+  <h2 class="g-place">Anything Else?</h2>
+  <p class="g-p">All of it can be added from your booking link, and none of it needs deciding now.</p>
+
+  <div class="g-finds">
+    <div class="g-find">
+      <p class="g-find__k">Dinner</p>
+      <h3 class="g-find__t">A table at La Table</h3>
+      <p class="g-find__d">Aperitifs in the Renaissance kitchen, then dinner by candlelight. The kitchen cooks for one sitting a night, so it is worth claiming early.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">Arrival</p>
+      <h3 class="g-find__t">A car from Toulouse</h3>
+      <p class="g-find__d">Met at arrivals, an hour and three quarters up the valley. We also meet the train at Foix, twenty minutes away.</p>
+    </div>
+    <div class="g-find">
+      <p class="g-find__k">The valley</p>
+      <h3 class="g-find__t">Something to do with the days</h3>
+      <p class="g-find__d">Market mornings with the chef, guided walks, the brocantes, electric bikes, or the mountain between December and April.</p>
+    </div>
+  </div>
+
+  <p style="margin-top:var(--s7);text-align:center">
+    <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>
+  </p>
+</div></section>
 
 {% endblock %}

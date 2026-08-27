@@ -484,6 +484,29 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 
 
+
+<!-- ============ REASSURANCE ============ -->
+{# Every line here matches what book_room() actually does: Stripe takes the
+   payment, the château reads every request, a decline refunds automatically,
+   and the manage link is emailed with the reference code. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Before You Commit</p>
+  <h2 class="g-place">What Happens Next</h2>
+
+  <div class="g-plate">
+    <div class="g-plate__row">
+      <dl class="g-plate__l">
+        <div><dt>The payment</dt><dd>Taken by Stripe. Your card details never reach the château</dd></div>
+        <div><dt>The reading</dt><dd>Every request is read by hand, usually the same day</dd></div>
+        <div><dt>If declined</dt><dd>The refund is automatic and complete. Nothing to chase</dd></div>
+        <div><dt>Your reference</dt><dd>Emailed at once, with a link to change or cancel the booking</dd></div>
+        <div><dt>Breakfast</dt><dd>Included every morning, in the rate you see</dd></div>
+        <div><dt>Tourist tax</dt><dd>Charged locally on departure, as French law requires</dd></div>
+      </dl>
+    </div>
+  </div>
+</div></section>
+
 <!-- ============ WHAT THE PARADOX LOOKS LIKE ============ -->
 {# The room page ran 242 words to every image. The copy claims bare walls and
    new fittings in the same breath; a guest deciding at €450 a night should

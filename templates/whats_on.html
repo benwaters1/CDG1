@@ -168,8 +168,7 @@
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
     dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the château has not reached yet. The
-    imperfection is deliberate, and staying here pays for the next room.
+    finished to a standard the rest of the château has not reached yet. The imperfection is deliberate, and the valley outside is no more polished than the house.
   </p>
 </div></section>
 
@@ -226,8 +225,25 @@
 </div></section>
 
 <!-- ============ THE MARKET WEEK ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">The Week</p>
+
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->

@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', None)] %}
 {% block title %}Château Workshops{% endblock %}
 {% block description %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
@@ -23,6 +24,13 @@
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a></p>
   </div>
 </section>
+
+<!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
+{# The full scarcity block sits near the foot of the page, which is too late
+   to frame a decision. This is the same fact, one line, near the top. #}
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Group size</span>Fifteen guests at most, and no others in the building while an atelier runs.</p></div>
+
+
 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-p g-drop-cap g-lede-first">{% if workshops %}{{ workshops|length }} ateliers, and the length you choose decides what you spend your days doing.{% else %}The length you choose decides what you spend your days doing.{% endif %} Three nights is given to the brocantes, five to the kitchen, seven to the restoration itself. Noël and the artisan atelier stand apart — one seasonal, one built entirely around making.</p>
@@ -498,6 +506,43 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="Work on a fresco" loading="lazy">
       <figcaption>What comes off is overpaint. What is underneath has not been seen since it was covered.</figcaption>
     </figure>
+  </div>
+</div></section>
+
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+
+<!-- ============ FIFTEEN ============ -->
+<section class="g-sec g-scarce"><div class="g-wrap">
+  <div class="g-scarce__in">
+    <p class="g-eyebrow">Worth Knowing</p>
+    <h2 class="g-scarce__h">Fifteen, and No Others</h2>
+    <p class="g-scarce__p">While an atelier runs, the château takes no other guests. The building is yours and the conservators are working in it.</p>
+    <div class="g-scarce__grid">
+      <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most</span></div>
+      <div class="g-scarce__i"><b class="g-fig">0</b><span>Other guests in the building</span></div>
+      <div class="g-scarce__i"><b class="g-fig">94</b><span>Rooms, for fifteen people</span></div>
+      <div class="g-scarce__i"><b class="g-fig">5</b><span>Ateliers a year, at most</span></div>
+    </div>
+    <p class="g-scarce__note">Places are shown live above. When a session reads as full, it is full — we do not overbook a house this size.</p>
   </div>
 </div></section>
 

@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'events' %}
 {% set crumbs = [('Events', None)] %}
 {% block title %}Weddings & Events{% endblock %}
 {% block description %}Weddings, celebrations and film at a Class I Historic Monument in the French Pyrénées. One event at a time, and the whole château is yours.{% endblock %}
@@ -20,6 +21,13 @@
     <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a></p>
   </div>
 </section>
+
+<!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
+{# The full scarcity block sits near the foot of the page, which is too late
+   to frame a decision. This is the same fact, one line, near the top. #}
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Exclusivity</span>One wedding at a time, with the château given over to it. Only a handful are taken each year.</p></div>
+
+
 
 <section class="g-sec">
   <div class="g-wrap">
@@ -163,13 +171,39 @@
     centuries left them — bare plaster, weathered stone, protected by law and
     not ours to change. Everything within them is new: antique French beds
     dressed in vintage monogrammed linen, floors relaid by hand, bathrooms
-    finished to a standard the rest of the château has not reached yet. The
-    imperfection is deliberate, and staying here pays for the next room.
+    finished to a standard the rest of the château has not reached yet. The imperfection is deliberate. A house still being repaired is an unusual place to marry, and that is rather the point.
   </p>
 </div></section>
 
 
 
+
+
+<!-- ============ WHAT IT COSTS ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Question Everyone Asks</p>
+  <h2 class="g-place">What It Costs</h2>
+  <p class="g-p">Every wedding here is quoted rather than priced, because no two use the château the same way. What shapes the figure:</p>
+
+  <div class="g-plate">
+    <div class="g-plate__row">
+      <dl class="g-plate__l">
+        <div><dt>Exclusive use</dt><dd>The château and its six acres given over to you, with no other guests</dd></div>
+        <div><dt>How many nights</dt><dd>Most take the building for three or four days rather than one</dd></div>
+        <div><dt>How many sleeping</dt><dd>Up to 20 in the château, and more in the village below</dd></div>
+        <div><dt>How many at dinner</dt><dd>Up to 40 seated inside; larger numbers work outdoors</dd></div>
+        <div><dt>The season</dt><dd>Summer is the busiest. Spring and autumn are quieter and cost less</dd></div>
+        <div><dt>What you bring</dt><dd>Your own florist and photographer, or ours — either is welcome</dd></div>
+      </dl>
+    </div>
+  </div>
+
+  <p class="g-hint" style="margin-top:var(--s6)">Write with your dates and a rough number of guests, and you will have a figure rather than a brochure.</p>
+
+  <p style="margin-top:var(--s7);text-align:center">
+    <a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a>
+  </p>
+</div></section>
 
 <!-- ============ THE ROOMS ============ -->
 {# Room list and capacities from the château's own venue listing. #}
@@ -192,6 +226,10 @@
   </div>
 
   <p class="g-hint" style="margin-top:var(--s6)">For a smaller wedding, hold drinks, dinner and dessert in three different salons. It shows guests the character of each, and it is what the building was designed for.</p>
+
+  <p style="margin-top:var(--s7);text-align:center">
+    <a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a>
+  </p>
 </div></section>
 
 <!-- ============ WHAT ACTUALLY HAPPENED ============ -->
@@ -211,6 +249,10 @@
       <figcaption>Nobody arranged the choir. That is the difference between a venue and a village.</figcaption>
     </figure>
   </div>
+
+  <p style="margin-top:var(--s7);text-align:center">
+    <a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a>
+  </p>
 </div></section>
 
 <!-- ============ THE FACTS ============ -->
@@ -247,6 +289,43 @@
     <div><dt>How long</dt><dd>Most take the château for three nights. A day is possible; a week is better</dd></div>
     <div><dt>Getting there</dt><dd>Toulouse is an hour and three quarters. We arrange the cars</dd></div>
   </dl>
+</div></section>
+
+
+<!-- ============ THE JOURNAL ============ -->
+{# The newsletter form was only in the menu panel. This is the same route,
+   placed where a reader who has just finished the page will see it. #}
+<section class="g-sec g-sec--sand g-journal"><div class="g-wrap">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">The Journal</p>
+    <h2 class="g-journal__h">Follow the Restoration</h2>
+    <p class="g-journal__p">What comes out from under the plaster, which room opens next, and when the ateliers are released. Sent when there is something worth sending.</p>
+    <form class="g-journal__form" method="post" action="{{ url_for('newsletter_subscribe') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
+      <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+      <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
+    </form>
+    <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+
+<!-- ============ ONE AT A TIME ============ -->
+<section class="g-sec g-scarce"><div class="g-wrap">
+  <div class="g-scarce__in">
+    <p class="g-eyebrow">Worth Knowing</p>
+    <h2 class="g-scarce__h">One Wedding at a Time</h2>
+    <p class="g-scarce__p">The château takes a single event and gives the building over to it. There is no second party in the next salon.</p>
+    <div class="g-scarce__grid">
+      <div class="g-scarce__i"><b class="g-fig">1</b><span>Event at a time, exclusively</span></div>
+      <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated inside; more in the gardens</span></div>
+      <div class="g-scarce__i"><b class="g-fig">20</b><span>Sleeping in the château</span></div>
+      <div class="g-scarce__i"><b class="g-fig">6</b><span>Acres, and no neighbours</span></div>
+    </div>
+    <p class="g-scarce__note">Because the work continues around it, only a handful of weddings are taken each year. Summer dates are usually spoken for a long way ahead.</p>
+  </div>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->

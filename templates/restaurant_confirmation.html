@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
 {% block title %}Reservation request received{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
@@ -59,5 +60,16 @@
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785425473724-9CTVZRNNW8941EA0PEL6/March+Kitchen+Shots-3.jpg?format=1000w" alt="Copper in the kitchen" loading="lazy">
   <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1698035463433-V8UTXJPKVH28T0HM15XV/Winter+kitchen+table-15.jpg?format=1000w" alt="The kitchen" loading="lazy">
 </div>
+
+
+<!-- ============ WHILE YOU ARE HERE ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">One Thought</p>
+  <h2 class="g-place">The Drive Back Is Dark</h2>
+  <p class="g-p">Dinner runs late, the valley road has no lighting, and the wine is poured generously. Seven bedrooms are upstairs.</p>
+  <p style="margin-top:var(--s6);text-align:center">
+    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('See the rooms') }}</a>
+  </p>
+</div></section>
 
 {% endblock %}

@@ -32,6 +32,11 @@ m = _harness.m
 TPL_DIR = os.path.join(ROOT, "templates")
 
 URL_FOR = re.compile(r"url_for\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
+# The whole call, arguments included, so the keywords can be checked against
+# the route rather than only the endpoint name.
+URL_FOR_CALL = re.compile(
+    r"url_for\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]([^()]*)\)", re.S)
+KWARG = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=")
 # Only absolute paths. A relative href resolves against the current page, which
 # a static check cannot judge.
 HREF = re.compile(r"""(?:href|action)=["'](/[^"'#?{}]*)["']""")
@@ -81,6 +86,39 @@ def run():
             detail=" | ".join(dead_paths[:4]))
     s.check("no shipped template holds merge conflict markers", not markers,
             detail=" | ".join(markers[:4]))
+
+    # An endpoint that exists but is called with the wrong parameter NAME is a
+    # BuildError too, and the name check above sails straight past it. Not
+    # hypothetical: a handover shipped url_for('manage_booking', token=...)
+    # against a route taking manage_token, so every room booking confirmation
+    # 500'd — the page a guest lands on immediately after paying. It was caught
+    # only because another suite happens to render that page. Nothing checked
+    # the parameters themselves, on any of the other 200-odd templates.
+    #
+    # An endpoint can have several rules with different parameters, so the test
+    # is that AT LEAST ONE rule is satisfiable: all of its required arguments
+    # are supplied. Anything extra becomes a query string, which is always fine.
+    rules_for = {}
+    for rule in m.app.url_map.iter_rules():
+        rules_for.setdefault(rule.endpoint, []).append(rule.arguments)
+
+    unbuildable = []
+    for rel, body in sorted(templates.items()):
+        for match in URL_FOR_CALL.finditer(body):
+            endpoint, argtext = match.group(1), match.group(2)
+            if endpoint not in rules_for:
+                continue                      # already reported above
+            given = set(KWARG.findall(argtext))
+            if any(required <= given for required in rules_for[endpoint]):
+                continue
+            lineno = body.count(chr(10), 0, match.start()) + 1
+            wants = " or ".join(
+                "{" + ", ".join(sorted(r)) + "}" for r in rules_for[endpoint])
+            shown = ", ".join(sorted(given)) or "nothing"
+            unbuildable.append(
+                f"{rel}:{lineno} url_for('{endpoint}') given {shown}, wants {wants}")
+    s.check("every url_for supplies the parameters its route needs",
+            not unbuildable, detail=" | ".join(unbuildable[:4]))
 
     # render_template targets that are not on disk — a 500 on that route only,
     # but silent until someone visits it.
