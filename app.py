@@ -8825,6 +8825,38 @@ def _guest_key(email):
 LOAN_STALE_DAYS = 90
 
 
+def absences_missing_certificate(conn, *, today=None):
+    """Absences marked as certified with no certificate attached.
+
+    Two facts the app has always held and never compared: somebody untick
+    "self-certified", meaning a doctor signed it off, and the column meant to
+    hold that signature stayed empty.
+
+    Only past or current absences: a future one may well have the note coming.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        """SELECT absences.*, users.name AS employee_name
+             FROM absences JOIN users ON users.id = absences.user_id
+            WHERE absences.self_certified = 0
+              AND (absences.doctor_note_filename IS NULL
+                OR TRIM(absences.doctor_note_filename) = '')
+              AND absences.start_date <= ?
+            ORDER BY absences.start_date DESC""",
+        (today.isoformat(),)).fetchall()
+    out = []
+    for r in rows:
+        start = parse_date(r["start_date"])
+        out.append({
+            "id": r["id"], "user_id": r["user_id"],
+            "employee_name": r["employee_name"],
+            "start_date": r["start_date"], "end_date": r["end_date"],
+            "kind": r["kind"], "reason": r["reason"],
+            "days_ago": (today - start).days if start else None,
+        })
+    return out
+
+
 def things_still_out(conn, *, today=None):
     """Keys, fobs and kit issued and not returned, worst first.
 
@@ -15947,6 +15979,10 @@ def admin_hr():
     # render_template() call ran them against a closed handle.
     deadlines = contract_deadlines(conn, today)
     compliance_gaps = role_compliance(conn, today)
+    # Marked as certified by a doctor, with nothing attached. The column for
+    # the certificate has existed since the table was created and nothing has
+    # ever written to it.
+    uncertified = absences_missing_certificate(conn, today=today)
 
     conn.close()
     return render_template(
@@ -15962,6 +15998,7 @@ def admin_hr():
         rest_hours=MIN_REST_HOURS_BETWEEN_SHIFTS,
         max_days=MAX_CONSECUTIVE_DAYS_WORKED, max_weekly=MAX_WEEKLY_HOURS,
         deadlines=deadlines, compliance_gaps=compliance_gaps,
+        uncertified=uncertified,
     )
 
 
@@ -19439,6 +19476,62 @@ def upload_document(user_id):
     conn.close()
     flash("Document uploaded.", "success")
     return redirect(url_for("profile", user_id=user_id))
+
+
+@app.route("/hr/absences/<int:absence_id>/note", methods=["POST"])
+@owner_required
+def upload_absence_note(absence_id):
+    """Attach the doctor's note to an absence."""
+    conn = get_db()
+    absence = conn.execute("SELECT * FROM absences WHERE id = ?", (absence_id,)).fetchone()
+    if not absence:
+        conn.close()
+        abort(404)
+
+    file = request.files.get("note")
+    if not file or file.filename == "":
+        conn.close()
+        flash("Choose a file first.", "error")
+        return redirect(url_for("admin_hr"))
+    if not allowed_file(file.filename):
+        conn.close()
+        flash(f"File type not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+              "error")
+        return redirect(url_for("admin_hr"))
+
+    safe_name = secure_filename(file.filename)
+    stored_name = f"absence{absence_id}_{secrets.token_hex(6)}_{safe_name}"
+    file.save(os.path.join(UPLOAD_DIR, stored_name))
+
+    conn.execute(
+        """UPDATE absences SET doctor_note_filename = ?, self_certified = 0
+           WHERE id = ?""", (stored_name, absence_id))
+    # The filename is never written to the audit trail: it is a medical
+    # document and the log is read far more widely than the file is.
+    log_audit(conn, "absence_note_attached", target=str(absence_id))
+    conn.commit()
+    conn.close()
+    flash("Certificate attached.", "success")
+    return redirect(url_for("admin_hr"))
+
+
+@app.route("/hr/absences/<int:absence_id>/note/view")
+@owner_required
+def view_absence_note(absence_id):
+    """Owner only, unlike an ordinary staff document.
+
+    A staff document can be opened by the owner or the person it belongs to.
+    This is health data and the employee already holds their own copy, so
+    widening it gains nobody anything and costs a category of data nobody
+    should be casual with.
+    """
+    conn = get_db()
+    absence = conn.execute("SELECT * FROM absences WHERE id = ?", (absence_id,)).fetchone()
+    conn.close()
+    if not absence or not absence["doctor_note_filename"]:
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, absence["doctor_note_filename"],
+                               as_attachment=False)
 
 
 @app.route("/documents/<int:doc_id>/download")
