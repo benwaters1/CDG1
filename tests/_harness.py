@@ -63,7 +63,67 @@ import app as m  # noqa: E402  — must follow the env setup above
 from flask import request  # noqa: E402
 
 m.app.config["WTF_CSRF_ENABLED"] = False
+
+# ---------------------------------------------------------------------------
+# Outbound isolation.
+#
+# Stripping the keys out of os.environ above is NOT enough on its own, and for
+# a long time this file claimed it was. Importing app runs _load_dotenv(),
+# which reads .env and puts every one of those keys straight back — so by the
+# time app.py reaches `if STRIPE_SECRET_KEY: stripe.api_key = STRIPE_SECRET_KEY`
+# the real credential is there, and it gets wired into the client library.
+# Blanking the app's own flag afterwards does not unwire it.
+#
+# That left `stripe_enabled()` returning False as the ONLY thing between this
+# suite and the real Stripe account, checked separately at every call site. A
+# deliberately broken control that removed one of those checks reached the
+# network and came back with a genuine Stripe request id.
+#
+# The same shape applies to the other two outbound channels, and they are
+# worse: the Pennylane token is live rather than test-mode, and it was
+# protected by one suite patching _pennylane_request for itself. Email is
+# inert only while no provider is configured — the moment one is, a test run
+# would send real messages to the real guest addresses in the copied database.
+#
+# So neutralise the credentials themselves and make the transports raise.
+# Anything that genuinely needs one stands its own in and puts it back
+# afterwards (see test_autocharge and test_refunds).
+# ---------------------------------------------------------------------------
 m.STRIPE_SECRET_KEY = ""
+m.STRIPE_PUBLISHABLE_KEY = ""
+m.STRIPE_WEBHOOK_SECRET = ""
+m.stripe.api_key = None          # no key -> the library refuses before any request
+
+m.PENNYLANE_API_TOKEN = None
+m.RESEND_API_KEY = None
+m.SMTP_HOST = m.SMTP_USERNAME = m.SMTP_PASSWORD = None
+m.MS_GRAPH_CLIENT_SECRET = m.MS_GRAPH_TENANT_ID = m.MS_GRAPH_CLIENT_ID = None
+
+
+def _refuse(what, remedy):
+    def _blocked(*_a, **_kw):
+        raise AssertionError(
+            f"a test tried to reach {what}. The suite must never do that — "
+            f"{remedy}"
+        )
+    return _blocked
+
+
+m._pennylane_request = _refuse(
+    "Pennylane", "the token is live; stand in for _pennylane_request in the test")
+m.send_email_via_resend = _refuse(
+    "Resend", "mock send_email, or let it fall through to the held outbox")
+
+# Proof, rather than the assumption this file used to make. Each of these was
+# true only by accident of what happens to be in .env on one machine.
+assert not m.stripe_enabled(), "Stripe is still enabled under test"
+assert not getattr(m.stripe, "api_key", None), (
+    "stripe.api_key still holds a real key — app.py wired it in at import and "
+    "blanking STRIPE_SECRET_KEY afterwards does not undo that")
+assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
+assert not (m.email_enabled() or m.resend_enabled()), (
+    "an email provider is configured under test — a run would send real mail "
+    "to the real guest addresses in the copied database")
 
 # On a machine with no database — a fresh clone, or CI — there is nothing to
 # copy, and importing app.py does not create the schema: init_db() only runs
