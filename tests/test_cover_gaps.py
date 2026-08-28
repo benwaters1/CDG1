@@ -113,6 +113,24 @@ def run():
     s.check("so the day is a gap again", middle and middle["uncovered"] is True)
     s.check("and it says how many cannot", middle and middle["blocked_count"] == 1)
 
+    s.section("Somebody who has left is not cover")
+    # Deactivating a person does not delete their future shifts, so a leftover
+    # one was counted and a day with guests in the house and nobody actually
+    # employed on it read as staffed. They cannot be flagged as blocked either:
+    # role_compliance only iterates active employees.
+    left = _person(conn, "Departed")
+    conn.execute("UPDATE users SET status = 'inactive' WHERE id = ?", (left,))
+    conn.commit()
+    _shift(conn, left, _iso(12))
+    rows = m.cover_gaps(conn, _iso(0), _iso(30))
+    day12 = _day(rows, _iso(12))
+    s.check("their shift does not count as a person on",
+            day12 and day12["people_count"] == 0,
+            detail=str(day12["people_count"]) if day12 else "no row")
+    s.check("so the day is still reported as uncovered",
+            day12 and day12["uncovered"] is True,
+            detail="a departed employee's leftover shift read as cover")
+
     s.section("A day with nothing on is not a gap")
     quiet = _day(rows, _iso(25))
     s.check("an empty day is not listed at all", quiet is None,

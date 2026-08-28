@@ -148,6 +148,24 @@ def run():
             _find(rows, "Night", "no_shift") is None,
             detail=str([r["date"] for r in rows if r["employee_name"] == "Night"]))
 
+    s.section("A night shift on the FIRST day of the window is not lost")
+    # The bug an audit found: the fetch bound was a bare local date compared
+    # against UTC-stored timestamps. 00:30 local in Paris is 22:30 UTC the day
+    # before, and '...T22:30+00:00' >= '2026-07-28' is False as a string — so
+    # the entry was never fetched and a night worker who DID clock in read as a
+    # no-show. Only ever on day one of the window, which rolls forward daily.
+    edge = _person(conn, "Edge")
+    first_day = _iso(-30)
+    _shift(conn, edge, first_day)
+    _clock(conn, edge, first_day, hours=5, at_hour=0)
+    rows = m.rota_vs_clock(conn, first_day, _iso(0))
+    s.check("their clock entry is found on the first day of the window",
+            _find(rows, "Edge", "no_clock") is None,
+            detail="a bare-date fetch bound drops it and calls them a no-show")
+    s.check("and it is not reported as unrostered work either",
+            _find(rows, "Edge", "no_shift") is None,
+            detail=str([r["date"] for r in rows if r["employee_name"] == "Edge"]))
+
     s.section("Tomorrow is not a no-show")
     future = _person(conn, "Future")
     _shift(conn, future, _iso(3))
