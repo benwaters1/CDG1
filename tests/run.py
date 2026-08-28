@@ -135,6 +135,7 @@ SUITES = [
     "test_money_reports",
     "test_noindex_meta",
     "test_privacy",
+    "test_refunds",
 ]
 
 
