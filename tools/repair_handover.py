@@ -12,7 +12,7 @@ one sentence upstream: regenerate from current main before exporting. Until that
 happens, this script and the suite are what stand between a handover and a
 regression.
 
-The five:
+The seven:
 
   1. noindex. 24 guest pages carry `{% block robots %}` overriding the empty
      block in public_base. The handovers strip the block from the parent too,
@@ -25,6 +25,10 @@ The five:
   4. The footer's Privacy Policy link, which comes back as href="#".
   5. A hardcoded market list in whats_on.html, duplicating the editable,
      translated rows in the `whats_on` table.
+  6. url_for('manage_booking', token=...) where the route takes manage_token,
+     which 500s every room booking confirmation.
+  7. The .g-plate__row rule, which the stylesheet arrives without while a
+     dozen templates use the class.
 
 Each is also guarded by a test (test_noindex_meta, test_part_payments,
 test_autocharge, test_table_overflow, test_privacy), so a handover that breaks
@@ -189,6 +193,56 @@ def repair_hardcoded_markets():
     return 1
 
 
+def repair_manage_booking_parameter():
+    """url_for('manage_booking', token=...) — the route parameter is manage_token.
+
+    A BuildError, not a bad link: the template raises when it renders, so EVERY
+    room booking confirmation returns 500. That is the page a guest reaches
+    immediately after paying, carrying their reference code and their manage
+    link, so the failure lands on the one visitor least able to shrug it off.
+
+    Shipped in final_25 on booking_confirmation.html line 100, fixed, and
+    shipped again in final_27 on the same line. tests/test_links.py catches it
+    either way; this saves the manual edit.
+    """
+    fixed = 0
+    for name in os.listdir(os.path.join(ROOT, "templates")):
+        if not name.endswith(".html"):
+            continue
+        rel = f"templates/{name}"
+        src = _read(rel)
+        wrong = "url_for('manage_booking', token="
+        if wrong not in src:
+            continue
+        _write(rel, src.replace(wrong, "url_for('manage_booking', manage_token="))
+        fixed += 1
+    return fixed
+
+
+def repair_plate_row_rule():
+    """The .g-plate__row rule, which the stylesheet keeps arriving without.
+
+    The markup has gained this wrapper in three separate handovers and the CSS
+    has never come with it, so a dozen public pages lay out against a class
+    with nothing behind it. It has one job: sit above .g-plate::before's inset
+    rule, which is why position: relative is the whole of it.
+    """
+    rel = "static/gudanes.css"
+    src = _read(rel)
+    if ".g-plate__row{" in src:
+        return 0
+    anchor = ".g-plate__l{ display: grid;"
+    if anchor not in src:
+        print("  ! gudanes.css: no .g-plate__l rule to anchor to")
+        return 0
+    rule = ("/* A row inside the plate. The markup keeps arriving with this\n"
+            "   wrapper and the stylesheet without the rule. It sits above\n"
+            "   .g-plate::before's inset border, and that is all it does. */\n"
+            ".g-plate__row{ position: relative; }\n")
+    _write(rel, src.replace(anchor, rule + anchor, 1))
+    return 1
+
+
 def repair_privacy_link():
     rel = "templates/public_base.html"
     src = _read(rel)
@@ -207,6 +261,8 @@ def main():
         ("part-payments and auto-charge", repair_workshop_payments),
         ("table wrappers", repair_table_wrappers),
         ("the hardcoded market list", repair_hardcoded_markets),
+        ("the manage_booking link parameter", repair_manage_booking_parameter),
+        ("the .g-plate__row rule", repair_plate_row_rule),
         ("the privacy footer link", repair_privacy_link),
     ]
     total = 0

@@ -1,4 +1,17 @@
 {% extends "public_base.html" %}
+{% block schema %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  "name": "Contact — Château de Gudanes",
+  "mainEntity": {"@type":"LodgingBusiness","name":"Château de Gudanes",
+    "telephone":"+33 5 61 64 96 82","email":"ariege@chateaugudanes.com",
+    "address":{"@type":"PostalAddress","streetAddress":"2 Route de Beille",
+      "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"}}
+}
+</script>
+{% endblock %}
 {% set crumbs = [('Contact', None)] %}
 {% block title %}Contact{% endblock %}
 {% block description %}Château de Gudanes, 2 Route de Beille, Château-Verdun, Ariège. An hour and three quarters from Toulouse. Every message is read at the château.{% endblock %}

@@ -72,7 +72,6 @@
 
 .g-sec{ padding: clamp(48px, 6vw, 84px) 0; }
 .g-sec--sand{ background: var(--sand-2); }
-.g-sec--pale{ background: var(--blue-pale); }
 .g-sec--tight{ padding: var(--s6) 0; }
 .g-sec--flush{ padding: 0; }
 
@@ -128,8 +127,6 @@
   padding-bottom: var(--s4); border-bottom: 1px solid var(--line);
   margin: 0 0 var(--s7);
 }
-.g-rule__note{ font-family: var(--serif); font-size: 13px; color: var(--brass); margin-left: auto; }
-
 /* ---- Header ------------------------------------------------------------ */
 
 .g-top{
@@ -149,16 +146,6 @@ body.has-hero main{ padding-top: 0; }
   max-width: var(--wrap); margin: 0 auto;
   padding: var(--s4) var(--s5);
   display: flex; align-items: center; gap: var(--s5); flex-wrap: wrap;
-}
-.g-brand{
-  font-family: var(--display); font-size: clamp(19px, 1.6vw, 23px);
-  color: var(--ink); text-decoration: none; line-height: 1.15;
-  margin-right: auto; min-height: 44px;
-  display: inline-flex; flex-direction: column; justify-content: center;
-}
-.g-brand small{
-  display: block; font-family: var(--serif); font-size: 13px;
-  letter-spacing: .08em; color: var(--ink-faint); margin-top: 2px;
 }
 .g-nav{ display: flex; gap: var(--s6); align-items: center; }
 .g-nav a{
@@ -210,12 +197,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g .g-hero__in .g-btn:hover{ opacity: .85; background: var(--sand); }
 .g .g-submit{ width: 100%; background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
 .g .g-submit:hover{ background: #0F1830; border-color: var(--blue-deep); }
-.g .g-mini{
-  display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--s4);
-  font-size: 13px; color: var(--ink); background: var(--sand-2);
-  border: 1px solid var(--line); text-decoration: none;
-}
-
 /* ---- Hero -------------------------------------------------------------- */
 
 .g-hero{ position: relative; background: var(--blue-deep); }
@@ -259,23 +240,12 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 /* ---- Panels ------------------------------------------------------------ */
 
 .g-panel{ background: var(--sand-2); padding: var(--s7); }
-.g-panel--line{ background: transparent; border: 1px solid var(--line); }
 .g-panel--dark{ background: var(--blue-deep); color: #C9D4DF; }
 .g-panel--dark .g-h2, .g-panel--dark .g-display{ color: var(--white); }
 .g-panel--dark .g-eyebrow{ color: #D9C79B; }
 .g-panel--dark .g-p{ color: #C9D4DF; }
 .g-panel--dark .g-btn{ color: var(--white); border-color: rgba(255,255,255,.6); }
 .g-panel--dark .g-btn:hover{ background: var(--white); color: var(--blue-deep); }
-
-/* ---- Named detail pairs ------------------------------------------------ */
-
-.g-incs{ display: grid; gap: var(--s6); }
-.g-inc h3{
-  font-family: var(--serif); font-size: 18px; font-weight: 400;
-  color: var(--blue-deep); margin: 0 0 var(--s2);
-  padding-bottom: var(--s2); border-bottom: 1px solid var(--line);
-}
-.g-inc p{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); }
 
 /* ---- Two-column prose -------------------------------------------------- */
 
@@ -296,13 +266,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-split{ display: grid; gap: var(--s7); }
 .g-split > *{ min-width: 0; }
 .g-split ul{ margin: 0; padding-left: var(--s5); display: grid; gap: var(--s3); font-size: 16px; }
-.g-list{ list-style: none; padding: 0; margin: 0; display: grid; gap: var(--s4); }
-.g-list li{ position: relative; padding-left: var(--s5); font-size: 16px; }
-.g-list li::before{
-  content: ''; position: absolute; left: 0; top: .7em;
-  width: 10px; height: 1px; background: var(--brass);
-}
-
 /* ---- Timeline / definition rows --------------------------------------- */
 
 .g-time{ list-style: none; margin: 0; padding: 0; }
@@ -321,34 +284,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-card__b{ padding: var(--s6); flex: 1; display: flex; flex-direction: column; gap: var(--s3); }
 .g-card__b .g-btn{ margin-top: auto; align-self: flex-start; }
 
-/* ---- Room / atelier rows ---------------------------------------------- */
-
-.g-rooms{ display: grid; gap: var(--s7); }
-.g-room{ display: grid; background: var(--white); border: 1px solid var(--line); }
-.g-room__media{ position: relative; min-height: 16rem; }
-.g .g-room__img{ width: 100%; height: 100%; min-height: 16rem; object-fit: cover; }
-.g-room__img--none{ background: var(--sand-3); }
-.g-flag{
-  position: absolute; top: var(--s3); left: var(--s3);
-  font-family: var(--serif); font-size: 13px;
-  letter-spacing: .1em; text-transform: uppercase; padding: var(--s2) var(--s3);
-}
-.g-flag--free{ background: var(--blue-deep); color: var(--sand); }
-.g-flag--gone{ background: rgba(20,41,63,.72); color: #D5DEE7; }
-
-.g-room__body{ padding: var(--s7); }
-.g-room__head{
-  display: grid; grid-template-columns: 1fr auto;
-  align-items: baseline; gap: var(--s2) var(--s6); margin-bottom: var(--s3);
-}
-.g-room__name{ font-family: var(--display); font-weight: 400; font-size: clamp(21px, 2vw, 26px); line-height: 1.25; color: var(--blue-deep); margin: 0; }
-.g-room__rate{ margin: 0; text-align: right; }
 .g-room__rate .g-fig{ font-size: 22px; display: block; line-height: 1.1; }
-.g-room__rate span:last-child{ font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
 .g-room__meta{ font-family: var(--serif); font-size: 13px; color: var(--ink-faint); margin: 0 0 var(--s4); }
-.g-room__desc{ font-size: 16px; line-height: 1.62; margin: 0 0 var(--s4); }
-.g-room__cta{ margin-top: var(--s5); display: flex; gap: var(--s3); flex-wrap: wrap; }
-
 /* ---- Tags & strips ----------------------------------------------------- */
 
 .g-tags{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s4); padding: 0; list-style: none; }
@@ -466,14 +403,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-dossier .g-submit:hover{ background: var(--white); color: var(--blue-deep); border-color: var(--white); }
 .g-foot-note{ font-size: 13px; line-height: 1.55; color: #4F5F72; margin: var(--s4) 0 0; }
 
-/* ---- Reviews ----------------------------------------------------------- */
-
-.g-reviews{ display: grid; gap: var(--s4); }
-.g-review{ margin: 0; background: var(--white); border: 1px solid var(--line); padding: var(--s6); }
-.g-review__s{ font-family: var(--serif); font-size: 13px; color: var(--brass); margin: 0 0 var(--s3); }
-.g-review blockquote{ margin: 0 0 var(--s3); font-size: 16px; line-height: 1.6; font-style: italic; }
-.g-review figcaption{ font-size: 13px; color: var(--ink-faint); }
-
 /* ---- Footer ------------------------------------------------------------ */
 
 .g-footer{ background: var(--blue-deep); color: #A9B7C4; padding: var(--s7) 0 var(--s6); margin-top: 0; }
@@ -541,9 +470,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-empty{ padding: var(--s7); text-align: center; background: var(--blue-pale); color: var(--ink-soft); }
 .g details.g-cal{ display: none; }   /* staff grid hidden from guests */
 .g-cal__nav{ display: flex; justify-content: space-between; align-items: center; gap: var(--s3); margin-bottom: var(--s3); }
-.g-cal__scroll{ overflow-x: auto; }
-.g-legend{ display: flex; gap: var(--s5); flex-wrap: wrap; margin-top: var(--s3); font-size: 13px; }
-
 .g a:focus-visible, .g input:focus-visible, .g textarea:focus-visible,
 .g select:focus-visible, .g button:focus-visible, .g summary:focus-visible{
   outline: 2px solid var(--blue-mid); outline-offset: 2px;
@@ -575,7 +501,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 @media (min-width: 52rem){
   .g-two{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .g-room{ grid-template-columns: 24rem 1fr; align-items: stretch; }
-  .g .g-room__img{ position: absolute; inset: 0; }
 }
 
 @media (min-width: 60rem){
@@ -598,17 +523,14 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 @media (max-width: 68rem){
   .g-top__in{ row-gap: 0; }
   .g-reserve{ order: 2; }
-  .g-navtoggle{ order: 3; width: 100%; display: block; }
-  .g-navtoggle > summary{
+.g-navtoggle > summary{
     display: flex; align-items: center; gap: var(--s2);
     list-style: none; cursor: pointer; min-height: 44px;
     font-family: var(--display); font-size: 13px;
     letter-spacing: .16em; text-transform: uppercase; color: #D6E4EC;
   }
-  .g-navtoggle > summary::-webkit-details-marker{ display: none; }
-  .g-navtoggle > summary::after{ content: '+'; font-size: 15px; }
-  .g-navtoggle[open] > summary::after{ content: '–'; }
-  .g-nav{ flex-direction: column; align-items: stretch; gap: 0; padding-bottom: var(--s3); }
+.g-navtoggle > summary::after{ content: '+'; font-size: 15px; }
+.g-nav{ flex-direction: column; align-items: stretch; gap: 0; padding-bottom: var(--s3); }
   .g-nav a{ width: 100%; min-height: 48px; border-bottom: 1px solid rgba(255,255,255,.18); }
   .g-nav a:last-child{ border-bottom: none; }
 }
@@ -618,14 +540,12 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   .g-sec--tight{ padding: var(--s6) 0; }
   .g-wrap{ padding: 0 var(--s4); }
   .g-half__text{ padding: var(--s7) var(--s4); }
-  .g-room__body{ padding: var(--s5); }
-  .g-hero__in{ padding: var(--s6) var(--s4); }
+.g-hero__in{ padding: var(--s6) var(--s4); }
   .g-panel{ padding: var(--s5); }
   .g-footer{ padding: var(--s7) 0 var(--s6); margin-top: var(--s7); }
   .g-band{ grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr 1fr; }
   .g .g-band img{ height: 9rem; }
-  .g-room__head{ grid-template-columns: 1fr; }
-  .g-room__rate{ text-align: left; }
+.g-room__rate{ text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce){
@@ -655,8 +575,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   font-size: 18px; line-height: 1.55; color: var(--blue-mid);
 }
 
-/* Session date buttons on a workshop. */
-.g-dates{ display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
 .g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 13px; }
 .g .g-book-bar__note a{ display: inline-block; padding: 12px 0; min-height: 44px; }
 
@@ -669,96 +587,9 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g .g-logo img{ height: 52px; width: auto; max-width: min(240px, 45vw); object-fit: contain; }
 @media (max-width: 60rem){ .g .g-logo img{ height: 40px; max-width: min(180px, 42vw); } }
 
-/* ---- Dropdown navigation ----------------------------------------------- */
-.g-nav__item{ position: relative; }
-.g-nav__top{
-  display: inline-flex; align-items: center; gap: 6px;
-  font-family: var(--serif); font-size: 15px;
-  letter-spacing: .1em; text-transform: uppercase;
-  color: #D6E4EC; background: none; border: 0; cursor: pointer;
-  min-height: 44px; padding: 0; text-decoration: none;
-  border-bottom: 1px solid transparent;
-}
-.g-nav__top::after{ content: '⌄'; font-size: 13px; line-height: 1; transform: translateY(-2px); }
-.g-nav__top--plain::after{ content: none; }
-.g-nav__item:hover .g-nav__top,
-.g-nav__top:focus-visible{ color: #fff; border-bottom-color: var(--brass); }
-
-.g-drop{
-  position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  min-width: 15rem; background: var(--white);
-  border: 1px solid var(--blue-line); border-top: 2px solid var(--brass);
-  padding: var(--s2) 0; margin-top: 0;
-  opacity: 0; visibility: hidden; transition: opacity .16s ease;
-  box-shadow: 0 12px 28px rgba(20,41,63,.14); z-index: 70;
-}
-.g-nav__item:hover .g-drop,
-.g-nav__item:focus-within .g-drop{ opacity: 1; visibility: visible; }
-.g-drop a{
-  display: block; padding: var(--s3) var(--s5); min-height: 44px;
-  font-family: var(--serif); font-size: 15px; letter-spacing: 0;
-  text-transform: none; color: var(--ink); text-decoration: none; white-space: nowrap;
-}
-.g-drop a:hover{ background: var(--blue-pale); color: var(--blue-mid); }
-.g-drop__note{
-  padding: var(--s2) var(--s5) var(--s3);
-  font-family: var(--serif); font-size: 13px; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--ink-faint);
-}
-
-/* ---- Currency selector -------------------------------------------------- */
-.g-cur{ display: inline-flex; align-items: center; gap: var(--s2); }
-.g-cur select{
-  font-family: var(--serif); font-size: 13px; letter-spacing: .1em;
-  color: #D6E4EC; background: transparent;
-  border: 1px solid rgba(255,255,255,.4); border-radius: 0;
-  padding: var(--s2) var(--s3); min-height: 44px; cursor: pointer;
-}
-.g-cur select option{ color: var(--ink); background: var(--white); }
 .g-approx{ font-family: var(--serif); font-size: 13px; color: var(--ink-faint); display: block; margin-top: 2px; }
 
-/* ---- Filter chips ------------------------------------------------------- */
-.g-filters{ display: flex; flex-wrap: wrap; gap: var(--s2); margin: 0 0 var(--s6); }
-.g-filter{
-  font-family: var(--serif); font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
-  min-height: 44px; padding: var(--s3) var(--s5);
-  color: var(--blue-mid); background: transparent;
-  border: 1px solid var(--blue-line); cursor: pointer;
-  transition: background .18s ease, color .18s ease;
-}
-.g-filter:hover{ background: var(--blue-pale); }
-.g-filter.is-on{ background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
-
-/* ---- Sort / refine row -------------------------------------------------- */
-.g-refine{
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4);
-  padding: var(--s4) 0; margin-bottom: var(--s6);
-  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-}
-.g-refine label{
-  font-family: var(--serif); font-size: 13px; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--ink-faint);
-}
-.g-refine select{
-  font-family: var(--serif); font-size: 15px; color: var(--ink);
-  background: var(--white); border: 1px solid var(--line);
-  padding: var(--s2) var(--s3); min-height: 44px; border-radius: 0;
-}
-.g-refine__count{ margin-left: auto; font-family: var(--serif); font-size: 13px; color: var(--ink-faint); }
-
-/* ---- Gallery sections --------------------------------------------------- */
-.g-galsec{ padding: var(--s8) 0; border-top: 1px solid var(--line); }
-.g-galsec:first-of-type{ border-top: none; padding-top: var(--s5); }
-.g-galsub{
-  text-align: center; font-style: italic; color: var(--ink-faint);
-  margin: 0 0 var(--s5); font-size: 16px;
-}
-.g-galbody{ max-width: 44rem; margin: 0 auto var(--s6); text-align: center; }
-.g-galgrid{ display: grid; gap: var(--s3); grid-template-columns: 1fr 1fr; }
 @media (min-width: 52rem){ .g-galgrid{ grid-template-columns: repeat(3, 1fr); } }
-.g .g-galgrid img{ width: 100%; height: 16rem; object-fit: cover; }
-
-
 /* ---- Navigation visibility ---------------------------------------------
    A closed <details> hides its contents whatever CSS says, so the nav is a
    plain wrapper toggled by a button below the breakpoint and always open
@@ -782,31 +613,10 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   .g-navwrap.is-open{ display: block; }
   .g-nav{ flex-direction: column; align-items: stretch; gap: 0; padding-bottom: var(--s3); }
   .g-nav__item{ width: 100%; }
-  .g-nav__top{ width: 100%; padding: var(--s3) 0; border-bottom: 1px solid rgba(255,255,255,.18); }
-  /* Dropdowns become inline lists on a phone — no hover to rely on. */
-  .g-drop{
-    position: static; transform: none; opacity: 1; visibility: visible;
-    min-width: 0; background: transparent; border: 0; box-shadow: none;
-    padding: 0 0 var(--s3) var(--s4);
-  }
-  .g-drop a{ color: #A9C8DA; padding: var(--s3) 0; min-height: 44px; }
-  .g-drop a:hover{ background: transparent; color: #fff; }
-  .g-drop__note{ display: none; }
-  .g-cur{ order: 2; }
+/* Dropdowns become inline lists on a phone — no hover to rely on. */
+.g-drop a{ color: #A9C8DA; padding: var(--s3) 0; min-height: 44px; }
+.g-drop__note{ display: none; }
 }
-
-/* ===========================================================================
-   Rules the redesign did not carry over.
-
-   The stylesheet above is the handover's. These are the rules the live site
-   had that it does not define at all - chiefly the price-quote panel on the
-   booking form, which shows a guest the running total before they commit,
-   and the form and submit styling around it. Kept last so they win ties.
-   =========================================================================== */
-
-.g .g-btn--ghost{ background:transparent; color:#FFFDF9; border-color:rgba(255,253,249,.7); }
-
-.g .g-btn--ghost:hover{ background:rgba(255,253,249,.16); color:#FFFDF9; }
 
 .g .g-btn--line{ background:transparent; color:var(--ink); border-color:var(--ink); }
 
@@ -815,12 +625,6 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-form{ max-width:38rem; }
 
 .g-cal>summary{ font-family:var(--serif); font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); cursor:pointer; padding:14px 0; min-height:44px; }
-
-.g-bleed{
-  width:100vw;
-  margin-left:calc(50% - 50vw);
-  margin-right:calc(50% - 50vw);
-}
 
 .g-half, .g-band, .g-bleed{
   width:auto;
@@ -1195,9 +999,6 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   letter-spacing: .14em; text-transform: uppercase;
   color: rgba(255,255,255,.65); margin: var(--s5) 0 0;
 }
-.g-crest--sm{ padding: clamp(32px, 4vw, 48px) var(--s5); }
-.g-crest--sm img{ max-width: 20rem; }
-
 /* ---- Room page --------------------------------------------------------
    The photo slots were conditional on uploads that do not exist yet, so a
    room selling a night at this price rendered as a bare form. */
@@ -1299,44 +1100,9 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   max-width: 46rem; margin: 0 auto; text-align: center;
 }
 
-.g-wsfull__meta{
-  font-family: var(--serif); font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s5);
-}
-.g-sampleday{
-  border-left: 2px solid var(--blue-deep);
-  padding: var(--s2) 0 var(--s2) var(--s5);
-  margin: var(--s6) 0;
-}
 .g-sampleday .g-h3{ margin-bottom: var(--s3); }
 
-.g-dates{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s6); }
-
-.g-incl{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s4); }
 @media (min-width: 52rem){ .g-incl{ grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s7); } }
-.g-incl li{
-  padding-left: var(--s5); position: relative; font-size: 16px;
-  line-height: 1.55; color: var(--ink);
-}
-.g-incl li::before{
-  content: ''; position: absolute; left: 0; top: .65em;
-  width: 10px; height: 1px; background: var(--blue-deep);
-}
-
-/* Each atelier's own dates, listed as a bookable row rather than a wall of
-   buttons — six ateliers with several sittings each needs to stay scannable. */
-.g-sitting{
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4);
-  padding: var(--s4) 0; border-bottom: 1px solid var(--line);
-}
-.g-sitting:first-child{ border-top: 1px solid var(--line); }
-.g-sitting__when{
-  font-family: var(--display); font-size: 22px; font-weight: 400;
-  color: var(--blue-deep); flex: 1 1 14rem;
-}
-.g-sitting__left{ font-size: 15px; color: var(--ink-faint); flex: 0 0 auto; }
-.g-sitting__cta{ flex: 0 0 auto; margin-left: auto; }
-
-
 /* A field as wide as the page is harder to read than one sized to its content.
    Text inputs cap out; textareas keep the full column since they hold prose. */
 .g-field input[type="text"], .g-field input[type="email"],
@@ -1353,8 +1119,6 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    footer pulled them under a comfortable target, so state a floor explicitly
    rather than relying on line-height. */
 .g-footer a{ min-height: 44px; display: inline-flex; align-items: center; }
-.g-footer__legal a{ min-height: 40px; }
-
 /* In the footer the crest closes the page rather than interrupting one, and
    the footer is already navy — so no band of its own, just the mark. */
 .g-crest--foot{
@@ -1437,50 +1201,19 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-chip:hover{ border-color: var(--blue-deep); color: var(--blue-deep); }
 .g-chip.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
 
-.g-dates-table{ width: 100%; border-collapse: collapse; }
-.g-dates-table th{
-  font-family: var(--serif); font-size: 13px; font-weight: 600;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint);
-  text-align: left; padding: 0 var(--s4) var(--s3) 0;
-  border-bottom: 1px solid var(--line);
-}
-.g-dates-table td{
-  padding: var(--s4) var(--s4) var(--s4) 0;
-  border-bottom: 1px solid var(--line); vertical-align: middle;
-}
-.g-dates-table__when{
-  font-family: var(--display); font-size: 22px; font-weight: 400;
-  color: var(--blue-deep); white-space: nowrap;
-}
 /* The workshop name in a row is a real link people tap — give it a target,
    not just a text baseline. */
 .g-dates-table a:not(.g-btn){
   color: var(--blue-deep); text-decoration: none;
   display: inline-flex; align-items: center; min-height: 44px;
 }
-.g-dates-table a:hover{ text-decoration: underline; }
-.g-dates-table__act{ text-align: right; padding-right: 0; }
-.g-dates-table tr.is-full .g-dates-table__when{ opacity: .55; }
-.g-full{ color: var(--ink-faint); }
-
 /* On a phone a six-column table cannot hold — each row becomes a card with
    the column name carried in front of its value. */
 @media (max-width: 52rem){
-  .g-dates-table thead{ display: none; }
-  .g-dates-table, .g-dates-table tbody, .g-dates-table tr, .g-dates-table td{ display: block; width: 100%; }
-  .g-dates-table tr{
-    border: 1px solid var(--line); padding: var(--s4);
-    margin-bottom: var(--s4); background: var(--white);
-  }
-  .g-dates-table td{ border: 0; padding: var(--s1) 0; }
-  .g-dates-table td[data-label]::before{
-    content: attr(data-label) " · ";
-    font-family: var(--serif); font-size: 13px; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--ink-faint);
-  }
-  .g-dates-table__when::before{ display: none; }
-  .g-dates-table__act{ text-align: left; margin-top: var(--s3); }
-  .g .g-dates-table__act .g-btn{ width: 100%; }
+.g-dates-table, .g-dates-table tbody, .g-dates-table tr, .g-dates-table td{ display: block; width: 100%; }
+.g-dates-table td{ border: 0; padding: var(--s1) 0; }
+.g-dates-table__when::before{ display: none; }
+.g .g-dates-table__act .g-btn{ width: 100%; }
 }
 
 /* The standing facts, as a definition list rather than paragraphs. */
@@ -1752,10 +1485,6 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-orn::before, .g-orn::after{ content:''; flex:1; height:1px; background: currentColor; }
 .g-orn svg{ width: 22px; height: 22px; flex: none; color: var(--stone); }
-.g-orn--left::before{ display: none; }
-.g-orn--left{ justify-content: flex-start; }
-.g-orn--left svg{ margin-right: var(--s3); }
-
 /* A drop initial, the way a chapter opens in a printed book. */
 .g-drop-cap::first-letter{
   font-family: var(--display); font-weight: 400;
@@ -1770,15 +1499,6 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-plate-edge::before{ top:0; left:0; border-top:1px solid var(--stone); border-left:1px solid var(--stone); }
 .g-plate-edge::after{ bottom:0; right:0; border-bottom:1px solid var(--stone); border-right:1px solid var(--stone); }
-
-/* The façade, very faint, as ground for a navy panel. */
-.g-sec--plate-dark{ position: relative; overflow: hidden; }
-.g-sec--plate-dark::before{
-  content:''; position:absolute; inset:0;
-  background: url('/static/img/chateau_plate.png') center 62% / min(40rem, 82%) no-repeat;
-  opacity: .07; pointer-events: none;
-}
-.g-sec--plate-dark > *{ position: relative; }
 
 /* The opening paragraph of a page carries a little more weight than the rest. */
 .g-lede-first{ font-size: 18px; line-height: 1.6; max-width: 46rem; }
@@ -1890,31 +1610,8 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   margin-top: var(--s2);
 }
 
-/* ==========================================================================
-   ENGRAVED DEVICES
-   Drawn from the vocabulary of an eighteenth-century plate: a rule that
-   swells at the centre, a fleuron, a laurel, and a cartouche for a section
-   opener. Line only, navy or stone, no fills.
-   ========================================================================== */
-.g-rule-fine{
-  display: block; width: 100%; height: 12px; margin: var(--s7) 0;
-  color: var(--stone);
-}
 .g-fleur{ display: block; margin: var(--s6) auto; color: var(--stone); width: 120px; height: 26px; }
-.g-cartouche{
-  position: relative; text-align: center;
-  padding: var(--s7) var(--s6); margin: 0;
-}
-.g-cartouche::before, .g-cartouche::after{
-  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
-  width: min(22rem, 70%); height: 1px; background: var(--line);
-}
-.g-cartouche::before{ top: var(--s4); }
-.g-cartouche::after{ bottom: var(--s4); }
 .g-cartouche .g-place{ margin: 0; }
-
-/* A heading with a small drawn mark set above it, centred. */
-.g-crown{ display: block; margin: 0 auto var(--s4); width: 34px; height: 34px; color: var(--stone); }
 
 /* Section that reads as a printed plate: hairline frame inset from the edge. */
 .g-framed{
@@ -1981,19 +1678,6 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   .g-mb-card input, .g-mb-card select, .g-mb-card textarea{ max-width: 100%; }
   .g .g-mb-acts .g-btn{ width: 100%; }
 }
-
-/* Cancelling is destructive and irreversible, so it should look deliberate —
-   quiet rather than shouting, but unmistakably not a primary action. */
-.g .btn-text-danger,
-.g .g-btn--danger{
-  display: inline-flex; align-items: center; justify-content: center;
-  min-height: 44px; padding: var(--s2) var(--s5);
-  font-family: var(--serif); font-size: 15px; font-weight: 500;
-  background: transparent; color: #8A2B22;
-  border: 1px solid #D9C2BE; cursor: pointer; text-decoration: none;
-}
-.g .btn-text-danger:hover,
-.g .g-btn--danger:hover{ background: #8A2B22; border-color: #8A2B22; color: #fff; }
 
 /* The footer sat at 12px on every page — small at desktop reading distance,
    and it is the last thing anyone reads. 13px is still quiet. */
@@ -2427,15 +2111,6 @@ stroke='%238F8C78' stroke-width='1'>\
 /* The mountain line, as a section foot. */
 .g-ridge{ display:block; width: 100%; max-width: 30rem; margin: var(--s6) auto 0; color: var(--line); }
 
-/* A corner flourish for a framed panel — quarter-arcs at each corner. */
-.g-corners{ position: relative; }
-.g-corners::before, .g-corners::after{
-  content:''; position:absolute; width: 26px; height: 26px; pointer-events:none;
-  border-color: var(--stone); border-style: solid; border-width: 0;
-}
-.g-corners::before{ top:-1px; left:-1px; border-top-width:1px; border-left-width:1px; }
-.g-corners::after{ bottom:-1px; right:-1px; border-bottom-width:1px; border-right-width:1px; }
-
 /* An initial set as a printed capital in a ruled box. */
 .g-versal::first-letter{
   font-family: var(--display); font-weight: 400; font-size: 3.1em;
@@ -2456,8 +2131,6 @@ stroke='%238F8C78' stroke-width='1'>\
   display: block;
 }
 .g-room__head .g-emblem, .g-homeroom .g-emblem{ margin-bottom: var(--s3); }
-.g-emblem--lg{ width: 52px; height: 52px; }
-
 /* The slide-out navigation panel was left at 12px throughout — its links,
    group headings, item labels and the feature caption. It is the primary way
    to move around the site on a phone, so it is the last place to be small.
@@ -2494,15 +2167,6 @@ stroke='%238F8C78' stroke-width='1'>\
 .g-hairs i{
   width: 7px; height: 7px; flex: none; transform: rotate(45deg);
   border: 1px solid var(--stone); font-style: normal;
-}
-
-/* A section number set as an engraved figure in a ruled circle — for pages
-   that walk a guest through steps. */
-.g-numeral{
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border: 1px solid var(--stone); border-radius: 50%;
-  font-family: var(--display); font-weight: 400; font-size: 18px;
-  color: var(--blue-deep); margin-bottom: var(--s3);
 }
 
 /* The key motif: the château's own silhouette, very small, as a closing mark. */
@@ -2672,9 +2336,6 @@ stroke='%238F8C78' stroke-width='1'>\
 /* The G, in laurel. Drawn rather than the logo file so it scales, takes any
    colour, and never fails to load. */
 .g-monogram{ display: block; margin: 0 auto; width: 62px; height: 62px; color: var(--stone); }
-.g-monogram--lg{ width: 96px; height: 96px; }
-.g-monogram--pale{ color: var(--line); }
-
 /* The wallpaper — a damask repeat taken from the paper in the Chambre des
    Fleurs, at 4% so it reads as texture rather than decoration. */
 .g-paper{ position: relative; isolation: isolate; }
@@ -2692,18 +2353,6 @@ stroke='%238F8C78' stroke-width='1'>\
 </svg>");
   background-size: 190px 254px;
 }
-/* On navy, the same paper in a lighter ink. */
-.g-paper--dark::before{
-  opacity: .07;
-  background-image: url("data:image/svg+xml;utf8,\
-<svg xmlns='http://www.w3.org/2000/svg' width='120' height='160' fill='none' stroke='%23D6CBB6' stroke-width='1.1'>\
-<path d='M60 12c-7 9-11 16-11 23s4 12 11 19c7-7 11-12 11-19s-4-14-11-23z'/>\
-<path d='M38 40c8-5 15-7 22-7s14 2 22 7M38 40c8 5 15 7 22 7s14-2 22-7'/>\
-<circle cx='60' cy='40' r='3'/><path d='M60 54v26M46 66c5-4 9-6 14-6M74 66c-5-4-9-6-14-6'/>\
-</svg>");
-  background-size: 120px 160px;
-}
-
 /* Colour. The palette was navy, stone and parchment and almost nothing else.
    These are drawn from the building: the gilt on the fresco medallion, the
    Virginia creeper on the gates, and the verdigris of the copper. Used for
@@ -2714,9 +2363,6 @@ stroke='%238F8C78' stroke-width='1'>\
   --creeper:   #8C3A2B;   /* the Virginia creeper on the gates    */
   --verdigris: #5F7A6E;   /* aged copper from the kitchen         */
 }
-.g-accent-gilt{ color: var(--gilt); }
-.g-rule-gilt{ height: 1px; background: var(--gilt); opacity: .5; border: 0; margin: var(--s6) 0; }
-
 /* Every hero now offers the next step. Six pages opened with a heading, a
    sentence and nothing to act on — a guest had to scroll to find out how. */
 .g-hero__cta{ margin: var(--s6) 0 0; }
@@ -3708,10 +3354,9 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
-/* A row inside the plate. The markup has now gained this wrapper in three
-   separate handovers while the rule did not, so twelve pages lay out against a
-   class with nothing behind it. It has one job: sit above .g-plate::before's
-   inset rule. */
+/* A row inside the plate. The markup keeps arriving with this
+   wrapper and the stylesheet without the rule. It sits above
+   .g-plate::before's inset border, and that is all it does. */
 .g-plate__row{ position: relative; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
@@ -3905,4 +3550,16 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 @media (min-width: 44rem){
   .g-limit{ gap: var(--s5); }
   .g-limit__k{ min-width: 10rem; }
+}
+
+
+/* Restored: the cancel control on the manage pages. My dead-class sweep
+   only protected g-* names and swept this live rule. */
+.g .btn-text-danger,
+.g .g-btn--danger{
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: var(--s2) var(--s5);
+  font-family: var(--serif); font-size: 15px; font-weight: 500;
+  background: transparent; color: #8A2B22;
+  border: 1px solid #D9C2BE; cursor: pointer; text-decoration: none;
 }

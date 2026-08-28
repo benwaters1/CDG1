@@ -1,4 +1,19 @@
 {% extends "public_base.html" %}
+{% block schema %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LandmarksOrHistoricalBuildings",
+  "name": "Château de Gudanes",
+  "description": "An eighteenth-century château by Ange-Jacques Gabriel, First Architect to Louis XV. Classified a Class I Historic Monument in 1994 and under restoration since 2013.",
+  "address": {"@type":"PostalAddress","addressLocality":"Château-Verdun",
+    "postalCode":"09310","addressRegion":"Ariège","addressCountry":"FR"},
+  "geo": {"@type":"GeoCoordinates","latitude":42.7847,"longitude":1.6733},
+  "isAccessibleForFree": false,
+  "publicAccess": true
+}
+</script>
+{% endblock %}
 {% set crumbs = [('Restoration', None)] %}
 {% block title %}The Restoration{% endblock %}
 {% block description %}Bought derelict in 2013, five hundred tonnes of fallen stone cleared, and fifteen years of work approved intervention by intervention. A restoration, not a renovation.{% endblock %}

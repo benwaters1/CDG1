@@ -154,13 +154,13 @@
   <h2 class="g-step__h"><span class="g-num">{{ '04' if extras else '03' }}</span> Anything we should know</h2>
           <p class="g-field">
             <label for="special_requests">Dietary needs, occasion, arrival time, questions</label>
-            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions..."></textarea>
+            <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
             <span class="g-hint">Send dietary requirements early and they are designed into the menu rather than worked around on the night.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
             <span class="g-promo">
-              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters">
+              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters" value="{{ prefill_promo | default('') }}">
               <button type="button" id="promo_apply_btn">Apply</button>
             </span>
             <span class="g-hint" id="promo_result" aria-live="polite"></span>
@@ -540,5 +540,6 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>
   </div>
 </div></section>
+
 
 {% endblock %}

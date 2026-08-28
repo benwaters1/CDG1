@@ -1,4 +1,22 @@
 {% extends "public_base.html" %}
+{% block schema %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Restaurant",
+  "name": "La Table — Château de Gudanes",
+  "servesCuisine": ["French", "Occitan", "Pyrenean"],
+  "priceRange": "€€€",
+  "acceptsReservations": "True",
+  "address": {"@type":"PostalAddress","streetAddress":"2 Route de Beille",
+    "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"},
+  "description": "One sitting a night, by candlelight, cooked from the morning market and the château's own eighteenth-century recipe book.",
+  "openingHoursSpecification": {"@type":"OpeningHoursSpecification",
+    "dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
+    "opens":"19:00","closes":"23:00"}
+}
+</script>
+{% endblock %}
 {% set sticky_bar = 'dining' %}
 {% set crumbs = [('La Table', None)] %}
 {% block title %}La Table{% endblock %}

@@ -1,4 +1,23 @@
 {% extends "public_base.html" %}
+{% block schema %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "EventVenue",
+  "name": "Château de Gudanes",
+  "description": "One wedding at a time, with the château and its six acres given over to it exclusively.",
+  "maximumAttendeeCapacity": 120,
+  "address": {"@type":"PostalAddress","streetAddress":"2 Route de Beille",
+    "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"},
+  "amenityFeature": [
+    {"@type":"LocationFeatureSpecification","name":"Chapel","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Exclusive use","value":true},
+    {"@type":"LocationFeatureSpecification","name":"On-site accommodation","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Gardens and parkland","value":true}
+  ]
+}
+</script>
+{% endblock %}
 {% set sticky_bar = 'events' %}
 {% set crumbs = [('Events', None)] %}
 {% block title %}Weddings & Events{% endblock %}

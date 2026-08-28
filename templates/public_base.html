@@ -81,6 +81,7 @@
   }
 }
 </script>
+{% block schema %}{% endblock %}
 </head>
 <body class="g{% block bodyclass %}{% endblock %}">
 <a class="g-skip" href="#main">Skip to content</a>
@@ -630,6 +631,82 @@
     form.addEventListener('blur', function(e){
       if (tried && e.target.willValidate) mark(e.target);
     }, true);
+  });
+})();
+</script>
+
+<script>
+/* No date input on this site should offer a date in the past, and any
+   departure field should follow its arrival. Applied to every pair on the
+   page, whatever it is called — the server still validates everything. */
+(function(){
+  var today = new Date().toISOString().slice(0, 10);
+  document.querySelectorAll('input[type="date"]').forEach(function(el){
+    if (!el.min && !el.hasAttribute('data-allow-past')) el.min = today;
+  });
+  function pair(a, d){
+    if (!a || !d) return;
+    function sync(){
+      if (!a.value) return;
+      var next = new Date(a.value + 'T00:00:00');
+      next.setDate(next.getDate() + 1);
+      var min = next.toISOString().slice(0, 10);
+      d.min = min;
+      if (d.value && d.value < min) d.value = min;
+    }
+    a.addEventListener('change', sync);
+    sync();
+  }
+  [['arrival_date','departure_date'], ['arrival','departure'],
+   ['check_in','check_out'], ['start_date','end_date'],
+   ['new_arrival_date','new_departure_date'],
+   ['preferred_date','alternate_date']].forEach(function(p){
+    pair(document.getElementById(p[0]), document.getElementById(p[1]));
+    pair(document.querySelector('[name="'+p[0]+'"]'), document.querySelector('[name="'+p[1]+'"]'));
+  });
+})();
+</script>
+
+<script>
+/* Double-submit guard. A guest on a slow connection taps Book, sees nothing,
+   and taps again — which on a payment form is a real problem. The button
+   disables on first submit and says so; if the browser restores the page from
+   cache (back button), it is re-enabled. */
+(function(){
+  document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(function(f){
+    f.addEventListener('submit', function(){
+      if (f.dataset.submitted === '1') return;
+      if (typeof f.checkValidity === 'function' && !f.checkValidity()) return;
+      f.dataset.submitted = '1';
+      f.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function(b){
+        if (b.tagName === 'BUTTON') {
+          b.dataset.html = b.innerHTML;
+          /* Only swap the wording where the button is words. An icon button
+             keeps its icon and simply goes busy. */
+          if (b.children.length === 0 && b.textContent.trim()) {
+            b.textContent = 'One moment…';
+          }
+        } else {
+          b.dataset.label = b.value;
+          b.value = 'One moment…';
+        }
+        b.disabled = true;
+        b.setAttribute('aria-busy', 'true');
+      });
+    });
+  });
+  /* Restored from the back/forward cache: let them try again. */
+  window.addEventListener('pageshow', function(e){
+    if (!e.persisted) return;
+    document.querySelectorAll('form[data-submitted="1"]').forEach(function(f){
+      f.dataset.submitted = '0';
+      f.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function(b){
+        if (b.tagName === 'BUTTON' && b.dataset.html !== undefined) b.innerHTML = b.dataset.html;
+        else if (b.dataset.label) b.value = b.dataset.label;
+        b.disabled = false;
+        b.removeAttribute('aria-busy');
+      });
+    });
   });
 })();
 </script>
