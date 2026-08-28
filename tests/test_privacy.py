@@ -165,11 +165,21 @@ def run():
     # this the POST does nothing and "no notification carries the allergy" is
     # true because there was no booking. The first version of this check
     # passed on exactly that empty result.
-    was = conn.execute("SELECT enabled FROM restaurant_settings LIMIT 1").fetchone()
+    # Being open is not enough: the restaurant also has an opening_date, seeded
+    # to today + 42 days, and the booking form refuses anything before it. So
+    # this POST was refused with "we're not taking reservations before ..." and
+    # the booking was never made — the same empty-result failure this section
+    # was written to close, one condition further along.
+    was = conn.execute(
+        "SELECT enabled, opening_date FROM restaurant_settings LIMIT 1").fetchone()
     reopened = bool(was) and not was["enabled"]
+    was_opening = was["opening_date"] if was else None
     if reopened:
         conn.execute("UPDATE restaurant_settings SET enabled = 1")
-        conn.commit()
+    if was_opening and was_opening > soon:
+        conn.execute("UPDATE restaurant_settings SET opening_date = ?",
+                     ((datetime.now(m.LOCAL_TZ).date() - timedelta(days=1)).isoformat(),))
+    conn.commit()
 
     before = conn.execute("SELECT COUNT(*) AS c FROM notifications").fetchone()["c"]
     pub.post("/restaurant/book", data={
@@ -201,6 +211,8 @@ def run():
     conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?", (TAG + "%",))
     if reopened:
         conn.execute("UPDATE restaurant_settings SET enabled = 0")
+    if was_opening is not None:
+        conn.execute("UPDATE restaurant_settings SET opening_date = ?", (was_opening,))
     conn.commit()
 
 
