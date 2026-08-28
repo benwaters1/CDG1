@@ -100,10 +100,20 @@ def run():
     names = {p["name"] for w in data["weeks"] for p in w["over"]}
     s.check("an owner working sixty hours is not listed as overtime",
             "Boss" not in names, detail=str(names))
-    # And the dashboard figure has to agree, or the two pages contradict.
+    # week_overtime only looks at the CURRENT week, so asserting against hours
+    # written into week -2 was true whatever the employee filter did. Give the
+    # owner a long week THIS week, which is the only window that function sees.
     today = datetime.now(m.LOCAL_TZ).date()
+    _long_week(conn, boss, _monday(0), hours=60)
+    week_names = {p["name"] for p in m.week_overtime(conn, today)}
     s.check("the dashboard's weekly figure scopes the same way",
-            "Boss" not in {p["name"] for p in m.week_overtime(conn, today)})
+            "Boss" not in week_names, detail=str(week_names))
+    # ...and proves it is looking at all, rather than returning nothing.
+    grafter = _person(conn, "Grafter")
+    _long_week(conn, grafter, _monday(0), hours=48)
+    s.check("while an employee's long week IS on the dashboard figure",
+            "Grafter" in {p["name"] for p in m.week_overtime(conn, today)},
+            detail=str({p["name"] for p in m.week_overtime(conn, today)}))
 
     s.section("Several long weeks running")
     ben = _person(conn, "Ben")

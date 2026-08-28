@@ -31,6 +31,7 @@ def _cleanup(conn):
     conn.execute("DELETE FROM workshop_sessions WHERE notes LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM event_inquiries WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM waitlist_entries WHERE name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM notifications WHERE title LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -128,6 +129,80 @@ def run():
               AND (COALESCE(details, '') LIKE '%epipen%'
                 OR COALESCE(details, '') LIKE '%allergy%')""").fetchone()["c"]
     s.check("the audit line does not quote what it deleted", leaked == 0)
+
+    s.section("The allergy is not left behind in a second place")
+    # The booking used to copy the dietary note verbatim into a staff
+    # notification, a table nothing deletes — so the purge cleared one copy and
+    # the notice's promise was still untrue.
+    old_stamp = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    owner_id = conn.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()["id"]
+    conn.execute(
+        """INSERT INTO notifications (user_id, kind, title, body, created_at)
+           VALUES (?, 'restaurant_booking', ?, 'severe shellfish allergy', ?)""",
+        (owner_id, TAG + "old dinner", old_stamp))
+    conn.execute(
+        """INSERT INTO notifications (user_id, kind, title, body, created_at)
+           VALUES (?, 'restaurant_booking', ?, 'coeliac', ?)""",
+        (owner_id, TAG + "recent dinner", datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    with m.app.test_request_context():
+        m.purge_health_notes(conn)
+    gone = conn.execute("SELECT body FROM notifications WHERE title = ?",
+                        (TAG + "old dinner",)).fetchone()["body"]
+    kept = conn.execute("SELECT body FROM notifications WHERE title = ?",
+                        (TAG + "recent dinner",)).fetchone()["body"]
+    s.check("an allergy in an old notification is cleared too", not gone,
+            detail=str(gone))
+    # A dinner still to come must keep it, exactly as the booking does.
+    s.check("a recent one is left alone", kept == "coeliac", detail=str(kept))
+
+    s.section("A new booking does not copy the allergy anywhere else")
+    # The purge above cleans up history. This is the source: a dinner booked
+    # today must not put the guest's allergy into a second table at all.
+    pub = m.app.test_client()
+    soon = (datetime.now(m.LOCAL_TZ).date() + timedelta(days=20)).isoformat()
+    # /restaurant/book 404s while the restaurant is switched off, so without
+    # this the POST does nothing and "no notification carries the allergy" is
+    # true because there was no booking. The first version of this check
+    # passed on exactly that empty result.
+    was = conn.execute("SELECT enabled FROM restaurant_settings LIMIT 1").fetchone()
+    reopened = bool(was) and not was["enabled"]
+    if reopened:
+        conn.execute("UPDATE restaurant_settings SET enabled = 1")
+        conn.commit()
+
+    before = conn.execute("SELECT COUNT(*) AS c FROM notifications").fetchone()["c"]
+    pub.post("/restaurant/book", data={
+        "guest_name": TAG + "Allergic", "guest_email": TAG + "a@example.invalid",
+        "dinner_date": soon, "party_size": "2",
+        "dietary_notes": "anaphylactic to peanuts",
+    }, follow_redirects=True)
+
+    # Prove the booking happened before asserting anything about it.
+    made = conn.execute(
+        "SELECT id, dietary_notes FROM restaurant_bookings WHERE guest_name = ?",
+        (TAG + "Allergic",)).fetchone()
+    s.check("the booking was actually created", made is not None,
+            detail="without this, the leak check below passes on nothing")
+    s.check("and the allergy IS kept on the booking itself",
+            made and "peanut" in (made["dietary_notes"] or ""),
+            detail=str(made["dietary_notes"]) if made else "")
+
+    leaked = conn.execute(
+        """SELECT COUNT(*) AS c FROM notifications
+            WHERE kind = 'restaurant_booking'
+              AND COALESCE(body, '') LIKE '%peanut%'""").fetchone()["c"]
+    s.check("but it is not written into a staff notification", leaked == 0,
+            detail=f"{leaked} notification(s) carry it")
+    after = conn.execute("SELECT COUNT(*) AS c FROM notifications").fetchone()["c"]
+    s.check("and somebody is still told the booking exists", after > before,
+            detail=f"{before} -> {after}")
+
+    conn.execute("DELETE FROM restaurant_bookings WHERE guest_name LIKE ?", (TAG + "%",))
+    if reopened:
+        conn.execute("UPDATE restaurant_settings SET enabled = 0")
+    conn.commit()
+
 
     s.section("Enquiries that came to nothing really are cleared")
     # The notice's second promise. "Once it is clear nothing came of them" was

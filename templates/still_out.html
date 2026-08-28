@@ -64,7 +64,7 @@
 <div class="table-wrap">
 <table class="data-table">
   <thead>
-    <tr><th>What</th><th>Who has it</th><th class="num">Out for</th><th>Note</th></tr>
+    <tr><th>What</th><th>Who has it</th><th>Issued by</th><th class="num">Out for</th><th>Note</th></tr>
   </thead>
   <tbody>
     {% for r in data.lent %}
@@ -78,6 +78,15 @@
           <a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.who }}</a>
         {% else %}{{ r.who }}{% endif %}
         {% if r.gone %}<span class="mini-status status-declined">has left</span>{% endif %}
+      </td>
+      <td>
+        {% if r.issued_by %}
+          <span class="upload-hint">{{ r.issued_by }}</span>
+        {% elif r.sort == 'equipment' %}
+          <span class="upload-hint">not recorded for kit</span>
+        {% else %}
+          <span class="mini-status status-pending">nobody recorded</span>
+        {% endif %}
       </td>
       <td class="num">
         {% if r.days is not none %}
