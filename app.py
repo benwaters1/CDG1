@@ -242,6 +242,11 @@ AUTOMATION_SETTING_DEFAULTS = {
     # Off by default. See AUTOMATION_JOBS for why.
     "automation_workshop_autocharge_enabled": "0",
     "automation_workshop_balance_reminder_days_before": "7",
+    # Rooms had no chase at all. A workshop guest with an outstanding
+    # balance was reminded; somebody who owed 600 EUR on a stay arriving
+    # on Friday was not, so it was found at the door or not at all.
+    "automation_room_balance_reminder_enabled": "1",
+    "automation_room_balance_reminder_days_before": "7",
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
     "automation_email_scan_enabled": "1",
@@ -2640,6 +2645,8 @@ def init_db():
         ("amenities", "ALTER TABLE rooms ADD COLUMN amenities TEXT"),
         ("extras_summary", "ALTER TABLE bookings ADD COLUMN extras_summary TEXT"),
         ("payment_status", "ALTER TABLE bookings ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'"),
+        ("bookings_balance_reminder_sent_at",
+         "ALTER TABLE bookings ADD COLUMN balance_reminder_sent_at TEXT"),
         ("stripe_session_id", "ALTER TABLE bookings ADD COLUMN stripe_session_id TEXT"),
         ("stripe_payment_intent_id", "ALTER TABLE bookings ADD COLUMN stripe_payment_intent_id TEXT"),
         ("repeat_weekly", "ALTER TABLE tasks ADD COLUMN repeat_weekly INTEGER NOT NULL DEFAULT 0"),
@@ -3628,6 +3635,22 @@ def init_db():
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
 
+    # The order the rooms appear in on the front page, set once.
+    #
+    # Same shape as the atelier correction below: this only moves a room whose
+    # name still matches what was seeded, so a room somebody has renamed, added
+    # or reordered by hand is left exactly as it is. Keyed in app_settings so it
+    # runs once — after this the Rooms page owns the order, and a deploy must
+    # never shuffle a decision the owner made.
+    if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                        ("rooms_initial_order_set",)).fetchone():
+        for position, room_name in enumerate(HOME_ROOM_ORDER):
+            conn.execute("UPDATE rooms SET sort_order = ? WHERE name = ?",
+                         (position, room_name))
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                     ("rooms_initial_order_set", datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+
     # The ateliers, with their real prices and dates. Two passes:
     #
     #  - a fresh database gets all five created
@@ -3938,7 +3961,7 @@ NAV_AREAS = {
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
         "delete_vehicle_transfer", "edit_booking", "edit_breakfast_item", "edit_guest",
-        "edit_room", "export_feedback_csv", "export_waitlist_csv", "guest_booking_history",
+        "edit_room", "move_room", "export_feedback_csv", "export_waitlist_csv", "guest_booking_history",
         "guests", "new_breakfast_item", "new_guest", "new_ical_source", "new_room",
         "new_room_block", "new_vehicle_transfer", "sync_ical_source_now",
         "toggle_breakfast_item", "toggle_breakfast_stock", "update_waitlist_status",
@@ -4323,7 +4346,51 @@ WAGE_SETTING_DEFAULTS = {
     # app invented would be read as a number the app knows. Until the owner
     # sets theirs, every total below says "gross only" and means it.
     "payroll_employer_contribution_percent": "0",
+    # How long somebody may sit on the same pay before it is worth a look.
+    # Twelve months because that is the ordinary rhythm of it; set 0 to turn
+    # the reminder off entirely rather than to mean "immediately".
+    "wage_review_months": "12",
 }
+
+
+def wage_reviews_due(conn, today=None):
+    """Employees whose pay has not been looked at in a while.
+
+    Deliberately only people who HAVE a wage on file. Somebody with none is a
+    different problem, already named on the wages page and in the outlook, and
+    reporting them twice in different words makes both notices easier to
+    ignore.
+
+    Counted from the effective date of their latest record rather than when it
+    was typed in: a rise entered late but dated April was an April rise, and
+    the question this answers is how long somebody has actually been on the
+    same money.
+    """
+    today = today or datetime.now(timezone.utc).date()
+    months = int(wage_setting(conn, "wage_review_months"))
+    if months <= 0:
+        return []
+    # Approximate a month as it is meant here — "about a year on the same pay"
+    # does not need calendar arithmetic, and a 30-day month keeps the boundary
+    # from moving around depending on which month you ask in.
+    cutoff = (today - timedelta(days=months * 30)).isoformat()
+    rows = conn.execute(
+        """SELECT users.id, users.name, users.job_role,
+                  MAX(wage_records.effective_from) AS since
+           FROM users JOIN wage_records ON wage_records.user_id = users.id
+           WHERE users.role != 'owner' AND COALESCE(users.status, 'active') = 'active'
+           GROUP BY users.id
+           HAVING since <= ?
+           ORDER BY since""", (cutoff,)).fetchall()
+    out = []
+    for r in rows:
+        since = parse_date(r["since"])
+        out.append({
+            "user_id": r["id"], "name": r["name"], "job_role": r["job_role"],
+            "since": r["since"],
+            "months": int(((today - since).days) / 30) if since else None,
+        })
+    return out
 
 
 def wage_setting(conn, key, cast=float):
@@ -6258,6 +6325,18 @@ def guests_in_residence(conn, today):
 # The channels every château has, seeded so a message always has an obvious
 # home. Fixed rather than user-created on purpose: ad-hoc channels in a team of
 # a dozen produce five near-duplicates and then nobody knows where to post.
+# The order the owner asked for on the front page: the Suite leads, then the
+# Double, the King, the Family Suite and the Twin/Double. Applied once, as a
+# correction to the arbitrary order the rooms were seeded in — after that the
+# Rooms page owns it and this list is only a record of where it started.
+HOME_ROOM_ORDER = [
+    "Suite with Mountain View",
+    "Double with Shared Bathroom",
+    "King Room with Mountain View",
+    "Family Suite with Mountain View",
+    "Twin/Double with Shared Bathroom",
+]
+
 # The château's rooms. Seeded only when the rooms table is completely empty,
 # so this bootstraps a new installation and never resurrects a room somebody
 # has deliberately deleted, nor overwrites edits made in the admin.
@@ -14403,6 +14482,18 @@ def owner_home_warnings(conn, today):
             + (f", and {len(other) - 1} more" if len(other) > 1 else ""),
             len(other), "rota_clashes_page")
 
+    # Nobody chases a pay review, so it is the kind of thing that slides for
+    # three years and then arrives as a resignation. Not a blocker: it is a
+    # conversation to have, not a shift nobody is covering.
+    stale_pay = wage_reviews_due(conn, today)
+    if stale_pay:
+        first = stale_pay[0]
+        add("warn", "Pay not reviewed in a while",
+            f"{first['name']} has been on the same wage for "
+            f"{first['months']} months"
+            + (f", and {len(stale_pay) - 1} more" if len(stale_pay) > 1 else ""),
+            len(stale_pay), "admin_wages")
+
     gaps = [g for g in cover_gaps(conn, today, horizon) if g["uncovered"]]
     if gaps:
         with_guests = [g for g in gaps if g["in_house"] or g["arrivals"]]
@@ -14618,9 +14709,14 @@ def dashboard():
         # .get('img'), .get('spec'), .get('rate') so a hand-written room can
         # override the photograph or the rate, and a Row has no .get at all —
         # it raises rather than returning None, which took the front page down.
+        # Every room, not four of them. There are five, and LIMIT 4 silently
+        # dropped whichever sat last in sort_order — which was the Suite with
+        # Mountain View, so the front page advertised the house without its best
+        # room on it. The order is the owner's: it is set on the Rooms page and
+        # nothing here second-guesses it.
         rooms = [dict(r) for r in conn.execute(
             """SELECT * FROM rooms WHERE active = 1
-               ORDER BY sort_order, price_per_night LIMIT 4""").fetchall()]
+               ORDER BY sort_order, price_per_night""").fetchall()]
         # Only sittings still ahead. A front page advertising a workshop that
         # finished in June is worse than one advertising none.
         upcoming = [dict(r) for r in conn.execute(
@@ -19128,6 +19224,8 @@ def admin_wages():
         default_sort="missing",
     )
     cost = labour_cost_breakdown(conn, period["start_iso"], period["end_iso"])
+    reviews_due = wage_reviews_due(conn)
+    review_months = int(wage_setting(conn, "wage_review_months"))
     history = conn.execute(
         """SELECT wage_records.*, users.name AS employee_name, setter.name AS set_by
            FROM wage_records
@@ -19154,6 +19252,7 @@ def admin_wages():
     return render_template(
         "admin_wages.html", lv=lv, overview=overview, period=period, cost=cost,
         history=history, people=people, missing=missing,
+        reviews_due=reviews_due, review_months=review_months,
         employer_rate=cost["employer_rate"])
 
 
@@ -23224,6 +23323,76 @@ def event_manage(manage_token):
         conn.close()
         abort(404)
 
+    # The guest count and what they have told us, changeable by the guest.
+    #
+    # An event enquiry is a conversation, and the number of people in it moves
+    # several times before anything is signed. Cancelling was the only thing
+    # this page could do, so every "we are 60 now, not 40" came in by email.
+    #
+    # The quoted price is deliberately NOT recalculated. An event quote is the
+    # owner's own figure — a marquee, a different room, a menu — and nothing
+    # here can derive it from a head count. So the count changes, the quote is
+    # left exactly as it is, and the owner is told it needs revisiting.
+    # The action name is "update" because that is what the shipped
+    # templates post. Both have carried this form for several handovers
+    # with nothing behind it: the guest filled it in, pressed Save, and
+    # the page came back unchanged with no message. A form that silently
+    # discards what somebody typed is worse than no form.
+    if request.method == "POST" and request.form.get("action") == "update":
+        if inquiry["status"] in ("cancelled", "declined"):
+            conn.close()
+            flash("This enquiry is closed. Do get in touch if you would like to "
+                  "reopen it.", "error")
+            return redirect(url_for("event_manage", manage_token=manage_token))
+
+        raw = (request.form.get("guest_count", "") or "").strip()
+        message = (request.form.get("message", "") or "").strip()
+        guest_count = int(raw) if raw.isdigit() else None
+        if guest_count is None or guest_count < 1:
+            conn.close()
+            flash("Roughly how many people are you expecting?", "error")
+            return redirect(url_for("event_manage", manage_token=manage_token))
+        if guest_count > 500:
+            conn.close()
+            flash("For a party that size, please call us — there is more to "
+                  "arrange than a form can carry.", "error")
+            return redirect(url_for("event_manage", manage_token=manage_token))
+
+        was_count = inquiry["guest_count"]
+        was_message = inquiry["message"] or ""
+        if guest_count == was_count and message == was_message:
+            conn.close()
+            flash("Nothing changed.", "success")
+            return redirect(url_for("event_manage", manage_token=manage_token))
+
+        conn.execute(
+            "UPDATE event_inquiries SET guest_count = ?, message = ? WHERE id = ?",
+            (guest_count, message or None, inquiry["id"]))
+        conn.commit()
+
+        owner_to = owner_email(conn)
+        if owner_to:
+            changes = []
+            if guest_count != was_count:
+                changes.append(f"guest count {was_count} → {guest_count}")
+            if message != was_message:
+                changes.append("their notes have changed")
+            quote_note = ""
+            if inquiry["quoted_price"] and guest_count != was_count:
+                quote_note = (f"\n\nThey have a quote of €{inquiry['quoted_price']:.2f} "
+                              "against the old head count. It has NOT been changed — "
+                              "requote from the events page if it needs to move.")
+            send_email(
+                owner_to,
+                f"Event enquiry changed — {inquiry['reference_code']}",
+                f"{inquiry['contact_name']} changed their {inquiry['event_type']} "
+                f"enquiry:\n\n" + "\n".join(f"- {c}" for c in changes) + quote_note,
+            )
+        conn.close()
+        flash("Your enquiry has been updated. We have let the château know.",
+              "success")
+        return redirect(url_for("event_manage", manage_token=manage_token))
+
     if request.method == "POST" and request.form.get("action") == "cancel":
         cur = conn.execute(
             "UPDATE event_inquiries SET status = 'cancelled', decided_at = ? WHERE id = ? AND status NOT IN ('cancelled', 'declined')",
@@ -23957,6 +24126,114 @@ def restaurant_manage(manage_token):
     if not booking:
         conn.close()
         abort(404)
+
+    # Changing the covers or the dietary notes without emailing anybody.
+    #
+    # Cancelling was the only thing a guest could do here, so "we are four now,
+    # not two" and "one of us cannot eat shellfish" both arrived as an email
+    # somebody had to read and re-key — which is the commonest reason anyone
+    # writes in about a booking they could have fixed themselves.
+    #
+    # The capacity rule is the booking form's, not a second one: at most the
+    # room's capacity, and at most what is left on that date. `exclude_id` takes
+    # this booking's own covers out of what is "left", or going from two to
+    # three would be refused by the two already counted.
+    #
+    # The price moves with the covers, through compute_restaurant_total — the
+    # same helper the booking used. What has been PAID is never touched: a
+    # smaller party does not trigger a refund here, because a refund is a
+    # decision somebody makes, not a consequence of a form.
+    # The action name is "update" because that is what the shipped
+    # templates post. Both have carried this form for several handovers
+    # with nothing behind it: the guest filled it in, pressed Save, and
+    # the page came back unchanged with no message. A form that silently
+    # discards what somebody typed is worse than no form.
+    if request.method == "POST" and request.form.get("action") == "update":
+        if booking["status"] not in ("pending", "confirmed"):
+            conn.close()
+            flash("This reservation is no longer open to changes.", "error")
+            return redirect(url_for("restaurant_manage", manage_token=manage_token))
+        if booking["dinner_date"] < datetime.now(timezone.utc).date().isoformat():
+            conn.close()
+            flash("That dinner has already passed — do get in touch if something "
+                  "needs correcting.", "error")
+            return redirect(url_for("restaurant_manage", manage_token=manage_token))
+
+        raw = (request.form.get("party_size", "") or "").strip()
+        dietary = (request.form.get("dietary_notes", "") or "").strip()
+        settings = get_restaurant_settings(conn)
+        capacity = settings["capacity"] if settings else 20
+        party_size = int(raw) if raw.isdigit() else None
+
+        if party_size is None or party_size < 1:
+            conn.close()
+            flash("How many are coming?", "error")
+            return redirect(url_for("restaurant_manage", manage_token=manage_token))
+        if party_size > capacity:
+            conn.close()
+            flash(f"We can seat a maximum of {capacity} at once — please call us "
+                  "for a larger party.", "error")
+            return redirect(url_for("restaurant_manage", manage_token=manage_token))
+        room_left = restaurant_remaining_capacity(
+            conn, booking["dinner_date"], exclude_id=booking["id"])
+        if party_size > room_left:
+            conn.close()
+            flash(f"We only have room for {room_left} that evening. Reduce the "
+                  "party, or get in touch and we will see what we can do.", "error")
+            return redirect(url_for("restaurant_manage", manage_token=manage_token))
+
+        was_party, was_dietary = booking["party_size"], booking["dietary_notes"] or ""
+        if party_size == was_party and dietary == was_dietary:
+            conn.close()
+            flash("Nothing changed.", "success")
+            return redirect(url_for("restaurant_manage", manage_token=manage_token))
+
+        # compute_restaurant_total returns 0 when no per-person rate is on file
+        # for that date — which is the state of a restaurant that has not had
+        # its price set. Recalculating from that would rewrite a real €130 total
+        # to zero and tell the guest their dinner is free, so the rate is
+        # checked first and a figure nobody can derive is left exactly as it is.
+        rate = restaurant_night_rate(conn, booking["dinner_date"])
+        if rate:
+            subtotal = compute_restaurant_total(conn, booking["dinner_date"], party_size)
+            new_total = round(subtotal - (booking["discount_amount"] or 0), 2)
+        else:
+            new_total = booking["total_price"]
+        conn.execute(
+            """UPDATE restaurant_bookings SET party_size = ?, dietary_notes = ?,
+               total_price = ? WHERE id = ?""",
+            (party_size, dietary or None, new_total, booking["id"]))
+        conn.commit()
+
+        owner_to = owner_email(conn)
+        if owner_to:
+            changes = []
+            if party_size != was_party:
+                changes.append(f"party of {was_party} → {party_size}")
+            if dietary != was_dietary:
+                changes.append(f"dietary notes now: {dietary or '(none)'}")
+            paid_note = ""
+            if booking["payment_status"] == "paid" and party_size != was_party:
+                paid_note = ("\n\nThey have already paid. The total has been "
+                             "recalculated but no money has moved — settle the "
+                             "difference at the restaurant, or refund from the "
+                             "admin page if that is the right call.")
+            if not rate and party_size != was_party:
+                paid_note += ("\n\nNo per-person price is set for that date, so the "
+                              f"total is still €{new_total:.2f} against the OLD party "
+                              "size. Set a price, or correct the total by hand.")
+            send_email(
+                owner_to,
+                f"Dinner reservation changed — {booking['reference_code']}",
+                f"{booking['guest_name']} changed their reservation for "
+                f"{format_date_human(booking['dinner_date'])}:\n\n"
+                + "\n".join(f"- {c}" for c in changes)
+                + f"\n\nTotal now €{new_total:.2f}." + paid_note,
+            )
+        conn.close()
+        flash("Your reservation has been updated. We have let the château know.",
+              "success")
+        return redirect(url_for("restaurant_manage", manage_token=manage_token))
 
     if request.method == "POST" and request.form.get("action") == "cancel":
         cur = conn.execute(
@@ -26244,6 +26521,43 @@ def delete_ical_source(source_id):
     conn.commit()
     conn.close()
     flash("Calendar removed.", "success")
+    return redirect(url_for("admin_rooms"))
+
+
+@app.route("/admin/rooms/<int:room_id>/move", methods=["POST"])
+@owner_required
+def move_room(room_id):
+    """Move one room up or down the order guests see.
+
+    The order was previously unreachable: `sort_order` decided what the front
+    page led with and nothing in the admin could set it, so the only way to
+    change it was to edit the database. That is why the front page led with the
+    King rather than the Suite for as long as it did.
+
+    Positions are renumbered 0..n-1 before the swap. Seeded rooms and rooms
+    added later can otherwise share a sort_order, and swapping two equal values
+    changes nothing — the button would look broken rather than be broken.
+    """
+    direction = (request.form.get("direction") or "").strip()
+    if direction not in ("up", "down"):
+        abort(400)
+
+    conn = get_db()
+    rooms = conn.execute(
+        "SELECT id FROM rooms ORDER BY sort_order, price_per_night, id").fetchall()
+    order = [r["id"] for r in rooms]
+    if room_id not in order:
+        conn.close()
+        abort(404)
+
+    at = order.index(room_id)
+    swap_with = at - 1 if direction == "up" else at + 1
+    if 0 <= swap_with < len(order):
+        order[at], order[swap_with] = order[swap_with], order[at]
+    for position, rid in enumerate(order):
+        conn.execute("UPDATE rooms SET sort_order = ? WHERE id = ?", (position, rid))
+    conn.commit()
+    conn.close()
     return redirect(url_for("admin_rooms"))
 
 
@@ -34900,6 +35214,81 @@ def copy_previous_week_shifts():
     return redirect(url_for("admin_shifts", date=anchor.isoformat()))
 
 
+@app.route("/hours/mine")
+@login_required
+def my_hours():
+    """My hours, and what they come to at my rate.
+
+    Somebody could see the shifts they were given and clock in and out of them,
+    and had no way at all to see what that added up to. The figure existed —
+    payroll reads it every month — but only the owner could look at it, so the
+    first time an employee saw a number was on a payslip they could not check.
+
+    The hours and the rate are read through labour_cost_breakdown, the same
+    helper the payroll pack and the financials use, so this page cannot drift
+    from what the owner sees. Deliberately gross ONLY: employer contributions
+    are what employing somebody costs the house, not part of anybody's wage,
+    and putting them on this page would inflate what a person thinks they earn.
+
+    It is not a payslip and says so. Hours can still be corrected, and the wage
+    on file is what the owner recorded rather than what a payroll bureau will
+    calculate.
+    """
+    user = current_user()
+    conn = get_db()
+    period = period_from_request()
+    breakdown = labour_cost_breakdown(conn, period["start_iso"], period["end_iso"])
+    mine = next((r for r in breakdown["rows"] if r["user_id"] == user["id"]), None)
+    unpriced = user["name"] in breakdown["unpriced"]
+    wage = wage_on(conn, user["id"], period["end"] - timedelta(days=1))
+    rows = conn.execute(
+        """SELECT time_entries.*,
+                  COALESCE((SELECT SUM((julianday(breaks.end_at)
+                                        - julianday(breaks.start_at)) * 24 * 60)
+                            FROM breaks WHERE breaks.time_entry_id = time_entries.id
+                              AND breaks.end_at IS NOT NULL), 0) AS break_minutes
+           FROM time_entries
+           WHERE user_id = ? AND clock_in_at >= ? AND clock_in_at < ?
+           ORDER BY clock_in_at DESC""",
+        (user["id"], period["start_iso"], period["end_iso"])).fetchall()
+    conn.close()
+
+    # Worked out here rather than in the template: the arithmetic is the same
+    # clock-out-minus-clock-in-minus-breaks the costing uses, and a template is
+    # the wrong place to do it a second time and slightly differently.
+    entries = []
+    for e in rows:
+        started = parse_datetime_iso(e["clock_in_at"])
+        finished = parse_datetime_iso(e["clock_out_at"]) if e["clock_out_at"] else None
+        # An open shift, or a clock-out before its clock-in. Either makes any
+        # total wrong, and the person who can explain it is the one reading this.
+        impossible = bool(finished and started and finished < started)
+        hours = None
+        if finished and started and not impossible:
+            hours = round((finished - started).total_seconds() / 3600
+                          - (e["break_minutes"] or 0) / 60, 2)
+        entries.append({
+            "started": e["clock_in_at"], "finished": e["clock_out_at"],
+            "break_minutes": int(round(e["break_minutes"] or 0)),
+            "hours": hours, "open": finished is None, "impossible": impossible,
+        })
+    odd = [e for e in entries if e["open"] or e["impossible"]]
+
+    overview = [
+        overview_cell("Hours", f"{(mine['hours'] if mine else 0):.1f}", sub="h",
+                      hint="net of breaks taken"),
+        overview_cell("Shifts", mine["shifts"] if mine else 0),
+        overview_cell("At your rate", euro(mine["gross"]) if mine else "—",
+                      sub="gross", alert=unpriced,
+                      hint="no rate on file yet" if unpriced else None),
+        overview_cell("Needs a look", len(odd), alert=len(odd),
+                      hint="an open or impossible clocking"),
+    ]
+    return render_template("my_hours.html", period=period, mine=mine, wage=wage,
+                           entries=entries, odd=odd, overview=overview,
+                           unpriced=unpriced)
+
+
 @app.route("/shifts/mine", methods=["GET", "POST"])
 @login_required
 def my_shifts():
@@ -36017,6 +36406,71 @@ def run_ical_sync_job(conn):
     return f"synced {ok_count}/{len(sources)} source(s)"
 
 
+def run_room_balance_reminder_job(conn, days_before):
+    """Remind a guest arriving soon that their stay is not paid for.
+
+    Workshops have been chased since the start. Rooms never were — so somebody
+    owing €600 on a stay arriving on Friday found out at the door, or nobody
+    did, and the money turned up as a conversation at reception instead of
+    before they travelled.
+
+    What is owed comes from booking_bill, which is THE definition: the room
+    nights recomputed from the rates, extras as real line items, refunds off
+    what was received rather than off the total. Not `total_price -
+    amount_paid`, which misses anything added to the stay after it was booked
+    and is exactly how a bill and a reminder come to disagree.
+
+    Sent once per booking. `balance_reminder_sent_at` is stamped only after the
+    send returns true, so a run with no email provider configured leaves the
+    booking un-stamped and tries again once one exists — rather than marking
+    everybody reminded and telling nobody.
+    """
+    horizon = (datetime.now(timezone.utc).date() + timedelta(days=days_before)).isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
+    candidates = conn.execute(
+        """SELECT bookings.id, bookings.reference_code, bookings.manage_token,
+                  bookings.guest_name, bookings.guest_email, bookings.arrival_date,
+                  rooms.name AS room_name
+           FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed'
+             AND bookings.balance_reminder_sent_at IS NULL
+             AND bookings.guest_email IS NOT NULL AND bookings.guest_email != ''
+             AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+           ORDER BY bookings.arrival_date""",
+        (today, horizon)).fetchall()
+
+    sent, owing = 0, 0
+    for booking in candidates:
+        bill = booking_bill(conn, booking["id"])
+        if not bill or bill["owed"] <= 0.005:
+            continue
+        owing += 1
+        manage_url = url_for("manage_booking", manage_token=booking["manage_token"],
+                             _external=True)
+        delivered = send_email(
+            booking["guest_email"],
+            f"Before you arrive — {booking['room_name']}",
+            f"Hi {booking['guest_name']},\n\n"
+            f"We are looking forward to seeing you on "
+            f"{format_date_human(booking['arrival_date'])}.\n\n"
+            f"There is €{bill['owed']:.2f} still outstanding on your stay. You can "
+            f"settle it online before you travel, or on arrival if you would rather:\n"
+            f"{manage_url}\n\n"
+            f"Reference code: {booking['reference_code']}\n\n"
+            f"— Château de Gudanes",
+        )
+        if delivered:
+            conn.execute(
+                "UPDATE bookings SET balance_reminder_sent_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), booking["id"]))
+            sent += 1
+    if sent:
+        conn.commit()
+    if not owing:
+        return "nobody arriving soon owes anything"
+    return f"reminded {sent} of {owing} guest(s) with a balance outstanding"
+
+
 def run_workshop_balance_reminder_job(conn, days_before):
     cutoff = (datetime.now(timezone.utc).date() + timedelta(days=days_before)).isoformat()
     due = conn.execute(
@@ -36513,7 +36967,8 @@ def run_stale_shift_cleanup_job(conn, hours_threshold):
     return f"auto-closed {len(stale)} stale shift(s)"
 
 
-PARAMETERISED_JOBS = ("workshop_balance_reminder", "stale_shift_cleanup")
+PARAMETERISED_JOBS = ("workshop_balance_reminder", "room_balance_reminder",
+                      "stale_shift_cleanup")
 
 
 class JobFailed(Exception):
@@ -36623,6 +37078,20 @@ def automation_tick():
                 record_job_run(conn, job_name, False, f"{type(e).__name__}: {e}")
                 print(f"[automation] {job_name} failed: {e}")
 
+        if settings["automation_room_balance_reminder_enabled"] == "1":
+            try:
+                days_before = int(settings["automation_room_balance_reminder_days_before"])
+            except (TypeError, ValueError):
+                days_before = 7
+            if claim_job_run(conn, "room_balance_reminder", 24 * 3600):
+                try:
+                    result = run_room_balance_reminder_job(conn, days_before)
+                    record_job_run(conn, "room_balance_reminder", True, result)
+                    print(f"[automation] room_balance_reminder: {result}")
+                except Exception as e:
+                    record_job_run(conn, "room_balance_reminder", False, f"{type(e).__name__}: {e}")
+                    print(f"[automation] room_balance_reminder failed: {e}")
+
         if settings["automation_workshop_balance_reminder_enabled"] == "1":
             try:
                 days_before = int(settings["automation_workshop_balance_reminder_days_before"])
@@ -36664,6 +37133,7 @@ AUTOMATION_JOB_LABELS = {
     "workshop_autocharge": "Workshop: charge the balance on its due date",
     "ical_sync": "iCal sync",
     "workshop_balance_reminder": "Workshop balance-due reminders",
+    "room_balance_reminder": "Room balance-due reminders (before the guest travels)",
     "workshop_feedback_request": "Workshop feedback requests",
     "email_inbox_scan": "Inbox scan (unanswered + pricing/availability flags)",
     "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",

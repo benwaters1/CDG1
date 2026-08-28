@@ -61,8 +61,17 @@ def run():
     s.check("the room cards are still marked the way this test expects",
             ROOM_MARK in body,
             detail=f"{ROOM_MARK!r} not found — markup renamed, update this test")
-    s.check("at most four of them", body.count(ROOM_MARK) <= 4,
-            detail=f"{body.count(ROOM_MARK)} shown")
+    # Every active room, not a sample. This used to assert "at most four",
+    # which was the LIMIT 4 in dashboard() written down as if it were a
+    # decision — it dropped whichever room sat last in an order nobody could
+    # set, and that was the Suite with Mountain View, the dearest room in the
+    # house. The count is now the count.
+    counter = db()
+    active = counter.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
+    counter.close()
+    s.check("every active room is on it", body.count(ROOM_MARK) == active,
+            detail=f"{body.count(ROOM_MARK)} shown, {active} active — the front "
+                   "page is advertising the house with a room missing")
 
     s.section("Only dates still ahead")
     # A front page advertising a workshop that finished in June is worse than

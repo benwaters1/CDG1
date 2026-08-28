@@ -116,7 +116,7 @@
        'new_performance_review','share_performance_review'] %}
     {% set rota_endpoints = ['admin_tasks','new_task','toggle_task','complete_task','reschedule_task','delete_task','duplicate_task_next_week',
        'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
-       'my_shifts','respond_shift_swap','decide_shift_swap','team_calendar',
+       'my_shifts','my_hours','respond_shift_swap','decide_shift_swap','team_calendar',
        'admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections','repair_time_entry',
        'resolve_timesheet_correction','dismiss_timesheet_correction',
        'export_timesheets_csv','export_timesheets_summary_csv',
@@ -381,8 +381,8 @@
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
     <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_kitchen'] }}">{{ icon('restaurant') }}Restaurant POS</a>
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar','my_availability','my_reviews'] }}">
-      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','directory','team_calendar','my_availability','my_reviews'] }}">{{ icon('employee') }}Employee</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','my_hours','directory','team_calendar','my_availability','my_reviews'] }}">
+      <a href="{{ url_for('profile', user_id=user['id']) }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['profile','my_leave','manual','contacts','shopping_list','announcements','my_shifts','my_hours','directory','team_calendar','my_availability','my_reviews'] }}">{{ icon('employee') }}Employee</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Employee submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('profile', user_id=user['id']) }}" class="{{ 'active' if request.endpoint=='profile' }}">{{ icon('employee') }}My Profile</a>
@@ -390,6 +390,7 @@
         <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
         <a href="{{ url_for('announcements') }}" class="{{ 'active' if request.endpoint in ['announcements','new_announcement','edit_announcement','delete_announcement'] }}">{{ icon('receipt') }}Announcements</a>
         <a href="{{ url_for('my_shifts') }}" class="{{ 'active' if request.endpoint=='my_shifts' }}">{{ icon('shifts') }}My Shifts</a>
+        <a href="{{ url_for('my_hours') }}" class="{{ 'active' if request.endpoint=='my_hours' }}">{{ icon('shifts') }}My Hours</a>
         <a href="{{ url_for('my_leave') }}" class="{{ 'active' if request.endpoint=='my_leave' }}">{{ icon('leave') }}Time Off</a>
         <a href="{{ url_for('ask_hr') }}" class="{{ 'active' if request.endpoint=='ask_hr' }}">{{ icon('contacts') }}Ask HR</a>
         <a href="{{ url_for('my_availability') }}" class="{{ 'active' if request.endpoint=='my_availability' }}">{{ icon('calendar') }}My Availability</a>

@@ -32,6 +32,16 @@
 </div>
 {% endif %}
 
+{% if reviews_due %}
+<div class="flash" style="margin-bottom:16px;">
+  <strong>{{ reviews_due|length }}
+    {{ 'person has' if reviews_due|length == 1 else 'people have' }} been on the same wage for
+    over {{ review_months }} months.</strong>
+  {% for r in reviews_due %}{{ r.name }} ({{ r.months }} months){{ '; ' if not loop.last }}{% endfor %}.
+  Nobody chases this, which is how it slides for three years and then arrives as a resignation.
+</div>
+{% endif %}
+
 <h2>What {{ period.label }} cost</h2>
 
 {% if not cost.rows %}

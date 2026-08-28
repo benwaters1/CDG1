@@ -27,7 +27,21 @@
         · sleeps {{ room['max_occupancy'] }}
         <span class="mini-status {{ 'status-active' if room['active'] else 'status-inactive' }}" style="margin-left:8px;">{{ 'open for booking' if room['active'] else 'hidden' }}</span>
       </div>
-      <a href="{{ url_for('edit_room', room_id=room['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <form method="post" action="{{ url_for('move_room', room_id=room['id']) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="direction" value="up">
+          <button type="submit" class="small-link" title="Show earlier on the front page"
+                  {{ 'disabled' if loop.first }} aria-label="Move up">&uarr;</button>
+        </form>
+        <form method="post" action="{{ url_for('move_room', room_id=room['id']) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="direction" value="down">
+          <button type="submit" class="small-link" title="Show later on the front page"
+                  {{ 'disabled' if loop.last }} aria-label="Move down">&darr;</button>
+        </form>
+        <a href="{{ url_for('edit_room', room_id=room['id']) }}" class="small-link" style="color:var(--steel);">Edit</a>
+      </div>
     </div>
 
     <p class="upload-hint">Paste this link into Airbnb/Booking.com/VRBO's calendar import so they see bookings made here and don't double-book this room:</p>
