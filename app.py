@@ -4448,6 +4448,22 @@ def _months_overlapped(start, end):
     return out
 
 
+def wage_gross_for_period(wage, hours, months):
+    """Gross pay from a typed wage record for a window.
+
+    Split out of labour_cost_breakdown so the payroll pack can use the SAME
+    arithmetic rather than a second copy of it. Two pages disagreeing about
+    what one person cost is the failure the "one definition of labour cost"
+    rule exists to prevent, and the payroll pack was doing exactly that.
+    """
+    if not wage:
+        return None
+    if wage["basis"] == "hourly":
+        return (hours or 0) * (wage["gross_amount"] or 0)
+    return sum((wage["gross_amount"] or 0) * days / days_in_month
+               for _y, _m, days, days_in_month in months)
+
+
 def labour_cost_breakdown(conn, start_iso, end_iso):
     """What the people cost for a window, per person and in total.
 
@@ -4478,11 +4494,7 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         gross, source, basis = None, "unpriced", None
         if wage:
             basis = wage["basis"]
-            if basis == "hourly":
-                gross = r["hours"] * (wage["gross_amount"] or 0)
-            else:
-                gross = sum((wage["gross_amount"] or 0) * days / days_in_month
-                            for _y, _m, days, days_in_month in months)
+            gross = wage_gross_for_period(wage, r["hours"], months)
             source = "wage on file"
             typed_count += 1
         else:
@@ -9384,21 +9396,38 @@ def rota_vs_clock(conn, start, end, *, today=None):
     lo, hi = start.isoformat(), end.isoformat()
 
     rostered = {}
+    # Active staff only. Deactivating somebody does not delete their future
+    # shifts, so a leftover one counted as real cover and a day with guests in
+    # the house and nobody actually employed on it read as staffed. The clash
+    # engine could not catch it either: role_compliance only iterates active
+    # employees, so nothing ever marked them unable to work.
     for r in conn.execute(
         """SELECT shifts.*, users.name AS employee_name FROM shifts
              JOIN users ON users.id = shifts.user_id
-            WHERE shifts.shift_date BETWEEN ? AND ?""", (lo, hi)).fetchall():
+            WHERE shifts.shift_date BETWEEN ? AND ?
+              AND users.status = 'active'""", (lo, hi)).fetchall():
         rostered.setdefault((r["user_id"], r["shift_date"]), []).append(r)
 
-    # Clock entries bucketed by the LOCAL day they started on, because a
-    # shift is planned in local time and clock_in_at is stored in UTC — an
-    # evening shift would otherwise land on the following day.
+    # The FETCH bounds must be UTC instants, not bare local dates. Paris runs
+    # ahead of UTC, so a night worker clocking in at 00:30 local on the first
+    # day of the window is stored as 22:30 UTC the day BEFORE — and as strings
+    # '2026-07-27T22:30:00+00:00' >= '2026-07-28' is False, so the row was
+    # never fetched and somebody who did clock in read as a no-show. The upper
+    # bound had already been widened for this reason; the lower one had not.
+    # Same conversion overtime_history and build_shift_week already use.
+    fetch_from = datetime.combine(start, datetime.min.time(),
+                                  tzinfo=LOCAL_TZ).astimezone(timezone.utc).isoformat()
+    fetch_to = datetime.combine(end + timedelta(days=2), datetime.min.time(),
+                                tzinfo=LOCAL_TZ).astimezone(timezone.utc).isoformat()
+
+    # Bucketed by the LOCAL day they started on, because a shift is planned in
+    # local time and clock_in_at is stored in UTC.
     worked = {}
     for r in conn.execute(
         """SELECT time_entries.*, users.name AS employee_name FROM time_entries
              JOIN users ON users.id = time_entries.user_id
             WHERE time_entries.clock_in_at >= ? AND time_entries.clock_in_at < ?""",
-        (start.isoformat(), (end + timedelta(days=2)).isoformat())).fetchall():
+        (fetch_from, fetch_to)).fetchall():
         started = parse_datetime_iso(r["clock_in_at"])
         if not started:
             continue
@@ -9520,10 +9549,16 @@ def cover_gaps(conn, start, end):
             day(cur.isoformat())["workshops"].append(r["title"])
             cur += timedelta(days=1)
 
+    # Active staff only. Deactivating somebody does not delete their future
+    # shifts, so a leftover one counted as real cover and a day with guests in
+    # the house and nobody actually employed on it read as staffed. The clash
+    # engine could not catch it either: role_compliance only iterates active
+    # employees, so nothing ever marked them unable to work.
     for r in conn.execute(
         """SELECT shifts.*, users.name AS employee_name FROM shifts
              JOIN users ON users.id = shifts.user_id
-            WHERE shifts.shift_date BETWEEN ? AND ?""", (lo, hi)).fetchall():
+            WHERE shifts.shift_date BETWEEN ? AND ?
+              AND users.status = 'active'""", (lo, hi)).fetchall():
         d = day(r["shift_date"])
         d["people"].add(r["user_id"])
         d["shifts"].append({"user_id": r["user_id"], "name": r["employee_name"],
@@ -11935,7 +11970,24 @@ def payroll_period_rows(conn, period):
         ).fetchone()["d"]
 
         worked = round(hours["h"], 2)
-        cost = estimated_hourly_cost(worked, p["pay_rate"], p["pay_type"])
+        # A typed wage record beats the free-text note, and must be consulted
+        # FIRST. This function priced everybody from estimated_hourly_cost(),
+        # which reads pay_rate/pay_type — free text that CLAUDE.md says is
+        # never a payroll figure. A correctly-configured salaried employee
+        # therefore costed as None and raised "no usable hourly rate on file",
+        # which refuses the CSV for the WHOLE house (see export_payroll_csv).
+        # The only way through the UI was to type a fake hourly number into the
+        # note, which then exported as their pay instead of their salary.
+        # labour_cost_breakdown has had this precedence since wages landed;
+        # the payroll pack was simply never updated to match.
+        wage = wage_on(conn, p["id"], period["end"] - timedelta(days=1))
+        wage_source = None
+        if wage:
+            cost = wage_gross_for_period(
+                wage, worked, _months_overlapped(period["start"], period["end"]))
+            wage_source = "wage on file"
+        else:
+            cost = estimated_hourly_cost(worked, p["pay_rate"], p["pay_type"])
         blockers = []
         if broken:
             blockers.append(f"{broken} impossible shift{'s' if broken != 1 else ''}")
@@ -11949,13 +12001,19 @@ def payroll_period_rows(conn, period):
                 f"{open_count} shift{'s' if open_count != 1 else ''} still open — "
                 "not clocked out yet")
         if worked > 0 and cost is None:
-            blockers.append("no usable hourly rate on file")
+            blockers.append("no wage on file and no usable hourly rate")
         rows.append({
             "user_id": p["id"], "name": p["name"], "job_role": p["job_role"],
             "contract_type": CONTRACT_TYPES.get(p["contract_type"], p["contract_type"] or "—"),
             "hours": worked, "shifts": hours["shifts"],
             "absence_days": int(absence_days), "leave_days": int(leave_days),
             "pay_rate": p["pay_rate"], "cost": cost, "blockers": blockers,
+            # Which of the two the figure is. Without this the column is a bare
+            # euro amount that means "hours x rate" for one person and "salary
+            # for the period" for the next, and payroll cannot tell them apart.
+            "cost_source": wage_source or ("estimated from the pay note"
+                                           if cost is not None else None),
+            "basis": wage["basis"] if wage else ("hourly" if cost is not None else None),
         })
     return rows
 

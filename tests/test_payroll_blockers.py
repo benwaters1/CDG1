@@ -33,6 +33,7 @@ import _harness
 
 m = _harness.m
 TAG = "ZZPAY"
+period_iso = []          # filled by _pack(), so the cross-check uses the same window
 
 
 def _cleanup():
@@ -43,6 +44,7 @@ def _cleanup():
         conn.execute("""DELETE FROM breaks WHERE time_entry_id IN
                         (SELECT id FROM time_entries WHERE user_id = ?)""", (uid,))
         conn.execute("DELETE FROM time_entries WHERE user_id = ?", (uid,))
+        conn.execute("DELETE FROM wage_records WHERE user_id = ?", (uid,))
     conn.execute("DELETE FROM users WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
@@ -60,6 +62,19 @@ def _employee(name, rate="12.00", pay_type="hourly", status="active"):
     row = conn.execute("SELECT * FROM users WHERE name = ?", (f"{TAG} {name}",)).fetchone()
     conn.close()
     return row
+
+
+def _wage(user_id, basis, gross):
+    """A typed wage record in force from the start of last month."""
+    conn = db()
+    first = datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=1)
+    conn.execute(
+        """INSERT INTO wage_records (user_id, effective_from, basis, gross_amount,
+           created_at) VALUES (?, ?, ?, ?, ?)""",
+        (user_id, first.replace(day=1).isoformat(), basis, gross,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
 
 
 def _shift(user_id, start, end, auto_closed=0, break_minutes=0):
@@ -89,6 +104,7 @@ def _pack():
     try:
         with m.app.test_request_context("/admin/payroll?period=month"):
             period = m.period_from_request()
+        period_iso[:] = [period["start_iso"], period["end_iso"]]
         return {r["name"]: r for r in m.payroll_period_rows(conn, period)
                 if r["name"].startswith(TAG)}
     finally:
@@ -211,6 +227,79 @@ def run():
             and after[forgot["name"]]["shifts"] == 0,
             detail=f"{after[forgot['name']]['hours']}h / "
                    f"{after[forgot['name']]['shifts']} shifts")
+
+    s.section("The wage on file is what gets paid")
+    # Every person above has a free-text pay note and no wage record, so the
+    # whole suite only ever exercised the fallback. The typed wage — the field
+    # the wages page exists to fill, and the one CLAUDE.md says is the payroll
+    # figure — was never read here at all.
+    salaried = _employee("Ursule", rate="", pay_type="monthly")
+    _wage(salaried["id"], "monthly", 2500)
+    _shift(salaried["id"], day, day + timedelta(hours=8))
+    sal = _pack()[salaried["name"]]
+    s.check("a salaried employee is priced from their salary",
+            sal["cost"] is not None, detail=f"cost was {sal['cost']}")
+    s.check("at the salary, not at hours x something",
+            sal["cost"] and abs(sal["cost"] - 2500) < 1, detail=f"got {sal['cost']}")
+    s.check("and nothing blocks them",
+            not sal["blockers"], detail=f"{sal['blockers']}")
+    s.check("the row says the figure came from the wage on file",
+            sal["cost_source"] == "wage on file", detail=str(sal["cost_source"]))
+
+    # The consequence, and the reason this is worth more than one person's row:
+    # a blocker refuses the CSV for EVERYBODY. One correctly-configured salaried
+    # employee stopped the whole house exporting.
+    s.check("their hours are still counted", sal["hours"] == 8.0,
+            detail=f"got {sal['hours']}")
+
+    hourly = _employee("Victoire", rate="", pay_type="hourly")
+    _wage(hourly["id"], "hourly", 15)
+    _shift(hourly["id"], day, day + timedelta(hours=4))
+    hr = _pack()[hourly["name"]]
+    s.check("an hourly wage record still prices by the hour",
+            hr["cost"] and abs(hr["cost"] - 60) < 0.01, detail=f"got {hr['cost']}")
+
+    # Precedence, stated: the typed wage wins over the note, or the note can
+    # silently override the figure somebody deliberately set.
+    both = _employee("Wilfrid", rate="9.00", pay_type="hourly")
+    _wage(both["id"], "hourly", 20)
+    _shift(both["id"], day, day + timedelta(hours=10))
+    bo = _pack()[both["name"]]
+    s.check("a wage record beats the free-text pay note",
+            bo["cost"] and abs(bo["cost"] - 200) < 0.01,
+            detail=f"got {bo['cost']} — 90.00 means the note won")
+
+    # And the fallback is labelled as a fallback, so the two are never confused
+    # in the same column.
+    s.check("a figure read out of the pay note is marked as such",
+            _pack()[fine["name"]]["cost_source"] == "estimated from the pay note",
+            detail=str(_pack()[fine["name"]]["cost_source"]))
+
+    s.section("One page, one number")
+    # The labour report and the payroll pack must not disagree about what one
+    # person cost. They had two separate implementations of the arithmetic.
+    conn = db()
+    breakdown = m.labour_cost_breakdown(conn, period_iso[0], period_iso[1])
+    conn.close()
+    mine = next((r for r in breakdown["rows"] if r["name"] == salaried["name"]), None)
+    s.check("the labour report prices them too", mine is not None)
+    s.check("and at the same number as payroll",
+            mine and abs(mine["gross"] - sal["cost"]) < 0.01,
+            detail=f"labour {mine['gross'] if mine else None} vs payroll {sal['cost']}")
+
+    s.section("The page says which kind of figure each row is")
+    # One euro column meaning "hours x rate" on one row and "salary for the
+    # window" on the next is how somebody pays a salaried person eight hours.
+    html = oc.get("/admin/payroll?period=month").get_data(as_text=True)
+    s.check("a wage on file is named as one", "monthly wage on file" in html)
+    s.check("and the salary figure says it is not hours x rate",
+            "salary for this window" in html)
+    s.check("a figure read out of the pay note is flagged on the page",
+            "from the pay note" in html)
+    # The old remedy link sent the owner to the free-text pay field, which is
+    # the one field that must not be used as a payroll figure.
+    s.check("the fix offered is to put a real wage on file",
+            "put a wage on file" in html)
 
     s.section("Guards")
     s.check("an employee cannot open the payroll pack",

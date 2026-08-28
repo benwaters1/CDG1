@@ -9,8 +9,8 @@
   <a href="{{ url_for('admin_wages') }}" class="btn-mini">Wages</a>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
-  What to hand whoever runs payroll: hours net of breaks, plus absence and leave for the same window.
-  Still an estimate of cost — the hours are the part that matters here.
+  What to hand whoever runs payroll: hours net of breaks, plus absence and leave for the same window,
+  and gross pay from the wage on file. Every row says where its figure came from.
 </p>
 
 {% with endpoint = 'admin_payroll' %}{% include "_period_selector.html" %}{% endwith %}
@@ -27,7 +27,7 @@
       {% if 'impossible' in r.blockers|join(' ') %}
         (<a href="{{ url_for('admin_timesheets') }}">fix on the timesheet</a>)
       {% else %}
-        (<a href="{{ url_for('edit_employee', user_id=r.user_id) }}">set their pay rate</a>)
+        (<a href="{{ url_for('admin_wages') }}">put a wage on file</a>)
       {% endif %}
     </li>
     {% endfor %}
@@ -43,7 +43,7 @@
     <thead>
       <tr>
         <th>Person</th><th>Contract</th><th class="num">Hours</th><th class="num">Shifts</th>
-        <th class="num">Absence</th><th class="num">Leave</th><th>Rate</th><th class="num">Estimated</th>
+        <th class="num">Absence</th><th class="num">Leave</th><th>Pay basis</th><th class="num">Gross</th>
       </tr>
     </thead>
     <tbody>
@@ -59,16 +59,31 @@
         <td class="num">{{ r.shifts }}</td>
         <td class="num">{{ r.absence_days or '—' }}</td>
         <td class="num">{{ r.leave_days or '—' }}</td>
-        <td class="upload-hint">{{ r.pay_rate or '—' }}</td>
-        <td class="num">{% if r.cost is not none %}€{{ '%.2f'|format(r.cost) }}{% else %}—{% endif %}</td>
+        <td class="upload-hint">
+          {% if r.cost_source == 'wage on file' %}
+            {{ r.basis }} wage on file
+          {% elif r.cost_source %}
+            {{ r.pay_rate or '—' }}
+            <span class="mini-status status-pending">from the pay note</span>
+          {% else %}{{ r.pay_rate or '—' }}{% endif %}
+        </td>
+        <td class="num">
+          {% if r.cost is not none %}€{{ '%.2f'|format(r.cost) }}{% else %}—{% endif %}
+          {% if r.basis and r.basis != 'hourly' %}
+            <div class="upload-hint">salary for this window, not hours × rate</div>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 <p class="upload-hint" style="margin-top:10px;">
-  Absence and leave are counted in calendar days overlapping this window. Salaried staff, and anyone
-  without a clean hourly rate on file, show no estimated cost — their hours are still correct.
+  Absence and leave are counted in calendar days overlapping this window. Gross comes from the wage on
+  file where there is one — hours × rate for an hourly wage, the salary pro-rated across the window for
+  a monthly one. Where there is no wage record it falls back to reading the free-text pay note, which is
+  marked as such, because a number parsed out of a note somebody typed is not a payroll figure. Anyone
+  with neither shows no gross; their hours are still correct.
 </p>
 {% endif %}
 
