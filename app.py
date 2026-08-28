@@ -22266,6 +22266,34 @@ def api_quote():
     return jsonify(quote)
 
 
+def book_room_prefill(form=None):
+    """What the guest typed, ready to hand straight back to book_room.html.
+
+    The template has always read these names. The route did not pass them, so
+    every validation error returned a form with only the dates filled in and
+    the guest re-typed their name, email, phone, party size, requests and promo
+    code — on the one page in the app where giving up costs a booking.
+
+    agree_terms is deliberately NOT carried back. Re-ticking it is the point of
+    it: a guest should agree to the terms on the submission that goes through,
+    not have an earlier tick remembered on their behalf.
+    """
+    form = form if form is not None else {}
+    def field(name):
+        return (form.get(name, '') or '').strip()
+    return {
+        "prefill_name": field("guest_name"),
+        "prefill_email": field("guest_email"),
+        "prefill_phone": field("guest_phone"),
+        "prefill_party_size": field("party_size"),
+        "prefill_requests": field("special_requests"),
+        "prefill_promo": field("promo_code"),
+        "prefill_extras": {int(i) for i in (form.getlist("extras")
+                           if hasattr(form, "getlist") else [])
+                           if str(i).isdigit()},
+    }
+
+
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
 def book_room(room_id):
     conn = get_db()
@@ -22283,7 +22311,7 @@ def book_room(room_id):
             conn.commit()
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos)
+            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -22316,6 +22344,14 @@ def book_room(room_id):
             error = "Party size is required."
         elif party_size > room["max_occupancy"]:
             error = f"This room sleeps up to {room['max_occupancy']}."
+        elif departure <= arrival:
+            # Checked before the minimum-stay branch below, which compares a
+            # NEGATIVE night count against min_nights and therefore caught this
+            # too — telling somebody who had put the dates the wrong way round
+            # that the room needs a two-night minimum. They then try three
+            # nights, still backwards, and get the same answer again.
+            error = ("Your departure date needs to be after your arrival date — "
+                     "it looks like they may be the wrong way round.")
         elif (departure - arrival).days < room["min_nights"]:
             error = f"This room requires a minimum stay of {room['min_nights']} night{'s' if room['min_nights'] != 1 else ''}."
         elif not agreed_to_terms:
@@ -22331,7 +22367,7 @@ def book_room(room_id):
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos)
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
 
         nights = (departure - arrival).days
         chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
@@ -22404,7 +22440,7 @@ def book_room(room_id):
                 flash(f"Payment setup failed ({e}). Please try again.", "error")
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
                 conn.close()
-                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos)
+                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
             conn.commit()
             conn.close()
             return redirect(checkout_session.url, code=303)

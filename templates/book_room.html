@@ -130,7 +130,8 @@
             {% for e in extras %}
             <li>
               <label class="g-check">
-                <input type="checkbox" id="extra_{{ e['id'] }}" name="extras" value="{{ e['id'] }}">
+                <input type="checkbox" id="extra_{{ e['id'] }}" name="extras" value="{{ e['id'] }}"
+                         {{ 'checked' if e['id'] in (prefill_extras | default([])) }}>
                 <span class="g-check__t">
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
