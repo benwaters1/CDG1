@@ -112,6 +112,16 @@ def run():
     for i, d in enumerate((1400, 1035, 670, 300)):
         _stay(conn, TAG + "slow@ex.invalid", TAG + "Slow", d, n=i)
     slow = _find(m.repeat_guests(conn), TAG + "Slow")
+    # Three stays = two gaps, the commonest repeat shape. Taking the upper
+    # middle made "typical" the LONGEST gap, so somebody long overdue by their
+    # real rhythm read as early.
+    for i, d in enumerate((800, 770, 400)):
+        _stay(conn, TAG + "uneven@ex.invalid", TAG + "Uneven", d, n=i)
+    uneven = _find(m.repeat_guests(conn), TAG + "Uneven")
+    s.check("two gaps of 30 and 370 give a typical of 200, not 370",
+            uneven and abs(uneven["typical_gap"] - 200) <= 1,
+            detail=str(uneven["typical_gap"]) if uneven else "")
+
     s.check("a yearly guest ten months out is not yet overdue",
             slow and slow["overdue"] is False,
             detail=f"gap~{slow['typical_gap']}d, {slow['days_since']}d since" if slow else "")
@@ -151,10 +161,15 @@ def run():
 
     s.section("A guest's own history is not split by capitalisation")
     hist = oc.get(f"/admin/bookings/guest/{TAG}split@ex.invalid").get_data(as_text=True)
+    # No "or" fallback. The previous version ended `or hist.count("row") > 0`,
+    # and every page the app renders contains the substring "row" — so the
+    # check could not fail and was reading as cover for an untested path.
     s.check("both stays appear under either spelling",
-            hist.count(TAG + "Split") >= 1 and "2000" in hist.replace(",", "")
-            or hist.count("row") > 0,
-            detail="an exact match showed only half a regular's history")
+            hist.count(TAG + "Split") >= 1,
+            detail="an exact email match showed only half a regular's history")
+    s.check("and the lifetime spend covers both, not one",
+            "2000" in hist.replace(",", "").replace(".00", ""),
+            detail="spend was halved when the two spellings were separate guests")
 
     _cleanup(conn)
     return s

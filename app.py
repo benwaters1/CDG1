@@ -9143,8 +9143,17 @@ def repeat_guests(conn, *, today=None, min_stays=2):
             continue
         last = arrivals[-1]
         gaps = [(b - a).days for a, b in zip(arrivals, arrivals[1:])]
-        # Median, not mean: one unusual gap should not redefine the rhythm.
-        typical = sorted(gaps)[len(gaps) // 2] if gaps else None
+        # A true median, not the upper middle. sorted(gaps)[len//2] is the
+        # LARGER of the two for an even count, so a guest with three stays —
+        # a very common shape — had "typical" set to their longest gap, which
+        # is the opposite of the intent and made them overdue far too late.
+        if gaps:
+            ordered = sorted(gaps)
+            mid = len(ordered) // 2
+            typical = (ordered[mid] if len(ordered) % 2
+                       else (ordered[mid - 1] + ordered[mid]) / 2)
+        else:
+            typical = None
         since = (today - last).days
 
         # Overdue against their own habit, with a margin so somebody a
@@ -23668,14 +23677,20 @@ def create_restaurant_booking(conn, guest_name, guest_email, guest_phone, dinner
     booking_row = conn.execute("SELECT * FROM restaurant_bookings WHERE manage_token = ?", (manage_token,)).fetchone()
     send_restaurant_email(conn, booking_row, "restaurant_reservation_received", restaurant_email_context(booking_row))
 
+    # The dietary note is NOT copied into the notification body. It used to be,
+    # which put the guest's allergy into a second table that nothing deletes —
+    # so purge_health_notes cleared the booking and the notification kept it
+    # for ever, quietly making the privacy notice untrue.
+    notify_body = ("Dietary notes were given — they are on the reservation."
+                   if (dietary_notes or "").strip() else None)
     notify_title = f"Dinner reservation — {guest_name}, party of {party_size} ({format_date_human(dinner_date)})"
     notified_ids = set()
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
     if owner_row:
-        send_notification(conn, owner_row["id"], "restaurant_booking", notify_title, body=dietary_notes, link="/admin/restaurant")
+        send_notification(conn, owner_row["id"], "restaurant_booking", notify_title, body=notify_body, link="/admin/restaurant")
         notified_ids.add(owner_row["id"])
     if settings and settings["lead_user_id"] and settings["lead_user_id"] not in notified_ids:
-        send_notification(conn, settings["lead_user_id"], "restaurant_booking", notify_title, body=dietary_notes, link="/admin/restaurant")
+        send_notification(conn, settings["lead_user_id"], "restaurant_booking", notify_title, body=notify_body, link="/admin/restaurant")
 
     return reference_code, manage_token
 
@@ -33986,6 +34001,17 @@ def purge_health_notes(conn, today=None):
                 OR (medical_notes IS NOT NULL AND TRIM(medical_notes) != ''))""",
         (iso,)).rowcount
     cleared["workshop_bookings"] = n
+
+    # The same note was copied into notifications.body when the booking was
+    # made. Cleared by age rather than by dinner date, because a notification
+    # carries no link back to the booking — 90 days is well past the longest
+    # lead time the restaurant takes, so the service has certainly happened.
+    cleared["notifications"] = conn.execute(
+        """UPDATE notifications SET body = NULL
+            WHERE kind = 'restaurant_booking'
+              AND body IS NOT NULL AND TRIM(body) != ''
+              AND created_at < ?""",
+        ((datetime.now(timezone.utc) - timedelta(days=90)).isoformat(),)).rowcount
 
     total = sum(cleared.values())
     if total:
