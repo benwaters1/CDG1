@@ -116,6 +116,18 @@ page rendered perfectly while doing the wrong thing.
 - **The warnings panel must be able to be empty.** If it can never be empty
   it becomes furniture. There is a test for exactly that.
 
+- **Stripping a secret out of `os.environ` does not keep it out.** Importing
+  `app` runs `_load_dotenv()`, which reads `.env` and puts every popped key
+  straight back — so anything the harness clears before the import is live
+  again by the time app.py wires it into a client library. That is how
+  `stripe.api_key` stayed real through every test run while `_harness.py`
+  said payments were pinned off: `stripe_enabled()` returning False was doing
+  all the work, checked separately at every call site. Neutralise the module
+  global AFTER importing app, and assert it. `_harness.py` now clears Stripe,
+  Pennylane and the two mail transports and asserts all four at import; if you
+  add a third-party call, add it there too. The suite runs against a copy of
+  the REAL database, so "it only sends to test addresses" is never true here.
+
 ## Tone
 
 Commit messages and user-facing copy say what changed and why it mattered,
