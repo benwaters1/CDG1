@@ -137,6 +137,8 @@ SUITES = [
     "test_noindex_meta",
     "test_privacy",
     "test_refunds",
+    "test_money_out",
+    "test_outbox_lock",
 ]
 
 
