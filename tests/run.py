@@ -147,6 +147,7 @@ SUITES = [
     "test_estate",
     "test_pennylane_send",
     "test_pricing",
+    "test_private_urls",
 ]
 
 
