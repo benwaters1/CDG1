@@ -128,6 +128,7 @@ SUITES = [
     "test_booking_email",
     "test_booking_form_errors",
     "test_abandoned_checkout",
+    "test_room_deposits",
     "test_room_order",
     "test_guest_amendments",
     "test_room_balance_reminder",

@@ -250,6 +250,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     # on Friday was not, so it was found at the door or not at all.
     "automation_room_balance_reminder_enabled": "1",
     "automation_room_balance_reminder_days_before": "7",
+
     "automation_waitlist_autonotify_enabled": "1",
     "automation_workshop_feedback_enabled": "1",
     "automation_email_scan_enabled": "1",
@@ -266,6 +267,17 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_social_schedule_enabled": "1",
     "automation_social_horizon_days": "28",
     "automation_maintenance_enabled": "1",
+}
+
+# What a room stay asks for up front, and when the rest falls due.
+#
+# ZERO by default, deliberately. A deposit changes what a guest is actually
+# charged at checkout, so it has to be a decision somebody makes rather than
+# something that appears on a deploy. At 0 the behaviour is exactly what it is
+# today — the full amount online, or nothing — and no schedule is written.
+ROOM_PAYMENT_DEFAULTS = {
+    "room_deposit_percent": "0",
+    "room_balance_due_days_before": "14",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
@@ -2501,7 +2513,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS deposit_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL CHECK(category IN ('restaurant','workshop')),
+            category TEXT NOT NULL CHECK(category IN ('restaurant','workshop','room')),
             start_date TEXT,
             end_date TEXT,
             min_party_size INTEGER,
@@ -2650,6 +2662,21 @@ def init_db():
         ("payment_status", "ALTER TABLE bookings ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'"),
         ("bookings_balance_reminder_sent_at",
          "ALTER TABLE bookings ADD COLUMN balance_reminder_sent_at TEXT"),
+        # A stay booked eight months out was all-or-nothing: the whole amount
+        # at checkout, or none of it. Workshops have had a deposit and a
+        # dated balance since the start and rooms never did, which is why
+        # resolve_deposit_percent is called for "workshop" and "restaurant"
+        # and never for "room".
+        ("bookings_deposit_amount",
+         "ALTER TABLE bookings ADD COLUMN deposit_amount REAL"),
+        ("bookings_deposit_paid_at",
+         "ALTER TABLE bookings ADD COLUMN deposit_paid_at TEXT"),
+        ("bookings_balance_amount",
+         "ALTER TABLE bookings ADD COLUMN balance_amount REAL"),
+        ("bookings_balance_due_date",
+         "ALTER TABLE bookings ADD COLUMN balance_due_date TEXT"),
+        ("bookings_balance_paid_at",
+         "ALTER TABLE bookings ADD COLUMN balance_paid_at TEXT"),
         ("stripe_session_id", "ALTER TABLE bookings ADD COLUMN stripe_session_id TEXT"),
         ("stripe_payment_intent_id", "ALTER TABLE bookings ADD COLUMN stripe_payment_intent_id TEXT"),
         ("repeat_weekly", "ALTER TABLE tasks ADD COLUMN repeat_weekly INTEGER NOT NULL DEFAULT 0"),
@@ -3645,6 +3672,45 @@ def init_db():
     # or reordered by hand is left exactly as it is. Keyed in app_settings so it
     # runs once — after this the Rooms page owns the order, and a deploy must
     # never shuffle a decision the owner made.
+    # deposit_rules refused a room rule outright: its CHECK listed only
+    # restaurant and workshop, so resolve_deposit_percent(conn, "room", ...)
+    # could never match one and always fell through to the house percentage.
+    # A date range or a party-size threshold — a bigger deposit over Christmas,
+    # or for a party taking most of the house — is exactly what a deposit rule
+    # is for, and rooms could not have either.
+    #
+    # SQLite cannot alter a CHECK, so the table is rebuilt. Safe to do here:
+    # nothing references deposit_rules by foreign key, and the copy carries
+    # every existing rule across. Guarded on the constraint text itself rather
+    # than a key, so it runs once and is a no-op forever after.
+    rules_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deposit_rules'"
+    ).fetchone()
+    if rules_sql and "'room'" not in (rules_sql["sql"] or ""):
+        try:
+            conn.execute("ALTER TABLE deposit_rules RENAME TO deposit_rules_old")
+            conn.execute("""
+                CREATE TABLE deposit_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL
+                        CHECK(category IN ('restaurant','workshop','room')),
+                    start_date TEXT,
+                    end_date TEXT,
+                    min_party_size INTEGER,
+                    deposit_percent REAL NOT NULL,
+                    label TEXT,
+                    created_at TEXT NOT NULL
+                )""")
+            conn.execute("""INSERT INTO deposit_rules
+                   (id, category, start_date, end_date, min_party_size,
+                    deposit_percent, label, created_at)
+                   SELECT id, category, start_date, end_date, min_party_size,
+                          deposit_percent, label, created_at
+                   FROM deposit_rules_old""")
+            conn.execute("DROP TABLE deposit_rules_old")
+            conn.commit()
+        except sqlite3.OperationalError:
+            conn.rollback()
     if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
                         ("rooms_initial_order_set",)).fetchone():
         for position, room_name in enumerate(HOME_ROOM_ORDER):
@@ -4657,7 +4723,9 @@ def cash_outlook(conn, months=6, today=None):
                                       - COALESCE(discount_amount, 0)
                                       - COALESCE(amount_paid, 0), 0)), 0) AS due
                FROM bookings
-               WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+               WHERE status = 'confirmed'
+                 AND COALESCE(balance_due_date, arrival_date) >= ?
+                 AND COALESCE(balance_due_date, arrival_date) < ?""",
             (s_iso, e_iso)).fetchone()["due"]
         ateliers = conn.execute(
             """SELECT COALESCE(SUM(COALESCE(balance_amount, 0)), 0) AS due
@@ -10053,6 +10121,20 @@ def booking_bill(conn, booking_id):
         """SELECT COALESCE(SUM(amount), 0) AS t FROM refunds
            WHERE category = 'room' AND booking_id = ?""", (booking_id,)).fetchone()["t"] or 0.0
     paid = round((booking["amount_paid"] or 0) - refunded, 2)
+    owed = round(max(total - paid, 0.0), 2)
+
+    # When the stay was taken on a deposit, WHEN the rest falls due is part of
+    # the bill and not only how much. `owed` stays the single figure everything
+    # else reads — the reminder, the outlook, the guest's page — so nothing has
+    # to learn a second definition of what is outstanding.
+    #
+    # due_date is None on a stay with no schedule, which is every stay booked
+    # before this existed and every stay while the deposit is set to 0.
+    due_date = booking["balance_due_date"] if "balance_due_date" in booking.keys() else None
+    deposit_amount = booking["deposit_amount"] if "deposit_amount" in booking.keys() else None
+    deposit_paid_at = booking["deposit_paid_at"] if "deposit_paid_at" in booking.keys() else None
+    overdue = bool(due_date and owed > 0.005
+                   and due_date < datetime.now(timezone.utc).date().isoformat())
     return {
         "booking": booking,
         "lines": lines,
@@ -10060,8 +10142,12 @@ def booking_bill(conn, booking_id):
         "total": total,
         "paid": max(paid, 0.0),
         "refunded": round(refunded, 2),
-        "owed": round(max(total - paid, 0.0), 2),
+        "owed": owed,
         "overpaid": round(max(paid - total, 0.0), 2),
+        "deposit": round(deposit_amount, 2) if deposit_amount else None,
+        "deposit_paid": bool(deposit_paid_at),
+        "balance_due_date": due_date,
+        "balance_overdue": overdue,
     }
 
 
@@ -13649,18 +13735,33 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
 
     reference_code = make_reference_code()
     manage_token = secrets.token_urlsafe(24)
+    # What was asked for now, and what falls due before they travel. At the
+    # default of 0% this is (total, 0, None) — today's behaviour exactly, and
+    # no schedule written.
+    deposit_amount, balance_amount, balance_due = room_payment_schedule(
+        conn, arrival, total_price or 0, party_size)
+    # `payment_status` says what has been RECEIVED. A guest who paid the
+    # deposit online has not paid for the stay, so the status stays unpaid and
+    # deposit_paid_at carries the fact — the same distinction workshops draw.
+    deposit_paid_at = (datetime.now(timezone.utc).isoformat()
+                       if payment_status == "paid" and balance_amount else None)
+    if deposit_paid_at:
+        payment_status = "unpaid"
     conn.execute(
         """INSERT INTO bookings
            (room_id, reference_code, manage_token, guest_name, guest_email, guest_phone,
             arrival_date, departure_date, party_size, special_requests, total_price,
             extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id, created_at,
-            promo_code_id, discount_amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            promo_code_id, discount_amount,
+            deposit_amount, deposit_paid_at, balance_amount, balance_due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (room["id"], reference_code, manage_token, guest_name, guest_email, guest_phone,
          arrival.isoformat(), departure.isoformat(), party_size, special_requests or None,
          total_price, extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id,
          datetime.now(timezone.utc).isoformat(),
-         promo["id"] if promo else None, discount_amount or None),
+         promo["id"] if promo else None, discount_amount or None,
+         deposit_amount if balance_amount else None, deposit_paid_at,
+         balance_amount or None, balance_due),
     )
     # Recorded in the SAME transaction as the booking insert, not a
     # separate commit after — otherwise a crash between the two would
@@ -22390,9 +22491,30 @@ def book_room(room_id):
         discounted_room_total = round(room_total - discount_amount, 2)
         grand_total = discounted_room_total + sum(e["price"] for e in chosen_extras)
 
+        # What the card is actually charged today. With no deposit configured
+        # this is the whole thing and the lines below are itemised as before.
+        # With one, Stripe is sent a single deposit line instead: itemising a
+        # stay and then charging 30% of it puts numbers on the guest's receipt
+        # that do not add up to what left their account.
+        deposit_now, balance_later, balance_due_iso = room_payment_schedule(
+            conn, arrival, grand_total, party_size)
+
         if stripe_enabled() and grand_total > 0:
             line_items = []
-            if discounted_room_total:
+            if balance_later:
+                line_items.append({
+                    "price_data": {
+                        "currency": "eur",
+                        "product_data": {"name": (
+                            f"{room['name']} — deposit for "
+                            f"{nights} night{'s' if nights != 1 else ''} "
+                            f"(€{balance_later:.2f} due by "
+                            f"{format_date_human(balance_due_iso)})")},
+                        "unit_amount": int(round(deposit_now * 100)),
+                    },
+                    "quantity": 1,
+                })
+            elif discounted_room_total:
                 # One line item for the whole stay rather than
                 # unit_amount * nights — a seasonal rate override can make
                 # nights within the same stay worth different amounts, so
@@ -22408,15 +22530,19 @@ def book_room(room_id):
                     },
                     "quantity": 1,
                 })
-            for e in chosen_extras:
-                line_items.append({
-                    "price_data": {
-                        "currency": "eur",
-                        "product_data": {"name": e["name"]},
-                        "unit_amount": int(round(e["price"] * 100)),
-                    },
-                    "quantity": 1,
-                })
+            # Only when the whole amount is being taken. The deposit line above
+            # is already a percentage OF the extras as well, so listing them
+            # again would charge for them twice.
+            if not balance_later:
+                for e in chosen_extras:
+                    line_items.append({
+                        "price_data": {
+                            "currency": "eur",
+                            "product_data": {"name": e["name"]},
+                            "unit_amount": int(round(e["price"] * 100)),
+                        },
+                        "quantity": 1,
+                    })
             try:
                 checkout_session = stripe.checkout.Session.create(
                     mode="payment",
@@ -23886,6 +24012,54 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
         if score > best_score:
             best_score, best = score, rule
     return best["deposit_percent"] if best else (default_percent or 0)
+
+
+def room_payment_setting(conn, key, cast=float):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    raw = row["value"] if row else ROOM_PAYMENT_DEFAULTS[key]
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        return cast(ROOM_PAYMENT_DEFAULTS[key])
+
+
+def room_payment_schedule(conn, arrival, total_price, party_size=None):
+    """What to take now and what falls due later, for one stay.
+
+    Returns (deposit, balance, balance_due_date) with the deposit being what
+    the guest is charged at checkout.
+
+    A stay is often booked months ahead, and until now it was all-or-nothing:
+    the whole amount at checkout or none of it. Workshops have had a deposit
+    and a dated balance since the start — resolve_deposit_percent is called for
+    "workshop" and "restaurant" and never for "room".
+
+    Zero percent means today's behaviour exactly: the full amount is the
+    deposit, nothing is left over, and no due date is written. That is the
+    default, because a deposit changes what a card is charged and that is the
+    owner's decision, not a consequence of deploying.
+
+    The balance falls due a set number of days BEFORE arrival, floored at
+    today: a stay booked for next week must not be given a due date that has
+    already passed. Same reasoning as the workshop schedule.
+    """
+    total = round(total_price or 0, 2)
+    percent = resolve_deposit_percent(
+        conn, "room", arrival.isoformat() if hasattr(arrival, "isoformat") else arrival,
+        party_size or 0, room_payment_setting(conn, "room_deposit_percent"))
+    if not percent or total <= 0:
+        return total, 0.0, None
+    deposit = round(total * percent / 100.0, 2)
+    balance = round(total - deposit, 2)
+    if balance <= 0:
+        return total, 0.0, None
+    days_before = int(room_payment_setting(conn, "room_balance_due_days_before"))
+    arrival_date = arrival if hasattr(arrival, "isoformat") else parse_date(arrival)
+    due = arrival_date - timedelta(days=max(days_before, 0))
+    today = datetime.now(timezone.utc).date()
+    if due < today:
+        due = today
+    return deposit, balance, due.isoformat()
 
 
 def compute_restaurant_deposit(total_price, deposit_percent):
@@ -36644,8 +36818,9 @@ def run_room_balance_reminder_job(conn, days_before):
            WHERE bookings.status = 'confirmed'
              AND bookings.balance_reminder_sent_at IS NULL
              AND bookings.guest_email IS NOT NULL AND bookings.guest_email != ''
-             AND bookings.arrival_date >= ? AND bookings.arrival_date <= ?
-           ORDER BY bookings.arrival_date""",
+             AND COALESCE(bookings.balance_due_date, bookings.arrival_date) >= ?
+             AND COALESCE(bookings.balance_due_date, bookings.arrival_date) <= ?
+           ORDER BY COALESCE(bookings.balance_due_date, bookings.arrival_date)""",
         (today, horizon)).fetchall()
 
     sent, owing = 0, 0
