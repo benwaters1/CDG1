@@ -75,13 +75,13 @@
           <p class="g-field">
             <label for="dietary_notes">Dietary requirements, allergies, and the occasion</label>
             <textarea id="dietary_notes" name="dietary_notes" rows="5"
-              placeholder="Allergies, vegetarian, a birthday, a preference for lunch rather than dinner, anything at all"></textarea>
+              placeholder="Allergies, vegetarian, a birthday, a preference for lunch rather than dinner, anything at all">{{ prefill_dietary_notes | default('') }}</textarea>
             <span class="g-hint">Requirements are designed into the menu rather than worked around on the night. Send them now and they become part of the planning.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Code <span class="g-opt">optional</span></label>
             <span class="g-promo">
-              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters">
+              <input type="text" id="promo_code" name="promo_code" autocapitalize="characters" value="{{ prefill_promo_code | default('') }}">
               <button type="button" id="promo_apply_btn">Apply</button>
             </span>
             <span class="g-hint" id="promo_result" aria-live="polite"></span>

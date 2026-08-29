@@ -61,3 +61,52 @@ Check the equivalent `render_template` on error in:
 
 `book_rooms()` already does this correctly (`prefill_name`, `prefill_email`,
 `prefill_phone` are passed), so the pattern to copy is in the same file.
+
+
+---
+
+# The other three forms — checked, and mostly already right
+
+`restaurant_book()` and `workshop_register()` already pass most fields back
+(`prefill_name`, `prefill_email`, `prefill_phone`, `prefill_party_size`), and
+their templates already read them. `book_room()` is the outlier. But two gaps
+remain, and they are the fields guests take most care over.
+
+## restaurant_book() — 2 fields lost
+
+| Field | Note |
+|---|---|
+| `dietary_notes` | The one field a guest with an allergy writes carefully |
+| `promo_code` | Retyped |
+
+## workshop_register() — 7 fields lost
+
+This is the longest form on the site, and the losses are the worst:
+
+| Field | Note |
+|---|---|
+| `dietary_notes` | Written carefully |
+| `medical_notes` | Written *very* carefully, and private |
+| `special_occasion` | An anniversary, a birthday |
+| `requested_roommate` | Who they want to share with |
+| `occupancy_type` | Single or shared — a pricing decision |
+| `notes` | Free text |
+| `promo_code` | Retyped |
+
+Asking somebody to re-enter their medical notes because they mistyped a
+postcode is the worst version of this fault on the site.
+
+## events_info() — reads nothing back at all
+
+The enquiry form posts `contact_name`, `contact_email`, `contact_phone`,
+`event_type`, `guest_count`, `preferred_date`, `alternate_date` and `message`,
+and the route passes none of them back. For a wedding enquiry — where the
+message field is where somebody describes their day — that is the worst place
+on the site to lose typed text. Same one-line fix.
+
+## The fix, in all three
+
+Add the missing names to the `render_template(...)` call on the error path.
+The variables are already in scope; nothing else changes. The templates in
+this package already read `prefill_*` for every field listed above and fall
+back to empty, so they are safe to deploy in either order.

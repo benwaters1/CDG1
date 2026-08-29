@@ -12,7 +12,7 @@ one sentence upstream: regenerate from current main before exporting. Until that
 happens, this script and the suite are what stand between a handover and a
 regression.
 
-The seven:
+The eight:
 
   1. noindex. 24 guest pages carry `{% block robots %}` overriding the empty
      block in public_base. The handovers strip the block from the parent too,
@@ -29,6 +29,9 @@ The seven:
      which 500s every room booking confirmation.
   7. The .g-plate__row rule, which the stylesheet arrives without while a
      dozen templates use the class.
+  8. The `checked` expression on the booking form's extras. Without it a guest
+     who hits a validation error, or backs out of the card page, silently
+     loses the airport transfer they had picked.
 
 Each is also guarded by a test (test_noindex_meta, test_part_payments,
 test_autocharge, test_table_overflow, test_privacy), so a handover that breaks
@@ -254,6 +257,28 @@ def repair_privacy_link():
     return 1
 
 
+def repair_extra_prefill():
+    """Put the ticked extras back on the room booking form.
+
+    The eighth of these. book_room.html renders each extra as a checkbox and
+    the handover arrives with the `checked` expression stripped off the input,
+    so a guest who picks the airport transfer, hits a validation error or backs
+    out of the card page, loses it silently and pays for a taxi instead. Guarded
+    by test_booking_form_errors and test_abandoned_checkout, both of which went
+    red on final_28 — and both of which cover work the handover reverted from
+    the same author who wrote it.
+    """
+    rel = "templates/book_room.html"
+    src = _read(rel)
+    opening = "<input type=\"checkbox\" id=\"extra_{{ e['id'] }}\" name=\"extras\" value=\"{{ e['id'] }}\""
+    stripped = opening + ">"
+    if stripped not in src:
+        return 0
+    checked = "{{ 'checked' if e['id'] in (prefill_extras | default([])) }}"
+    _write(rel, src.replace(stripped, opening + "\n" + " " * 25 + checked + ">", 1))
+    return 1
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -264,6 +289,7 @@ def main():
         ("the manage_booking link parameter", repair_manage_booking_parameter),
         ("the .g-plate__row rule", repair_plate_row_rule),
         ("the privacy footer link", repair_privacy_link),
+        ("the ticked extras on the booking form", repair_extra_prefill),
     ]
     total = 0
     for label, fn in steps:
