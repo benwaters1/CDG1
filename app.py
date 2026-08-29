@@ -36672,9 +36672,16 @@ def run_room_balance_reminder_job(conn, days_before):
             conn.execute(
                 "UPDATE bookings SET balance_reminder_sent_at = ? WHERE id = ?",
                 (datetime.now(timezone.utc).isoformat(), booking["id"]))
+            # Committed inside the loop, not after it. The stamp is written
+            # AFTER the send in source order — which is why the outbox-lock
+            # check reads this as safe — but a loop turns it into a write held
+            # open across the NEXT guest's send. One guest whose mail goes
+            # through then silently costs the next guest, whose does not, the
+            # copy queue_undelivered would otherwise have kept: it opens its
+            # own connection and SQLite will not let it write while this one
+            # holds a transaction.
+            conn.commit()
             sent += 1
-    if sent:
-        conn.commit()
     if not owing:
         return "nobody arriving soon owes anything"
     return f"reminded {sent} of {owing} guest(s) with a balance outstanding"
