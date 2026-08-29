@@ -150,6 +150,7 @@ SUITES = [
     "test_pennylane_send",
     "test_pricing",
     "test_private_urls",
+    "test_optout_and_flags",
 ]
 
 
