@@ -13833,6 +13833,14 @@ def create_booking_from_stripe_session(conn, session):
     fires first creates it, the other finds it already exists via
     stripe_session_id and does nothing."""
     meta = smeta(session)
+    # .get, not [], and checked: a session that is not a new booking has no
+    # room_id at all, and a KeyError here reaches the guest as a 500 on the
+    # page they land on after paying. Returning None gives them the honest
+    # "we could not create it automatically, contact us" instead.
+    if not (meta.get("room_id") or "").strip().isdigit():
+        print(f"[stripe] session {session['id']} carries no room_id "
+              f"(kind={meta.get('kind')!r}) — not a new booking, not creating one")
+        return None
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (int(meta["room_id"]),)).fetchone()
     if not room:
         print(f"[stripe] room {meta.get('room_id')} missing for paid session {session['id']} — not creating booking")
@@ -23006,7 +23014,16 @@ def booking_pay(manage_token):
     return redirect(checkout_url, code=303)
 
 
-@app.route("/book/stripe-success")
+# NOT /book/stripe-success. That path was already registered by stripe_success
+# above, and Werkzeug serves the first rule it matched — so this handler was
+# unreachable and every guest paying an outstanding balance was answered by the
+# NEW-BOOKING handler instead. That one looked for a booking carrying the
+# session id, found none, and tried to build a stay out of a balance payment,
+# whose metadata has a booking_id and no room_id: KeyError, HTTP 500. The guest
+# paid and got an error page, and nothing on this path recorded the money.
+#
+# The URL is only ever produced by url_for, so renaming it is invisible.
+@app.route("/book/payment-success")
 def booking_stripe_success():
     manage_token = request.args.get("manage_token", "")
     session_id = request.args.get("session_id", "").strip()

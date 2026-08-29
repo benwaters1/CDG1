@@ -134,6 +134,7 @@ SUITES = [
     "test_guest_account",
     "test_bulk_confirm",
     "test_task_admin",
+    "test_payment_landing",
     "test_room_order",
     "test_guest_amendments",
     "test_room_balance_reminder",
