@@ -30,6 +30,23 @@ import _harness
 m = _harness.m
 
 
+def _extra_id():
+    """A real extra's id, rather than assuming there is one with id 1.
+
+    The suite runs against a copy of the live database, where extra 1 has been
+    deleted — so the ticked-extra check looked for id="extra_1", found no such
+    input, and failed. It passes on a fresh seeded database, which is why it
+    was not caught. Returns None if the house sells no extras at all.
+    """
+    conn = db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM extras WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
 def _stash(client, room_id, **over):
     data = {
         "room_id": room_id,
@@ -41,7 +58,7 @@ def _stash(client, room_id, **over):
         "party_size": "2",
         "special_requests": "a cot for the baby if one can be found",
         "promo_code": "AUTUMNLIGHT",
-        "extras": [1],
+        "extras": [_extra_id()] if _extra_id() else [],
     }
     data.update(over)
     with client.session_transaction() as sess:
@@ -84,7 +101,8 @@ def run():
         s.check(f"{label} came back", needle in body,
                 detail=f"{needle!r} was lost on the way back from Stripe")
     import re
-    mark = re.search(r'id="extra_1"[^>]*', body)
+    extra_id = _extra_id()
+    mark = re.search(rf'id="extra_{extra_id}"[^>]*', body) if extra_id else None
     s.check("and the extra they had ticked is still ticked",
             bool(mark) and "checked" in mark.group(0),
             detail=mark.group(0)[:80] if mark else "input not found")
