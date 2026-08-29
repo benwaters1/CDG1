@@ -131,6 +131,7 @@ SUITES = [
     "test_room_deposits",
     "test_ics_feeds",
     "test_shift_actions",
+    "test_guest_account",
     "test_room_order",
     "test_guest_amendments",
     "test_room_balance_reminder",

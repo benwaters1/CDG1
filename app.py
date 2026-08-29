@@ -21371,6 +21371,12 @@ def guest_account(token):
     extras = conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            ORDER BY category, sort_order, name""").fetchall()
+    # Read before the connection closes, and read at all: this line referred to
+    # a `restaurant_settings` that was never defined in the function, so every
+    # visit raised NameError and the whole page 500'd. A guest asked for their
+    # account link, received it, clicked it, and got an error — the one part of
+    # this flow they could not work around, since the link IS the way in.
+    restaurant_settings = get_restaurant_settings(conn)
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,

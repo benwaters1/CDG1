@@ -19,6 +19,8 @@ None of this needs a browser: the url_map knows every real route, so the
 answer is arithmetic rather than clicking. That is the point — clicking around
 is exactly what missed all three.
 """
+import ast
+import builtins
 import os
 import re
 
@@ -131,4 +133,62 @@ def run():
                 missing.append(f"app.py:{lineno} '{name}'")
     s.check("every render_template target exists", not missing,
             detail=" | ".join(missing[:4]))
+
+    # A route that reads a name nothing ever defines raises NameError the
+    # moment somebody opens it — and only then. guest_account referred to a
+    # `restaurant_settings` that was never assigned in the function, so every
+    # guest who asked for their account link, received it and clicked it got a
+    # 500. The link IS the way in, so there was nothing to work around, and it
+    # sat there because no test opened the page.
+    #
+    # url_for and render_template are checked above by name; this is the same
+    # idea one level down — the names the handler itself reads.
+    module_scope = set(dir(builtins))
+    app_tree = ast.parse(app_src)
+    for node in app_tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                for sub in ast.walk(target):
+                    if isinstance(sub, ast.Name):
+                        module_scope.add(sub.id)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            module_scope.add(node.target.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            module_scope.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                module_scope.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, (ast.If, ast.Try, ast.With)):
+            # Names bound inside a module-level if/try are still module scope.
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store):
+                    module_scope.add(sub.id)
+                elif isinstance(sub, (ast.FunctionDef, ast.ClassDef)):
+                    module_scope.add(sub.name)
+
+    unresolved = []
+    for fn in [n for n in ast.walk(app_tree) if isinstance(n, ast.FunctionDef)]:
+        if not any("app.route" in ast.unparse(d) for d in fn.decorator_list):
+            continue
+        bound = set()
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                bound.add(node.id)
+            elif isinstance(node, ast.arg):
+                bound.add(node.arg)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bound.add(node.name)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                bound.add(node.name)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    bound.add((alias.asname or alias.name).split(".")[0])
+            elif isinstance(node, ast.Global):
+                bound.update(node.names)
+        for node in ast.walk(fn):
+            if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+                    and node.id not in bound and node.id not in module_scope):
+                unresolved.append(f"app.py:{node.lineno} {fn.name}() reads {node.id}")
+    s.check("every route reads only names that exist", not unresolved,
+            detail=" | ".join(sorted(set(unresolved))[:4]))
     return s
