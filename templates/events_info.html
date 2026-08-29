@@ -93,7 +93,7 @@
           <label for="event_type">What kind of event?</label>
           <select id="event_type" name="event_type" required>
             <option value="">— choose —</option>
-            {% for t in event_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+            {% for t in event_types %}<option value="{{ t }}"{{ ' selected' if t == prefill_event_type|default('') }}>{{ t|capitalize }}</option>{% endfor %}
           </select>
         </p>
         <p class="g-field">
@@ -113,11 +113,11 @@
         <div class="g-row">
           <p class="g-field">
             <label for="preferred_date">Preferred date</label>
-            <input type="date" id="preferred_date" name="preferred_date">
+            <input type="date" id="preferred_date" name="preferred_date" value="{{ prefill_preferred_date | default('') }}">
           </p>
           <p class="g-field">
             <label for="alternate_date">Alternate date <span class="g-opt">optional</span></label>
-            <input type="date" id="alternate_date" name="alternate_date">
+            <input type="date" id="alternate_date" name="alternate_date" value="{{ prefill_alternate_date | default('') }}">
           </p>
         </div>
         <p class="g-field g-field--narrow">

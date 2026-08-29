@@ -22376,6 +22376,50 @@ def api_quote():
     return jsonify(quote)
 
 
+# What each public form hands back to its own template. Kept as data next to
+# the helper rather than spelled out at every render site, because the bug
+# these fix is precisely that one render site out of four forgot a field.
+RESTAURANT_PREFILL = {
+    "name": "guest_name", "email": "guest_email", "phone": "guest_phone",
+    "party_size": "party_size", "date": "dinner_date",
+    "dietary_notes": "dietary_notes", "promo_code": "promo_code",
+}
+WORKSHOP_PREFILL = {
+    "name": "guest_name", "email": "guest_email", "phone": "guest_phone",
+    "party_size": "party_size", "notes": "notes",
+    "dietary_notes": "dietary_notes", "medical_notes": "medical_notes",
+    "special_occasion": "special_occasion",
+    "requested_roommate": "requested_roommate", "promo_code": "promo_code",
+}
+EVENT_PREFILL = {
+    "contact_name": "contact_name", "contact_email": "contact_email",
+    "contact_phone": "contact_phone", "guest_count": "guest_count",
+    "message": "message", "preferred_date": "preferred_date",
+    "alternate_date": "alternate_date", "event_type": "event_type",
+}
+
+
+def public_form_prefill(form, mapping):
+    """What the guest typed, ready to hand back to a public form's template.
+
+    The same job book_room_prefill does for the room form, and deliberately the
+    same shape rather than a fourth way of doing it. The templates already read
+    these prefill_* names; the routes did not pass them, so a validation error
+    returned an empty form. The workshop one is the worst of the three: dietary
+    notes, medical notes and who somebody wants to share a room with, thrown
+    away because a party size was left blank. The privacy notice makes promises
+    about both of those fields, which is a reason to keep them for the length
+    of one form and no longer.
+
+    agree_terms is never carried back, on any form. Re-ticking it is the point
+    of it — a guest should agree to the terms on the submission that actually
+    goes through, not have an earlier tick remembered on their behalf.
+    """
+    form = form if form is not None else {}
+    return {f"prefill_{name}": (form.get(field, "") or "").strip()
+            for name, field in mapping.items()}
+
+
 def book_room_prefill(form=None):
     """What the guest typed, ready to hand straight back to book_room.html.
 
@@ -23522,9 +23566,11 @@ def submit_event_inquiry():
     conn = get_db()
     if rate_limited(conn, "event_inquiry", BOOKING_RATE_LIMIT_PER_HOUR):
         conn.commit()
+        types = event_types(conn)     # read before closing, not after
         conn.close()
         flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-        return redirect(url_for("events_info"))
+        return render_template("events_info.html", event_types=types,
+                               **public_form_prefill(request.form, EVENT_PREFILL))
 
     error = None
     if event_type not in event_types(conn):
@@ -23547,9 +23593,15 @@ def submit_event_inquiry():
             error = f"The {label} date has already passed."
     if error:
         conn.commit()  # persist the rate-limit log entry even on a validation error
+        types = event_types(conn)
         conn.close()
         flash(error, "error")
-        return redirect(url_for("events_info"))
+        # Rendering rather than redirecting, because a redirect cannot carry the
+        # form. On a wedding enquiry the message field is where somebody has
+        # described their day; sending them back to an empty one over a mistyped
+        # date is the most expensive version of this fault on the site.
+        return render_template("events_info.html", event_types=types,
+                               **public_form_prefill(request.form, EVENT_PREFILL))
 
     guest_count = int(guest_count_raw) if guest_count_raw.isdigit() else None
     reference_code = make_event_reference_code()
@@ -24273,7 +24325,12 @@ def restaurant_book():
             conn.commit()
             conn.close()
             flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("restaurant_book.html", settings=settings, min_date=min_date, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", prefill_date="", fully_booked=False, stripe_enabled=stripe_enabled())
+            # Even a rate-limited attempt keeps what they typed. Being told to
+            # wait and losing the form is two punishments for one mistake.
+            return render_template(
+                "restaurant_book.html", settings=settings, min_date=min_date,
+                fully_booked=False, stripe_enabled=stripe_enabled(),
+                **public_form_prefill(request.form, RESTAURANT_PREFILL))
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
@@ -24309,9 +24366,8 @@ def restaurant_book():
             conn.close()
             return render_template(
                 "restaurant_book.html", settings=settings, min_date=min_date,
-                prefill_name=guest_name, prefill_email=guest_email, prefill_phone=guest_phone,
-                prefill_party_size=party_size_raw, prefill_date=dinner_date_raw, fully_booked=fully_booked,
-                stripe_enabled=stripe_enabled(),
+                fully_booked=fully_booked, stripe_enabled=stripe_enabled(),
+                **public_form_prefill(request.form, RESTAURANT_PREFILL),
             )
 
         subtotal = compute_restaurant_total(conn, dinner_date.isoformat(), party_size)
@@ -24374,9 +24430,8 @@ def restaurant_book():
                 conn.close()
                 return render_template(
                     "restaurant_book.html", settings=settings, min_date=min_date,
-                    prefill_name=guest_name, prefill_email=guest_email, prefill_phone=guest_phone,
-                    prefill_party_size=party_size_raw, prefill_date=dinner_date_raw, fully_booked=False,
-                    stripe_enabled=stripe_enabled(),
+                    fully_booked=False, stripe_enabled=stripe_enabled(),
+                    **public_form_prefill(request.form, RESTAURANT_PREFILL),
                 )
             conn.commit()
             conn.close()
@@ -24390,11 +24445,18 @@ def restaurant_book():
         return redirect(url_for("restaurant_confirmation", manage_token=manage_token))
 
     conn.close()
+    # A link from elsewhere on the site, so the query string wins here. Every
+    # name the template reads is still supplied, blank where the link says
+    # nothing — a missing one renders as an undefined, which is empty today and
+    # a silent hole the first time somebody adds a filter to it.
     return render_template(
         "restaurant_book.html", settings=settings, min_date=min_date,
-        prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
-        prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        prefill_date=request.args.get("date", ""), fully_booked=False, stripe_enabled=stripe_enabled(),
+        fully_booked=False, stripe_enabled=stripe_enabled(),
+        **public_form_prefill(request.args, {
+            **{k: k for k in RESTAURANT_PREFILL},
+            "name": "name", "email": "email", "phone": "phone",
+            "party_size": "party_size", "date": "date",
+        }),
     )
 
 
@@ -25048,11 +25110,18 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=
             (template["id"], template["name"], email, name, subject, status, detail,
              key, user_id, now_iso, unsub_token),
         )
+        # Committed per recipient, not after the loop. Held open, this row's
+        # INSERT blocks the NEXT recipient's send from queueing its undelivered
+        # message on its own connection — so a two hundred person campaign with
+        # no provider configured dropped a hundred and ninety-nine held
+        # messages and left campaign_sends rows saying "failed" with nothing to
+        # retry from. Per-recipient durability is also what you want if the
+        # loop dies halfway.
+        conn.commit()
         if status in ("sent", "test"):
             sent += 1
         elif status == "failed":
             failed += 1
-    conn.commit()
     return {"sent": sent, "failed": failed, "skipped": skipped, "total": len(recipients)}
 
 
@@ -25488,7 +25557,9 @@ def workshop_register(session_id):
             conn.commit()
             conn.close()
             flash("Too many attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("workshop_register.html", **page, prefill_name="", prefill_email="", prefill_phone="", prefill_party_size="", fully_booked=False)
+            return render_template(
+                "workshop_register.html", **page, fully_booked=False,
+                **public_form_prefill(request.form, WORKSHOP_PREFILL))
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
@@ -25555,9 +25626,8 @@ def workshop_register(session_id):
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
             return render_template(
-                "workshop_register.html", **page,
-                prefill_name=guest_name, prefill_email=guest_email, prefill_phone=guest_phone,
-                prefill_party_size=party_size_raw, fully_booked=fully_booked,
+                "workshop_register.html", **page, fully_booked=fully_booked,
+                **public_form_prefill(request.form, WORKSHOP_PREFILL),
             )
 
         workshop = conn.execute("SELECT * FROM workshops WHERE id = ?", (session_row["workshop_id"],)).fetchone()
@@ -25601,10 +25671,12 @@ def workshop_register(session_id):
 
     conn.close()
     return render_template(
-        "workshop_register.html", **page,
-        prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
-        prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        fully_booked=False,
+        "workshop_register.html", **page, fully_booked=False,
+        **public_form_prefill(request.args, {
+            **{k: k for k in WORKSHOP_PREFILL},          # blank unless linked with one
+            "name": "name", "email": "email", "phone": "phone",
+            "party_size": "party_size",
+        }),
     )
 
 
@@ -36881,9 +36953,8 @@ def run_workshop_balance_reminder_job(conn, days_before):
             "UPDATE workshop_bookings SET balance_reminder_sent_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
         )
+        conn.commit()      # before the next guest's send, not after the loop
         sent += 1
-    if sent:
-        conn.commit()
     return f"reminded {sent} of {len(due)} due booking(s)"
 
 
@@ -37031,9 +37102,8 @@ def run_workshop_feedback_request_job(conn):
             "UPDATE workshop_bookings SET feedback_requested_at = ? WHERE id = ?",
             (datetime.now(timezone.utc).isoformat(), booking["id"]),
         )
+        conn.commit()      # before the next guest's send, not after the loop
         sent += 1
-    if sent:
-        conn.commit()
     return f"requested feedback for {sent} booking(s)"
 
 

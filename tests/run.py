@@ -140,6 +140,7 @@ SUITES = [
     "test_refunds",
     "test_money_out",
     "test_outbox_lock",
+    "test_form_prefill",
 ]
 
 

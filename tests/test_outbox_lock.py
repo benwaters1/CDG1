@@ -103,7 +103,7 @@ def _offenders():
                     events.append((node.lineno, "write"))
             elif name == "commit":
                 events.append((node.lineno, "commit"))
-            elif name in senders:
+            elif name in senders and not _keeps_nothing(node):
                 events.append((node.lineno, "send"))
         events.sort()
         open_write = False
@@ -113,9 +113,74 @@ def _offenders():
             elif kind == "commit":
                 open_write = False
             elif kind == "send" and open_write:
-                found.append((fn.name, lineno))
+                found.append((fn.name, lineno, "writes, then sends, then commits"))
                 break
+        else:
+            # Source order is not the whole story. A batch job that sends and
+            # then stamps each row reads as send-before-write and looks clean,
+            # but the stamp is still uncommitted when the NEXT iteration sends:
+            # guest A is stamped, guest B's send fails, and B's mail is neither
+            # sent nor kept. That is the shape of most jobs in here, and one was
+            # sitting in this blind spot when the check first shipped.
+            wrapped = _loop_wraparound(fn, senders, lines)
+            if wrapped:
+                found.append((fn.name, wrapped, "a loop stamps each row and "
+                              "commits after the loop, so the next send is "
+                              "blocked by the previous row's write"))
     return found
+
+
+def _keeps_nothing(call):
+    """True when this send is explicitly told not to queue.
+
+    send_email(..., keep=False) never reaches queue_undelivered, so it opens no
+    second connection and cannot be blocked by anything. The three waitlist
+    notifiers pass it deliberately: with no provider configured, each
+    cancellation would otherwise queue another "a room may have opened up"
+    notice, and they would all arrive together the day email is switched on for
+    dates resold weeks earlier. Making them commit would bring that back, so
+    the check has to understand the flag rather than the flag having to change.
+    """
+    for kw in call.keywords:
+        if kw.arg == "keep" and isinstance(kw.value, ast.Constant):
+            return kw.value.value is False
+    return False
+
+
+def _loop_wraparound(fn, senders, lines):
+    """Line of a send that a previous iteration's uncommitted write would block.
+
+    A loop body that writes without committing before it ends carries that
+    write into the next iteration, where it sits open across that iteration's
+    send. Order within the body does not matter for this — only whether the
+    write is still open when the body comes round again.
+    """
+    for loop in [n for n in ast.walk(fn) if isinstance(n, (ast.For, ast.While))]:
+        events = []
+        for stmt in loop.body:
+            for node in ast.walk(stmt):
+                if not isinstance(node, ast.Call):
+                    continue
+                f = node.func
+                name = f.id if isinstance(f, ast.Name) else getattr(f, "attr", None)
+                if name == "execute":
+                    text = " ".join(lines[node.lineno - 1:node.end_lineno])
+                    if WRITE_SQL.search(text):
+                        events.append((node.lineno, "write"))
+                elif name == "commit":
+                    events.append((node.lineno, "commit"))
+                elif name in senders and not _keeps_nothing(node):
+                    events.append((node.lineno, "send"))
+        events.sort()
+        kinds = [k for _, k in events]
+        if "write" not in kinds or "send" not in kinds:
+            continue
+        last_write = max(ln for ln, k in events if k == "write")
+        # A commit after the last write closes it before the body ends.
+        if any(ln > last_write for ln, k in events if k == "commit"):
+            continue
+        return next(ln for ln, k in events if k == "send")
+    return None
 
 
 def run():
@@ -125,7 +190,7 @@ def run():
     s.section("No route sends while it still holds a write lock")
     bad = _offenders()
     s.check("nothing writes, then sends, then commits", not bad,
-            detail="; ".join(f"{n} (app.py:{ln})" for n, ln in bad)
+            detail="; ".join(f"{n} (app.py:{ln}) — {why}" for n, ln, why in bad)
                    or "")
 
     s.section("The check can actually find one")
