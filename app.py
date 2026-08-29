@@ -4157,7 +4157,8 @@ NAV_AREAS = {
         # non-owner preset grants.
         "admin_hr_notes", "handle_hr_note",
         "admin_vat", "export_vat_csv",
-        "admin_automation", "admin_deposit_rules", "admin_outlook_addin", "admin_promo_codes",
+        "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
+        "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
         "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
@@ -28567,10 +28568,51 @@ def admin_deposit_rules():
     rules = conn.execute("SELECT * FROM deposit_rules ORDER BY category, start_date IS NULL, start_date").fetchall()
     restaurant_settings = get_restaurant_settings(conn)
     workshops = conn.execute("SELECT id, title, deposit_percent FROM workshops WHERE active = 1 ORDER BY title").fetchall()
+    room_percent = room_payment_setting(conn, "room_deposit_percent")
+    room_days = int(room_payment_setting(conn, "room_balance_due_days_before"))
     conn.close()
     return render_template(
-        "admin_deposit_rules.html", rules=rules, restaurant_settings=restaurant_settings, workshops=workshops,
+        "admin_deposit_rules.html", rules=rules, restaurant_settings=restaurant_settings,
+        workshops=workshops, room_percent=room_percent, room_days=room_days,
     )
+
+
+@app.route("/admin/deposit-rules/rooms", methods=["POST"])
+@owner_required
+def save_room_deposit_settings():
+    """What a stay asks for up front, and how long before arrival the rest is due.
+
+    Lives here rather than on a room's own page because it is one figure for
+    the house, and because this is where the restaurant's and each atelier's
+    equivalents already are.
+    """
+    percent_raw = (request.form.get("room_deposit_percent", "") or "").strip()
+    days_raw = (request.form.get("room_balance_due_days_before", "") or "").strip()
+    try:
+        percent = max(0.0, min(100.0, float(percent_raw or 0)))
+    except ValueError:
+        flash("The deposit has to be a percentage between 0 and 100.", "error")
+        return redirect(url_for("admin_deposit_rules"))
+    if not days_raw.isdigit():
+        flash("How many days before arrival is the balance due?", "error")
+        return redirect(url_for("admin_deposit_rules"))
+    conn = get_db()
+    for key, value in (("room_deposit_percent", f"{percent:g}"),
+                       ("room_balance_due_days_before", str(int(days_raw)))):
+        conn.execute("""INSERT INTO app_settings (key, value) VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                     (key, value))
+    log_audit(conn, "room_deposit_settings_saved",
+              details=f"{percent:g}%, balance due {int(days_raw)} days before")
+    conn.commit()
+    conn.close()
+    if percent:
+        flash(f"Stays now ask for {percent:g}% up front, with the rest due "
+              f"{int(days_raw)} days before arrival. Bookings already taken keep "
+              "the terms they were made on.", "success")
+    else:
+        flash("Stays are charged in full online, as before.", "success")
+    return redirect(url_for("admin_deposit_rules"))
 
 
 @app.route("/admin/deposit-rules/new", methods=["POST"])
@@ -28583,7 +28625,7 @@ def new_deposit_rule():
     percent_raw = request.form.get("deposit_percent", "").strip()
     label = request.form.get("label", "").strip()
 
-    if category not in ("restaurant", "workshop"):
+    if category not in ("restaurant", "workshop", "room"):
         flash("Choose a valid category for the rule.", "error")
         return redirect(url_for("admin_deposit_rules"))
     start, end = parse_date(start_raw), parse_date(end_raw)

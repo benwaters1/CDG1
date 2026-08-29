@@ -10,6 +10,32 @@
 
 <div class="detail-card" style="max-width:640px; margin-bottom:20px;">
   <h3 style="margin-top:0;">Base deposit percentages (the fallback)</h3>
+  <details class="refund-box" style="margin-bottom:16px;">
+    <summary>Room stays: {% if room_percent %}{{ '%g'|format(room_percent) }}% up front, rest due {{ room_days }} days before arrival{% else %}charged in full online{% endif %}</summary>
+    <p class="upload-hint">
+      A stay is often booked months ahead. At 0% the whole amount is taken at checkout, which is how
+      it has always worked here. Set a percentage and the guest pays that now and the rest before
+      they travel — they are reminded automatically, and the balance shows on their own page.
+      Bookings already taken keep the terms they were made on.
+    </p>
+    <form method="post" action="{{ url_for('save_room_deposit_settings') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="refund-fields">
+        <div>
+          <label class="field-label">Deposit on a stay (%)</label>
+          <input type="number" name="room_deposit_percent" min="0" max="100" step="1"
+                 value="{{ '%g'|format(room_percent) }}">
+        </div>
+        <div>
+          <label class="field-label">Balance due this many days before arrival</label>
+          <input type="number" name="room_balance_due_days_before" min="0" step="1"
+                 value="{{ room_days }}">
+        </div>
+      </div>
+      <button type="submit" class="btn-mini">Save</button>
+    </form>
+  </details>
+
   <p class="upload-hint">Restaurant: {% if restaurant_settings['deposit_percent'] %}{{ restaurant_settings['deposit_percent']|int }}%{% else %}not set — pays in full online{% endif %} · <a href="{{ url_for('admin_restaurant_settings') }}" style="color:var(--steel);">change</a></p>
   {% for w in workshops %}
   <p class="upload-hint">{{ w['title'] }}: {{ w['deposit_percent']|int if w['deposit_percent'] else 0 }}% · <a href="{{ url_for('edit_workshop', workshop_id=w['id']) }}" style="color:var(--steel);">change</a></p>
@@ -26,6 +52,7 @@
         <select name="category">
           <option value="restaurant">Restaurant</option>
           <option value="workshop">Workshop</option>
+          <option value="room">Room stay</option>
         </select>
       </div>
       <div>

@@ -234,5 +234,44 @@ def run():
             abs((b4["deposit_amount"] or 0) - 500.0) < 0.01,
             detail=f"got {b4['deposit_amount']}")
 
+    s.section("The owner can set it without touching the database")
+    oc, ec, _owner, _emp = clients()
+    page = oc.get("/admin/deposit-rules")
+    s.check("the deposit page loads", page.status_code == 200, page)
+    s.check("and offers the room figures",
+            "Room stays" in page.get_data(as_text=True),
+            detail="the setting exists but nothing can set it")
+    oc.post("/admin/deposit-rules/rooms",
+            data={"room_deposit_percent": "25", "room_balance_due_days_before": "21"},
+            follow_redirects=True)
+    conn = db()
+    s.check("the percentage saves",
+            abs(m.room_payment_setting(conn, "room_deposit_percent") - 25.0) < 0.01)
+    s.check("and the days with it",
+            int(m.room_payment_setting(conn, "room_balance_due_days_before")) == 21)
+    conn.close()
+    oc.post("/admin/deposit-rules/rooms",
+            data={"room_deposit_percent": "lots", "room_balance_due_days_before": "21"},
+            follow_redirects=True)
+    conn = db()
+    s.check("junk is refused and the figure kept",
+            abs(m.room_payment_setting(conn, "room_deposit_percent") - 25.0) < 0.01)
+    conn.close()
+    s.check("an employee cannot change it",
+            ec.post("/admin/deposit-rules/rooms",
+                    data={"room_deposit_percent": "0",
+                          "room_balance_due_days_before": "1"}).status_code in (302, 403))
+    conn = db()
+    s.check("and it is still what the owner set",
+            abs(m.room_payment_setting(conn, "room_deposit_percent") - 25.0) < 0.01)
+    conn.close()
+
+    s.section("A room rule can now be added at all")
+    # The CHECK used to refuse the category outright.
+    before = oc.get("/admin/deposit-rules").get_data(as_text=True)
+    s.check("'Room stay' is offered as a rule category",
+            'value="room"' in before,
+            detail="rules could be written for everything except a room")
+
     _cleanup()
     return s
