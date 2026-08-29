@@ -16068,7 +16068,7 @@ def edit_candidate(candidate_id):
         flash("A name is required.", "error")
         return redirect(url_for("candidates"))
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         """UPDATE candidates SET name = ?, email = ?, phone = ?, role_applied = ?, notes = ?,
            updated_at = ? WHERE id = ?""",
         (name, email or None, phone or None, role_applied or None, notes or None,
@@ -16076,6 +16076,14 @@ def edit_candidate(candidate_id):
     )
     conn.commit()
     conn.close()
+    # An UPDATE that matched nothing is not an update. This said "Candidate
+    # updated." for an id that does not exist — so somebody editing a record
+    # another person had just deleted was told their change was saved, and
+    # would have no reason to look again.
+    if not cur.rowcount:
+        flash("That candidate is no longer on the list — somebody may have "
+              "removed them while this page was open.", "error")
+        return redirect(url_for("candidates"))
     flash("Candidate updated.", "success")
     return redirect(url_for("candidates"))
 
@@ -32650,13 +32658,27 @@ def generate_watch_tasks(conn, today=None):
 
     # The half that matters. Without it the list is a record of every problem
     # the house has ever had, which nobody reads twice.
+    # Closed by TITLE, not by the id that happened to survive open_now.
+    #
+    # open_now is a dict keyed on title, so two watch rows sharing one title
+    # collapse to a single entry and only that one was ever closed. The other
+    # became permanent: nothing in this pass could reach it, and a watch task
+    # has no "done" action of its own, so it sat on the list for good. That is
+    # precisely the failure this half exists to prevent — a list that is a
+    # record of every problem the house has ever had, which nobody reads twice.
+    #
+    # Duplicating a watch task from the tasks page was one way to make two.
+    # That no longer copies the origin, but any pair already in the database
+    # needs closing, and keying the close on title rather than id does both.
     closed = 0
-    for title, row in open_now.items():
-        if title not in wanted:
-            conn.execute(
-                "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?",
-                (now_iso, row["id"]))
-            closed += 1
+    for title in list(open_now):
+        if title in wanted:
+            continue
+        cur = conn.execute(
+            """UPDATE tasks SET status = 'done', completed_at = ?
+               WHERE origin = ? AND title = ? AND status != 'done'""",
+            (now_iso, WATCH_TASK_ORIGIN, title))
+        closed += cur.rowcount or 0
 
     conn.commit()
     return {"made": made, "closed": closed, "moved": moved,
@@ -35574,11 +35596,19 @@ def duplicate_task_next_week(task_id):
         d = parse_date(task["due_date"])
         if d:
             new_due = (d + timedelta(days=7)).isoformat()
+    # A copy somebody made by hand is a manual task, whatever it was copied
+    # from. Carrying `watch` across made a second self-healing task with the
+    # same title — and generate_watch_tasks keys those on title, so one of the
+    # pair became unreachable and stayed on the list for good. A watch task has
+    # no "done" action of its own, so there was no way to clear it either.
+    # 'manual' rather than None: the column is NOT NULL DEFAULT 'manual',
+    # so None would have raised on the one action this fix exists for.
+    origin = "manual" if task["origin"] == WATCH_TASK_ORIGIN else task["origin"]
     conn.execute(
         """INSERT INTO tasks (assigned_to_user_id, title, notes, room_note, priority, due_date, created_at, origin)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (task["assigned_to_user_id"], task["title"], task["notes"], task["room_note"], task["priority"],
-         new_due, datetime.now(timezone.utc).isoformat(), task["origin"]),
+         new_due, datetime.now(timezone.utc).isoformat(), origin),
     )
     conn.commit()
     conn.close()
