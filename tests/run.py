@@ -144,6 +144,7 @@ SUITES = [
     "test_form_prefill",
     "test_company_records",
     "test_estate",
+    "test_pennylane_send",
 ]
 
 
