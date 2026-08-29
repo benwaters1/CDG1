@@ -26676,11 +26676,18 @@ def new_extra():
     if not name:
         flash("Extra needs a name.", "error")
         return redirect(url_for("admin_extras"))
+    # parse_money rather than float(): a price typed the way it is written
+    # here — 45,50 — raised ValueError and returned a 500 with nothing saved,
+    # and so did any typo. Empty still means free, which is what 0 says.
+    amount = parse_money(price)
+    if price and amount is None:
+        flash("That price isn't a number I can read. Try 45 or 45,50.", "error")
+        return redirect(url_for("admin_extras"))
     conn = get_db()
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM extras").fetchone()["m"]
     conn.execute(
         "INSERT INTO extras (name, price, sort_order) VALUES (?, ?, ?)",
-        (name, float(price) if price else 0, max_order + 1),
+        (name, amount or 0, max_order + 1),
     )
     conn.commit()
     conn.close()
@@ -26696,10 +26703,14 @@ def edit_extra(extra_id):
     if not name:
         flash("Extra needs a name.", "error")
         return redirect(url_for("admin_extras"))
+    amount = parse_money(price)
+    if price and amount is None:
+        flash("That price isn't a number I can read. Try 45 or 45,50.", "error")
+        return redirect(url_for("admin_extras"))
     conn = get_db()
     conn.execute(
         "UPDATE extras SET name = ?, price = ? WHERE id = ?",
-        (name, float(price) if price else 0, extra_id),
+        (name, amount or 0, extra_id),
     )
     conn.commit()
     conn.close()

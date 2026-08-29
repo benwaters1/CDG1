@@ -146,6 +146,7 @@ SUITES = [
     "test_company_records",
     "test_estate",
     "test_pennylane_send",
+    "test_pricing",
 ]
 
 
