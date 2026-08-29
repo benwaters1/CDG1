@@ -142,6 +142,7 @@ SUITES = [
     "test_outbox_lock",
     "test_form_prefill",
     "test_company_records",
+    "test_estate",
 ]
 
 
