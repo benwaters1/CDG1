@@ -143,6 +143,9 @@ from calendar import monthrange
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, flash, send_from_directory, abort, jsonify,
+    # Aliased as well: stripe_success rebinds `session` to Stripe's own
+    # object, so Flask's session needs a name that survives that.
+    session as flask_session,
     has_request_context, g, Response,
 )
 from flask_wtf.csrf import CSRFProtect, CSRFError
@@ -22443,6 +22446,31 @@ def book_room(room_id):
                 return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
             conn.commit()
             conn.close()
+            # Hold what they typed for the walk to Stripe and back.
+            #
+            # A guest who reaches the card page has filled the whole form in
+            # and decided to pay. If they change their mind, or the card is in
+            # the other room, cancel_url returns them to book_room — a plain
+            # GET, so the form came back empty and they started again. That is
+            # a worse loss than a validation error: they had already committed.
+            #
+            # Kept in their OWN SESSION, not in the cancel_url. A name, email
+            # and phone in a query string are written into Stripe's referrer,
+            # into the access log of every proxy in between, and into browser
+            # history — the same reasoning that keeps the add-in tokens in a
+            # POST body. The URL still carries nothing but room_id.
+            #
+            # SameSite=Lax lets it survive the return: Stripe sends the guest
+            # back by top-level GET navigation, which Lax permits.
+            session["abandoned_booking"] = {
+                "room_id": room_id,
+                "arrival": arrival_raw, "departure": departure_raw,
+                "guest_name": guest_name, "guest_email": guest_email,
+                "guest_phone": guest_phone, "party_size": party_size_raw,
+                "special_requests": special_requests[:490],
+                "promo_code": promo_code,
+                "extras": sorted(e["id"] for e in chosen_extras),
+            }
             return redirect(checkout_session.url, code=303)
 
         _, manage_token = create_booking(
@@ -22458,6 +22486,30 @@ def book_room(room_id):
     prefill_email = request.args.get("email", "")
     prefill_phone = request.args.get("phone", "")
     prefill_party_size = request.args.get("party_size", "")
+    prefill_requests = prefill_promo = ""
+    prefill_extras = set()
+
+    # Coming back from an abandoned card payment. What they typed was put in
+    # their session on the way out (see the Stripe branch above), so it can be
+    # handed back without ever having travelled in a URL.
+    #
+    # Popped, not read: it is for one return trip. Leaving it would refill the
+    # form days later with details somebody may have decided against, on a
+    # shared computer, for a booking they never made.
+    #
+    # The query string still wins where it is present, so an ordinary link from
+    # the room list behaves exactly as before.
+    stashed = session.pop("abandoned_booking", None)
+    if stashed and stashed.get("room_id") == room_id:
+        arrival_raw = arrival_raw or stashed.get("arrival", "")
+        departure_raw = departure_raw or stashed.get("departure", "")
+        prefill_name = prefill_name or stashed.get("guest_name", "")
+        prefill_email = prefill_email or stashed.get("guest_email", "")
+        prefill_phone = prefill_phone or stashed.get("guest_phone", "")
+        prefill_party_size = prefill_party_size or stashed.get("party_size", "")
+        prefill_requests = stashed.get("special_requests", "")
+        prefill_promo = stashed.get("promo_code", "")
+        prefill_extras = set(stashed.get("extras", []))
 
     # Priced server-side when the guest arrives with dates already chosen, which
     # they usually do — the room list carries them through. The same figures are
@@ -22474,7 +22526,8 @@ def book_room(room_id):
         "book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras,
         stripe_enabled=stripe_enabled(), prefill_name=prefill_name, prefill_email=prefill_email,
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
-        initial_quote=initial_quote,
+        prefill_requests=prefill_requests, prefill_promo=prefill_promo,
+        prefill_extras=prefill_extras, initial_quote=initial_quote,
     )
 
 
@@ -22494,6 +22547,16 @@ def booking_confirmation(manage_token):
 
 @app.route("/book/stripe-success")
 def stripe_success():
+    # Dropped before anything else can return. Reaching this URL at all means
+    # the guest has been through checkout, so the half-filled form held for
+    # them is finished with either way — and clearing it after the 404 below
+    # meant it survived on any site where Stripe is not configured.
+    #
+    # Also has to happen here because a few lines down `session` is rebound to
+    # Stripe's own object, and Flask's session stops being reachable by that
+    # name.
+    flask_session.pop("abandoned_booking", None)
+
     session_id = request.args.get("session_id", "").strip()
     if not stripe_enabled() or not session_id:
         abort(404)
