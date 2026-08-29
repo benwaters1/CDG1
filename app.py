@@ -18044,6 +18044,18 @@ def pos_move_table(order_id):
         abort(404)
     target = (request.form.get("merge_into", "") or "").strip()
     if target.isdigit():
+        # A tab cannot be merged into itself. The page builds this list from
+        # `other_tables` so it never offers it, but the list is a convenience
+        # and not a boundary — the route takes whatever id the POST carries.
+        # Without this the lines move nowhere, the covers double, and the tab
+        # is voided with its order still sitting on it: a voided tab is never
+        # paid, so a table's whole bill quietly leaves the day's takings and
+        # has to be re-rung, which is the exact thing this route exists to
+        # avoid.
+        if int(target) == order_id:
+            conn.close()
+            flash("That is this table.", "error")
+            return redirect(url_for("pos_order", order_id=order_id))
         into = conn.execute("SELECT * FROM pos_orders WHERE id = ? AND status = 'open'",
                             (target,)).fetchone()
         if not into:
