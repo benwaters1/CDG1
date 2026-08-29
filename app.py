@@ -21222,6 +21222,12 @@ def guest_account_request():
                      (now + timedelta(hours=GUEST_SESSION_HOURS)).isoformat(),
                      (request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:64]))
                 link = url_for("guest_account", token=token, _external=True)
+                # Commit the session row before sending. send_email's outbox
+                # fallback opens its own connection and cannot write while this
+                # one is open, so the link was being dropped instead of held —
+                # and this page deliberately says "sent" whether or not the
+                # address is known, so nobody at either end would ever find out.
+                conn.commit()
                 send_email(
                     email, "Your Château de Gudanes bookings",
                     f"Here is the link to everything you have booked with us:\n\n{link}\n\n"
@@ -27488,6 +27494,12 @@ def decline_booking_by_id(conn, booking_id):
     elif booking["payment_status"] == "paid":
         refund_note = " We'll be in touch about your refund."
 
+    # Commit before sending, exactly as confirm_booking_by_id does — the guest
+    # is being told their request was refused and what is happening to their
+    # money, and send_email's outbox fallback opens its own connection, which
+    # cannot write while this transaction is open. Safe for bulk_decline too:
+    # each booking being durable as the loop goes is what you want if it dies.
+    conn.commit()
     send_email(
         booking["guest_email"],
         f"Booking request declined — {booking['room_name']}",
@@ -30305,6 +30317,14 @@ def mark_workshop_deposit_paid(registration_id):
     if cur.rowcount and booking["deposit_amount"]:
         add_workshop_transaction(conn, registration_id, "payment", "Deposit", booking["deposit_amount"],
                                   method=method, user_id=current_user()["id"])
+        # Commit the payment before the receipt goes out. With no email provider
+        # configured send_email falls back to email_outbox on its own
+        # connection, which cannot take a write lock while this transaction is
+        # open — so the receipt was lost to "database is locked" rather than
+        # held. Same fault already fixed in mark_workshop_payment_paid, which is
+        # this route's Stripe twin and sends the identical template; this is the
+        # bank-transfer and cash path, where a receipt is the guest's only proof.
+        conn.commit()
         send_workshop_email(conn, booking, "workshop_deposit_receipt", workshop_email_context(booking))
     conn.commit()
     conn.close()
