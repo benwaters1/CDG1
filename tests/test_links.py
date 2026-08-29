@@ -191,4 +191,32 @@ def run():
                 unresolved.append(f"app.py:{node.lineno} {fn.name}() reads {node.id}")
     s.check("every route reads only names that exist", not unresolved,
             detail=" | ".join(sorted(set(unresolved))[:4]))
+
+    s.section("No two routes claim the same address")
+    # The fourth fault, and nothing above catches it. Registering two handlers
+    # on one path is legal, silent, and Werkzeug serves whichever rule it
+    # matches first — so the other is dead code that still builds a perfectly
+    # good URL. Everything else in this file passed while that was true:
+    # stripe_success and booking_stripe_success both claimed
+    # /book/stripe-success, the endpoint existed, the parameters were right,
+    # and url_for produced the path. A guest settling a balance was handed to
+    # the new-booking handler, which had no room_id to work from, and got a 500
+    # on the page you see in the second after paying — with the money
+    # unrecorded.
+    #
+    # Only visible from the url_map, which is why it is checked there rather
+    # than from the source.
+    by_address = {}
+    for rule in m.app.url_map.iter_rules():
+        verbs = tuple(sorted((rule.methods or set()) - {"HEAD", "OPTIONS"}))
+        by_address.setdefault((str(rule.rule), verbs), []).append(rule.endpoint)
+    shared = {addr: eps for addr, eps in by_address.items() if len(eps) > 1}
+    s.check("every path and method pair belongs to one endpoint", not shared,
+            detail="; ".join(f"{addr[0]} {list(addr[1])} -> {eps}"
+                             for addr, eps in sorted(shared.items())[:3]))
+    # ...and the check can see one, so an empty result means there are none
+    # rather than that the loop found nothing to look at.
+    s.check("it is reading a real url_map", len(by_address) > 200,
+            detail=f"{len(by_address)} distinct address(es)")
+
     return s
