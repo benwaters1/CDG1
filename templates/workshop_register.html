@@ -65,7 +65,7 @@
           <div class="g-field">
             <label for="requested_roommate">Requested roommate <span class="g-opt">optional</span></label>
             <input type="text" id="requested_roommate" name="requested_roommate"
-                   placeholder="Name, if you are travelling with someone">
+                   placeholder="Name, if you are travelling with someone" value="{{ prefill_requested_roommate | default('') }}">
           </div>
         </section>
 
@@ -101,25 +101,25 @@
           <div class="g-field">
             <label for="dietary_notes">Dietary notes <span class="g-opt">optional</span></label>
             <textarea id="dietary_notes" name="dietary_notes" rows="2"
-                      placeholder="Allergies, preferences — designed into the menu, not worked around on the night"></textarea>
+                      placeholder="Allergies, preferences — designed into the menu, not worked around on the night">{{ prefill_dietary_notes | default('') }}</textarea>
           </div>
 
           <div class="g-field">
             <label for="medical_notes">Relevant medical issues <span class="g-opt">optional</span></label>
             <textarea id="medical_notes" name="medical_notes" rows="2"
-                      placeholder="Anything our team should be aware of"></textarea>
+                      placeholder="Anything our team should be aware of">{{ prefill_medical_notes | default('') }}</textarea>
           </div>
 
           <div class="g-field">
             <label for="special_occasion">Celebrating something <span class="g-opt">optional</span></label>
             <input type="text" id="special_occasion" name="special_occasion"
-                   placeholder="Birthday, anniversary…">
+                   placeholder="Birthday, anniversary…" value="{{ prefill_special_occasion | default('') }}">
           </div>
 
           <div class="g-field">
             <label for="notes">Anything else <span class="g-opt">optional</span></label>
             <textarea id="notes" name="notes" rows="2"
-                      placeholder="Experience level, questions…"></textarea>
+                      placeholder="Experience level, questions…">{{ prefill_notes | default('') }}</textarea>
           </div>
 
           {% for f in custom_fields %}
@@ -149,7 +149,7 @@
           <div class="g-field">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
             <div class="g-promo">
-              <input type="text" id="promo_code" name="promo_code">
+              <input type="text" id="promo_code" name="promo_code" value="{{ prefill_promo_code | default('') }}">
               <button type="button" id="promo_apply_btn">Apply</button>
             </div>
             <p class="g-hint" id="promo_result"></p>

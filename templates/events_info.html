@@ -98,16 +98,16 @@
         </p>
         <p class="g-field">
           <label for="contact_name">Your name</label>
-          <input type="text" id="contact_name" name="contact_name" autocomplete="name" required>
+          <input type="text" id="contact_name" name="contact_name" autocomplete="name" required value="{{ prefill_contact_name | default('') }}">
         </p>
         <div class="g-row">
           <p class="g-field">
             <label for="contact_email">Email</label>
-            <input type="email" inputmode="email" id="contact_email" name="contact_email" autocomplete="email" required>
+            <input type="email" inputmode="email" id="contact_email" name="contact_email" autocomplete="email" required value="{{ prefill_contact_email | default('') }}">
           </p>
           <p class="g-field">
             <label for="contact_phone">Phone <span class="g-opt">optional</span></label>
-            <input type="tel" inputmode="tel" id="contact_phone" name="contact_phone" inputmode="tel" autocomplete="tel">
+            <input type="tel" inputmode="tel" id="contact_phone" name="contact_phone" inputmode="tel" autocomplete="tel" value="{{ prefill_contact_phone | default('') }}">
           </p>
         </div>
         <div class="g-row">
@@ -122,11 +122,11 @@
         </div>
         <p class="g-field g-field--narrow">
           <label for="guest_count">Expected guests</label>
-          <input type="number" inputmode="numeric" id="guest_count" name="guest_count" min="1">
+          <input type="number" inputmode="numeric" id="guest_count" name="guest_count" min="1" value="{{ prefill_guest_count | default('') }}">
         </p>
         <p class="g-field">
           <label for="message">Tell us about your event</label>
-          <textarea id="message" name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan"></textarea>
+          <textarea id="message" name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan">{{ prefill_message | default('') }}</textarea>
         </p>
         <button type="submit" class="g-btn g-submit">Send enquiry</button>
         <p class="g-foot-note">This is an enquiry, not a booking — we will follow up to discuss availability, pricing and details. You will get a reference code and a link to check its status.</p>
@@ -323,7 +323,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required value="{{ prefill_email | default('') }}">
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
     </form>
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
