@@ -111,6 +111,16 @@ def _refuse(what, remedy):
 
 m._pennylane_request = _refuse(
     "Pennylane", "the token is live; stand in for _pennylane_request in the test")
+
+# Texting, blocked before there is anything to leak rather than after. There
+# are no credentials for it yet, so nothing could go out today — which is
+# exactly why this belongs here now: the Stripe hole existed because the block
+# was added once the key already worked, and every run in between was covered
+# by nothing but a conditional.
+m.SMS_PROVIDER_SID = m.SMS_PROVIDER_TOKEN = m.SMS_FROM_NUMBER = None
+m.sms_provider_send = _refuse(
+    "the SMS provider",
+    "every message costs money; stand in for sms_provider_send in the test")
 m.send_email_via_resend = _refuse(
     "Resend", "mock send_email, or let it fall through to the held outbox")
 
@@ -121,6 +131,7 @@ assert not getattr(m.stripe, "api_key", None), (
     "stripe.api_key still holds a real key — app.py wired it in at import and "
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
+assert not m.sms_enabled(), "a texting provider is configured under test"
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")
