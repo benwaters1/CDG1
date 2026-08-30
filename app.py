@@ -180,6 +180,18 @@ ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
 # this matters; \s excludes the \r/\n that broke send_email() on a crafted
 # submission before that was hardened separately).
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# The country a bare local number is assumed to belong to. France, because
+# that is where the château and most of the people typing into these forms
+# are; a guest from anywhere else has to type their + prefix, which is what
+# people travelling already do.
+DEFAULT_PHONE_COUNTRY = "+33"
+
+# French mobile prefixes. A landline accepts no text message — the provider
+# takes the number, charges for the attempt and reports a failure nobody
+# reads, so it is worth knowing the difference before sending rather than
+# after being billed for it.
+FR_MOBILE_PREFIXES = ("+336", "+337")
+
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
 VIEWABLE_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}  # types a browser can render inline, no download needed
 
@@ -14371,9 +14383,13 @@ def edit_own_contact_info():
     pay, status, and skills stay owner-controlled via edit_employee."""
     user = current_user()
     if request.method == "POST":
-        phone = request.form.get("phone", "").strip()
+        # Staff numbers matter more than guests': a rota change at short
+        # notice is the case where somebody has to be reachable, and an
+        # emergency contact is the one number in the building nobody wants to
+        # discover is unusable on the day it is needed.
+        phone = phone_from_form("phone")
         emergency_contact_name = request.form.get("emergency_contact_name", "").strip()
-        emergency_contact_phone = request.form.get("emergency_contact_phone", "").strip()
+        emergency_contact_phone = phone_from_form("emergency_contact_phone")
         emergency_contact_relationship = request.form.get("emergency_contact_relationship", "").strip()
         conn = get_db()
         conn.execute(
@@ -22533,7 +22549,7 @@ def book_room(room_id):
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         party_size_raw = request.form.get("party_size", "").strip()
         special_requests = request.form.get("special_requests", "").strip()
         selected_extra_ids = {int(i) for i in request.form.getlist("extras") if i.isdigit()}
@@ -24406,7 +24422,7 @@ def restaurant_book():
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         dinner_date_raw = request.form.get("dinner_date", "").strip()
         dinner_date = parse_date(dinner_date_raw)
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -24772,6 +24788,78 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     balance_amount = round(total_price - deposit_amount, 2)
     balance_due_date = (start_date - timedelta(days=30)).isoformat()
     return deposit_amount, balance_amount, balance_due_date
+
+
+def normalise_phone(raw, default_country=None):
+    """A typed phone number as +33612345678, or None if it cannot be one.
+
+    Every form in the app has taken a phone number since the beginning and
+    none of them has ever looked at it, so what is on file is whatever people
+    typed: "06 12 34 56 78", "06.12.34.56.78", "+33 (0)6 12 34 56 78" and
+    "ask my wife". None of those can be sent to. Storing the raw string in a
+    column something later has to dial is the same fault as storing an
+    unparsed date in a date column — the page looks right, the send goes
+    nowhere, and it surfaces as a guest who did not turn up.
+
+    Deliberately conservative: it converts the shapes people actually write
+    and returns None for anything else, rather than guessing. A number it
+    cannot read is better refused at the form than stored and never used.
+    """
+    text = re.sub(r"[\s.\-() /]", "", (raw or ""))
+    if not text:
+        return None
+    country = default_country or DEFAULT_PHONE_COUNTRY
+    if text.startswith("00"):            # 0033... — the older international form
+        text = "+" + text[2:]
+    # "+33 (0)6 ..." is extremely common on French business cards and websites:
+    # the 0 is the trunk prefix, correct when dialling inside France and wrong
+    # once the country code is there. The parenthesis is already stripped above.
+    if text.startswith(country + "0"):
+        text = country + text[len(country) + 1:]
+    if text.startswith("+"):
+        digits = text[1:]
+        if not digits.isdigit() or not 8 <= len(digits) <= 15:   # E.164 caps at 15
+            return None
+        return "+" + digits
+    if not text.isdigit():
+        return None
+    if text.startswith("0"):             # a national number: 0612345678
+        return country + text[1:]
+    return None                          # a bare string of digits is too ambiguous
+
+
+def is_mobile_number(number):
+    """Whether a normalised number can receive a text.
+
+    Only answerable for France, where the prefix says so. For anywhere else
+    this returns None — "not known" rather than "no", because refusing to text
+    a foreign guest on the grounds that we cannot tell would be worse than
+    trying.
+    """
+    if not number:
+        return False
+    if number.startswith(DEFAULT_PHONE_COUNTRY):
+        return number.startswith(FR_MOBILE_PREFIXES)
+    return None
+
+
+def phone_from_form(field="guest_phone"):
+    """A phone number off a form, normalised where it can be.
+
+    The policy, in one place because it is a judgement rather than a rule:
+
+      - a number that normalises is stored normalised, so anything that later
+        has to send to it can, and normalise_phone is idempotent so re-reading
+        a stored value gives the same answer;
+      - a number that does not normalise is stored exactly as typed, and NOT
+        refused. Turning away a booking over a phone number would trade a real
+        stay for a tidy column. The sending side calls normalise_phone again
+        and simply finds nothing it can use, which is the truth.
+
+    So a bad number costs a text message, never a booking.
+    """
+    raw = (request.form.get(field, "") or "").strip()
+    return normalise_phone(raw) or raw
 
 
 def parse_money(raw):
@@ -25639,7 +25727,7 @@ def workshop_register(session_id):
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         notes = request.form.get("notes", "").strip()[:500]
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -27988,7 +28076,7 @@ def edit_booking(booking_id):
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         party_size_raw = request.form.get("party_size", "").strip()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         special_requests = request.form.get("special_requests", "").strip()
 
         arrival, departure = parse_date(arrival_raw), parse_date(departure_raw)
@@ -29953,7 +30041,7 @@ def matching_restaurant_waitlist_entries(conn, dinner_date_iso):
 def join_restaurant_waitlist():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone", "").strip()
+    phone = phone_from_form("phone")
     desired_date = request.form.get("desired_date", "").strip()
     party_size_raw = request.form.get("party_size", "").strip()
     notes = request.form.get("notes", "").strip()
@@ -30854,7 +30942,7 @@ def join_workshop_waitlist():
     session_id_raw = request.form.get("session_id", "").strip()
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone", "").strip()
+    phone = phone_from_form("phone")
     party_size_raw = request.form.get("party_size", "").strip()
     notes = request.form.get("notes", "").strip()
 
