@@ -14,13 +14,20 @@ that happens — the pages render perfectly, and simply become indexable.
 import re
 
 from _harness import Suite, clients
+import os
+
 import _harness
 
 m = _harness.m
 
 # The block only works if the base template renders it. A child overriding a
 # block the parent never outputs is inert, which is exactly the failure mode.
-BASE = "templates/public_base.html"
+# Anchored to the repo rather than the working directory: run from tests/
+# and a relative path makes this suite CRASH rather than run, which is a
+# suite that silently is not protecting anything depending on how it was
+# started.
+TPL = os.path.join(_harness.ROOT, "templates")
+BASE = os.path.join(TPL, "public_base.html")
 
 # Public pages: must NOT be noindex, or the site disappears from search.
 PUBLIC = ["/", "/book", "/restaurant", "/workshops", "/events",
@@ -46,7 +53,7 @@ def run():
                  "restaurant_confirmation.html", "event_confirmation.html",
                  "guest_feedback_form.html", "find_booking.html"):
         try:
-            src = open(f"templates/{name}", encoding="utf-8").read()
+            src = open(os.path.join(TPL, name), encoding="utf-8").read()
         except FileNotFoundError:
             s.check(f"{name} exists", False, detail="template missing")
             continue

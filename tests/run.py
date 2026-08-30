@@ -153,6 +153,8 @@ SUITES = [
     "test_estate",
     "test_pennylane_send",
     "test_pricing",
+    "test_promo_and_ledger",
+    "test_public_forms",
     "test_private_urls",
     "test_optout_and_flags",
     "test_till_and_toggles",
