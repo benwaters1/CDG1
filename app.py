@@ -25053,6 +25053,7 @@ def campaign_context_for(name, email):
     return {
         "first_name": full.split()[0] if full else "there",
         "full_name": full or email,
+        "guest_name": full or "there",
         "email": email,
         "chateau": "Château de Gudanes",
     }
@@ -25111,7 +25112,8 @@ def campaign_unsubscribe_footer(conn, token):
     )
 
 
-def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=False):
+def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
+                  as_test=False, extra_context=None):
     """Send one campaign to a set of recipients, logging every one.
 
     `dedupe_key` makes an automated send idempotent — the same template for the
@@ -25132,8 +25134,10 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=
         ).fetchone():
             skipped += 1
             continue
-        subject, body = render_campaign(template["subject"], template["body"],
-                                        campaign_context_for(name, email))
+        context = campaign_context_for(name, email)
+        if extra_context:
+            context.update(extra_context)
+        subject, body = render_campaign(template["subject"], template["body"], context)
         # Every marketing message carries its own unsubscribe key. Written
         # BEFORE the send so the link in the email is always one that resolves —
         # a footer pointing at a row that doesn't exist yet would 404 for anyone
@@ -29862,13 +29866,47 @@ def send_promo_code_blast(code_id):
         return redirect(url_for("promo_code_blast", code_id=code_id, segment=segments, since_months=since_months_raw))
 
     recipients = promo_blast_recipients(conn, segments, since_date_iso)
-    sent = 0
-    for email, name in recipients.items():
-        personalized = body_template.replace("{guest_name}", name or "there").replace("{promo_code}", promo["code"])
-        if send_email(email, subject, personalized):
-            sent += 1
+
+    # Sent through send_campaign rather than looping send_email here.
+    #
+    # This is marketing mail - a discount code pushed at every past guest - and
+    # it was going out with no unsubscribe link and no record that it had gone.
+    # Respecting email_optouts on the way in is only half of it: a guest who
+    # has only ever been sent promo blasts had no way onto that list, because
+    # nothing in the message offered one. The campaign path next door already
+    # does both halves correctly, so the fix is to use it rather than grow a
+    # second copy of it here that drifts. Every recipient gets their own
+    # unsubscribe key and the footer carrying it, and a campaign_sends row,
+    # which is the only thing afterwards that can answer "what did we send
+    # them, and when". It also commits per recipient, so a send that dies part
+    # way keeps what already went out.
+    #
+    # The blast's two placeholders are single-braced and predate the campaign
+    # merge tags. Rewriting them to the {{...}} form keeps every body already
+    # typed into this form working; dropping them would have mailed a literal
+    # "{guest_name}" to the whole list. Written to accept either form and to
+    # be safe to apply twice.
+    for one, two in (("{guest_name}", "{{guest_name}}"),
+                     ("{promo_code}", "{{promo_code}}")):
+        subject = subject.replace(two, one).replace(one, two)
+        body_template = body_template.replace(two, one).replace(one, two)
+
+    user = current_user()
+    result = send_campaign(
+        conn,
+        {"id": None, "name": f"Promo code {promo['code']}",
+         "subject": subject, "body": body_template},
+        recipients,
+        user["id"] if user else None,
+        extra_context={"promo_code": promo["code"]},
+    )
+    log_audit(conn, "promo_blast_sent", target=promo["code"],
+              details=f"{result['sent']} sent, {result['failed']} failed")
+    conn.commit()
     conn.close()
-    flash(f"Sent to {sent} of {len(recipients)} guest(s).", "success")
+    flash(f"Sent to {result['sent']} of {result['total']} guest(s)"
+          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          "error" if result["failed"] else "success")
     return redirect(url_for("admin_promo_codes"))
 
 
