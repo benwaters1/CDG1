@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}What we are owed{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What we are owed</h1>
+  <a href="{{ url_for('management_financials') }}" class="btn-mini">Back to Financials</a>
+</div>
+
+{#
+  Two figures, not one. The total is the answer to "how much is out there";
+  the second is the answer to "how much of it is from people we can no longer
+  hand a card machine to", which is the number that actually needs a decision.
+  Money Ahead already covers the first for guests still to come — this page
+  exists for the ones it cannot see.
+#}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(total) }}</span>
+      <span class="stat-tile-label">Outstanding</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if gone else 'stat-tile-icon-steel' }}">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value {{ 'stat-tile-value-danger' if gone }}">€{{ '%.2f'|format(gone) }}</span>
+      <span class="stat-tile-label">From guests who have left</span>
+    </span>
+  </div>
+</div>
+
+{% if not can_email %}
+<p class="g-hint">No email provider is connected yet, so a chase is written and
+held rather than sent. It goes out on its own once one is.</p>
+{% endif %}
+
+{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}
+
+{% if not lv['rows'] %}
+<div class="empty-state">
+  {% if lv['total'] %}
+    Nothing matches that. <a href="{{ url_for('management_outstanding') }}">Show all {{ lv['total'] }}</a>.
+  {% else %}
+    Nobody owes anything. Every confirmed stay is settled.
+  {% endif %}
+</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Guest</th><th>Stay</th><th>State</th>
+        <th class="num">Bill</th><th class="num">Paid</th><th class="num">Owed</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in lv['rows'] %}
+      {% set b = r['booking'] %}
+      <tr>
+        <td>
+          <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">{{ b['guest_name'] }}</a>
+          <span class="g-hint">{{ b['reference_code'] }}</span>
+        </td>
+        <td>
+          {{ b['room_name'] }}
+          <span class="g-hint">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</span>
+        </td>
+        <td>
+          {% if r['state'] == 'gone' %}
+          <span class="mini-status status-overdue">Left owing</span>
+          <span class="g-hint">{{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }} ago</span>
+          {% elif r['state'] == 'overdue' %}
+          <span class="mini-status status-pending">Overdue</span>
+          <span class="g-hint">by {{ r['days_late'] }} day{{ '' if r['days_late'] == 1 else 's' }}</span>
+          {% else %}
+          <span class="mini-status status-inactive">Still to pay</span>
+          {% if r['due_date'] %}<span class="g-hint">due {{ r['due_date']|date_short }}</span>{% endif %}
+          {% endif %}
+        </td>
+        <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
+        <td class="num">€{{ '%.2f'|format(r['paid']) }}</td>
+        <td class="num"><strong>€{{ '%.2f'|format(r['owed']) }}</strong></td>
+        <td>
+          {% if b['guest_email'] %}
+          <form method="post"
+                action="{{ url_for('chase_outstanding_balance', booking_id=b['id']) }}"
+                onsubmit="return confirm('Email {{ b['guest_name']|e }} about €{{ '%.2f'|format(r['owed']) }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Ask for it</button>
+          </form>
+          {% else %}
+          <span class="g-hint">No email on file</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

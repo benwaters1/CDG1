@@ -4015,13 +4015,17 @@ def init_db():
     # The standing markets. Seeded by title, so one the owner edits or deletes
     # is not put back on the next restart — this is a starting point, not a
     # fixture the app keeps reasserting.
-    for entry in DEFAULT_WHATS_ON:
-        if not conn.execute("SELECT 1 FROM whats_on WHERE title = ?", (entry[0],)).fetchone():
+    for position, entry in enumerate(DEFAULT_WHATS_ON, start=1):
+        if not conn.execute("SELECT 1 FROM whats_on WHERE title = ?",
+                            (entry["title"],)).fetchone():
             conn.execute(
                 """INSERT INTO whats_on (title, description, location, distance,
                    weekday, start_time, end_time, sort_order, created_at)
-                   VALUES (?, ?, ?, ?, ?, '08:00', '13:00', ?, ?)""",
-                entry + (datetime.now(timezone.utc).isoformat(),))
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (entry["title"], entry["description"], entry["location"],
+                 entry["distance"], entry.get("weekday"),
+                 entry.get("start_time", "08:00"), entry.get("end_time", "13:00"),
+                 position, datetime.now(timezone.utc).isoformat()))
     conn.commit()
 
     for defaults in (AUTOMATION_SETTING_DEFAULTS, HOUSE_SETTING_DEFAULTS,
@@ -4200,6 +4204,7 @@ NAV_AREAS = {
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
+        "management_outstanding", "chase_outstanding_balance",
         "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
         "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
         "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
@@ -6587,30 +6592,60 @@ DEFAULT_GALLERY_SECTIONS = [
      "The Pyrénées from the windows, in every season.", 4),
 ]
 
-# The four markets within half an hour, as a starting point for What's On.
-# (title, description, location, distance, weekday, sort_order) — weekday is
-# 0=Monday.
+# What's On, as a starting point the owner then edits.
 #
-# The Les Cabannes day is NOT confirmed: the Ariège tourism board says Sunday
-# on Place des Platanes, one directory says Friday. Sunday is seeded because
-# it is the better source, but somebody should ask in the village before a
-# guest walks down on the strength of it. The owner can change it on
-# /admin/whats-on without touching this.
+# Dicts rather than positional tuples because not everything here is a weekly
+# market: a farm shop has no market day and does not open at eight and shut at
+# one, and giving it a made-up Tuesday to fit the old six-field shape would put
+# a wrong fact on a public page. weekday is 0=Monday, or absent.
+#
+# THE DAYS AND DRIVE TIMES ARE A STARTING POINT, NOT A SOURCE. The Les Cabannes
+# day is not confirmed — the Ariège tourism board says Sunday on Place des
+# Platanes, one directory says Friday, and Sunday is seeded because it is the
+# better source. The four added later are the well-known market days for those
+# towns, but a guest who drives an hour to Mirepoix on the strength of this and
+# finds an empty square has been let down by us, not by the internet. Somebody
+# local should check them, and the owner can fix any of it on /admin/whats-on
+# without touching this file.
 DEFAULT_WHATS_ON = [
-    ("Les Cabannes Market",
-     "Fruit, vegetables, dairy, meat and artisanal producers. The closest "
-     "market to the gates.",
-     "Place des Platanes", "3 minutes", 6, 1),
-    ("Tarascon-sur-Ariège Market",
-     "The larger of the two.",
-     "Place Jean-Jaurès", "15 minutes", 2, 2),
-    ("Tarascon-sur-Ariège Producers' Market",
-     "Cheese from the mountain farms, charcuterie, and whatever the season "
-     "has decided.",
-     "Place du 19 mars", "15 minutes", 5, 3),
-    ("Ax-les-Thermes Market",
-     "Mountain produce, and the thermal baths a short walk away afterwards.",
-     "Place Roussel", "25 minutes", 6, 4),
+    {"title": "Les Cabannes Market",
+     "description": "Fruit, vegetables, dairy, meat and artisanal producers. "
+                    "The closest market to the gates.",
+     "location": "Place des Platanes", "distance": "3 minutes", "weekday": 6},
+    {"title": "Tarascon-sur-Ariège Market",
+     "description": "The larger of the two.",
+     "location": "Place Jean-Jaurès", "distance": "15 minutes", "weekday": 2},
+    {"title": "Tarascon-sur-Ariège Producers' Market",
+     "description": "Cheese from the mountain farms, charcuterie, and whatever "
+                    "the season has decided.",
+     "location": "Place du 19 mars", "distance": "15 minutes", "weekday": 5},
+    {"title": "Ax-les-Thermes Market",
+     "description": "Mountain produce, and the thermal baths a short walk away "
+                    "afterwards.",
+     "location": "Place Roussel", "distance": "25 minutes", "weekday": 6},
+    {"title": "Foix Market",
+     "description": "Friday, in the streets below the counts' castle. The "
+                    "biggest of the nearby town markets, and the one to send "
+                    "somebody to if they only go to one.",
+     "location": "Halle aux Grains and the streets around it",
+     "distance": "30 minutes", "weekday": 4},
+    {"title": "Mirepoix Market",
+     "description": "Monday, under the medieval arcades of the Place des "
+                    "Couverts. An hour each way, and people still go.",
+     "location": "Place des Couverts", "distance": "1 hour", "weekday": 0},
+    {"title": "Saint-Girons Market",
+     "description": "Saturday, and the largest in the Couserans — produce, "
+                    "cheese, and a good deal that is not food at all.",
+     "location": "Place des Poilus, and along the Salat",
+     "distance": "1 hour 15", "weekday": 5},
+    {"title": "La Ferme du Quié",
+     "description": "A working farm rather than a market: milk, yoghurt and "
+                    "cheese from their own herd, sold at the farm. Ring ahead "
+                    "rather than turn up.",
+     "location": "Quié", "distance": "15 minutes",
+     # No market day and no eight-to-one: this is the row the old positional
+     # shape could not hold without inventing both.
+     "weekday": None, "start_time": None, "end_time": None},
 ]
 
 DEFAULT_EXTRAS = [
@@ -9933,6 +9968,96 @@ def discount_cost(conn, *, start=None, end=None):
             "gross": sum(r["gross"] or 0.0 for r in out),
             "net": sum(r["net"] or 0.0 for r in out),
             "uses": sum(r["uses"] or 0 for r in out)}
+
+
+def _days_between(earlier_iso, later_iso):
+    a, b = parse_date(earlier_iso), parse_date(later_iso)
+    return (b - a).days if (a and b) else 0
+
+
+def outstanding_balances(conn, *, today=None):
+    """Every stay with money still on it, and how late it is.
+
+    Money Ahead answers a different question and answers it well: what is
+    expected over the next N days, dated on arrival. That is cash flow, and it
+    has a window. A guest who checked out last month still owing four hundred
+    euros has an arrival date in the past, so they fall out of that window
+    entirely and off every screen in the house — the one debtor who most needs
+    chasing is the one nobody can see. The automatic reminder cannot reach them
+    either: it only looks at balances due BEFORE arrival.
+
+    So this is not filtered by date at all. Every confirmed stay whose bill is
+    not settled, in one of three states:
+
+      gone      they have left and still owe. Chase this.
+      overdue   the balance due date has passed and they have not arrived yet.
+      due       still to pay, not yet late.
+
+    Cancelled and declined stays are excluded: the bill still exists for the
+    record, but nobody is being asked for it. Refunds are already netted off by
+    booking_bill, so a stay refunded in full shows nothing rather than showing
+    its original price as a debt.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(today, str):
+        today = parse_date(today)
+    iso = today.isoformat()
+    rows = []
+    for booking in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'
+                ORDER BY bookings.departure_date""").fetchall():
+        bill = booking_bill(conn, booking["id"])
+        if not bill or bill["owed"] <= 0.005:
+            continue
+        departed = (booking["departure_date"] or "") < iso
+        due_date = booking["balance_due_date"]
+        if departed:
+            state, days = "gone", _days_between(booking["departure_date"], iso)
+        elif due_date and due_date < iso:
+            state, days = "overdue", _days_between(due_date, iso)
+        else:
+            state, days = "due", 0
+        rows.append({
+            "booking": booking, "owed": bill["owed"], "total": bill["total"],
+            "paid": bill["paid"], "state": state, "days_late": days,
+            "due_date": due_date, "departed": departed,
+        })
+    order = {"gone": 0, "overdue": 1, "due": 2}
+    rows.sort(key=lambda r: (order[r["state"]], -r["days_late"], -r["owed"]))
+    return rows
+
+
+def balance_request_email(booking, bill, *, departed):
+    """The wording for asking a guest for what is left on their stay.
+
+    Shared with the automatic reminder rather than written twice. The two differ in one respect and it matters: "we are looking forward to seeing
+    you" sent to somebody who checked out a fortnight ago reads as a machine
+    that has not noticed, which is the worst possible tone for a letter asking
+    for money.
+    """
+    try:
+        manage_url = url_for("manage_booking", manage_token=booking["manage_token"],
+                             _external=True)
+    except RuntimeError:
+        manage_url = f"{PUBLIC_BASE_URL or ''}/booking/{booking['manage_token']}"
+    if departed:
+        subject = f"Your stay at Ch\u00e2teau de Gudanes"
+        opening = ("We hope you enjoyed your stay with us.\n\n"
+                   f"There is \u20ac{bill['owed']:.2f} still outstanding on it. "
+                   "You can settle it here whenever suits:")
+    else:
+        subject = f"Before you arrive \u2014 {booking['room_name']}"
+        opening = (f"We are looking forward to seeing you on "
+                   f"{format_date_human(booking['arrival_date'])}.\n\n"
+                   f"There is \u20ac{bill['owed']:.2f} still outstanding on your stay. "
+                   "You can settle it online before you travel, or on arrival if "
+                   "you would rather:")
+    body = (f"Hi {booking['guest_name']},\n\n{opening}\n{manage_url}\n\n"
+            f"Reference code: {booking['reference_code']}\n\n"
+            f"\u2014 Ch\u00e2teau de Gudanes")
+    return subject, body
 
 
 def money_held_not_earned(conn, *, today=None):
@@ -19328,6 +19453,8 @@ PALETTE_PAGES = [
     ("Approvals", "admin_approvals", "expenses leave pending decide"),
     ("Expenses & invoices", "expenses", "receipts supplier bills"),
     ("Financials", "management_financials", "revenue profit money"),
+    ("What we're owed", "management_outstanding",
+     "outstanding balance debtors owing unpaid chase arrears"),
     ("Spend by supplier", "spend_by_vendor_page", "vendor paid purchase totals"),
     ("What discounts cost", "discount_cost_page", "promo codes given away"),
     ("Held, not earned", "held_not_earned_page",
@@ -32286,6 +32413,79 @@ def management_outlook():
                            overview=overview, months=months, costs=costs)
 
 
+@app.route("/management/outstanding")
+@owner_required
+def management_outstanding():
+    """What the house is owed, with the ones who have gone at the top."""
+    conn = get_db()
+    rows = outstanding_balances(conn)
+    conn.close()
+    lv = list_view(
+        rows, request.args,
+        search=[lambda r: r["booking"]["guest_name"],
+                lambda r: r["booking"]["guest_email"],
+                lambda r: r["booking"]["reference_code"],
+                lambda r: r["booking"]["room_name"]],
+        search_hint="Search guest, reference or room",
+        facets=[
+            facet("state", "State", lambda r: {
+                "gone": "Left owing", "overdue": "Overdue", "due": "Still to pay",
+            }[r["state"]]),
+        ],
+        sorts=[
+            sort_option("worst", "Most overdue first",
+                        lambda r: ({"gone": 0, "overdue": 1, "due": 2}[r["state"]],
+                                   -r["days_late"], -r["owed"])),
+            sort_option("largest", "Largest first", lambda r: r["owed"], reverse=True),
+            sort_option("departure", "By departure",
+                        lambda r: r["booking"]["departure_date"] or ""),
+        ],
+        default_sort="worst",
+    )
+    total = round(sum(r["owed"] for r in lv["rows"]), 2)
+    gone = round(sum(r["owed"] for r in lv["rows"] if r["state"] == "gone"), 2)
+    return render_template("management_outstanding.html", lv=lv, total=total,
+                           gone=gone,
+                           can_email=bool(email_enabled() or resend_enabled()))
+
+
+@app.route("/management/outstanding/<int:booking_id>/chase", methods=["POST"])
+@owner_required
+def chase_outstanding_balance(booking_id):
+    """Ask one guest for what is still on their stay.
+
+    By hand, because the automatic reminder will never reach these: it looks
+    only at balances due before arrival, and somebody who has already left is
+    past every date it checks.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    bill = booking_bill(conn, booking_id)
+    if not bill or bill["owed"] <= 0.005:
+        conn.close()
+        flash("There is nothing outstanding on that stay.", "error")
+        return redirect(url_for("management_outstanding"))
+    if not (booking["guest_email"] or "").strip():
+        conn.close()
+        flash("That booking has no email address on it.", "error")
+        return redirect(url_for("management_outstanding"))
+    departed = (booking["departure_date"] or "") < datetime.now(LOCAL_TZ).date().isoformat()
+    subject, body = balance_request_email(booking, bill, departed=departed)
+    conn.close()
+    if send_email(booking["guest_email"], subject, body):
+        flash(f"Asked {booking['guest_name']} for \u20ac{bill['owed']:.2f}.", "success")
+    else:
+        flash("No email provider is connected yet, so that is being held and "
+              "will go out once one is.", "error")
+    return redirect(url_for("management_outstanding"))
+
+
 @app.route("/management/financials")
 @owner_required
 def management_financials():
@@ -38027,18 +38227,8 @@ def run_room_balance_reminder_job(conn, days_before):
         owing += 1
         manage_url = url_for("manage_booking", manage_token=booking["manage_token"],
                              _external=True)
-        delivered = send_email(
-            booking["guest_email"],
-            f"Before you arrive — {booking['room_name']}",
-            f"Hi {booking['guest_name']},\n\n"
-            f"We are looking forward to seeing you on "
-            f"{format_date_human(booking['arrival_date'])}.\n\n"
-            f"There is €{bill['owed']:.2f} still outstanding on your stay. You can "
-            f"settle it online before you travel, or on arrival if you would rather:\n"
-            f"{manage_url}\n\n"
-            f"Reference code: {booking['reference_code']}\n\n"
-            f"— Château de Gudanes",
-        )
+        subject, body = balance_request_email(booking, bill, departed=False)
+        delivered = send_email(booking["guest_email"], subject, body)
         if delivered:
             conn.execute(
                 "UPDATE bookings SET balance_reminder_sent_at = ? WHERE id = ?",

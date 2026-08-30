@@ -57,6 +57,27 @@ def run():
     titles = [r["title"] for r in seeded]
     s.check("the producers' market reads as English",
             any("Producers' Market" in t for t in titles), detail=str(titles))
+    for town in ("Foix", "Mirepoix", "Saint-Girons"):
+        s.check(f"the {town} market is there",
+                any(town in t for t in titles), detail=str(titles))
+
+    s.section("And the one that is not a market keeps no market day")
+    # The whole reason the seed data stopped being positional tuples. A farm
+    # shop has no market day and does not open at eight and shut at one;
+    # squeezing it into the old six-field shape meant inventing both, and an
+    # invented opening time on a public page sends a guest to a closed gate.
+    farm = conn.execute(
+        "SELECT * FROM whats_on WHERE title LIKE '%Ferme du Qui%'").fetchone()
+    s.check("the farm is listed", bool(farm), detail="the fourth thing guests ask about")
+    if farm:
+        s.check("with no invented market day", farm["weekday"] is None,
+                detail=f"weekday={farm['weekday']} — a guest would drive out on it")
+        s.check("and no invented opening hours",
+                not farm["start_time"] and not farm["end_time"],
+                detail=f"{farm['start_time']}–{farm['end_time']}")
+        s.check("and it says to ring first rather than turn up",
+                "ring" in (farm["description"] or "").lower(),
+                detail=f"{(farm['description'] or '')[:80]!r}")
 
     s.section("A weekday rule lands on the right day of the week")
     wanted = (today + timedelta(days=3))
