@@ -21,13 +21,23 @@
     <p class="g-hero__lede">A restoration followed the world over, and an invitation extended quietly.</p>
   
     <form class="g-herosearch" method="get" action="{{ url_for('book_rooms') }}">
-      <div class="g-herosearch__f">
+      {# The two native date fields remain, as the values the form posts and as
+         the fallback when JavaScript is off. The picker below replaces them
+         visually and writes into them. #}
+      <div class="g-herosearch__f g-rp__f" data-rp="arrival">
         <label for="hs_arrival">{{ t('Arrival') }}</label>
         <input type="date" id="hs_arrival" name="arrival">
+        <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
+          <span class="g-rp__val" data-rp-label="arrival">{{ t('Add dates') }}</span>
+        </button>
       </div>
-      <div class="g-herosearch__f">
+      <div class="g-herosearch__f g-rp__f" data-rp="departure">
         <label for="hs_departure">{{ t('Departure') }}</label>
         <input type="date" id="hs_departure" name="departure">
+        <button type="button" class="g-rp__btn" data-rp-open="departure" hidden>
+          <span class="g-rp__val" data-rp-label="departure">{{ t('Add dates') }}</span>
+          <span class="g-rp__nights" data-rp-nights></span>
+        </button>
       </div>
       <div class="g-herosearch__f g-herosearch__f--n">
         <label for="hs_guests">{{ t('Guests') }}</label>

@@ -331,6 +331,55 @@
 </div></section>
 
 
+
+<!-- ============ SHAPE YOUR WEEKEND ============ -->
+{# An interactive planner. All the numbers here — 40 seated, 15 sleeping, one
+   event at a time, six acres — are stated elsewhere on this page. The output
+   is written into the enquiry form below, so nothing is lost. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Before You Write</p>
+  <h2 class="g-place">Shape Your Weekend</h2>
+  <p class="g-p">Most couples take the château for three or four days rather than one. Build the shape of yours and it will travel with your enquiry.</p>
+
+  <div class="g-plan" data-plan>
+    <div class="g-plan__cols">
+      <div class="g-plan__col">
+        <p class="g-plan__k">How long</p>
+        <div class="g-plan__opts" role="group" aria-label="Length of stay">
+          <button type="button" class="g-plan__o" data-days="1">One day</button>
+          <button type="button" class="g-plan__o is-on" data-days="3">Three days</button>
+          <button type="button" class="g-plan__o" data-days="4">Four days</button>
+        </div>
+      </div>
+      <div class="g-plan__col">
+        <p class="g-plan__k">How many</p>
+        <div class="g-plan__opts" role="group" aria-label="Number of guests">
+          <button type="button" class="g-plan__o" data-guests="20">Around 20</button>
+          <button type="button" class="g-plan__o is-on" data-guests="40">Around 40</button>
+          <button type="button" class="g-plan__o" data-guests="80">80 or more</button>
+        </div>
+      </div>
+      <div class="g-plan__col">
+        <p class="g-plan__k">The season</p>
+        <div class="g-plan__opts" role="group" aria-label="Season">
+          <button type="button" class="g-plan__o" data-season="Spring">Spring</button>
+          <button type="button" class="g-plan__o is-on" data-season="Summer">Summer</button>
+          <button type="button" class="g-plan__o" data-season="Autumn">Autumn</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="g-plan__out" aria-live="polite">
+      <p class="g-plan__line" data-plan-line></p>
+      <ul class="g-plan__notes" data-plan-notes></ul>
+    </div>
+
+    <p class="g-plan__act">
+      <a href="#enquire" class="g-btn g-btn--solid" data-plan-go>Send this with my enquiry</a>
+    </p>
+  </div>
+</div></section>
+
 <!-- ============ ONE AT A TIME ============ -->
 <section class="g-sec g-scarce"><div class="g-wrap">
   <div class="g-scarce__in">
@@ -360,4 +409,68 @@
   </div>
 </div></section>
 
+
+<script>
+/* The weekend planner. Every fact it states is one already on this page:
+   40 seated inside, 15 sleeping in the château, one event at a time, six
+   acres. The choices are written into the enquiry message so the couple do
+   not have to type them again. */
+(function(){
+  var root = document.querySelector('[data-plan]');
+  if (!root) return;
+  var state = { days: 3, guests: 40, season: 'Summer' };
+  var line = root.querySelector('[data-plan-line]');
+  var notes = root.querySelector('[data-plan-notes]');
+
+  function paint(){
+    var g = state.guests, d = state.days;
+    line.textContent = d + (d === 1 ? ' day' : ' days') + ' at the château, around '
+      + g + ' guests, in ' + state.season.toLowerCase() + '.';
+
+    var n = [];
+    /* Dining: 40 is the seated limit indoors. */
+    n.push(g <= 40
+      ? 'Dinner seated inside, in the main dining salon.'
+      : 'Above forty, dinner moves outdoors — the terraces and the parkland take larger numbers.');
+    /* Sleeping: 15 in the château. */
+    n.push(g <= 15
+      ? 'Everyone sleeps in the château.'
+      : 'Fifteen sleep in the château. The rest stay in the village below, three minutes down the hill.');
+    /* Length. */
+    if (d === 1) n.push('A single day is possible, though most couples find one evening is not enough for a place this far up a valley.');
+    else n.push(d + ' days means the château is yours throughout — no other guests, and no handover in the middle of it.');
+    /* Season. */
+    if (state.season === 'Summer') n.push('Summer dates are usually spoken for a long way ahead. The gardens are cropping and the evenings run late.');
+    if (state.season === 'Spring') n.push('Spring is quieter and costs less. The valley is green and the mountain still has snow on it.');
+    if (state.season === 'Autumn') n.push('Autumn is quieter and costs less. The limes turn, and the light on the façade is at its best.');
+
+    notes.innerHTML = n.map(function(x){ return '<li>' + x + '</li>'; }).join('');
+  }
+
+  root.addEventListener('click', function(e){
+    var b = e.target.closest('.g-plan__o');
+    if (!b) return;
+    var group = b.parentElement;
+    group.querySelectorAll('.g-plan__o').forEach(function(x){ x.classList.remove('is-on'); });
+    b.classList.add('is-on');
+    if (b.dataset.days) state.days = Number(b.dataset.days);
+    if (b.dataset.guests) state.guests = Number(b.dataset.guests);
+    if (b.dataset.season) state.season = b.dataset.season;
+    paint();
+  });
+
+  /* Carry the shape into the enquiry rather than making them retype it. */
+  var go = root.querySelector('[data-plan-go]');
+  if (go) go.addEventListener('click', function(){
+    var msg = document.querySelector('[name=message]');
+    if (!msg) return;
+    var text = 'We are thinking of ' + state.days + (state.days === 1 ? ' day' : ' days')
+      + ' at the château, around ' + state.guests + ' guests, in ' + state.season.toLowerCase() + '.';
+    msg.value = msg.value ? (text + '\n\n' + msg.value) : text;
+    setTimeout(function(){ msg.focus(); }, 400);
+  });
+
+  paint();
+})();
+</script>
 {% endblock %}

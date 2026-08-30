@@ -65,12 +65,12 @@
         {% endif %}
         {% if extras %}
         <p class="g-mb-label" style="margin-top:var(--s2);">Extras we can arrange</p>
-        {# Posts to the stay's own manage page rather than to a second route.
-           That one already prices the line, checks the notice a thing needs
-           and tells the house, so adding a copy here would be two places to
-           get the lead time wrong. #}
         <ul class="account-extras">
           {% for e in extras %}
+          {# Posts to the stay's own manage page rather than to a second route.
+             That one already prices the line, checks the notice a thing needs
+             and tells the house, so a copy here would be two places to get the
+             lead time wrong. #}
           <li>
             <span>{{ e['name'] }}</span>
             <span class="g-hint">

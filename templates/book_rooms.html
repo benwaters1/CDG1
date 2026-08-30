@@ -6,6 +6,18 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{# Nights for the whole page, from the dates already in scope. Computed here
+   so no route change is needed; if the view later passes stay_nights it wins. #}
+{% if stay_nights is not defined %}
+  {% set stay_nights = 0 %}
+  {% if arrival and departure and arrival|length == 10 and departure|length == 10 %}
+    {% set _a = arrival.split('-')|map('int')|list %}
+    {% set _d = departure.split('-')|map('int')|list %}
+    {% set stay_nights = ((_d[0]-_a[0])*365) + ((_d[1]-_a[1])*30) + (_d[2]-_a[2]) %}
+    {% if stay_nights < 0 %}{% set stay_nights = 0 %}{% endif %}
+  {% endif %}
+{% endif %}
+
 {% from '_emblems.html' import emblem %}
 
 
@@ -14,7 +26,7 @@
 <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
-  <p class="g-hero__eyebrow">Seven Chambres · Ariège</p>
+  <p class="g-hero__eyebrow">Cinq Chambres · Ariège</p>
     <h1 class="g-hero__title">Stay the Night</h1>
     <p class="g-hero__cta"><a href="#rooms" class="g-btn g-btn--solid">See the rooms</a></p>
 </div>
@@ -110,6 +122,20 @@
   'Double with Shared Bathroom': RM_IMG[3],
   'Twin/Double with Shared Bathroom': RM_IMG[1]
 } %}
+{# Written descriptions per room, used when the database field is thin.
+   Anything entered in the admin overrides these. #}
+{% set RM_DESC = {
+  'Suite with Mountain View':
+    'The largest room in the house, on the first floor, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
+  'King Room with Mountain View':
+    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is a few steps along the corridor and yours alone — ensuites are not permitted in a monument of this class.',
+  'Family Suite with Mountain View':
+    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits a few steps away.',
+  'Double with Shared Bathroom':
+    'A quiet double on the ground floor, floral papers and a marble chimneypiece, sharing a bathroom with one other room. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
+  'Twin/Double with Shared Bathroom':
+    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Double next door. The most straightforward room in the house, and the least expensive way into it.'
+} %}
       <img class="g-card__img"
            src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
            alt="{{ room['name'] }}" loading="lazy">
@@ -117,9 +143,23 @@
         {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room['name'] }}</h3>
         {% if room['price_per_night'] %}
-        <p class="g-card__rate"><b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
+        {# When dates are set, lead with the total for the stay — the figure a
+           guest is actually deciding on — and keep the nightly rate beneath. #}
+        {% set _n = stay_nights | default(0) | int %}
+        <p class="g-card__rate">
+          {% if _n > 0 %}
+            <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '%.0f'|format(room['price_per_night'] * _n) }}</b>
+            <span>total · {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
+            <span class="g-card__per">€{{ '%.0f'|format(room['price_per_night']) }} a night</span>
+          {% else %}
+            <b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b>
+            <span>/ night</span>
+          {% endif %}
+        </p>
         {% endif %}
-        {% if room['description'] %}<p class="g-card__desc">{{ room['description'] }}</p>{% endif %}
+        {% set _d = room['description'] if room['description'] and room['description']|length > 60
+                    else RM_DESC.get(room['name'], room['description']) %}
+        {% if _d %}<p class="g-card__desc">{{ _d }}</p>{% endif %}
         {# amenities is empty on every room, so this list never rendered.
            Derive the features from facts the row does carry; a filled-in
            amenities field overrides it the moment there is one. #}
@@ -560,7 +600,7 @@
       <div class="g-scarce__i"><b class="g-fig">1</b><span>Wedding or event at a time</span></div>
     </div>
 
-    <p class="g-scarce__note">Rooms open one at a time, as the restoration reaches them. Summer weekends and the winter ski weeks go first.</p>
+    <p class="g-scarce__note">Rooms open one at a time, as the restoration reaches them.</p>
   </div>
 </div></section>
 

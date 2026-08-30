@@ -386,15 +386,17 @@
         </ul>
       </div>
     </div>
-    <p class="g-footer__fine">© Château de Gudanes</p>
-  
+    {# Copyright and payment share one row and one rule — they were two
+       full-width bands with a rule apiece. #}
+    <div class="g-footer__base">
+      <p class="g-footer__fine">© Château de Gudanes</p>
       <div class="g-pay">
-        <span class="g-pay__lbl">Payment</span>
         <ul class="g-pay__marks">
           <li>Visa</li><li>Mastercard</li><li>Amex</li>
         </ul>
         <span class="g-pay__note">Secured by Stripe · charged in euro</span>
       </div>
+    </div>
 </div>
 </footer>
 
@@ -747,6 +749,208 @@
   var anchor = host.querySelector('.g-eyebrow, h2') || host.firstElementChild;
   if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
   else host.insertBefore(bar, host.firstChild);
+})();
+</script>
+
+<script>
+/* ============================================================
+   DATE RANGE PICKER
+   Two native date inputs told a guest nothing: no night count, no sense of a
+   stay as a span. This binds any pair of date inputs into one picker — click
+   arrival, click departure, the nights between highlight and the count shows.
+   The native inputs remain and receive the values, so the form posts exactly
+   as before and still works with JavaScript off.
+   ============================================================ */
+(function(){
+  var fields = document.querySelectorAll('[data-rp-open]');
+  if (!fields.length) return;
+
+  var aIn = document.getElementById('hs_arrival') || document.querySelector('[name=arrival]');
+  var dIn = document.getElementById('hs_departure') || document.querySelector('[name=departure]');
+  if (!aIn || !dIn) return;
+
+  /* JavaScript is running, so show the buttons and hide the raw inputs. */
+  document.querySelectorAll('.g-rp__f').forEach(function(f){ f.classList.add('is-rp'); });
+  fields.forEach(function(b){ b.hidden = false; });
+
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var DOW = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  var iso = function(d){ return d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+  var parse = function(s){ if(!s) return null; var p=s.split('-'); 
+    return new Date(+p[0], +p[1]-1, +p[2]); };
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  var start = parse(aIn.value), end = parse(dIn.value), hover = null;
+  var cursor = new Date((start||today).getFullYear(), (start||today).getMonth(), 1);
+
+  var panel = document.createElement('div');
+  panel.className = 'g-rp';
+  panel.setAttribute('role','dialog');
+  panel.setAttribute('aria-label','Choose your dates');
+  panel.hidden = true;
+  document.body.appendChild(panel);
+
+  function nights(){
+    if(!start || !end) return 0;
+    return Math.round((end - start) / 864e5);
+  }
+
+  function pretty(d){
+    if(!d) return null;
+    return d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3);
+  }
+
+  function paintFields(){
+    var n = nights();
+    var la = document.querySelector('[data-rp-label=arrival]');
+    var ld = document.querySelector('[data-rp-label=departure]');
+    var ln = document.querySelector('[data-rp-nights]');
+    if (la) la.textContent = pretty(start) || 'Add dates';
+    if (ld) ld.textContent = pretty(end) || 'Add dates';
+    if (ln) ln.textContent = n ? (n + (n===1 ? ' night' : ' nights')) : '';
+    aIn.value = start ? iso(start) : '';
+    dIn.value = end ? iso(end) : '';
+  }
+
+  function month(base){
+    var y = base.getFullYear(), m = base.getMonth();
+    var days = new Date(y, m+1, 0).getDate();
+    var lead = (new Date(y, m, 1).getDay() + 6) % 7;   /* weeks start Monday */
+    var h = '<div class="g-rp__m"><p class="g-rp__mh">' + MONTHS[m] + ' ' + y + '</p><div class="g-rp__g">';
+    h += DOW.map(function(d){ return '<span class="g-rp__dow">' + d + '</span>'; }).join('');
+    for (var i=0;i<lead;i++) h += '<span class="g-rp__pad"></span>';
+    for (var n=1;n<=days;n++){
+      var d = new Date(y, m, n), k = iso(d);
+      var past = d < today;
+      var isStart = start && k === iso(start);
+      var isEnd = end && k === iso(end);
+      var edge = end || hover;
+      var inRange = start && edge && d > start && d < edge;
+      var cls = 'g-rp__d';
+      if (past) cls += ' is-past';
+      if (isStart) cls += ' is-start';
+      if (isEnd) cls += ' is-end';
+      if (inRange) cls += ' is-in';
+      h += past
+        ? '<span class="' + cls + '">' + n + '</span>'
+        : '<button type="button" class="' + cls + '" data-d="' + k + '">' + n + '</button>';
+    }
+    return h + '</div></div>';
+  }
+
+  function draw(){
+    var next = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+    var n = nights();
+    panel.innerHTML =
+      '<div class="g-rp__top">' +
+        '<button type="button" class="g-rp__nav" data-mv="-1" aria-label="Previous month">&#8249;</button>' +
+        '<p class="g-rp__count">' + (n ? n + (n===1?' night':' nights') : 'Choose your arrival') + '</p>' +
+        '<button type="button" class="g-rp__nav" data-mv="1" aria-label="Next month">&#8250;</button>' +
+      '</div>' +
+      '<div class="g-rp__ms">' + month(cursor) + month(next) + '</div>' +
+      '<div class="g-rp__foot">' +
+        '<button type="button" class="g-rp__clear">Clear</button>' +
+        '<button type="button" class="g-rp__done">Done</button>' +
+      '</div>';
+  }
+
+  function place(anchor){
+    var r = anchor.getBoundingClientRect();
+    var w = Math.min(640, window.innerWidth - 24);
+    var left = window.scrollX + r.left;
+    if (left + w > window.scrollX + window.innerWidth - 12)
+      left = window.scrollX + window.innerWidth - w - 12;
+    panel.style.left = Math.max(window.scrollX + 12, left) + 'px';
+
+    /* Open upward when there is more room above — otherwise the lower half of
+       the calendar, which is where most dates are, falls below the fold. */
+    panel.style.maxHeight = '';
+    var h = panel.offsetHeight;
+    var below = window.innerHeight - r.bottom - 16;
+    var above = r.top - 16;
+    if (h > below && above > below){
+      panel.style.top = (window.scrollY + r.top - Math.min(h, above) - 8) + 'px';
+      if (h > above) panel.style.maxHeight = above + 'px';
+    } else {
+      panel.style.top = (window.scrollY + r.bottom + 8) + 'px';
+      if (h > below) panel.style.maxHeight = below + 'px';
+    }
+  }
+
+  var openAnchor = null;
+  function open(anchor){
+    openAnchor = anchor;
+    cursor = new Date((start||today).getFullYear(), (start||today).getMonth(), 1);
+    draw(); panel.hidden = false; place(anchor);
+    document.addEventListener('keydown', onKey);
+  }
+  function close(){
+    panel.hidden = true; openAnchor = null;
+    document.removeEventListener('keydown', onKey);
+  }
+  function onKey(e){ if (e.key === 'Escape') { close(); if(openAnchor) openAnchor.focus(); } }
+
+  fields.forEach(function(b){
+    b.addEventListener('click', function(){ panel.hidden ? open(b) : close(); });
+  });
+
+  panel.addEventListener('click', function(e){
+    var mv = e.target.closest('[data-mv]');
+    if (mv){ cursor.setMonth(cursor.getMonth() + Number(mv.dataset.mv));
+      var floor = new Date(today.getFullYear(), today.getMonth(), 1);
+      if (cursor < floor) cursor = floor;
+      draw(); return; }
+    if (e.target.closest('.g-rp__clear')){ start = end = null; paintFields(); draw(); return; }
+    if (e.target.closest('.g-rp__done')){ close(); return; }
+    var d = e.target.closest('[data-d]');
+    if (!d) return;
+    var picked = parse(d.dataset.d);
+    /* First click sets arrival. Second sets departure — unless it is on or
+       before the arrival, in which case it becomes the new arrival. */
+    if (!start || end || picked <= start){ start = picked; end = null; }
+    else { end = picked; }
+    hover = null; paintFields(); draw();
+  });
+
+  /* Show the span as the guest moves across the calendar. This paints classes
+     rather than redrawing: rebuilding the markup on mouseover replaced the
+     node under the cursor and made the next click land on a detached
+     element. */
+  panel.addEventListener('mouseover', function(e){
+    var d = e.target.closest('[data-d]');
+    if (!d || !start || end) return;
+    var h = parse(d.dataset.d);
+    if (!(h > start)) return;
+    hover = h;
+    panel.querySelectorAll('[data-d]').forEach(function(c){
+      var cd = parse(c.dataset.d);
+      c.classList.toggle('is-in', cd > start && cd < hover);
+    });
+  });
+  panel.addEventListener('mouseleave', function(){
+    if (end) return;
+    hover = null;
+    panel.querySelectorAll('.is-in').forEach(function(c){ c.classList.remove('is-in'); });
+  });
+
+  /* The calendar redraws on click, so by the time this handler runs the
+     clicked element is detached and panel.contains() is false — which closed
+     the panel the instant a guest picked their second date. Mark clicks that
+     began inside the panel on the way down. */
+  var fromPanel = false;
+  document.addEventListener('mousedown', function(e){
+    fromPanel = panel.contains(e.target) || !!e.target.closest('[data-rp-open]');
+  }, true);
+  document.addEventListener('click', function(e){
+    if (panel.hidden) return;
+    if (fromPanel) return;
+    close();
+  });
+  window.addEventListener('resize', function(){ if(!panel.hidden && openAnchor) place(openAnchor); });
+
+  paintFields();
 })();
 </script>
 </body>

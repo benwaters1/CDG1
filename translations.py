@@ -258,6 +258,7 @@ FR = {
     # -- Managing a stay ---------------------------------------------------
     "Check In": "Enregistrement",
     "Estimated arrival time": "Heure d'arrivée estimée",
+    "Add dates": "Ajouter des dates",
     'Your details': 'Vos coordonnées',
     'Name': 'Nom',
     'Mobile': 'Portable',
@@ -715,6 +716,7 @@ ES = {
     # -- Managing a stay ---------------------------------------------------
     "Check In": "Registro",
     "Estimated arrival time": "Hora estimada de llegada",
+    "Add dates": "Añadir fechas",
     'Your details': 'Sus datos',
     'Name': 'Nombre',
     'Mobile': 'Móvil',

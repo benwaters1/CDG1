@@ -3703,3 +3703,235 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
   font-family: var(--ui);
 }
 .g-survive span:last-child::after{ content: "."; margin-left: .05em; color: var(--blue-deep); }
+
+/* ==========================================================================
+   THE DATE RANGE PICKER
+   Two native date fields gave a guest mm/dd/yyyy and no sense of a stay as a
+   span. This is a two-month calendar: arrival and departure are marked in
+   navy, the nights between are washed in gilt, and the count is stated at the
+   top. The native inputs stay beneath it and still carry the values.
+   ========================================================================== */
+.g-rp__f.is-rp input[type="date"]{
+  position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px;
+}
+.g-rp__btn{
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  width: 100%; min-height: 44px; padding: 0;
+  border: 0; background: transparent; cursor: pointer; text-align: left;
+  font-family: var(--display); font-size: 19px; color: var(--blue-deep);
+  font-variant-numeric: lining-nums;
+}
+.g-rp__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
+.g-rp__nights{
+  font-family: var(--ui); font-size: 13px; letter-spacing: .04em;
+  color: var(--gilt);
+}
+
+.g-rp{
+  position: absolute; z-index: 200;
+  width: min(640px, calc(100vw - 24px));
+  background: #F6F1E7;              /* literal: the panel sits over a video */
+  border: 1px solid #73562D;
+  box-shadow: 0 18px 50px rgba(14,28,48,.32);
+  padding: 20px;
+  color: #14305F;
+}
+.g-rp__top{
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s4); padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--gilt);
+}
+.g-rp__count{
+  margin: 0; font-family: var(--display); font-size: 19px;
+  color: var(--blue-deep); font-variant-numeric: lining-nums;
+}
+.g-rp__nav{
+  min-width: 44px; min-height: 44px; cursor: pointer;
+  border: 1px solid var(--gilt); background: transparent;
+  color: var(--blue-deep); font-size: 20px; line-height: 1;
+}
+.g-rp__nav:hover{ background: var(--gilt); color: #fff; }
+.g-rp__nav:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+
+.g-rp__ms{ display: grid; gap: var(--s5); margin-top: var(--s4); }
+@media (min-width: 34rem){ .g-rp__ms{ grid-template-columns: 1fr 1fr; } }
+@media (max-width: 34rem){ .g-rp__m:last-child{ display: none; } }
+
+.g-rp__mh{
+  margin: 0 0 var(--s3); text-align: center;
+  font-family: var(--display); font-size: 17px; color: var(--blue-deep);
+  font-variant-numeric: lining-nums;
+}
+.g-rp__g{ display: grid; grid-template-columns: repeat(7, 1fr); }
+.g-rp__dow{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--gilt); text-align: center; padding-bottom: var(--s2);
+}
+.g-rp__pad{ min-height: 40px; }
+.g-rp__d{
+  min-height: 40px; display: flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; cursor: pointer;
+  font-family: var(--ui); font-size: 15px; color: var(--blue-deep);
+  font-variant-numeric: lining-nums;
+}
+button.g-rp__d:hover{ box-shadow: inset 0 0 0 1px var(--gilt); }
+button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2px; }
+.g-rp__d.is-past{ color: var(--ink-faint); opacity: .4; cursor: default; }
+/* The nights between, washed in gilt so the stay reads as one span. */
+.g-rp__d.is-in{ background: rgba(196,160,106,.22); }
+.g-rp__d.is-start,
+.g-rp__d.is-end{ background: var(--blue-deep); color: #fff; font-weight: 600; }
+
+.g-rp__foot{
+  display: flex; justify-content: space-between; align-items: center;
+  gap: var(--s4); margin-top: var(--s4); padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+}
+.g-rp__clear, .g-rp__done{
+  min-height: 44px; padding: 0 var(--s5); cursor: pointer;
+  font-family: var(--ui); font-size: 14px; letter-spacing: .04em;
+}
+.g-rp__clear{ border: 0; background: transparent; color: var(--ink-soft); text-decoration: underline; }
+.g-rp__done{ border: 1px solid var(--blue-deep); background: var(--blue-deep); color: #fff; }
+.g-rp__clear:focus-visible, .g-rp__done:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+/* If the panel has to be capped to fit the screen, it scrolls rather than
+   spilling off the bottom. */
+.g-rp{ overflow: auto; overscroll-behavior: contain; }
+
+/* ==========================================================================
+   THE FOOTER
+   815px tall with five horizontal rules and a 64px margin stacking on top of
+   a 24px padding before each one — so the copyright line sat alone in a band
+   of empty navy. One rule above the fine print, one above payment, and the
+   space between them halved.
+   ========================================================================== */
+.g-footer__fine{ margin-top: 32px; padding-top: 18px; }
+.g-pay{ margin-top: 18px; padding-top: 18px; }
+.g-pay__note{ margin-top: 10px; }
+/* The crest above the footer does not need 133px to itself. */
+.g-crest--foot{ padding: 28px 0 4px; }
+
+/* ==========================================================================
+   THE HEADER BAR
+   The Book button and the Menu toggle sit after the nav in the DOM, so when
+   the nav collapses they drift toward the middle instead of holding the right
+   edge — and at 1440 the Book button overflowed past the content edge
+   entirely. Anchor the logo left, let the nav take the middle, and hold the
+   actions together on the right at every width.
+   ========================================================================== */
+.g .g-top__in{
+  display: flex; align-items: center; gap: var(--s4);
+  justify-content: space-between;
+}
+.g .g-top__in > .g-logo,
+.g .g-top__in > .g-brand{ margin-right: auto; }
+.g .g-top__in > .g-nav{ margin-inline: auto; }
+/* The actions ride the right edge, in order, whatever else is showing. */
+.g .g-top__in > .g-booksel{ order: 9; margin-left: 0; }
+.g .g-top__in > .g-navbtn{ order: 10; margin-left: var(--s3); }
+/* The slide-out panel and its overlay are positioned, not laid out. */
+.g .g-top__in > .g-navwrap,
+.g .g-top__in > .g-panel-overlay{ position: fixed; }
+/* The nightly rate, kept under the total when dates are set. */
+.g-card__per{
+  display: block; margin-top: 2px;
+  font-family: var(--ui); font-size: 13px; color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   PAGE HEAD WITHOUT A HERO
+   Some pages open with a title on the page ground rather than over a
+   photograph. They must never borrow .g-hero__title, which is white with a
+   shadow for use over an image — on cream that renders invisible.
+   ========================================================================== */
+.g-pagehead{
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(34px, 5vw, 60px); line-height: 1.05;
+  color: var(--blue-deep); margin: var(--s3) 0 var(--s5);
+  text-shadow: none; max-width: 20ch;
+}
+/* A safety net: hero type outside a hero falls back to readable ink. */
+.g :not(.g-hero) > .g-hero__title,
+.g :not(.g-hero) > .g-hero__eyebrow,
+.g-wrap > .g-hero__title,
+.g-wrap > .g-hero__eyebrow{
+  color: var(--blue-deep); text-shadow: none;
+}
+
+/* ==========================================================================
+   THE FOOTER BASE
+   Copyright and payment were two full-width bands, each with its own rule
+   above it — two lines and two rules to carry a dozen words. One row now:
+   copyright left, payment right, a single rule above.
+   ========================================================================== */
+.g-footer__base{
+  display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: var(--s4);
+  margin-top: 32px; padding-top: 18px;
+  border-top: 1px solid rgba(196,160,106,.32);
+}
+.g-footer__base .g-footer__fine{ margin: 0; padding: 0; border: 0; }
+.g-footer__base .g-pay{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3);
+  margin: 0; padding: 0; border: 0;
+}
+.g-footer__base .g-pay__marks{ margin: 0; }
+.g-footer__base .g-pay__note{ margin: 0; }
+@media (max-width: 40rem){
+  .g-footer__base{ justify-content: flex-start; }
+}
+
+/* ==========================================================================
+   THE WEEKEND PLANNER
+   The events page said what was possible but gave a couple nothing to do with
+   it. This lets them assemble the shape of their weekend and see what follows
+   from it — set on sand, gilt-ruled, with the chosen option in navy.
+   ========================================================================== */
+.g-plan{
+  margin-top: var(--s7);
+  border-top: 2px solid var(--gilt); border-bottom: 2px solid var(--gilt);
+  padding: var(--s6) 0;
+}
+.g-plan__cols{ display: grid; gap: var(--s5); }
+/* A column inside the planner. Same shape as .g-plate__row above: the markup
+   keeps arriving and the stylesheet without the rule, so on a narrow screen
+   the label and its buttons had nothing holding them apart. Guarded by
+   test_design, which fails on a layout class used with no rule at all. */
+.g-plan__col{ display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+@media (min-width: 46rem){ .g-plan__cols{ grid-template-columns: repeat(3, 1fr); } }
+.g-plan__k{
+  margin: 0 0 var(--s3); font-family: var(--ui);
+  font-size: 13px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gilt);
+}
+.g-plan__opts{ display: flex; flex-wrap: wrap; gap: var(--s2); }
+.g-plan__o{
+  min-height: 44px; padding: 0 var(--s4); cursor: pointer;
+  border: 1px solid var(--gilt); background: transparent;
+  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+}
+.g-plan__o:hover{ background: var(--white); }
+.g-plan__o:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-plan__o.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+
+.g-plan__out{
+  margin-top: var(--s6); padding-top: var(--s5);
+  border-top: 1px solid rgba(115,86,45,.3);
+}
+.g-plan__line{
+  margin: 0 0 var(--s4);
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(20px, 2.3vw, 27px); line-height: 1.3;
+  color: var(--blue-deep);
+}
+.g-plan__notes{ margin: 0; padding: 0; list-style: none; }
+.g-plan__notes li{
+  position: relative; padding-left: var(--s5); margin-bottom: var(--s3);
+  font-size: 17px; line-height: 1.55; color: var(--ink); max-width: 58ch;
+}
+.g-plan__notes li::before{
+  content: "·"; position: absolute; left: var(--s3);
+  color: var(--gilt); font-weight: 700;
+}
+.g-plan__act{ margin: var(--s6) 0 0; }
