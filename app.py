@@ -180,6 +180,18 @@ ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
 # this matters; \s excludes the \r/\n that broke send_email() on a crafted
 # submission before that was hardened separately).
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# The country a bare local number is assumed to belong to. France, because
+# that is where the château and most of the people typing into these forms
+# are; a guest from anywhere else has to type their + prefix, which is what
+# people travelling already do.
+DEFAULT_PHONE_COUNTRY = "+33"
+
+# French mobile prefixes. A landline accepts no text message — the provider
+# takes the number, charges for the attempt and reports a failure nobody
+# reads, so it is worth knowing the difference before sending rather than
+# after being billed for it.
+FR_MOBILE_PREFIXES = ("+336", "+337")
+
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
 VIEWABLE_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}  # types a browser can render inline, no download needed
 
@@ -14371,9 +14383,13 @@ def edit_own_contact_info():
     pay, status, and skills stay owner-controlled via edit_employee."""
     user = current_user()
     if request.method == "POST":
-        phone = request.form.get("phone", "").strip()
+        # Staff numbers matter more than guests': a rota change at short
+        # notice is the case where somebody has to be reachable, and an
+        # emergency contact is the one number in the building nobody wants to
+        # discover is unusable on the day it is needed.
+        phone = phone_from_form("phone")
         emergency_contact_name = request.form.get("emergency_contact_name", "").strip()
-        emergency_contact_phone = request.form.get("emergency_contact_phone", "").strip()
+        emergency_contact_phone = phone_from_form("emergency_contact_phone")
         emergency_contact_relationship = request.form.get("emergency_contact_relationship", "").strip()
         conn = get_db()
         conn.execute(
@@ -21926,6 +21942,34 @@ def delete_expense(expense_id):
     return redirect(url_for("expenses"))
 
 
+def may_open_expense_file(user, row):
+    """Who may open the file attached to an expense.
+
+    The receipt IS the evidence for the row, so the authority to open it has to
+    be the authority to see the row. Three pages link here: my_expenses, which
+    is your own claim, and expenses and admin_approvals, both of which the
+    financial preset grants.
+
+    The test used to be `user["role"] != "owner"`, which is a different
+    question and got both ends wrong. Someone holding the financial preset can
+    approve an expense, delete it and export the lot, and every View and
+    Download button on the page they were doing it from returned 403 - so the
+    person the château trusts to sign off spending was the one person who could
+    not look at what had been spent. The page rendered perfectly while doing it.
+    In the other direction, an owner given a NARROW preset kept sight of every
+    receipt in the house, because the role test never consulted the preset.
+
+    Deliberately not solved by putting @owner_required on the routes: neither
+    endpoint is in ENDPOINT_AREA, and an unmapped endpoint is owner-only by
+    design, which would take my_expenses away from every member of staff.
+    """
+    if not user or not row:
+        return False
+    if row["submitted_by_user_id"] == user["id"]:
+        return True
+    return can_reach(user, "expenses") or can_reach(user, "admin_approvals")
+
+
 @app.route("/expenses/<int:expense_id>/file")
 @login_required
 def download_expense_file(expense_id):
@@ -21935,7 +21979,7 @@ def download_expense_file(expense_id):
     conn.close()
     if not row or not row["filename"]:
         abort(404)
-    if user["role"] != "owner" and row["submitted_by_user_id"] != user["id"]:
+    if not may_open_expense_file(user, row):
         abort(403)
     return send_from_directory(UPLOAD_DIR, row["filename"], as_attachment=True)
 
@@ -21949,7 +21993,7 @@ def view_expense_file(expense_id):
     conn.close()
     if not row or not row["filename"]:
         abort(404)
-    if user["role"] != "owner" and row["submitted_by_user_id"] != user["id"]:
+    if not may_open_expense_file(user, row):
         abort(403)
     ext = row["filename"].rsplit(".", 1)[-1].lower() if "." in row["filename"] else ""
     if ext not in VIEWABLE_EXTENSIONS:
@@ -22505,7 +22549,7 @@ def book_room(room_id):
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         party_size_raw = request.form.get("party_size", "").strip()
         special_requests = request.form.get("special_requests", "").strip()
         selected_extra_ids = {int(i) for i in request.form.getlist("extras") if i.isdigit()}
@@ -24378,7 +24422,7 @@ def restaurant_book():
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         dinner_date_raw = request.form.get("dinner_date", "").strip()
         dinner_date = parse_date(dinner_date_raw)
         dietary_notes = request.form.get("dietary_notes", "").strip()[:500]
@@ -24746,6 +24790,78 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     return deposit_amount, balance_amount, balance_due_date
 
 
+def normalise_phone(raw, default_country=None):
+    """A typed phone number as +33612345678, or None if it cannot be one.
+
+    Every form in the app has taken a phone number since the beginning and
+    none of them has ever looked at it, so what is on file is whatever people
+    typed: "06 12 34 56 78", "06.12.34.56.78", "+33 (0)6 12 34 56 78" and
+    "ask my wife". None of those can be sent to. Storing the raw string in a
+    column something later has to dial is the same fault as storing an
+    unparsed date in a date column — the page looks right, the send goes
+    nowhere, and it surfaces as a guest who did not turn up.
+
+    Deliberately conservative: it converts the shapes people actually write
+    and returns None for anything else, rather than guessing. A number it
+    cannot read is better refused at the form than stored and never used.
+    """
+    text = re.sub(r"[\s.\-() /]", "", (raw or ""))
+    if not text:
+        return None
+    country = default_country or DEFAULT_PHONE_COUNTRY
+    if text.startswith("00"):            # 0033... — the older international form
+        text = "+" + text[2:]
+    # "+33 (0)6 ..." is extremely common on French business cards and websites:
+    # the 0 is the trunk prefix, correct when dialling inside France and wrong
+    # once the country code is there. The parenthesis is already stripped above.
+    if text.startswith(country + "0"):
+        text = country + text[len(country) + 1:]
+    if text.startswith("+"):
+        digits = text[1:]
+        if not digits.isdigit() or not 8 <= len(digits) <= 15:   # E.164 caps at 15
+            return None
+        return "+" + digits
+    if not text.isdigit():
+        return None
+    if text.startswith("0"):             # a national number: 0612345678
+        return country + text[1:]
+    return None                          # a bare string of digits is too ambiguous
+
+
+def is_mobile_number(number):
+    """Whether a normalised number can receive a text.
+
+    Only answerable for France, where the prefix says so. For anywhere else
+    this returns None — "not known" rather than "no", because refusing to text
+    a foreign guest on the grounds that we cannot tell would be worse than
+    trying.
+    """
+    if not number:
+        return False
+    if number.startswith(DEFAULT_PHONE_COUNTRY):
+        return number.startswith(FR_MOBILE_PREFIXES)
+    return None
+
+
+def phone_from_form(field="guest_phone"):
+    """A phone number off a form, normalised where it can be.
+
+    The policy, in one place because it is a judgement rather than a rule:
+
+      - a number that normalises is stored normalised, so anything that later
+        has to send to it can, and normalise_phone is idempotent so re-reading
+        a stored value gives the same answer;
+      - a number that does not normalise is stored exactly as typed, and NOT
+        refused. Turning away a booking over a phone number would trade a real
+        stay for a tidy column. The sending side calls normalise_phone again
+        and simply finds nothing it can use, which is the truth.
+
+    So a bad number costs a text message, never a booking.
+    """
+    raw = (request.form.get(field, "") or "").strip()
+    return normalise_phone(raw) or raw
+
+
 def parse_money(raw):
     """A typed-in amount, or None if the box was left empty or filled with junk.
 
@@ -25053,6 +25169,7 @@ def campaign_context_for(name, email):
     return {
         "first_name": full.split()[0] if full else "there",
         "full_name": full or email,
+        "guest_name": full or "there",
         "email": email,
         "chateau": "Château de Gudanes",
     }
@@ -25111,7 +25228,8 @@ def campaign_unsubscribe_footer(conn, token):
     )
 
 
-def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=False):
+def send_campaign(conn, template, recipients, user_id, dedupe_key=None,
+                  as_test=False, extra_context=None):
     """Send one campaign to a set of recipients, logging every one.
 
     `dedupe_key` makes an automated send idempotent — the same template for the
@@ -25132,8 +25250,10 @@ def send_campaign(conn, template, recipients, user_id, dedupe_key=None, as_test=
         ).fetchone():
             skipped += 1
             continue
-        subject, body = render_campaign(template["subject"], template["body"],
-                                        campaign_context_for(name, email))
+        context = campaign_context_for(name, email)
+        if extra_context:
+            context.update(extra_context)
+        subject, body = render_campaign(template["subject"], template["body"], context)
         # Every marketing message carries its own unsubscribe key. Written
         # BEFORE the send so the link in the email is always one that resolves —
         # a footer pointing at a row that doesn't exist yet would 404 for anyone
@@ -25607,7 +25727,7 @@ def workshop_register(session_id):
 
         guest_name = request.form.get("guest_name", "").strip()
         guest_email = request.form.get("guest_email", "").strip().lower()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         notes = request.form.get("notes", "").strip()[:500]
         party_size_raw = request.form.get("party_size", "").strip()
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -27956,7 +28076,7 @@ def edit_booking(booking_id):
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         party_size_raw = request.form.get("party_size", "").strip()
-        guest_phone = request.form.get("guest_phone", "").strip()
+        guest_phone = phone_from_form("guest_phone")
         special_requests = request.form.get("special_requests", "").strip()
 
         arrival, departure = parse_date(arrival_raw), parse_date(departure_raw)
@@ -29862,13 +29982,47 @@ def send_promo_code_blast(code_id):
         return redirect(url_for("promo_code_blast", code_id=code_id, segment=segments, since_months=since_months_raw))
 
     recipients = promo_blast_recipients(conn, segments, since_date_iso)
-    sent = 0
-    for email, name in recipients.items():
-        personalized = body_template.replace("{guest_name}", name or "there").replace("{promo_code}", promo["code"])
-        if send_email(email, subject, personalized):
-            sent += 1
+
+    # Sent through send_campaign rather than looping send_email here.
+    #
+    # This is marketing mail - a discount code pushed at every past guest - and
+    # it was going out with no unsubscribe link and no record that it had gone.
+    # Respecting email_optouts on the way in is only half of it: a guest who
+    # has only ever been sent promo blasts had no way onto that list, because
+    # nothing in the message offered one. The campaign path next door already
+    # does both halves correctly, so the fix is to use it rather than grow a
+    # second copy of it here that drifts. Every recipient gets their own
+    # unsubscribe key and the footer carrying it, and a campaign_sends row,
+    # which is the only thing afterwards that can answer "what did we send
+    # them, and when". It also commits per recipient, so a send that dies part
+    # way keeps what already went out.
+    #
+    # The blast's two placeholders are single-braced and predate the campaign
+    # merge tags. Rewriting them to the {{...}} form keeps every body already
+    # typed into this form working; dropping them would have mailed a literal
+    # "{guest_name}" to the whole list. Written to accept either form and to
+    # be safe to apply twice.
+    for one, two in (("{guest_name}", "{{guest_name}}"),
+                     ("{promo_code}", "{{promo_code}}")):
+        subject = subject.replace(two, one).replace(one, two)
+        body_template = body_template.replace(two, one).replace(one, two)
+
+    user = current_user()
+    result = send_campaign(
+        conn,
+        {"id": None, "name": f"Promo code {promo['code']}",
+         "subject": subject, "body": body_template},
+        recipients,
+        user["id"] if user else None,
+        extra_context={"promo_code": promo["code"]},
+    )
+    log_audit(conn, "promo_blast_sent", target=promo["code"],
+              details=f"{result['sent']} sent, {result['failed']} failed")
+    conn.commit()
     conn.close()
-    flash(f"Sent to {sent} of {len(recipients)} guest(s).", "success")
+    flash(f"Sent to {result['sent']} of {result['total']} guest(s)"
+          + (f", {result['failed']} failed" if result["failed"] else "") + ".",
+          "error" if result["failed"] else "success")
     return redirect(url_for("admin_promo_codes"))
 
 
@@ -29887,7 +30041,7 @@ def matching_restaurant_waitlist_entries(conn, dinner_date_iso):
 def join_restaurant_waitlist():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone", "").strip()
+    phone = phone_from_form("phone")
     desired_date = request.form.get("desired_date", "").strip()
     party_size_raw = request.form.get("party_size", "").strip()
     notes = request.form.get("notes", "").strip()
@@ -29907,6 +30061,18 @@ def join_restaurant_waitlist():
         conn.commit()
         conn.close()
         flash("Enter a valid email address.", "error")
+        return redirect(url_for("restaurant_book"))
+
+    # The date was stored as whatever string was posted, never parsed — the
+    # same fault submit_event_inquiry had and fixed. It matters more here:
+    # matching_restaurant_waitlist_entries finds people by `desired_date = ?`
+    # with a real ISO date, so "next Friday please" sits in a date column and
+    # the guest is on the waitlist yet permanently invisible to the one job
+    # that exists to reach them. Nothing errors and the page thanks them.
+    if desired_date and not parse_date(desired_date):
+        conn.commit()      # keep the rate-limit entry
+        conn.close()
+        flash("Enter a valid date, or leave it blank and we will ask.", "error")
         return redirect(url_for("restaurant_book"))
 
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -30776,7 +30942,7 @@ def join_workshop_waitlist():
     session_id_raw = request.form.get("session_id", "").strip()
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone", "").strip()
+    phone = phone_from_form("phone")
     party_size_raw = request.form.get("party_size", "").strip()
     notes = request.form.get("notes", "").strip()
 

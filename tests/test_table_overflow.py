@@ -16,8 +16,9 @@ import os
 import re
 
 from _harness import Suite
+import _harness
 
-TEMPLATES = "templates"
+TEMPLATES = os.path.join(_harness.ROOT, "templates")
 
 # Pages whose tables are deliberately not in the responsive shell: the office
 # wall display and the printable sheets are fixed-width by design and are
@@ -59,7 +60,8 @@ def run():
     # A wrapper that does not scroll is decoration, and the check above would
     # then be enforcing nothing at all.
     css = ""
-    for f in ("static/style.css", "static/gudanes.css"):
+    for f in (os.path.join(_harness.ROOT, "static", "style.css"),
+              os.path.join(_harness.ROOT, "static", "gudanes.css")):
         if os.path.exists(f):
             css += open(f, encoding="utf-8").read()
     rule = re.search(r"\.table-wrap\s*\{([^}]*)\}", css)

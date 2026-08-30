@@ -8,6 +8,8 @@ The suite copies the current database to a throwaway file and runs against
 that, so it never touches real staff or guest records and leaves nothing
 behind. Exits non-zero if anything failed, so CI can use it as-is.
 """
+import os
+import glob
 import sys
 import traceback
 
@@ -151,9 +153,13 @@ SUITES = [
     "test_estate",
     "test_pennylane_send",
     "test_pricing",
+    "test_promo_and_ledger",
+    "test_public_forms",
+    "test_phone_numbers",
     "test_private_urls",
     "test_optout_and_flags",
     "test_till_and_toggles",
+    "test_expense_files",
 ]
 
 
@@ -171,6 +177,33 @@ def _positive_control():
     return ok
 
 
+def _registry_complete():
+    """Prove every suite on disk is one this runner actually runs.
+
+    SUITES is a hand-kept list, not a glob. A file that never gets added to it
+    is not a suite that fails - it is a suite that silently does not exist,
+    while the file sits in the tree looking like coverage and the total at the
+    bottom counts only the ones that ran. That is the same failure the positive
+    control guards against from the other side: the run looks green because
+    nothing asked the question.
+
+    Written as a self-check rather than as a suite so that it reports even when
+    the run is filtered down to a single name.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    on_disk = {os.path.basename(f)[:-3] for f in glob.glob(os.path.join(here, "test_*.py"))}
+    missing = sorted(on_disk - set(SUITES))
+    ghosts = sorted(set(SUITES) - on_disk)
+    ok = not missing and not ghosts
+    print(f"  {'PASS' if ok else 'FAIL'}  every suite file is registered "
+          f"({len(on_disk)} on disk)")
+    if missing:
+        print("        written but never run: " + ", ".join(missing))
+    if ghosts:
+        print("        registered but the file is gone: " + ", ".join(ghosts))
+    return ok
+
+
 def main(argv):
     wanted = argv[1:]
     names = [n for n in SUITES if not wanted or any(w in n for w in wanted)]
@@ -182,6 +215,7 @@ def main(argv):
     print("(a throwaway copy — the real one is untouched)")
     print("\n== Self-check")
     control_ok = _positive_control()
+    registry_ok = _registry_complete()
 
     total_passed, all_failed, crashed = 0, [], []
     for name in names:
@@ -228,7 +262,10 @@ def main(argv):
         print("\nCRASHED:", ", ".join(crashed))
     if not control_ok:
         print("\nThe self-check did not behave — treat the run above as unproven.")
-    return 0 if (not all_failed and not crashed and control_ok) else 1
+    if not registry_ok:
+        print("\nA suite file was written and never registered — the total"
+              " above does not cover it.")
+    return 0 if (not all_failed and not crashed and control_ok and registry_ok) else 1
 
 
 if __name__ == "__main__":
