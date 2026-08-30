@@ -122,6 +122,7 @@ SUITES = [
     "test_home_warnings",
     "test_watch_tasks",
     "test_job_outcomes",
+    "test_public_writes",
     "test_connection_hygiene",
     "test_security_headers",
     "test_money_routes",
