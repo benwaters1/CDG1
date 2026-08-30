@@ -12,6 +12,11 @@ the ninth handover. check_handover.py needs no such list — it asks git
 blame which commit each removed line came from, so it finds the ones
 nobody has met yet. Read its report, then run this, then run the suite.
 
+tools/export_for_design.py is the fix, and it now exists: it hands the design
+side a snapshot of current main and refuses to build one from a tree that is
+behind. Nothing needs repairing if nothing was reverted. Everything below is
+for zips built before that was in use.
+
 This is a WORKAROUND, not a fix. The cause is that the zips are generated from a
 snapshot of the tree rather than from current main, so anything shipped after
 that snapshot is silently reverted by whichever file touches it. The real fix is
