@@ -157,6 +157,7 @@ SUITES = [
     "test_public_forms",
     "test_phone_numbers",
     "test_reset_code",
+    "test_texting",
     "test_private_urls",
     "test_optout_and_flags",
     "test_till_and_toggles",

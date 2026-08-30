@@ -136,7 +136,7 @@ from datetime import datetime, timezone, timedelta, date, time as dtime
 from functools import wraps
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 from calendar import monthrange
 
@@ -546,6 +546,14 @@ SCANNER_URL = (os.environ.get("SCANNER_URL") or "").rstrip("/")
 # Payments — unset until you add a real Stripe account's keys as
 # environment variables. Until then, booking stays a request-only flow
 # with no payment step, exactly as it's worked so far.
+# Texting. Unset until a provider account exists, and until then every message
+# is held in sms_outbox rather than lost — the same bargain the mail side
+# makes. Nothing about the feature depends on these being present except the
+# final hop.
+SMS_PROVIDER_SID = os.environ.get("SMS_PROVIDER_SID")
+SMS_PROVIDER_TOKEN = os.environ.get("SMS_PROVIDER_TOKEN")
+SMS_FROM_NUMBER = os.environ.get("SMS_FROM_NUMBER")
+
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
@@ -2248,6 +2256,48 @@ def init_db():
         -- (see send_email): their body is a working credential, and one that
         -- expires — retrying a stale reset link days later is useless, while
         -- keeping it in a table is a real exposure.
+        -- Texting. Two lists, because a text is not an email and the two
+        -- kinds of message are not the same question.
+        --
+        -- A message about a stay somebody has booked is theirs: they gave the
+        -- number for it, and telling them where to collect the key is the
+        -- thing they wanted. That needs no separate consent, only the ability
+        -- to stop it.
+        --
+        -- A marketing text is the opposite. Nobody hands over a number at a
+        -- booking form expecting an offer, and a phone is more intrusive than
+        -- an inbox — it goes off at the table. So marketing needs an explicit
+        -- yes on file, and the absence of a no is not one.
+        CREATE TABLE IF NOT EXISTS sms_optouts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL UNIQUE,
+            reason TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS sms_consents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL UNIQUE,
+            source TEXT,
+            granted_at TEXT NOT NULL
+        );
+
+        -- Held the same way mail is, and for the same reason: with no
+        -- provider configured a message that cannot go now is kept rather
+        -- than lost, and goes when there is a way to send it.
+        CREATE TABLE IF NOT EXISTS sms_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone TEXT NOT NULL,
+            body TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            provider_message_id TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS email_outbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             to_address TEXT NOT NULL,
@@ -24894,6 +24944,148 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     balance_amount = round(total_price - deposit_amount, 2)
     balance_due_date = (start_date - timedelta(days=30)).isoformat()
     return deposit_amount, balance_amount, balance_due_date
+
+
+# What a text may be sent for. Transactional messages are about something the
+# person already asked for; marketing is everything else, and the difference
+# decides whether silence counts as permission.
+SMS_PURPOSES = ("transactional", "marketing")
+
+
+def sms_enabled():
+    """Whether there is any way to send a text at all."""
+    return bool(SMS_PROVIDER_SID and SMS_PROVIDER_TOKEN and SMS_FROM_NUMBER)
+
+
+def can_text(conn, raw_number, purpose="transactional"):
+    """(number_or_None, refusal_or_None) — whether this may be texted, and why not.
+
+    One gate in front of every send, rather than each caller remembering the
+    rules. It returns the normalised number on success so a caller cannot send
+    to the raw string by accident.
+
+    The order matters and is deliberate:
+
+      1. it has to be a number at all;
+      2. it has to be able to receive a text — a landline cannot, and the
+         provider would take it, charge for the attempt and report a failure
+         nobody reads;
+      3. nobody who has asked to be left alone is texted, for any purpose,
+         ever;
+      4. and marketing additionally needs an explicit yes on file. Silence is
+         not consent for a message somebody did not ask for, and a phone is
+         more intrusive than an inbox — it goes off at the table.
+    """
+    if purpose not in SMS_PURPOSES:
+        return None, "unknown purpose"
+    number = normalise_phone(raw_number)
+    if not number:
+        return None, "no usable number on file"
+    if is_mobile_number(number) is False:
+        return None, "that is a landline"
+    if conn.execute("SELECT 1 FROM sms_optouts WHERE phone = ?", (number,)).fetchone():
+        return None, "they asked not to be texted"
+    if purpose == "marketing":
+        if not conn.execute("SELECT 1 FROM sms_consents WHERE phone = ?",
+                            (number,)).fetchone():
+            return None, "no consent on file for marketing"
+    return number, None
+
+
+def record_sms_optout(conn, raw_number, reason=None):
+    """Add a number to the do-not-text list, and drop any marketing consent.
+
+    Both halves, because leaving the consent row behind would mean a later
+    'they opted back in' read as still true. Asking to stop is the more recent
+    instruction and has to win.
+    """
+    number = normalise_phone(raw_number)
+    if not number:
+        return None
+    conn.execute(
+        "INSERT OR IGNORE INTO sms_optouts (phone, reason, created_at) VALUES (?, ?, ?)",
+        (number, reason, datetime.now(timezone.utc).isoformat()))
+    conn.execute("DELETE FROM sms_consents WHERE phone = ?", (number,))
+    return number
+
+
+def record_sms_consent(conn, raw_number, source=None):
+    """Record an explicit yes to marketing texts, and lift any earlier no.
+
+    The mirror of the newsletter's confirm step: coming back is a deliberate
+    act by the person themselves, so it clears the older refusal rather than
+    being silently overridden by it.
+    """
+    number = normalise_phone(raw_number)
+    if not number:
+        return None
+    conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (number,))
+    conn.execute(
+        "INSERT OR IGNORE INTO sms_consents (phone, source, granted_at) VALUES (?, ?, ?)",
+        (number, source, datetime.now(timezone.utc).isoformat()))
+    return number
+
+
+def send_sms(conn, raw_number, body, purpose="transactional"):
+    """Send a text, or keep it until there is a way to.
+
+    Returns (sent, refusal). A refusal is a decision — the wrong number, a
+    landline, somebody who said no — and is never queued, because it will not
+    become sendable by waiting. Only a message that could go and cannot right
+    now is held.
+
+    Takes the caller's connection and writes on it, unlike the mail outbox
+    which opens its own. That is on purpose: the mail one has to survive being
+    called from a failure path, and paid for it with a whole class of lost
+    messages when the caller held a write open. This one is called from
+    ordinary code and can simply join the caller's transaction.
+    """
+    number, refusal = can_text(conn, raw_number, purpose)
+    if refusal:
+        return False, refusal
+    if not sms_enabled():
+        conn.execute(
+            """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at)
+               VALUES (?, ?, ?, 'no provider configured', ?)""",
+            (number, body, purpose, datetime.now(timezone.utc).isoformat()))
+        return False, None          # held, not refused
+    ok, result = sms_provider_send(number, body)
+    conn.execute(
+        """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at,
+           sent_at, provider_message_id, last_error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (number, body, purpose, "sent" if ok else "send failed",
+         datetime.now(timezone.utc).isoformat(),
+         datetime.now(timezone.utc).isoformat() if ok else None,
+         result if ok else None, None if ok else str(result)[:400]))
+    return bool(ok), None
+
+
+def sms_provider_send(number, body):
+    """The one place a text actually leaves the building.
+
+    Deliberately the only function that talks to the provider, so the test
+    harness has exactly one thing to block — the lesson from the morning the
+    suite turned out to be able to reach Stripe. Nothing else in this file
+    opens a connection to send a message.
+    """
+    if not sms_enabled():
+        return False, "no provider configured"
+    # Stdlib only, like every other outbound call in this file.
+    payload = urlencode({"To": number, "From": SMS_FROM_NUMBER, "Body": body}).encode()
+    url = (f"https://api.twilio.com/2010-04-01/Accounts/"
+           f"{quote(SMS_PROVIDER_SID)}/Messages.json")
+    auth = base64.b64encode(
+        f"{SMS_PROVIDER_SID}:{SMS_PROVIDER_TOKEN}".encode()).decode()
+    req = Request(url, data=payload, method="POST")
+    req.add_header("Authorization", f"Basic {auth}")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+    try:
+        with urlopen(req, timeout=15) as resp:
+            answer = json.loads(resp.read().decode())
+        return True, answer.get("sid")
+    except Exception as e:                       # pragma: no cover - network
+        return False, str(e)
 
 
 def normalise_phone(raw, default_country=None):
