@@ -32,7 +32,7 @@
     <h1 class="g-display" >{{ room['name'] }}</h1>
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
     <p class="g-room__meta">
-      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
+      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
     </p>
     <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
   </div>

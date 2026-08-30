@@ -710,5 +710,44 @@
   });
 })();
 </script>
+
+<script>
+/* Currency control beside the prices. The one in the menu panel is where it
+   has always been and still works; this places a second, linked control next
+   to the first convertible price on the page, because a guest reading a rate
+   should not have to open a menu to understand it. */
+(function(){
+  var master = document.getElementById('g-currency');
+  var firstPrice = document.querySelector('[data-eur]');
+  if (!master || !firstPrice) return;
+  var host = firstPrice.closest('section, .g-wrap');
+  if (!host) return;
+
+  var bar = document.createElement('p');
+  bar.className = 'g-curbar';
+  var label = document.createElement('span');
+  label.className = 'g-curbar__l';
+  label.textContent = 'Show prices in';
+  var sel = document.createElement('select');
+  sel.className = 'g-curbar__s';
+  sel.setAttribute('aria-label', 'Display currency');
+  master.querySelectorAll('option').forEach(function(o){
+    sel.appendChild(o.cloneNode(true));
+  });
+  sel.value = master.value;
+  bar.appendChild(label); bar.appendChild(sel);
+
+  /* Keep the two controls in step, whichever the guest uses. */
+  sel.addEventListener('change', function(){
+    master.value = sel.value;
+    master.dispatchEvent(new Event('change'));
+  });
+  master.addEventListener('change', function(){ sel.value = master.value; });
+
+  var anchor = host.querySelector('.g-eyebrow, h2') || host.firstElementChild;
+  if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+  else host.insertBefore(bar, host.firstChild);
+})();
+</script>
 </body>
 </html>

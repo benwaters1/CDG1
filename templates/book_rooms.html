@@ -1,8 +1,8 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Stay', None)] %}
 {% block title %}Stay{% endblock %}
-{% block description %}Seven bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
-{% block og_desc %}Seven bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block description %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
+{% block og_desc %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
@@ -23,14 +23,14 @@
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
-<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Availability</span>Seven bedrooms, of ninety-four rooms. They open one at a time, as the restoration reaches them.</p></div>
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Availability</span>Five bedrooms, of ninety-four rooms. They open one at a time, as the restoration reaches them.</p></div>
 
 
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-two">
     <div>
-      <p class="g-p g-lede-first">Seven bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
+      <p class="g-p g-lede-first">Five bedrooms inside a restoration followed by Vogue, AD Italia and the French press — a Class I Historic Monument still being brought back, and open to guests while the work goes on.</p>
       <p class="g-p">The walls are bare plaster and weathered stone. They are protected under French law and cannot be changed, so they stay as two hundred and eighty years left them. Everything within them is new and was chosen carefully — the beds, the linen, the floors underfoot, the bathrooms.</p>
       <p class="g-p">Both things are true at once. It is a stay with real limitations: no lift, original staircases, bathrooms shared and privately allocated on the ground floor, and electricity kept deliberately low. These are not oversights — they are the conditions under which a monument of this class is permitted to be lived in at all. In practice it means the evenings are lit by candle, and nobody has ever complained about that.</p>
       <blockquote class="g-quote">Each room opens as the last one is finished. That is not a donation — it is how the work continues.</blockquote>
@@ -100,14 +100,24 @@
         "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg",
         "https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df27e954-bae6-4fc3-806a-9292e1b8e183/GudanesCookingintheKitchenStay59of925.jpg"
       ] %}
+{# Each named room mapped to the photograph that actually shows it. The pool
+   below rotates by position, which meant the Suite could be illustrated with
+   a photo of the Classic Double. Rooms not named here still rotate. #}
+{% set RM_FOR = {
+  'Suite with Mountain View': RM_IMG[5],
+  'King Room with Mountain View': RM_IMG[0],
+  'Family Suite with Mountain View': RM_IMG[4],
+  'Double with Shared Bathroom': RM_IMG[3],
+  'Twin/Double with Shared Bathroom': RM_IMG[1]
+} %}
       <img class="g-card__img"
-           src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_IMG[loop.index0 % RM_IMG|length] }}?format=1000w{% endif %}"
+           src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
            alt="{{ room['name'] }}" loading="lazy">
       <div class="g-card__b">
         {{ emblem(room['name']) }}
         <h3 class="g-card__name">{{ room['name'] }}</h3>
         {% if room['price_per_night'] %}
-        <p class="g-card__rate"><b>From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
+        <p class="g-card__rate"><b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b> <span>/ night</span></p>
         {% endif %}
         {% if room['description'] %}<p class="g-card__desc">{{ room['description'] }}</p>{% endif %}
         {# amenities is empty on every room, so this list never rendered.
@@ -198,13 +208,12 @@
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
     <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
-    <p class="g-p">The King Room, Suite with Mountain View and Family Suite each have a private bathroom nearby in the area. The Double and The two Twin/Double rooms share a bathroom set between them — brass fittings, hexagonal terracotta, and among the most recently finished rooms in the building.</p>
-    <p class="g-p">Ensuite bathrooms are not permitted under historic preservation rules — which is why they sit together, and why they are the most modern rooms in the building.</p>
+    <p class="g-p">The King Room, the Suite with Mountain View and the Family Suite each have a private bathroom a few steps away. The Double and the Twin/Double share a bathroom set between them.</p>
+    <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit off the corridor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not.</p>
+    <p style="margin-top:var(--s6)">
+      <a href="#book" class="g-btn g-btn--solid">See what is free</a>
+    </p>
   </div>
-
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
-  </p>
 </div></section>
 
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -248,6 +257,7 @@
     <div><dt>In your room</dt><dd>Sockets and a lamp to read by — neither of which existed here in 2013</dd></div>
     <div><dt>Parking</dt><dd>On the gravel, where the carriages went</dd></div>
     <div><dt>Breakfast</dt><dd>Bread from the village, three minutes down the hill. Included</dd></div>
+    <div><dt>Children</dt><dd>Eight and over. Original staircases and unrestored rooms make it unsuitable below that</dd></div>
   </dl>
 
   <p style="margin-top:var(--s7);text-align:center">
@@ -329,10 +339,10 @@
       <p class="g-extra__p">Per bike, per day</p>
     </div>
   </article>
+  </div>
 
-</div>
   <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
+    <a href="#book" class="g-btn g-btn--solid">See what is free</a>
   </p>
 </div></section>
 
@@ -352,11 +362,11 @@
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">Side by Side</p>
   <h2 class="g-place">Which Room Is Yours</h2>
-  <p class="g-p">Seven rooms, each different. This is the quickest way to see which suits.</p>
+  <p class="g-p">Five rooms, each different. This is the quickest way to see which suits.</p>
 
   <div class="g-compare-wrap">
     <div class="table-wrap">
-    <table class="g-compare">
+      <table class="g-compare">
       <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
       <thead>
         <tr>
@@ -372,7 +382,7 @@
         {% for r in rooms %}
         <tr>
           <th scope="row">{{ r['name'] }}</th>
-          <td>{% if r['price_per_night'] %}<span class="g-fig">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
+          <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
           <td>{{ r['max_occupancy'] or '—' }}</td>
           <td>
             {%- set nm = (r['name'] or '')|lower -%}
@@ -386,7 +396,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+      </table>
     </div>
   </div>
   <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
@@ -431,11 +441,10 @@
       </ul>
     </div>
     <p class="g-ledger__note">Rates are per room per night. Nothing above appears on your bill unless you ask for it.</p>
+      <p style="margin-top:var(--s6)">
+      <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
+    </p>
   </div>
-
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
-  </p>
 </div></section>
 
 <!-- ============ WHAT GUESTS SAY ============ -->
@@ -502,7 +511,7 @@
   ('How do I get there without a car?',
    'Fly to Toulouse, then an hour and three quarters by road. Or take the train to Foix and we will meet it. Tell us your arrival and we will arrange the car.'),
   ('Can I bring children?',
-   'Yes. The Family Suite sleeps five across two bedrooms, and the kitchen will cook for them. It is an old building with original staircases, so judge it against the age of yours.'),
+   'Children of eight and over are welcome. The Family Suite sleeps five across two bedrooms, and the kitchen will cook for them. Below that age the building is not suitable — original staircases, unrestored rooms, and a working site in parts.'),
   ('Are dogs welcome?',
    'Not at present. Write to us if it matters and we will tell you what is possible.'),
   ('Is there Wi-Fi?',
@@ -535,7 +544,7 @@
 
 
 <!-- ============ HOW SMALL THIS IS ============ -->
-{# Every figure verified: seven bedrooms of ninety-four rooms, one sitting a
+{# Every figure verified against the system: five bedrooms of ninety-four rooms, one sitting a
    night in the kitchen, one event at a time, fifteen on an atelier. The
    constraint is the product, and the site had never said so. #}
 <section class="g-sec g-scarce"><div class="g-wrap">
@@ -545,7 +554,7 @@
     <p class="g-scarce__p">Not a marketing position. It is what a house still being restored can actually hold.</p>
 
     <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">7</b><span>Bedrooms open, of ninety-four rooms</span></div>
+      <div class="g-scarce__i"><b class="g-fig">5</b><span>Bedrooms open, of ninety-four rooms</span></div>
       <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting a night at La Table</span></div>
       <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most on an atelier</span></div>
       <div class="g-scarce__i"><b class="g-fig">1</b><span>Wedding or event at a time</span></div>
@@ -561,7 +570,7 @@
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Linen turned down" loading="lazy">
   <h2 class="g-close__h">Take a room</h2>
-  <p class="g-close__p">Seven bedrooms, opened one at a time as the restoration reaches them. Each room opens as the last one is finished.</p>
+  <p class="g-close__p">Five bedrooms, opened one at a time as the restoration reaches them. Each room opens as the last one is finished.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check your dates</a>
       <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Keep the evening</a>

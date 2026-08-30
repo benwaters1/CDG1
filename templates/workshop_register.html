@@ -22,7 +22,7 @@
     <p class="g-eyebrow">Château Workshop</p>
     <h1 class="g-display" >{{ session['title'] }}</h1>
     <p class="g-room__meta">
-      {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
+      {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig" data-eur="{{ session['price_per_person']|int }}">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
     </p>
     {% if session['inclusions'] %}
     <p class="g-room__note"><b>Includes:</b> {{ session['inclusions'] }}</p>
@@ -292,6 +292,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
         <div><dt>Not included</dt><dd>Flights, travel insurance, and whatever you buy at the brocantes</dd></div>
         <div><dt>Transfers</dt><dd>Toulouse or the train at Foix, at the arranged times</dd></div>
         <div><dt>To hold a place</dt><dd>A deposit now. The balance closer to the date, or pay it yourself</dd></div>
+        <div><dt>Children</dt><dd>Eight and over, and welcome at the table</dd></div>
         <div><dt>Sharing</dt><dd>Rooms are arranged for two. A single supplement applies if you would rather not</dd></div>
         <div><dt>Changing</dt><dd>Move to another session from your booking link, without emailing anyone</dd></div>
       </dl>

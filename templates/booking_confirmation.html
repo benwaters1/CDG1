@@ -94,11 +94,10 @@
       <h3 class="g-find__t">Something to do with the days</h3>
       <p class="g-find__d">Market mornings with the chef, guided walks, the brocantes, electric bikes, or the mountain between December and April.</p>
     </div>
+      <p style="margin-top:var(--s6)">
+      <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>
+    </p>
   </div>
-
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>
-  </p>
 </div></section>
 
 {% endblock %}

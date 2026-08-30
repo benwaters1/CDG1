@@ -39,6 +39,9 @@ The eight:
   8. The `checked` expression on the booking form's extras. Without it a guest
      who hits a validation error, or backs out of the card page, silently
      loses the airport transfer they had picked.
+  9. The `value=` on both date inputs of the event enquiry form. Same fault as
+     8 on a different form: somebody proposing a wedding hits a validation
+     error and finds the dates they chose have been emptied.
 
 Each is also guarded by a test (test_noindex_meta, test_part_payments,
 test_autocharge, test_table_overflow, test_privacy), so a handover that breaks
@@ -286,6 +289,36 @@ def repair_extra_prefill():
     return 1
 
 
+def repair_event_date_prefill():
+    """Put the typed dates back on the event enquiry form.
+
+    Same fault as repair_extra_prefill, on a different form, and the tenth
+    handover brought it: `value="{{ prefill_preferred_date | default('') }}"`
+    is stripped from both date inputs, so somebody proposing a wedding gets a
+    validation error and finds the two dates they chose have been emptied.
+    Nothing errors; the page just quietly forgets.
+
+    Guarded by test_form_prefill, which is what went red on final_31 —
+    check_handover.py named the commit ("Keep what the guest typed") before the
+    suite ran, which is the order that saves the manual pass.
+    """
+    rel = "templates/events_info.html"
+    src = _read(rel)
+    fixed = 0
+    for field in ("preferred_date", "alternate_date"):
+        stripped = f'<input type="date" id="{field}" name="{field}">'
+        if stripped not in src:
+            continue
+        src = src.replace(
+            stripped,
+            f'<input type="date" id="{field}" name="{field}" '
+            f"value=\"{{{{ prefill_{field} | default('') }}}}\">", 1)
+        fixed += 1
+    if fixed:
+        _write(rel, src)
+    return fixed
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -297,6 +330,7 @@ def main():
         ("the .g-plate__row rule", repair_plate_row_rule),
         ("the privacy footer link", repair_privacy_link),
         ("the ticked extras on the booking form", repair_extra_prefill),
+        ("the typed dates on the event enquiry", repair_event_date_prefill),
     ]
     total = 0
     for label, fn in steps:

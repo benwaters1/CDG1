@@ -28,7 +28,7 @@
     <p class="g-hero__eyebrow">An Atelier at the Château</p>
     <h1 class="g-hero__title">{{ workshop['title'] }}</h1>
     {% if workshop['price_per_person'] %}
-    <p class="g-hero__lede">
+    <p class="g-hero__lede" data-eur="{{ workshop['price_per_person']|int }}">
       €{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['instructor_name'] %} · with {{ workshop['instructor_name'] }}{% endif %}
     </p>
     {% endif %}

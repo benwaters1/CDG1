@@ -3362,6 +3362,9 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
+/* A row inside the plate. The markup keeps arriving with this
+   wrapper and the stylesheet without the rule. It sits above
+   .g-plate::before's inset border, and that is all it does. */
 .g-plate__row{ position: relative; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
@@ -3627,3 +3630,76 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 /* The cap stays as a ceiling. It no longer produces a ribbon because the
    prose-only wraps above are themselves narrow, so text and container agree. */
 .g-sec .g-wrap > p.g-p{ max-width: 62ch; }
+
+
+/* ==========================================================================
+   THE JOURNAL FORM
+   A flex form must not treat its hidden children as layout. The visually
+   hidden label and the CSRF input were taking flex slots, pushing the button
+   to a second line where stretch inflated the email field to 288px tall.
+   ========================================================================== */
+.g-journal__form{ align-items: center; }
+.g-journal__form > input[type="hidden"],
+.g-journal__form > .g-vh{ position: absolute; }
+.g-journal__form input[type="email"]{
+  height: 52px; flex: 1 1 18rem; max-width: 24rem;
+}
+.g-journal__form .g-btn{ height: 52px; flex: 0 0 auto; width: auto; }
+
+/* ==========================================================================
+   THE CURRENCY CONTROL
+   The switcher lived only in the slide-out menu panel, and no price on the
+   site carried data-eur, so it converted nothing. This is the same control,
+   placed beside the first price a guest actually reads.
+   ========================================================================== */
+.g-curbar{
+  display: flex; align-items: center; gap: var(--s3);
+  margin: 0 0 var(--s5); padding: 0;
+  font-family: var(--ui); font-size: 13px; letter-spacing: .04em;
+  color: var(--ink-soft);
+}
+.g-curbar__l{ text-transform: uppercase; letter-spacing: .1em; font-size: 13px; }
+.g-curbar__s{
+  min-height: 44px; padding: 0 var(--s3);
+  border: 1px solid var(--gilt); background: var(--white);
+  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+}
+.g-curbar__s:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+/* The approximate figure sits under the euro price, never replacing it. */
+.g-approx{
+  display: block; margin-top: 4px;
+  font-family: var(--ui); font-size: 13px; font-weight: 400;
+  letter-spacing: .02em; color: var(--ink-soft);
+  text-transform: none;
+}
+
+/* ==========================================================================
+   SCROLLING UNDER A FIXED HEADER
+   The header is fixed at 86px, but scroll-padding-top was never set — so any
+   anchor link, in-page jump or scrollIntoView landed the target beneath it.
+   A guest clicking "See what is free" arrived at a heading they could not
+   read. One line fixes every anchor on the site.
+   ========================================================================== */
+html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is not in scope on html */
+@media (max-width: 46rem){
+  html{ scroll-padding-top: 102px; }
+}
+
+/* ==========================================================================
+   THE INVENTORY OF SURVIVALS
+   A single run of named original features, set larger than body text and
+   separated by gilt points rather than commas — so it reads as a list of
+   things rather than a sentence about them. No praise words: the nouns do it.
+   ========================================================================== */
+.g-survive{
+  margin: var(--s6) 0; padding: var(--s5) 0;
+  border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(19px, 2.1vw, 25px); line-height: 1.45;
+  color: var(--blue-deep); max-width: none;
+}
+.g-survive span::after{
+  content: "·"; color: var(--gilt); margin: 0 .5em 0 .55em;
+  font-family: var(--ui);
+}
+.g-survive span:last-child::after{ content: "."; margin-left: .05em; color: var(--blue-deep); }

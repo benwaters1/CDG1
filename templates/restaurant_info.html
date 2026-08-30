@@ -50,7 +50,7 @@
     <div>
       <h2 class="g-h3" style="margin-bottom:var(--s2)">Reserve a table</h2>
       <p style="margin:0;color:var(--ink-2)">
-        {% if settings and settings['price_per_person'] %}<span class="g-fig">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings and settings['dinner_time'] %} · from {{ settings['dinner_time'] }}{% endif %}{% if settings and settings['capacity'] %} · up to {{ settings['capacity'] }} guests{% endif %}
+        {% if settings and settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings and settings['dinner_time'] %} · from {{ settings['dinner_time'] }}{% endif %}{% if settings and settings['capacity'] %} · up to {{ settings['capacity'] }} guests{% endif %}
       </p>
     </div>
     {% if settings and settings['enabled'] %}
