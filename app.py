@@ -25739,13 +25739,21 @@ def record_sms_consent(conn, raw_number, source=None):
     return number
 
 
-def send_sms(conn, raw_number, body, purpose="transactional"):
+def send_sms(conn, raw_number, body, purpose="transactional", hold=True):
     """Send a text, or keep it until there is a way to.
 
     Returns (sent, refusal). A refusal is a decision — the wrong number, a
     landline, somebody who said no — and is never queued, because it will not
     become sendable by waiting. Only a message that could go and cannot right
     now is held.
+
+    hold=False for a message that is only true at the moment it is written.
+    "A room has come free for your dates" is the example: held and delivered
+    the week a provider is finally connected, it arrives on somebody's phone
+    about dates resold a month ago. The email side already refuses to queue
+    this one for the same reason and says so; a text is worse, because a phone
+    goes off in a pocket. A message nobody can send now and that will be false
+    later is better lost than kept.
 
     Takes the caller's connection and writes on it, unlike the mail outbox
     which opens its own. That is on purpose: the mail one has to survive being
@@ -25757,6 +25765,8 @@ def send_sms(conn, raw_number, body, purpose="transactional"):
     if refusal:
         return False, refusal
     if not sms_enabled():
+        if not hold:
+            return False, "no way to send, and this message would be stale later"
         conn.execute(
             """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at)
                VALUES (?, ?, ?, 'no provider configured', ?)""",
@@ -38706,7 +38716,23 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso):
         # is switched on, for dates that were probably resold weeks earlier.
         # Nothing is queued, the entry stays open, and the caller falls back to
         # telling the owner to work the waitlist by hand.
-        if subject and send_email(entry["email"], subject, body, keep=False):
+        reached = bool(subject) and send_email(entry["email"], subject, body, keep=False)
+
+        # And by text, which is the channel that decides this one. A room that
+        # has come free will not still be free tomorrow, and somebody watching
+        # for it is not watching their inbox. hold=False for the same reason
+        # keep=False is above: a stale one is worse than none.
+        texted, _refusal = send_sms(
+            conn, entry["phone"],
+            f"A room has come free at Chateau de Gudanes for "
+            f"{format_date_human(entry['desired_arrival'])}. "
+            f"First to book has it: {book_url}",
+            purpose="transactional", hold=False)
+
+        # Contacted if EITHER reached them. Marking on the email alone meant a
+        # guest who was successfully texted stayed 'open' and would be told
+        # again by the next cancellation.
+        if reached or texted:
             conn.execute("UPDATE waitlist_entries SET status = 'contacted' WHERE id = ?", (entry["id"],))
             notified.append(entry)
     if notified:

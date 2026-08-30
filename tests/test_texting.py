@@ -159,6 +159,31 @@ def run():
                    "make somebody want it")
     s.check("and the caller is told why", refusal is not None, detail=str(refusal))
 
+    s.section("Some messages must not be kept at all")
+    # The mirror of keep=False on the mail side. "A room has come free for your
+    # dates" is only true while it is free; held and delivered the week a
+    # provider is finally connected, it arrives about dates resold a month ago
+    # — on a phone, in a pocket.
+    conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (OTHER,))
+    conn.execute("DELETE FROM sms_outbox WHERE phone = ?", (OTHER,))
+    conn.commit()
+    sent, refusal = m.send_sms(conn, OTHER, "A room has come free.",
+                               purpose="transactional", hold=False)
+    conn.commit()
+    s.check("it does not claim to have sent", sent is False)
+    s.check("and it is refused rather than queued", refusal is not None,
+            detail=str(refusal))
+    s.check("with nothing waiting behind it", len(_held(OTHER)) == 0,
+            detail=f"{len(_held(OTHER))} stale message(s) waiting to surprise "
+                   "somebody")
+    # ...while an ordinary message still waits, or hold=False would be the
+    # default by accident.
+    sent, refusal = m.send_sms(conn, OTHER, "Your key is with Marie.",
+                               purpose="transactional")
+    conn.commit()
+    s.check("an ordinary message is still held", len(_held(OTHER)) == 1,
+            detail=str(len(_held(OTHER))))
+
     s.section("The notice says exactly this")
     # Four claims, each a claim about code. If the code stops making them true
     # the notice is what has become a lie.
