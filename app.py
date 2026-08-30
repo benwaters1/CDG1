@@ -22133,6 +22133,56 @@ def _valid_guest_session(conn, token):
     return row
 
 
+@app.route("/my-account/<token>/ask", methods=["POST"])
+def guest_account_message(token):
+    """A message to the house from the account page.
+
+    Until now the only way to reach anybody was from inside a specific booking,
+    which is the wrong shape for half the reasons a guest writes: a question
+    about the next stay, an address that is wrong, or something that touches
+    two bookings at once. The page listed everything they had and offered no
+    way to say anything about it.
+
+    Deliberately not a booking action. It is a note from a person the house
+    already knows, so it goes to the owner with the address the link was issued
+    to — the guest cannot type a different one, and nothing here is taken on
+    trust from the form except the words.
+    """
+    conn = get_db()
+    session_row = _valid_guest_session(conn, token)
+    if not session_row:
+        conn.close()
+        return render_template("guest_account_expired.html"), 404
+
+    message = (request.form.get("message", "") or "").strip()[:2000]
+    if not message:
+        conn.close()
+        flash("Write something first and we will read it.", "error")
+        return redirect(url_for("guest_account", token=token))
+
+    if rate_limited(conn, "guest_account_message", BOOKING_RATE_LIMIT_PER_HOUR):
+        conn.commit()
+        conn.close()
+        flash("Thank you — we have that.", "success")   # same answer either way
+        return redirect(url_for("guest_account", token=token))
+
+    owner_to = owner_email(conn)
+    log_audit(conn, "guest_wrote_in", target=session_row["email"],
+              details=message[:200])
+    # Committed before the send: send_email falls back to the outbox on its own
+    # connection, which cannot write while this transaction is open. That is
+    # the fault that lost six routes' worth of held mail.
+    conn.commit()
+    conn.close()
+    if owner_to:
+        send_email(
+            owner_to, f"A guest wrote in — {session_row['email']}",
+            f"From {session_row['email']}, through their account page:\n\n"
+            f"{message}\n\n— Château de Gudanes")
+    flash("Thank you — we have that, and will come back to you.", "success")
+    return redirect(url_for("guest_account", token=token))
+
+
 @app.route("/my-account/<token>")
 def guest_account(token):
     conn = get_db()
@@ -25979,6 +26029,114 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
 # short enough that the place is still in mind. The workshop job uses the same
 # shape and the same reasoning.
 ROOM_FEEDBACK_DAYS_AFTER = 3
+
+
+def morning_digest(conn, today=None):
+    """What today looks like: who comes, who goes, who is eating, what is wrong.
+
+    Returns (subject, body, has_anything). The last is the point — a note that
+    arrives every morning saying nothing becomes furniture, which is the same
+    lesson the warnings panel already carries. So on a genuinely empty day
+    nothing is sent, and the job says so rather than writing an empty page.
+
+    It reuses owner_home_warnings rather than asking the same questions again.
+    Two lists of what needs attention would eventually disagree, and the one in
+    the email would be the one nobody corrected.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    iso = day.isoformat()
+
+    arriving = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed' AND bookings.arrival_date = ?
+           ORDER BY rooms.name""", (iso,)).fetchall()
+    leaving = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed' AND bookings.departure_date = ?
+           ORDER BY rooms.name""", (iso,)).fetchall()
+    staying = conn.execute(
+        """SELECT COUNT(*) AS c FROM bookings
+           WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
+        (iso, iso)).fetchone()["c"]
+    dinners = conn.execute(
+        """SELECT * FROM restaurant_bookings
+           WHERE status = 'confirmed' AND dinner_date = ?
+           ORDER BY guest_name""", (iso,)).fetchall()
+    covers = sum((d["party_size"] or 0) for d in dinners)
+
+    warnings = owner_home_warnings(conn, day)
+
+    lines = [f"{format_date_human(iso)} at Château de Gudanes.", ""]
+    if arriving:
+        lines.append(f"Arriving ({len(arriving)}):")
+        for b in arriving:
+            when = f" — {b['estimated_arrival_time']}" if b["estimated_arrival_time"] else ""
+            lines.append(f"  {b['room_name']}: {b['guest_name']}, "
+                         f"party of {b['party_size'] or 1}{when}")
+        lines.append("")
+    if leaving:
+        lines.append(f"Leaving ({len(leaving)}):")
+        for b in leaving:
+            lines.append(f"  {b['room_name']}: {b['guest_name']}")
+        lines.append("")
+    if staying:
+        lines.append(f"In the house tonight: {staying} room(s).")
+        lines.append("")
+    if dinners:
+        lines.append(f"Dinner ({len(dinners)} booking(s), {covers} cover(s)):")
+        for d in dinners:
+            note = f" — {d['dietary_notes']}" if (d["dietary_notes"] or "").strip() else ""
+            lines.append(f"  {d['guest_name']}, {d['party_size'] or 1}{note}")
+        lines.append("")
+    if warnings:
+        lines.append("Wants looking at:")
+        for w in warnings:
+            lines.append(f"  {w['title']}")
+        lines.append("")
+
+    # Deliberately NOT counting warnings. Several of them are standing facts —
+    # "no backup is arriving" is true every morning until somebody fixes it —
+    # so including them here means the note goes out every single day and
+    # becomes the thing you stop opening. They are already on the home page,
+    # they close themselves, and they are listed here when a note goes anyway.
+    #
+    # This note answers one question: what does TODAY look like. A standing
+    # warning is not a fact about today.
+    has_anything = bool(arriving or leaving or dinners)
+    if not has_anything:
+        lines.append("Nothing arriving, nothing leaving and no dinners booked.")
+
+    parts = []
+    if arriving:
+        parts.append(f"{len(arriving)} in")
+    if leaving:
+        parts.append(f"{len(leaving)} out")
+    if dinners:
+        parts.append(f"{covers} at dinner")
+    if warnings:
+        parts.append(f"{len(warnings)} to look at")
+    subject = f"Today: {', '.join(parts)}" if parts else "Today: a quiet one"
+    return subject, "\n".join(lines).rstrip() + "\n", has_anything
+
+
+def run_morning_digest_job(conn, today=None):
+    """Send the morning note, unless there is genuinely nothing in it.
+
+    Nothing is stamped, because this is not a message to a guest and sending
+    it twice costs nothing but a second copy — whereas a stamp would mean a
+    job that ran at 6am and failed could not be run again at 7.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    subject, body, has_anything = morning_digest(conn, day)
+    if not has_anything:
+        return "nothing happening today, so nothing sent"
+    to = owner_email(conn)
+    if not to:
+        return "no owner address on file"
+    send_email(to, subject, body)
+    return f"sent — {subject}"
 
 
 def run_room_feedback_job(conn, days_after=None):
