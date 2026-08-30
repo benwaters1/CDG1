@@ -221,6 +221,13 @@ BOOKING_RATE_LIMIT_PER_HOUR = 5
 # spam and asks once more is at three, and locking them out of their own
 # account is the worse failure of the two.
 PASSWORD_RESET_LIMIT_PER_HOUR = 5
+# Ten minutes, not an hour. A code is short enough to read out or mistype, so
+# it lives only as long as somebody needs to move between two windows.
+RESET_CODE_MINUTES = 10
+# Six digits is a million, which is a lot to a person and nothing to a script.
+# The cap is what makes the length safe, so it is small and it kills the code
+# rather than throttling it — five wrong tries and they ask for a new one.
+RESET_CODE_MAX_ATTEMPTS = 5
 # The smallest part-payment worth taking: below this the card fee is a
 # large share of the amount settled.
 PART_PAYMENT_MINIMUM = 20.0
@@ -2699,6 +2706,13 @@ def init_db():
         # from invoices and never included the subscription that renews itself.
         ("recurring_costs_vendor", "ALTER TABLE recurring_costs ADD COLUMN vendor_id INTEGER"),
         ("skills", "ALTER TABLE users ADD COLUMN skills TEXT"),
+        # A reset code rather than a reset link. The code is stored HASHED —
+        # the column holds a verifier, not a credential, so a copy of this
+        # database is not a set of live passwords-in-waiting. attempts is what
+        # makes six digits safe: a million guesses is nothing without a cap.
+        ("reset_code", "ALTER TABLE users ADD COLUMN reset_code TEXT"),
+        ("reset_code_attempts",
+         "ALTER TABLE users ADD COLUMN reset_code_attempts INTEGER NOT NULL DEFAULT 0"),
         ("emergency_contact_name", "ALTER TABLE users ADD COLUMN emergency_contact_name TEXT"),
         ("emergency_contact_phone", "ALTER TABLE users ADD COLUMN emergency_contact_phone TEXT"),
         ("emergency_contact_relationship", "ALTER TABLE users ADD COLUMN emergency_contact_relationship TEXT"),
@@ -14289,63 +14303,155 @@ def forgot_password():
         if rate_limited(conn, "forgot_password", PASSWORD_RESET_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
-            flash("If that email has an account, a reset link is on its way.", "success")
+            flash("If that email has an account, a code is on its way.", "success")
             return redirect(url_for("login"))
         person = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if person:
-            token = secrets.token_urlsafe(32)
-            expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+            # A code, not a link.
+            #
+            # Mail scanners follow links. Outlook Safe Links and its
+            # equivalents fetch every URL in a message before anybody reads it,
+            # so a one-time reset link that a scanner opens is SPENT: the
+            # person clicks it, is told it has expired, and has no way to tell
+            # why. A six digit code is not a URL, so nothing consumes it on the
+            # way — and it can be read on a phone and typed on the laptop that
+            # asked, which is the ordinary case.
+            #
+            # Stored HASHED. The column holds a verifier, not a credential, so
+            # a copy of this database is not a set of live resets waiting to be
+            # used.
+            code = f"{secrets.randbelow(1000000):06d}"
+            expires = (datetime.now(timezone.utc)
+                       + timedelta(minutes=RESET_CODE_MINUTES)).isoformat()
             conn.execute(
-                "UPDATE users SET reset_token = ?, reset_token_expires_at = ? WHERE id = ?",
-                (token, expires, person["id"]),
+                """UPDATE users SET reset_code = ?, reset_token_expires_at = ?,
+                   reset_code_attempts = 0, reset_token = NULL WHERE id = ?""",
+                (generate_password_hash(code), expires, person["id"]),
             )
             conn.commit()
-            reset_url = url_for("reset_password", token=token, _external=True)
             send_email(
-                person["email"], "Reset your password",
+                person["email"], "Your password reset code",
                 f"Hi {person['name'].split(' ')[0]},\n\n"
-                f"Click this link to set a new password (valid for 1 hour):\n{reset_url}\n\n"
-                f"If you didn't request this, you can ignore this email.\n\n— Château de Gudanes",
-                keep=False,   # the body is a live credential, and expires in an hour
+                f"Your code is {code}\n\n"
+                f"Type it on the page you asked from. It works once and expires in "
+                f"{RESET_CODE_MINUTES} minutes.\n\n"
+                f"If you didn't ask for this you can ignore it — nothing has "
+                f"changed.\n\n— Château de Gudanes",
+                keep=False,   # the body IS the credential; never queue it
             )
+        # Carried so the address does not have to be retyped on the next page.
+        # A convenience and nothing else: the code authorises the change, and
+        # the field stays editable in case this is not the session that asked.
+        session["reset_email"] = email
         conn.close()
         # Same message whether or not the email matched — don't reveal who has an account.
-        flash("If that email has an account, a reset link is on its way.", "success")
+        flash("If that email has an account, a code is on its way.", "success")
         return redirect(url_for("login"))
     return render_template("forgot_password.html", email_enabled=email_enabled())
 
 
-@app.route("/reset-password/<token>", methods=["GET", "POST"])
-def reset_password(token):
-    conn = get_db()
-    person = conn.execute("SELECT * FROM users WHERE reset_token = ?", (token,)).fetchone()
-    if not person or not person["reset_token_expires_at"] or parse_datetime_iso(person["reset_token_expires_at"]) < datetime.now(timezone.utc):
-        conn.close()
-        flash("That reset link is invalid or has expired — request a new one.", "error")
-        return redirect(url_for("forgot_password"))
+RESET_CODE_REFUSED = "That code is wrong or has expired — ask for a new one."
 
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        confirm = request.form.get("confirm_password", "")
-        if len(password) < 8:
-            conn.close()
-            flash("Password must be at least 8 characters.", "error")
-            return render_template("reset_password.html", token=token)
-        if password != confirm:
-            conn.close()
-            flash("Passwords don't match.", "error")
-            return render_template("reset_password.html", token=token)
-        conn.execute(
-            "UPDATE users SET password_hash = ?, reset_token = NULL, reset_token_expires_at = NULL WHERE id = ?",
-            (generate_password_hash(password), person["id"]),
-        )
+
+def _clear_reset(conn, user_id):
+    conn.execute(
+        """UPDATE users SET reset_code = NULL, reset_token = NULL,
+           reset_token_expires_at = NULL, reset_code_attempts = 0 WHERE id = ?""",
+        (user_id,))
+
+
+@app.route("/reset-password", methods=["GET", "POST"])
+def reset_password():
+    """Take the code and the new password on one page.
+
+    Everything that goes wrong here says the same sentence. Whether the address
+    has an account, whether a code was ever issued for it, whether the code is
+    wrong, whether it has expired, whether it has been guessed at too many
+    times — one message. Anything more specific turns this into a way to ask
+    the château who works there.
+
+    The attempt cap is what makes six digits safe. A million combinations is a
+    lot to a person and a few seconds to a script, so the code DIES on the
+    fifth wrong answer rather than slowing down: a throttle can be waited out,
+    and a dead code cannot.
+    """
+    prefill = session.get("reset_email", "")
+    if request.method != "POST":
+        return render_template("reset_password.html", prefill_email=prefill)
+
+    email = (request.form.get("email", "") or "").strip().lower()
+    code = (request.form.get("code", "") or "").strip()
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    conn = get_db()
+    # Guessing is rate limited separately from asking. Without this, the cap
+    # below is per-code and a script can simply request another one.
+    if rate_limited(conn, "reset_password_attempt", PASSWORD_RESET_LIMIT_PER_HOUR * 4):
         conn.commit()
         conn.close()
-        flash("Password updated — sign in with your new password.", "success")
-        return redirect(url_for("login"))
+        flash(RESET_CODE_REFUSED, "error")
+        return render_template("reset_password.html", prefill_email=email)
 
+    person = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    expired = (not person or not person["reset_code"]
+               or not person["reset_token_expires_at"]
+               or parse_datetime_iso(person["reset_token_expires_at"])
+               < datetime.now(timezone.utc))
+    if expired:
+        if person:
+            _clear_reset(conn, person["id"])
+        conn.commit()
+        conn.close()
+        flash(RESET_CODE_REFUSED, "error")
+        return render_template("reset_password.html", prefill_email=email)
+
+    if person["reset_code_attempts"] >= RESET_CODE_MAX_ATTEMPTS:
+        _clear_reset(conn, person["id"])
+        conn.commit()
+        conn.close()
+        flash(RESET_CODE_REFUSED, "error")
+        return render_template("reset_password.html", prefill_email=email)
+
+    # check_password_hash compares in constant time, which is the reason the
+    # code is hashed rather than merely stored — a plain == on a short secret
+    # leaks its prefix to anybody who can measure.
+    if not check_password_hash(person["reset_code"], code):
+        conn.execute(
+            "UPDATE users SET reset_code_attempts = reset_code_attempts + 1 WHERE id = ?",
+            (person["id"],))
+        # Spent on the fifth wrong answer, in the same request, so there is no
+        # window between the last allowed guess and the code becoming useless.
+        if person["reset_code_attempts"] + 1 >= RESET_CODE_MAX_ATTEMPTS:
+            _clear_reset(conn, person["id"])
+        conn.commit()
+        conn.close()
+        flash(RESET_CODE_REFUSED, "error")
+        return render_template("reset_password.html", prefill_email=email)
+
+    # The code is right. Only now does the password itself matter, and a bad
+    # one must not spend the code — they have proved who they are.
+    if len(password) < 8:
+        conn.commit()
+        conn.close()
+        flash("Password must be at least 8 characters.", "error")
+        return render_template("reset_password.html", prefill_email=email,
+                               code=code)
+    if password != confirm:
+        conn.commit()
+        conn.close()
+        flash("Passwords don't match.", "error")
+        return render_template("reset_password.html", prefill_email=email,
+                               code=code)
+
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?",
+                 (generate_password_hash(password), person["id"]))
+    _clear_reset(conn, person["id"])
+    conn.commit()
     conn.close()
-    return render_template("reset_password.html", token=token)
+    session.pop("reset_email", None)
+    flash("Password updated — sign in with your new password.", "success")
+    return redirect(url_for("login"))
 
 
 @app.route("/change-password", methods=["GET", "POST"])
