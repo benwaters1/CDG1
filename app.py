@@ -1000,6 +1000,11 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
      "({dates}) is due by {balance_due_date}.\n"
      "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
+    ("room_feedback_request", "Rooms: How was your stay?",
+     "How was your stay at Ch\u00e2teau de Gudanes?",
+     "Hi {guest_name},\n\nWe hope the ch\u00e2teau treated you well. If you have a "
+     "moment, we would very much like to hear how it was \u2014 it takes a minute "
+     "and we read every one:\n{feedback_url}\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("workshop_feedback_request", "Workshop: Feedback request",
      "How was {workshop_title}?",
      "Hi {guest_name},\n\nWe hope you enjoyed {workshop_title}. If you have a moment, we'd love to hear how "
@@ -2773,6 +2778,8 @@ def init_db():
          "ALTER TABLE bookings ADD COLUMN checkin_text_sent_at TEXT"),
         ("bookings_checkout_text_sent_at",
          "ALTER TABLE bookings ADD COLUMN checkout_text_sent_at TEXT"),
+        ("bookings_feedback_requested_at",
+         "ALTER TABLE bookings ADD COLUMN feedback_requested_at TEXT"),
         # A reset code rather than a reset link. The code is stored HASHED —
         # the column holds a verifier, not a credential, so a copy of this
         # database is not a set of live passwords-in-waiting. attempts is what
@@ -25966,6 +25973,63 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
     if skipped:
         parts.append(f"{skipped} with no number we could use")
     return ", ".join(parts) or "nothing to send"
+
+
+# How long after a stay to ask. Long enough to be home and have unpacked,
+# short enough that the place is still in mind. The workshop job uses the same
+# shape and the same reasoning.
+ROOM_FEEDBACK_DAYS_AFTER = 3
+
+
+def run_room_feedback_job(conn, days_after=None):
+    """Ask departed room guests how it was.
+
+    Workshop guests have been asked since the beginning; room guests never
+    were, and rooms are most of what the house sells. The form, the table and
+    the page have all existed the whole time — nothing pointed anybody at them.
+
+    Skipped rather than asked: a guest who has already left feedback, one who
+    asked not to be written to, and any stay that did not actually happen.
+    None of those is an error, and a job that treated them as one would report
+    a failure every morning.
+    """
+    days = ROOM_FEEDBACK_DAYS_AFTER if days_after is None else days_after
+    when = (datetime.now(LOCAL_TZ).date() - timedelta(days=days)).isoformat()
+    departed = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id
+           WHERE bookings.status = 'confirmed'
+             AND bookings.departure_date = ?
+             AND bookings.feedback_requested_at IS NULL
+             AND NOT EXISTS (SELECT 1 FROM guest_feedback
+                             WHERE guest_feedback.booking_id = bookings.id)
+             AND LOWER(bookings.guest_email) NOT IN
+                 (SELECT LOWER(email) FROM email_optouts)""",
+        (when,)).fetchall()
+
+    asked = 0
+    for booking in departed:
+        subject, body = render_email_template(conn, "room_feedback_request", {
+            "guest_name": (booking["guest_name"] or "").strip().split(" ")[0] or "there",
+            "room_name": booking["room_name"],
+            "feedback_url": url_for("guest_feedback",
+                                    token=booking["manage_token"], _external=True),
+        })
+        if not subject:
+            continue
+        # Stamped before the send and committed per booking, for the two
+        # reasons this app has learned the hard way: a stamp held open stops
+        # the NEXT guest's message being queued at all, and stamping only on
+        # success asks everybody again the day a provider is connected.
+        conn.execute("UPDATE bookings SET feedback_requested_at = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), booking["id"]))
+        conn.commit()
+        send_email(booking["guest_email"], subject, body)
+        asked += 1
+
+    if not departed:
+        return f"nobody left {days} day(s) ago who has not been asked"
+    return f"asked {asked} guest(s) how their stay was"
 
 
 def run_checkin_text_job(conn, days_before=None):
