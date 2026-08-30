@@ -41,7 +41,8 @@ def _cleanup():
     for number in ("+33611111111", "+33622222222", "+33633333333"):
         conn.execute("DELETE FROM sms_outbox WHERE phone = ?", (number,))
         conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (number,))
-    conn.execute("DELETE FROM app_settings WHERE key = ?", (m.CHECKIN_TEXT_SETTING,))
+    for spec in m.GUEST_TEXTS.values():
+        conn.execute("DELETE FROM app_settings WHERE key = ?", (spec["setting"],))
     conn.commit()
     conn.close()
 
@@ -170,6 +171,68 @@ def run():
             "error" not in said.lower() and "fail" not in said.lower(),
             detail=str(said))
 
+    s.section("The message on the way out")
+    # The pair to the arrival one. Same job, different configuration — one
+    # function with two entries rather than two copies, because two copies is
+    # how they stop agreeing about who gets skipped.
+    leaving = _arrival("LEAVING", "06 33 33 33 33", days=8)
+    conn = db()
+    conn.execute("UPDATE bookings SET departure_date = ? WHERE id = ?",
+                 ((datetime.now(m.LOCAL_TZ).date() + timedelta(days=1)).isoformat(),
+                  leaving["id"]))
+    conn.commit()
+    result = m.run_guest_text_job(conn, "checkout")
+    conn.commit()
+    conn.close()
+    out = _outbox("+33633333333")
+    s.check("a guest leaving tomorrow is written to", len(out) == 1,
+            detail=f"{len(out)} — {result}")
+    body = out[0]["body"] if out else ""
+    s.check("and told when checkout is", "11am" in body, detail=body[:80])
+    s.check("with a link to their bill rather than to the manage page",
+            "/statement" in body, detail=body[:100])
+    s.check("no merge tag is left showing", "{" not in body, detail=body[:80])
+
+    conn = db()
+    stamped = conn.execute(
+        "SELECT checkout_text_sent_at FROM bookings WHERE id = ?",
+        (leaving["id"],)).fetchone()["checkout_text_sent_at"]
+    conn.close()
+    s.check("the departure stamp is its own column", bool(stamped),
+            detail="sharing the arrival stamp would mean one message "
+                   "suppresses the other")
+    conn = db()
+    m.run_guest_text_job(conn, "checkout")
+    conn.commit()
+    conn.close()
+    s.check("and it does not send twice either",
+            len(_outbox("+33633333333")) == 1,
+            detail=str(len(_outbox("+33633333333"))))
+
+    # The two must not suppress each other. This guest has had their departure
+    # text; an arrival run must still be free to consider them.
+    conn = db()
+    arrival_stamp = conn.execute(
+        "SELECT checkin_text_sent_at FROM bookings WHERE id = ?",
+        (leaving["id"],)).fetchone()["checkin_text_sent_at"]
+    conn.close()
+    s.check("sending one leaves the other untouched", arrival_stamp is None)
+
+    s.section("What the shipped wording costs")
+    # The url is most of a text: about 70 characters of 160 once the live host
+    # and a real token are in it. A default that fits in the test's short token
+    # and not in production is a bill nobody sees coming, and the first version
+    # of the arrival message was exactly that.
+    real_base, real_token, long_name = "https://chateaugudanes.com", "x" * 32, "Marie-Christine"
+    for kind, spec in m.GUEST_TEXTS.items():
+        body = (spec["default"]
+                .replace("{guest_name}", long_name)
+                .replace("{manage_url}", f"{real_base}/book/manage/{real_token}")
+                .replace("{statement_url}", f"{real_base}/booking/{real_token}/statement"))
+        s.check(f"the {kind} default is one billed message",
+                m.sms_segments(body) == 1,
+                detail=f"{len(body)} characters with a real url and a long name")
+
     s.section("The owner's page")
     page = oc.get("/management/texting")
     html = page.get_data(as_text=True)
@@ -177,11 +240,16 @@ def run():
     s.check("it says no provider is connected", "No provider is connected" in html)
     s.check("it counts the numbers that cannot be used", "cannot use" in html)
     s.check("and shows what is waiting", "+33611111111" in html)
+    s.check("it offers both messages, not only the arrival one",
+            "Before arrival" in html and "Before departure" in html,
+            detail="a second message nobody can see is a second message "
+                   "nobody edits")
     s.check("with the person who asked to stop", "+33622222222" in html)
 
     s.section("Changing the message says what it will cost")
     long_one = ("Bonjour {guest_name}, we look forward to welcoming you tomorrow. " * 4)
-    r = oc.post("/management/texting/template", data={"template": long_one},
+    r = oc.post("/management/texting/template",
+                data={"kind": "checkin", "template": long_one},
                 follow_redirects=True)
     s.check("a longer message is saved",
             any("Saved" in f for f in flashes(r)), detail=str(flashes(r)))
@@ -190,8 +258,12 @@ def run():
     s.check("and it says how many messages that now is",
             any("messages per guest" in f for f in flashes(r)), detail=str(flashes(r)))
 
-    r = oc.post("/management/texting/template", data={"template": "   "},
+    r = oc.post("/management/texting/template",
+                data={"kind": "checkin", "template": "   "},
                 follow_redirects=True)
+    s.check("and a message the app does not have is refused outright",
+            oc.post("/management/texting/template",
+                    data={"kind": "invented", "template": "x"}).status_code == 400)
     s.check("an empty message is refused",
             any("cannot be empty" in f for f in flashes(r)), detail=str(flashes(r)))
 

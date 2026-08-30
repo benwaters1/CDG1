@@ -6,6 +6,7 @@
   <h1>Texting</h1>
   <form method="post" action="{{ url_for('run_checkin_texts_now') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="kind" value="checkin">
     <button type="submit" class="btn-mini">Send tomorrow's arrival texts now</button>
   </form>
 </div>
@@ -33,19 +34,31 @@
 </div>
 {% endif %}
 
-<h2 class="section-heading">The message they get the day before</h2>
-<form method="post" action="{{ url_for('save_checkin_text') }}">
+<h2 class="section-heading">What they get, and what it costs</h2>
+{# Both messages side by side. Kept in one loop rather than two blocks so a
+   second message cannot become the one nobody looks at. #}
+{% for msg in messages %}
+<form method="post" action="{{ url_for('save_checkin_text') }}" style="margin-bottom:18px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <textarea name="template" rows="4" style="width:100%;">{{ template }}</textarea>
+  <input type="hidden" name="kind" value="{{ msg.kind }}">
+  <label class="field-label">Before {{ msg.label }} — sent {{ msg.when }}</label>
+  <textarea name="template" rows="3" style="width:100%;">{{ msg.body }}</textarea>
   <p class="upload-hint" style="margin-top:6px;">
-    Use <code>{guest_name}</code>, <code>{arrival_date}</code>, <code>{reference}</code> and
-    <code>{manage_url}</code>. As written this is
-    <strong>{{ segments }} message{{ '' if segments == 1 else 's' }}</strong> per guest —
-    a text is billed in parts of {{ segment_chars }} characters, so a sentence added here is
-    charged on every arrival, not once.
+    Use <code>{guest_name}</code>, <code>{arrival_date}</code>,
+    <code>{departure_date}</code>, <code>{reference}</code>,
+    <code>{manage_url}</code> and <code>{statement_url}</code>. As written this is
+    <strong>{{ msg.segments }} message{{ '' if msg.segments == 1 else 's' }}</strong>
+    per guest — a text is billed in parts of {{ segment_chars }} characters, and
+    the link alone is about 70 of them, so a sentence added here is charged on
+    every stay rather than once.
   </p>
-  <button type="submit" class="btn-mini">Save</button>
+  <div style="display:flex; gap:8px;">
+    <button type="submit" class="btn-mini">Save</button>
+    <button type="submit" class="btn-ghost"
+            formaction="{{ url_for('run_checkin_texts_now') }}">Send these now</button>
+  </div>
 </form>
+{% endfor %}
 
 <h2 class="section-heading">Waiting to send</h2>
 {% if not waiting %}
