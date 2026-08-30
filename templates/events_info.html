@@ -93,7 +93,7 @@
           <label for="event_type">What kind of event?</label>
           <select id="event_type" name="event_type" required>
             <option value="">— choose —</option>
-            {% for t in event_types %}<option value="{{ t }}"{{ ' selected' if t == prefill_event_type|default('') }}>{{ t|capitalize }}</option>{% endfor %}
+            {% for t in event_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
           </select>
         </p>
         <p class="g-field">
@@ -177,7 +177,7 @@
       <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1000w" alt="The parkland" loading="lazy">
       <div class="g-incl-card__b">
         <h3 class="g-incl-card__t">The Arrival</h3>
-        <p>Two horses and the château's own carriage, up the gravel drive — the arrival every guest here has had for two centuries.</p>
+        <p>Horses and a carriage can be arranged for the drive, which was built for exactly that. Or the bus from Toulouse, which is how most guests come and which is its own kind of arrival.</p>
       </div>
     </article>
   </div>
@@ -351,7 +351,7 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The salon set for dinner" loading="lazy">
   <h2 class="g-close__h">Tell us what you have in mind</h2>
   <p class="g-close__p">A wedding, a birthday, a shoot. Describe it and we will come back with what it would involve and what it would cost.</p>
   <div class="g-close__acts">

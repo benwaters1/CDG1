@@ -1,8 +1,8 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room['name'], None)] %}
 {% block title %}Book {{ room['name'] }}{% endblock %}
-{% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Check dates and rates.{% endblock %}
-{% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Check dates and rates.{% endblock %}
+{% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. See what is free and rates.{% endblock %}
+{% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. See what is free and rates.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% block content %}
 
@@ -329,23 +329,23 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       monthsEl.innerHTML = '';
       for (var m=0; m<2; m++){
         var month = new Date(cursor.getFullYear(), cursor.getMonth()+m, 1);
-        var box = document.createElement('div'); box.className = 'g-cal__month';
+        var box = document.createElement('div'); box.className = 'g-dates__month';
         var h = document.createElement('p'); h.className = 'g-cal__title';
         h.textContent = month.toLocaleDateString('en-GB',{month:'long',year:'numeric'});
         box.appendChild(h);
-        var grid = document.createElement('div'); grid.className = 'g-cal__grid';
+        var grid = document.createElement('div'); grid.className = 'g-dates__grid';
         ['M','T','W','T','F','S','S'].forEach(function(d){
-          var c=document.createElement('span'); c.className='g-cal__dow'; c.textContent=d;
+          var c=document.createElement('span'); c.className='g-dates__dow'; c.textContent=d;
           c.setAttribute('aria-hidden','true'); grid.appendChild(c);
         });
         var lead = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() + 6) % 7;
-        for (var i=0;i<lead;i++){ var s=document.createElement('span'); s.className='g-cal__day is-empty'; grid.appendChild(s); }
+        for (var i=0;i<lead;i++){ var s=document.createElement('span'); s.className='g-dates__day is-empty'; grid.appendChild(s); }
         var last = new Date(month.getFullYear(), month.getMonth()+1, 0).getDate();
         for (var day=1; day<=last; day++){
           var date = new Date(month.getFullYear(), month.getMonth(), day);
           var key = iso(date);
           var btn = document.createElement('button');
-          btn.type = 'button'; btn.className = 'g-cal__day'; btn.textContent = day;
+          btn.type = 'button'; btn.className = 'g-dates__day'; btn.textContent = day;
           btn.setAttribute('data-date', key);
           var why = taken[key], past = date < today;
           if (past){
@@ -375,7 +375,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
     }
 
     monthsEl.addEventListener('click', function(e){
-      var btn = e.target.closest('.g-cal__day'); if (!btn || btn.disabled) return;
+      var btn = e.target.closest('.g-dates__day'); if (!btn || btn.disabled) return;
       var key = btn.getAttribute('data-date'); if (!key) return;
       // First click sets arrival; second sets departure, unless it is on or
       // before the arrival, in which case it becomes the new arrival.
@@ -541,6 +541,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
       <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us</a>
   </div>
 </div></section>
+
 
 
 {% endblock %}

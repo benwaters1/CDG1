@@ -11,7 +11,7 @@
 
 
 <section class="g-hero">
-<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="Château de Gudanes">
+<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
   <p class="g-hero__eyebrow">Seven Chambres · Ariège</p>
@@ -177,7 +177,7 @@
     <p class="g-p">Continental breakfast every morning, and dinner cooked in the château's own Renaissance kitchen. There is no fixed menu — what appears depends on the Sunday market in the village square, on producers the chef has bought from for twenty years, and in summer on the gardens below the terrace.</p>
     <p class="g-p">Mountain cheeses from the farms above the village, charcuterie, foie gras, magret de canard, wild mushrooms when the season gives them, and desserts drawn from a recipe book written at Gudanes in the 1700s.</p>
     <p class="g-p">Dinner is served by candlelight in the dining room, and in winter the fire is lit. Tell us when you book, and the kitchen buys for it.</p>
-    <p style="margin-top:var(--s5)"><a href="{{ url_for('restaurant_info') }}" class="g-btn">More about La Table</a></p>
+    <p style="margin-top:var(--s5)"><a href="{{ url_for('restaurant_info') }}" class="g-btn">What dinner is like</a></p>
   </div>
   <div class="g-two__media">
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1500w" alt="A table laid outside with the mountains beyond" loading="lazy">
@@ -244,10 +244,10 @@
   <hr class="g-rule--double">
 
   <dl class="g-facts-list">
-    <div><dt>Wi-Fi</dt><dd>Starlink, in select areas of the château</dd></div>
-    <div><dt>In your room</dt><dd>Power outlets and bedside lamps</dd></div>
-    <div><dt>Parking</dt><dd>Free, at the château</dd></div>
-    <div><dt>Breakfast</dt><dd>Continental, included every morning</dd></div>
+    <div><dt>Wi-Fi</dt><dd>Starlink. No cable reaches this valley, so it comes by satellite — and works</dd></div>
+    <div><dt>In your room</dt><dd>Sockets and a lamp to read by — neither of which existed here in 2013</dd></div>
+    <div><dt>Parking</dt><dd>On the gravel, where the carriages went</dd></div>
+    <div><dt>Breakfast</dt><dd>Bread from the village, three minutes down the hill. Included</dd></div>
   </dl>
 
   <p style="margin-top:var(--s7);text-align:center">
@@ -256,7 +256,7 @@
 </div></section>
 
 <section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
-  <h2 class="g-place">Experiences &amp; Extras</h2>
+  <h2 class="g-place">Things to Do With the Days</h2>
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
   <div class="g-extras" style="margin-top:var(--s7)">
 
@@ -337,7 +337,7 @@
 </div></section>
 
 <section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
-  <h2 class="g-place">Interiors &amp; Details</h2>
+  <h2 class="g-place">What the Rooms Are Made Of</h2>
   <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. Most bathrooms sit together in a central area, though each is privately allocated to its room, aside from the shared rooms, which share a bathroom between the two.</p>
   <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
   <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
@@ -351,12 +351,12 @@
 {% if rooms and rooms|length > 1 %}
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">Side by Side</p>
-  <h2 class="g-place">Compare the Chambres</h2>
+  <h2 class="g-place">Which Room Is Yours</h2>
   <p class="g-p">Seven rooms, each different. This is the quickest way to see which suits.</p>
 
   <div class="g-compare-wrap">
     <div class="table-wrap">
-      <table class="g-compare">
+    <table class="g-compare">
       <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
       <thead>
         <tr>
@@ -382,11 +382,11 @@
             {%- else %}Private{% endif -%}
           </td>
           <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
-          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
+          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">See what is free</a></td>
         </tr>
         {% endfor %}
       </tbody>
-      </table>
+    </table>
     </div>
   </div>
   <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
@@ -401,7 +401,7 @@
    Every line below is checked against what the app actually does. #}
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">No Surprises</p>
-  <h2 class="g-place">What the Rate Covers</h2>
+  <h2 class="g-place">What You Are Paying For</h2>
 
   <div class="g-ledger">
     <div class="g-ledger__col g-ledger--in">
@@ -511,7 +511,7 @@
    'The château is a private home under restoration, not a museum. Dinner at La Table is the usual way in for non-residents, subject to the night.'),
   ('What about the tourist tax?',
    'Charged locally on arrival, as French law requires. It is the only thing not in the rate.')
-], 'Before You Book', 'Questions We Are Asked') }}
+], 'Before You Book', 'The Questions That Come Up') }}
 
 
 <!-- ============ THE JOURNAL ============ -->
@@ -559,13 +559,13 @@
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
 <section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Château de Gudanes" loading="lazy">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="Linen turned down" loading="lazy">
   <h2 class="g-close__h">Take a room</h2>
   <p class="g-close__p">Seven bedrooms, opened one at a time as the restoration reaches them. Each room opens as the last one is finished.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check your dates</a>
-      <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Add dinner</a>
-      <a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">See the estate</a>
+      <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Keep the evening</a>
+      <a href="{{ url_for('facilities_page') }}" class="g-btn g-btn">Walk the grounds</a>
   </div>
 </div></section>
 

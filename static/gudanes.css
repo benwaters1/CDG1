@@ -45,7 +45,7 @@
   /* ---- Measures ---------------------------------------------------- */
   --wrap: 76rem;
   --wrap-narrow: 54rem;
-  --measure: 38rem;   /* ~68 characters at 18px Garamond, not 91 */
+  --measure: 42rem;   /* ~74 characters at 18px Garamond — top of the comfortable range */
 
   /* ---- Type -------------------------------------------------------- */
   --serif: 'EB Garamond', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
@@ -113,7 +113,7 @@
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: 52ch; margin: 0 0 var(--s4); color: var(--blue-deep); }
+.g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: 62ch; margin: 0 0 var(--s4); color: var(--blue-deep); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
 .g-lede{ font-size: clamp(17px, 1.3vw, 19px); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
@@ -835,29 +835,29 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   color: var(--ink); background: transparent; border: 1px solid var(--ink);
 }
 .g-cal__btn:hover{ background: var(--ink); color: var(--sand); }
-.g-cal__key{ font-size: 13px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
+.g-dates__key{ font-size: 13px; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 6px; }
 .g-cal__swatch{ width: 12px; height: 12px; background: var(--sand-3); border: 1px solid var(--line); display: inline-block; }
-.g-cal__months{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s4); }
-.g-cal__month{ flex: 1 1 240px; min-width: 0; }
+.g-dates__months{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-top: var(--s4); }
+.g-dates__month{ flex: 1 1 240px; min-width: 0; }
 .g-cal__title{ margin: 0 0 var(--s2); font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-soft); }
-.g-cal__grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.g-cal__dow{ font-size: 13px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
-.g-cal__day{
+.g-dates__grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.g-dates__dow{ font-size: 13px; text-align: center; color: var(--ink-faint); padding-bottom: 4px; }
+.g-dates__day{
   font: inherit; font-size: 13px; aspect-ratio: 1; min-height: 34px; padding: 0;
   display: flex; align-items: center; justify-content: center;
   color: var(--ink); background: transparent; border: 1px solid transparent; cursor: pointer;
 }
-.g-cal__day:hover:not(:disabled){ border-color: var(--ink); }
-.g-cal__day.is-empty{ cursor: default; }
-.g-cal__day.is-off{
+.g-dates__day:hover:not(:disabled){ border-color: var(--ink); }
+.g-dates__day.is-empty{ cursor: default; }
+.g-dates__day.is-off{
   color: var(--ink-faint); background: var(--sand-3);
   text-decoration: line-through; cursor: not-allowed;
 }
-.g-cal__day.is-sel{ background: var(--ink); color: var(--sand); }
-.g-cal__day.is-range{ background: var(--sand-2); }
+.g-dates__day.is-sel{ background: var(--ink); color: var(--sand); }
+.g-dates__day.is-range{ background: var(--sand-2); }
 @media (pointer: coarse){
   /* A 34px target is fine with a mouse and not with a thumb. */
-  .g-cal__day{ min-height: 44px; }
+  .g-dates__day{ min-height: 44px; }
 }
 
 /* A page's opening statement — larger than a section heading, matching the
@@ -2930,9 +2930,14 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    a zero, which is narrower than the average letter, so the unit understates
    the true line length by roughly a third. */
 .g .g-p, .g .g-faq__a, .g .g-extra__d, .g .g-card__desc,
-.g .g-close__p, .g .g-ledger li, .g .g-facts-list dd{ max-width: 52ch; }
+.g .g-close__p, .g .g-ledger li, .g .g-facts-list dd{ max-width: 62ch; }
 /* Centred text centres its measure too. */
+/* Centre the measure only where the text is itself centred. Left-aligned
+   prose starts at the container's edge — a centred 468px column inside a
+   1216px wrap reads as a ribbon lost in a field. */
 .g .g-hero__lede, .g .g-close__p, .g [style*="text-align:center"] .g-p{ margin-inline: auto; }
+.g .g-sec .g-wrap > .g-p,
+.g .g-sec .g-wrap > .g-lede{ margin-left: 0; margin-right: 0; }
 /* In a two-column layout the column is already the measure. */
 /* A grid column is not a measure — at 1440 each column is 600px, which is
    still 87 characters. Cap it, but let it fill a narrow column. */
@@ -2950,7 +2955,10 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g .g-field input, .g .g-field select, .g .g-field textarea{ max-width: 100%; }
 
 /* The essence block is centred, so its measure is centred too. */
-.g .g-wrap--narrow .g-p{ margin-inline: auto; }
+/* The measure belongs to the container, not to a column floating inside it.
+   Constraining only the paragraph left 350px of dead space on each side. */
+.g .g-wrap--narrow{ max-width: 44rem; margin-inline: auto; }
+.g .g-wrap--narrow .g-p{ max-width: none; margin-inline: 0; }
 
 /* A figure with its caption. Used where a photograph is making an argument
    rather than decorating — the caption is the point, not an afterthought. */
@@ -3354,9 +3362,6 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
-/* A row inside the plate. The markup keeps arriving with this
-   wrapper and the stylesheet without the rule. It sits above
-   .g-plate::before's inset border, and that is all it does. */
 .g-plate__row{ position: relative; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
@@ -3525,7 +3530,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   margin: var(--s7) auto 0; padding-top: var(--s5);
   border-top: 1px solid rgba(196,160,106,.4);
   font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.8);
-  max-width: 52ch;
+  max-width: 62ch;
 }
 
 /* ==========================================================================
@@ -3563,3 +3568,62 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   background: transparent; color: #8A2B22;
   border: 1px solid #D9C2BE; cursor: pointer; text-decoration: none;
 }
+
+
+
+/* ==========================================================================
+   THE ESSENCE BLOCK
+   A centred heading over left-aligned text in a wide wrap left half the page
+   empty and the two elements disagreeing about where the column starts. The
+   whole block becomes one narrow centred column, so heading and prose share
+   an edge and the section reads as a page rather than a ribbon.
+   ========================================================================== */
+.g-sec--plate .g-wrap{ max-width: 46rem; }
+.g-sec--plate .g-h2--lead{ text-align: left; }
+.g-sec--plate .g-p{ max-width: none; }
+@media (max-width: 46rem){
+  .g-sec--plate .g-h2--lead{ text-align: left; }
+}
+
+
+/* ==========================================================================
+   HERO TEXT OVER A MOVING IMAGE
+   The hero carries video, so the brightness behind the text changes from
+   frame to frame — an eyebrow at 82% white vanishes over a bright, misty
+   shot. Text over a hero gets its own shadow and a stronger wash beneath it,
+   which does not touch the photograph itself.
+   ========================================================================== */
+.g .g-hero__eyebrow{
+  color: #fff;
+  text-shadow: 0 1px 12px rgba(10,22,40,.85), 0 0 3px rgba(10,22,40,.7);
+}
+.g .g-hero__title,
+.g .g-hero__motto,
+.g .g-hero__lede{
+  text-shadow: 0 2px 20px rgba(10,22,40,.7), 0 0 4px rgba(10,22,40,.45);
+}
+/* Deepen the wash under the lower half, where the words sit. */
+.g .g-hero__wash{
+  background: linear-gradient(180deg,
+    rgba(14,28,48,.28) 0%,
+    rgba(14,28,48,.16) 32%,
+    rgba(14,28,48,.58) 72%,
+    rgba(14,28,48,.78) 100%);
+}
+/* The gilt rule under the title needs to hold its own against a pale frame. */
+.g .g-hero__title::after{ background: #D6BC8E; height: 2px; }
+
+
+/* ==========================================================================
+   PROSE WRAPS
+   Capping the text inside a 1216px wrap produced a ribbon; widening the text
+   produced long lines. Both were the same error — the container was wrong,
+   not the type. A wrap whose direct children are prose narrows to the
+   measure; wraps holding cards, grids or figures keep the full width.
+   ========================================================================== */
+.g-sec .g-wrap:has(> p.g-p):not(:has(.g-finds)):not(:has(.g-two)):not(:has(.g-plate)):not(:has(.g-story)):not(:has(.g-masthead)):not(:has(.g-facts-list)):not(:has(.g-tags)):not(:has(.g-incl-cards)):not(:has(.g-scarce__grid)):not(:has(img)):not(:has(table)):not(:has(form)){
+  max-width: 46rem;
+}
+/* The cap stays as a ceiling. It no longer produces a ribbon because the
+   prose-only wraps above are themselves narrow, so text and container agree. */
+.g-sec .g-wrap > p.g-p{ max-width: 62ch; }
