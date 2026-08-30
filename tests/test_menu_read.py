@@ -171,6 +171,34 @@ def run():
     s.check("an employee cannot read a card in",
             ec.post("/admin/restaurant/menu/read", data={}).status_code in (302, 403))
 
+    s.section("And the Anthropic account is out of reach for whoever runs next")
+    # This suite stands in for claude_configured, which is a conditional at the
+    # call site — exactly what was doing all the work for Stripe while
+    # stripe.api_key stayed real through every run. So the block underneath is
+    # checked here rather than assumed: the key is cleared on the module and
+    # the client refuses to be built at all, which is what still holds when a
+    # future suite forgets to stand anything in.
+    #
+    # ANTHROPIC_API_KEY is not set today. That is why this is worth checking
+    # now — a run that passes because there is no key looks identical to one
+    # that passes because the block works, right up until somebody sets it.
+    s.check("claude_configured is off", not m.claude_configured(),
+            detail="a real key is live under test")
+    s.check("and the key itself is cleared, not just the conditional",
+            not m.ANTHROPIC_API_KEY,
+            detail="app.py read it into a module global at import")
+    built = None
+    try:
+        m.anthropic.Anthropic(api_key="whatever")
+        built = "a client was returned"
+    except AssertionError:
+        built = None
+    except Exception as e:
+        built = f"raised {type(e).__name__} rather than the harness's refusal"
+    s.check("building a client raises the harness's refusal", built is None,
+            detail=f"{built} — three routes construct one, and each call costs "
+                   "money and sends the document off this machine")
+
     _cleanup(conn)
     conn.close()
     return s

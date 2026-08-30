@@ -124,6 +124,25 @@ m.sms_provider_send = _refuse(
 m.send_email_via_resend = _refuse(
     "Resend", "mock send_email, or let it fall through to the held outbox")
 
+# Anthropic, for the same reason texting is here and one the file already
+# learned the hard way. Three routes build a real client - reading a supplier
+# invoice, reading a menu, drafting a reply - and each is guarded only by
+# `if not claude_configured()`, which is a conditional at the call site with a
+# live module global behind it. That is the exact shape of the Stripe hole:
+# stripe_enabled() returning False was doing all the work while stripe.api_key
+# stayed real through every run.
+#
+# ANTHROPIC_API_KEY is not set today, so nothing could go out this morning.
+# That is the argument for doing it now rather than against it - it is on the
+# owner's list to set, and the moment it is, a run that reaches any of those
+# three would spend money and hand a supplier's invoice, or a guest's email, to
+# a third party. Blocked before there is anything to leak.
+m.ANTHROPIC_API_KEY = None
+m.anthropic.Anthropic = _refuse(
+    "the Anthropic API",
+    "every call costs money and ships the document off this machine; stand in "
+    "for the helper the route calls, not for claude_configured")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
@@ -132,6 +151,10 @@ assert not getattr(m.stripe, "api_key", None), (
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
 assert not m.sms_enabled(), "a texting provider is configured under test"
+assert not m.claude_configured(), (
+    "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
+    "global at import, and _load_dotenv puts the environment variable back, so "
+    "clearing os.environ before the import does not undo it")
 assert not (m.email_enabled() or m.resend_enabled()), (
     "an email provider is configured under test — a run would send real mail "
     "to the real guest addresses in the copied database")
