@@ -203,6 +203,23 @@
     <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
     {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
     <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
+    {# Paying some of it. A stay is often settled in two or three goes —
+       one card now, the rest nearer the time, or split between the people
+       travelling — and all-or-nothing makes the house chase money it could
+       already have had. Folded away, because most guests will use the
+       button above and a second amount box beside it only invites a pause. #}
+    <details class="g-mb-part">
+      <summary>{{ t('Pay part of it instead') }}</summary>
+      <form method="post" action="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}"
+            class="g-mb-part__form">
+        <label class="g-mb-label" for="mb_part">{{ t('How much would you like to pay now?') }}</label>
+        <input id="mb_part" type="number" name="amount" inputmode="decimal"
+               min="0.50" max="{{ '%.2f'|format(bill.owed) }}" step="0.01"
+               placeholder="{{ '%.2f'|format(bill.owed) }}">
+        <button type="submit" class="g-btn">{{ t('Continue') }}</button>
+      </form>
+      <p class="g-hint">{{ t('The rest stays on your bill and can be paid any time, or on arrival.') }}</p>
+    </details>
     <p class="g-hint">Or we will take it on arrival — whichever you prefer.</p>
     {% else %}
     <p class="g-hint">We will take this on arrival unless you hear otherwise.</p>

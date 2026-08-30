@@ -168,6 +168,7 @@ SUITES = [
     "test_guest_bill_loop",
     "test_outstanding",
     "test_auto_receipt",
+    "test_part_payment",
     "test_handover_check",
 ]
 

@@ -10398,8 +10398,8 @@ def record_booking_payment(conn, booking_id, amount, reference=None):
     return bill
 
 
-def start_booking_stripe_payment(conn, booking_id):
-    """Checkout URL for whatever is still owed on a stay, or None.
+def start_booking_stripe_payment(conn, booking_id, amount=None):
+    """Checkout URL for what is owed on a stay, or for part of it. None if not.
 
     Workshop guests have been able to settle online since the start; room
     guests could only be told "we'll take this on arrival", even after adding
@@ -10409,6 +10409,15 @@ def start_booking_stripe_payment(conn, booking_id):
     The amount comes from booking_bill() at the moment the guest clicks, not
     from total_price — a stay that gained an extra, lost a night or took a
     part payment has to charge what is actually left.
+
+    `amount` lets the guest pay some of it. A stay is often settled in two or
+    three goes — one card now, the rest nearer the time, or split between the
+    people travelling — and "pay all of it or none of it" makes the house chase
+    money it could already have. It is clamped to what is owed rather than
+    refused when it is over: a guest typing 500 against a 480 balance means "all
+    of it", and taking 20 euros the house then has to give back is worse than
+    rounding their intention down. Anything at or below zero, or not a number,
+    falls back to the whole balance.
     """
     if not stripe_enabled():
         return None
@@ -10418,6 +10427,19 @@ def start_booking_stripe_payment(conn, booking_id):
     booking = bill["booking"]
     if booking["status"] in ("declined", "cancelled") or bill["owed"] <= 0:
         return None
+    charge = bill["owed"]
+    if amount is not None:
+        try:
+            wanted = round(float(amount), 2)
+        except (TypeError, ValueError):
+            wanted = 0
+        if wanted > 0:
+            charge = min(wanted, bill["owed"])
+    # Stripe will not take a payment under fifty cents, and a guest offered a
+    # button that errors at the card page has been told nothing useful.
+    if charge < 0.5:
+        return None
+    part = charge + 0.005 < bill["owed"]
     try:
         checkout_session = stripe.checkout.Session.create(
             mode="payment",
@@ -10425,8 +10447,10 @@ def start_booking_stripe_payment(conn, booking_id):
             line_items=[{
                 "price_data": {
                     "currency": "eur",
-                    "product_data": {"name": f"{booking['room_name']} ({booking['reference_code']})"},
-                    "unit_amount": int(round(bill["owed"] * 100)),
+                    "product_data": {"name": (
+                        f"{booking['room_name']} ({booking['reference_code']})"
+                        + (" — part payment" if part else ""))},
+                    "unit_amount": int(round(charge * 100)),
                 },
                 "quantity": 1,
             }],
@@ -23811,15 +23835,30 @@ def booking_has_transfer(booking):
     return "transfer" in (booking["extras_summary"] or "").lower()
 
 
-@app.route("/book/pay/<manage_token>")
+@app.route("/book/pay/<manage_token>", methods=["GET", "POST"])
+@csrf.exempt
 def booking_pay(manage_token):
-    """Let a guest settle what is outstanding on their stay."""
+    """Let a guest settle what is outstanding on their stay, or part of it.
+
+    POST carries an amount; GET still means "all of it", so every link that
+    already existed keeps working unchanged.
+
+    CSRF-exempt because the guest arrives from their own confirmation with no
+    session, exactly as the unsubscribe and statement routes do. The worst a
+    forged POST can do is send somebody to a card page for their own booking,
+    which charges nobody anything until they choose to pay.
+    """
     conn = get_db()
     booking = conn.execute("SELECT id FROM bookings WHERE manage_token = ?", (manage_token,)).fetchone()
     if not booking:
         conn.close()
         abort(404)
-    checkout_url = start_booking_stripe_payment(conn, booking["id"])
+    amount = None
+    if request.method == "POST":
+        raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+        if raw:
+            amount = raw
+    checkout_url = start_booking_stripe_payment(conn, booking["id"], amount=amount)
     conn.close()
     if not checkout_url:
         # Stripe off, nothing owed, or the booking is cancelled. Say so rather

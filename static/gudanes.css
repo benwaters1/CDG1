@@ -1660,6 +1660,16 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   display: flex; justify-content: space-between; gap: var(--s5);
   padding: var(--s3) 0; border-bottom: 1px solid var(--line); font-size: 15px;
 }
+/* Paying part of a balance. Folded away behind a summary because most
+   guests use the button above it, and a second amount box sitting beside
+   that button only invites a pause at the moment somebody had decided. */
+.g-mb-part{ margin-top:var(--s2); }
+.g-mb-part>summary{ cursor:pointer; font-size:14px; color:var(--steel); }
+.g-mb-part__form{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px;
+  margin-top:var(--s1); }
+.g-mb-part__form input{ min-height:44px; padding:8px 12px; font-size:16px;
+  max-width:10em; }
+.g-mb-part__form button{ min-height:44px; }
 .g-mb-total{
   display: flex; justify-content: space-between; gap: var(--s5);
   padding: var(--s4) 0 0; margin-top: var(--s3);
