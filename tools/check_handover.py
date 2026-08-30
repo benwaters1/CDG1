@@ -32,6 +32,11 @@ enough to make that judgement quick; `repair_handover.py` is still what applies
 the eight known repairs, and the suite is still what catches breakage in
 behaviour rather than in text.
 
+AND IT IS STILL A CURE. tools/export_for_design.py is the prevention: it gives
+the design side a current snapshot and refuses to make one from a stale tree,
+so there is nothing behind for a handover to revert to. Run this anyway — but
+if it keeps finding things, the export is not being used.
+
 It also does not read the zip. It reads the working tree against HEAD, so it
 sees exactly what is about to be committed however the files got there.
 """
