@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Texting{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Texting</h1>
+  <form method="post" action="{{ url_for('run_checkin_texts_now') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Send tomorrow's arrival texts now</button>
+  </form>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A guest who left a mobile when they booked is texted about that booking and nothing else. An
+  offer needs a separate yes on file — a number given at a booking form is not one, and the app
+  will not treat it as one.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not provider_ready %}
+<div class="pass-short">
+  <strong>No provider is connected yet</strong>
+  <span class="pass-short-row">
+    Nothing can leave the building until <code>SMS_PROVIDER_SID</code>,
+    <code>SMS_PROVIDER_TOKEN</code> and <code>SMS_FROM_NUMBER</code> are set.
+  </span>
+  <span class="upload-hint">
+    Messages are not lost in the meantime — they are held below and go when there is a way to
+    send them. What is not held is anything the app decided should never go: a number nobody can
+    read, a landline, or somebody who asked to be left alone. Waiting would not change any of
+    those.
+  </span>
+</div>
+{% endif %}
+
+<h2 class="section-heading">The message they get the day before</h2>
+<form method="post" action="{{ url_for('save_checkin_text') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <textarea name="template" rows="4" style="width:100%;">{{ template }}</textarea>
+  <p class="upload-hint" style="margin-top:6px;">
+    Use <code>{guest_name}</code>, <code>{arrival_date}</code>, <code>{reference}</code> and
+    <code>{manage_url}</code>. As written this is
+    <strong>{{ segments }} message{{ '' if segments == 1 else 's' }}</strong> per guest —
+    a text is billed in parts of {{ segment_chars }} characters, so a sentence added here is
+    charged on every arrival, not once.
+  </p>
+  <button type="submit" class="btn-mini">Save</button>
+</form>
+
+<h2 class="section-heading">Waiting to send</h2>
+{% if not waiting %}
+  <div class="empty-state">Nothing is waiting.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Number</th><th>Message</th><th>What for</th><th>Why it is waiting</th><th>Since</th></tr></thead>
+  <tbody>
+    {% for msg in waiting %}
+    <tr>
+      <td>{{ msg.phone }}</td>
+      <td><span class="upload-hint">{{ msg.body }}</span></td>
+      <td>{{ msg.purpose }}</td>
+      <td><span class="upload-hint">{{ msg.reason }}</span></td>
+      <td><span class="upload-hint">{{ msg.created_at[:16]|replace('T', ' ') }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Asked not to be texted</h2>
+<form method="post" action="{{ url_for('stop_texting_number') }}" style="margin-bottom:14px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <input type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;">
+    <input type="text" name="reason" placeholder="Said so on the phone" style="max-width:260px;">
+    <button type="submit" class="btn-mini">Add</button>
+  </div>
+</form>
+{% if not stopped %}
+  <div class="empty-state">Nobody has asked to be left alone.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Number</th><th>Why</th><th>Since</th><th></th></tr></thead>
+  <tbody>
+    {% for row in stopped %}
+    <tr>
+      <td>{{ row.phone }}</td>
+      <td><span class="upload-hint">{{ row.reason or '—' }}</span></td>
+      <td><span class="upload-hint">{{ row.created_at[:10] }}</span></td>
+      <td>
+        {# One at a time and never in bulk: taking somebody off this list in a
+           batch is how a stop gets quietly undone. #}
+        <form method="post" action="{{ url_for('allow_texting_number', optout_id=row.id) }}"
+              onsubmit="return confirm('Only do this if they have asked to hear from us again.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-ghost">They asked to come back</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:20px;">
+  Numbers we cannot use are counted from the same gate the sender uses, so the figure above cannot
+  disagree with what actually happens. Most of them are a landline or something that was never a
+  number; they are worth fixing because a guest with an unusable number looks exactly like a guest
+  who has been told where to go.
+</p>
+
+{% endblock %}

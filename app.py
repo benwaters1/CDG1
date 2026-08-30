@@ -2756,6 +2756,12 @@ def init_db():
         # from invoices and never included the subscription that renews itself.
         ("recurring_costs_vendor", "ALTER TABLE recurring_costs ADD COLUMN vendor_id INTEGER"),
         ("skills", "ALTER TABLE users ADD COLUMN skills TEXT"),
+        # Stamped when the arrival text goes, so the job can run as often as it
+        # likes without texting anybody twice. Same shape as
+        # balance_reminder_sent_at, and for the same reason: a message that
+        # costs money per send cannot rely on the scheduler running once.
+        ("bookings_checkin_text_sent_at",
+         "ALTER TABLE bookings ADD COLUMN checkin_text_sent_at TEXT"),
         # A reset code rather than a reset link. The code is stored HASHED —
         # the column holds a verifier, not a credential, so a copy of this
         # database is not a set of live passwords-in-waiting. attempts is what
@@ -4175,7 +4181,9 @@ NAV_AREAS = {
         "delete_campaign_template", "discard_email_outbox", "edit_announcement",
         "edit_campaign_template", "edit_email_template", "management_email_templates",
         "management_social", "new_announcement", "new_campaign_template",
-        "restore_email_template", "send_campaign_template", "send_email_outbox"
+        "restore_email_template", "send_campaign_template", "send_email_outbox",
+        "allow_texting_number", "management_texting", "run_checkin_texts_now",
+        "save_checkin_text", "stop_texting_number"
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
@@ -19090,6 +19098,8 @@ def pos_pay_link(order_id):
 # what a page is FOR, not what it is called.
 PALETTE_PAGES = [
     ("Home", "dashboard", "dashboard today"),
+    ("Texting", "management_texting",
+     "sms text message phone mobile checkin arrival consent opt out"),
     ("Calendar", "ops_calendar", "diary schedule"),
     ("Overview", "admin_overview", "feed activity"),
     ("Office display", "office_display", "tv kiosk wall screen"),
@@ -21153,6 +21163,130 @@ def privacy_page():
     medical notes from guests in the EU.
     """
     return render_template("privacy.html", privacy_reviewed=PRIVACY_LAST_REVIEWED)
+
+
+@app.route("/management/texting")
+@owner_required
+def management_texting():
+    """Everything about texting in one place, including what it will cost.
+
+    The unusable-numbers figure is the one worth having. A number nobody can
+    send to looks exactly like a good one on a booking page, so without a count
+    here the house would only discover it as a guest who never got told where
+    to go.
+    """
+    conn = get_db()
+    waiting = conn.execute(
+        "SELECT * FROM sms_outbox WHERE sent_at IS NULL ORDER BY created_at DESC"
+    ).fetchall()
+    sent_count = conn.execute(
+        "SELECT COUNT(*) AS c FROM sms_outbox WHERE sent_at IS NOT NULL").fetchone()["c"]
+    stopped = conn.execute(
+        "SELECT * FROM sms_optouts ORDER BY created_at DESC").fetchall()
+    consented = conn.execute("SELECT COUNT(*) AS c FROM sms_consents").fetchone()["c"]
+
+    # Numbers on file that could never be texted. Counted across the tables a
+    # guest number can live in, and judged by the same gate the sender uses so
+    # the figure cannot disagree with what actually happens.
+    unusable = usable = 0
+    for table in ("bookings", "restaurant_bookings", "workshop_bookings"):
+        for row in conn.execute(
+                f"SELECT guest_phone FROM {table} "
+                f"WHERE COALESCE(guest_phone, '') != ''").fetchall():
+            if can_text(conn, row["guest_phone"], "transactional")[1]:
+                unusable += 1
+            else:
+                usable += 1
+
+    template_row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (CHECKIN_TEXT_SETTING,)).fetchone()
+    template = (template_row["value"] if template_row else "") or CHECKIN_TEXT_DEFAULT
+    conn.close()
+
+    overview = [
+        overview_cell("Waiting to send", len(waiting),
+                      sub="no provider yet" if not sms_enabled() else None,
+                      alert=bool(waiting) and not sms_enabled()),
+        overview_cell("Sent", sent_count),
+        overview_cell("Asked not to be texted", len(stopped)),
+        overview_cell("Said yes to offers", consented),
+        overview_cell("Numbers we cannot use", unusable, sub=f"of {usable + unusable}",
+                      alert=bool(unusable),
+                      hint="A number nobody can send to looks the same as a good "
+                           "one on the booking page."),
+    ]
+    return render_template("management_texting.html", overview=overview,
+                           waiting=waiting, stopped=stopped, template=template,
+                           segments=sms_segments(template),
+                           segment_chars=SMS_SEGMENT_CHARS,
+                           provider_ready=sms_enabled())
+
+
+@app.route("/management/texting/template", methods=["POST"])
+@owner_required
+def save_checkin_text():
+    body = (request.form.get("template", "") or "").strip()
+    if not body:
+        flash("The message cannot be empty — leave the default if you like it.", "error")
+        return redirect(url_for("management_texting"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (CHECKIN_TEXT_SETTING, body))
+    conn.commit()
+    conn.close()
+    parts = sms_segments(body)
+    flash(f"Saved — {parts} message{'' if parts == 1 else 's'} per guest.", "success")
+    return redirect(url_for("management_texting"))
+
+
+@app.route("/management/texting/stop", methods=["POST"])
+@owner_required
+def stop_texting_number():
+    number = request.form.get("phone", "")
+    conn = get_db()
+    stored = record_sms_optout(conn, number, reason=request.form.get("reason", "").strip() or None)
+    conn.commit()
+    conn.close()
+    if not stored:
+        flash("That is not a number I can read, so there is nothing to stop.", "error")
+    else:
+        flash(f"{stored} will not be texted again.", "success")
+    return redirect(url_for("management_texting"))
+
+
+@app.route("/management/texting/allow/<int:optout_id>", methods=["POST"])
+@owner_required
+def allow_texting_number(optout_id):
+    """Take a number off the do-not-text list.
+
+    Only ever at the person's own request, which is why it is one click behind
+    a list rather than a bulk action — taking somebody off in a batch is how a
+    stop gets quietly undone.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM sms_optouts WHERE id = ?", (optout_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM sms_optouts WHERE id = ?", (optout_id,))
+    log_audit(conn, "sms_optout_lifted", target=row["phone"])
+    conn.commit()
+    conn.close()
+    flash(f"{row['phone']} can be texted again.", "success")
+    return redirect(url_for("management_texting"))
+
+
+@app.route("/management/texting/run-checkin", methods=["POST"])
+@owner_required
+def run_checkin_texts_now():
+    conn = get_db()
+    result = run_checkin_text_job(conn)
+    conn.commit()
+    conn.close()
+    flash(result, "success")
+    return redirect(url_for("management_texting"))
 
 
 @app.route("/admin/pennylane", methods=["GET", "POST"])
@@ -25086,6 +25220,109 @@ def sms_provider_send(number, body):
         return True, answer.get("sid")
     except Exception as e:                       # pragma: no cover - network
         return False, str(e)
+
+
+# What the arrival text says. Held as a setting rather than in the code,
+# because it is the owner's words to their own guests and will be reworded far
+# more often than this file is touched. The merge tags are the same single
+# braces the promo blast uses, so there is one convention rather than two.
+CHECKIN_TEXT_SETTING = "sms_checkin_template"
+CHECKIN_TEXT_DEFAULT = (
+    "Bonjour {guest_name}, we are looking forward to seeing you tomorrow at "
+    "Chateau de Gudanes. Everything about your stay, including how to find us: "
+    "{manage_url}"
+)
+# How many days ahead the text goes. The day before is the point: they are
+# travelling, away from a computer, and this is when "where do I actually go"
+# becomes the only question that matters.
+CHECKIN_TEXT_DAYS_BEFORE = 1
+# A text is billed per 160-character segment, so a template somebody has grown
+# over a season quietly triples the cost of every arrival. Not a limit — the
+# owner may have something long and necessary to say — but the page says what
+# each message will cost in segments before it is saved.
+SMS_SEGMENT_CHARS = 160
+
+
+def sms_segments(body):
+    """How many billed parts a message will arrive in."""
+    if not body:
+        return 0
+    return max(1, -(-len(body) // SMS_SEGMENT_CHARS))
+
+
+def checkin_text_body(conn, booking):
+    """The message for one booking, with the tags filled in."""
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = ?", (CHECKIN_TEXT_SETTING,)).fetchone()
+    template = (row["value"] if row and (row["value"] or "").strip()
+                else CHECKIN_TEXT_DEFAULT)
+    first = (booking["guest_name"] or "").strip().split(" ")[0] or "there"
+    try:
+        manage_url = url_for("manage_booking",
+                             manage_token=booking["manage_token"], _external=True)
+    except RuntimeError:                     # no request context, e.g. a cron run
+        manage_url = f"{PUBLIC_BASE_URL.rstrip('/')}/booking/{booking['manage_token']}"
+    return (template
+            .replace("{guest_name}", first)
+            .replace("{reference}", booking["reference_code"] or "")
+            .replace("{arrival_date}", format_date_human(booking["arrival_date"]))
+            .replace("{manage_url}", manage_url))
+
+
+def run_checkin_text_job(conn, days_before=None):
+    """Text tomorrow's arrivals where the house has a number it may use.
+
+    Only confirmed stays, only once each, and only through can_text — so a
+    guest who has asked not to be texted, or gave a landline, or gave something
+    that is not a number, is simply not in the list. None of those is an error
+    and none is worth waking the owner for.
+
+    Stamped and committed per booking rather than after the loop. The mail side
+    lost a whole class of messages to exactly that shape: with the stamp held
+    open, the NEXT guest's send cannot write its own row and the message is
+    neither sent nor kept. Per-row also means a job that dies halfway keeps
+    what already went.
+    """
+    days = CHECKIN_TEXT_DAYS_BEFORE if days_before is None else days_before
+    when = (datetime.now(LOCAL_TZ).date() + timedelta(days=days)).isoformat()
+    arriving = conn.execute(
+        """SELECT * FROM bookings
+           WHERE status = 'confirmed' AND arrival_date = ?
+             AND checkin_text_sent_at IS NULL""", (when,)).fetchall()
+
+    sent = held = skipped = 0
+    reasons = {}
+    for booking in arriving:
+        number, refusal = can_text(conn, booking["guest_phone"], "transactional")
+        if refusal:
+            skipped += 1
+            reasons[refusal] = reasons.get(refusal, 0) + 1
+            continue
+        went, send_refusal = send_sms(conn, number, checkin_text_body(conn, booking),
+                                      purpose="transactional")
+        if send_refusal:
+            skipped += 1
+            reasons[send_refusal] = reasons.get(send_refusal, 0) + 1
+            continue
+        # Stamped whether it went now or is waiting, because the outbox holds
+        # it either way and stamping only on success would send it twice the
+        # day a provider is switched on.
+        conn.execute("UPDATE bookings SET checkin_text_sent_at = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), booking["id"]))
+        conn.commit()
+        if went:
+            sent += 1
+        else:
+            held += 1
+
+    if not arriving:
+        return f"nobody arrives in {days} day(s)"
+    parts = [f"{sent} sent"] if sent else []
+    if held:
+        parts.append(f"{held} waiting for a provider")
+    if skipped:
+        parts.append(f"{skipped} with no number we could use")
+    return ", ".join(parts) or "nothing to send"
 
 
 def normalise_phone(raw, default_country=None):
