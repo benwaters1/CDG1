@@ -49,6 +49,37 @@
 {% if booking['status'] in ('pending', 'confirmed') %}
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
+  <h3>{{ t('Your details') }}</h3>
+  <p class="g-hint">{{ t("If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.") }}</p>
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="contact">
+    <div style="flex:1 1 220px;">
+      <label for="mb_guest_name">{{ t('Name') }}</label>
+      <input type="text" id="mb_guest_name" name="guest_name" required
+             value="{{ booking['guest_name'] or '' }}">
+    </div>
+    <div style="flex:1 1 220px;">
+      <label for="mb_guest_phone">{{ t('Mobile') }}</label>
+      <input type="tel" inputmode="tel" autocomplete="tel" id="mb_guest_phone"
+             name="guest_phone" value="{{ booking['guest_phone'] or '' }}"
+             placeholder="06 12 34 56 78">
+    </div>
+    <div style="align-self:flex-end;">
+      <button type="submit" class="g-btn">{{ t('Save') }}</button>
+    </div>
+  </form>
+  {# The email is not editable here on purpose: it is the address this booking
+     is filed under and the one the account page is keyed on, so changing it
+     from a page reached by a link would move the booking to whoever holds the
+     link. The message box below sends it to a person instead. #}
+  <p class="g-hint" style="margin-top:var(--s2);">
+    {{ t('Booked under') }} <strong>{{ booking['guest_email'] }}</strong>.
+    {{ t('If that address is wrong, send us a message below and we will change it.') }}
+  </p>
+</div>
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Estimated arrival time') }}</h3>
   <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone's ready.") }}</p>
   <form method="post" class="g-row" style="margin-top:var(--s2);">

@@ -17,6 +17,41 @@
     <label class="field-label">Price (€)</label>
     <input type="number" name="price" step="0.01" min="0">
   </div>
+  <div>
+    <label class="field-label">Category</label>
+    <select name="category">
+      {% for key, label in categories.items() %}
+      <option value="{{ key }}"{{ ' selected' if key == (e['category'] if e is defined else 'other') }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="flex:1 1 220px;">
+    <label class="field-label">Description</label>
+    <input type="text" name="description" maxlength="300"
+           placeholder="What a guest sees under the name"
+           value="{{ e['description'] or '' if e is defined else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Notice needed</label>
+    <input type="number" name="lead_time_days" min="0" style="width:6em;"
+           placeholder="days"
+           value="{{ e['lead_time_days'] or '' if e is defined else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Most one guest may take</label>
+    <input type="number" name="max_qty" min="1" style="width:6em;"
+           placeholder="any"
+           value="{{ e['max_qty'] or '' if e is defined else '' }}">
+  </div>
+  <div style="align-self:flex-end;">
+    {# Off unless asked for. Something a guest can put on their own bill
+       without anybody looking is a decision, not a default. #}
+    <label class="field-label" style="display:flex; gap:6px; align-items:center;">
+      <input type="checkbox" name="guest_bookable"
+             {{ 'checked' if (e['guest_bookable'] if e is defined else False) }}>
+      Guests can add this themselves
+    </label>
+  </div>
   <button type="submit" class="btn-mini">+ Add extra</button>
 </form>
 
@@ -53,6 +88,43 @@
       </div>
       <div>
         <input type="number" name="price" step="0.01" min="0" value="{{ e['price'] }}">
+      </div>
+  <div>
+    <label class="field-label">Category</label>
+    <select name="category">
+      {% for key, label in categories.items() %}
+      <option value="{{ key }}"{{ ' selected' if key == (e['category'] if e is defined else 'other') }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div style="flex:1 1 220px;">
+    <label class="field-label">Description</label>
+    <input type="text" name="description" maxlength="300"
+           placeholder="What a guest sees under the name"
+           value="{{ e['description'] or '' if e is defined else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Notice needed</label>
+    <input type="number" name="lead_time_days" min="0" style="width:6em;"
+           placeholder="days"
+           value="{{ e['lead_time_days'] or '' if e is defined else '' }}">
+  </div>
+  <div>
+    <label class="field-label">Most one guest may take</label>
+    <input type="number" name="max_qty" min="1" style="width:6em;"
+           placeholder="any"
+           value="{{ e['max_qty'] or '' if e is defined else '' }}">
+  </div>
+  <div style="align-self:flex-end;">
+    {# Off unless asked for. Something a guest can put on their own bill
+       without anybody looking is a decision, not a default. #}
+    <label class="field-label" style="display:flex; gap:6px; align-items:center;">
+      <input type="checkbox" name="guest_bookable"
+             {{ 'checked' if (e['guest_bookable'] if e is defined else False) }}>
+      Guests can add this themselves
+    </label>
+  </div>
+      <div>
       </div>
       <button type="submit" class="btn-mini">Save</button>
     </form>

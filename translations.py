@@ -258,6 +258,12 @@ FR = {
     # -- Managing a stay ---------------------------------------------------
     "Check In": "Enregistrement",
     "Estimated arrival time": "Heure d'arrivée estimée",
+    'Your details': 'Vos coordonnées',
+    'Name': 'Nom',
+    'Mobile': 'Portable',
+    'Booked under': 'Réservé au nom de',
+    'If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.': "Si nous avons votre portable, nous vous enverrons la veille un message avec tout ce qu'il faut pour nous trouver. Un numéro que nous ne pouvons pas lire nous en empêche.",
+    'If that address is wrong, send us a message below and we will change it.': 'Si cette adresse est incorrecte, écrivez-nous ci-dessous et nous la corrigerons.',
     "Let us know roughly when to expect you, so someone's ready.":
         "Dites-nous à peu près quand vous arriverez, pour que quelqu'un vous accueille.",
     "Save": "Enregistrer",
@@ -709,6 +715,12 @@ ES = {
     # -- Managing a stay ---------------------------------------------------
     "Check In": "Registro",
     "Estimated arrival time": "Hora estimada de llegada",
+    'Your details': 'Sus datos',
+    'Name': 'Nombre',
+    'Mobile': 'Móvil',
+    'Booked under': 'Reservado a nombre de',
+    'If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.': 'Si tenemos su móvil, le enviaremos un mensaje el día antes con todo lo necesario para encontrarnos. Un número que no podemos leer nos lo impide.',
+    'If that address is wrong, send us a message below and we will change it.': 'Si esa dirección no es correcta, escríbanos abajo y la cambiaremos.',
     "Let us know roughly when to expect you, so someone's ready.":
         "Díganos aproximadamente cuándo llegará, para que alguien le reciba.",
     "Save": "Guardar",

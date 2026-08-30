@@ -23482,6 +23482,42 @@ def manage_booking(manage_token):
         conn.close()
         return redirect(url_for("manage_booking", manage_token=manage_token))
 
+    elif action == "contact" and booking["status"] in ("pending", "confirmed"):
+        # Their own name and number, which until now they could not touch.
+        #
+        # It matters more since the arrival text: the phone on this booking is
+        # what decides whether they get told where to go, and a guest who
+        # mistyped it had no way to fix it except to write and wait for
+        # somebody to edit a row by hand.
+        #
+        # THE EMAIL IS DELIBERATELY NOT HERE. It is the address this booking is
+        # filed under and the one /my-account is keyed on, so changing it from
+        # a page reached by a token would move the booking to whatever address
+        # the token-holder typed — and anyone who ever saw the link, in a
+        # forwarded confirmation or a shared inbox, is a token-holder. The
+        # message form below sends it to the house instead, which is a person
+        # deciding rather than a form.
+        new_name = (request.form.get("guest_name", "") or "").strip()[:120]
+        new_phone = phone_from_form("guest_phone")
+        if not new_name:
+            conn.close()
+            flash("We need a name for the booking.", "error")
+            return redirect(url_for("manage_booking", manage_token=manage_token))
+        conn.execute(
+            "UPDATE bookings SET guest_name = ?, guest_phone = ? WHERE id = ?",
+            (new_name, new_phone or None, booking["id"]))
+        conn.commit()
+        # Said plainly, because a number the app cannot use looks identical to
+        # a good one once it is sitting in the box.
+        typed = (request.form.get("guest_phone", "") or "").strip()
+        if typed and not normalise_phone(typed):
+            flash("Saved — though we could not read that phone number, so we "
+                  "will not be able to text you about your arrival.", "error")
+        else:
+            flash("Saved.", "success")
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
     elif action == "arrival_time" and booking["status"] in ("pending", "confirmed"):
         estimated = request.form.get("estimated_arrival_time", "").strip()[:60]
         conn.execute(
@@ -23614,9 +23650,16 @@ def manage_booking(manage_token):
         qty_raw = request.form.get("quantity", "1").strip()
         quantity = int(qty_raw) if qty_raw.isdigit() and int(qty_raw) > 0 else 1
         departure = parse_date(booking["departure_date"])
+        # guest_bookable is the flag that decides this. The filter also
+        # required category = 'room', which is not one of EXTRA_CATEGORIES at
+        # all — so no extra could ever match and every guest who tried to add
+        # one was told "that isn't something we can add", including the airport
+        # transfer the account page invites them to ask for. The category is
+        # for grouping the list on the page; whether a guest may add it is what
+        # guest_bookable says.
         extra = conn.execute(
             """SELECT * FROM extras WHERE id = ? AND active = 1
-               AND guest_bookable = 1 AND category = 'room'""",
+               AND guest_bookable = 1""",
             (extra_id,)).fetchone() if extra_id.isdigit() else None
 
         if departure and departure < datetime.now(timezone.utc).date():
@@ -27363,56 +27406,101 @@ def admin_extras():
         ],
         default_sort="order",
     )
-    return render_template("admin_extras.html", extras=lv["rows"], lv=lv)
+    return render_template("admin_extras.html", extras=lv["rows"], lv=lv,
+                           categories=EXTRA_CATEGORIES)
+
+
+def extra_fields_from_form():
+    """Everything an extra is, read in one place so new and edit cannot drift.
+
+    All of these columns already existed and were already read by the guest
+    pages — the category groups the list, guest_bookable decides whether it
+    appears there at all, lead_time_days refuses a transfer booked for tomorrow
+    morning, max_qty caps it. None of them could be set from anywhere. So the
+    catalogue could only ever hold a name and a price, which is why it holds
+    one item, uncategorised, that a guest could not add.
+    """
+    name = (request.form.get("name", "") or "").strip()
+    category = (request.form.get("category", "") or "").strip()
+    if category not in EXTRA_CATEGORIES:
+        category = "other"
+
+    def whole(field, blank=None):
+        """A positive whole number, or `blank` when the box was left empty.
+
+        The two callers want different blanks and the schema is why, not
+        taste: lead_time_days is NOT NULL DEFAULT 0, so "no notice needed" is
+        0 and None would raise. max_qty is nullable, and there None genuinely
+        means "as many as they like" — 0 would mean nobody may have any.
+        Checked against the PRAGMA rather than assumed; a "safe" fallback that
+        violates the schema fails on exactly the action it was added for.
+        """
+        raw = (request.form.get(field, "") or "").strip()
+        return int(raw) if raw.isdigit() and int(raw) > 0 else blank
+
+    return {
+        "name": name,
+        "price": parse_money(request.form.get("price", "")),
+        "description": (request.form.get("description", "") or "").strip()[:300] or None,
+        "category": category,
+        # Off unless asked for. An extra a guest can add to their own bill
+        # without anybody looking is a decision, not a default.
+        "guest_bookable": 1 if request.form.get("guest_bookable") == "on" else 0,
+        "lead_time_days": whole("lead_time_days", blank=0),
+        "max_qty": whole("max_qty", blank=None),
+    }
 
 
 @app.route("/admin/extras/new", methods=["POST"])
 @owner_required
 def new_extra():
-    name = request.form.get("name", "").strip()
-    price = request.form.get("price", "").strip()
-    if not name:
+    fields = extra_fields_from_form()
+    if not fields["name"]:
         flash("Extra needs a name.", "error")
         return redirect(url_for("admin_extras"))
     # parse_money rather than float(): a price typed the way it is written
     # here — 45,50 — raised ValueError and returned a 500 with nothing saved,
     # and so did any typo. Empty still means free, which is what 0 says.
-    amount = parse_money(price)
-    if price and amount is None:
+    if (request.form.get("price", "") or "").strip() and fields["price"] is None:
         flash("That price isn't a number I can read. Try 45 or 45,50.", "error")
         return redirect(url_for("admin_extras"))
     conn = get_db()
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM extras").fetchone()["m"]
     conn.execute(
-        "INSERT INTO extras (name, price, sort_order) VALUES (?, ?, ?)",
-        (name, amount or 0, max_order + 1),
+        """INSERT INTO extras (name, price, description, category, guest_bookable,
+           lead_time_days, max_qty, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (fields["name"], fields["price"] or 0, fields["description"],
+         fields["category"], fields["guest_bookable"], fields["lead_time_days"],
+         fields["max_qty"], max_order + 1),
     )
     conn.commit()
     conn.close()
-    flash(f"{name} added.", "success")
+    flash(f"{fields['name']} added.", "success")
     return redirect(url_for("admin_extras"))
 
 
 @app.route("/admin/extras/<int:extra_id>/edit", methods=["POST"])
 @owner_required
 def edit_extra(extra_id):
-    name = request.form.get("name", "").strip()
-    price = request.form.get("price", "").strip()
-    if not name:
+    fields = extra_fields_from_form()
+    if not fields["name"]:
         flash("Extra needs a name.", "error")
         return redirect(url_for("admin_extras"))
-    amount = parse_money(price)
-    if price and amount is None:
+    if (request.form.get("price", "") or "").strip() and fields["price"] is None:
         flash("That price isn't a number I can read. Try 45 or 45,50.", "error")
         return redirect(url_for("admin_extras"))
     conn = get_db()
     conn.execute(
-        "UPDATE extras SET name = ?, price = ? WHERE id = ?",
-        (name, amount or 0, extra_id),
+        """UPDATE extras SET name = ?, price = ?, description = ?, category = ?,
+           guest_bookable = ?, lead_time_days = ?, max_qty = ? WHERE id = ?""",
+        (fields["name"], fields["price"] or 0, fields["description"],
+         fields["category"], fields["guest_bookable"], fields["lead_time_days"],
+         fields["max_qty"], extra_id),
     )
     conn.commit()
     conn.close()
-    flash(f"{name} updated.", "success")
+    flash(f"{fields['name']} updated.", "success")
     return redirect(url_for("admin_extras"))
 
 

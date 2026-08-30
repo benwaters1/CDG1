@@ -65,6 +65,10 @@
         {% endif %}
         {% if extras %}
         <p class="g-mb-label" style="margin-top:var(--s2);">Extras we can arrange</p>
+        {# Posts to the stay's own manage page rather than to a second route.
+           That one already prices the line, checks the notice a thing needs
+           and tells the house, so adding a copy here would be two places to
+           get the lead time wrong. #}
         <ul class="account-extras">
           {% for e in extras %}
           <li>
@@ -73,12 +77,25 @@
               {% if e['price'] %}€{{ '%.2f'|format(e['price']) }}{% endif %}
               {%- if e['lead_time_days'] %} · {{ e['lead_time_days'] }} days' notice{% endif %}
             </span>
+            <form method="post"
+                  action="{{ url_for('manage_booking', manage_token=b['manage_token']) }}"
+                  style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="add_extra">
+              <input type="hidden" name="extra_id" value="{{ e['id'] }}">
+              <input type="number" name="quantity" value="1" min="1"
+                     {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
+                     aria-label="How many" style="width:4.5em;">
+              <button type="submit" class="g-btn">Add to this stay</button>
+            </form>
           </li>
           {% endfor %}
         </ul>
         <p class="g-hint">
-          Tell us on the <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
-          and we will add it to your bill.
+          Anything added goes on your bill and is settled with the rest — we do not
+          take a card for each one. If what you want is not here, ask on the
+          <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
+          and we will see what we can do.
         </p>
         {% endif %}
       </div>
