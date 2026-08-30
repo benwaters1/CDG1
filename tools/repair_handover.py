@@ -5,6 +5,13 @@ then run the suite. It repairs the four things that have now been reverted by
 more than one handover in a row, and it is idempotent — running it on an
 already-repaired tree changes nothing.
 
+Run tools/check_handover.py FIRST. This file puts back eight things that
+have each been reverted more than once; that list can only contain
+regressions which have already happened, so it was blind to all eleven in
+the ninth handover. check_handover.py needs no such list — it asks git
+blame which commit each removed line came from, so it finds the ones
+nobody has met yet. Read its report, then run this, then run the suite.
+
 This is a WORKAROUND, not a fix. The cause is that the zips are generated from a
 snapshot of the tree rather than from current main, so anything shipped after
 that snapshot is silently reverted by whichever file touches it. The real fix is
