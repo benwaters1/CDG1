@@ -21926,6 +21926,34 @@ def delete_expense(expense_id):
     return redirect(url_for("expenses"))
 
 
+def may_open_expense_file(user, row):
+    """Who may open the file attached to an expense.
+
+    The receipt IS the evidence for the row, so the authority to open it has to
+    be the authority to see the row. Three pages link here: my_expenses, which
+    is your own claim, and expenses and admin_approvals, both of which the
+    financial preset grants.
+
+    The test used to be `user["role"] != "owner"`, which is a different
+    question and got both ends wrong. Someone holding the financial preset can
+    approve an expense, delete it and export the lot, and every View and
+    Download button on the page they were doing it from returned 403 - so the
+    person the château trusts to sign off spending was the one person who could
+    not look at what had been spent. The page rendered perfectly while doing it.
+    In the other direction, an owner given a NARROW preset kept sight of every
+    receipt in the house, because the role test never consulted the preset.
+
+    Deliberately not solved by putting @owner_required on the routes: neither
+    endpoint is in ENDPOINT_AREA, and an unmapped endpoint is owner-only by
+    design, which would take my_expenses away from every member of staff.
+    """
+    if not user or not row:
+        return False
+    if row["submitted_by_user_id"] == user["id"]:
+        return True
+    return can_reach(user, "expenses") or can_reach(user, "admin_approvals")
+
+
 @app.route("/expenses/<int:expense_id>/file")
 @login_required
 def download_expense_file(expense_id):
@@ -21935,7 +21963,7 @@ def download_expense_file(expense_id):
     conn.close()
     if not row or not row["filename"]:
         abort(404)
-    if user["role"] != "owner" and row["submitted_by_user_id"] != user["id"]:
+    if not may_open_expense_file(user, row):
         abort(403)
     return send_from_directory(UPLOAD_DIR, row["filename"], as_attachment=True)
 
@@ -21949,7 +21977,7 @@ def view_expense_file(expense_id):
     conn.close()
     if not row or not row["filename"]:
         abort(404)
-    if user["role"] != "owner" and row["submitted_by_user_id"] != user["id"]:
+    if not may_open_expense_file(user, row):
         abort(403)
     ext = row["filename"].rsplit(".", 1)[-1].lower() if "." in row["filename"] else ""
     if ext not in VIEWABLE_EXTENSIONS:

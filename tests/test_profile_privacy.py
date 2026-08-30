@@ -1,11 +1,21 @@
 """What a staff profile shows, and to whom.
 
-One page serves three different readers. The owner sees everything on it. The
+One page serves two readers, not three. The owner sees everything on it. The
 person themselves sees their own page, because that is where they check their
-hours and update a phone number. A manager with `team` access can open anybody's
-profile, because that is what running a rota needs.
+hours and update a phone number. NOBODY ELSE OPENS IT AT ALL: `profile` tests
+`user["role"] != "owner" and user["id"] != user_id` and aborts, so a manager
+holding the `team` preset runs the directory, the rota and the estate and is
+still refused a colleague's file. That is deliberate, and the third section
+below is what holds it in place.
 
-Three things on that page are none of the last two's business:
+This paragraph used to say the opposite - that team access opened anybody's
+profile, because running a rota needs it - which is a description of a design
+this app does not have. It is left corrected rather than deleted because the
+checks below have always said the true thing, and a docstring at odds with its
+own file is worse than none: the next person reads the prose, decides the route
+is too strict, and widens it.
+
+Three things on that page are the owner's alone even so:
 
   - check-in notes, which are the owner's 1:1 record ABOUT the person
   - pay rate history, which is what everybody else is paid on the same list
@@ -13,9 +23,10 @@ Three things on that page are none of the last two's business:
 
 All three are held back by `user["role"] == "owner"` rather than by the access
 map, so they are not covered by the area checks elsewhere and nothing else
-tested them. The gap between "can open the page" and "can see everything on
-it" is exactly where a leak of this kind lives, and it leaks silently: nobody
-gets an error, the wrong person just reads something.
+tested them. They are checked here against the person themselves, who CAN open
+the page - the gap between "can open the page" and "can see everything on it"
+is exactly where a leak of this kind lives, and it leaks silently: nobody gets
+an error, the wrong person just reads something.
 """
 from datetime import datetime, timezone
 
