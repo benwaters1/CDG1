@@ -149,7 +149,21 @@ def run():
     s.check("and nothing was written to them", len(_held("QUIET")) == 0)
 
     s.section("An empty morning is not a problem")
-    said = _run(days_after=17)
+    # The day is CHOSEN to be empty rather than guessed at. A fixed offset
+    # passes alone and fails in a full run the moment another suite happens to
+    # leave a departure on that date — which is what a hardcoded 17 did.
+    conn = db()
+    today = datetime.now(m.LOCAL_TZ).date()
+    empty_offset = next(
+        (n for n in range(5, 400)
+         if not conn.execute(
+             "SELECT 1 FROM bookings WHERE status = 'confirmed' AND departure_date = ?",
+             ((today - timedelta(days=n)).isoformat(),)).fetchone()),
+        None)
+    conn.close()
+    s.check("there is a day with nobody leaving to test against",
+            empty_offset is not None)
+    said = _run(days_after=empty_offset)
     s.check("it says so plainly", "nobody" in said.lower(), detail=str(said))
     s.check("and does not call it an error",
             "error" not in said.lower() and "fail" not in said.lower(),
