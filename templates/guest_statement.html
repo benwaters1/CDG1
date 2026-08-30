@@ -27,6 +27,17 @@
         {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
       </div>
     </div>
+
+    {# Business guests need this as something they can forward to whoever pays.
+       No address field on purpose: it goes to the address on the booking, so a
+       link cannot be used to post somebody else's bill to yourself. #}
+    <div class="statement-actions no-print">
+      <form method="post"
+            action="{{ url_for('email_booking_statement', manage_token=booking['manage_token']) }}">
+        <button type="submit" class="g-btn g-btn--sm">Email this to me</button>
+      </form>
+      <button type="button" class="g-btn g-btn--sm" onclick="window.print()">Print</button>
+    </div>
   </div>
 
   <p class="g-hint">
@@ -122,9 +133,17 @@
 <style>
 .statement{ max-width:760px; margin:0 auto; }
 .statement-head{ display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+/* The actions sit above the bill and must not appear on it. Without the
+   no-print rule the two buttons print onto the guest's own statement,
+   which is the sort of thing nobody notices until a guest forwards it to
+   their accounts department. */
+.statement-actions{ display:flex; gap:8px; align-items:center;
+  margin:var(--s2) 0; }
+.statement-actions form{ margin:0; }
 @media print{
   .public-footer, .public-nav{ display:none; }
   .statement{ max-width:none; }
+  .no-print{ display:none !important; }
 }
 </style>
 

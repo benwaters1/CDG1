@@ -50,6 +50,17 @@
     <input type="checkbox" name="enabled" {{ 'checked' if settings['enabled'] }}>
     Online reservations open (public booking page + guest check-in)
   </label>
+
+  {# Off unless the house asks for it. Nobody's guests should start receiving
+     mail because an upgrade shipped with a box ticked. #}
+  <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:10px;">
+    <input type="checkbox" name="auto_email_receipt" {{ 'checked' if settings['auto_email_receipt'] }}>
+    Email the receipt automatically when a tab is settled
+  </label>
+  <p class="upload-hint" style="margin-top:4px;">Only when we already have an
+  address — the guest whose room it went on, or who booked the table. A walk-in
+  paying cash is unaffected, and the receipt can still be sent by hand from the
+  tab.</p>
   <p class="upload-hint" style="margin-top:6px;">Leave this off until the dining room is actually ready — the reservations queue and settings stay usable either way.</p>
 
   <button type="submit" class="btn-primary" style="margin-top:18px;">Save settings</button>

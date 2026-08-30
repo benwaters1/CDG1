@@ -2858,6 +2858,10 @@ def init_db():
         ("workshop_bookings_promo_code_id", "ALTER TABLE workshop_bookings ADD COLUMN promo_code_id INTEGER REFERENCES promo_codes(id) ON DELETE SET NULL"),
         ("workshop_bookings_discount_amount", "ALTER TABLE workshop_bookings ADD COLUMN discount_amount REAL"),
         ("restaurant_settings_deposit_percent", "ALTER TABLE restaurant_settings ADD COLUMN deposit_percent REAL"),
+        # Off by default. A house that has not decided should not start mailing
+        # its guests because an upgrade shipped with the box ticked.
+        ("restaurant_settings_auto_receipt",
+         "ALTER TABLE restaurant_settings ADD COLUMN auto_email_receipt INTEGER NOT NULL DEFAULT 0"),
         ("restaurant_bookings_deposit_amount", "ALTER TABLE restaurant_bookings ADD COLUMN deposit_amount REAL"),
         ("hr_notes_response", "ALTER TABLE hr_notes ADD COLUMN response TEXT"),
         ("hr_notes_responded_at", "ALTER TABLE hr_notes ADD COLUMN responded_at TEXT"),
@@ -18507,11 +18511,23 @@ def pos_take_payment_route(order_id):
                      user_id=session.get("user_id"))
     after = pos_close_if_settled(conn, order_id, method, user_id=session.get("user_id"))
     conn.commit()
+
+    # Settled, and we already know where to send it: post the receipt without
+    # anybody having to remember. Only on a tab that is fully settled, only
+    # when the house has turned it on, and never twice for one tab —
+    # receipt_emailed_at is what stops a part payment that finishes the bill
+    # from sending a second copy.
+    auto_sent = None
+    if after["outstanding"] <= 0.005:
+        auto_sent = pos_auto_send_receipt(conn, order_id)
+        conn.commit()
     conn.close()
     # The change goes first and on its own. It is the one number somebody is
     # waiting on with their hand out.
     if change_due:
         flash(f"Change €{change_due:.2f}", "success")
+    if auto_sent:
+        flash(f"Receipt sent to {auto_sent}.", "success")
     if after["outstanding"] > 0.01:
         flash(f"€{amount:.2f} taken. €{after['outstanding']:.2f} still to pay.", "success")
         return redirect(url_for("pos_order", order_id=order_id))
@@ -18687,6 +18703,49 @@ def pos_receipt_email_context(conn, bill):
         "receipt_number": order["receipt_number"] or str(order["id"]),
         "company_block": company_block,
     }
+
+
+def pos_auto_send_receipt(conn, order_id):
+    """Email the receipt on settling, if the house has asked for that.
+
+    Returns the address it went to, or None. Deliberately quiet about every
+    reason NOT to send — no setting, no address on file, already sent — because
+    none of them is something the person holding the card machine can act on,
+    and a flash for each would train them to ignore the one that matters.
+    """
+    settings = get_restaurant_settings(conn)
+    try:
+        wanted = settings and settings["auto_email_receipt"]
+    except (KeyError, IndexError):
+        wanted = False                       # pre-migration row
+    if not wanted:
+        return None
+    order = conn.execute("SELECT * FROM pos_orders WHERE id = ?", (order_id,)).fetchone()
+    if not order or order["receipt_emailed_at"]:
+        return None
+    address = pos_receipt_default_email(conn, order)
+    if not address or not EMAIL_RE.match(address):
+        return None
+    bill = pos_bill(conn, order_id)
+    if not bill or not bill["live"]:
+        return None
+    subject, body = render_email_template(
+        conn, "pos_receipt", pos_receipt_email_context(conn, bill))
+    if not subject:
+        return None
+    conn.execute(
+        "UPDATE pos_orders SET receipt_emailed_to = ?, receipt_emailed_at = ? WHERE id = ?",
+        (address, datetime.now(timezone.utc).isoformat(), order_id))
+    # Committed BEFORE the send, not after. send_email falls through to
+    # queue_undelivered when no provider is configured, and that opens its
+    # own connection — which SQLite will not let write while this one is
+    # still holding a transaction. Stamping and then sending inside the
+    # same open write is exactly the shape test_outbox_lock exists to catch,
+    # and it caught this. The guest loses nothing by the order: a send that
+    # fails is held in the outbox rather than dropped.
+    conn.commit()
+    send_email(address, subject, body)
+    return address
 
 
 def pos_receipt_default_email(conn, order):
@@ -22062,6 +22121,84 @@ def guest_account(token):
         extra_categories=EXTRA_CATEGORIES,
         restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
         expires=session_row["expires_at"])
+
+
+@app.route("/booking/<manage_token>/statement/email", methods=["POST"])
+@csrf.exempt
+def email_booking_statement(manage_token):
+    """Send the guest their own statement.
+
+    The bill is already a page they can open with their manage token, and a
+    business guest needs it as something they can forward to whoever pays.
+    Asking them to print a web page to PDF is asking them to do our job.
+
+    Sent only to the address ON THE BOOKING, never to one typed into the form.
+    The token is the credential, so letting the form choose the recipient would
+    turn every guest's bill into something anybody holding a link could post to
+    themselves. That is why there is no address field.
+
+    CSRF-exempt for the same reason the unsubscribe route is: the guest arrives
+    from their own confirmation with no session, and the worst a forged POST can
+    do is send a guest their own bill to their own address.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.manage_token = ?""", (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    address = (booking["guest_email"] or "").strip()
+    if not address:
+        conn.close()
+        flash("There is no email address on this booking.", "error")
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
+    statement = guest_statement(conn, booking)
+    company = conn.execute("SELECT * FROM company_info WHERE id = 1").fetchone()
+    conn.close()
+
+    # Built from the statement's own fields: accommodation, each extra by name,
+    # taxe de sejour on its own because it carries no VAT, then the VAT bands.
+    lines = [f"  {statement['nights']} night(s), {booking['room_name']}"
+             f"   €{statement['accommodation']:.2f}"]
+    for extra in statement["extras"]:
+        amount = (extra["unit_price"] or 0) * (extra["quantity"] or 0)
+        lines.append(f"  {extra['quantity']} x {extra['name']}   €{amount:.2f}")
+    if statement["city_tax"]:
+        lines.append(f"  Taxe de sejour   €{statement['city_tax']:.2f}")
+    for band in statement["vat"]:
+        lines.append(f"  of which VAT at {band['rate']}%   €{band['vat']:.2f}")
+
+    who = []
+    if company:
+        for key in ("legal_name", "registered_address", "registration_number",
+                    "vat_number"):
+            value = " ".join((company[key] or "").split())
+            if value:
+                who.append(value)
+
+    body = (
+        f"Hi {booking['guest_name']},\n\n"
+        f"Your statement for {booking['room_name']}, "
+        f"{format_date_human(booking['arrival_date'])} to "
+        f"{format_date_human(booking['departure_date'])}.\n\n"
+        + "\n".join(lines) + "\n\n"
+        f"  Total   €{statement['total']:.2f}\n"
+        f"  Received   €{statement['paid']:.2f}\n"
+        f"  Still to pay   €{statement['balance'] if statement['balance'] > 0 else 0:.2f}\n\n"
+        f"Reference code: {booking['reference_code']}\n"
+        f"The full statement, and the way to settle it, is here:\n"
+        f"{url_for('booking_statement', manage_token=manage_token, _external=True)}\n"
+        + (("\n" + "\n".join(who) + "\n") if who else "")
+        + "\n— Château de Gudanes")
+    if send_email(address, f"Your statement — {booking['reference_code']}", body):
+        flash(f"Sent to {address}.", "success")
+    else:
+        flash("No email provider is connected yet, so it is being held and will "
+              "go out once one is.", "error")
+    return redirect(url_for("booking_statement", manage_token=manage_token))
 
 
 @app.route("/booking/<manage_token>/statement")
@@ -29640,9 +29777,11 @@ def admin_restaurant_settings():
         conn.execute(
             """UPDATE restaurant_settings SET opening_date = ?, dinner_time = ?, capacity = ?,
                price_per_person = ?, lead_user_id = ?, profit_share_percent = ?, deposit_percent = ?,
-               enabled = ?, updated_at = ? WHERE id = 1""",
+               enabled = ?, auto_email_receipt = ?, updated_at = ? WHERE id = 1""",
             (opening_date or None, dinner_time, capacity, price_per_person, lead_user_id,
-             profit_share_percent, deposit_percent, enabled, datetime.now(timezone.utc).isoformat()),
+             profit_share_percent, deposit_percent, enabled,
+             1 if request.form.get("auto_email_receipt") else 0,
+             datetime.now(timezone.utc).isoformat()),
         )
         log_audit(conn, "restaurant_settings_updated")
         conn.commit()

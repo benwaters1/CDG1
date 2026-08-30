@@ -167,6 +167,7 @@ SUITES = [
     "test_expense_files",
     "test_guest_bill_loop",
     "test_outstanding",
+    "test_auto_receipt",
     "test_handover_check",
 ]
 
