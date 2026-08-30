@@ -69,6 +69,30 @@
   </div>
   {% endif %}
 
+  {# The receipt, reachable after settling and not only before it.
+     "Print bill" used to sit inside the open-tab actions, so the moment the
+     guest actually asks for their receipt — having just paid — it was the one
+     thing the screen no longer offered, and the document the taxman expects
+     could only be reached by typing the URL. It belongs on both states, and
+     so does emailing it: the iPad has no till roll, and a guest who wants it
+     for expenses, or who has already left, cannot be handed paper. #}
+  {% if bill.live %}
+  <div class="till-receipt">
+    <a href="{{ url_for('pos_receipt', order_id=order['id']) }}" class="btn-ghost" target="_blank">Print receipt</a>
+    <form method="post" action="{{ url_for('pos_email_receipt', order_id=order['id']) }}"
+          class="till-receipt__email">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="email" name="email" inputmode="email" autocomplete="off"
+             placeholder="Email the receipt to…"
+             value="{{ receipt_email_default or '' }}">
+      <button type="submit" class="btn-mini">Send</button>
+    </form>
+    {% if order['receipt_emailed_to'] %}
+    <p class="till-receipt__sent">Sent to {{ order['receipt_emailed_to'] }}{% if order['receipt_emailed_at'] %} at {{ local_time_str(order['receipt_emailed_at']) }}{% endif %}.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if formule_menu %}
   <!-- ============================ set menu ============================ -->
   <div class="formule-panel">
@@ -333,7 +357,6 @@
 
       {% if order['status'] == 'open' and bill.live %}
       <div class="till-actions">
-        <a href="{{ url_for('pos_receipt', order_id=order['id']) }}" class="btn-ghost" target="_blank">Print bill</a>
 
         {% if packages %}
         <details class="till-adjust" {{ 'open' if order['package_id'] }}>

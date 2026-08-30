@@ -165,6 +165,7 @@ SUITES = [
     "test_optout_and_flags",
     "test_till_and_toggles",
     "test_expense_files",
+    "test_guest_bill_loop",
     "test_handover_check",
 ]
 

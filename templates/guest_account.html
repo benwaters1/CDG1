@@ -15,6 +15,31 @@
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--sm">Book another stay</a>
   </div>
 
+  {# The one figure a guest opens this page for. It was not on it: each stay
+     printed its price, so somebody with two bookings had to open both and do
+     the subtraction themselves to find out where they stood — and a dinner
+     charged to the room appears as an extra on the bill, so the price was not
+     even the right starting number. Shown only when something is owed; an
+     account that is square should say nothing rather than display a zero. #}
+  {% if balance and balance.total > 0 %}
+  <div class="account-balance">
+    <div>
+      <span class="account-balance__label">Your balance</span>
+      <span class="account-balance__figure">€{{ '%.2f'|format(balance.total) }}</span>
+    </div>
+    {% if not can_pay_online %}
+    <p class="g-hint" style="margin:var(--s1) 0 0;">
+      Card payment isn't connected yet — please settle with us directly, or reply
+      to your confirmation and we'll arrange it.
+    </p>
+    {% else %}
+    <p class="g-hint" style="margin:var(--s1) 0 0;">
+      Pay any stay below, or settle it with us when you arrive.
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% set nothing = not (data.rooms or data.dinners or data.workshops or data.events) %}
   {% if nothing %}
   <div class="empty-state">
@@ -36,13 +61,31 @@
       </div>
       <span class="g-hint">{{ b['reference_code'] }}</span>
     </div>
+    {# What this stay costs and what is still owed, rather than only its price.
+       The two stop being the same number the moment anything is paid, and a
+       dinner charged to the room arrives here as an extra on the bill — so the
+       price alone told a guest almost nothing. #}
+    {% set money = balance.per_booking.get(b['id']) if balance else None %}
     <p class="g-hint" style="margin:var(--s1) 0;">
       {{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}
       · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
-      {%- if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+      {%- if money %} · €{{ '%.2f'|format(money.total) }}{% elif b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
     </p>
 
+    {% if money and money.owed > 0 %}
+    <p class="account-owed">
+      <strong>€{{ '%.2f'|format(money.owed) }}</strong> still to pay
+      {%- if money.paid %} · €{{ '%.2f'|format(money.paid) }} received{% endif %}
+      {%- if money.due_date %} · due {{ money.due_date|date_short }}{% endif %}
+    </p>
+    {% endif %}
+
     <div class="account-actions">
+      {% if money and money.owed > 0 and can_pay_online %}
+      <a href="{{ url_for('booking_pay', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm g-btn--solid">
+        Pay €{{ '%.2f'|format(money.owed) }}
+      </a>
+      {% endif %}
       <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm">
         {{ 'Manage' if upcoming else 'View' }}
       </a>
@@ -232,6 +275,16 @@
 .account-add{ margin-top:var(--s3); border-top:1px solid var(--parchment-line); padding-top:10px; }
 .account-add summary{ cursor:pointer; font-size:13px; color:var(--steel); }
 .account-add-body{ padding-top:8px; }
+/* The balance band and the per-stay figure. Deliberately quiet rather than
+   alarming: this is a hotel bill, not a debt notice, and the guest is
+   usually looking at it before they have arrived. */
+.account-balance{ display:flex; flex-wrap:wrap; justify-content:space-between;
+  align-items:baseline; gap:var(--s1); margin:var(--s2) 0;
+  padding:var(--s2); border:1px solid var(--parchment-line); border-radius:10px; }
+.account-balance__label{ display:block; font-size:13px; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--steel); }
+.account-balance__figure{ font-size:30px; font-variant-numeric:tabular-nums; }
+.account-owed{ margin:var(--s1) 0; font-variant-numeric:tabular-nums; }
 .account-extras{ list-style:none; padding:0; margin:var(--s1) 0; }
 .account-extras li{
   display:flex; justify-content:space-between; gap:12px; padding:6px 0;

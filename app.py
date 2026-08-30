@@ -960,6 +960,15 @@ def missing_row(conn, table, row_id):
 # has no route to the original. That is not hypothetical; a reservation
 # confirmation sat reading "TEST SUBJECT {guest_name}" until it was spotted.
 DEFAULT_EMAIL_TEMPLATES = [
+    ("pos_receipt", "Till: Receipt for a table",
+     "Your receipt \u2014 Ch\u00e2teau de Gudanes",
+     "Hi {guest_name},\n\nThank you \u2014 here is your bill from {service_date}.\n\n"
+     "{items}\n"
+     "{totals}\n"
+     "{status_line}\n"
+     "Receipt number: {receipt_number}\n"
+     "{company_block}\n"
+     "\u2014 Ch\u00e2teau de Gudanes"),
     ("workshop_registration_received", "Workshop: Registration received",
      "Registration received — {workshop_title}",
      "Hi {guest_name},\n\nYour registration for {workshop_title} ({dates}), party of {party_size}, "
@@ -2976,6 +2985,10 @@ def init_db():
         ("pos_orders_service_charge", "ALTER TABLE pos_orders ADD COLUMN service_charge REAL NOT NULL DEFAULT 0"),
         ("pos_orders_discount_amount", "ALTER TABLE pos_orders ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0"),
         ("pos_orders_discount_reason", "ALTER TABLE pos_orders ADD COLUMN discount_reason TEXT"),
+        # Who the receipt went to, so the floor can see it was sent rather than
+        # sending it three times because nobody could tell.
+        ("pos_orders_receipt_emailed_to", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_to TEXT"),
+        ("pos_orders_receipt_emailed_at", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_at TEXT"),
         ("pos_orders_merged_into", "ALTER TABLE pos_orders ADD COLUMN merged_into_order_id INTEGER REFERENCES pos_orders(id) ON DELETE SET NULL"),
         ("pos_orders_reopened_at", "ALTER TABLE pos_orders ADD COLUMN reopened_at TEXT"),
         ("pos_orders_deposit_credit", "ALTER TABLE pos_orders ADD COLUMN deposit_credit REAL NOT NULL DEFAULT 0"),
@@ -4222,7 +4235,7 @@ NAV_AREAS = {
         "pos_add_item", "pos_adjust", "pos_card_status", "pos_cancel_card",
         "pos_choose_formule_dish_route", "pos_home", "pos_kitchen", "pos_line_state",
         "pos_move_table", "pos_open_formule_route", "pos_open_tab", "pos_order",
-        "pos_pay_link", "pos_receipt", "pos_send", "pos_service_state",
+        "pos_pay_link", "pos_receipt", "pos_email_receipt", "pos_send", "pos_service_state",
         "pos_set_package", "pos_take_card", "pos_take_payment_route", "pos_void_item"
     ],
     "events": [
@@ -17765,6 +17778,10 @@ def pos_order(order_id):
     # taken at booking is on the screen the order is actually tapped into.
     diet = mark_dietary_risk(menu, bill["lines"], context["dietary"] if context else "")
     reader_on = terminal_ready(conn)
+    # Offered before it is asked for: the address on the room or the table
+    # booking, so the common case is one tap rather than typing an address off
+    # somebody's phone screen in bad light.
+    receipt_email_default = pos_receipt_default_email(conn, bill["order"])
     conn.close()
     return render_template(
         "pos_order.html", bill=bill, order=bill["order"], lines=bill["lines"],
@@ -17775,7 +17792,8 @@ def pos_order(order_id):
         line_states=POS_LINE_STATES, service_states=POS_SERVICE_STATES,
         allergens=ALLERGENS, other_tables=other_tables,
         formule_menu=formule_menu, formules=formules, formule_choices=formule_choices,
-        packages=packages, diet=diet, reader_on=reader_on)
+        packages=packages, diet=diet, reader_on=reader_on,
+        receipt_email_default=receipt_email_default)
 
 
 @app.route("/pos/<int:order_id>/add", methods=["POST"])
@@ -18454,6 +18472,170 @@ def pos_receipt(order_id):
                            by_course=a_la_carte, formules=formules, context=context,
                            payments=payments, courses=MENU_COURSES, company=company,
                            payment_methods=POS_PAYMENT_METHODS)
+
+
+def pos_receipt_room_booking_id(conn, order):
+    """The stay this tab belongs to, wherever it was recorded.
+
+    Two places, because they mean two different things. A tab OPENED against
+    an in-house guest carries the booking id on the order. A tab CHARGED to a
+    room at the end records it on the PAYMENT instead, and never touches the
+    order row. Reading only the first missed every walk-in who decided at the
+    end to put it on their room, which is the common case and the whole
+    reason the room method exists.
+    """
+    if order["room_booking_id"]:
+        return order["room_booking_id"]
+    row = conn.execute(
+        """SELECT room_booking_id FROM pos_payments
+           WHERE order_id = ? AND room_booking_id IS NOT NULL
+           ORDER BY id DESC LIMIT 1""", (order["id"],)).fetchone()
+    return row["room_booking_id"] if row else None
+
+
+def pos_receipt_email_context(conn, bill):
+    """The bill as lines of text, for the emailed copy.
+
+    Built here rather than in the template because these templates are DATA and
+    a guest could otherwise be sent a merge tag. Money is formatted once, to two
+    places, in the same order the printed note uses.
+    """
+    order = bill["order"]
+    rows = []
+    for line in bill["live"]:
+        # A bill line carries unit_price and quantity; there is no `amount`
+        # column on it, and reading one 500'd the send.
+        qty = line["quantity"] or 1
+        amount = (line["unit_price"] or 0) * (line["quantity"] or 0)
+        rows.append(f"  {qty} x {line['name']}   \u20ac{amount:.2f}")
+    items = "\n".join(rows) or "  (nothing on this tab)"
+
+    totals = []
+    if bill["discount"]:
+        totals.append(f"  Discount   -\u20ac{bill['discount']:.2f}")
+    if bill["service"]:
+        totals.append(f"  Service    \u20ac{bill['service']:.2f}")
+    if bill["deposit"]:
+        totals.append(f"  Deposit already paid   -\u20ac{bill['deposit']:.2f}")
+    for rate, band in (bill["vat_by_rate"] or {}).items():
+        totals.append(f"  VAT at {rate}%   \u20ac{band['vat']:.2f}")
+    totals.append(f"  TOTAL   \u20ac{bill['total']:.2f}")
+
+    outstanding = bill["outstanding"]
+    if outstanding > 0.005:
+        status = f"Still to pay: \u20ac{outstanding:.2f}"
+    else:
+        methods = conn.execute(
+            "SELECT DISTINCT method FROM pos_payments WHERE order_id = ?",
+            (order["id"],)).fetchall()
+        how = ", ".join(POS_PAYMENT_METHODS.get(m["method"], m["method"]) for m in methods)
+        status = "Paid in full" + (f" \u2014 {how.lower()}." if how else ".")
+
+    company = conn.execute(
+        """SELECT legal_name, registration_number, vat_number, registered_address
+           FROM company_info WHERE id = 1""").fetchone()
+    bits = []
+    if company:
+        for key, label in (("legal_name", ""), ("registered_address", ""),
+                           ("registration_number", "SIRET "), ("vat_number", "TVA ")):
+            value = " ".join((company[key] or "").split())
+            if value:
+                bits.append(label + value)
+    # Omitted entirely rather than shipped as a placeholder while Company info
+    # is unset, which is the same rule the printed note follows.
+    company_block = ("\n" + "\n".join(bits) + "\n") if bits else ""
+
+    guest_name = ""
+    booking_id = pos_receipt_room_booking_id(conn, order)
+    if booking_id:
+        row = conn.execute("SELECT guest_name FROM bookings WHERE id = ?",
+                           (booking_id,)).fetchone()
+        guest_name = (row["guest_name"] if row else "") or ""
+
+    return {
+        "guest_name": guest_name.strip() or "there",
+        "service_date": order["service_date"] or (order["opened_at"] or "")[:10],
+        "table": order["table_label"] or "",
+        "items": items,
+        "totals": "\n".join(totals),
+        "status_line": status,
+        "receipt_number": order["receipt_number"] or str(order["id"]),
+        "company_block": company_block,
+    }
+
+
+def pos_receipt_default_email(conn, order):
+    """The address to offer first: the guest whose room it went on, or the one
+    who booked the table. Never a staff address."""
+    booking_id = pos_receipt_room_booking_id(conn, order)
+    if booking_id:
+        row = conn.execute("SELECT guest_email FROM bookings WHERE id = ?",
+                           (booking_id,)).fetchone()
+        if row and (row["guest_email"] or "").strip():
+            return row["guest_email"].strip()
+    if order["restaurant_booking_id"]:
+        row = conn.execute("SELECT guest_email FROM restaurant_bookings WHERE id = ?",
+                           (order["restaurant_booking_id"],)).fetchone()
+        if row and (row["guest_email"] or "").strip():
+            return row["guest_email"].strip()
+    return ""
+
+
+@app.route("/pos/<int:order_id>/email-receipt", methods=["POST"])
+@login_required
+def pos_email_receipt(order_id):
+    """Send the guest their bill.
+
+    The iPad has no till roll and pos_receipt prints from the browser, which
+    covers somebody standing at the table. It does not cover the guest who
+    wants it for expenses, and it does not reach a guest who has already gone.
+
+    NOT filtered against email_optouts, deliberately. A receipt is
+    transactional: it is the record of money somebody just handed over, and
+    unsubscribing from offers cannot take it away from them. The unsubscribe
+    footer belongs on marketing and is not added here.
+    """
+    conn = get_db()
+    bill = pos_bill(conn, order_id)
+    if not bill:
+        conn.close()
+        abort(404)
+    if not bill["live"]:
+        conn.close()
+        flash("There is nothing on that tab to send.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+
+    address = (request.form.get("email", "") or "").strip()
+    if not address:
+        address = pos_receipt_default_email(conn, bill["order"])
+    if not address or not EMAIL_RE.match(address):
+        conn.close()
+        flash("Enter the guest's email address.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+
+    subject, body = render_email_template(
+        conn, "pos_receipt", pos_receipt_email_context(conn, bill))
+    if not subject:
+        conn.close()
+        flash("The receipt template is missing — check Email templates.", "error")
+        return redirect(url_for("pos_order", order_id=order_id))
+
+    # Recorded before the send, and committed after, so a provider that hangs
+    # cannot leave the floor unable to tell whether it went.
+    conn.execute(
+        "UPDATE pos_orders SET receipt_emailed_to = ?, receipt_emailed_at = ? WHERE id = ?",
+        (address, datetime.now(timezone.utc).isoformat(), order_id))
+    conn.commit()
+    conn.close()
+
+    if send_email(address, subject, body):
+        flash(f"Receipt sent to {address}.", "success")
+    else:
+        # send_email holds it in the outbox when no provider is configured, so
+        # this is "not yet", not "lost".
+        flash(f"No email provider is connected yet, so the receipt for {address} "
+              "is being held and will go out once one is.", "error")
+    return redirect(url_for("pos_order", order_id=order_id))
 
 
 @app.route("/pos/kitchen")
@@ -21629,6 +21811,39 @@ def guest_account_bookings(conn, email):
     return {"rooms": rooms, "dinners": dinners, "workshops": workshops, "events": events}
 
 
+def guest_account_balance(conn, data):
+    """What this account owes across every stay on it, and per stay.
+
+    The account page used to print each booking's total_price and stop there,
+    which is the price of the stay rather than the money still owed — two
+    different numbers the moment anything is paid, and a third once a dinner
+    charged to the room lands on the bill as an extra. A guest with two stays
+    had to open each one to find out where they stood.
+
+    Built on booking_bill, so it is the same arithmetic the manage page and the
+    statement already show; there is one definition of what is owed and this is
+    not a second one. Cancelled stays are excluded — the bill still exists for
+    the record, but it is not money anybody is being asked for.
+    """
+    per_booking, total = {}, 0.0
+    for booking in data.get("rooms", []):
+        if booking["status"] in ("cancelled", "declined"):
+            continue
+        bill = booking_bill(conn, booking["id"])
+        if not bill:
+            continue
+        owed = bill["owed"]
+        per_booking[booking["id"]] = {
+            "owed": owed,
+            "total": bill["total"],
+            "paid": bill["paid"],
+            "due_date": booking["balance_due_date"],
+            "manage_token": booking["manage_token"],
+        }
+        total += owed
+    return {"per_booking": per_booking, "total": round(total, 2)}
+
+
 @app.route("/my-account", methods=["GET", "POST"])
 def guest_account_request():
     """Ask for a link to your account.
@@ -21711,10 +21926,12 @@ def guest_account(token):
     # account link, received it, clicked it, and got an error — the one part of
     # this flow they could not work around, since the link IS the way in.
     restaurant_settings = get_restaurant_settings(conn)
+    balance = guest_account_balance(conn, data)
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,
-        data=data, today=today, extras=extras,
+        data=data, today=today, extras=extras, balance=balance,
+        can_pay_online=stripe_enabled(),
         extra_categories=EXTRA_CATEGORIES,
         restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
         expires=session_row["expires_at"])
