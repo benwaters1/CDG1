@@ -2771,6 +2771,8 @@ def init_db():
         # costs money per send cannot rely on the scheduler running once.
         ("bookings_checkin_text_sent_at",
          "ALTER TABLE bookings ADD COLUMN checkin_text_sent_at TEXT"),
+        ("bookings_checkout_text_sent_at",
+         "ALTER TABLE bookings ADD COLUMN checkout_text_sent_at TEXT"),
         # A reset code rather than a reset link. The code is stored HASHED —
         # the column holds a verifier, not a credential, so a copy of this
         # database is not a set of live passwords-in-waiting. attempts is what
@@ -21590,9 +21592,18 @@ def management_texting():
             else:
                 usable += 1
 
-    template_row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (CHECKIN_TEXT_SETTING,)).fetchone()
-    template = (template_row["value"] if template_row else "") or CHECKIN_TEXT_DEFAULT
+    # Both messages, read the same way, so neither can quietly become the one
+    # nobody looks at.
+    messages = []
+    for kind, spec in GUEST_TEXTS.items():
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                           (spec["setting"],)).fetchone()
+        body = (row["value"] if row else "") or spec["default"]
+        messages.append({
+            "kind": kind, "label": spec["label"], "body": body,
+            "segments": sms_segments(body),
+            "when": f"{spec['days_before']} day(s) before",
+        })
     conn.close()
 
     overview = [
@@ -21608,8 +21619,7 @@ def management_texting():
                            "one on the booking page."),
     ]
     return render_template("management_texting.html", overview=overview,
-                           waiting=waiting, stopped=stopped, template=template,
-                           segments=sms_segments(template),
+                           waiting=waiting, stopped=stopped, messages=messages,
                            segment_chars=SMS_SEGMENT_CHARS,
                            provider_ready=sms_enabled())
 
@@ -21617,6 +21627,9 @@ def management_texting():
 @app.route("/management/texting/template", methods=["POST"])
 @owner_required
 def save_checkin_text():
+    kind = (request.form.get("kind", "") or "checkin").strip()
+    if kind not in GUEST_TEXTS:
+        abort(400)
     body = (request.form.get("template", "") or "").strip()
     if not body:
         flash("The message cannot be empty — leave the default if you like it.", "error")
@@ -21625,7 +21638,7 @@ def save_checkin_text():
     conn.execute(
         """INSERT INTO app_settings (key, value) VALUES (?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
-        (CHECKIN_TEXT_SETTING, body))
+        (GUEST_TEXTS[kind]["setting"], body))
     conn.commit()
     conn.close()
     parts = sms_segments(body)
@@ -21673,8 +21686,11 @@ def allow_texting_number(optout_id):
 @app.route("/management/texting/run-checkin", methods=["POST"])
 @owner_required
 def run_checkin_texts_now():
+    kind = (request.form.get("kind", "") or "checkin").strip()
+    if kind not in GUEST_TEXTS:
+        abort(400)
     conn = get_db()
-    result = run_checkin_text_job(conn)
+    result = run_guest_text_job(conn, kind)
     conn.commit()
     conn.close()
     flash(result, "success")
@@ -25785,20 +25801,58 @@ def sms_provider_send(number, body):
         return False, str(e)
 
 
-# What the arrival text says. Held as a setting rather than in the code,
-# because it is the owner's words to their own guests and will be reworded far
-# more often than this file is touched. The merge tags are the same single
-# braces the promo blast uses, so there is one convention rather than two.
-CHECKIN_TEXT_SETTING = "sms_checkin_template"
-CHECKIN_TEXT_DEFAULT = (
-    "Bonjour {guest_name}, we are looking forward to seeing you tomorrow at "
-    "Chateau de Gudanes. Everything about your stay, including how to find us: "
-    "{manage_url}"
-)
-# How many days ahead the text goes. The day before is the point: they are
-# travelling, away from a computer, and this is when "where do I actually go"
-# becomes the only question that matters.
-CHECKIN_TEXT_DAYS_BEFORE = 1
+# The texts a guest gets about their own stay, as data rather than as two
+# near-identical functions. They differ in four things and nothing else — the
+# setting that holds the wording, the column that stops it repeating, the date
+# it counts from and which way it counts — so the alternative was a second copy
+# of the job, and a second copy is how the two quietly stop agreeing about who
+# is skipped.
+#
+# Each message's wording is a setting, not a constant: it is the owner's words
+# to their own guests and will be reworded far more often than this file is
+# touched. The merge tags are the same single braces the promo blast uses.
+GUEST_TEXTS = {
+    "checkin": {
+        "setting": "sms_checkin_template",
+        "stamp": "checkin_text_sent_at",
+        "date_column": "arrival_date",
+        # The day before is the point: they are travelling, away from a
+        # computer, and this is when "where do I actually go" is the only
+        # question left.
+        "days_before": 1,
+        "label": "arrival",
+        # Sized to ONE billed message with a real url and a long first name.
+        # The url is most of the budget — about 71 characters once the live
+        # host and a 32-character token are in it, out of 160 — so there are
+        # roughly 75 left for words after allowing for a name like
+        # Marie-Christine. The first version of this read beautifully and cost
+        # two messages per arrival, which is invisible until the bill.
+        "default": (
+            "Bonjour {guest_name}, we look forward to seeing you tomorrow. "
+            "How to find us: {manage_url}"
+        ),
+    },
+    "checkout": {
+        "setting": "sms_checkout_template",
+        "stamp": "checkout_text_sent_at",
+        "date_column": "departure_date",
+        # The evening before, not the morning of. A guest reading "checkout is
+        # at eleven" at ten past ten has been told too late to act on it.
+        "days_before": 1,
+        "label": "departure",
+        # The statement url is longer again, so this is terser still.
+        "default": (
+            "Bonjour {guest_name}, checkout is 11am. Keys in the bowl by the "
+            "door. Bill: {statement_url}"
+        ),
+    },
+}
+
+# Kept so anything still calling these reads the same value. The arrival text
+# was here first and other code refers to it by name.
+CHECKIN_TEXT_SETTING = GUEST_TEXTS["checkin"]["setting"]
+CHECKIN_TEXT_DEFAULT = GUEST_TEXTS["checkin"]["default"]
+CHECKIN_TEXT_DAYS_BEFORE = GUEST_TEXTS["checkin"]["days_before"]
 # A text is billed per 160-character segment, so a template somebody has grown
 # over a season quietly triples the cost of every arrival. Not a limit — the
 # owner may have something long and necessary to say — but the page says what
@@ -25813,26 +25867,37 @@ def sms_segments(body):
     return max(1, -(-len(body) // SMS_SEGMENT_CHARS))
 
 
-def checkin_text_body(conn, booking):
+def guest_text_body(conn, booking, kind="checkin"):
     """The message for one booking, with the tags filled in."""
+    spec = GUEST_TEXTS[kind]
     row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (CHECKIN_TEXT_SETTING,)).fetchone()
+        "SELECT value FROM app_settings WHERE key = ?", (spec["setting"],)).fetchone()
     template = (row["value"] if row and (row["value"] or "").strip()
-                else CHECKIN_TEXT_DEFAULT)
+                else spec["default"])
     first = (booking["guest_name"] or "").strip().split(" ")[0] or "there"
+    token = booking["manage_token"]
     try:
-        manage_url = url_for("manage_booking",
-                             manage_token=booking["manage_token"], _external=True)
+        manage_url = url_for("manage_booking", manage_token=token, _external=True)
+        statement_url = url_for("booking_statement", manage_token=token, _external=True)
     except RuntimeError:                     # no request context, e.g. a cron run
-        manage_url = f"{PUBLIC_BASE_URL.rstrip('/')}/booking/{booking['manage_token']}"
+        base = PUBLIC_BASE_URL.rstrip("/")
+        manage_url = f"{base}/book/manage/{token}"
+        statement_url = f"{base}/booking/{token}/statement"
     return (template
             .replace("{guest_name}", first)
             .replace("{reference}", booking["reference_code"] or "")
             .replace("{arrival_date}", format_date_human(booking["arrival_date"]))
-            .replace("{manage_url}", manage_url))
+            .replace("{departure_date}", format_date_human(booking["departure_date"]))
+            .replace("{manage_url}", manage_url)
+            .replace("{statement_url}", statement_url))
 
 
-def run_checkin_text_job(conn, days_before=None):
+def checkin_text_body(conn, booking):
+    """The arrival message. Kept because other code calls it by this name."""
+    return guest_text_body(conn, booking, "checkin")
+
+
+def run_guest_text_job(conn, kind="checkin", days_before=None):
     """Text tomorrow's arrivals where the house has a number it may use.
 
     Only confirmed stays, only once each, and only through can_text — so a
@@ -25846,12 +25911,15 @@ def run_checkin_text_job(conn, days_before=None):
     neither sent nor kept. Per-row also means a job that dies halfway keeps
     what already went.
     """
-    days = CHECKIN_TEXT_DAYS_BEFORE if days_before is None else days_before
+    spec = GUEST_TEXTS[kind]          # KeyError rather than a silent no-op
+    days = spec["days_before"] if days_before is None else days_before
     when = (datetime.now(LOCAL_TZ).date() + timedelta(days=days)).isoformat()
+    # The two column names come from GUEST_TEXTS above and nowhere else, so
+    # they are the app's own words rather than anything a request carried.
     arriving = conn.execute(
-        """SELECT * FROM bookings
-           WHERE status = 'confirmed' AND arrival_date = ?
-             AND checkin_text_sent_at IS NULL""", (when,)).fetchall()
+        f"""SELECT * FROM bookings
+            WHERE status = 'confirmed' AND {spec["date_column"]} = ?
+              AND {spec["stamp"]} IS NULL""", (when,)).fetchall()
 
     sent = held = skipped = 0
     reasons = {}
@@ -25861,7 +25929,8 @@ def run_checkin_text_job(conn, days_before=None):
             skipped += 1
             reasons[refusal] = reasons.get(refusal, 0) + 1
             continue
-        went, send_refusal = send_sms(conn, number, checkin_text_body(conn, booking),
+        went, send_refusal = send_sms(conn, number,
+                                      guest_text_body(conn, booking, kind),
                                       purpose="transactional")
         if send_refusal:
             skipped += 1
@@ -25870,7 +25939,7 @@ def run_checkin_text_job(conn, days_before=None):
         # Stamped whether it went now or is waiting, because the outbox holds
         # it either way and stamping only on success would send it twice the
         # day a provider is switched on.
-        conn.execute("UPDATE bookings SET checkin_text_sent_at = ? WHERE id = ?",
+        conn.execute(f'UPDATE bookings SET {spec["stamp"]} = ? WHERE id = ?',
                      (datetime.now(timezone.utc).isoformat(), booking["id"]))
         conn.commit()
         if went:
@@ -25879,13 +25948,24 @@ def run_checkin_text_job(conn, days_before=None):
             held += 1
 
     if not arriving:
-        return f"nobody arrives in {days} day(s)"
+        verb = "arrives" if kind == "checkin" else "leaves"
+        return f"nobody {verb} in {days} day(s)"
     parts = [f"{sent} sent"] if sent else []
     if held:
         parts.append(f"{held} waiting for a provider")
     if skipped:
         parts.append(f"{skipped} with no number we could use")
     return ", ".join(parts) or "nothing to send"
+
+
+def run_checkin_text_job(conn, days_before=None):
+    """The arrival run. Kept because the page and its tests call it by name."""
+    return run_guest_text_job(conn, "checkin", days_before)
+
+
+def run_checkout_text_job(conn, days_before=None):
+    """The departure run."""
+    return run_guest_text_job(conn, "checkout", days_before)
 
 
 def normalise_phone(raw, default_country=None):
