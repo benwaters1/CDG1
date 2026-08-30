@@ -29909,6 +29909,18 @@ def join_restaurant_waitlist():
         flash("Enter a valid email address.", "error")
         return redirect(url_for("restaurant_book"))
 
+    # The date was stored as whatever string was posted, never parsed — the
+    # same fault submit_event_inquiry had and fixed. It matters more here:
+    # matching_restaurant_waitlist_entries finds people by `desired_date = ?`
+    # with a real ISO date, so "next Friday please" sits in a date column and
+    # the guest is on the waitlist yet permanently invisible to the one job
+    # that exists to reach them. Nothing errors and the page thanks them.
+    if desired_date and not parse_date(desired_date):
+        conn.commit()      # keep the rate-limit entry
+        conn.close()
+        flash("Enter a valid date, or leave it blank and we will ask.", "error")
+        return redirect(url_for("restaurant_book"))
+
     party_size = int(party_size_raw) if party_size_raw.isdigit() else None
     conn.execute(
         """INSERT INTO restaurant_waitlist (name, email, phone, desired_date, party_size, notes, status, created_at)
