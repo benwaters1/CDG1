@@ -34,6 +34,7 @@ SUITES = [
     "test_autocharge",
     "test_workshop_rooms",
     "test_workshop_lifecycle",
+    "test_workshop_minimum",
     "test_solo_occupancy",
     "test_workflows",
     "test_operations",

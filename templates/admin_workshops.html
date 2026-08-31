@@ -54,6 +54,15 @@
             · {{ row.remaining }}/{{ s['capacity'] }} spots left
             {% if row.remaining <= 0 %}<span class="mini-status status-inactive" style="margin-left:6px;">full</span>{% endif %}
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
+            {% if row.at_risk %}{% set r = row.at_risk %}
+            <div class="upload-hint" style="margin-top:4px;color:{{ 'var(--rust)' if r.urgent and not r.waitlist_could_fill else 'var(--steel)' }};">
+              <b>{{ r.confirmed }} of {{ r.minimum }} needed</b> to run{% if r.pending %} ({{ r.pending }} more registered without paying, not counted){% endif %}.
+              {% if r.overdue %}The date for deciding passed {{ r.decide_by }}.{% else %}Decide by {{ r.decide_by }}.{% endif %}
+              {% if r.waitlist_could_fill %}<a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link">{{ r.waiting }} waiting could cover it — ring them</a> before calling it off.
+              {% elif r.waiting %}{{ r.waiting }} waiting, not enough to cover it.
+              {% else %}Nobody is waiting.{% endif %}
+            </div>
+            {% endif %}
             · <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">{{ row.rooms_assigned }}/{{ total_rooms }} rooms assigned — see rooms</a>
           </span>
           <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
@@ -100,8 +109,13 @@
       </div>
       <div class="field-row-2">
         <input type="number" name="capacity" min="1" placeholder="Capacity ({{ w['default_capacity'] }} default)">
+        <input type="number" name="min_participants" min="0" placeholder="Minimum to run (blank = no minimum)">
+      </div>
+      <div class="field-row-2">
+        <input type="number" name="decide_by_days" min="0" placeholder="Decide this many days before (21 default)">
         <input type="text" name="notes" placeholder="Notes (optional)">
       </div>
+      <p class="pay-disclaimer" style="margin-top:-4px;">Capacity is the most it can take; the minimum is the fewest it can run with. Set one and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
       <button type="submit" class="btn-mini">+ Add session</button>
     </form>
 

@@ -3527,6 +3527,17 @@ def init_db():
         # have to reinvent everything a booking already does.
         ("booking_party_id", "ALTER TABLE bookings ADD COLUMN party_id INTEGER "
                              "REFERENCES booking_parties(id) ON DELETE SET NULL"),
+        # Capacity is the most a session can take. This is the least it can
+        # run with, which nothing recorded — so a session with two people and
+        # a session with nine looked identical on every page. Default 0 means
+        # "no minimum set", so no existing session suddenly becomes at risk.
+        ("workshop_min", "ALTER TABLE workshop_sessions ADD COLUMN "
+                         "min_participants INTEGER NOT NULL DEFAULT 0"),
+        # How long before the start the call has to be made. Cancelling three
+        # days out is a different act from cancelling six weeks out, because
+        # by then people have booked flights.
+        ("workshop_decide_by", "ALTER TABLE workshop_sessions ADD COLUMN "
+                               "decide_by_days INTEGER NOT NULL DEFAULT 21"),
     ):
         try:
             conn.execute(ddl)
@@ -15473,6 +15484,35 @@ def owner_home_warnings(conn, today):
                if worst["days"] is not None else "")
             + ". The house is open to the public; this is cover it does not have.",
             len(uncovered), "management_company_info")
+
+    # A workshop that will not reach the number it needs, while the decision
+    # is still open. Only the ones whose decision date is close or past --
+    # a session six weeks out that is short is normal, and a panel that says
+    # so every morning is a panel nobody reads.
+    #
+    # The sentence changes when the waitlist could close the gap, because
+    # then the answer is a telephone call rather than a cancellation, and
+    # telling the owner to cancel a session they could fill would be worse
+    # than saying nothing.
+    short_sessions = [w for w in sessions_at_risk(conn, today) if w["urgent"]]
+    if short_sessions:
+        worst = short_sessions[0]
+        fillable = [w for w in short_sessions if w["waitlist_could_fill"]]
+        if worst["waitlist_could_fill"]:
+            what = (f"{worst['waiting']} on the waiting list could cover it \u2014 "
+                    "ring them before cancelling anything.")
+        elif worst["overdue"]:
+            what = (f"The date for deciding passed {abs(worst['days_left'])} day"
+                    f"{'' if abs(worst['days_left']) == 1 else 's'} ago.")
+        else:
+            what = (f"{worst['days_left']} day"
+                    f"{'' if worst['days_left'] == 1 else 's'} left to decide.")
+        add("warning" if fillable else "blocker",
+            f"{len(short_sessions)} workshop"
+            f"{'' if len(short_sessions) == 1 else 's'} short of the number to run",
+            f"{worst['title']} on {format_date_short(worst['start'].isoformat())} "
+            f"has {worst['confirmed']} of {worst['minimum']}. {what}",
+            len(short_sessions), "admin_workshops")
 
     illegal = [p for p in vehicle_papers(conn, today)
                if p["state"] == "expired" and not p["vehicle"]["off_road"]]
@@ -33370,6 +33410,87 @@ def update_restaurant_waitlist_status(entry_id):
 # guest self-service experience across all three.
 # ---------------------------------------------------------------------------
 
+WORKSHOP_DECIDE_BY_DAYS = 21
+
+# Once the decision date is inside a week, a session that is still short is
+# not "coming up" — it is a decision somebody is failing to make.
+WORKSHOP_DECISION_URGENT_DAYS = 7
+
+
+def sessions_at_risk(conn, today=None):
+    """Sessions that will not reach their minimum, while something can be done.
+
+    Confirmed heads only. A pending registration has not paid a deposit, and
+    counting it makes the figure look better without making anybody turn up.
+    It is returned alongside so the owner can see it and chase it — never
+    added in.
+
+    The waitlist is read in the same breath, because it changes the answer.
+    Three short with four waiting is a telephone call, not a cancellation,
+    and the row says which.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
+                  workshops.instructor_name,
+                  (SELECT COALESCE(SUM(party_size), 0) FROM workshop_bookings
+                    WHERE session_id = workshop_sessions.id
+                      AND status = 'confirmed') AS confirmed,
+                  (SELECT COALESCE(SUM(party_size), 0) FROM workshop_bookings
+                    WHERE session_id = workshop_sessions.id
+                      AND status = 'pending') AS pending,
+                  (SELECT COUNT(*) FROM workshop_waitlist
+                    WHERE session_id = workshop_sessions.id
+                      AND status = 'open') AS waiting,
+                  (SELECT COALESCE(SUM(COALESCE(party_size, 1)), 0)
+                     FROM workshop_waitlist
+                    WHERE session_id = workshop_sessions.id
+                      AND status = 'open') AS waiting_heads
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.min_participants > 0
+              AND workshop_sessions.start_date >= ?
+            ORDER BY workshop_sessions.start_date""",
+        (today.isoformat(),)).fetchall()
+
+    out = []
+    for r in rows:
+        if r["confirmed"] >= r["min_participants"]:
+            continue
+        start = parse_date(r["start_date"])
+        if not start:
+            continue
+        decide_by = start - timedelta(days=r["decide_by_days"] or 0)
+        days_left = (decide_by - today).days
+        short = r["min_participants"] - r["confirmed"]
+        price = r["price_per_person"] or 0
+        out.append({
+            "session": r,
+            "title": r["title"],
+            "start": start,
+            "confirmed": r["confirmed"],
+            "pending": r["pending"],
+            "minimum": r["min_participants"],
+            "short": short,
+            "decide_by": decide_by,
+            "days_left": days_left,
+            # Past its own deadline and still short is a worse state than
+            # heading towards one, and reads differently on the page.
+            "overdue": days_left < 0,
+            "urgent": days_left <= WORKSHOP_DECISION_URGENT_DAYS,
+            "waiting": r["waiting"],
+            "waiting_heads": r["waiting_heads"],
+            # The whole point of reading the waitlist here. If the people
+            # already waiting would close the gap, the action is to ring
+            # them, and saying "cancel this" would be wrong.
+            "waitlist_could_fill": r["waiting_heads"] >= short,
+            "taken": round(r["confirmed"] * price, 2),
+            "at_minimum": round(r["min_participants"] * price, 2),
+            "gap": round(short * price, 2),
+        })
+    return out
+
+
 def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
     session = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone()
     if not session:
@@ -33398,6 +33519,9 @@ def admin_workshops():
     # attended or what it took. Past sessions are now loaded too and split out
     # below, with attendance so the history is worth having. The PUBLIC
     # workshops page still shows upcoming only, which is correct there.
+    # Read once for the whole page and keyed by session, rather than asked
+    # per session inside the loop below.
+    at_risk_by_session = {w["session"]["id"]: w for w in sessions_at_risk(conn, today)}
     sessions_by_workshop, past_by_workshop = {}, {}
     for w in workshops:
         sessions = conn.execute(
@@ -33414,6 +33538,7 @@ def admin_workshops():
             entry = {
                 "session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"]),
                 "rooms_assigned": rooms_assigned,
+                "at_risk": at_risk_by_session.get(s["id"]),
             }
             if (s["end_date"] or s["start_date"]) >= today.isoformat():
                 rows.append(entry)
@@ -33583,6 +33708,8 @@ def new_workshop_session(workshop_id):
     start_date = parse_date(request.form.get("start_date", ""))
     end_date = parse_date(request.form.get("end_date", "")) or start_date
     capacity_raw = request.form.get("capacity", "").strip()
+    minimum_raw = request.form.get("min_participants", "").strip()
+    decide_raw = request.form.get("decide_by_days", "").strip()
     notes = request.form.get("notes", "").strip()
 
     if not start_date:
@@ -33594,11 +33721,22 @@ def new_workshop_session(workshop_id):
         flash("End date can't be before the start date.", "error")
         return redirect(url_for("admin_workshops"))
 
+    capacity = (int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
+                else workshop["default_capacity"])
+    minimum = int(minimum_raw) if minimum_raw.isdigit() else 0
+    # A minimum above the capacity can never be met, so the session would sit
+    # on the at-risk list until its own start date with nothing that could
+    # ever clear it.
+    minimum = min(minimum, capacity)
+    decide_by_days = (int(decide_raw) if decide_raw.isdigit()
+                      else WORKSHOP_DECIDE_BY_DAYS)
+
     conn.execute(
-        """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (workshop_id, start_date.isoformat(), end_date.isoformat(),
-         int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else workshop["default_capacity"],
+        """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
+                                          min_participants, decide_by_days, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (workshop_id, start_date.isoformat(), end_date.isoformat(), capacity,
+         minimum, decide_by_days,
          notes or None, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
@@ -36882,6 +37020,7 @@ WATCH_TASK_KINDS = {
     "job": "An automation job keeps failing",
     "vehicle": "A vehicle without valid papers",
     "policy": "Insurance that has run out",
+    "workshop": "A workshop short of the number it needs",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -37707,6 +37846,34 @@ def watch_task_findings(conn, today=None):
                 "\n\nRenew it, or record the new dates when the renewal comes in.")),
             (c["expires"].isoformat() if c["expires"] else today.isoformat()),
             "high" if gone else "normal"))
+
+    # Short of its minimum with the decision date in sight. Self-closing like
+    # the rest: one more confirmed booking and the next run drops it, which
+    # is the honest behaviour -- the session is no longer at risk, whatever
+    # a list of past problems might say.
+    for w in take("workshop", [w for w in sessions_at_risk(conn, today) if w["urgent"]]):
+        ring = w["waitlist_could_fill"]
+        found.append((
+            "workshop",
+            f"{w['title']} on {w['start'].isoformat()} \u2014 {w['confirmed']} of "
+            f"{w['minimum']} needed",
+            (f"Short by {w['short']}. "
+             + (f"{w['pending']} more registered without paying a deposit; "
+                "they are not counted here because they have not paid. "
+                if w["pending"] else "")
+             + (f"\n\n{w['waiting']} on the waiting list, enough to cover it. "
+                "Ring them before deciding anything else."
+                if ring else
+                f"\n\n{w['waiting']} on the waiting list, not enough to cover it."
+                if w["waiting"] else
+                "\n\nNobody is on the waiting list.")
+             + (f"\n\nThe date for deciding passed on {w['decide_by'].isoformat()}."
+                if w["overdue"] else
+                f"\n\nDecide by {w['decide_by'].isoformat()}.")
+             + f"\n\nRunning it as it stands takes \u20ac{w['taken']:.2f} against "
+               f"\u20ac{w['at_minimum']:.2f} at the minimum."),
+            w["decide_by"].isoformat(),
+            "normal" if ring else "high" if w["overdue"] else "normal"))
 
     papers = [p for p in vehicle_papers(conn, today) if p["chase"]]
     for p in take("vehicle", papers):
