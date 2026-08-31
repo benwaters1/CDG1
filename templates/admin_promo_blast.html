@@ -23,6 +23,17 @@
       <input type="checkbox" name="segment" value="workshop" {{ 'checked' if 'workshop' in segments }}>
       Workshop attendees
     </label>
+    {# A different KIND of list, and kept visibly separate. The three above are
+       people who have been here; this is people who asked to hear from us and
+       nothing else. Until now they were collected on the public site and
+       there was no way to write to any of them. #}
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
+      <input type="checkbox" name="segment" value="newsletter" {{ 'checked' if 'newsletter' in segments }}>
+      Newsletter subscribers
+    </label>
+    <p class="upload-hint">They confirmed by email and can unsubscribe from any
+      message. They have no visit date, so the months filter below does not
+      apply to them.</p>
     <div style="margin-top:10px; max-width:260px;">
       <label class="field-label">Only guests who visited in the last (months, optional)</label>
       <input type="number" name="since_months" min="1" value="{{ since_months }}" placeholder="Any time">

@@ -190,6 +190,7 @@ SUITES = [
     "test_police_register",
     "test_dead_context",
     "test_extras_cancel",
+    "test_newsletter_reach",
     "test_handover_check",
 ]
 
