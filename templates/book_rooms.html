@@ -498,6 +498,38 @@
 </svg>
   <h2 class="g-place">What Guests Say</h2>
 
+  {# The house's OWN reviews, from guests who stayed and were asked. The
+     booking page has been querying these on every load since the feature was
+     built and rendering none of them, so "Feature on booking page" was a
+     button that did nothing at all — which is also why the only moderation
+     control the house had appeared to work.
+
+     The reply is shown with the review on purpose. A complaint answered well
+     reads better to the next guest than no complaint at all, and a page of
+     nothing but five-star quotes is the one nobody believes. #}
+  {% if featured_reviews %}
+  <div class="g-says__grid">
+    {% for r in featured_reviews %}
+    <figure class="g-say">
+      <blockquote class="g-say__q">{{ r['comment'] or 'A very good stay.' }}</blockquote>
+      <figcaption class="g-say__by">
+        {{ (r['guest_name'] or 'A guest').split(' ')[0] }}
+        <span class="g-say__src">
+          {{ '\u2605' * r['rating'] }}{{ '\u2606' * (5 - r['rating']) }}
+          {%- if r['room_name'] %} \u00b7 {{ r['room_name'] }}{% endif %}
+        </span>
+      </figcaption>
+      {% if r['reply'] %}
+      <p class="g-say__reply">
+        <span class="g-say__reply-by">Ch\u00e2teau de Gudanes</span>
+        {{ r['reply'] }}
+      </p>
+      {% endif %}
+    </figure>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="g-says__grid">
     <figure class="g-say">
       <blockquote class="g-say__q">Loved everything about the Chateau de Gudanes</blockquote>

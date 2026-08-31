@@ -182,6 +182,7 @@ SUITES = [
     "test_accessibility",
     "test_supplier_invoices",
     "test_staff_claims",
+    "test_reviews",
     "test_handover_check",
 ]
 

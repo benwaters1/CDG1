@@ -1568,6 +1568,14 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    with drop shadows; this is a house, not a listing.
    ========================================================================== */
 .g-says{ background: var(--stone-pale); }
+/* The house answering a review, shown beneath it. Set back and quieter than
+   the guest's own words: it is a reply, not a rebuttal, and a reply that
+   shouts over the review it answers reads worse than saying nothing. */
+.g-say__reply{ margin: var(--s3) 0 0; padding-left: var(--s3);
+  border-left: 2px solid var(--parchment-line, currentColor);
+  font-size: 15px; line-height: 1.55; color: var(--steel); }
+.g-say__reply-by{ display: block; font-size: 12px; letter-spacing: .06em;
+  text-transform: uppercase; margin-bottom: 4px; }
 .g-says__grid{
   display: grid; gap: var(--s6); margin-top: var(--s6);
   grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
