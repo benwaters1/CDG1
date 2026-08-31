@@ -294,9 +294,31 @@ AUTOMATION_SETTING_DEFAULTS = {
 # charged at checkout, so it has to be a decision somebody makes rather than
 # something that appears on a deploy. At 0 the behaviour is exactly what it is
 # today — the full amount online, or nothing — and no schedule is written.
+# How money can arrive other than through Stripe. Free text in the column so
+# older rows keep working; a fixed set here so the form cannot invent one.
+MANUAL_PAYMENT_METHODS = {
+    "cash": "Cash",
+    "bank_transfer": "Bank transfer",
+    "card_in_person": "Card, in person",
+    "other": "Something else",
+}
+
 ROOM_PAYMENT_DEFAULTS = {
     "room_deposit_percent": "0",
     "room_balance_due_days_before": "14",
+    # Whether a GUEST may choose their own amount on a nightly stay. Off.
+    #
+    # Workshops are the other way round on purpose: a place is held with a
+    # deposit and settled in instalments up to the session, because somebody
+    # booking an atelier eight months out is making a different commitment from
+    # somebody taking a room for the weekend. A stay is quoted as a price and
+    # paid as one; letting a guest send forty euros against it turns every
+    # arrival into a conversation about what is left.
+    #
+    # The house can still take part of it — see record_manual_booking_payment,
+    # which is the cash-and-bank-transfer path and always available. This
+    # setting only governs what the guest is offered.
+    "room_part_payment_allowed": "0",
 }
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
@@ -2993,6 +3015,12 @@ def init_db():
         ("pos_orders_discount_reason", "ALTER TABLE pos_orders ADD COLUMN discount_reason TEXT"),
         # Who the receipt went to, so the floor can see it was sent rather than
         # sending it three times because nobody could tell.
+        # A payment taken by hand needs the bank line it will be matched to,
+        # and the person who took it. Neither had anywhere to live: the only
+        # writers were Stripe paths, which have a session id and no human.
+        ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
+        ("booking_payments_taken_by",
+         "ALTER TABLE booking_payments ADD COLUMN taken_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"),
         ("pos_orders_receipt_emailed_to", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_to TEXT"),
         ("pos_orders_receipt_emailed_at", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_at TEXT"),
         ("pos_orders_merged_into", "ALTER TABLE pos_orders ADD COLUMN merged_into_order_id INTEGER REFERENCES pos_orders(id) ON DELETE SET NULL"),
@@ -4211,6 +4239,7 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
+        "record_manual_booking_payment",
         "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
         "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
         "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
@@ -23856,8 +23885,15 @@ def booking_has_transfer(booking):
 def booking_pay(manage_token):
     """Let a guest settle what is outstanding on their stay, or part of it.
 
-    POST carries an amount; GET still means "all of it", so every link that
-    already existed keeps working unchanged.
+    A nightly stay is quoted as a price and paid as one, so a guest is offered
+    the whole balance and nothing else. POST carries an amount and is honoured
+    ONLY where the house has turned that on; otherwise it is ignored and the
+    full balance is charged, so a hand-made POST cannot get round the rule.
+    GET has always meant "all of it" and still does.
+
+    Workshops deliberately work the other way — a deposit, then instalments up
+    to the session — and have their own route. The house can take part of a
+    stay itself at any time through record_manual_booking_payment.
 
     CSRF-exempt because the guest arrives from their own confirmation with no
     session, exactly as the unsubscribe and statement routes do. The worst a
@@ -23870,7 +23906,7 @@ def booking_pay(manage_token):
         conn.close()
         abort(404)
     amount = None
-    if request.method == "POST":
+    if request.method == "POST" and room_payment_setting(conn, "room_part_payment_allowed", cast=int) == 1:
         raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
         if raw:
             amount = raw
@@ -24306,6 +24342,10 @@ def manage_booking(manage_token):
     # Minted on first sight rather than up front, so a link only exists for
     # someone who has actually been here. Written before the connection closes.
     portal_token = guest_portal_token(conn, booking["guest_email"])
+    # Read before the close, like everything else on this page — the value
+    # is wanted by the template and the connection does not survive it.
+    part_payment_allowed = room_payment_setting(
+        conn, "room_part_payment_allowed", cast=int) == 1
     conn.commit()
     conn.close()
     return render_template(
@@ -24315,6 +24355,7 @@ def manage_booking(manage_token):
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
         dinner_available=dinner_available, bill=bill, addable=addable,
         stripe_enabled=stripe_enabled(),
+        part_payment_allowed=part_payment_allowed,
     )
 
 
@@ -32703,8 +32744,82 @@ def management_outstanding():
     total = round(sum(r["owed"] for r in lv["rows"]), 2)
     gone = round(sum(r["owed"] for r in lv["rows"] if r["state"] == "gone"), 2)
     return render_template("management_outstanding.html", lv=lv, total=total,
-                           gone=gone,
+                           gone=gone, payment_methods=MANUAL_PAYMENT_METHODS,
                            can_email=bool(email_enabled() or resend_enabled()))
+
+
+@app.route("/management/outstanding/<int:booking_id>/payment", methods=["POST"])
+@owner_required
+def record_manual_booking_payment(booking_id):
+    """Record money taken by hand: cash, a bank transfer, a card in person.
+
+    This did not exist. Both callers of record_booking_payment were Stripe
+    paths, so a guest who handed over two hundred euros at the desk could not
+    be credited for it at all — the stay went on showing the whole balance and
+    the reminder job went on asking them for it.
+
+    Part of a stay is fine HERE, and only here. A guest is offered the whole
+    balance because a stay is quoted as a price and paid as one; the house
+    taking half of it in cash is a different act, made by somebody who can see
+    the bill.
+
+    Recorded as a line of its own — how it was taken, any reference, and who
+    took it — rather than only as a bigger number on the stay. Three months on,
+    a bank statement has to be matched to a booking by somebody who was not
+    there.
+
+    An amount over what is owed is refused rather than clamped. On the guest's
+    own button, clamping is a kindness — they meant "all of it". Typed at this
+    desk it is far more likely to be a slip, and quietly taking less than the
+    number in front of you is how a till and a bill start disagreeing.
+    """
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    bill = booking_bill(conn, booking_id)
+    raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+    try:
+        amount = round(float(raw), 2)
+    except ValueError:
+        amount = 0
+    if amount <= 0:
+        conn.close()
+        flash("Enter how much was taken.", "error")
+        return redirect(url_for("management_outstanding"))
+    if bill and amount > bill["owed"] + 0.01:
+        conn.close()
+        flash(f"That is more than the €{bill['owed']:.2f} outstanding on this stay.",
+              "error")
+        return redirect(url_for("management_outstanding"))
+    reference = (request.form.get("reference", "") or "").strip() or None
+    method = (request.form.get("method", "") or "").strip() or "cash"
+    if method not in MANUAL_PAYMENT_METHODS:
+        method = "cash"
+    # A line of its own, then the running total. booking_bill reads `paid` from
+    # bookings.amount_paid, so this row is a record rather than a second count
+    # of the same money — it is what answers "when, how, and who took it" three
+    # months later when a bank statement has to be matched to a stay.
+    conn.execute(
+        """INSERT INTO booking_payments (booking_id, amount, method, reference,
+           taken_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+        (booking_id, amount, method, reference, session.get("user_id"),
+         datetime.now(timezone.utc).isoformat()))
+    # Without the reference: record_booking_payment stows one in
+    # stripe_payment_intent_id, which is the right home for a Stripe id and the
+    # wrong one for "cash at the desk".
+    record_booking_payment(conn, booking_id, amount)
+    log_audit(conn, "booking_payment_recorded", target=booking["reference_code"],
+              details=f"€{amount:.2f}" + (f" ({reference})" if reference else ""))
+    conn.commit()
+    left = booking_bill(conn, booking_id)
+    conn.close()
+    remaining = left["owed"] if left else 0
+    flash(f"€{amount:.2f} recorded against {booking['guest_name']}."
+          + (f" €{remaining:.2f} still to pay." if remaining > 0.005 else " Settled."),
+          "success")
+    return redirect(url_for("management_outstanding"))
 
 
 @app.route("/management/outstanding/<int:booking_id>/chase", methods=["POST"])

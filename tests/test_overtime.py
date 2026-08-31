@@ -70,6 +70,14 @@ def run():
 
     s.section("A long week is counted, a normal one is not")
     ana = _person(conn, "Ana")
+    # `worked_hours` is the whole house's total for that week, by design — it is
+    # not per person. Measured before and after, so the claim is about the
+    # thirty hours THIS suite added rather than about being the only employee
+    # who worked that week. It was written as an absolute and passed for as long
+    # as no other suite happened to leave a shift in the same week; once one did,
+    # it failed for a reason that had nothing to do with overtime.
+    before = _week(m.overtime_history(conn, weeks=6), _monday(-1))
+    baseline = before["worked_hours"] if before else 0.0
     _long_week(conn, ana, _monday(-2), hours=42)
     _long_week(conn, ana, _monday(-1), hours=30)      # a normal week
 
@@ -84,8 +92,9 @@ def run():
     s.check("a thirty-hour week is not flagged", ok_week and ok_week["over"] == [],
             detail=str(ok_week["over"]) if ok_week else "")
     s.check("but its hours are still counted",
-            ok_week and abs(ok_week["worked_hours"] - 30) < 0.05,
-            detail=str(ok_week["worked_hours"]) if ok_week else "")
+            ok_week and abs((ok_week["worked_hours"] - baseline) - 30) < 0.05,
+            detail=f"{ok_week['worked_hours']} - {baseline} baseline"
+                   if ok_week else "")
 
     s.section("Every week in the window appears, empty or not")
     # A page that only lists bad weeks cannot show that most weeks are fine,

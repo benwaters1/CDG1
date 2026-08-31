@@ -443,6 +443,14 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
    filter-bar styling) ---------- */
 /* 170px min meant a 4-tile row broke to 3+1 at common widths, stranding the
    last tile alone beside a dead gap. 150 lets four sit on one row. */
+/* Recording money taken by hand, on the row it belongs to. Folded away
+   because most rows are read rather than acted on, and wrapping so the
+   three fields do not push the table sideways on a laptop. */
+.owed-take>summary{ cursor:pointer; font-size:12.5px; }
+.owed-take__form{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;
+  align-items:center; }
+.owed-take__form input[type=number]{ width:7em; }
+.owed-take__form input[type=text]{ width:11em; }
 .stat-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
 .stat-tile{
   display:flex; align-items:center; gap:13px;

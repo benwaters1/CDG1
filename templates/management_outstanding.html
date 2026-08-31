@@ -84,6 +84,30 @@ held rather than sent. It goes out on its own once one is.</p>
         <td class="num">€{{ '%.2f'|format(r['paid']) }}</td>
         <td class="num"><strong>€{{ '%.2f'|format(r['owed']) }}</strong></td>
         <td>
+          {# Cash at the desk, a transfer that landed, a card taken in
+             person. None of it could be recorded before: the only writers
+             were Stripe paths, so a guest who paid by hand went on being
+             asked for money they had already handed over. #}
+          <details class="owed-take">
+            <summary>Record a payment</summary>
+            <form method="post"
+                  action="{{ url_for('record_manual_booking_payment', booking_id=b['id']) }}"
+                  class="owed-take__form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="number" name="amount" step="0.01" min="0.01"
+                     max="{{ '%.2f'|format(r['owed']) }}"
+                     placeholder="{{ '%.2f'|format(r['owed']) }}"
+                     aria-label="How much" required>
+              <select name="method" aria-label="How it was taken">
+                {% for key, label in payment_methods.items() %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <input type="text" name="reference" placeholder="Reference (optional)"
+                     aria-label="Reference">
+              <button type="submit" class="btn-mini">Record</button>
+            </form>
+          </details>
           {% if b['guest_email'] %}
           <form method="post"
                 action="{{ url_for('chase_outstanding_balance', booking_id=b['id']) }}"

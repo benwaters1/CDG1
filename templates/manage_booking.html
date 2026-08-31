@@ -203,11 +203,14 @@
     <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
     {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
     <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
-    {# Paying some of it. A stay is often settled in two or three goes —
-       one card now, the rest nearer the time, or split between the people
-       travelling — and all-or-nothing makes the house chase money it could
-       already have had. Folded away, because most guests will use the
-       button above and a second amount box beside it only invites a pause. #}
+    {# A stay is quoted as a price and paid as one, so this is not offered
+       unless the house has asked for it. Workshops are the other way round on
+       purpose — a place held with a deposit and settled in instalments up to
+       the session is a different commitment from a room for the weekend.
+
+       The house can always take part of a stay itself, at the desk, from
+       What We're Owed; that path does not depend on this. #}
+    {% if part_payment_allowed %}
     <details class="g-mb-part">
       <summary>{{ t('Pay part of it instead') }}</summary>
       <form method="post" action="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}"
@@ -220,6 +223,7 @@
       </form>
       <p class="g-hint">{{ t('The rest stays on your bill and can be paid any time, or on arrival.') }}</p>
     </details>
+    {% endif %}
     <p class="g-hint">Or we will take it on arrival — whichever you prefer.</p>
     {% else %}
     <p class="g-hint">We will take this on arrival unless you hear otherwise.</p>
