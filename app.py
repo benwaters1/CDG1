@@ -1371,6 +1371,20 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Cash the till counted, once it has actually reached the bank. The
+        -- closure already records what was in the drawer; nothing recorded
+        -- what left the building, so "counted" and "banked" were the same
+        -- word and the gap between them was invisible.
+        CREATE TABLE IF NOT EXISTS cash_bankings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            banked_on TEXT NOT NULL,
+            amount REAL NOT NULL,
+            reference TEXT,
+            note TEXT,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS waitlist_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -4445,6 +4459,10 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
+        "management_debtors", "export_debtors_csv",
+        "management_cash_banking", "record_cash_banking", "delete_cash_banking",
+        "management_on_the_books", "management_break_even",
+        "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
         "record_event_payment_route", "send_event_revenue",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
@@ -35147,6 +35165,145 @@ def walk_in_booking():
                            form=request.args)
 
 
+@app.route("/management/on-the-books")
+@owner_required
+def management_on_the_books():
+    """Revenue already sold for months that have not happened."""
+    conn = get_db()
+    data = revenue_on_the_books(conn)
+    conn.close()
+    return render_template("management_on_the_books.html", data=data)
+
+
+@app.route("/management/break-even")
+@owner_required
+def management_break_even():
+    """What the month costs before anybody arrives, in room-nights."""
+    conn = get_db()
+    month = parse_date(request.args.get("month", "") + "-01") if request.args.get("month") else None
+    data = break_even_month(conn, month)
+    conn.close()
+    return render_template("management_break_even.html", data=data)
+
+
+@app.route("/management/cost-of-taking-money")
+@owner_required
+def management_payment_cost():
+    """What the house pays to be paid."""
+    conn = get_db()
+    period = period_from_request()
+    data = cost_of_taking_money(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    conn.close()
+    return render_template("management_payment_cost.html", data=data, period=period)
+
+
+@app.route("/management/cost-of-taking-money/settings", methods=["POST"])
+@owner_required
+def save_card_fee_settings():
+    conn = get_db()
+    pct = parse_money(request.form.get("card_fee_percent"))
+    fixed = parse_money(request.form.get("card_fee_fixed"))
+    if pct is None or pct < 0 or pct > 100:
+        conn.close()
+        flash("Enter the percentage the processor keeps, as a number.", "error")
+        return redirect(url_for("management_payment_cost"))
+    for key, value in (("card_fee_percent", f"{pct:.4f}"),
+                       ("card_fee_fixed", f"{max(0.0, fixed or 0):.4f}")):
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    log_audit(conn, "card_fee_settings_updated", details=f"{pct}% + {fixed or 0}")
+    conn.commit()
+    conn.close()
+    flash("Card fee saved.", "success")
+    return redirect(url_for("management_payment_cost"))
+
+
+@app.route("/management/cash-banking")
+@owner_required
+def management_cash_banking():
+    """Counted out of the drawer, paid into the bank, and the difference."""
+    conn = get_db()
+    period = period_from_request()
+    position = cash_position(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    conn.close()
+    return render_template("management_cash_banking.html", position=position, period=period)
+
+
+@app.route("/management/cash-banking/new", methods=["POST"])
+@owner_required
+def record_cash_banking():
+    amount = parse_money(request.form.get("amount"))
+    banked_on = (request.form.get("banked_on") or "").strip()
+    if amount is None or amount <= 0:
+        flash("Enter the amount that was paid in.", "error")
+        return redirect(url_for("management_cash_banking"))
+    if not banked_on or not parse_date(banked_on):
+        flash("Enter the date it was paid in.", "error")
+        return redirect(url_for("management_cash_banking"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO cash_bankings (banked_on, amount, reference, note,
+             recorded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (banked_on, round(amount, 2),
+         (request.form.get("reference") or "").strip() or None,
+         (request.form.get("note") or "").strip() or None,
+         current_user()["id"], datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "cash_banked", target=banked_on, details=f"{amount:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"Recorded €{amount:.2f} paid in on {banked_on}.", "success")
+    return redirect(url_for("management_cash_banking"))
+
+
+@app.route("/management/cash-banking/<int:banking_id>/delete", methods=["POST"])
+@owner_required
+def delete_cash_banking(banking_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM cash_bankings WHERE id = ?", (banking_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM cash_bankings WHERE id = ?", (banking_id,))
+    # Deleting a banking moves what the safe should hold, so it is not a
+    # tidy-up — it is a correction to a money figure and is recorded as one.
+    log_audit(conn, "cash_banking_deleted", target=row["banked_on"],
+              details=f"{float(row['amount']):.2f}")
+    conn.commit()
+    conn.close()
+    flash("Banking removed.", "success")
+    return redirect(url_for("management_cash_banking"))
+
+
+@app.route("/management/debtors")
+@owner_required
+def management_debtors():
+    """What the house is owed, aged. The list is next door; this is the shape."""
+    conn = get_db()
+    ageing = debtor_ageing(conn)
+    conn.close()
+    return render_template("management_debtors.html", ageing=ageing)
+
+
+@app.route("/management/debtors/export.csv")
+@owner_required
+def export_debtors_csv():
+    conn = get_db()
+    ageing = debtor_ageing(conn)
+    conn.close()
+    fieldnames = ["bucket", "kind", "who", "email", "reference", "what",
+                  "days_late", "owed"]
+    labels = ageing["labels"]
+    rows = []
+    for key in ageing["order"]:
+        for it in sorted(ageing["buckets"][key], key=lambda i: -i["owed"]):
+            rows.append({"bucket": labels[key], "kind": it["kind"], "who": it["who"],
+                         "email": it["email"] or "", "reference": it["reference"],
+                         "what": it["what"], "days_late": it["days_late"],
+                         "owed": f"{it['owed']:.2f}"})
+    return csv_response(fieldnames, rows, "debtors.csv")
+
+
 @app.route("/management/outstanding")
 @owner_required
 def management_outstanding():
@@ -43945,6 +44102,402 @@ def payables_ageing(conn, today=None):
               for k, v in buckets.items()}
     return {"buckets": buckets, "totals": totals,
             "total": round(sum(totals.values()), 2)}
+
+
+# What the card processor charges. Left empty on purpose: a fee figure the
+# house did not type is a guess, and a guessed cost of sale is worse than an
+# empty page because it gets quoted.
+CARD_FEE_KEYS = ("card_fee_percent", "card_fee_fixed")
+# Which stored payment methods actually attract a card fee. `room` is a charge
+# moved to a stay and settled later by whatever method that stay uses, so
+# counting it here would charge the fee twice.
+CARD_METHODS = ("stripe", "card_link", "card_terminal", "card_in_person")
+
+
+def card_fee_settings(conn):
+    """(percent, fixed) as typed by the owner, or (None, None) if never set."""
+    rows = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings WHERE key IN (?, ?)", CARD_FEE_KEYS).fetchall()}
+    try:
+        pct = float(rows.get("card_fee_percent"))
+        fixed = float(rows.get("card_fee_fixed") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    return pct, fixed
+
+
+def cost_of_taking_money(conn, start, end):
+    """What it costs the house to be paid, by method.
+
+    Every other page treats a payment as the amount that arrived. A card
+    payment is not: the processor keeps a percentage and a few cents of every
+    one, and across a season of dinners taken on the terminal that is a real
+    cost of sale sitting in nobody's expenses. Cash costs nothing to take and
+    a bank transfer costs nothing to receive, which is exactly the comparison
+    worth being able to see.
+
+    Returns configured=False rather than a number when the rate has not been
+    typed. An invented fee is worse than no page: it would be quoted.
+    """
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    pct, fixed = card_fee_settings(conn)
+    lo, hi = start.isoformat(), (end + timedelta(days=1)).isoformat()
+
+    methods = {}
+
+    def _take(method, amount):
+        m = methods.setdefault(method or "other",
+                               {"method": method or "other", "amount": 0.0, "count": 0})
+        m["amount"] = round(m["amount"] + float(amount or 0), 2)
+        m["count"] += 1
+
+    for r in conn.execute(
+            "SELECT method, amount FROM booking_payments WHERE created_at >= ? AND created_at < ?",
+            (lo, hi)).fetchall():
+        _take(r["method"], r["amount"])
+    for r in conn.execute(
+            "SELECT method, amount FROM pos_payments WHERE created_at >= ? AND created_at < ?",
+            (lo, hi)).fetchall():
+        _take(r["method"], r["amount"])
+
+    rows = []
+    for m in sorted(methods.values(), key=lambda x: -x["amount"]):
+        charged = m["method"] in CARD_METHODS
+        fee = None
+        if charged and pct is not None:
+            fee = round(m["amount"] * pct / 100.0 + m["count"] * fixed, 2)
+        rows.append({**m, "charged": charged, "fee": fee,
+                     "label": (MANUAL_PAYMENT_METHODS.get(m["method"])
+                               or POS_PAYMENT_METHODS.get(m["method"])
+                               or m["method"].replace("_", " ").capitalize())})
+    taken = round(sum(r["amount"] for r in rows), 2)
+    on_card = round(sum(r["amount"] for r in rows if r["charged"]), 2)
+    total_fee = (round(sum(r["fee"] or 0 for r in rows), 2) if pct is not None else None)
+    return {
+        "configured": pct is not None, "percent": pct, "fixed": fixed,
+        "rows": rows, "taken": taken, "on_card": on_card, "fee": total_fee,
+        # The figure worth knowing: what fraction of everything taken the
+        # processor keeps. Quoted against ALL money taken, not just the card
+        # part, because that is what it costs the business to get paid.
+        "effective_pct": (round(total_fee / taken * 100, 2)
+                          if total_fee is not None and taken else None),
+        "start": start, "end": end,
+    }
+
+
+def break_even_month(conn, month=None):
+    """How many room-nights a month has to sell before it has paid for itself.
+
+    Fixed cost is what the house owes whether anybody comes or not: the
+    recurring costs, normalised to a month, plus the salaried wage bill.
+    Hourly staff are deliberately NOT in it — they are a cost of opening, not
+    of existing, and folding them in would raise the break-even by an amount
+    that only exists once the nights are sold.
+
+    The rate is what rooms ACTUALLY achieved, not the rack rate. Break-even
+    computed on a price nobody paid is a comforting number and a false one.
+    """
+    day = month or datetime.now(LOCAL_TZ).date()
+    if isinstance(day, str):
+        day = parse_date(day)
+    first = day.replace(day=1)
+    last = date(first.year + (first.month == 12), (first.month % 12) + 1, 1)
+
+    fixed = 0.0
+    costs = []
+    for c in conn.execute(
+            "SELECT * FROM recurring_costs WHERE active = 1 ORDER BY label").fetchall():
+        amount = float(c["amount"] or 0)
+        monthly = amount / 12.0 if c["frequency"] == "annual" else amount
+        fixed += monthly
+        costs.append({"label": c["label"], "monthly": round(monthly, 2),
+                      "frequency": c["frequency"]})
+
+    salaried = 0.0
+    # Asked at the latest point inside the month rather than on the 1st.
+    # Somebody who started on the 12th is a cost this month, and asking on the
+    # 1st leaves them out of a figure the month is judged against — which
+    # understates break-even in exactly the month a new salary makes it harder
+    # to reach.
+    as_at = min(last - timedelta(days=1), datetime.now(LOCAL_TZ).date())
+    if as_at < first:
+        as_at = first
+    for w in current_wages(conn, as_at).values():
+        if w["basis"] == "monthly":
+            salaried += float(w["gross_amount"] or 0)
+    fixed += salaried
+
+    nights_sold, revenue = 0, 0.0
+    for b in conn.execute(
+            """SELECT * FROM bookings WHERE status = 'confirmed'
+                AND departure_date > ? AND arrival_date < ?""",
+            (first.isoformat(), last.isoformat())).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure or departure <= arrival:
+            continue
+        total_nights = (departure - arrival).days
+        per_night = (float(b["total_price"] or 0) - float(b["discount_amount"] or 0)) / total_nights
+        for n in range(total_nights):
+            night = arrival + timedelta(days=n)
+            if first <= night < last:
+                nights_sold += 1
+                revenue += per_night
+
+    rate = round(revenue / nights_sold, 2) if nights_sold else None
+    needed = round(fixed / rate, 1) if rate else None
+    return {
+        "month": first, "fixed": round(fixed, 2), "salaried": round(salaried, 2),
+        "recurring": round(fixed - salaried, 2), "costs": costs,
+        "nights_sold": nights_sold, "revenue": round(revenue, 2), "rate": rate,
+        "nights_needed": needed,
+        "covered": (nights_sold >= needed) if needed is not None else None,
+        "shortfall": (round(needed - nights_sold, 1)
+                      if needed is not None and nights_sold < needed else 0),
+    }
+
+
+def revenue_on_the_books(conn, today=None, months=12):
+    """Confirmed revenue for stays and places that have not happened yet,
+    by the month the money is EARNED rather than the month it arrives.
+
+    Money Ahead is the cash question — what lands in the account, dated on
+    arrival, inside a window. This is the trading question a season is judged
+    on: how full is next June, and is it fuller than this June was. The two
+    disagree on purpose. A deposit taken in January for an August week is
+    January's cash and August's revenue, and reading one as the other is how a
+    quiet autumn hides behind a good spring.
+
+    Nights are apportioned across month boundaries the way the taxe de séjour
+    return does it, because a stay from the 28th to the 3rd belongs to two
+    months and putting it wholly in either is wrong in the way nobody notices
+    until two figures disagree.
+
+    Pending is counted separately and never folded into the total. A held
+    booking is not revenue and a page that says otherwise is a page that
+    flatters itself.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(day, str):
+        day = parse_date(day)
+    first = day.replace(day=1)
+    buckets = {}
+    for i in range(months):
+        y, mth = divmod(first.month - 1 + i, 12)
+        key = date(first.year + y, mth + 1, 1).strftime("%Y-%m")
+        buckets[key] = {"month": key, "rooms": 0.0, "workshops": 0.0,
+                        "nights": 0, "pending": 0.0}
+
+    def _add(key, field, amount):
+        if key in buckets:
+            buckets[key][field] = round(buckets[key][field] + amount, 2)
+
+    for b in conn.execute(
+            """SELECT * FROM bookings
+                WHERE status IN ('confirmed', 'pending')
+                  AND departure_date >= ?""", (day.isoformat(),)).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure or departure <= arrival:
+            continue
+        total = float(b["total_price"] or 0) - float(b["discount_amount"] or 0)
+        nights = (departure - arrival).days
+        if nights <= 0:
+            continue
+        per_night = total / nights
+        for n in range(nights):
+            night = arrival + timedelta(days=n)
+            if night < day:
+                continue                       # already earned, not "on the books"
+            key = night.strftime("%Y-%m")
+            if b["status"] == "pending":
+                _add(key, "pending", per_night)
+            else:
+                _add(key, "rooms", per_night)
+                if key in buckets:
+                    buckets[key]["nights"] += 1
+
+    for wb in conn.execute(
+            """SELECT workshop_bookings.total_price, workshop_bookings.status,
+                      workshop_sessions.start_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                WHERE workshop_bookings.status IN ('confirmed', 'pending')
+                  AND workshop_sessions.start_date >= ?""", (day.isoformat(),)).fetchall():
+        start = parse_date(wb["start_date"])
+        if not start:
+            continue
+        key = start.strftime("%Y-%m")
+        amount = float(wb["total_price"] or 0)
+        _add(key, "pending" if wb["status"] == "pending" else "workshops", amount)
+
+    rows = []
+    for key in sorted(buckets):
+        r = buckets[key]
+        r["total"] = round(r["rooms"] + r["workshops"], 2)
+        rows.append(r)
+    return {
+        "today": day, "rows": rows,
+        "total": round(sum(r["total"] for r in rows), 2),
+        "rooms": round(sum(r["rooms"] for r in rows), 2),
+        "workshops": round(sum(r["workshops"] for r in rows), 2),
+        "pending": round(sum(r["pending"] for r in rows), 2),
+        "nights": sum(r["nights"] for r in rows),
+    }
+
+
+def cash_position(conn, start=None, end=None):
+    """Cash the till counted, cash that reached the bank, and the gap.
+
+    The closure already counts the drawer and records the variance against
+    what the till expected. That answers "did the drawer balance tonight". It
+    does not answer "is the cash still here", which is the question a business
+    handling notes has to be able to answer at any moment — and the two get
+    confused because both are called cash.
+
+    Counted, not taken: `taken_total` is what the till THINKS it took in cash,
+    and the drawer is what is actually there. Banking what the till expected
+    rather than what was counted is how a shortfall gets carried forward
+    quietly for a month.
+
+    Everything is bounded by service day, not calendar date, so a Tuesday
+    that ended at 01:30 banks as Tuesday.
+    """
+    end = end or service_day()
+    if isinstance(end, str):
+        end = parse_date(end)
+    start = start or (end - timedelta(days=30))
+    if isinstance(start, str):
+        start = parse_date(start)
+
+    closures = conn.execute(
+        """SELECT period, counted_cash, opening_float, by_method_json, closed_at
+             FROM pos_closures
+            WHERE kind = 'day' AND period >= ? AND period <= ?
+            ORDER BY period""", (start.isoformat(), end.isoformat())).fetchall()
+    days, counted_total, expected_total = [], 0.0, 0.0
+    for c in closures:
+        try:
+            expected = float(json.loads(c["by_method_json"] or "{}").get("cash", 0) or 0)
+        except (ValueError, TypeError):
+            expected = 0.0
+        # A day nobody counted contributes nothing to what is owed to the safe.
+        # Counting it as zero would read as "the cash went missing".
+        counted = c["counted_cash"]
+        if counted is None:
+            days.append({"day": c["period"], "expected": round(expected, 2),
+                         "counted": None, "uncounted": True})
+            continue
+        counted = float(counted) - float(c["opening_float"] or 0)
+        counted_total += counted
+        expected_total += expected
+        days.append({"day": c["period"], "expected": round(expected, 2),
+                     "counted": round(counted, 2), "uncounted": False,
+                     "variance": round(counted - expected, 2)})
+
+    bankings = conn.execute(
+        """SELECT cash_bankings.*, users.name AS who
+             FROM cash_bankings LEFT JOIN users ON users.id = cash_bankings.recorded_by_user_id
+            WHERE banked_on >= ? AND banked_on <= ?
+            ORDER BY banked_on DESC, id DESC""", (start.isoformat(), end.isoformat())).fetchall()
+    banked_total = round(sum(float(b["amount"] or 0) for b in bankings), 2)
+    uncounted = [d for d in days if d["uncounted"]]
+    return {
+        "start": start, "end": end, "days": days, "bankings": bankings,
+        "counted": round(counted_total, 2),
+        "expected": round(expected_total, 2),
+        "banked": banked_total,
+        # What should be in the safe for this window. Not a bank balance and
+        # not a profit: notes counted out of the drawer that have not yet been
+        # paid in.
+        "on_hand": round(counted_total - banked_total, 2),
+        "variance": round(counted_total - expected_total, 2),
+        "uncounted_days": [d["day"] for d in uncounted],
+    }
+
+
+DEBTOR_BUCKETS = (
+    ("current", "Not yet late", 0),
+    ("d30", "1 to 30 days", 1),
+    ("d60", "31 to 60 days", 31),
+    ("d90", "61 to 90 days", 61),
+    ("older", "Over 90 days", 91),
+)
+
+
+def debtor_ageing(conn, today=None):
+    """What guests owe the house, by how long they have owed it.
+
+    payables_ageing answers this for money going out and has since the
+    supplier invoices got due dates. Nothing answered it for money coming in.
+    /management/outstanding lists debtors one per line, sorted, which is the
+    right screen for chasing somebody — but a list does not answer "how much
+    of what we are owed is genuinely old", which is the question an accountant
+    and a bank both ask, and the one that says whether the house has a
+    collection problem or three unlucky months.
+
+    Rooms AND workshops. Rooms alone would have been easier and would have
+    produced a receivables figure that is quietly short, which is the kind of
+    number that gets believed and then disagreed with by the ledger.
+
+    Restaurant and event enquiries carry no balance to be owed — dinner is
+    settled at the table and an enquiry is a quote, not a debt — so there is
+    nothing of theirs to age.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(day, str):
+        day = parse_date(day)
+    items = []
+    for row in outstanding_balances(conn, today=day):
+        b = row["booking"]
+        items.append({
+            "kind": "room", "who": b["guest_name"], "email": b["guest_email"],
+            "reference": b["reference_code"], "what": b["room_name"] or "Room",
+            "owed": round(float(row["owed"]), 2),
+            "days_late": int(row["days_late"] or 0), "state": row["state"],
+        })
+    for wb in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                      workshop_sessions.start_date AS session_start
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status IN ('confirmed', 'pending')""").fetchall():
+        owed, _charged, _paid = workshop_balance_due(conn, wb["id"])
+        if owed <= 0.005:
+            continue
+        # Late from the balance due date if one was set, otherwise from the day
+        # the session started — a place on a workshop that has already run and
+        # is still unpaid is late whatever the paperwork says.
+        anchor = wb["balance_due_date"] or wb["session_start"]
+        late = _days_between(anchor, day.isoformat()) if anchor else 0
+        items.append({
+            "kind": "workshop", "who": wb["guest_name"], "email": wb["guest_email"],
+            "reference": wb["reference_code"], "what": wb["workshop_title"],
+            "owed": round(float(owed), 2), "days_late": max(0, int(late)),
+            "state": "gone" if late > 0 else "due",
+        })
+
+    buckets = {key: [] for key, _label, _floor in DEBTOR_BUCKETS}
+    for it in items:
+        late = it["days_late"]
+        key = "current"
+        for bkey, _label, floor in DEBTOR_BUCKETS:
+            if late >= floor and floor > 0:
+                key = bkey
+        buckets[key].append(it)
+    totals = {k: round(sum(i["owed"] for i in v), 2) for k, v in buckets.items()}
+    total = round(sum(totals.values()), 2)
+    return {
+        "buckets": buckets, "totals": totals, "total": total,
+        "labels": {k: l for k, l, _f in DEBTOR_BUCKETS},
+        "order": [k for k, _l, _f in DEBTOR_BUCKETS],
+        "items": sorted(items, key=lambda i: (-i["days_late"], -i["owed"])),
+        # Stated rather than left to be inferred: the share that is genuinely
+        # old is the whole point of ageing money.
+        "over_60": round(totals["d90"] + totals["older"], 2),
+    }
 
 
 def pennylane_import_supplier_invoice(*, file_attachment_id, supplier_id, date, deadline,

@@ -148,6 +148,7 @@ SUITES = [
     "test_privacy",
     "test_refunds",
     "test_money_out",
+    "test_finance_functions",
     "test_outbox_lock",
     "test_form_prefill",
     "test_company_records",

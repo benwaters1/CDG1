@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}On the books{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>On the books</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('money_ahead_page') }}" class="btn-ghost">Money ahead</a>
+    <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Revenue already sold for months that have not happened, counted in the month it is
+  <em>earned</em> rather than the month the money arrives. A deposit taken in January for an
+  August week is January&rsquo;s cash and August&rsquo;s trading.
+  <a href="{{ url_for('money_ahead_page') }}">Money ahead</a> asks the cash question about the
+  same euros. Do not add the two together.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.total) }}</span>
+    <span class="stat-tile-label">Confirmed, still to come</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.nights }}</span>
+    <span class="stat-tile-label">Room-nights sold</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.pending) }}</span>
+    <span class="stat-tile-label">Held, not confirmed</span></span></div>
+</div>
+
+<p class="field-hint" style="max-width:760px;">
+  Held is shown apart and is never added in. A booking nobody has confirmed is not revenue, and
+  a page that counts it is a page that flatters itself.
+</p>
+
+{% if not data.rows %}
+  <div class="empty-state">Nothing is on the books yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr>
+      <th style="text-align:left;">Month</th>
+      <th class="num">Rooms</th><th class="num">Nights</th>
+      <th class="num">Ateliers</th><th class="num">Confirmed</th><th class="num">Held</th>
+    </tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <td>{{ r.month }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(r.rooms) }}</td>
+        <td class="num">{{ r.nights or '&mdash;'|safe }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(r.workshops) }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(r.total) }}</td>
+        <td class="num">{% if r.pending %}&euro;{{ '%.2f'|format(r.pending) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr>
+      <th style="text-align:left;">Total</th>
+      <th class="num">&euro;{{ '%.2f'|format(data.rooms) }}</th>
+      <th class="num">{{ data.nights }}</th>
+      <th class="num">&euro;{{ '%.2f'|format(data.workshops) }}</th>
+      <th class="num">&euro;{{ '%.2f'|format(data.total) }}</th>
+      <th class="num">&euro;{{ '%.2f'|format(data.pending) }}</th>
+    </tr></tfoot>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
