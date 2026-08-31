@@ -112,4 +112,101 @@ so it is declared either way.
   bill. Cancelled stays are excluded: no nights were spent, so nothing is owed.
 </p>
 
+{#
+  STAYS CARRYING NO TAX. Nothing wrote the city_tax column until recently, so
+  every stay taken before that carries a zero. Those nights happened and the
+  commune's share of them was never collected.
+
+  Nothing invents the figure on a guest's bill or in the declaration above -- a
+  charge the house never asked for cannot be added to a document after the fact
+  -- so the decision is the owner's, and this is the list to make it from.
+
+  Split by whether the guest has gone, because that is the only distinction that
+  matters. A stay still to come is charged and the guest pays it with the rest.
+  Charging one that departed and settled puts a balance on a finished stay, and
+  the chase will then ask a guest about it months after they went home. Both are
+  offered; only the first has a one-press button.
+#}
+{% if arrears and arrears.count %}
+<h2 style="margin-top:32px;">Stays carrying no taxe de séjour</h2>
+<p class="upload-hint">At the current rate of €{{ '%.2f'|format(arrears.rate) }}
+per adult per night. Charging a stay recalculates it from today's rate — for a
+stay still to come that is right; for one long finished, the rate then may have
+been different.</p>
+
+{% if arrears.upcoming %}
+<h3>Still to come — {{ arrears.upcoming|length }},
+  €{{ '%.2f'|format(arrears.upcoming_total) }}</h3>
+<form method="post" action="{{ url_for('charge_city_tax_upcoming') }}"
+      style="margin-bottom:12px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-primary">Charge all
+    {{ arrears.upcoming|length }} — €{{ '%.2f'|format(arrears.upcoming_total) }}</button>
+  <span class="upload-hint">These guests have not arrived, so it goes on the bill
+  they have yet to settle.</span>
+</form>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Guest</th><th>Arrives</th><th class="num">Nights</th>
+      <th class="num">Adults</th><th class="num">Would be</th><th></th></tr></thead>
+    <tbody>
+      {% for r in arrears.upcoming %}
+      <tr>
+        <td>{{ r.booking['guest_name'] }}
+          <span class="upload-hint">{{ r.booking['room_name'] or 'room TBC' }}</span></td>
+        <td>{{ r.booking['arrival_date']|date_short }}</td>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ r.adults }}</td>
+        <td class="num">€{{ '%.2f'|format(r.would_be) }}</td>
+        <td>
+          <form method="post" action="{{ url_for('charge_city_tax', booking_id=r.booking['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Charge</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if arrears.departed %}
+<h3 style="margin-top:24px;">Already departed — {{ arrears.departed|length }},
+  €{{ '%.2f'|format(arrears.departed_total) }}</h3>
+<p class="upload-hint">No button for all of these on purpose. Charging a stay
+that has settled creates a balance the reminder will chase, so each is a
+decision on its own.</p>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Guest</th><th>Departed</th><th class="num">Nights</th>
+      <th>Bill</th><th class="num">Would be</th><th></th></tr></thead>
+    <tbody>
+      {% for r in arrears.departed %}
+      <tr>
+        <td>{{ r.booking['guest_name'] }}</td>
+        <td>{{ r.booking['departure_date']|date_short }}</td>
+        <td class="num">{{ r.nights }}</td>
+        <td>
+          {% if r.settled %}<span class="mini-status status-paid">settled</span>
+          {% else %}<span class="mini-status status-unpaid">€{{ '%.2f'|format(r.owed) }} owing</span>{% endif %}
+        </td>
+        <td class="num">€{{ '%.2f'|format(r.would_be) }}</td>
+        <td>
+          <form method="post" action="{{ url_for('charge_city_tax', booking_id=r.booking['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Charge anyway</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% elif arrears %}
+<p class="upload-hint" style="margin-top:32px;">Every confirmed stay carries its
+taxe de séjour. Nothing outstanding.</p>
+{% endif %}
+
 {% endblock %}

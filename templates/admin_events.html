@@ -152,6 +152,8 @@
     {%- if bill and bill.paid %} · €{{ '%.2f'|format(bill.paid) }} received{% endif %}
     {%- if bill and bill.owed %} · <strong>€{{ '%.2f'|format(bill.owed) }} still to pay</strong>
     {%- elif bill and bill.quoted and bill.settled %} · settled{% endif %}
+  {%- if bill and bill.discount %} · <span class="mini-status status-approved">code
+    {{ e['promo_code'] }} \u2212€{{ '%.2f'|format(bill.discount) }}</span>{% endif %}
   </p>
 
   {# Recording money on an event. The route existed and nothing linked to it,
@@ -199,6 +201,13 @@
     <div>
       <label class="field-label">Quoted price (€)</label>
       <input type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
+    </div>
+    <div>
+      <label class="field-label">Promo code</label>
+      <input type="text" name="promo_code" style="width:130px;"
+             value="{{ e['promo_code'] or '' }}"
+             placeholder="{{ 'applied' if e['promo_code_id'] else 'none' }}"
+             {{ 'readonly' if e['promo_code_id'] }}>
     </div>
     <div>
       <label class="field-label">Deposit (€)</label>
