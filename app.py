@@ -23151,6 +23151,103 @@ def new_guest():
     return render_template("guest_form.html", guest=None)
 
 
+@app.route("/guests/<int:guest_id>")
+@login_required
+def guest_detail(guest_id):
+    """The whole of one guest on one page.
+
+    There was a profiles list, an edit form, and — separately — a history page
+    keyed on an email STRING. The two never met, so a profile with nothing
+    linked showed no history at all, and a guest whose address had changed had
+    theirs split in half with the lifetime spend halved underneath it.
+
+    An employee sees who they are and what they like; the money and the
+    messages are the owner's. A colleague needs to know somebody is vegetarian
+    and prefers the quiet side of the house. What they have spent is not a
+    colleague's business.
+    """
+    conn = get_db()
+    record = guest_record(conn, guest_id)
+    if not record:
+        conn.close()
+        abort(404)
+    is_owner = (current_user() or {})["role"] == "owner"
+    messages = guest_messages(conn, record["guest"]) if is_owner else []
+    party_of = {}
+    for b in record["stays"]:
+        if b["party_id"]:
+            party_of[b["id"]] = party_for_booking(conn, b["id"])
+    conn.close()
+
+    overview = None
+    if is_owner:
+        overview = [
+            overview_cell("Stays", len([b for b in record["stays"]
+                                        if b["status"] != "cancelled"]),
+                          hint=f"{record['nights']} night(s)"),
+            overview_cell("Spent with us", euro(record["spent"]),
+                          hint="gross, everything included"),
+            overview_cell("Still owed", euro(record["owed"]),
+                          alert=record["owed"] > 0),
+            overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
+        ]
+    return render_template("guest_detail.html", record=record, overview=overview,
+                           messages=messages, is_owner=is_owner,
+                           party_of=party_of,
+                           today=datetime.now(LOCAL_TZ).date().isoformat())
+
+
+@app.route("/guests/<int:guest_id>/statement")
+@owner_required
+def guest_full_statement(guest_id):
+    """One statement across everything, rather than one per stay.
+
+    guest_statement has always been per booking, which is the right thing to
+    send somebody about a stay. It is the wrong thing to answer "what have we
+    charged this person, ever" \u2014 and that question had no answer anywhere.
+    """
+    conn = get_db()
+    record = guest_record(conn, guest_id)
+    conn.close()
+    if not record:
+        abort(404)
+    return render_template("guest_full_statement.html", record=record,
+                           today=datetime.now(LOCAL_TZ).date().isoformat())
+
+
+@app.route("/guests/<int:guest_id>/link-bookings", methods=["POST"])
+@owner_required
+def link_guest_bookings(guest_id):
+    """Attach the stays that match this profile's address to the profile.
+
+    They already show on the record \u2014 matched on the address rather than
+    linked \u2014 and this makes the inference a fact. Worth doing rather than
+    leaving implicit, because a guest who later changes their address keeps
+    the history that was linked and loses the history that was only guessed.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    email = (guest["email"] or "").strip().lower()
+    if not email:
+        conn.close()
+        flash("This profile has no address to match on.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    cur = conn.execute(
+        """UPDATE bookings SET linked_guest_id = ?
+            WHERE LOWER(TRIM(guest_email)) = ? AND linked_guest_id IS NULL""",
+        (guest_id, email))
+    log_audit(conn, "guest_bookings_linked", target=guest["name"],
+              details=f"{cur.rowcount} stay(s)")
+    conn.commit()
+    conn.close()
+    flash(f"{cur.rowcount} stay{'' if cur.rowcount == 1 else 's'} attached to "
+          f"{guest['name']}.", "success")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
 @app.route("/guests/<int:guest_id>/edit", methods=["GET", "POST"])
 @owner_required
 def edit_guest(guest_id):
@@ -36910,6 +37007,146 @@ ANONYMISE_RATHER_THAN_DELETE = {
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
+
+
+def guest_record(conn, guest_id):
+    """Everything the house knows about one person, in one structure.
+
+    The money is summed from each booking's own bill rather than recomputed,
+    so there is one definition of what a stay costs and this is not a second.
+    """
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        return None
+    email = (guest["email"] or "").strip().lower()
+
+    # Two ways in, and the record keeps track of which. A linked booking is
+    # certain; one matched on the address is an inference, and a page that
+    # blurs the two is a page that will one day show somebody else's stay.
+    linked = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name, 'linked' AS matched_by
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.linked_guest_id = ?""", (guest_id,)).fetchall()
+    by_email = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name, 'address' AS matched_by
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE ? != '' AND LOWER(TRIM(bookings.guest_email)) = ?
+              AND (bookings.linked_guest_id IS NULL OR bookings.linked_guest_id != ?)""",
+        (email, email, guest_id)).fetchall()
+    stays = sorted(list(linked) + list(by_email),
+                   key=lambda b: b["arrival_date"] or "", reverse=True)
+
+    dinners = conn.execute(
+        """SELECT * FROM restaurant_bookings
+            WHERE ? != '' AND LOWER(TRIM(guest_email)) = ?
+            ORDER BY dinner_date DESC""", (email, email)).fetchall()
+    workshops = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title, workshop_sessions.start_date
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE ? != '' AND LOWER(TRIM(workshop_bookings.guest_email)) = ?
+            ORDER BY workshop_sessions.start_date DESC""", (email, email)).fetchall()
+    events = conn.execute(
+        """SELECT * FROM event_inquiries
+            WHERE ? != '' AND LOWER(TRIM(contact_email)) = ?
+            ORDER BY COALESCE(preferred_date, '') DESC""", (email, email)).fetchall()
+
+    # THE MONEY. Per stay from its own bill, so the figures here and the
+    # figures on the guest's own statement cannot disagree.
+    bills, spent, owed, paid = {}, 0.0, 0.0, 0.0
+    for b in stays:
+        bill = booking_bill(conn, b["id"])
+        if not bill:
+            continue
+        bills[b["id"]] = bill
+        if b["status"] != "cancelled":
+            spent += bill["total"]
+            owed += bill["owed"]
+            paid += bill["paid"]
+    for w in workshops:
+        if w["status"] != "cancelled":
+            spent += float(w["total_price"] or 0)
+    for d in dinners:
+        if d["status"] == "confirmed":
+            spent += float(d["total_price"] or 0) if "total_price" in d.keys() else 0.0
+
+    said = conn.execute(
+        """SELECT guest_feedback.*, bookings.reference_code
+             FROM guest_feedback
+             JOIN bookings ON bookings.id = guest_feedback.booking_id
+            WHERE bookings.id IN ({})
+            ORDER BY guest_feedback.submitted_at DESC""".format(
+                ",".join("?" * len(stays)) or "NULL"),
+        tuple(b["id"] for b in stays)).fetchall() if stays else []
+
+    return {
+        "guest": guest, "stays": stays, "dinners": dinners,
+        "workshops": workshops, "events": events, "bills": bills,
+        "feedback": said,
+        "linked_count": len(linked), "by_email_count": len(by_email),
+        "spent": round(spent, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        "nights": sum(
+            max(0, ((parse_date(b["departure_date"]) - parse_date(b["arrival_date"])).days
+                    if b["arrival_date"] and b["departure_date"]
+                    and parse_date(b["arrival_date"]) and parse_date(b["departure_date"])
+                    else 0))
+            for b in stays if b["status"] != "cancelled"),
+        "first_seen": min((b["arrival_date"] for b in stays if b["arrival_date"]),
+                          default=None),
+        "last_seen": max((b["departure_date"] for b in stays if b["departure_date"]),
+                         default=None),
+    }
+
+
+def guest_messages(conn, guest, limit=60):
+    """Every word the house has sent this person, in one list.
+
+    Mail, texts and campaign sends live in three tables and no page has ever
+    put them together — so "have we written to them about this" could only be
+    answered by opening three screens and holding the dates in your head.
+
+    Read-only and by address or number: these are records of what went out,
+    not a mailbox, and nothing here can be replied to from this page.
+    """
+    email = (guest["email"] or "").strip().lower()
+    phone = normalise_phone(guest["phone"] or "") or (guest["phone"] or "").strip()
+    out = []
+
+    if email:
+        for r in conn.execute(
+                """SELECT subject, body, created_at, sent_at, reason
+                     FROM email_outbox WHERE LOWER(TRIM(to_address)) = ?
+                    ORDER BY id DESC LIMIT ?""", (email, limit)).fetchall():
+            out.append({"kind": "email", "when": r["created_at"],
+                        "subject": r["subject"], "body": r["body"],
+                        # Held is not sent. A page that showed both the same
+                        # way would say the house had written to somebody it
+                        # had not.
+                        "sent": bool(r["sent_at"]), "note": r["reason"]})
+        for r in conn.execute(
+                """SELECT template_name, subject, status, detail, created_at
+                     FROM campaign_sends
+                    WHERE LOWER(TRIM(recipient_email)) = ?
+                    ORDER BY id DESC LIMIT ?""", (email, limit)).fetchall():
+            out.append({"kind": "campaign", "when": r["created_at"],
+                        "subject": r["subject"] or r["template_name"] or "A campaign",
+                        "body": "",
+                        # status carries whether it actually went; a campaign
+                        # that failed is not a campaign the guest received.
+                        "sent": (r["status"] or "") == "sent",
+                        "note": r["detail"] or r["template_name"]})
+    if phone:
+        for r in conn.execute(
+                """SELECT body, purpose, reason, created_at, sent_at
+                     FROM sms_outbox WHERE phone = ?
+                    ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
+            out.append({"kind": "text", "when": r["created_at"],
+                        "subject": r["purpose"], "body": r["body"],
+                        "sent": bool(r["sent_at"]), "note": r["reason"]})
+
+    out.sort(key=lambda x: x["when"] or "", reverse=True)
+    return out[:limit]
 
 
 def party_for_booking(conn, booking_id):

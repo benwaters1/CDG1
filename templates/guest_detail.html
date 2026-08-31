@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ record.guest['name'] }}{% endblock %}
+{% block content %}
+
+{% set g = record.guest %}
+
+<div class="page-head">
+  <h1>
+    {{ g['name'] }}
+    {% if g['vip'] %}<span class="mini-status status-upcoming">VIP</span>{% endif %}
+  </h1>
+  <div style="display:flex; gap:8px;">
+    <a href="{{ url_for('edit_guest', guest_id=g['id']) }}" class="btn-mini">Edit</a>
+    {% if is_owner %}
+    <a href="{{ url_for('guest_full_statement', guest_id=g['id']) }}" class="btn-mini">Statement</a>
+    {% endif %}
+  </div>
+</div>
+
+{# How to greet them, and what not to serve them. First, because it is what a
+   colleague needs before they walk round the corner — the money below is the
+   owner's business and this is everybody's. #}
+<div class="detail-card">
+  <dl class="g-facts-list">
+    {% if g['name_pronunciation'] %}
+    <div><dt>Say it</dt><dd>{{ g['name_pronunciation'] }}</dd></div>
+    {% endif %}
+    {% if g['email'] %}<div><dt>Email</dt><dd><a href="mailto:{{ g['email'] }}">{{ g['email'] }}</a></dd></div>{% endif %}
+    {% if g['phone'] %}<div><dt>Telephone</dt><dd><a href="tel:{{ g['phone'] }}">{{ g['phone'] }}</a></dd></div>{% endif %}
+    {% if record.first_seen %}
+    <div><dt>Known since</dt><dd>{{ record.first_seen|date_short }}</dd></div>
+    {% endif %}
+  </dl>
+
+  {% if g['dietary_notes'] %}
+  <div class="pass-short" style="margin-top:10px;">
+    <strong>Dietary</strong>
+    <span class="pass-short-row">{{ g['dietary_notes'] }}</span>
+  </div>
+  {% endif %}
+  {% if g['preferences'] %}
+  <p class="upload-hint"><strong>Prefers:</strong> {{ g['preferences'] }}</p>
+  {% endif %}
+  {% if g['notes'] %}<p class="manual-body">{{ g['notes'] }}</p>{% endif %}
+</div>
+
+{% if overview %}{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}{% endif %}
+
+<!-- ------------------------------------------------------------------ -->
+<h2 class="section-heading">Stays ({{ record.stays|length }})</h2>
+{% if not record.stays %}
+  <div class="empty-state">Nothing booked under this profile yet.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>When</th><th>Room</th><th>Status</th>
+      {% if is_owner %}<th class="num">Bill</th><th class="num">Owed</th>{% endif %}
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in record.stays %}
+    <tr>
+      <th scope="row">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</th>
+      <td>{{ b['room_name'] }}
+        {%- if party_of.get(b['id']) %}
+        <span class="mini-status status-upcoming">{{ party_of[b['id']].party['name'] }}</span>
+        {%- endif %}
+      </td>
+      <td>
+        <span class="mini-status status-{{ b['status'] }}">{{ b['status'] }}</span>
+        {# Said out loud. "We think this is the same person" and "this is the
+           same person" are different claims, and a page that blurs them will
+           one day show somebody else's stay. #}
+        {% if b['matched_by'] == 'address' %}
+        <span class="upload-hint" title="Matched on the email address, not linked to this profile">matched on address</span>
+        {% endif %}
+      </td>
+      {% if is_owner %}
+      {% set bill = record.bills.get(b['id']) %}
+      <td class="num">{% if bill %}€{{ '%.2f'|format(bill.total) }}{% else %}—{% endif %}</td>
+      <td class="num">
+        {%- if bill and bill.owed > 0 %}<strong>€{{ '%.2f'|format(bill.owed) }}</strong>
+        {%- elif bill %}—{% else %}—{% endif %}
+      </td>
+      {% endif %}
+      <td><a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}" class="small-link">Bill</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if is_owner and record.by_email_count %}
+<form method="post" action="{{ url_for('link_guest_bookings', guest_id=g['id']) }}"
+      style="margin-top:10px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="upload-hint">
+    {{ record.by_email_count }} of these are matched on the address rather than
+    attached to this profile. Attaching them makes the guess a fact — worth
+    doing, because a guest who later changes their address keeps what was
+    attached and loses what was only matched.
+  </p>
+  <button type="submit" class="btn-mini">Attach them to this profile</button>
+</form>
+{% endif %}
+{% endif %}
+
+<!-- ------------------------------------------------------------------ -->
+{% if record.dinners %}
+<h2 class="section-heading">At the table ({{ record.dinners|length }})</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>Covers</th><th>Status</th><th>Notes</th></tr></thead>
+  <tbody>
+    {% for d in record.dinners %}
+    <tr>
+      <th scope="row">{{ d['dinner_date']|date_short }}</th>
+      <td>{{ d['party_size'] }}</td>
+      <td><span class="mini-status status-{{ d['status'] }}">{{ d['status'] }}</span></td>
+      <td><span class="upload-hint">{{ d['dietary_notes'] or '—' }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if record.workshops %}
+<h2 class="section-heading">Ateliers ({{ record.workshops|length }})</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>Workshop</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for w in record.workshops %}
+    <tr>
+      <th scope="row">{{ w['start_date']|date_short }}</th>
+      <td>{{ w['title'] }}</td>
+      <td><span class="mini-status status-{{ w['status'] }}">{{ w['status'] }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if record.events %}
+<h2 class="section-heading">Enquiries ({{ record.events|length }})</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Date wanted</th><th>Kind</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for e in record.events %}
+    <tr>
+      <th scope="row">{{ e['preferred_date'] or '—' }}</th>
+      <td>{{ e['event_type'] }}</td>
+      <td><span class="mini-status status-{{ e['status'] }}">{{ e['status'] }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<!-- ------------------------------------------------------------------ -->
+{% if record.feedback %}
+<h2 class="section-heading">What they said</h2>
+{% for f in record.feedback %}
+<div class="expense-card">
+  <div class="expense-head">
+    <div>
+      <span class="mini-status status-{{ 'onshift' if f['rating'] >= 4 else ('pending' if f['rating'] == 3 else 'inactive') }}">{{ f['rating'] }} / 5</span>
+      <span class="upload-hint">{{ f['submitted_at'][:10] }} · {{ f['reference_code'] }}</span>
+    </div>
+  </div>
+  {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
+  {% if f['reply'] %}
+  <div class="g-mb-note"><span class="g-mb-dt">What we said back</span><p>{{ f['reply'] }}</p></div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- ------------------------------------------------------------------ -->
+{% if is_owner %}
+<h2 class="section-heading">Everything we have sent them</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Mail, texts and campaigns in one list. They live in three tables and no page
+  has ever put them together, so "have we written to them about this" could
+  only be answered by opening three screens. Held is not sent, and is marked as
+  such.
+</p>
+{% if not messages %}
+  <div class="empty-state">Nothing has been sent to them yet.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>How</th><th>What</th><th>Went</th></tr></thead>
+  <tbody>
+    {% for msg in messages %}
+    <tr>
+      <th scope="row">{{ (msg.when or '')[:16]|replace('T', ' ') }}</th>
+      <td>{{ msg.kind }}</td>
+      <td>
+        {{ msg.subject }}
+        {% if msg.body %}<br><span class="upload-hint">{{ msg.body[:110] }}{% if msg.body|length > 110 %}…{% endif %}</span>{% endif %}
+      </td>
+      <td>
+        {% if msg.sent %}<span class="mini-status status-confirmed">sent</span>
+        {% else %}<span class="mini-status status-pending">waiting</span>
+          <span class="upload-hint">{{ msg.note }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

@@ -200,6 +200,7 @@ SUITES = [
     "test_template_shadowing",
     "test_empty_nights",
     "test_booking_parties",
+    "test_guest_record",
     "test_handover_check",
     "test_repair_handover",
 ]

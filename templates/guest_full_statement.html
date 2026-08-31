@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Statement — {{ record.guest['name'] }}{% endblock %}
+{% block content %}
+
+{% set g = record.guest %}
+
+<div class="page-head">
+  <h1>Statement</h1>
+  <div class="statement-actions no-print">
+    <a href="{{ url_for('guest_detail', guest_id=g['id']) }}" class="btn-mini">Back to the record</a>
+    <button type="button" class="btn-mini" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {# guest_statement has always been per booking, which is the right thing to
+     send somebody about a stay. It is the wrong thing to answer "what have we
+     charged this person, ever" — and that had no answer anywhere. #}
+  Everything {{ g['name'] }} has taken with us, and what is still outstanding.
+  Each stay's own bill is the authority; this adds them up rather than working
+  them out a second way.
+</p>
+
+<div class="detail-card">
+  <dl class="g-facts-list">
+    <div><dt>Guest</dt><dd>{{ g['name'] }}</dd></div>
+    {% if g['email'] %}<div><dt>Email</dt><dd>{{ g['email'] }}</dd></div>{% endif %}
+    <div><dt>Statement date</dt><dd>{{ today|date_short }}</dd></div>
+    {% if record.first_seen %}
+    <div><dt>First stay</dt><dd>{{ record.first_seen|date_short }}</dd></div>
+    {% endif %}
+  </dl>
+</div>
+
+{% for b in record.stays %}
+{% set bill = record.bills.get(b['id']) %}
+{% if bill and b['status'] != 'cancelled' %}
+<h2 class="section-heading">
+  {{ b['room_name'] }} — {{ b['arrival_date']|date_short }} to {{ b['departure_date']|date_short }}
+  <span class="upload-hint">{{ b['reference_code'] }}</span>
+</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+    {% for line in bill.lines %}
+    <tr>
+      <th scope="row">{{ line.label }}</th>
+      <td class="num">€{{ '%.2f'|format(line.amount) }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+      <th scope="row"><strong>Stay total</strong></th>
+      <td class="num"><strong>€{{ '%.2f'|format(bill.total) }}</strong></td>
+    </tr>
+    {% if bill.paid %}
+    <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(bill.paid) }}</td></tr>
+    {% endif %}
+    {% if bill.owed > 0 %}
+    <tr>
+      <th scope="row"><strong>Still to pay</strong></th>
+      <td class="num"><strong>€{{ '%.2f'|format(bill.owed) }}</strong></td>
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if record.workshops %}
+<h2 class="section-heading">Ateliers</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>When</th><th>Workshop</th><th class="num">Price</th></tr></thead>
+  <tbody>
+    {% for w in record.workshops %}{% if w['status'] != 'cancelled' %}
+    <tr>
+      <th scope="row">{{ w['start_date']|date_short }}</th>
+      <td>{{ w['title'] }}</td>
+      <td class="num">€{{ '%.2f'|format(w['total_price'] or 0) }}</td>
+    </tr>
+    {% endif %}{% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Altogether</h2>
+<div class="table-wrap">
+<table class="data-table">
+  <tbody>
+    <tr>
+      <th scope="row"><strong>Everything taken</strong></th>
+      <td class="num"><strong>€{{ '%.2f'|format(record.spent) }}</strong></td>
+    </tr>
+    <tr><th scope="row">Received</th><td class="num">−€{{ '%.2f'|format(record.paid) }}</td></tr>
+    <tr>
+      <th scope="row"><strong>{{ 'Outstanding' if record.owed > 0 else 'Settled' }}</strong></th>
+      <td class="num"><strong>€{{ '%.2f'|format(record.owed) }}</strong></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p class="pay-disclaimer">
+  Figures are gross, VAT included, as on each stay's own bill. Cancelled
+  bookings are left out entirely rather than shown at zero — a cancelled stay
+  is not a line on a statement.
+</p>
+
+<style>
+.statement-actions{ display:flex; gap:8px; align-items:center; }
+@media print{
+  .public-footer, .public-nav, .no-print{ display:none !important; }
+}
+</style>
+
+{% endblock %}
