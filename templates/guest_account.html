@@ -2,7 +2,6 @@
 {% set sticky_bar = 'none' %}
 {% set crumbs = [('Your bookings', None)] %}
 {% block title %}Your account{% endblock %}
-{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <section class="g-sec"><div class="g-wrap">
@@ -14,31 +13,6 @@
     </div>
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--sm">Book another stay</a>
   </div>
-
-  {# The one figure a guest opens this page for. It was not on it: each stay
-     printed its price, so somebody with two bookings had to open both and do
-     the subtraction themselves to find out where they stood — and a dinner
-     charged to the room appears as an extra on the bill, so the price was not
-     even the right starting number. Shown only when something is owed; an
-     account that is square should say nothing rather than display a zero. #}
-  {% if balance and balance.total > 0 %}
-  <div class="account-balance">
-    <div>
-      <span class="account-balance__label">Your balance</span>
-      <span class="account-balance__figure">€{{ '%.2f'|format(balance.total) }}</span>
-    </div>
-    {% if not can_pay_online %}
-    <p class="g-hint" style="margin:var(--s1) 0 0;">
-      Card payment isn't connected yet — please settle with us directly, or reply
-      to your confirmation and we'll arrange it.
-    </p>
-    {% else %}
-    <p class="g-hint" style="margin:var(--s1) 0 0;">
-      Pay any stay below, or settle it with us when you arrive.
-    </p>
-    {% endif %}
-  </div>
-  {% endif %}
 
   {% set nothing = not (data.rooms or data.dinners or data.workshops or data.events) %}
   {% if nothing %}
@@ -61,31 +35,13 @@
       </div>
       <span class="g-hint">{{ b['reference_code'] }}</span>
     </div>
-    {# What this stay costs and what is still owed, rather than only its price.
-       The two stop being the same number the moment anything is paid, and a
-       dinner charged to the room arrives here as an extra on the bill — so the
-       price alone told a guest almost nothing. #}
-    {% set money = balance.per_booking.get(b['id']) if balance else None %}
     <p class="g-hint" style="margin:var(--s1) 0;">
       {{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}
       · {{ b['party_size'] }} guest{{ '' if b['party_size'] == 1 else 's' }}
-      {%- if money %} · €{{ '%.2f'|format(money.total) }}{% elif b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
+      {%- if b['total_price'] %} · €{{ '%.2f'|format(b['total_price']) }}{% endif %}
     </p>
-
-    {% if money and money.owed > 0 %}
-    <p class="account-owed">
-      <strong>€{{ '%.2f'|format(money.owed) }}</strong> still to pay
-      {%- if money.paid %} · €{{ '%.2f'|format(money.paid) }} received{% endif %}
-      {%- if money.due_date %} · due {{ money.due_date|date_short }}{% endif %}
-    </p>
-    {% endif %}
 
     <div class="account-actions">
-      {% if money and money.owed > 0 and can_pay_online %}
-      <a href="{{ url_for('booking_pay', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm g-btn--solid">
-        Pay €{{ '%.2f'|format(money.owed) }}
-      </a>
-      {% endif %}
       <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}" class="g-btn g-btn--sm">
         {{ 'Manage' if upcoming else 'View' }}
       </a>
@@ -110,35 +66,18 @@
         <p class="g-mb-label" style="margin-top:var(--s2);">Extras we can arrange</p>
         <ul class="account-extras">
           {% for e in extras %}
-          {# Posts to the stay's own manage page rather than to a second route.
-             That one already prices the line, checks the notice a thing needs
-             and tells the house, so a copy here would be two places to get the
-             lead time wrong. #}
           <li>
             <span>{{ e['name'] }}</span>
             <span class="g-hint">
               {% if e['price'] %}€{{ '%.2f'|format(e['price']) }}{% endif %}
               {%- if e['lead_time_days'] %} · {{ e['lead_time_days'] }} days' notice{% endif %}
             </span>
-            <form method="post"
-                  action="{{ url_for('manage_booking', manage_token=b['manage_token']) }}"
-                  style="display:inline;">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="action" value="add_extra">
-              <input type="hidden" name="extra_id" value="{{ e['id'] }}">
-              <input type="number" name="quantity" value="1" min="1"
-                     {% if e['max_qty'] %}max="{{ e['max_qty'] }}"{% endif %}
-                     aria-label="How many" style="width:4.5em;">
-              <button type="submit" class="g-btn">Add to this stay</button>
-            </form>
           </li>
           {% endfor %}
         </ul>
         <p class="g-hint">
-          Anything added goes on your bill and is settled with the rest — we do not
-          take a card for each one. If what you want is not here, ask on the
-          <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
-          and we will see what we can do.
+          Tell us on the <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">manage page</a>
+          and we will add it to your bill.
         </p>
         {% endif %}
       </div>
@@ -275,43 +214,12 @@
 .account-add{ margin-top:var(--s3); border-top:1px solid var(--parchment-line); padding-top:10px; }
 .account-add summary{ cursor:pointer; font-size:13px; color:var(--steel); }
 .account-add-body{ padding-top:8px; }
-/* The balance band and the per-stay figure. Deliberately quiet rather than
-   alarming: this is a hotel bill, not a debt notice, and the guest is
-   usually looking at it before they have arrived. */
-.account-balance{ display:flex; flex-wrap:wrap; justify-content:space-between;
-  align-items:baseline; gap:var(--s1); margin:var(--s2) 0;
-  padding:var(--s2); border:1px solid var(--parchment-line); border-radius:10px; }
-.account-balance__label{ display:block; font-size:13px; letter-spacing:.04em;
-  text-transform:uppercase; color:var(--steel); }
-.account-balance__figure{ font-size:30px; font-variant-numeric:tabular-nums; }
-.account-owed{ margin:var(--s1) 0; font-variant-numeric:tabular-nums; }
 .account-extras{ list-style:none; padding:0; margin:var(--s1) 0; }
 .account-extras li{
   display:flex; justify-content:space-between; gap:12px; padding:6px 0;
   border-bottom:1px dashed var(--parchment-line); font-size:13.5px;
 }
 </style>
-
-{# Reaching the house from the page that lists everything. Until this, the
-   only way to say anything was from inside one specific booking — the wrong
-   shape for a question about the next stay, or about two at once. #}
-<section class="g-sec">
-  <div class="g-wrap">
-    <h2 class="g-h2">Ask us something</h2>
-    <p class="g-hint">
-      Anything at all — about a stay coming up, one you have just had, or something
-      that is not on the site. It comes straight to us with your email address, so
-      there is nothing else to fill in.
-    </p>
-    <form method="post" action="{{ url_for('guest_account_message', token=token) }}"
-          style="margin-top:var(--s3);">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <textarea name="message" rows="4" required style="width:100%;"
-                placeholder="We are arriving late on the Friday — is that all right?"></textarea>
-      <button type="submit" class="g-btn" style="margin-top:var(--s2);">Send</button>
-    </form>
-  </div>
-</section>
 
 </div></section>
 

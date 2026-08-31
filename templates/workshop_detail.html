@@ -7,6 +7,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 
 
 
@@ -282,6 +283,8 @@
     </div>
   </div>
 </div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('candle') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">

@@ -7,6 +7,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 {# Content and voice from vicente-yuste-2air.squarespace.com/workshops — the
    .net page — not the .com. Structure: choose, then the region, then each
    workshop in full with a sample day, then stay/arrival/inclusions. #}
@@ -545,6 +546,8 @@
     <p class="g-scarce__note">Places are shown live above. When a session reads as full, it is full — we do not overbook a house this size.</p>
   </div>
 </div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('brush') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">

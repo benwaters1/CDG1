@@ -19,6 +19,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 
 
 
@@ -58,12 +59,7 @@
     <p class="g-eyebrow">Finding Us</p>
     <h2 class="g-h2">Château-Verdun, Ariège</h2>
     <p class="g-p">2 Route de Beille, Château-Verdun, Ariège 09310, France</p>
-    <dl class="g-facts-list" style="margin-top:var(--s5)">
-      <div><dt>By air</dt><dd>Toulouse-Blagnac, about 1 hour 45 minutes by road. We will send a car to Toulouse, or meet the train at Foix — an hour and three quarters either way.</dd></div>
-      <div><dt>By train</dt><dd>Les Cabannes, three minutes from the gates, on the Toulouse–Latour-de-Carol line.</dd></div>
-      <div><dt>By car</dt><dd>The N20 south from Toulouse. Free parking at the château.</dd></div>
-      <div><dt>Nearest village</dt><dd>Les Cabannes — market on Sunday mornings.</dd></div>
-    </dl>
+    
   </div>
 
   <div class="g-two__media">
@@ -187,6 +183,10 @@
     </p>
   </div>
 </div></section>
+
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Before you write</span>A restoration since 2013, not a renovation — and open to guests throughout, which is what keeps it going.</p></div>
+
+<div class="g-wrap g-mark__wrap">{{ mark('gates') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

@@ -6,7 +6,7 @@
   "@type": "EventVenue",
   "name": "Château de Gudanes",
   "description": "One wedding at a time, with the château and its six acres given over to it exclusively.",
-  "maximumAttendeeCapacity": 200,
+  "maximumAttendeeCapacity": 40,
   "address": {"@type":"PostalAddress","streetAddress":"2 Route de Beille",
     "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"},
   "amenityFeature": [
@@ -26,6 +26,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 {# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,
    contact_name, contact_email, contact_phone, preferred_date,
    alternate_date, guest_count, message. #}
@@ -81,8 +82,8 @@
     <div class="g-two">
       <div>
         <h2 class="g-h2">A location that <em>cannot be built</em></h2>
-        <p class="g-p">Describe what you have in mind and we will return a proposal with the arrangements and the cost. Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
-        <p class="g-p">Two hours from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège.</p>
+        <p class="g-p">Two hours from Toulouse, three minutes from the village of Les Cabannes, and surrounded by the mountains of the Ariège. None of it can be reproduced closer to home.</p>
+        <p class="g-p">Tell us what you have in mind and we will come back with availability, what the château can hold, and what it costs.</p>
       </div>
 
       <form method="post" action="{{ url_for('submit_event_inquiry') }}" class="g-panel" style="background:var(--white); border:1px solid var(--line);">
@@ -93,7 +94,12 @@
           <label for="event_type">What kind of event?</label>
           <select id="event_type" name="event_type" required>
             <option value="">— choose —</option>
-            {% for t in event_types %}<option value="{{ t }}">{{ t|capitalize }}</option>{% endfor %}
+            {% for t in event_types %}{% set EVENT_LABEL = {
+     'wedding': 'Wedding',
+     'photoshoot': 'Photography or film',
+     'corporate': 'Exclusive hire',
+     'other': 'Something else'
+   } %}<option value="{{ t }}">{{ EVENT_LABEL.get(t, t|capitalize) }}</option>{% endfor %}
           </select>
         </p>
         <p class="g-field">
@@ -113,11 +119,11 @@
         <div class="g-row">
           <p class="g-field">
             <label for="preferred_date">Preferred date</label>
-            <input type="date" id="preferred_date" name="preferred_date" value="{{ prefill_preferred_date | default('') }}">
+            <input type="date" id="preferred_date" name="preferred_date">
           </p>
           <p class="g-field">
             <label for="alternate_date">Alternate date <span class="g-opt">optional</span></label>
-            <input type="date" id="alternate_date" name="alternate_date" value="{{ prefill_alternate_date | default('') }}">
+            <input type="date" id="alternate_date" name="alternate_date">
           </p>
         </div>
         <p class="g-field g-field--narrow">
@@ -331,6 +337,8 @@
 </div></section>
 
 
+
+<div class="g-wrap g-mark__wrap">{{ mark('ring') }}</div>
 
 <!-- ============ SHAPE YOUR WEEKEND ============ -->
 {# An interactive planner. All the numbers here — 40 seated, 15 sleeping, one

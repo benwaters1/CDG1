@@ -6,6 +6,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 {# Nights for the whole page, from the dates already in scope. Computed here
    so no route change is needed; if the view later passes stay_nights it wins. #}
 {% if stay_nights is not defined %}
@@ -405,8 +406,7 @@
   <p class="g-p">Five rooms, each different. This is the quickest way to see which suits.</p>
 
   <div class="g-compare-wrap">
-    <div class="table-wrap">
-      <table class="g-compare">
+    <table class="g-compare">
       <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
       <thead>
         <tr>
@@ -436,8 +436,7 @@
         </tr>
         {% endfor %}
       </tbody>
-      </table>
-    </div>
+    </table>
   </div>
   <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
 </div></section>
@@ -582,6 +581,8 @@
   </div>
 </div></section>
 
+
+<div class="g-wrap g-mark__wrap">{{ mark('key') }}</div>
 
 <!-- ============ HOW SMALL THIS IS ============ -->
 {# Every figure verified against the system: five bedrooms of ninety-four rooms, one sitting a

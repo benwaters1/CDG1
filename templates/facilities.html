@@ -6,6 +6,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
 <section class="g-hero">
@@ -317,6 +318,10 @@
     </div>
   </div>
 </div></section>
+
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Worth saying</span>Everything on this page sits inside a Class I monument that has been under restoration since 2013.</p></div>
+
+<div class="g-wrap g-mark__wrap">{{ mark('water') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

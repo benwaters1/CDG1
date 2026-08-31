@@ -21,6 +21,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 {# Needs a route, e.g.:
    @app.route('/restoration')
    def restoration_page(): return render_template('restoration.html')  #}
@@ -86,7 +87,7 @@
 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">By the Numbers</p>
-  <h2 class="g-place">What it has taken</h2>
+  <h2 class="g-place">The Building in Numbers</h2>
   <ul class="g-facts">
     <li><b>1741</b><span>Designed by Ange-Jacques Gabriel, principal architect to Louis&nbsp;XV</span></li>
     <li><b>94</b><span>Rooms across 43,000 square feet</span></li>
@@ -510,6 +511,8 @@
 </div></section>
 
 
+
+<div class="g-wrap g-mark__wrap">{{ mark('trowel') }}</div>
 
 <!-- ============ WHAT SURVIVED ============ -->
 {# Every item here is documented elsewhere on this page or in the château's

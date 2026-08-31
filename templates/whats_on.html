@@ -6,6 +6,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/df322ee5-f414-4f5e-80b9-92bd4114da26/Gardens+In+September.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 
 
 
@@ -225,6 +226,23 @@
 </div></section>
 
 <!-- ============ THE MARKET WEEK ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Week</p>
+  <h2 class="g-place">Which Market, Which Day</h2>
+
+  <div class="g-plate">
+    <div class="g-plate__row">
+      <dl class="g-plate__l">
+        <div><dt>Sunday</dt><dd>Les Cabannes — three minutes below the gates, and where the kitchen buys</dd></div>
+        <div><dt>Wednesday</dt><dd>Tarascon-sur-Ariège, twenty minutes down the valley</dd></div>
+        <div><dt>Friday</dt><dd>Foix, under the castle</dd></div>
+        <div><dt>Saturday</dt><dd>Tarascon again, the larger day. St Girons for crafts if you go further</dd></div>
+        <div><dt>Monday</dt><dd>Mirepoix, in the medieval square — the one to plan a week around</dd></div>
+        <div><dt>Any day</dt><dd>La Ferme du Quié in Les Cabannes for cheese, ham and local wine</dd></div>
+      </dl>
+    </div>
+  </div>
+</div></section>
 
 
 <!-- ============ THE JOURNAL ============ -->
@@ -245,6 +263,10 @@
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>
+
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Fifteen years</span>The valley has been the backdrop to a restoration followed by Vogue, AD Italia and the French press since 2013.</p></div>
+
+<div class="g-wrap g-mark__wrap">{{ mark('mountains') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">

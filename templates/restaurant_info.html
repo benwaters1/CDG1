@@ -25,6 +25,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 <section class="g-hero">
 <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes">
 <div class="g-hero__wash"></div>
@@ -390,6 +391,10 @@
   </div>
 </div></section>
 
+
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">The room</span>You will eat extremely well in a building that has been under restoration since 2013, and is not finished.</p></div>
+
+<div class="g-wrap g-mark__wrap">{{ mark('table') }}</div>
 
 <!-- ============ ONE TABLE ============ -->
 <section class="g-sec g-scarce"><div class="g-wrap">

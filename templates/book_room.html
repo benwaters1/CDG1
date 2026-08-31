@@ -130,8 +130,7 @@
             {% for e in extras %}
             <li>
               <label class="g-check">
-                <input type="checkbox" id="extra_{{ e['id'] }}" name="extras" value="{{ e['id'] }}"
-                         {{ 'checked' if e['id'] in (prefill_extras | default([])) }}>
+                <input type="checkbox" id="extra_{{ e['id'] }}" name="extras" value="{{ e['id'] }}">
                 <span class="g-check__t">
                   <b>{{ e['name'] }}</b>
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
@@ -485,6 +484,33 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 
 
+
+
+<!-- ============ WHAT YOU ARE BOOKING INTO ============ -->
+{# The most commercial page on the site carried the least of the story. All
+   of this is stated and sourced elsewhere: the 1994 Class I listing, the
+   press record, and the fifteen years. #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Worth Knowing</p>
+  <h2 class="g-place">What You Are Booking Into</h2>
+
+  <p class="g-p g-lede-first">This is a restoration, not a renovation, and it has been running since 2013. The bed, the linen, the bathroom and the food are new and expensive. The walls around them are not, and will not be.</p>
+
+  <p class="g-p">Under Class I listing — the same protection as Versailles — the plaster stays as the centuries left it. That is not neglect and it is not a style. It is the law, and it is the reason the room looks the way it does.</p>
+
+  <div class="g-plate">
+    <div class="g-plate__row">
+      <dl class="g-plate__l">
+        <div><dt>Begun</dt><dd>2013, with ninety of the ninety-four rooms unreachable</dd></div>
+        <div><dt>Classified</dt><dd>Class I Historic Monument, 14 June 1994</dd></div>
+        <div><dt>Written about</dt><dd>Vogue, AD Italia, House &amp; Garden, and the French press</dd></div>
+        <div><dt>Honoured</dt><dd>Medal of the Fondation Prince Louis de Polignac, 2016</dd></div>
+        <div><dt>Still unfinished</dt><dd>Fifteen years in, and deliberately so</dd></div>
+        <div><dt>Why it continues</dt><dd>Nothing here is funded from outside. The finished rooms pay for the rest</dd></div>
+      </dl>
+    </div>
+  </div>
+</div></section>
 
 <!-- ============ REASSURANCE ============ -->
 {# Every line here matches what book_room() actually does: Stripe takes the

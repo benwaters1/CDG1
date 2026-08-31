@@ -1660,16 +1660,6 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   display: flex; justify-content: space-between; gap: var(--s5);
   padding: var(--s3) 0; border-bottom: 1px solid var(--line); font-size: 15px;
 }
-/* Paying part of a balance. Folded away behind a summary because most
-   guests use the button above it, and a second amount box sitting beside
-   that button only invites a pause at the moment somebody had decided. */
-.g-mb-part{ margin-top:var(--s2); }
-.g-mb-part>summary{ cursor:pointer; font-size:14px; color:var(--steel); }
-.g-mb-part__form{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px;
-  margin-top:var(--s1); }
-.g-mb-part__form input{ min-height:44px; padding:8px 12px; font-size:16px;
-  max-width:10em; }
-.g-mb-part__form button{ min-height:44px; }
 .g-mb-total{
   display: flex; justify-content: space-between; gap: var(--s5);
   padding: var(--s4) 0 0; margin-top: var(--s3);
@@ -3372,10 +3362,6 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
-/* A row inside the plate. The markup keeps arriving with this
-   wrapper and the stylesheet without the rule. It sits above
-   .g-plate::before's inset border, and that is all it does. */
-.g-plate__row{ position: relative; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
 .g-plate__l > div{
@@ -3634,7 +3620,11 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    not the type. A wrap whose direct children are prose narrows to the
    measure; wraps holding cards, grids or figures keep the full width.
    ========================================================================== */
-.g-sec .g-wrap:has(> p.g-p):not(:has(.g-finds)):not(:has(.g-two)):not(:has(.g-plate)):not(:has(.g-story)):not(:has(.g-masthead)):not(:has(.g-facts-list)):not(:has(.g-tags)):not(:has(.g-incl-cards)):not(:has(.g-scarce__grid)):not(:has(img)):not(:has(table)):not(:has(form)){
+/* Narrow only when the wrap contains nothing but prose. The previous version
+   listed grid classes to exclude, which meant any component added later —
+   .g-grid among them — was silently squeezed into a 46rem column and its
+   cards rendered fourteen characters wide. */
+.g-sec .g-wrap:has(> p.g-p):not(:has(div)):not(:has(ul)):not(:has(ol)):not(:has(dl)):not(:has(img)):not(:has(table)):not(:has(form)):not(:has(article)):not(:has(figure)):not(:has(section)){
   max-width: 46rem;
 }
 /* The cap stays as a ceiling. It no longer produces a ribbon because the
@@ -3904,11 +3894,6 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
   padding: var(--s6) 0;
 }
 .g-plan__cols{ display: grid; gap: var(--s5); }
-/* A column inside the planner. Same shape as .g-plate__row above: the markup
-   keeps arriving and the stylesheet without the rule, so on a narrow screen
-   the label and its buttons had nothing holding them apart. Guarded by
-   test_design, which fails on a layout class used with no rule at all. */
-.g-plan__col{ display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
 @media (min-width: 46rem){ .g-plan__cols{ grid-template-columns: repeat(3, 1fr); } }
 .g-plan__k{
   margin: 0 0 var(--s3); font-family: var(--ui);
@@ -3945,3 +3930,72 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
   color: var(--gilt); font-weight: 700;
 }
 .g-plan__act{ margin: var(--s6) 0 0; }
+
+/* ==========================================================================
+   DRAWN SECTION MARKS
+   Line-only figures in the register of the fleuron and the room emblems, each
+   referring to something the château actually has — the ridge line, a laid
+   setting, the key, the ivy that grew through the windows.
+   ========================================================================== */
+.g-mark__wrap{ display: flex; justify-content: center; padding: var(--s6) 0 0; }
+.g-mark{ width: 120px; height: 34px; color: var(--gilt); opacity: .9; }
+@media (max-width: 40rem){ .g-mark{ width: 96px; } }
+
+
+/* ==========================================================================
+   TOO NARROW TO READ
+   Two components were rendering text at sixteen characters a line: the facts
+   list, splitting a 552px block into two columns, and the pull quote at
+   272px. Text below roughly 30 characters a line stops being prose and
+   becomes a column of fragments.
+   ========================================================================== */
+.g-facts-list{ max-width: none; container-type: inline-size; grid-template-columns: 1fr; }
+@container (min-width: 44rem){
+  .g-facts-list{ grid-template-columns: 1fr 1fr; }
+}
+/* A definition row splits into two columns only when the row is wide enough
+   for both to hold a readable line. Below that it stacks — which is about the
+   width of its own container, not the width of the screen. */
+.g-facts-list > div,
+.g-plate__l > div{ container-type: inline-size; }
+.g-facts-list > div, .g-plate__l > div{ grid-template-columns: 1fr; }
+@container (min-width: 32rem){
+  .g-facts-list > div, .g-plate__l > div{ grid-template-columns: minmax(8rem, 12rem) 1fr; }
+}
+/* max-width:34ch above measures only 272px in the display face — a column of
+   fragments rather than a quotation. Set the width in absolute terms and let
+   the character cap go. */
+.g-pull{ max-width: 26rem; min-width: 0; }
+@media (max-width: 52rem){ .g-pull{ float: none; max-width: none; width: auto; } }
+
+
+/* ==========================================================================
+   COLUMNS THAT REFLOW ON THEIR OWN WIDTH
+   A three-column grid held its three columns at 768px, giving each card about
+   210px and its text fourteen characters a line. Cards should break on the
+   space they actually have rather than on a breakpoint chosen in advance.
+   ========================================================================== */
+.g-grid--3, .g-grid--2, .g-finds, .g-incl-cards{
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+/* The quotation needs to hold a readable line in the italic display face. */
+.g-pull{ max-width: 30rem; }
+.g-pull p{ max-width: none; }
+/* Measured in characters, not pixels: at 27px italic a 350px column holds 23
+   characters. Widen the column and ease the face so the quote reads as a
+   sentence. */
+@media (min-width: 60rem){
+  .g-pull{ width: 26rem; max-width: 26rem; }
+  .g-pull p{ font-size: clamp(19px, 1.5vw, 23px); }
+}
+
+
+/* ==========================================================================
+   THE ROOM CARDS
+   Five rooms in two columns left the fifth alone on a row, and 568px cards
+   ran the page to 17,000px. Three columns holds five as 3 + 2 and reads as a
+   set. Below that the grid reflows on its own width, as the others do.
+   ========================================================================== */
+/* Reflow on the space available rather than a fixed two columns, so five
+   rooms sit 3 + 2 on a wide screen instead of leaving one stranded. */
+.g-cards{ grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr)); }

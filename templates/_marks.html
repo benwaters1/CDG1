@@ -1,0 +1,77 @@
+{# Drawn section marks, in the same register as the room emblems and the
+   fleuron: line only, no fills, currentColor so they take the ground they sit
+   on. Each one refers to something the château actually has. #}
+{% macro mark(kind, cls='') %}
+<svg class="g-mark {{ cls }}" viewBox="0 0 120 34" fill="none" stroke="currentColor"
+     stroke-width="1" aria-hidden="true" focusable="false">
+{%- if kind == 'mountains' %}
+  {# The Pyrénées across the valley #}
+  <path d="M6 26h108" opacity=".45"/>
+  <path d="M22 26l14-13 9 8 11-12 12 14 10-7 12 10" stroke-linejoin="round"/>
+  <circle cx="44" cy="9" r="2.5"/>
+{%- elif kind == 'table' %}
+  {# La Table — a laid setting, from above #}
+  <circle cx="60" cy="17" r="8"/>
+  <path d="M44 11v12M44 11c-2 0-3 2-3 4s1 3 3 3"/>
+  <path d="M76 11v12M73 11v5c0 1.4 1.4 2 3 2"/>
+  <path d="M18 17h14M88 17h14" opacity=".45"/>
+{%- elif kind == 'key' %}
+  {# The key to a room that was shut for a century and a half #}
+  <circle cx="40" cy="17" r="6"/><circle cx="40" cy="17" r="2"/>
+  <path d="M46 17h30M70 17v6M76 17v5"/>
+  <path d="M14 17h18" opacity=".45"/><path d="M88 17h18" opacity=".45"/>
+{%- elif kind == 'vine' %}
+  {# The ivy that grew through the windows before 2013 #}
+  <path d="M10 17c14 0 14-8 28-8s14 16 28 16 14-8 28-8 12 0 16 0" stroke-linecap="round"/>
+  <path d="M38 9c-3-3-1-6 2-5s2 4-2 5M66 25c3 3 1 6-2 5s-2-4 2-5"/>
+{%- elif kind == 'ring' %}
+  {# Two rings, for the weddings #}
+  <circle cx="52" cy="17" r="9"/><circle cx="68" cy="17" r="9"/>
+  <path d="M18 17h20M82 17h20" opacity=".45"/>
+{%- elif kind == 'trowel' %}
+  {# The plasterer's trowel — the work itself #}
+  <path d="M46 10h24l-6 12H52z" stroke-linejoin="round"/>
+  <path d="M58 22v6M54 28h8"/>
+  <path d="M14 17h26M80 17h26" opacity=".45"/>
+{%- elif kind == 'facade' %}
+  {# The east front — eleven bays, the pediment, the roof line #}
+  <path d="M18 27h84M22 27V13l38-6 38 6v14" stroke-linejoin="round"/>
+  <path d="M48 7l12-4 12 4" stroke-linejoin="round"/>
+  <path d="M32 27v-8M42 27v-8M52 27v-8M68 27v-8M78 27v-8M88 27v-8"/>
+  <path d="M56 27v-6h8v6"/>
+{%- elif kind == 'brush' %}
+  {# The conservator's brush: handle, ferrule, bristles #}
+  <path d="M57 4h6v11h-6z" stroke-linejoin="round"/>
+  <path d="M55 15h10v4H55z" stroke-linejoin="round"/>
+  <path d="M56 19l-1 8M58.5 19l-.5 9M61.5 19l.5 9M64 19l1 8" stroke-linecap="round"/>
+  <path d="M54 30h12" stroke-linecap="round"/>
+  <path d="M14 17h34M72 17h34" opacity=".45"/>
+{%- elif kind == 'gates' %}
+  {# The iron gates at the foot of the drive #}
+  <path d="M40 28V10M48 28V10M56 28V8M64 28V8M72 28V10M80 28V10"/>
+  <path d="M36 28h48M36 14h48"/>
+  <path d="M56 8c2-3 6-3 8 0" stroke-linejoin="round"/>
+  <path d="M12 28h20M88 28h20" opacity=".45"/>
+{%- elif kind == 'water' %}
+  {# The pool below the formal gardens, with a cherry tree either side #}
+  <rect x="44" y="13" width="32" height="13" rx="1"/>
+  <path d="M48 19.5c3-2.4 5 2.4 8 0s5 2.4 8 0 5 2.4 8 0"/>
+  {# trees: trunk, branches, canopy #}
+  <path d="M28 27v-8M28 21l-4-3M28 22l4-3"/>
+  <path d="M22 15c0-4 3-6 6-6s6 2 6 6-3 5-6 5-6-1-6-5z" stroke-linejoin="round"/>
+  <path d="M92 27v-8M92 21l-4-3M92 22l4-3"/>
+  <path d="M86 15c0-4 3-6 6-6s6 2 6 6-3 5-6 5-6-1-6-5z" stroke-linejoin="round"/>
+  <path d="M8 27h10M102 27h10" opacity=".45"/>
+{%- elif kind == 'candle' %}
+  {# One sitting a night, by candlelight #}
+  <path d="M54 28h12V14H54z"/><path d="M60 14V9"/>
+  <path d="M60 9c-2-2-1-5 0-6 1 1 2 4 0 6" stroke-linejoin="round"/>
+  <path d="M50 28h20"/>
+  <path d="M16 24h30M74 24h30" opacity=".45"/>
+{%- else %}
+  {# A rule with a centre point, when nothing more specific fits #}
+  <path d="M10 17h40M70 17h40" opacity=".55"/>
+  <circle cx="60" cy="17" r="3"/>
+{%- endif %}
+</svg>
+{% endmacro %}

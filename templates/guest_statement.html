@@ -1,7 +1,6 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'none' %}
 {% block title %}Your bill — {{ booking['reference_code'] }}{% endblock %}
-{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <div class="statement">
@@ -27,17 +26,6 @@
         {% if company and company['vat_number'] %}<br>TVA {{ company['vat_number'] }}{% endif %}
       </div>
     </div>
-
-    {# Business guests need this as something they can forward to whoever pays.
-       No address field on purpose: it goes to the address on the booking, so a
-       link cannot be used to post somebody else's bill to yourself. #}
-    <div class="statement-actions no-print">
-      <form method="post"
-            action="{{ url_for('email_booking_statement', manage_token=booking['manage_token']) }}">
-        <button type="submit" class="g-btn g-btn--sm">Email this to me</button>
-      </form>
-      <button type="button" class="g-btn g-btn--sm" onclick="window.print()">Print</button>
-    </div>
   </div>
 
   <p class="g-hint">
@@ -46,8 +34,7 @@
     · {{ s.adults }} adult{{ '' if s.adults == 1 else 's' }}{% if s.children %}, {{ s.children }} under 18{% endif %}
   </p>
 
-  <div class="table-wrap">
-    <table class="data-table" style="margin-top:var(--s3);">
+  <table class="data-table" style="margin-top:var(--s3);">
     <thead><tr><th>Description</th><th class="num">Amount</th></tr></thead>
     <tbody>
       <tr>
@@ -61,13 +48,11 @@
       </tr>
       {% endfor %}
     </tbody>
-    </table>
-  </div>
+  </table>
 
   {% if s.vat %}
   <p class="g-mb-label" style="margin-top:var(--s4);">VAT included in the above</p>
-  <div class="table-wrap">
-    <table class="data-table">
+  <table class="data-table">
     <thead><tr><th>Rate</th><th class="num">Net</th><th class="num">VAT</th><th class="num">Gross</th></tr></thead>
     <tbody>
       {% for v in s.vat %}
@@ -79,15 +64,13 @@
       </tr>
       {% endfor %}
     </tbody>
-    </table>
-  </div>
+  </table>
   {% endif %}
 
   {% if s.city_tax %}
   {# Shown on its own, outside the VAT table, because it is collected for the
      commune rather than earned — and French rules require it stated separately. #}
-  <div class="table-wrap">
-    <table class="data-table" style="margin-top:var(--s4);">
+  <table class="data-table" style="margin-top:var(--s4);">
     <tbody>
       <tr>
         <td>
@@ -102,12 +85,10 @@
         <td class="num">€{{ '%.2f'|format(s.city_tax) }}</td>
       </tr>
     </tbody>
-    </table>
-  </div>
+  </table>
   {% endif %}
 
-  <div class="table-wrap">
-    <table class="data-table" style="margin-top:var(--s4);">
+  <table class="data-table" style="margin-top:var(--s4);">
     <tbody>
       <tr>
         <td><strong>Total</strong></td>
@@ -121,8 +102,7 @@
       </tr>
       {% endif %}
     </tbody>
-    </table>
-  </div>
+  </table>
 
   <p class="g-hint" style="margin-top:var(--s4);">
     Please keep this for your records. Any question about it, contact the château with your
@@ -133,17 +113,9 @@
 <style>
 .statement{ max-width:760px; margin:0 auto; }
 .statement-head{ display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; align-items:flex-start; }
-/* The actions sit above the bill and must not appear on it. Without the
-   no-print rule the two buttons print onto the guest's own statement,
-   which is the sort of thing nobody notices until a guest forwards it to
-   their accounts department. */
-.statement-actions{ display:flex; gap:8px; align-items:center;
-  margin:var(--s2) 0; }
-.statement-actions form{ margin:0; }
 @media print{
   .public-footer, .public-nav{ display:none; }
   .statement{ max-width:none; }
-  .no-print{ display:none !important; }
 }
 </style>
 

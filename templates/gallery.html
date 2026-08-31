@@ -5,6 +5,7 @@
 {% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_marks.html' import mark %}
 {# `galleries` comes from gallery_page(): a list of
      { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
    The slug is the anchor id, because the site menu links to #inside, #grounds,
@@ -261,6 +262,8 @@
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('vine') }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
