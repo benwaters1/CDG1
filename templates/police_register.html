@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Guest register{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Guest register</h1>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The fiche individuelle de police, which an établissement d'hébergement must
+  keep for guests who are not French nationals and produce if it is asked for.
+  Only the fields the arrêté lists are here — no passport number, no scan of
+  anything. Entries are deleted {{ keep_months }} months after the stay ends,
+  automatically, by the same nightly job that keeps the rest of the promises in
+  our privacy notice.
+</p>
+
+<!-- ----------------------------------------------------------------- -->
+{# Stays that have already begun with nobody recorded. Looked at from the
+   arrival rather than the booking: a stay three weeks out with no fiches is
+   not late, it has not happened. #}
+{% if missing %}
+<h2 class="section-heading">Waiting to be filled in</h2>
+{% for st in missing %}
+<div class="expense-card">
+  <div class="expense-head">
+    <div>
+      <strong>{{ st.booking['guest_name'] }}</strong>
+      <span class="upload-hint">{{ st.booking['reference_code'] }} ·
+        {{ st.booking['arrival_date'] }} → {{ st.booking['departure_date'] }}</span>
+      <span class="mini-status status-pending" style="margin-left:8px;">
+        {{ st.recorded }} of {{ st.party }} recorded
+      </span>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('add_police_fiche', booking_id=st.booking['id']) }}"
+        class="upload-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="g-row" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <div style="flex:1 1 160px;">
+        <label class="field-label" for="sn_{{ st.booking['id'] }}">Surname</label>
+        <input type="text" id="sn_{{ st.booking['id'] }}" name="surname" required maxlength="100">
+      </div>
+      <div style="flex:1 1 180px;">
+        <label class="field-label" for="fn_{{ st.booking['id'] }}">First names</label>
+        <input type="text" id="fn_{{ st.booking['id'] }}" name="first_names" required maxlength="120">
+      </div>
+      <div style="flex:1 1 140px;">
+        <label class="field-label" for="nat_{{ st.booking['id'] }}">Nationality</label>
+        <input type="text" id="nat_{{ st.booking['id'] }}" name="nationality" required maxlength="60">
+      </div>
+      <div style="flex:1 1 140px;">
+        <label class="field-label" for="dob_{{ st.booking['id'] }}">Date of birth</label>
+        <input type="date" id="dob_{{ st.booking['id'] }}" name="born_on">
+      </div>
+      <div style="flex:1 1 160px;">
+        <label class="field-label" for="pob_{{ st.booking['id'] }}">Place of birth</label>
+        <input type="text" id="pob_{{ st.booking['id'] }}" name="born_at" maxlength="120">
+      </div>
+      <div style="flex:2 1 260px;">
+        <label class="field-label" for="addr_{{ st.booking['id'] }}">Home address</label>
+        <input type="text" id="addr_{{ st.booking['id'] }}" name="home_address" maxlength="300">
+      </div>
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:8px;">Add to the register</button>
+    <p class="upload-hint">A French national does not go on the register — record
+      them with their nationality and the count settles.</p>
+  </form>
+
+  {% if st.fiches %}
+  <div class="table-wrap" style="margin-top:10px;">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Nationality</th><th>Born</th><th></th></tr></thead>
+      <tbody>
+        {% for f in st.fiches %}
+        <tr>
+          <th scope="row">{{ f['surname'] }}, {{ f['first_names'] }}</th>
+          <td>{{ f['nationality'] }}</td>
+          <td>{{ f['born_on'] or '—' }}{% if f['born_at'] %} · {{ f['born_at'] }}{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_police_fiche', fiche_id=f['id']) }}"
+                  onsubmit="return confirm('Remove this entry from the register?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-text-danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">Every stay that has begun has its register filled in.</div>
+{% endif %}
+
+<!-- ----------------------------------------------------------------- -->
+<h2 class="section-heading">The register</h2>
+<form method="get" class="search-bar" style="margin-bottom:12px;">
+  <label class="field-label" for="reg_from">From</label>
+  <input type="date" id="reg_from" name="from" value="{{ start }}">
+  <label class="field-label" for="reg_to">To</label>
+  <input type="date" id="reg_to" name="to" value="{{ end }}">
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% if not rows %}
+  <div class="empty-state">Nothing on the register for those dates.</div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Name</th><th>Born</th><th>Nationality</th><th>Home address</th>
+      <th>Room</th><th>Arrived</th><th>Left</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <th scope="row">{{ r['surname'] }}, {{ r['first_names'] }}</th>
+      <td>{{ r['born_on'] or '—' }}{% if r['born_at'] %}<br><span class="upload-hint">{{ r['born_at'] }}</span>{% endif %}</td>
+      <td>{{ r['nationality'] }}</td>
+      <td><span class="upload-hint">{{ r['home_address'] or '—' }}</span></td>
+      <td>{{ r['room_name'] }}</td>
+      <td>{{ r['arrival_date'] }}</td>
+      <td>{{ r['departure_date'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="pay-disclaimer" style="margin-top:14px;">
+  {{ rows|length }} entr{{ 'y' if rows|length == 1 else 'ies' }}. Anything from a
+  stay that ended more than {{ keep_months }} months ago has already gone — that
+  is not a gap in the register, it is the retention period doing what our
+  privacy notice says it does.
+</p>
+{% endif %}
+
+{% endblock %}

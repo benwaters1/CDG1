@@ -139,6 +139,14 @@ def run():
     # of that file finds the marker too and proves nothing. Held open, the
     # committed row exists only in the -wal: a flat copy sees none of it and
     # src.backup(), which reads through the log, sees all of it.
+    # What is on disk, counted at the same instant as the backup. Walking the
+    # directories afterwards counts files another suite created in between,
+    # which the zip could not possibly contain -- so the check would fail for
+    # a reason no change to the backup could fix.
+    on_disk_at_backup = set()
+    for _folder in (m.UPLOAD_DIR, m.ROOM_PHOTO_DIR):
+        for _root, _dirs, _files in os.walk(_folder):
+            on_disk_at_backup |= set(_files)
     blob = m.build_backup_zip(include_media=True)
 
     s.section("A file that vanished does not cost the whole backup")
@@ -305,19 +313,24 @@ def run():
         s.section("The documents came too")
         # A backup carrying rows that point at files it did not include
         # restores an app full of broken links.
-        held = {n.split("/", 1)[1] for n in names if n.startswith("uploads/")}
-        held |= {n.split("/", 1)[1] for n in names if n.startswith("room_photos/")}
+        # From THE FULL BACKUP, named explicitly. `names` is reassigned further
+        # up by the vanishing-file section, which reads a backup taken with a
+        # file deliberately removed mid-write -- so anything here that trusted
+        # `names` was quietly checking the damaged one.
+        full_names = zipfile.ZipFile(io.BytesIO(blob)).namelist()
+        held = {os.path.basename(n) for n in full_names
+                if n.startswith(("uploads/", "room_photos/"))}
         # First: is there anything to check? Without this the check below is
         # true of the empty set, and dropping every document from the backup
         # passes it. That is exactly what it did.
-        on_disk = 0
-        for folder in (m.UPLOAD_DIR, m.ROOM_PHOTO_DIR):
-            for _root, _dirs, files in os.walk(folder):
-                on_disk += len(files)
-        s.check("there are documents on disk for a backup to carry", on_disk > 0,
-                detail=f"{on_disk} file(s)")
-        s.check("and the full backup carries them", len(held) == on_disk,
-                detail=f"{len(held)} of {on_disk} in the zip")
+        s.check("there are documents on disk for a backup to carry",
+                len(on_disk_at_backup) > 0,
+                detail=f"{len(on_disk_at_backup)} file(s)")
+        absent_from_zip = sorted(on_disk_at_backup - held)
+        s.check("and the full backup carries every one of them",
+                not absent_from_zip,
+                detail=(f"{len(absent_from_zip)} missing, e.g. {absent_from_zip[:2]}"
+                        if absent_from_zip else f"{len(on_disk_at_backup)} file(s)"))
         s.check("the document written for this drill is referenced by a row",
                 seeded_name in wanted_files,
                 detail=f"{len(wanted_files)} referenced file(s) exist on disk")

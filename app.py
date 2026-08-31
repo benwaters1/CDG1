@@ -2357,6 +2357,26 @@ def init_db():
         -- row, so per-room lock rows would read as finer-grained while
         -- serialising exactly the same — an invitation to believe in isolation
         -- that is not there.
+        -- The fiche individuelle de police. One row per person on a stay,
+        -- because the form is per person and a family of four is four fiches.
+        --
+        -- Deliberately NOT on the guests profile table. The register is about
+        -- a STAY; a returning guest's fiche from two years ago is not a record
+        -- the house is entitled to keep because they came back, and holding it
+        -- there would quietly make the six-month retention unenforceable.
+        CREATE TABLE IF NOT EXISTS police_register (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+            surname TEXT NOT NULL,
+            first_names TEXT NOT NULL,
+            born_on TEXT,
+            born_at TEXT,
+            nationality TEXT NOT NULL,
+            home_address TEXT,
+            recorded_at TEXT NOT NULL,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS booking_write_lock (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             held_at TEXT
@@ -20008,7 +20028,9 @@ PALETTE_PAGES = [
     ("Bank details", "management_bank_details", "iban account"),
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
-    ("Vehicles", "management_vehicles", "cars van fuel"),
+    ("Vehicles", "management_vehicles", "cars van fuel contrôle technique insurance"),
+    ("Guest register", "police_register_page",
+     "police fiche individuelle nationality passport foreign guests declaration prefecture gendarmerie"),
     ("Transfers", "all_transfers", "airport pickup driving"),
     ("Asset register", "admin_assets", "furniture art antiques insurance valuation"),
     ("Keys & access", "admin_access", "codes alarm fobs"),
@@ -30129,6 +30151,110 @@ def checkout_booking(booking_id):
     return redirect(url_for("admin_bookings"))
 
 
+@app.route("/admin/bookings/<int:booking_id>/register", methods=["POST"])
+@owner_required
+def add_police_fiche(booking_id):
+    """Record one guest on the police register for this stay.
+
+    Only the fields the arrêté asks for. No passport number and no scan of
+    anything: the list is closed, and collecting more because a form happens
+    to be open is how a guest register becomes a data breach with extra steps.
+    """
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    surname = request.form.get("surname", "").strip()[:100]
+    first_names = request.form.get("first_names", "").strip()[:120]
+    nationality = request.form.get("nationality", "").strip()[:60]
+    born_on_raw = request.form.get("born_on", "").strip()
+    born_at = request.form.get("born_at", "").strip()[:120]
+    home_address = request.form.get("home_address", "").strip()[:300]
+
+    if not surname or not first_names or not nationality:
+        conn.close()
+        flash("A surname, first names and nationality are what the register asks for.",
+              "error")
+        return redirect(url_for("police_register_page"))
+    born_on = parse_date(born_on_raw) if born_on_raw else None
+    if born_on_raw and not born_on:
+        conn.close()
+        flash("That date of birth could not be read.", "error")
+        return redirect(url_for("police_register_page"))
+    if born_on and born_on > datetime.now(LOCAL_TZ).date():
+        conn.close()
+        flash("That date of birth is in the future.", "error")
+        return redirect(url_for("police_register_page"))
+
+    conn.execute(
+        """INSERT INTO police_register (booking_id, surname, first_names, born_on,
+           born_at, nationality, home_address, recorded_at, recorded_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (booking_id, surname, first_names,
+         born_on.isoformat() if born_on else None, born_at or None,
+         nationality, home_address or None,
+         datetime.now(timezone.utc).isoformat(),
+         current_user()["id"] if current_user() else None))
+    # The name is not in the audit line. Who touched the register and when is
+    # worth recording; copying a guest's name into a second table that is not
+    # purged with the first would be keeping it after the fiche has gone.
+    log_audit(conn, "police_fiche_recorded", target=booking["reference_code"])
+    conn.commit()
+    conn.close()
+    flash("Added to the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/register/<int:fiche_id>/delete", methods=["POST"])
+@owner_required
+def delete_police_fiche(fiche_id):
+    """Remove a fiche, for the ordinary reason that somebody mistyped one."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM police_register WHERE id = ?", (fiche_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    booking = conn.execute("SELECT reference_code FROM bookings WHERE id = ?",
+                           (row["booking_id"],)).fetchone()
+    conn.execute("DELETE FROM police_register WHERE id = ?", (fiche_id,))
+    log_audit(conn, "police_fiche_removed",
+              target=booking["reference_code"] if booking else str(row["booking_id"]))
+    conn.commit()
+    conn.close()
+    flash("Removed from the register.", "success")
+    return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/register")
+@owner_required
+def police_register_page():
+    """The register itself, which is the thing that gets asked for.
+
+    Ordered by arrival, because that is how the question comes: who was
+    staying here in the week of such and such.
+    """
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    start = parse_date(request.args.get("from", "")) or (today - timedelta(days=30))
+    end = parse_date(request.args.get("to", "")) or today
+    rows = conn.execute(
+        """SELECT police_register.*, bookings.reference_code, bookings.arrival_date,
+                  bookings.departure_date, rooms.name AS room_name
+             FROM police_register
+             JOIN bookings ON bookings.id = police_register.booking_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.arrival_date >= ? AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, police_register.surname""",
+        (start.isoformat(), end.isoformat())).fetchall()
+    missing = stays_missing_fiches(conn, today)
+    conn.close()
+    return render_template(
+        "police_register.html", rows=rows, missing=missing,
+        start=start.isoformat(), end=end.isoformat(),
+        keep_months=POLICE_REGISTER_KEEP_MONTHS)
+
+
 @app.route("/admin/bookings/<int:booking_id>/prepare-arrival", methods=["POST"])
 @owner_required
 def prepare_arrival(booking_id):
@@ -35843,6 +35969,93 @@ VEHICLE_PAPERS_WARN_DAYS = 30
 INSURANCE_WARN_DAYS = 45
 
 
+# Six months, which is what the arrêté requires the fiches to be kept for.
+# Not longer "in case": a register held beyond its purpose is a register held
+# without one.
+POLICE_REGISTER_KEEP_MONTHS = 6
+
+# Guests the register does not apply to. Stored as a nationality string
+# because that is what a person writes on the form; matched case-insensitively
+# and on either language, since a French guest writes "française" and an
+# English-speaking one writes "French" about the same person.
+FRENCH_NATIONALITY_WORDS = {"fr", "france", "french", "francais", "française",
+                            "francaise", "française"}
+
+
+def is_french_national(nationality):
+    """Whether the register applies. Unknown is NOT French.
+
+    The obligation is on the house, so an unrecorded nationality has to read
+    as "this fiche is still needed" rather than as "no fiche required". The
+    safe default and the lazy default point in opposite directions here.
+    """
+    if not nationality:
+        return False
+    return str(nationality).strip().lower().rstrip(".") in FRENCH_NATIONALITY_WORDS
+
+
+def police_register_needed(conn, booking_id):
+    """How many fiches this stay still wants.
+
+    party_size is the count of people staying, and the register is per person.
+    A stay with three guests and one fiche is two fiches short, and nothing
+    anywhere said so.
+    """
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        return None
+    have = conn.execute(
+        "SELECT * FROM police_register WHERE booking_id = ? ORDER BY id", (booking_id,)).fetchall()
+    # Only foreign guests need one, and the only way to know is to have asked.
+    # So a stay with nobody recorded is "not asked yet" rather than "nobody
+    # needs one" — which is why the count below starts from the party size.
+    exempt = sum(1 for f in have if is_french_national(f["nationality"]))
+    party = booking["party_size"] or 1
+    return {"booking": booking, "fiches": have, "party": party,
+            "recorded": len(have), "exempt": exempt,
+            "outstanding": max(0, party - len(have))}
+
+
+def stays_missing_fiches(conn, today=None, days_back=30):
+    """Stays that have started and have nobody on the register.
+
+    Looked at from the arrival rather than the booking, because the fiche is
+    completed on arrival — a stay three weeks out with no fiches is not late,
+    it has not happened.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    since = (day - timedelta(days=max(1, days_back))).isoformat()
+    out = []
+    for b in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'
+                  AND bookings.arrival_date <= ? AND bookings.arrival_date >= ?
+                ORDER BY bookings.arrival_date""",
+            (day.isoformat(), since)).fetchall():
+        state = police_register_needed(conn, b["id"])
+        if state and state["outstanding"]:
+            out.append(state)
+    return out
+
+
+def purge_police_register(conn, today=None):
+    """Delete fiches older than the law allows them to be kept.
+
+    Dated from the DEPARTURE, not from when the fiche was written: the six
+    months runs from the end of the stay, and a fiche filled in on arrival for
+    a fortnight's stay would otherwise go a fortnight early.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    cutoff = (day - timedelta(days=POLICE_REGISTER_KEEP_MONTHS * 31)).isoformat()
+    cur = conn.execute(
+        """DELETE FROM police_register WHERE booking_id IN (
+               SELECT id FROM bookings
+                WHERE departure_date IS NOT NULL AND departure_date < ?)""",
+        (cutoff,))
+    return {"police register entries": cur.rowcount}
+
+
 def insurance_cover(conn, today=None):
     """Every policy, and whether the house is actually covered by it.
 
@@ -38450,6 +38663,7 @@ def run_health_notes_purge_job(conn):
     """
     cleared = purge_health_notes(conn)
     cleared.update(purge_dead_enquiries(conn))
+    cleared.update(purge_police_register(conn))
     done = {k: v for k, v in cleared.items() if v}
     if not done:
         return "nothing to clear"
