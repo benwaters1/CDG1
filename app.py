@@ -7839,7 +7839,7 @@ def build_overview(conn, view, anchor, fetch_window=None):
     return {
         "view": view, "anchor": anchor, "range_start": range_start,
         "range_end": range_end - timedelta(days=1), "rows": rows,
-        "employees": employees, "owner_id": owner_id, "owner_name": owner_name,
+        "employees": employees, "owner_id": owner_id,
         "prev_anchor": prev_anchor.isoformat(), "next_anchor": next_anchor.isoformat(),
     }
 
@@ -18039,10 +18039,19 @@ def admin_incidents():
         overview_cell("This year", stats["total"]),
         overview_cell("Workplace", stats["workplace"], hint="staff accidents"),
         overview_cell("Significant or worse", stats["serious"], alert=stats["serious"]),
+        # The hint names the two jobs rather than the one total, because
+        # "send it" and "decide which policy it falls under" are not the
+        # same piece of work, and the split was computed and thrown away.
         overview_cell("Insurer not told", len(insurer["all"]),
                       alert=bool(insurer["overdue"]),
-                      hint=(f"{len(insurer['overdue'])} past the window"
-                            if insurer["overdue"] else None)),
+                      hint=(", ".join(part for part in (
+                          (f"{len(insurer['overdue'])} past the window"
+                           if insurer["overdue"] else None),
+                          (f"{len(insurer['no_policy'])} with no policy chosen"
+                           if insurer["no_policy"] else None),
+                          (f"{len(insurer['unreported'])} ready to send"
+                           if insurer["unreported"] else None),
+                      ) if part) or None)),
         overview_cell("Work days lost", int(stats["days_lost"] or 0)),
     ]
     return render_template("admin_incidents.html", incidents=incidents, overview=overview,
@@ -38800,7 +38809,6 @@ def empty_nights(conn, *, days=90, today=None):
         # and a figure labelled lost gets subtracted from a plan that was never
         # real.
         "value_at_rate": round(total_value, 2),
-        "by_night": free_by_night,
     }
 
 

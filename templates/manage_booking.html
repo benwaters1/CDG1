@@ -218,6 +218,14 @@
     {% endif %}
     {% if bill.owed > 0 %}
     <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
+    {% if bill.balance_overdue %}
+    {# The bill has always known this and never said it. Plainly, and
+       without dunning language: the house's position is that a refund is
+       a decision somebody makes, not a rule, and a guest's own page is
+       not the place to sound like a collections letter. #}
+    <p class="g-p" style="margin-top:var(--s1);">{{ t('This was due on') }}
+      {{ bill.balance_due_date }}.</p>
+    {% endif %}
     {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
     <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
 

@@ -48,4 +48,9 @@
 {% endif %}
 <p class="upload-hint">A stay spanning the edge of the period is counted only for the nights that fall inside it, and its revenue is apportioned the same way — so nothing is double-counted across two periods.</p>
 
+{# The denominator. "62%" and "62% across 90 room-nights" are
+   different sentences, and the second number was already counted. #}
+{% if data.nights_in_period %}
+<p class="upload-hint">Across {{ data.nights_in_period }} room-nights in the period.</p>
+{% endif %}
 {% endblock %}

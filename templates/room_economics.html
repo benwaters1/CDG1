@@ -99,4 +99,7 @@
   period reads low for a reason that is not its fault.
 </p>
 
+{% if data.window_nights %}
+<p class="upload-hint">Measured over {{ data.window_nights }} nights.</p>
+{% endif %}
 {% endblock %}

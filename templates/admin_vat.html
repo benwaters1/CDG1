@@ -112,4 +112,11 @@
     <a href="{{ url_for('admin_city_tax') }}">{{ t('The declaration for it is here.') }}</a>
   </p>
 
+{# A VAT period with the house shut for part of it is a different
+   figure from one where it was open throughout, and both numbers were
+   already being worked out. #}
+{% if working.days_in_period %}
+<p class="upload-hint">{{ working.days_in_period }} days in the period{% if working.days_closed %},
+  {{ working.days_closed }} of them with the house closed{% endif %}.</p>
+{% endif %}
 {% endblock %}

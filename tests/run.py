@@ -205,6 +205,7 @@ SUITES = [
     "test_cover_register",
     "test_police_register",
     "test_dead_context",
+    "test_dead_keys",
     "test_extras_cancel",
     "test_newsletter_reach",
     "test_data_requests",

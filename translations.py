@@ -175,6 +175,7 @@ FR = {
     "per night": "par nuit",
     "Total": "Total",
     "Still to pay": "Reste à payer",
+    "This was due on": "Cette somme était due le",
     "Or the surname it is under": "Ou le nom de famille de la réservation",
     "Either one will do, along with the reference.":
         "L'un ou l'autre suffit, avec la référence.",
@@ -667,6 +668,7 @@ ES = {
     "per night": "por noche",
     "Total": "Total",
     "Still to pay": "Pendiente de pago",
+    "This was due on": "Este importe vencía el",
     "Or the surname it is under": "O el apellido de la reserva",
     "Either one will do, along with the reference.":
         "Cualquiera de los dos sirve, junto con la referencia.",

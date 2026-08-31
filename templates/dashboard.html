@@ -308,6 +308,13 @@ function toggleBreak() {
         {{ 'person' if current_month_financials.labour_unpriced == 1 else 'people' }}
         with no wage on file, whose pay is not in it</span>
       {% endif %}
+      {% if current_month_financials.labour_estimated %}
+      {# A different admission again: these people ARE in the figure, on a
+         number read out of a free-text pay note rather than a typed wage. #}
+      <span class="upload-hint">{{ current_month_financials.labour_estimated }} of
+        {{ current_month_financials.labour_estimated + current_month_financials.labour_typed }}
+        costed from a pay note rather than a wage</span>
+      {% endif %}
     </a>
     {% endif %}
     {% for f in low_ratings %}

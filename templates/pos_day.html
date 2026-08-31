@@ -109,10 +109,19 @@
       <tr>
         <td><strong>Total taken</strong></td>
         <td class="num"><strong>€{{ '%.2f'|format(report.taken) }}</strong></td>
+        {# The average was already worked out and never shown. It is the
+           figure that says whether a quiet night was fewer tables or
+           smaller ones, which the total on its own cannot. #}
       </tr>
     </tbody>
   </table>
 </div>
+{% if report.average_per_tab %}
+<p class="upload-hint">{{ report.tabs }} tab{{ '' if report.tabs == 1 else 's' }},
+  averaging €{{ '%.2f'|format(report.average_per_tab) }} each — a quiet night is
+  either fewer tables or smaller ones, and the total alone does not say which.</p>
+{% endif %}
+
 {% if (report.taken - report.gross + report.discounts - report.service)|abs > 0.01 %}
 {# Takings and the till's own figure must agree. If they do not, say so
    rather than showing two numbers and letting somebody notice later. #}

@@ -13,7 +13,7 @@
 
 <p class="pay-disclaimer" style="margin-top:-10px;">
   {{ session['title'] }} · {{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} to {{ session['end_date'] }}{% endif %}
-  · {{ plan.heads }} {{ 'person' if plan.heads == 1 else 'people' }} across {{ plan.rooms|length }} rooms sleeping {{ plan.beds }}.
+  · {{ plan.heads }} {{ 'person' if plan.heads == 1 else 'people' }} across {{ plan.rooms|length }} rooms sleeping {{ plan.beds }}, and the occupancies they chose need {{ plan.rooms_needed }}.
 </p>
 
 <div class="stat-tiles">

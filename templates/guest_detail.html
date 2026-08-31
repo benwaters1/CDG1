@@ -100,7 +100,8 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <p class="upload-hint">
     {{ record.by_email_count }} of these are matched on the address rather than
-    attached to this profile. Attaching them makes the guess a fact — worth
+    attached to this profile{% if record.linked_count %}, and {{ record.linked_count }}
+    {{ 'is' if record.linked_count == 1 else 'are' }} attached properly{% endif %}. Attaching them makes the guess a fact — worth
     doing, because a guest who later changes their address keeps what was
     attached and loses what was only matched.
   </p>

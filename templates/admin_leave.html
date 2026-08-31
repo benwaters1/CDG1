@@ -84,7 +84,7 @@
         <span class="upload-hint">
           earned {{ '%g'|format(acc.accrued) }} · taken {{ acc.taken }} ·
           <strong>{{ '%g'|format(acc.remaining) }} left</strong>
-          <span title="{{ acc.months_worked }} month{{ '' if acc.months_worked == 1 else 's' }} worked since {{ acc.year_start.strftime('%d %b %Y') }}">
+          <span title="{{ acc.months_worked }} month{{ '' if acc.months_worked == 1 else 's' }} worked since {{ acc.year_start.strftime('%d %b %Y') }}, in a leave year ending {{ acc.year_end.strftime('%d %b %Y') }}">
             ({{ acc.months_worked }} mo)</span>
         </span>
         {% elif bal and bal.entitlement is not none %}

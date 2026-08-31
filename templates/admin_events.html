@@ -152,7 +152,7 @@
     {%- if bill and bill.paid %} · €{{ '%.2f'|format(bill.paid) }} received{% endif %}
     {%- if bill and bill.owed %} · <strong>€{{ '%.2f'|format(bill.owed) }} still to pay</strong>
     {%- elif bill and bill.quoted and bill.settled %} · settled{% endif %}
-  {%- if bill and bill.discount %} · <span class="mini-status status-approved">code
+  {%- if bill and bill.discount %} · <span class="upload-hint">€{{ '%.2f'|format(bill.gross_quote) }} before</span> · <span class="mini-status status-approved">code
     {{ e['promo_code'] }} \u2212€{{ '%.2f'|format(bill.discount) }}</span>{% endif %}
   </p>
 
