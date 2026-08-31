@@ -287,6 +287,12 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_backup_email_enabled": "1",
     "automation_health_notes_purge_enabled": "1",
     "automation_watch_tasks_enabled": "1",
+    # On by default. Each of these was written to run unattended and then
+    # only ever ran from a button, which is the same as not running.
+    "automation_morning_digest_enabled": "1",
+    "automation_room_feedback_enabled": "1",
+    "automation_checkin_text_enabled": "1",
+    "automation_checkout_text_enabled": "1",
     "automation_backup_interval_hours": "24",
     "automation_social_schedule_enabled": "1",
     "automation_social_horizon_days": "28",
@@ -10503,16 +10509,6 @@ def money_held_not_earned(conn, *, today=None):
             "furthest": max((r["on"] for r in everything), default=None)}
 
 
-def rota_conflict_summary(conn, start, end):
-    """Counts by kind, for a band or a badge, without the rows."""
-    rows = rota_conflicts(conn, start, end)
-    counts = {k: 0 for k in ROTA_CONFLICT_KINDS}
-    for r in rows:
-        counts[r["kind"]] = counts.get(r["kind"], 0) + 1
-    return {"total": len(rows), "counts": counts,
-            "people": len({r["user_id"] for r in rows})}
-
-
 EXTRA_CATEGORIES = {
     "drinks": "Drinks",
     "food": "Food & hampers",
@@ -10664,11 +10660,6 @@ def extras_for_booking(conn, category, booking_id):
 # four ways is four chances for one of them to be missed -- which is what the
 # VAT working was.
 EXTRAS_COUNTED_SQL = "COALESCE(booking_extras.status, '') != 'cancelled'"
-
-
-def extras_total(rows, include_cancelled=False):
-    return round(sum((r["unit_price"] or 0) * (r["quantity"] or 0)
-                     for r in rows if include_cancelled or r["status"] != "cancelled"), 2)
 
 
 def booking_bill(conn, booking_id):
@@ -11068,12 +11059,6 @@ def add_beverage_pour(conn, parent_id, *, serve_size, serve_volume_ml, price,
          parent["vat_rate"], parent["stock_item_id"], qty, parent_id, serve_size,
          serve_volume_ml, parent["sort_order"] or 0, now))
     return conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-
-def beverage_pours_for(conn, parent_id):
-    return conn.execute(
-        "SELECT * FROM menu_items WHERE parent_item_id = ? ORDER BY serve_volume_ml",
-        (parent_id,)).fetchall()
 
 
 def pos_menu(conn, *, service_date=None, service="dinner", include_unavailable=True):
@@ -22216,6 +22201,44 @@ def save_checkin_text():
     return redirect(url_for("management_texting"))
 
 
+@app.route("/management/texting/consent", methods=["POST"])
+@owner_required
+def record_texting_consent():
+    """Write down that somebody said yes to offers by text.
+
+    can_text refuses a marketing message to any number with no consent on
+    file, and record_sms_consent was the only thing that could write one —
+    and nothing called it. So the layer was safe and unusable at once: the
+    page counted consents, the sender looked for them, and there was no way
+    to create one.
+
+    Deliberately the owner's action rather than a tick box on a booking form.
+    A number given to take a booking is not a yes to marketing, which is the
+    rule this whole layer exists to keep, and a checkbox beside a telephone
+    field is exactly how that rule quietly stops being true.
+    """
+    raw = (request.form.get("phone", "") or "").strip()
+    source = (request.form.get("source", "") or "").strip()[:120]
+    number = normalise_phone(raw)
+    if not number:
+        flash("That number could not be read, so nothing was recorded.", "error")
+        return redirect(url_for("management_texting"))
+    if is_mobile_number(number) is False:
+        flash("That is a landline. A text to it goes nowhere.", "error")
+        return redirect(url_for("management_texting"))
+
+    conn = get_db()
+    record_sms_consent(conn, number, source=source or "recorded by hand")
+    log_audit(conn, "sms_consent_recorded", target=number,
+              details=source or "recorded by hand")
+    conn.commit()
+    conn.close()
+    flash(f"{number} may be sent offers. Any earlier refusal from them has "
+          "been lifted, because coming back is their decision to make.",
+          "success")
+    return redirect(url_for("management_texting"))
+
+
 @app.route("/management/texting/stop", methods=["POST"])
 @owner_required
 def stop_texting_number():
@@ -22418,7 +22441,12 @@ def send_to_pennylane(expense_id):
     # that everything arrived already overdue, and the DESCRIPTION sent as the
     # invoice number, which meant nothing could ever be reconciled against a
     # supplier's own statement.
-    issued = expense["invoice_date"] or (
+    # The date on the paper, whichever kind of paper it is. A supplier invoice
+    # carries invoice_date; a staff claim carries spent_on. This read only the
+    # first, so fixing the date for supplier invoices left every STAFF claim
+    # still dated by the day it happened to be handed in -- half a fix, and
+    # the helper written for both was sitting there uncalled.
+    issued = expense_document_date(expense) or (
         expense["submitted_at"] or datetime.now(timezone.utc).isoformat())[:10]
     deadline = expense["due_date"] or issued
     total = float(expense["amount"] or 0)
@@ -27202,11 +27230,6 @@ def guest_text_body(conn, booking, kind="checkin"):
             .replace("{departure_date}", format_date_human(booking["departure_date"]))
             .replace("{manage_url}", manage_url)
             .replace("{statement_url}", statement_url))
-
-
-def checkin_text_body(conn, booking):
-    """The arrival message. Kept because other code calls it by this name."""
-    return guest_text_body(conn, booking, "checkin")
 
 
 def run_guest_text_job(conn, kind="checkin", days_before=None):
@@ -42932,6 +42955,22 @@ AUTOMATION_JOBS = [
     # Daily. Everything here has weeks of notice, so a missed run costs
     # nothing and nothing is ever raised at short notice.
     ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
+    # Daily, early. The whole argument for the morning note is that it arrives
+    # rather than waiting to be looked up, and until it was registered here it
+    # was waiting to be looked up.
+    ("morning_digest", "automation_morning_digest_enabled", None, 24 * 3600,
+     run_morning_digest_job),
+    # Asking a room guest how it was. The job existed and nothing called it,
+    # so the guests were being asked by nobody.
+    ("room_feedback_request", "automation_room_feedback_enabled", None, 24 * 3600,
+     run_room_feedback_job),
+    # The two guest texts. Daily: each stamps per booking, so a run that
+    # happens twice sends nothing twice, and a day missed is a guest who was
+    # not told where to go.
+    ("checkin_text", "automation_checkin_text_enabled", None, 24 * 3600,
+     run_checkin_text_job),
+    ("checkout_text", "automation_checkout_text_enabled", None, 24 * 3600,
+     run_checkout_text_job),
     # Deliberately shipped disabled: this is the only job that takes money
     # with nobody present. Turn it on under Automation once a test booking
     # has been charged end to end in Stripe test mode, including a card
@@ -43069,6 +43108,12 @@ AUTOMATION_JOB_LABELS = {
     # Runnable but unlabelled until now, so it never appeared here at all —
     # the one job whose whole purpose is a promise made in the privacy notice.
     "health_notes_purge": "Delete dietary and medical notes once the event is over",
+    # Four that were written to run unattended and only ever ran from a
+    # button, so on a cron none of them fired.
+    "morning_digest": "The morning note (who is coming, who is going, what needs looking at)",
+    "room_feedback_request": "Ask a room guest how their stay was",
+    "checkin_text": "Text a guest the day before they arrive",
+    "checkout_text": "Text a guest the day they leave",
 }
 
 

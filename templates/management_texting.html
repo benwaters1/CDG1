@@ -82,6 +82,28 @@
 </div>
 {% endif %}
 
+<h2 class="section-heading">Said yes to offers</h2>
+{# The mirror of the box below, which has been here since this page was built.
+   can_text refuses a marketing message to any number with no consent on file,
+   and there was no way anywhere in the app to put one there — so the layer was
+   safe and unusable at the same time.
+
+   The owner's action, not a tick box on a booking form. A number given to take
+   a booking is not a yes to marketing, and a checkbox beside a telephone field
+   is exactly how that stops being true. #}
+<form method="post" action="{{ url_for('record_texting_consent') }}" style="margin-bottom:14px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <input type="tel" name="phone" placeholder="06 12 34 56 78" required style="max-width:220px;"
+           aria-label="Their mobile number">
+    <input type="text" name="source" placeholder="Where they said it — on the telephone, at the desk"
+           style="max-width:320px;" aria-label="Where they said yes">
+    <button type="submit" class="btn-mini">They said yes</button>
+  </div>
+  <p class="upload-hint">Recording a yes also lifts any earlier no from that
+    number, because coming back is their decision to make.</p>
+</form>
+
 <h2 class="section-heading">Asked not to be texted</h2>
 <form method="post" action="{{ url_for('stop_texting_number') }}" style="margin-bottom:14px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

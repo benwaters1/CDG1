@@ -60,6 +60,14 @@ def _held(number):
         conn.close()
 
 
+def _count_consents():
+    conn = db()
+    try:
+        return conn.execute("SELECT COUNT(*) AS c FROM sms_consents").fetchone()["c"]
+    finally:
+        conn.close()
+
+
 def run():
     s = Suite("Texting")
     _cleanup()
@@ -183,6 +191,89 @@ def run():
     conn.commit()
     s.check("an ordinary message is still held", len(_held(OTHER)) == 1,
             detail=str(len(_held(OTHER))))
+
+    s.section("Somebody says yes to offers")
+    # can_text refuses a marketing message to a number with no consent on
+    # file, and record_sms_consent was the only thing that could write one --
+    # called by nothing. The layer was safe and unusable at once: the page
+    # counted consents, the sender looked for them, and nothing could create
+    # one.
+    keen = "+33698765432"
+    conn = db()
+    conn.execute("DELETE FROM sms_consents WHERE phone = ?", (keen,))
+    conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (keen,))
+    conn.commit()
+    with m.app.test_request_context():
+        _n, refusal = m.can_text(conn, keen, "marketing")
+    conn.close()
+    s.check("before any yes, an offer is refused", bool(refusal),
+            detail=str(refusal))
+
+    r = oc.post("/management/texting/consent",
+                data={"phone": "06 98 76 54 32", "source": "said so at the desk"},
+                follow_redirects=True)
+    conn = db()
+    have = conn.execute("SELECT * FROM sms_consents WHERE phone = ?", (keen,)).fetchone()
+    with m.app.test_request_context():
+        number, refusal = m.can_text(conn, keen, "marketing")
+    conn.close()
+    s.check("the yes is recorded", have is not None, detail=str(flashes(r)))
+    s.check("against the number as the app writes numbers, not as it was typed",
+            have and have["phone"] == keen,
+            detail=str(have["phone"]) if have else "06 98 76 54 32 was typed")
+    s.check("with where they said it", have and "desk" in (have["source"] or ""),
+            detail=str(have["source"]) if have else "")
+    s.check("and now an offer is allowed", not refusal and number == keen,
+            detail=str(refusal))
+
+    s.section("A yes lifts an earlier no, because coming back is theirs to decide")
+    conn = db()
+    m.record_sms_optout(conn, keen, reason="asked to stop")
+    conn.commit()
+    with m.app.test_request_context():
+        _n, refused_again = m.can_text(conn, keen, "marketing")
+    conn.close()
+    s.check("after they ask to stop, offers are refused again", bool(refused_again),
+            detail=str(refused_again))
+
+    oc.post("/management/texting/consent",
+            data={"phone": keen, "source": "rang back"}, follow_redirects=True)
+    conn = db()
+    with m.app.test_request_context():
+        _n, after_return = m.can_text(conn, keen, "marketing")
+    conn.close()
+    s.check("saying yes again lifts it", not after_return,
+            detail=f"{after_return} -- the mirror of the newsletter's confirm "
+                   "step: coming back is a deliberate act by the person")
+
+    s.section("What it will not take as a yes")
+    before = _count_consents()
+    r = oc.post("/management/texting/consent",
+                data={"phone": "ask my wife", "source": "x"}, follow_redirects=True)
+    s.check("a number nobody can read is refused",
+            any("could not be read" in f.lower() for f in flashes(r)),
+            detail=str(flashes(r)))
+    r = oc.post("/management/texting/consent",
+                data={"phone": "01 61 02 03 04", "source": "x"}, follow_redirects=True)
+    s.check("and a landline is refused",
+            any("landline" in f.lower() for f in flashes(r)), detail=str(flashes(r)))
+    s.check("neither was written down", _count_consents() == before,
+            detail="a consent recorded against a number that cannot receive a "
+                   "text is a consent that will never be acted on and never "
+                   "be reviewed")
+
+    r = _ec.post("/management/texting/consent",
+                data={"phone": "06 98 76 54 30", "source": "employee"},
+                follow_redirects=False)
+    s.check("an employee cannot record a consent",
+            r.status_code in (302, 303, 403), detail=f"HTTP {r.status_code}")
+    s.check("and none was recorded", _count_consents() == before)
+
+    conn = db()
+    conn.execute("DELETE FROM sms_consents WHERE phone = ?", (keen,))
+    conn.execute("DELETE FROM sms_optouts WHERE phone = ?", (keen,))
+    conn.commit()
+    conn.close()
 
     s.section("The notice says exactly this")
     # Four claims, each a claim about code. If the code stops making them true
