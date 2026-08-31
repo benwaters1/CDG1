@@ -3362,6 +3362,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
+.g-plate__row{ min-width: 0; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
 .g-plate__l > div{
@@ -3894,6 +3895,10 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
   padding: var(--s6) 0;
 }
 .g-plan__cols{ display: grid; gap: var(--s5); }
+/* A grid child defaults to min-width:auto, so one long word or a wide table
+   inside a column pushes past its track and takes the page with it. Both of
+   these are grid children and neither had a rule at all. */
+.g-plan__col{ min-width: 0; }
 @media (min-width: 46rem){ .g-plan__cols{ grid-template-columns: repeat(3, 1fr); } }
 .g-plan__k{
   margin: 0 0 var(--s3); font-family: var(--ui);

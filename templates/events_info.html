@@ -119,11 +119,11 @@
         <div class="g-row">
           <p class="g-field">
             <label for="preferred_date">Preferred date</label>
-            <input type="date" id="preferred_date" name="preferred_date">
+            <input type="date" id="preferred_date" name="preferred_date" value="{{ prefill_preferred_date | default('') }}">
           </p>
           <p class="g-field">
             <label for="alternate_date">Alternate date <span class="g-opt">optional</span></label>
-            <input type="date" id="alternate_date" name="alternate_date">
+            <input type="date" id="alternate_date" name="alternate_date" value="{{ prefill_alternate_date | default('') }}">
           </p>
         </div>
         <p class="g-field g-field--narrow">

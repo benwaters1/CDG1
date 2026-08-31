@@ -7,6 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
 <meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
+{% block robots %}{% endblock %}
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -242,7 +243,7 @@
 
         <div class="g-navwrap__legal">
           <a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a>
-          <a href="#">{{ t('Privacy Policy') }}</a>
+          <a href="{{ url_for('privacy_page') }}">{{ t('Privacy Policy') }}</a>
         </div>
       </div>
     </div>

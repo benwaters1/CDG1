@@ -1,6 +1,7 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'none' %}
 {% block title %}{{ t('Check In') }}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <div class="g-mb-card">
@@ -46,6 +47,37 @@
   {% endif %}
 
 {% if booking['status'] in ('pending', 'confirmed') %}
+
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h3>{{ t('Your details') }}</h3>
+  <p class="g-hint">{{ t("If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.") }}</p>
+  <form method="post" class="g-row" style="margin-top:var(--s2);">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="contact">
+    <div style="flex:1 1 220px;">
+      <label for="mb_guest_name">{{ t('Name') }}</label>
+      <input type="text" id="mb_guest_name" name="guest_name" required
+             value="{{ booking['guest_name'] or '' }}">
+    </div>
+    <div style="flex:1 1 220px;">
+      <label for="mb_guest_phone">{{ t('Mobile') }}</label>
+      <input type="tel" inputmode="tel" autocomplete="tel" id="mb_guest_phone"
+             name="guest_phone" value="{{ booking['guest_phone'] or '' }}"
+             placeholder="06 12 34 56 78">
+    </div>
+    <div style="align-self:flex-end;">
+      <button type="submit" class="g-btn">{{ t('Save') }}</button>
+    </div>
+  </form>
+  {# The email is not editable here on purpose: it is the address this booking is
+     filed under and the one the account page is keyed on, so changing it from a
+     page reached by a link would move the booking to whoever holds the link.
+     The message box below sends it to a person instead. #}
+  <p class="g-hint" style="margin-top:var(--s2);">
+    {{ t('Booked under') }} <strong>{{ booking['guest_email'] }}</strong>.
+    {{ t('If that address is wrong, send us a message below and we will change it.') }}
+  </p>
+</div>
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h3>{{ t('Estimated arrival time') }}</h3>
@@ -171,6 +203,25 @@
     <div class="g-mb-total"><span>{{ t('Still to pay') }}</span><span>€{{ '%.2f'|format(bill.owed) }}</span></div>
     {% if stripe_enabled and booking['status'] in ('pending', 'confirmed') %}
     <a href="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s2); display:inline-block;">Pay €{{ '%.2f'|format(bill.owed) }} now</a>
+
+    {# Paying some of it. A stay is often settled in two or three goes — one card
+       now, the rest nearer the time, or split between the people travelling —
+       and all-or-nothing makes the house chase money it could already have had.
+       Folded away, because most guests will use the button above and a second
+       amount box beside it only invites a pause. #}
+    <details class="g-mb-part">
+      <summary>{{ t('Pay part of it instead') }}</summary>
+      <form method="post" action="{{ url_for('booking_pay', manage_token=booking['manage_token']) }}"
+            class="g-mb-part__form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="g-mb-label" for="mb_part">{{ t('How much would you like to pay now?') }}</label>
+        <input id="mb_part" type="number" name="amount" inputmode="decimal"
+               min="{{ part_payment_minimum }}" max="{{ '%.2f'|format(bill.owed) }}" step="0.01"
+               placeholder="{{ '%.2f'|format(bill.owed) }}">
+        <button type="submit" class="g-btn">{{ t('Continue') }}</button>
+      </form>
+      <p class="g-hint">{{ t('The rest stays on your bill and can be paid any time, or on arrival.') }}</p>
+    </details>
     <p class="g-hint">Or we will take it on arrival — whichever you prefer.</p>
     {% else %}
     <p class="g-hint">We will take this on arrival unless you hear otherwise.</p>

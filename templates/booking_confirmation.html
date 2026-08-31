@@ -1,6 +1,7 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 {# CONTRACT — read-only. Uses booking.* and the same url_for endpoints as
@@ -94,7 +95,7 @@
       <p class="g-find__d">Market mornings with the chef, guided walks, the brocantes, electric bikes, or the mountain between December and April.</p>
     </div>
       <p style="margin-top:var(--s6)">
-      <a href="{{ url_for('manage_booking', token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>
+      <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid">{{ t('Add to your stay') }}</a>
     </p>
   </div>
 </div></section>
