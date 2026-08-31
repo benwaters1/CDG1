@@ -3360,6 +3360,29 @@ def init_db():
         ("job_last_ok_at", "ALTER TABLE automation_runs ADD COLUMN last_ok_at TEXT"),
         ("job_fail_streak", "ALTER TABLE automation_runs ADD COLUMN "
                             "consecutive_failures INTEGER NOT NULL DEFAULT 0"),
+        # A link per supplier. One shared token could not be withdrawn from a
+        # supplier who no longer deals with the house without withdrawing it
+        # from everybody, and told you nothing about who had sent what.
+        ("vendor_upload_token", "ALTER TABLE vendors ADD COLUMN upload_token TEXT"),
+        ("vendor_token_issued", "ALTER TABLE vendors ADD COLUMN token_issued_at TEXT"),
+        ("vendor_token_revoked", "ALTER TABLE vendors ADD COLUMN token_revoked_at TEXT"),
+        ("vendor_last_seen", "ALTER TABLE vendors ADD COLUMN last_submitted_at TEXT"),
+        ("vendor_active", "ALTER TABLE vendors ADD COLUMN active INTEGER NOT NULL DEFAULT 1"),
+        # The invoice's own facts, rather than facts about the upload. Every
+        # one of these was previously invented at the moment of sending to the
+        # accountant: the date it was uploaded standing in for the date on the
+        # paper, and the description standing in for the invoice number.
+        ("expense_vendor_id", "ALTER TABLE expenses ADD COLUMN vendor_id INTEGER "
+                              "REFERENCES vendors(id) ON DELETE SET NULL"),
+        ("expense_invoice_number", "ALTER TABLE expenses ADD COLUMN invoice_number TEXT"),
+        ("expense_invoice_date", "ALTER TABLE expenses ADD COLUMN invoice_date TEXT"),
+        ("expense_due_date", "ALTER TABLE expenses ADD COLUMN due_date TEXT"),
+        # Stated by the supplier, not derived. A builder and a case of wine do
+        # not carry the same rate, and one assumed rate for everything is a
+        # wrong number on the return rather than a missing one.
+        ("expense_tax_amount", "ALTER TABLE expenses ADD COLUMN tax_amount REAL"),
+        ("expense_paid_at", "ALTER TABLE expenses ADD COLUMN paid_at TEXT"),
+        ("expense_dup_of", "ALTER TABLE expenses ADD COLUMN duplicate_of_id INTEGER"),
     ):
         try:
             conn.execute(ddl)
@@ -22039,14 +22062,28 @@ def send_to_pennylane(expense_id):
         flash(f"Pennylane wouldn't take the file: {file_id}", "error")
         return redirect(url_for("expenses"))
 
-    issued = (expense["submitted_at"] or datetime.now(timezone.utc).isoformat())[:10]
-    vat = tax_rate(conn, "vat_food") or 20.0
+    # The invoice's own facts, not facts about the upload. Every one of these
+    # used to be invented here: the date it happened to be uploaded standing in
+    # for the date printed on it, the same day again as the payment deadline so
+    # that everything arrived already overdue, and the DESCRIPTION sent as the
+    # invoice number, which meant nothing could ever be reconciled against a
+    # supplier's own statement.
+    issued = expense["invoice_date"] or (
+        expense["submitted_at"] or datetime.now(timezone.utc).isoformat())[:10]
+    deadline = expense["due_date"] or issued
     total = float(expense["amount"] or 0)
+    stated_tax, _why = supplier_invoice_tax(conn, expense)
+    if stated_tax is None:
+        # Derived only as a last resort, and only for invoices that predate
+        # the field. Guessing a rate is a wrong number on the return rather
+        # than a missing one, so anything new is asked for instead.
+        vat = tax_rate(conn, "vat_food") or 20.0
+        stated_tax = round(total - total / (1 + vat / 100), 2)
     ok, result = pennylane_import_supplier_invoice(
-        file_attachment_id=file_id, supplier_id=supplier_id, date=issued, deadline=issued,
-        amount=total, tax=round(total - total / (1 + vat / 100), 2),
+        file_attachment_id=file_id, supplier_id=supplier_id, date=issued, deadline=deadline,
+        amount=total, tax=stated_tax,
         lines=_expense_pennylane_lines(conn, expense),
-        invoice_number=(expense["description"] or "")[:60] or None,
+        invoice_number=(expense["invoice_number"] or expense["description"] or "")[:60] or None,
         external_reference=f"gudanes-expense-{expense_id}")
     if not ok:
         conn.execute("UPDATE expenses SET pennylane_error = ? WHERE id = ?",
@@ -22836,6 +22873,7 @@ def expenses():
         "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
         status_filter=status_filter, q=q, totals=totals,
         pennylane_ready=pennylane_configured(),
+        today_iso=datetime.now(LOCAL_TZ).date().isoformat(),
         # Only offer the scan button when a scanner is configured — a button
         # that cannot work from Perth is worse than no button.
         scanner_ready=scanner_configured(),
@@ -23075,48 +23113,125 @@ def regenerate_supplier_link():
 
 @app.route("/supplier-invoices/submit/<token>", methods=["GET", "POST"])
 def supplier_invoice_submit(token):
+    """A supplier sending in an invoice, through their own link or the shared one.
+
+    TWO KINDS OF LINK, and the difference matters. A supplier the house has set
+    up has their own: it names them, so they are not asked to type a company
+    name that could be mistyped or borrowed, it can be withdrawn from them
+    alone, and their invoices are attributed without anybody matching text.
+    The shared link still works for a supplier nobody has set up yet — but
+    what arrives through it is marked as unidentified rather than trusted.
+
+    THE INVOICE'S OWN FACTS are asked for here, which is the whole point. The
+    number, the date on the paper and the VAT stated on it used to be invented
+    later from what was to hand: the upload date standing in for the invoice
+    date, and the description standing in for the invoice number.
+    """
     conn = get_db()
-    stored = conn.execute(
-        "SELECT value FROM app_settings WHERE key = 'supplier_upload_token'"
-    ).fetchone()
-    if not stored or not hmac.compare_digest(token, stored["value"]):
-        conn.close()
-        abort(404)
+    vendor = vendor_for_token(conn, token)
+    if not vendor:
+        stored = conn.execute(
+            "SELECT value FROM app_settings WHERE key = 'supplier_upload_token'"
+        ).fetchone()
+        if not stored or not hmac.compare_digest(token, stored["value"]):
+            conn.close()
+            abort(404)
+
+    def form(**kw):
+        return render_template("supplier_invoice_form.html", vendor=vendor,
+                               today=datetime.now(LOCAL_TZ).date().isoformat(), **kw)
 
     if request.method == "POST":
-        vendor_name = request.form.get("vendor_name", "").strip()
+        # Rate limited per link. Without this the address is a way for whoever
+        # holds it to put any number of rows into the house's payables, and
+        # the shared one has been forwarded around for a year.
+        if rate_limited(conn, f"supplier_invoice:{token[:16]}", BOOKING_RATE_LIMIT_PER_HOUR):
+            conn.commit()
+            conn.close()
+            flash("That is a lot of invoices at once. Please try again shortly, "
+                  "or email them to us.", "error")
+            return form()
+
+        vendor_name = (vendor["name"] if vendor
+                       else request.form.get("vendor_name", "").strip())
         description = request.form.get("description", "").strip()
         amount_raw = request.form.get("amount", "").strip()
+        invoice_number = request.form.get("invoice_number", "").strip()[:60]
+        invoice_date_raw = request.form.get("invoice_date", "").strip()
+        tax_raw = request.form.get("tax_amount", "").strip()
         file = request.files.get("invoice")
 
         try:
             amount = float(amount_raw)
         except ValueError:
             amount = None
+        try:
+            tax_amount = float(tax_raw) if tax_raw else None
+        except ValueError:
+            tax_amount = None
 
+        invoice_date = parse_date(invoice_date_raw)
         if not vendor_name or not description or amount is None or amount <= 0:
             flash("Company name, a description, and a valid amount are required.", "error")
             conn.close()
-            return render_template("supplier_invoice_form.html")
+            return form()
+        if not invoice_date:
+            flash("The date on the invoice is required \u2014 it is what the invoice "
+                  "is filed and paid against.", "error")
+            conn.close()
+            return form()
+        # An invoice dated in the future is a typo often enough to be worth
+        # refusing: 2027 for 2026 puts it a year down the ageing report where
+        # nobody will look for it.
+        if invoice_date > datetime.now(LOCAL_TZ).date() + timedelta(days=1):
+            flash("That invoice date is in the future \u2014 please check it.", "error")
+            conn.close()
+            return form()
+        if tax_amount is not None and (tax_amount < 0 or tax_amount > amount):
+            flash("The VAT cannot be negative or larger than the total.", "error")
+            conn.close()
+            return form()
 
         stored_name = save_expense_file(file)
         if stored_name is False:
             flash(f"File type not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}", "error")
             conn.close()
-            return render_template("supplier_invoice_form.html")
+            return form()
 
+        duplicate = find_duplicate_invoice(
+            conn, vendor_id=vendor["id"] if vendor else None, vendor_name=vendor_name,
+            invoice_number=invoice_number, amount=amount,
+            invoice_date=invoice_date.isoformat())
+
+        due = invoice_due_date(invoice_date,
+                               vendor["payment_terms"] if vendor else None)
         conn.execute(
             """INSERT INTO expenses
-               (kind, vendor_name, description, amount, filename, submitted_at)
-               VALUES ('supplier_invoice', ?, ?, ?, ?, ?)""",
-            (vendor_name, description, amount, stored_name, datetime.now(timezone.utc).isoformat()),
+               (kind, vendor_id, vendor_name, description, amount, filename,
+                invoice_number, invoice_date, due_date, tax_amount,
+                duplicate_of_id, submitted_at)
+               VALUES ('supplier_invoice', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (vendor["id"] if vendor else None, vendor_name, description, amount,
+             stored_name, invoice_number or None, invoice_date.isoformat(), due,
+             tax_amount, duplicate["id"] if duplicate else None,
+             datetime.now(timezone.utc).isoformat()),
         )
+        if vendor:
+            conn.execute("UPDATE vendors SET last_submitted_at = ? WHERE id = ?",
+                         (datetime.now(timezone.utc).isoformat(), vendor["id"]))
+        log_audit(conn, "supplier_invoice_received",
+                  target=vendor_name,
+                  details=f"{amount:.2f} {invoice_number or 'no number'}"
+                          + (" POSSIBLE DUPLICATE" if duplicate else ""))
         conn.commit()
         conn.close()
-        return render_template("supplier_invoice_submitted.html")
+        # The supplier is told it arrived either way. A duplicate is the
+        # house's problem to look at, not theirs to be refused over, and a
+        # supplier who re-sends a chaser has done nothing wrong.
+        return render_template("supplier_invoice_submitted.html", vendor=vendor)
 
     conn.close()
-    return render_template("supplier_invoice_form.html")
+    return form()
 
 
 # ---------------------------------------------------------------------------
@@ -34253,6 +34368,19 @@ def vendors():
                GROUP BY vendor_name"""
         ).fetchall()
     }
+    # What is owed to each, and how late. Spend-to-date says what the house has
+    # bought; this says what it has not yet paid for, which is the figure that
+    # decides whether a supplier is about to stop delivering.
+    owed = {}
+    for r in conn.execute(
+            """SELECT vendor_id, SUM(amount) AS total, COUNT(*) AS n,
+                      MIN(due_date) AS soonest
+                 FROM expenses
+                WHERE kind = 'supplier_invoice' AND vendor_id IS NOT NULL
+                  AND status IN ('pending', 'approved') AND paid_at IS NULL
+                GROUP BY vendor_id""").fetchall():
+        owed[r["vendor_id"]] = {"total": round(r["total"] or 0, 2), "count": r["n"],
+                                "soonest": r["soonest"]}
     conn.close()
     if q:
         needle = q.lower()
@@ -34260,7 +34388,9 @@ def vendors():
             v for v in rows
             if needle in v["name"].lower() or needle in (v["contact_person"] or "").lower()
         ]
-    return render_template("vendors.html", vendors=rows, q=q, spend_by_vendor=spend_by_vendor)
+    return render_template("vendors.html", vendors=rows, q=q,
+                           spend_by_vendor=spend_by_vendor, owed=owed,
+                           today=datetime.now(LOCAL_TZ).date().isoformat())
 
 
 @app.route("/management/vendors/new", methods=["POST"])
@@ -34286,6 +34416,58 @@ def new_vendor():
     conn.commit()
     conn.close()
     flash("Vendor added.", "success")
+    return redirect(url_for("vendors"))
+
+
+@app.route("/management/vendors/<int:vendor_id>/upload-link", methods=["POST"])
+@owner_required
+def issue_vendor_upload_link(vendor_id):
+    """Give one supplier a link of their own, or replace the one they have.
+
+    The house had a single link shared by every supplier. It could not be
+    withdrawn from one of them without withdrawing it from all of them, it
+    told you nothing about who had sent what, and after a year of being
+    forwarded around there was no knowing who held it.
+    """
+    conn = get_db()
+    vendor = conn.execute("SELECT * FROM vendors WHERE id = ?", (vendor_id,)).fetchone()
+    if not vendor:
+        conn.close()
+        abort(404)
+    replacing = bool(vendor["upload_token"])
+    issue_vendor_token(conn, vendor_id)
+    log_audit(conn, "vendor_upload_link_reissued" if replacing else "vendor_upload_link_issued",
+              target=vendor["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{vendor['name']} has their own upload link"
+          + (" — the previous one no longer works." if replacing else "."), "success")
+    return redirect(url_for("vendors"))
+
+
+@app.route("/management/vendors/<int:vendor_id>/revoke-link", methods=["POST"])
+@owner_required
+def revoke_vendor_upload_link(vendor_id):
+    """Withdraw one supplier's link without touching anybody else's."""
+    conn = get_db()
+    vendor = conn.execute("SELECT * FROM vendors WHERE id = ?", (vendor_id,)).fetchone()
+    if not vendor:
+        conn.close()
+        abort(404)
+    if not vendor["upload_token"]:
+        conn.close()
+        flash(f"{vendor['name']} has no link to withdraw.", "error")
+        return redirect(url_for("vendors"))
+    # Kept rather than blanked, so the audit trail still resolves and a
+    # submission that arrives on it can be recognised as having used a
+    # withdrawn link rather than simply not matching anything.
+    conn.execute("UPDATE vendors SET token_revoked_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), vendor_id))
+    log_audit(conn, "vendor_upload_link_revoked", target=vendor["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{vendor['name']}'s link no longer works. Everyone else's is unaffected.",
+          "success")
     return redirect(url_for("vendors"))
 
 
@@ -41129,6 +41311,187 @@ def pennylane_upload_file(file_bytes, filename):
     if not file_id:
         return False, "Pennylane accepted the file but didn't return an id."
     return True, file_id
+
+
+# ---------------------------------------------------------------------------
+# Supplier invoices: one link per supplier, and the invoice's own facts.
+# ---------------------------------------------------------------------------
+
+# How long after the invoice date a supplier expects to be paid, when nothing
+# else is known. Thirty days is the French commercial default and the number
+# the house would be held to anyway.
+DEFAULT_PAYMENT_TERMS_DAYS = 30
+
+# Two invoices from the same supplier for the same amount inside this window
+# are worth a second look even when the numbers differ, because a supplier
+# re-sending a chaser is the common case and paying it twice is the expensive
+# one. Not a refusal — the house does buy the same thing twice in a fortnight.
+DUPLICATE_WINDOW_DAYS = 45
+
+
+def parse_payment_terms(terms):
+    """Days from a free-text payment term, or None if it does not say.
+
+    payment_terms is free text because a supplier writes what they like on an
+    invoice: "30 days", "Net 30", "fin de mois", "payable a reception". Only
+    the ones that plainly state a number of days are read; anything else
+    returns None and the caller falls back rather than guessing, because a
+    due date invented from an unreadable phrase is worse than an honest
+    default nobody will mistake for the supplier's own terms.
+    """
+    if not terms:
+        return None
+    text = str(terms).lower()
+    if "reception" in text or "on receipt" in text or "immediate" in text:
+        return 0
+    match = re.search(r"(\d{1,3})\s*(?:days?|jours?|j\b)", text)
+    if not match:
+        match = re.search(r"\bnet\s*(\d{1,3})\b", text)
+    if not match:
+        return None
+    days = int(match.group(1))
+    return days if 0 <= days <= 365 else None
+
+
+def invoice_due_date(invoice_date, terms):
+    """When an invoice actually falls due.
+
+    Everything sent to the accountant used to be dated the day it was uploaded
+    and marked due the same day, which made every supplier invoice look
+    overdue on arrival and made the ageing report meaningless.
+    """
+    base = parse_date(invoice_date) if isinstance(invoice_date, str) else invoice_date
+    if not base:
+        return None
+    days = parse_payment_terms(terms)
+    if days is None:
+        days = DEFAULT_PAYMENT_TERMS_DAYS
+    return (base + timedelta(days=days)).isoformat()
+
+
+def vendor_for_token(conn, token):
+    """The supplier a link belongs to, if it is still live.
+
+    Compared with compare_digest for the same reason the shared token was:
+    a token check that short-circuits on the first wrong character is a token
+    check that can be guessed a character at a time.
+    """
+    if not token:
+        return None
+    for row in conn.execute(
+            "SELECT * FROM vendors WHERE upload_token IS NOT NULL "
+            "AND token_revoked_at IS NULL AND active = 1").fetchall():
+        if hmac.compare_digest(token, row["upload_token"]):
+            return row
+    return None
+
+
+def issue_vendor_token(conn, vendor_id):
+    """Give one supplier their own link, replacing any they had.
+
+    Reissuing is how a link is withdrawn from whoever forwarded it on without
+    withdrawing it from everybody else, which the single shared token could
+    never do.
+    """
+    token = secrets.token_urlsafe(24)
+    conn.execute(
+        "UPDATE vendors SET upload_token = ?, token_issued_at = ?, token_revoked_at = NULL "
+        "WHERE id = ?",
+        (token, datetime.now(timezone.utc).isoformat(), vendor_id))
+    return token
+
+
+def find_duplicate_invoice(conn, *, vendor_id, vendor_name, invoice_number, amount,
+                           invoice_date, exclude_id=None):
+    """An invoice the house may already have. Returns the row, or None.
+
+    Two rules, in order of how sure they are:
+
+      1. The same supplier and the same invoice number is the same invoice.
+         There is no innocent reading of that.
+      2. The same supplier and the same amount within DUPLICATE_WINDOW_DAYS,
+         which is a maybe rather than a certainty. A chaser re-sent by a
+         supplier looks exactly like this, and so does buying the same case
+         of wine twice in a month.
+
+    It FLAGS rather than refuses. A supplier invoice arriving twice is common
+    and a supplier invoice being wrongly refused is a phone call; paying one
+    twice is money gone, and the point is that a person sees it before either
+    happens.
+    """
+    amount = round(float(amount or 0), 2)
+    if invoice_number:
+        row = conn.execute(
+            """SELECT * FROM expenses
+                WHERE kind = 'supplier_invoice' AND id != COALESCE(?, -1)
+                  AND invoice_number IS NOT NULL
+                  AND LOWER(TRIM(invoice_number)) = LOWER(TRIM(?))
+                  AND (vendor_id = ? OR (? IS NULL AND LOWER(TRIM(COALESCE(vendor_name,''))) = LOWER(TRIM(?))))
+                ORDER BY id DESC LIMIT 1""",
+            (exclude_id, invoice_number, vendor_id, vendor_id, vendor_name or "")).fetchone()
+        if row:
+            return row
+
+    base = parse_date(invoice_date) if isinstance(invoice_date, str) else invoice_date
+    if not base or not amount:
+        return None
+    since = (base - timedelta(days=DUPLICATE_WINDOW_DAYS)).isoformat()
+    until = (base + timedelta(days=DUPLICATE_WINDOW_DAYS)).isoformat()
+    return conn.execute(
+        """SELECT * FROM expenses
+            WHERE kind = 'supplier_invoice' AND id != COALESCE(?, -1)
+              AND ROUND(amount, 2) = ?
+              AND COALESCE(invoice_date, SUBSTR(submitted_at, 1, 10)) BETWEEN ? AND ?
+              AND (vendor_id = ? OR (? IS NULL AND LOWER(TRIM(COALESCE(vendor_name,''))) = LOWER(TRIM(?))))
+            ORDER BY id DESC LIMIT 1""",
+        (exclude_id, amount, since, until, vendor_id, vendor_id, vendor_name or "")).fetchone()
+
+
+def supplier_invoice_tax(conn, expense):
+    """The VAT on a supplier invoice: what it says, or nothing.
+
+    Everything used to be run through the food rate, which is a wrong number
+    on the return rather than a missing one — a builder and a case of wine do
+    not carry the same rate, and the app cannot know which applies. So the
+    figure now comes from the invoice when the supplier stated it, and when
+    they did not the house is asked rather than assumed at.
+    """
+    stated = expense["tax_amount"] if "tax_amount" in expense.keys() else None
+    if stated is not None:
+        return round(float(stated), 2), "as stated on the invoice"
+    return None, "not stated — enter the VAT from the invoice before sending"
+
+
+def payables_ageing(conn, today=None):
+    """What the house owes suppliers, and how late it is.
+
+    Impossible before this: every invoice was due the day it was uploaded, so
+    an ageing report would have said everything was overdue and nobody would
+    have opened it twice.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    buckets = {"not_yet_due": [], "due_soon": [], "overdue": [], "no_date": []}
+    rows = conn.execute(
+        """SELECT expenses.*, vendors.name AS vendor_display
+             FROM expenses LEFT JOIN vendors ON vendors.id = expenses.vendor_id
+            WHERE expenses.kind = 'supplier_invoice'
+              AND expenses.status IN ('pending', 'approved')
+              AND expenses.paid_at IS NULL
+            ORDER BY COALESCE(expenses.due_date, '9999-12-31'), expenses.id""").fetchall()
+    for r in rows:
+        due = parse_date(r["due_date"]) if r["due_date"] else None
+        if not due:
+            buckets["no_date"].append(r)
+        elif due < day:
+            buckets["overdue"].append(r)
+        elif (due - day).days <= 7:
+            buckets["due_soon"].append(r)
+        else:
+            buckets["not_yet_due"].append(r)
+    totals = {k: round(sum(float(r["amount"] or 0) for r in v), 2)
+              for k, v in buckets.items()}
+    return {"buckets": buckets, "totals": totals,
+            "total": round(sum(totals.values()), 2)}
 
 
 def pennylane_import_supplier_invoice(*, file_attachment_id, supplier_id, date, deadline,

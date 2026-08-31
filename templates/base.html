@@ -7,6 +7,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Staff{% endblock %} — Château de Gudanes</title>
+{# Most pages on this shell are behind a login and cannot be crawled anyway.
+   The exception is the ones reached by a link instead: a supplier's invoice
+   form is not behind a password, so the block has to exist here for its
+   override to be anything other than dead markup. That is the same fault
+   public_base.html carries a warning about. #}
+{% block robots %}{% endblock %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 {# Inter Tight is the owner Home's figure face. Added to the existing request
    rather than a second one, and Playfair stays: it is still the shell's

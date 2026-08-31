@@ -1,21 +1,74 @@
 {% extends "base.html" %}
 {% block title %}Submit an invoice{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <div class="login-wrap">
   <div class="login-card">
     <div class="login-crest">Château de Gudanes</div>
+
+    {# A supplier who has their own link is NAMED here rather than asked to
+       type a company name. The name they typed was the only thing tying an
+       invoice to a supplier, so a typo made a second supplier and a borrowed
+       link made anybody's. #}
+    {% if vendor %}
+    <h1>Invoices from {{ vendor['name'] }}</h1>
+    <p class="pay-disclaimer" style="margin-top:0;">
+      This link is yours. We already know who you are, so there is no company
+      name to fill in.
+      {%- if vendor['payment_terms'] %} Your terms with us are
+      {{ vendor['payment_terms'] }}, and the due date is worked out from the
+      invoice date below.{% endif %}
+    </p>
+    {% else %}
     <h1>Submit an Invoice</h1>
+    <p class="pay-disclaimer" style="margin-top:0;">
+      If you deal with us regularly, ask us for your own link — it saves
+      filling in the company name and gets your invoices to the right place.
+    </p>
+    {% endif %}
+
     <form method="post" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="field-label">Company / supplier name</label>
-      <input type="text" name="vendor_name" required>
-      <label class="field-label">Description</label>
-      <textarea name="description" required placeholder="What the invoice is for"></textarea>
-      <label class="field-label">Amount (€)</label>
-      <input type="number" name="amount" step="0.01" min="0.01" required>
-      <label class="field-label">Invoice file</label>
-      <input type="file" name="invoice" required>
+
+      {% if not vendor %}
+      <label class="field-label" for="si_vendor">Company / supplier name</label>
+      <input type="text" id="si_vendor" name="vendor_name" required
+             value="{{ request.form.get('vendor_name', '') }}">
+      {% endif %}
+
+      {# The invoice's own number and date. Both used to be invented later —
+         the description was sent to the accountant where the invoice number
+         belongs, and the day of upload stood in for the date on the paper. #}
+      <label class="field-label" for="si_number">Your invoice number</label>
+      <input type="text" id="si_number" name="invoice_number" maxlength="60"
+             value="{{ request.form.get('invoice_number', '') }}"
+             placeholder="As printed on the invoice">
+      <p class="upload-hint">Helps us match it to your statement, and stops the
+        same invoice being entered twice.</p>
+
+      <label class="field-label" for="si_date">Date on the invoice</label>
+      <input type="date" id="si_date" name="invoice_date" required max="{{ today }}"
+             value="{{ request.form.get('invoice_date', '') }}">
+
+      <label class="field-label" for="si_desc">Description</label>
+      <textarea id="si_desc" name="description" required
+                placeholder="What the invoice is for">{{ request.form.get('description', '') }}</textarea>
+
+      <label class="field-label" for="si_amount">Total including VAT (€)</label>
+      <input type="number" id="si_amount" name="amount" step="0.01" min="0.01" required
+             value="{{ request.form.get('amount', '') }}">
+
+      <label class="field-label" for="si_tax">VAT included (€)</label>
+      <input type="number" id="si_tax" name="tax_amount" step="0.01" min="0"
+             value="{{ request.form.get('tax_amount', '') }}">
+      <p class="upload-hint">The VAT figure printed on your invoice. Leave it
+        blank if there is none — we would rather ask than assume a rate.</p>
+
+      <label class="field-label" for="si_file">Invoice file</label>
+      <input type="file" id="si_file" name="invoice" required
+             accept="image/*,application/pdf">
+
       <button type="submit" class="btn-primary btn-block">Submit invoice</button>
     </form>
   </div>

@@ -40,6 +40,58 @@
       {% if v['email'] %}<a href="mailto:{{ v['email'] }}" style="color:var(--steel);">{{ v['email'] }}</a>{% endif %}
       {% if v['payment_terms'] %}<span class="upload-hint">Terms: {{ v['payment_terms'] }}</span>{% endif %}
       {% if v['notes'] %}<span class="upload-hint">{{ v['notes'] }}</span>{% endif %}
+
+      {# What is still owed them, and when it falls due. Lifetime spend says
+         what the house has bought; this says what it has not yet paid for,
+         which is the figure that decides whether they keep delivering. #}
+      {% set money = owed.get(v['id']) %}
+      {% if money %}
+      <span class="upload-hint">
+        <strong>€{{ '%.2f'|format(money.total) }}</strong> outstanding across
+        {{ money.count }} invoice{{ '' if money.count == 1 else 's' }}
+        {%- if money.soonest %} ·
+          {% if money.soonest < today %}<span class="mini-status status-overdue">oldest due {{ money.soonest }}</span>
+          {% else %}next due {{ money.soonest }}{% endif %}
+        {%- endif %}
+      </span>
+      {% endif %}
+
+      {# THEIR OWN LINK. There used to be one link shared by every supplier,
+         which could not be withdrawn from one of them without withdrawing it
+         from all of them, and which told you nothing about who sent what. #}
+      <div style="width:100%; margin-top:6px;">
+        {% if v['upload_token'] and not v['token_revoked_at'] %}
+          <span class="upload-hint">Their invoice link
+            {%- if v['last_submitted_at'] %} · last used {{ v['last_submitted_at'][:10] }}
+            {%- else %} · not used yet{% endif %}</span>
+          <p class="share-link-box" style="margin:4px 0;">{{ url_for('supplier_invoice_submit', token=v['upload_token'], _external=True) }}</p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <form method="post" action="{{ url_for('issue_vendor_upload_link', vendor_id=v['id']) }}"
+                  onsubmit="return confirm('Their current link will stop working immediately. Continue?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-ghost">Replace it</button>
+            </form>
+            <form method="post" action="{{ url_for('revoke_vendor_upload_link', vendor_id=v['id']) }}"
+                  onsubmit="return confirm('They will no longer be able to send invoices through this link. Everyone else is unaffected. Continue?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-text-danger">Withdraw it</button>
+            </form>
+          </div>
+        {% elif v['token_revoked_at'] %}
+          <span class="upload-hint">Link withdrawn {{ v['token_revoked_at'][:10] }}.</span>
+          <form method="post" action="{{ url_for('issue_vendor_upload_link', vendor_id=v['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Give them a new one</button>
+          </form>
+        {% else %}
+          <form method="post" action="{{ url_for('issue_vendor_upload_link', vendor_id=v['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Give them their own invoice link</button>
+          </form>
+          <span class="upload-hint">Names them automatically, works out the due date
+            from their terms, and can be withdrawn without affecting anybody else.</span>
+        {% endif %}
+      </div>
     </div>
     <form method="post" action="{{ url_for('edit_vendor', vendor_id=v['id']) }}" id="edit-vendor-{{ v['id'] }}" class="upload-form" style="display:none;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

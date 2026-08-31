@@ -179,6 +179,7 @@ SUITES = [
     "test_comms_and_escalation",
     "test_house_config",
     "test_accessibility",
+    "test_supplier_invoices",
     "test_handover_check",
 ]
 

@@ -101,7 +101,37 @@
         {% if inv['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
       </div>
     </div>
+    {# The one thing on this page that is worth interrupting for. A supplier
+       re-sending a chaser looks exactly like a second invoice, and paying it
+       twice is money gone. Flagged rather than refused: the house does buy
+       the same case of wine twice in a month, and only a person can tell. #}
+    {% if inv['duplicate_of_id'] %}
+    <div class="pass-short" style="border-color:var(--danger, #a33);">
+      <strong>We may already have this one.</strong>
+      <span class="pass-short-row">
+        It matches an earlier invoice from the same supplier
+        {%- if inv['invoice_number'] %} carrying the number {{ inv['invoice_number'] }}
+        {%- else %} for the same amount, close to the same date{% endif %}.
+        Check before approving — nothing has been refused, and it may be a
+        legitimate second invoice.
+      </span>
+    </div>
+    {% endif %}
+
     <p class="manual-body">{{ inv['description'] }}</p>
+    {# The invoice's own facts. All three used to be missing entirely: the
+       accountant was sent the upload date as the invoice date, the same day
+       again as the due date, and the description where the number belongs. #}
+    <p class="upload-hint">
+      {%- if inv['invoice_number'] %}No. {{ inv['invoice_number'] }} · {% endif -%}
+      {%- if inv['invoice_date'] %}Dated {{ inv['invoice_date'] }}{% else %}<em>no invoice date</em>{% endif -%}
+      {%- if inv['due_date'] %} ·
+        {% if inv['paid_at'] %}paid {{ inv['paid_at'][:10] }}
+        {%- elif inv['due_date'] < today_iso %}<strong class="mini-status status-overdue">due {{ inv['due_date'] }}</strong>
+        {%- else %}due {{ inv['due_date'] }}{% endif %}
+      {%- endif -%}
+      {%- if inv['tax_amount'] is not none %} · VAT €{{ '%.2f'|format(inv['tax_amount']) }} as stated{% endif %}
+    </p>
     <p class="upload-hint">Submitted {{ inv['submitted_at'][:10] }}{% if inv['decided_at'] %} · Decided {{ inv['decided_at'][:10] }}{% endif %}</p>
     {% if inv['owner_note'] %}<p class="upload-hint">Note: {{ inv['owner_note'] }}</p>{% endif %}
     <div class="expense-actions">
