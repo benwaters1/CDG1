@@ -37,6 +37,7 @@ SUITES = [
     "test_workshop_minimum",
     "test_workshop_sheet",
     "test_workshop_materials",
+    "test_workshop_alumni",
     "test_solo_occupancy",
     "test_workflows",
     "test_operations",

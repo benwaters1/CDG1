@@ -23,6 +23,22 @@
       <input type="checkbox" name="segment" value="workshop" {{ 'checked' if 'workshop' in segments }}>
       Workshop attendees
     </label>
+    {% if alumni_workshops %}
+    {# A checkbox has nowhere to put "which workshop", and that argument is
+       the whole point: the pottery alumni do not want to hear about the
+       painting week. Anyone already booked on a coming session of it is
+       left out, because "come and do this" to somebody who has paid for it
+       reads as nobody looking at their own records. #}
+    <label style="display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:normal; text-transform:none; margin-top:6px;">
+      <span>Or only people who have done:</span>
+      <select name="segment" onchange="this.form.submit()">
+        <option value="">—</option>
+        {% for w in alumni_workshops %}
+        <option value="workshop:{{ w['id'] }}" {{ 'selected' if alumni_selected == w['id'] }}>{{ w['title'] }} ({{ w['people'] }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
     {# A different KIND of list, and kept visibly separate. The three above are
        people who have been here; this is people who asked to hear from us and
        nothing else. Until now they were collected on the public site and

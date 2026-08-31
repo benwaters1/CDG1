@@ -33272,6 +33272,81 @@ def delete_promo_code(code_id):
 GUEST_BLAST_SEGMENTS = ["room", "restaurant", "workshop", "newsletter"]
 
 
+def valid_segments(raw):
+    """The segments a form may ask for, junk dropped.
+
+    Two shapes: the plain names, and "workshop:12" / "notsession:34", which
+    carry an argument a checkbox has nowhere to put.
+
+    Deliberately NOT falling back to everybody here. The callers do that
+    when nothing was chosen, and they must keep doing it — but if this
+    dropped a malformed alumni token and left the list empty, that fallback
+    would turn "send to these twenty-three people" into "send to the whole
+    database", which is the worst thing this feature could do.
+    """
+    out = []
+    for seg in raw or ():
+        if seg in GUEST_BLAST_SEGMENTS or seg == "profiles":
+            out.append(seg)
+        elif isinstance(seg, str) and seg.count(":") == 1:
+            head, tail = seg.split(":", 1)
+            if head in ("workshop", "notsession") and tail.isdigit():
+                out.append(seg)
+    return out
+
+
+def workshop_alumni(conn, workshop_id, *, exclude_session_id=None,
+                    since_date_iso=None):
+    """Everyone who has done this particular workshop.
+
+    Past sessions only: somebody booked on next month's running has not
+    done it, they are coming to it, and a mail saying "you loved this, come
+    again" would be nonsense to them.
+
+    exclude_session_id drops anybody already booked on the session being
+    promoted — including a pending booking, because somebody halfway
+    through paying does not need chasing with an advertisement for the
+    thing they are in the middle of buying.
+    """
+    today = datetime.now(LOCAL_TZ).date().isoformat()
+    query = """SELECT workshop_bookings.guest_email, workshop_bookings.guest_name,
+                      COUNT(*) AS times,
+                      MAX(workshop_sessions.start_date) AS last_attended
+                 FROM workshop_bookings
+                 JOIN workshop_sessions
+                   ON workshop_sessions.id = workshop_bookings.session_id
+                WHERE workshop_sessions.workshop_id = ?
+                  AND workshop_bookings.status = 'confirmed'
+                  AND workshop_bookings.do_not_email = 0
+                  AND workshop_sessions.end_date < ?"""
+    params = [workshop_id, today]
+    if since_date_iso:
+        query += " AND workshop_sessions.start_date >= ?"
+        params.append(since_date_iso)
+    if exclude_session_id:
+        query += """ AND LOWER(workshop_bookings.guest_email) NOT IN
+                     (SELECT LOWER(guest_email) FROM workshop_bookings
+                       WHERE session_id = ?
+                         AND status IN ('confirmed', 'pending'))"""
+        params.append(exclude_session_id)
+    query += """ GROUP BY LOWER(workshop_bookings.guest_email)
+                 ORDER BY times DESC, last_attended DESC"""
+    return conn.execute(query, params).fetchall()
+
+
+def parse_alumni_segment(segments):
+    """The workshop id out of a 'workshop:12' token, or None.
+
+    A checkbox has nowhere to put an argument, and this question has one.
+    """
+    for seg in segments or ():
+        if isinstance(seg, str) and seg.startswith("workshop:"):
+            tail = seg.split(":", 1)[1]
+            if tail.isdigit():
+                return int(tail)
+    return None
+
+
 def promo_blast_recipients(conn, segments, since_date_iso=None):
     """Distinct {email: name} across the selected segments — a guest with,
     say, both a room stay and a dinner only gets emailed once. Only a
@@ -33307,6 +33382,21 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
             query += " AND workshop_sessions.start_date >= ?"
             params.append(since_date_iso)
         for row in conn.execute(query, params).fetchall():
+            recipients.setdefault(row["guest_email"], row["guest_name"])
+
+    # "The people who did this one before", which is the warmest list there
+    # is for a new session of it — and the only workshop segment until now
+    # was everybody who had ever attended anything.
+    alumni_of = parse_alumni_segment(segments)
+    if alumni_of:
+        exclude = None
+        for seg in segments:
+            if isinstance(seg, str) and seg.startswith("notsession:"):
+                tail = seg.split(":", 1)[1]
+                if tail.isdigit():
+                    exclude = int(tail)
+        for row in workshop_alumni(conn, alumni_of, exclude_session_id=exclude,
+                                   since_date_iso=since_date_iso):
             recipients.setdefault(row["guest_email"], row["guest_name"])
 
     if "newsletter" in segments:
@@ -33359,16 +33449,35 @@ def promo_code_blast(code_id):
     if not promo:
         conn.close()
         abort(404)
-    segments = [s for s in request.args.getlist("segment") if s in GUEST_BLAST_SEGMENTS] or list(GUEST_BLAST_SEGMENTS)
+    segments = (valid_segments(request.args.getlist("segment"))
+                or list(GUEST_BLAST_SEGMENTS))
     since_months_raw = request.args.get("since_months", "").strip()
     since_date_iso = None
     if since_months_raw.isdigit():
         since_date_iso = (datetime.now(timezone.utc).date() - timedelta(days=int(since_months_raw) * 30)).isoformat()
     recipients = promo_blast_recipients(conn, segments, since_date_iso)
+    # Only workshops that have actually run: "the people who did this
+    # before" is empty for one that has not happened yet, and offering it
+    # would be offering a list that cannot exist.
+    alumni_workshops = conn.execute(
+        """SELECT workshops.id, workshops.title,
+                  COUNT(DISTINCT LOWER(workshop_bookings.guest_email)) AS people
+             FROM workshops
+             JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
+             JOIN workshop_bookings
+               ON workshop_bookings.session_id = workshop_sessions.id
+              AND workshop_bookings.status = 'confirmed'
+              AND workshop_bookings.do_not_email = 0
+            WHERE workshop_sessions.end_date < ?
+            GROUP BY workshops.id
+            HAVING people > 0
+            ORDER BY workshops.title""",
+        (datetime.now(LOCAL_TZ).date().isoformat(),)).fetchall()
     conn.close()
     return render_template(
         "admin_promo_blast.html", promo=promo, segments=segments, since_months=since_months_raw,
-        recipient_count=len(recipients),
+        recipient_count=len(recipients), alumni_workshops=alumni_workshops,
+        alumni_selected=parse_alumni_segment(segments),
     )
 
 
@@ -33380,7 +33489,8 @@ def send_promo_code_blast(code_id):
     if not promo:
         conn.close()
         abort(404)
-    segments = [s for s in request.form.getlist("segment") if s in GUEST_BLAST_SEGMENTS] or list(GUEST_BLAST_SEGMENTS)
+    segments = (valid_segments(request.form.getlist("segment"))
+                or list(GUEST_BLAST_SEGMENTS))
     since_months_raw = request.form.get("since_months", "").strip()
     since_date_iso = None
     if since_months_raw.isdigit():
