@@ -3393,6 +3393,21 @@ def init_db():
         ("expense_paid_by", "ALTER TABLE expenses ADD COLUMN paid_by_user_id INTEGER "
                             "REFERENCES users(id) ON DELETE SET NULL"),
         ("expense_paid_ref", "ALTER TABLE expenses ADD COLUMN paid_reference TEXT"),
+        # A review somebody has read, and what the house said back. Without
+        # these, "has anyone dealt with that complaint" has no answer and a
+        # bad review sits on the front page with nothing beside it.
+        ("feedback_ack_at", "ALTER TABLE guest_feedback ADD COLUMN acknowledged_at TEXT"),
+        ("feedback_ack_by", "ALTER TABLE guest_feedback ADD COLUMN acknowledged_by_user_id INTEGER "
+                            "REFERENCES users(id) ON DELETE SET NULL"),
+        ("feedback_reply", "ALTER TABLE guest_feedback ADD COLUMN reply TEXT"),
+        ("feedback_replied_at", "ALTER TABLE guest_feedback ADD COLUMN replied_at TEXT"),
+        # The same for a workshop, because the sibling route has the identical
+        # silence and a guest does not know which table they landed in.
+        ("wfeedback_ack_at", "ALTER TABLE workshop_feedback ADD COLUMN acknowledged_at TEXT"),
+        ("wfeedback_ack_by", "ALTER TABLE workshop_feedback ADD COLUMN acknowledged_by_user_id INTEGER "
+                             "REFERENCES users(id) ON DELETE SET NULL"),
+        ("wfeedback_reply", "ALTER TABLE workshop_feedback ADD COLUMN reply TEXT"),
+        ("wfeedback_replied_at", "ALTER TABLE workshop_feedback ADD COLUMN replied_at TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -15160,6 +15175,78 @@ def backup_gap_detail(age_h):
     return f"last one {age_h / 24:.0f} days ago"
 
 
+# At or below this, a review wants a person rather than a place on the wall.
+# Three rather than two: a middling review from somebody who came a long way
+# is worth a reply, and the cost of reading one more is a minute.
+POOR_REVIEW_RATING = 3
+
+
+def unanswered_reviews(conn, *, days=60, today=None):
+    """Reviews that said something poor and that nobody has dealt with.
+
+    Both halves matter. "Poor" alone would list the same complaint every
+    morning until somebody deleted it, which is how a warnings panel becomes
+    furniture; "unanswered" is what lets it close itself, the same way the
+    watch tasks do.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    since = (day - timedelta(days=max(1, days))).isoformat()
+    rooms = conn.execute(
+        """SELECT guest_feedback.*, bookings.reference_code, bookings.guest_email,
+                  bookings.manage_token, rooms.name AS room_name, 'room' AS source
+             FROM guest_feedback
+             LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE guest_feedback.rating IS NOT NULL
+              AND guest_feedback.rating <= ?
+              AND guest_feedback.acknowledged_at IS NULL
+              AND guest_feedback.submitted_at >= ?""",
+        (POOR_REVIEW_RATING, since)).fetchall()
+    shops = conn.execute(
+        """SELECT workshop_feedback.*, workshops.title AS room_name, 'workshop' AS source
+             FROM workshop_feedback
+             LEFT JOIN workshop_bookings ON workshop_bookings.id = workshop_feedback.workshop_booking_id
+             LEFT JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             LEFT JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_feedback.rating IS NOT NULL
+              AND workshop_feedback.rating <= ?
+              AND workshop_feedback.acknowledged_at IS NULL
+              AND workshop_feedback.submitted_at >= ?""",
+        (POOR_REVIEW_RATING, since)).fetchall()
+    both = list(rooms) + list(shops)
+    both.sort(key=lambda r: (r["rating"], r["submitted_at"]))
+    return both
+
+
+def tell_the_house_about_a_review(conn, *, rating, guest_name, comment, what, where):
+    """Send a poor review to the owner while the guest is still reachable.
+
+    The timing is the whole point. A guest who left this morning and has just
+    said the room was cold can still be answered today; the same words found
+    on a dashboard three weeks later are a fact about the past.
+
+    Committed by the caller before this is called, because send_email falls
+    back to the outbox on its own connection and cannot write while a
+    transaction is open.
+    """
+    if rating is None or rating > POOR_REVIEW_RATING:
+        return False
+    to = owner_email(conn)
+    if not to:
+        return False
+    stars = "\u2605" * int(rating) + "\u2606" * (5 - int(rating))
+    send_email(
+        to,
+        f"{int(rating)} out of 5 \u2014 {guest_name or 'a guest'}",
+        f"{guest_name or 'A guest'} rated {what} {stars}.\n\n"
+        f"{(comment or '').strip() or '(they left no comment)'}\n\n"
+        f"{where}\n\n"
+        "Nothing has been published. It stays off the site unless you feature\n"
+        "it, and it will keep showing on your home page until somebody has\n"
+        "answered it or marked it read.\n\n\u2014 Ch\u00e2teau de Gudanes")
+    return True
+
+
 def owner_home_warnings(conn, today):
     """Things nobody has told the owner, each linking to the page that says more.
 
@@ -15180,6 +15267,19 @@ def owner_home_warnings(conn, today):
     def add(severity, title, detail, count, endpoint):
         out.append({"severity": severity, "title": title, "detail": detail,
                     "count": count, "href": url_for(endpoint)})
+
+    # A guest said the stay was poor and nobody has answered. It closes
+    # itself: replying or marking it read takes it off this list, which is
+    # what keeps the panel able to be empty.
+    poor = unanswered_reviews(conn, today=today)
+    if poor:
+        worst = poor[0]
+        add("attention",
+            f"{len(poor)} review{'' if len(poor) == 1 else 's'} nobody has answered",
+            f"{worst['guest_name'] or 'A guest'} gave {int(worst['rating'])} out of 5"
+            + (f" \u2014 \u201c{(worst['comment'] or '').strip()[:90]}\u201d"
+               if (worst["comment"] or "").strip() else ""),
+            len(poor), "admin_feedback")
 
     clashes = rota_conflicts(conn, today, horizon)
     certs = [c for c in clashes if c["kind"] == "certification"]
@@ -23430,7 +23530,7 @@ def book_rooms():
         """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
            LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
            LEFT JOIN rooms ON rooms.id = bookings.room_id
-           WHERE guest_feedback.featured = 1
+           WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
            ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
     conn.close()
@@ -24847,11 +24947,22 @@ def guest_feedback(token):
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
+                told = True
             except sqlite3.IntegrityError:
                 # A concurrent submission (double-click, two tabs) beat this
                 # one to it — the unique index is the real guard, the
                 # `existing` check above is just the common-case fast path.
                 conn.rollback()
+                told = False
+            # After the commit, because send_email falls back to the outbox on
+            # its own connection and cannot write while this one holds a
+            # transaction. And only for the row this request actually wrote,
+            # or a double-click would send the owner the same complaint twice.
+            if told:
+                tell_the_house_about_a_review(
+                    conn, rating=rating, guest_name=booking["guest_name"],
+                    comment=comment, what=f"their stay ({booking['reference_code']})",
+                    where=url_for("admin_feedback", _external=True))
             conn.close()
             return render_template("guest_feedback_submitted.html")
 
@@ -29142,6 +29253,60 @@ def admin_feedback():
     )
 
 
+@app.route("/admin/feedback/<int:feedback_id>/reply", methods=["POST"])
+@owner_required
+def reply_to_feedback(feedback_id):
+    """Answer a guest's review, and mark it dealt with.
+
+    A review used to be either invisible or featured on the front page, with
+    nothing in between and no way to say anything back. A complaint answered
+    well reads better to the next guest than no complaint at all \u2014 and the
+    guest who wrote it hears from a person rather than from nobody.
+
+    Marking it read without writing anything is allowed on purpose. Some
+    reviews want a phone call instead, and forcing a written reply into the
+    app to clear the warning would produce written replies nobody meant.
+    """
+    conn = get_db()
+    row = conn.execute(
+        """SELECT guest_feedback.*, bookings.guest_email, bookings.guest_name AS booked_name
+             FROM guest_feedback
+             LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
+            WHERE guest_feedback.id = ?""", (feedback_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    reply = (request.form.get("reply", "") or "").strip()[:2000]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE guest_feedback
+              SET reply = COALESCE(?, reply),
+                  replied_at = CASE WHEN ? IS NOT NULL THEN ? ELSE replied_at END,
+                  acknowledged_at = COALESCE(acknowledged_at, ?),
+                  acknowledged_by_user_id = COALESCE(acknowledged_by_user_id, ?)
+            WHERE id = ?""",
+        (reply or None, reply or None, now_iso, now_iso,
+         (current_user()["id"] if current_user() else None), feedback_id))
+    log_audit(conn, "feedback_answered" if reply else "feedback_marked_read",
+              target=row["guest_name"] or str(feedback_id),
+              details=f"{row['rating']}/5")
+    conn.commit()
+    conn.close()
+
+    if reply and row["guest_email"]:
+        send_email(
+            row["guest_email"],
+            "About your stay at Ch\u00e2teau de Gudanes",
+            f"Dear {(row['booked_name'] or row['guest_name'] or 'guest').split(' ')[0]},\n\n"
+            f"Thank you for telling us how it went. You wrote:\n\n"
+            f"  \u201c{(row['comment'] or '').strip() or 'no comment'}\u201d\n\n"
+            f"{reply}\n\n\u2014 Ch\u00e2teau de Gudanes")
+        flash("Replied, and sent to them.", "success")
+    else:
+        flash("Marked as read." if not reply else "Reply saved.", "success")
+    return redirect(url_for("admin_feedback"))
+
+
 @app.route("/admin/feedback/<int:feedback_id>/toggle-featured", methods=["POST"])
 @owner_required
 def toggle_feedback_featured(feedback_id):
@@ -33044,7 +33209,14 @@ def money_ahead_page():
     overview = [
         overview_cell("Expected in", euro(ahead["total_in"]),
                       hint=f"over {ahead['days']} days"),
-        overview_cell("Expected out", euro(ahead["total_out"])),
+        # Split, because an agreed invoice and a bill somebody may yet reject
+        # are not the same kind of certain, and one figure covering both gets
+        # planned against as though it were.
+        overview_cell("Expected out", euro(ahead["total_out"]),
+                      hint=(f"{euro(ahead['agreed_out'])} agreed"
+                            + (f", {euro(ahead['undecided_out'])} awaiting a decision"
+                               if ahead["undecided_out"] else "")
+                            if ahead["agreed_out"] or ahead["undecided_out"] else None)),
         overview_cell("Difference", euro(ahead["net"]), alert=ahead["net"] < 0,
                       hint="not a balance" if ahead["opening"] is None else None),
     ]
@@ -33253,14 +33425,42 @@ def money_ahead(conn, *, days=90, today=None):
                              "label": f"{p['provider']} — {p['coverage_type'] or 'insurance'}",
                              "kind": "Insurance", "ref": p["policy_number"]})
 
-    # Supplier invoices waiting on a decision. They carry no due date, so they
-    # sit on today rather than being invented onto a date — they are owed now,
-    # which is exactly why they are still on the approvals queue.
+    # AGREED AND DATED. An approved invoice is a debt the house has accepted;
+    # it is the most certain thing in this whole forecast. It used not to be
+    # here at all — only 'pending' was counted — so approving an invoice made
+    # the money ahead look better, which is exactly backwards. It could not
+    # have been placed anywhere sensible before either: invoices carried no
+    # due date, and putting a bill due in five weeks onto today would have
+    # been its own kind of wrong.
+    for e in conn.execute(
+            """SELECT * FROM expenses
+                WHERE status = 'approved' AND paid_at IS NULL
+                  AND COALESCE(amount, 0) > 0""").fetchall():
+        # Staff are not suppliers. Somebody who spent their own money on the
+        # house is owed it now, not on a supplier's thirty-day clock.
+        if e["kind"] == "staff_expense":
+            when, label, kind = today, "owed back to our own people", "Reimbursement"
+        else:
+            due = parse_date(e["due_date"] or "") or today
+            when = max(due, today)          # an overdue bill is owed today, not in the past
+            label, kind = e["vendor_name"] or e["description"], "Supplier invoice"
+        if not (today <= when <= last):
+            continue
+        outgoing.append({
+            "date": when.isoformat(), "amount": round(e["amount"], 2),
+            "label": f"{label}"
+                     + (f" — {e['invoice_number']}" if e["invoice_number"] else ""),
+            "kind": kind, "ref": e["invoice_number"] or None})
+
+    # BEING ASKED FOR, not yet agreed. It might be rejected or queried, so it
+    # is labelled as undecided rather than counted as certain — but leaving it
+    # out entirely would mean the queue of bills on somebody's desk was money
+    # the forecast had never heard of.
     for e in conn.execute(
             """SELECT * FROM expenses WHERE status = 'pending'
                  AND COALESCE(amount, 0) > 0""").fetchall():
         outgoing.append({"date": today.isoformat(), "amount": round(e["amount"], 2),
-                         "label": f"{e['vendor_name']} — awaiting your decision",
+                         "label": f"{e['vendor_name'] or e['description']} — awaiting your decision",
                          "kind": "Awaiting approval", "ref": None})
 
     # Wages, if a monthly figure has been set. Dated to the end of each month,
@@ -33340,7 +33540,16 @@ def money_ahead(conn, *, days=90, today=None):
     work_unpriced = len([w for w in upcoming_work if not w["amount"]])
 
     total_out = round(sum(o["amount"] for o in outgoing), 2)
+    # Not all "out" is the same kind of out. An agreed invoice and a bill
+    # somebody may yet reject are both money, and reporting them as one figure
+    # invites planning against a number that includes things that will never
+    # happen.
+    agreed_out = round(sum(o["amount"] for o in outgoing
+                           if o["kind"] in ("Supplier invoice", "Reimbursement")), 2)
+    undecided_out = round(sum(o["amount"] for o in outgoing
+                              if o["kind"] == "Awaiting approval"), 2)
     return {
+        "agreed_out": agreed_out, "undecided_out": undecided_out,
         "upcoming_work": upcoming_work, "work_total": work_total,
         "work_unpriced": work_unpriced,
         "from": today.isoformat(), "to": last.isoformat(), "days": (last - today).days,

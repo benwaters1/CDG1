@@ -119,6 +119,17 @@ def run():
     conn.execute(
         "INSERT INTO audit_log (actor_user_id, action, target, created_at) "
         "VALUES (NULL, 'backup_auto_sent', 'test', ?)", (now,))
+    # An unanswered poor review is one of the things the panel carries, and it
+    # IS something wrong — so "nothing is wrong" has to include none of those
+    # outstanding. Settled rather than deleted: those rows belong to whichever
+    # suite made them, and reaching in to remove them would be this test
+    # tidying somebody else's fixtures to make its own claim true.
+    conn.execute(
+        "UPDATE guest_feedback SET acknowledged_at = ? WHERE acknowledged_at IS NULL",
+        (now,))
+    conn.execute(
+        "UPDATE workshop_feedback SET acknowledged_at = ? WHERE acknowledged_at IS NULL",
+        (now,))
     conn.commit()
     left = _titles(conn, today)
     s.check("with nothing wrong, nothing is listed", left == [], detail=str(left))
