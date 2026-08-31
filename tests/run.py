@@ -176,6 +176,8 @@ SUITES = [
     "test_pennylane_revenue",
     "test_booking_race",
     "test_restore_drill",
+    "test_comms_and_escalation",
+    "test_house_config",
     "test_handover_check",
 ]
 
