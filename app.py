@@ -332,6 +332,28 @@ MANUAL_PAYMENT_METHODS = {
 # on the event itself. A percentage rather than a figure because an event quote
 # ranges from a lunch to a wedding, and 30% is the convention the written
 # quotes already use.
+# What a deposit rule can be written for.
+#
+# ONE list. It used to be three -- the table's CHECK, the route's validation
+# tuple, and the form's <option> list -- and adding a category to the CHECK
+# without the other two produced a table that accepted rules nobody could write.
+# The CHECK below is built from this, the route validates against it, and the
+# form renders its options from it, so the three cannot drift.
+#
+# Adding a category here is all that is needed: the migration notices the stored
+# CHECK is missing one and rebuilds the table once.
+DEPOSIT_RULE_CATEGORIES = (
+    ("restaurant", "Restaurant"),
+    ("workshop", "Workshop"),
+    ("room", "Room stay"),
+    # A wedding in August and a meeting in February are not held on the same
+    # terms, and an event deposit is the largest sum the house asks for up front.
+    ("event", "Event"),
+)
+DEPOSIT_RULE_KEYS = tuple(key for key, _label in DEPOSIT_RULE_CATEGORIES)
+DEPOSIT_RULE_CHECK_SQL = ",".join(f"'{key}'" for key in DEPOSIT_RULE_KEYS)
+
+
 EVENT_PAYMENT_DEFAULTS = {
     "event_deposit_percent": "30",
     # Further out than a stay (14 days) or a workshop (30) on purpose: an event
@@ -3150,8 +3172,47 @@ def init_db():
         # Rooms, the restaurant and the ateliers all had a full money model.
         ("event_inquiries_amount_paid",
          "ALTER TABLE event_inquiries ADD COLUMN amount_paid REAL NOT NULL DEFAULT 0"),
+        ("gift_vouchers_table",
+         """CREATE TABLE IF NOT EXISTS gift_vouchers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                original_amount REAL NOT NULL,
+                purchaser_name TEXT,
+                purchaser_email TEXT,
+                recipient_name TEXT,
+                message TEXT,
+                status TEXT NOT NULL DEFAULT 'active'
+                    CHECK(status IN ('active','void')),
+                expires_on TEXT,
+                note TEXT,
+                issued_by_user_id INTEGER,
+                created_at TEXT NOT NULL
+            )"""),
+        # The balance is NOT a column. A voucher part-spent at the till and
+        # part-spent against a stay has to reconcile to the cent months later,
+        # and a counter that is decremented in two places is a counter that goes
+        # wrong in two places -- the same reason stock is a ledger here. Every
+        # redemption is a row; the balance is what is left after them.
+        ("voucher_redemptions_table",
+         """CREATE TABLE IF NOT EXISTS voucher_redemptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                voucher_id INTEGER NOT NULL REFERENCES gift_vouchers(id) ON DELETE CASCADE,
+                amount REAL NOT NULL,
+                kind TEXT NOT NULL,
+                reference TEXT,
+                taken_by_user_id INTEGER,
+                created_at TEXT NOT NULL
+            )"""),
+        ("idx_voucher_redemptions_voucher",
+         "CREATE INDEX IF NOT EXISTS idx_voucher_redemptions_voucher "
+         "ON voucher_redemptions(voucher_id)"),
         ("event_inquiries_deposit_amount",
          "ALTER TABLE event_inquiries ADD COLUMN deposit_amount REAL"),
+        ("event_inquiries_promo_code", "ALTER TABLE event_inquiries ADD COLUMN promo_code TEXT"),
+        ("event_inquiries_promo_code_id",
+         "ALTER TABLE event_inquiries ADD COLUMN promo_code_id INTEGER"),
+        ("event_inquiries_discount_amount",
+         "ALTER TABLE event_inquiries ADD COLUMN discount_amount REAL"),
         ("event_inquiries_balance_due_date",
          "ALTER TABLE event_inquiries ADD COLUMN balance_due_date TEXT"),
         # Stamped only after a reminder actually goes, so a run with no email
@@ -4069,17 +4130,71 @@ def init_db():
     # nothing references deposit_rules by foreign key, and the copy carries
     # every existing rule across. Guarded on the constraint text itself rather
     # than a key, so it runs once and is a no-op forever after.
+    # promo_codes.applies_to and promo_code_redemptions.category both listed
+    # three categories. SQLite cannot alter a CHECK, so both are rebuilt, each
+    # guarded on its own stored SQL so this runs once and is a no-op after.
+    # Every existing row is carried across.
+    for table, column, allowed in (
+            ("promo_codes", "applies_to", ("all", "room", "restaurant", "workshop", "event")),
+            ("promo_code_redemptions", "category", ("room", "restaurant", "workshop", "event"))):
+        existing = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,)).fetchone()
+        if not existing or "'event'" in (existing["sql"] or ""):
+            continue
+        try:
+            cols = [r["name"] for r in conn.execute(
+                f"PRAGMA table_info({table})").fetchall()]
+            names = ", ".join(cols)
+            # Rebuilt by copying the stored CREATE and widening only the one
+            # CHECK, so a column added by a later migration is not silently
+            # dropped by a hand-written column list going stale.
+            new_sql = (existing["sql"] or "").replace(
+                f"CHECK({column} IN ("
+                + ",".join(f"'{a}'" for a in allowed if a != "event") + "))",
+                f"CHECK({column} IN ("
+                + ",".join(f"'{a}'" for a in allowed) + "))")
+            if "'event'" not in new_sql:
+                continue          # the CHECK was not in the shape expected
+            # THE REFERENCED TABLE IS NEVER RENAMED. Since SQLite 3.25 a
+            # RENAME also rewrites references to that table in other tables'
+            # foreign keys, and promo_code_redemptions references promo_codes.
+            # Renaming promo_codes out of the way therefore repointed that
+            # foreign key at promo_codes_old, which the next statement dropped
+            # -- and because promo_codes is rebuilt first, the redemptions table
+            # was then rebuilt FROM its own rewritten definition, baking the
+            # dangling reference in permanently. Everything touching the pair
+            # failed with "no such table: promo_codes_old".
+            #
+            # So: build the replacement under a new name, copy into it, drop the
+            # original, and rename the replacement into place. The only RENAME
+            # is FROM a name nothing references, which rewrites nothing.
+            #
+            # deposit_rules above can rename safely, and its own comment says
+            # why: nothing references it by foreign key. These two are not in
+            # that position.
+            conn.execute(new_sql.replace(f"TABLE {table}", f"TABLE {table}_rebuilt", 1))
+            conn.execute(f"INSERT INTO {table}_rebuilt ({names}) SELECT {names} FROM {table}")
+            conn.execute(f"DROP TABLE {table}")
+            conn.execute(f"ALTER TABLE {table}_rebuilt RENAME TO {table}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            conn.rollback()
+
     rules_sql = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deposit_rules'"
     ).fetchone()
-    if rules_sql and "'event'" not in (rules_sql["sql"] or ""):
+    # Guarded on the constant rather than on the newest category by name, so
+    # adding one to DEPOSIT_RULE_CATEGORIES is the only edit a new category needs.
+    if rules_sql and any(f"'{key}'" not in (rules_sql["sql"] or "")
+                         for key in DEPOSIT_RULE_KEYS):
         try:
             conn.execute("ALTER TABLE deposit_rules RENAME TO deposit_rules_old")
             conn.execute("""
                 CREATE TABLE deposit_rules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     category TEXT NOT NULL
-                        CHECK(category IN ('restaurant','workshop','room','event')),
+                        CHECK(category IN (""" + DEPOSIT_RULE_CHECK_SQL + """)),
                     start_date TEXT,
                     end_date TEXT,
                     min_party_size INTEGER,
@@ -4497,11 +4612,14 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
+        "management_vouchers", "new_gift_voucher", "gift_voucher_detail",
+        "spend_gift_voucher", "void_gift_voucher",
         "management_debtors", "export_debtors_csv",
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
+        "charge_city_tax", "charge_city_tax_upcoming",
         "record_event_payment_route", "send_event_revenue",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
@@ -19463,6 +19581,25 @@ def pos_email_receipt(order_id):
     return redirect(url_for("pos_order", order_id=order_id))
 
 
+@app.route("/kitchen/sheet")
+@owner_required
+def kitchen_day_sheet():
+    """One page to print and pin up: what the house is eating and who cannot.
+
+    Separate from /pos/kitchen, which is the live order screen for a service in
+    progress. This is the sheet somebody reads the day BEFORE, when there is
+    still time to buy something different.
+    """
+    raw = (request.args.get("day", "") or "").strip()
+    day = parse_date(raw) or service_day()
+    conn = get_db()
+    sheet = kitchen_sheet(conn, day)
+    conn.close()
+    return render_template("kitchen_sheet.html", sheet=sheet, day=day,
+                           prev_day=(day - timedelta(days=1)).isoformat(),
+                           next_day=(day + timedelta(days=1)).isoformat())
+
+
 @app.route("/pos/kitchen")
 @login_required
 def pos_kitchen():
@@ -20204,11 +20341,15 @@ PALETTE_PAGES = [
     ("Manual", "manual", "handbook how to"),
     ("Contacts", "contacts", "phone numbers"),
     ("Shopping list", "shopping_list", "buy"),
+    ("Kitchen sheet", "kitchen_day_sheet",
+     "dietary allergy allergen chef covers kitchen food notes"),
     ("Approvals", "admin_approvals", "expenses leave pending decide"),
     ("Expenses & invoices", "expenses", "receipts supplier bills"),
     ("Financials", "management_financials", "revenue profit money"),
     ("What we're owed", "management_outstanding",
      "outstanding balance debtors owing unpaid chase arrears"),
+    ("Gift vouchers", "management_vouchers",
+     "voucher vouchers gift card present balance redeem"),
     ("Spend by supplier", "spend_by_vendor_page", "vendor paid purchase totals"),
     ("What discounts cost", "discount_cost_page", "promo codes given away"),
     ("Held, not earned", "held_not_earned_page",
@@ -23069,8 +23210,50 @@ def admin_city_tax():
     period = period_from_request()
     working = city_tax_working(conn, parse_date(period["start_iso"]),
                                parse_date(period["end_iso"]))
+    arrears = city_tax_arrears(conn)
     conn.close()
-    return render_template("admin_city_tax.html", working=working, period=period)
+    return render_template("admin_city_tax.html", working=working, period=period,
+                           arrears=arrears)
+
+
+@app.route("/admin/city-tax/charge/<int:booking_id>", methods=["POST"])
+@owner_required
+def charge_city_tax(booking_id):
+    conn = get_db()
+    ok, message = charge_city_tax_now(conn, booking_id)
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("admin_city_tax"))
+
+
+@app.route("/admin/city-tax/charge-upcoming", methods=["POST"])
+@owner_required
+def charge_city_tax_upcoming():
+    """Charge every stay that has not yet arrived, in one press.
+
+    Deliberately NOT offered for stays that have departed. One press that puts a
+    balance on forty finished stays would have the chase emailing guests who went
+    home months ago, and undoing it means finding all forty. Those are charged
+    one at a time, by somebody looking at the stay.
+    """
+    conn = get_db()
+    arrears = city_tax_arrears(conn)
+    done, total = 0, 0.0
+    for row in arrears["upcoming"]:
+        ok, _message = charge_city_tax_now(conn, row["booking"]["id"])
+        if ok:
+            done += 1
+            total += row["would_be"]
+    conn.commit()
+    conn.close()
+    if not done:
+        flash("Nothing to charge — every stay still to come already carries it.",
+              "success")
+    else:
+        flash(f"Taxe de sejour added to {done} stay"
+              f"{'' if done == 1 else 's'}, €{total:.2f} in total.", "success")
+    return redirect(url_for("admin_city_tax"))
 
 
 @app.route("/admin/city-tax/export.csv")
@@ -24328,6 +24511,7 @@ EVENT_PREFILL = {
     "contact_phone": "contact_phone", "guest_count": "guest_count",
     "message": "message", "preferred_date": "preferred_date",
     "alternate_date": "alternate_date", "event_type": "event_type",
+    "promo_code": "promo_code",
 }
 
 
@@ -25710,6 +25894,9 @@ def events_photoshoots():
 
 @app.route("/events/inquire", methods=["POST"])
 def submit_event_inquiry():
+    # Captured as free text, not validated here. There is no price on an enquiry
+    # to discount, and refusing an enquiry because a code was mistyped would
+    # lose a wedding over a typo. The owner sees what was claimed and decides.
     event_type = request.form.get("event_type", "").strip()
     contact_name = request.form.get("contact_name", "").strip()
     contact_email = request.form.get("contact_email", "").strip().lower()
@@ -25718,6 +25905,7 @@ def submit_event_inquiry():
     alternate_date = request.form.get("alternate_date", "").strip()
     guest_count_raw = request.form.get("guest_count", "").strip()
     message = request.form.get("message", "").strip()[:2000]
+    promo_code = request.form.get("promo_code", "").strip()[:40]
 
     conn = get_db()
     if rate_limited(conn, "event_inquiry", BOOKING_RATE_LIMIT_PER_HOUR):
@@ -25764,11 +25952,12 @@ def submit_event_inquiry():
     manage_token = secrets.token_urlsafe(24)
     conn.execute(
         """INSERT INTO event_inquiries (reference_code, manage_token, event_type, contact_name, contact_email,
-           contact_phone, preferred_date, alternate_date, guest_count, message, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           contact_phone, preferred_date, alternate_date, guest_count, message,
+           promo_code, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (reference_code, manage_token, event_type, contact_name, contact_email, contact_phone or None,
          preferred_date or None, alternate_date or None, guest_count, message or None,
-         datetime.now(timezone.utc).isoformat()),
+         promo_code or None, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
 
@@ -26271,6 +26460,7 @@ def update_event_inquiry(inquiry_id):
     status = request.form.get("status", "").strip()
     quoted_price_raw = request.form.get("quoted_price", "").strip()
     owner_note = request.form.get("owner_note", "").strip()
+    promo_raw = request.form.get("promo_code", "").strip()
     deposit_raw = request.form.get("deposit_amount", "").strip().replace(",", ".")
     due_raw = request.form.get("balance_due_date", "").strip()
     valid_statuses = ("new", "contacted", "quoted", "confirmed", "declined", "cancelled")
@@ -26290,6 +26480,33 @@ def update_event_inquiry(inquiry_id):
 
     status_changed_to_decided = status in ("confirmed", "declined") and inquiry["status"] != status
     decided_at = datetime.now(timezone.utc).isoformat() if status_changed_to_decided else inquiry["decided_at"]
+
+    # A promo code, honoured against the quote.
+    #
+    # An event is quoted rather than priced off a rate card, so the code cannot
+    # be applied when the enquiry arrives -- there is no figure yet. It is
+    # applied HERE, against the quoted price, at the moment the owner sets one.
+    #
+    # The redemption is recorded ONCE and in the same transaction as the quote,
+    # for the reason create_booking gives: a discount saved without its
+    # redemption makes max_redemptions silently bypassable, so a code limited to
+    # ten couples runs forever and What discounts cost under-reports.
+    promo_code_id = inquiry["promo_code_id"]
+    discount_amount = inquiry["discount_amount"]
+    promo_note = None
+    if promo_raw and not promo_code_id and quoted_price:
+        promo, promo_discount, promo_error = validate_promo_code(
+            conn, promo_raw, "event", float(quoted_price))
+        if promo and promo_discount:
+            promo_code_id = promo["id"]
+            discount_amount = round(float(promo_discount), 2)
+            record_promo_redemption(
+                conn, promo, "event", inquiry["reference_code"],
+                inquiry["contact_email"], float(quoted_price), discount_amount)
+            promo_note = (f"Code {promo['code']} applied: "
+                          f"\u2212\u20ac{discount_amount:.2f}")
+        else:
+            promo_note = f"Code not applied: {promo_error or 'not valid for events'}"
 
     # The deposit and the balance due date - the two columns event_bill and the
     # reminder job read and nothing wrote. A typed value wins; blank means "work
@@ -26315,11 +26532,15 @@ def update_event_inquiry(inquiry_id):
 
     conn.execute(
         "UPDATE event_inquiries SET status = ?, quoted_price = ?, owner_note = ?, "
-        "deposit_amount = ?, balance_due_date = ?, decided_at = ? WHERE id = ?",
+        "deposit_amount = ?, balance_due_date = ?, promo_code = ?, "
+        "promo_code_id = ?, discount_amount = ?, decided_at = ? WHERE id = ?",
         (status, quoted_price, owner_note or None, deposit_amount,
-         balance_due_date, decided_at, inquiry_id),
+         balance_due_date, promo_raw or inquiry["promo_code"], promo_code_id,
+         discount_amount, decided_at, inquiry_id),
     )
     log_audit(conn, "event_inquiry_updated", target=inquiry["reference_code"], details=status)
+    if promo_note:
+        flash(promo_note, "success" if "applied:" in promo_note else "error")
     conn.commit()
 
     inquiry = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (inquiry_id,)).fetchone()
@@ -32310,10 +32531,12 @@ def admin_deposit_rules():
     workshops = conn.execute("SELECT id, title, deposit_percent FROM workshops WHERE active = 1 ORDER BY title").fetchall()
     room_percent = room_payment_setting(conn, "room_deposit_percent")
     room_days = int(room_payment_setting(conn, "room_balance_due_days_before"))
+    event_default_percent = event_payment_setting(conn, "event_deposit_percent")
     conn.close()
     return render_template(
         "admin_deposit_rules.html", rules=rules, restaurant_settings=restaurant_settings,
         workshops=workshops, room_percent=room_percent, room_days=room_days,
+        categories=DEPOSIT_RULE_CATEGORIES, event_percent=event_default_percent,
     )
 
 
@@ -32365,7 +32588,7 @@ def new_deposit_rule():
     percent_raw = request.form.get("deposit_percent", "").strip()
     label = request.form.get("label", "").strip()
 
-    if category not in ("restaurant", "workshop", "room"):
+    if category not in DEPOSIT_RULE_KEYS:
         flash("Choose a valid category for the rule.", "error")
         return redirect(url_for("admin_deposit_rules"))
     start, end = parse_date(start_raw), parse_date(end_raw)
@@ -33235,7 +33458,11 @@ def delete_menu_item(item_id):
     return redirect(url_for("admin_restaurant_menu"))
 
 
-PROMO_APPLIES_TO = ["all", "room", "restaurant", "workshop"]
+# Events included. Both promo tables had CHECKs listing the other three, so a
+# code could not be scoped to an event and an event redemption could not be
+# written -- and a discount with no redemption row bypasses max_redemptions
+# entirely, which is how a "first ten couples" code stays live forever.
+PROMO_APPLIES_TO = ["all", "room", "restaurant", "workshop", "event"]
 
 
 @app.route("/admin/promo-codes")
@@ -36468,6 +36695,220 @@ def management_outstanding():
     return render_template("management_outstanding.html", lv=lv, total=total,
                            gone=gone, payment_methods=MANUAL_PAYMENT_METHODS,
                            can_email=bool(email_enabled() or resend_enabled()))
+
+
+@app.route("/management/vouchers")
+@owner_required
+def management_vouchers():
+    """Every gift voucher the house has sold, and what is left on each.
+
+    A voucher is a liability: money taken for a stay or a dinner that has not
+    happened yet. It belongs on this side of the app next to what the house is
+    owed, not filed under marketing.
+    """
+    conn = get_db()
+    rows = []
+    for voucher in conn.execute(
+            "SELECT * FROM gift_vouchers ORDER BY created_at DESC").fetchall():
+        ledger = voucher_ledger(conn, voucher["id"])
+        rows.append({"voucher": voucher, **{k: v for k, v in ledger.items()
+                                            if k != "voucher"}})
+    conn.close()
+
+    lv = list_view(
+        rows, request.args,
+        search=[lambda r: r["voucher"]["code"],
+                lambda r: r["voucher"]["purchaser_name"] or "",
+                lambda r: r["voucher"]["recipient_name"] or "",
+                lambda r: r["voucher"]["purchaser_email"] or ""],
+        search_hint="Search code, who bought it or who it is for",
+        facets=[
+            # Outstanding first: those are the ones that are still a liability.
+            facet("state", "State", lambda r: {
+                "active": "Still to spend", "spent": "Spent",
+                "expired": "Expired", "void": "Cancelled"}.get(r["state"], r["state"]),
+                  order=["Still to spend", "Expired", "Spent", "Cancelled"]),
+        ],
+        sorts=[
+            sort_option("newest", "Newest first",
+                        lambda r: r["voucher"]["created_at"] or "", reverse=True),
+            sort_option("largest", "Most left first", lambda r: r["balance"],
+                        reverse=True),
+            sort_option("expiring", "Expiring soonest",
+                        lambda r: r["voucher"]["expires_on"] or "9999-12-31"),
+        ],
+        default_sort="newest",
+    )
+    outstanding = round(sum(r["balance"] for r in rows if r["state"] == "active"), 2)
+    overview = [
+        overview_cell("Still to spend", euro(outstanding),
+                      hint="money taken for something that has not happened yet"),
+        overview_cell("Vouchers out",
+                      sum(1 for r in rows if r["state"] == "active")),
+        overview_cell("Sold, all time", euro(round(sum(r["original"] for r in rows), 2))),
+        overview_cell("Spent", euro(round(sum(r["spent"] for r in rows), 2))),
+    ]
+    return render_template("management_vouchers.html", lv=lv, overview=overview)
+
+
+@app.route("/management/vouchers/new", methods=["POST"])
+@owner_required
+def new_gift_voucher():
+    amount_raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+    expires_raw = (request.form.get("expires_on", "") or "").strip()
+    try:
+        amount = round(float(amount_raw), 2)
+    except ValueError:
+        amount = 0
+    if amount <= 0:
+        flash("Enter what the voucher is worth.", "error")
+        return redirect(url_for("management_vouchers"))
+    expires_on = None
+    if expires_raw:
+        parsed = parse_date(expires_raw)
+        if not parsed:
+            flash("Choose a valid expiry date, or leave it blank.", "error")
+            return redirect(url_for("management_vouchers"))
+        if parsed <= datetime.now(timezone.utc).date():
+            flash("An expiry date in the past would make the voucher worthless "
+                  "the moment it is sold.", "error")
+            return redirect(url_for("management_vouchers"))
+        expires_on = parsed.isoformat()
+
+    issuer = current_user()
+    conn = get_db()
+    voucher = issue_gift_voucher(
+        conn, amount,
+        purchaser_name=(request.form.get("purchaser_name", "") or "").strip(),
+        purchaser_email=(request.form.get("purchaser_email", "") or "").strip(),
+        recipient_name=(request.form.get("recipient_name", "") or "").strip(),
+        message=(request.form.get("message", "") or "").strip(),
+        expires_on=expires_on,
+        note=(request.form.get("note", "") or "").strip(),
+        issued_by_user_id=issuer["id"] if issuer else None)
+    log_audit(conn, "voucher_issued", target=voucher["code"], details=f"{amount:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"Voucher {voucher['code']} issued.", "success")
+    return redirect(url_for("gift_voucher_detail", voucher_id=voucher["id"]))
+
+
+@app.route("/management/vouchers/<int:voucher_id>")
+@owner_required
+def gift_voucher_detail(voucher_id):
+    conn = get_db()
+    ledger = voucher_ledger(conn, voucher_id)
+    if not ledger:
+        conn.close()
+        abort(404)
+    # Stays with something still owing, so a voucher can be put against one from
+    # here rather than from a list of every booking the house has ever taken.
+    owing = []
+    if ledger["spendable"]:
+        for booking in conn.execute(
+                """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                     LEFT JOIN rooms ON rooms.id = bookings.room_id
+                    WHERE bookings.status = 'confirmed'
+                    ORDER BY bookings.arrival_date""").fetchall():
+            bill = booking_bill(conn, booking["id"])
+            if bill and bill["owed"] > 0.005:
+                owing.append({"booking": booking, "owed": bill["owed"]})
+    conn.close()
+    return render_template("voucher_detail.html", ledger=ledger, owing=owing[:40],
+                           kinds=VOUCHER_KINDS)
+
+
+@app.route("/management/vouchers/<int:voucher_id>/spend", methods=["POST"])
+@owner_required
+def spend_gift_voucher(voucher_id):
+    """Take an amount off a voucher, optionally against a stay.
+
+    With a booking, it becomes a payment on that stay so the bill, the chase and
+    the outstanding list all see it. Without one, it is recorded against
+    whatever it was spent on -- the till, a dinner -- so the voucher's own
+    history still reconciles.
+    """
+    booking_raw = (request.form.get("booking_id", "") or "").strip()
+    amount_raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+    kind = (request.form.get("kind", "") or "other").strip()
+    user = current_user()
+    user_id = user["id"] if user else None
+
+    conn = get_db()
+    if booking_raw.isdigit():
+        ok, message, _taken = redeem_voucher_against_booking(
+            conn, voucher_id, int(booking_raw), amount_raw, taken_by_user_id=user_id)
+    else:
+        ok, message, _taken = redeem_voucher(
+            conn, voucher_id, amount_raw, kind=kind,
+            reference=(request.form.get("reference", "") or "").strip() or None,
+            taken_by_user_id=user_id)
+    if ok:
+        log_audit(conn, "voucher_spent", target=str(voucher_id), details=message)
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("gift_voucher_detail", voucher_id=voucher_id))
+
+
+@app.route("/management/vouchers/<int:voucher_id>/void", methods=["POST"])
+@owner_required
+def void_gift_voucher(voucher_id):
+    """Cancel a voucher without deleting it.
+
+    Deleting would take its redemptions with it and leave money that has been
+    spent with nothing to account for it. A cancelled voucher keeps its history
+    and simply stops being spendable.
+    """
+    conn = get_db()
+    ledger = voucher_ledger(conn, voucher_id)
+    if not ledger:
+        conn.close()
+        abort(404)
+    new_status = "active" if ledger["voucher"]["status"] == "void" else "void"
+    conn.execute("UPDATE gift_vouchers SET status = ? WHERE id = ?",
+                 (new_status, voucher_id))
+    log_audit(conn, "voucher_status", target=ledger["voucher"]["code"],
+              details=new_status)
+    conn.commit()
+    conn.close()
+    flash("Voucher cancelled." if new_status == "void" else "Voucher reinstated.",
+          "success")
+    return redirect(url_for("gift_voucher_detail", voucher_id=voucher_id))
+
+
+@app.route("/vouchers", methods=["GET", "POST"])
+def check_gift_voucher():
+    """What is left on a voucher, for whoever is holding it.
+
+    Rate limited, and it says nothing about who bought it or who it was for: a
+    voucher code is a bearer instrument, so somebody who has found one should
+    learn what it is worth and nothing about the household it came from.
+    """
+    result, code = None, ""
+    if request.method == "POST":
+        code = (request.form.get("code", "") or "").strip()
+        conn = get_db()
+        if rate_limited(conn, "check_voucher", 10):
+            conn.commit()
+            conn.close()
+            flash("Too many attempts from this connection — please try again "
+                  "in a bit.", "error")
+            return render_template("voucher_check.html", result=None, code="")
+        voucher = voucher_by_code(conn, code)
+        ledger = voucher_ledger(conn, voucher["id"]) if voucher else None
+        conn.commit()
+        conn.close()
+        if not ledger or ledger["state"] == "void":
+            flash("We could not find a voucher with that code.", "error")
+        else:
+            result = {
+                "balance": ledger["balance"], "original": ledger["original"],
+                "state": ledger["state"],
+                "expires_on": ledger["voucher"]["expires_on"],
+                "code": ledger["voucher"]["code"],
+            }
+    return render_template("voucher_check.html", result=result, code=code)
 
 
 @app.route("/management/outstanding/<int:booking_id>/payment", methods=["POST"])
@@ -44849,6 +45290,311 @@ def revenue_account_for(conn, stream):
     return (row["value"] if row else "") or ""
 
 
+# What a voucher may be spent on. The kind is recorded on the redemption so a
+# voucher's history reads as a history rather than a column of figures.
+VOUCHER_KINDS = {
+    "room": "Stay",
+    "restaurant": "Restaurant",
+    "workshop": "Atelier",
+    "event": "Event",
+    "pos": "Till",
+    "other": "Something else",
+}
+
+# Ambiguous characters left out on purpose. This code is read off a card, over
+# the telephone, and typed by somebody who did not choose it, so 0/O and 1/I/L
+# cost more in misread codes than they buy in space.
+VOUCHER_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+
+
+def make_voucher_code(conn):
+    """A code for a gift voucher. Unique, checked against the table.
+
+    Four groups of four, hyphenated, because it goes on a printed card and gets
+    read aloud. 31**16 is far past guessing, and the balance page is rate
+    limited anyway -- but a voucher code is a bearer instrument, so the check
+    below matters more than the arithmetic: a collision would let one person
+    spend another's gift.
+    """
+    for _attempt in range(40):
+        raw = "".join(secrets.choice(VOUCHER_CODE_ALPHABET) for _ in range(16))
+        code = "-".join(raw[i:i + 4] for i in range(0, 16, 4))
+        if not conn.execute("SELECT 1 FROM gift_vouchers WHERE code = ?",
+                            (code,)).fetchone():
+            return code
+    raise RuntimeError("could not generate a unique voucher code")
+
+
+def voucher_by_code(conn, code):
+    """A voucher by its code, however it was typed.
+
+    Compared with casefold in PYTHON, not with LOWER in SQL. SQLite's LOWER is
+    ASCII-only, and while this alphabet has no accents, the spacing and hyphens
+    a person adds do vary -- somebody reading a card aloud says four groups and
+    the person typing may use spaces, or none at all. Normalised to the stored
+    shape before comparing.
+    """
+    typed = "".join(ch for ch in (code or "") if ch.isalnum()).casefold()
+    if not typed:
+        return None
+    for row in conn.execute("SELECT * FROM gift_vouchers").fetchall():
+        stored = "".join(ch for ch in (row["code"] or "") if ch.isalnum()).casefold()
+        if stored == typed:
+            return row
+    return None
+
+
+def voucher_ledger(conn, voucher_id):
+    """Everything a voucher is worth and everything spent from it.
+
+    The one definition, so the owner's page, the till and a redemption's own
+    clamp cannot disagree about what is left.
+    """
+    voucher = conn.execute("SELECT * FROM gift_vouchers WHERE id = ?",
+                           (voucher_id,)).fetchone()
+    if not voucher:
+        return None
+    spent_rows = conn.execute(
+        "SELECT * FROM voucher_redemptions WHERE voucher_id = ? ORDER BY created_at, id",
+        (voucher_id,)).fetchall()
+    original = round(float(voucher["original_amount"] or 0), 2)
+    spent = round(sum(float(r["amount"] or 0) for r in spent_rows), 2)
+    balance = round(max(original - spent, 0.0), 2)
+    today = datetime.now(timezone.utc).date().isoformat()
+    expired = bool(voucher["expires_on"]) and voucher["expires_on"] < today
+    if voucher["status"] == "void":
+        state = "void"
+    elif balance <= 0.005:
+        state = "spent"
+    elif expired:
+        state = "expired"
+    else:
+        state = "active"
+    return {
+        "voucher": voucher, "original": original, "spent": spent,
+        "balance": balance, "redemptions": spent_rows, "state": state,
+        "expired": expired, "spendable": state == "active",
+    }
+
+
+def issue_gift_voucher(conn, amount, *, purchaser_name="", purchaser_email="",
+                       recipient_name="", message="", expires_on=None,
+                       note="", issued_by_user_id=None):
+    """Sell a voucher. Returns its row.
+
+    The amount is what was PAID for it and never changes. What is left is the
+    ledger's business.
+    """
+    amount = round(float(amount or 0), 2)
+    if amount <= 0:
+        raise ValueError("a voucher needs an amount")
+    code = make_voucher_code(conn)
+    conn.execute(
+        """INSERT INTO gift_vouchers (code, original_amount, purchaser_name,
+           purchaser_email, recipient_name, message, status, expires_on, note,
+           issued_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)""",
+        (code, amount, purchaser_name or None, (purchaser_email or "").lower() or None,
+         recipient_name or None, message or None, expires_on or None, note or None,
+         issued_by_user_id, datetime.now(timezone.utc).isoformat()))
+    return conn.execute("SELECT * FROM gift_vouchers WHERE code = ?", (code,)).fetchone()
+
+
+def redeem_voucher(conn, voucher_id, amount, *, kind="other", reference=None,
+                   taken_by_user_id=None):
+    """Spend part or all of a voucher. Returns (ok, message, amount_taken).
+
+    REFUSED rather than clamped when the amount is over the balance. A voucher is
+    a bearer instrument: quietly taking less than the figure in front of
+    somebody, at a till, with a guest waiting, is how a voucher and a bill start
+    disagreeing about what was settled. The caller is told the balance and can
+    ask again for the right figure.
+
+    A void, spent or expired voucher takes nothing at all, and says which.
+    """
+    ledger = voucher_ledger(conn, voucher_id)
+    if not ledger:
+        return False, "No such voucher.", 0.0
+    if ledger["state"] == "void":
+        return False, "That voucher has been cancelled.", 0.0
+    if ledger["state"] == "spent":
+        return False, "That voucher has already been spent in full.", 0.0
+    if ledger["state"] == "expired":
+        return False, (f"That voucher expired on "
+                       f"{format_date_human(ledger['voucher']['expires_on'])}."), 0.0
+    try:
+        amount = round(float(amount or 0), 2)
+    except (TypeError, ValueError):
+        return False, "Enter an amount.", 0.0
+    if amount <= 0:
+        return False, "Enter an amount to take from the voucher.", 0.0
+    if amount > ledger["balance"] + 0.005:
+        return False, (f"That voucher has €{ledger['balance']:.2f} left, "
+                       f"which is less than €{amount:.2f}."), 0.0
+    if kind not in VOUCHER_KINDS:
+        kind = "other"
+    conn.execute(
+        """INSERT INTO voucher_redemptions (voucher_id, amount, kind, reference,
+           taken_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+        (voucher_id, amount, kind, reference or None, taken_by_user_id,
+         datetime.now(timezone.utc).isoformat()))
+    return True, f"€{amount:.2f} taken from the voucher.", amount
+
+
+def redeem_voucher_against_booking(conn, voucher_id, booking_id, amount, *,
+                                   taken_by_user_id=None):
+    """Spend a voucher on a stay, as a payment the bill can see.
+
+    Written as a booking_payments row and through record_booking_payment, not as
+    a discount on the total. A voucher is money the house has already been paid
+    for; treating it as a discount would take the same sum off revenue twice and
+    make the stay look cheaper than it was sold for.
+    """
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?",
+                           (booking_id,)).fetchone()
+    if not booking:
+        return False, "No such booking.", 0.0
+    bill = booking_bill(conn, booking_id)
+    if not bill or bill["owed"] <= 0.005:
+        return False, "There is nothing left to pay on that stay.", 0.0
+    try:
+        wanted = round(float(amount or 0), 2)
+    except (TypeError, ValueError):
+        return False, "Enter an amount.", 0.0
+    if wanted > bill["owed"] + 0.005:
+        return False, (f"That stay owes €{bill['owed']:.2f}, "
+                       f"less than €{wanted:.2f}."), 0.0
+    ok, message, taken = redeem_voucher(
+        conn, voucher_id, wanted, kind="room",
+        reference=booking["reference_code"], taken_by_user_id=taken_by_user_id)
+    if not ok:
+        return False, message, 0.0
+    conn.execute(
+        """INSERT INTO booking_payments (booking_id, amount, method, created_at)
+           VALUES (?, ?, 'voucher', ?)""",
+        (booking_id, taken, datetime.now(timezone.utc).isoformat()))
+    record_booking_payment(conn, booking_id, taken)
+    return True, message, taken
+
+
+def kitchen_sheet(conn, day):
+    """Every dietary and medical note in the house for one day, in one place.
+
+    The notes existed and were scattered across four tables and five pages: a
+    guest's profile, a restaurant reservation, an atelier registration, and an
+    event's own message. A chef planning tomorrow had to open all of them and
+    hold the answer in their head, which is exactly how a nut allergy gets
+    missed on the one night somebody is busy.
+
+    RENDERED, NEVER STORED. The privacy notice says dietary and medical notes
+    are deleted once the event is over, and run_health_notes_purge_job makes
+    that true. A sheet that cached them would quietly make the notice false, so
+    this builds from the live rows every time and writes nothing.
+
+    Covers are counted whether or not there is a note, because a sheet listing
+    three allergies and not the forty people eating is half a sheet.
+    """
+    day_iso = day.isoformat() if hasattr(day, "isoformat") else str(day)
+    sections = []
+
+    def clean(*parts):
+        seen, out = set(), []
+        for part in parts:
+            text = (part or "").strip()
+            if text and text.casefold() not in seen:
+                seen.add(text.casefold())
+                out.append(text)
+        return out
+
+    # In the house that night. A stay covers the night of its arrival up to but
+    # not including the morning of departure, so a guest leaving on the day is
+    # not eating dinner on it.
+    rows, covers = [], 0
+    for booking in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name,
+                      guests.dietary_notes AS profile_dietary
+                 FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                 LEFT JOIN guests ON LOWER(guests.email) = LOWER(bookings.guest_email)
+                WHERE bookings.status = 'confirmed'
+                  AND bookings.arrival_date <= ?
+                  AND bookings.departure_date > ?
+                ORDER BY bookings.guest_name""", (day_iso, day_iso)).fetchall():
+        covers += int(booking["party_size"] or 0)
+        notes = clean(booking["profile_dietary"], booking["special_requests"])
+        if notes:
+            rows.append({"who": booking["guest_name"],
+                         "where": booking["room_name"] or "room to be confirmed",
+                         "party": booking["party_size"], "notes": notes})
+    sections.append({"title": "Staying in the house", "covers": covers,
+                     "rows": rows, "kind": "room"})
+
+    # Dinner. Restaurant reservations are stamped with a dinner_date, which is
+    # the service day rather than a UTC calendar date -- see service_day().
+    rows, covers = [], 0
+    for booking in conn.execute(
+            """SELECT * FROM restaurant_bookings
+                WHERE status = 'confirmed' AND dinner_date = ?
+                ORDER BY guest_name""", (day_iso,)).fetchall():
+        covers += int(booking["party_size"] or 0)
+        notes = clean(booking["dietary_notes"])
+        if notes:
+            rows.append({"who": booking["guest_name"], "where": "restaurant",
+                         "party": booking["party_size"], "notes": notes})
+    sections.append({"title": "Dining", "covers": covers, "rows": rows,
+                     "kind": "restaurant"})
+
+    # Ateliers running over the day, inclusive of both ends: somebody is here on
+    # the last day of a retreat and eats on it.
+    rows, covers = [], 0
+    for booking in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status = 'confirmed'
+                  AND workshop_sessions.start_date <= ?
+                  AND workshop_sessions.end_date >= ?
+                ORDER BY workshop_bookings.guest_name""", (day_iso, day_iso)).fetchall():
+        covers += int(booking["party_size"] or 0)
+        notes = clean(booking["dietary_notes"], booking["medical_notes"],
+                      booking["notes"])
+        if notes:
+            rows.append({"who": booking["guest_name"], "where": booking["title"],
+                         "party": booking["party_size"], "notes": notes})
+    sections.append({"title": "Ateliers", "covers": covers, "rows": rows,
+                     "kind": "workshop"})
+
+    # Events. There is no dietary column on an enquiry -- what a wedding needs
+    # arrives in the message and in conversation -- so the message is carried
+    # through as written rather than parsed into something it is not.
+    rows, covers = [], 0
+    for event in conn.execute(
+            """SELECT * FROM event_inquiries
+                WHERE status = 'confirmed' AND preferred_date = ?
+                ORDER BY contact_name""", (day_iso,)).fetchall():
+        covers += int(event["guest_count"] or 0)
+        # The guest's message only. owner_note is where the owner writes
+        # commercial things -- what to push for, what a competitor quoted -- and
+        # this sheet gets printed and pinned up in a kitchen.
+        notes = clean(event["message"])
+        if notes:
+            rows.append({"who": event["contact_name"],
+                         "where": event["event_type"] or "event",
+                         "party": event["guest_count"], "notes": notes})
+    sections.append({"title": "Events", "covers": covers, "rows": rows,
+                     "kind": "event"})
+
+    return {
+        "day": day_iso,
+        "sections": [sec for sec in sections if sec["covers"] or sec["rows"]],
+        "empty_sections": [sec["title"] for sec in sections
+                           if not sec["covers"] and not sec["rows"]],
+        "covers": sum(sec["covers"] for sec in sections),
+        "flagged": sum(len(sec["rows"]) for sec in sections),
+    }
+
+
 def compute_city_tax(conn, party_size, guests_under_18, nights):
     """Taxe de séjour for one stay.
 
@@ -44881,14 +45627,23 @@ def event_bill(conn, event_id):
     event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
     if not event:
         return None
-    quoted = round(float(event["quoted_price"] or 0), 2)
+    # `quoted` is the figure everything treats as the total, so the discount
+    # comes off it here rather than being left for six callers to remember. The
+    # gross quote is kept alongside for the bill to show its working -- a guest
+    # who was given a code wants to see it applied, not a smaller number.
+    gross = round(float(event["quoted_price"] or 0), 2)
+    discount = round(float(event["discount_amount"] or 0), 2)
+    discount = max(0.0, min(discount, gross))
+    quoted = round(gross - discount, 2)
     paid = round(float(event["amount_paid"] or 0), 2)
     if event["status"] in ("cancelled", "declined"):
-        quoted = 0.0
+        gross = discount = quoted = 0.0
     deposit = event["deposit_amount"]
     return {
         "event": event,
         "quoted": quoted,
+        "gross_quote": gross,
+        "discount": discount,
         "paid": paid,
         "owed": round(max(quoted - paid, 0.0), 2),
         "overpaid": round(max(paid - quoted, 0.0), 2),
@@ -44917,6 +45672,89 @@ def record_event_payment(conn, event_id, amount, *, method="bank_transfer",
         "UPDATE event_inquiries SET amount_paid = COALESCE(amount_paid, 0) + ? WHERE id = ?",
         (amount, event_id))
     return event_bill(conn, event_id)
+
+
+def city_tax_arrears(conn):
+    """Confirmed stays carrying no taxe de sejour, and what it would come to.
+
+    Nothing wrote the column until recently, so every stay taken before that
+    carries the NOT NULL DEFAULT 0. Those nights are real and the commune's
+    share of them was never collected -- but nothing invents the figure on the
+    guest's bill or in the declaration, because a charge the house never asked
+    for cannot be put on a document after the fact. See booking_bill.
+
+    So the decision is the owner's, and this is the list they make it from.
+
+    SPLIT BY WHETHER THE GUEST HAS GONE, which is the only distinction that
+    matters here. A stay still to come can be charged and the guest will simply
+    pay it with the rest. Charging one that has departed and settled creates a
+    balance on a finished stay, which the chase will then ask a guest about
+    months after they went home. Both are offered; only one is quiet.
+    """
+    today = datetime.now(timezone.utc).date()
+    rate = tax_rate(conn, "city_tax_per_adult_per_night")
+    upcoming, departed = [], []
+    for booking in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'
+                  AND COALESCE(bookings.city_tax, 0) = 0
+                ORDER BY bookings.arrival_date DESC""").fetchall():
+        arrival = parse_date(booking["arrival_date"])
+        departure = parse_date(booking["departure_date"])
+        if not arrival or not departure:
+            continue
+        nights = (departure - arrival).days
+        if nights <= 0:
+            continue
+        amount, adults, _rate = compute_city_tax(
+            conn, booking["party_size"], booking["guests_under_18"], nights)
+        if amount <= 0:
+            continue
+        bill = booking_bill(conn, booking["id"])
+        row = {
+            "booking": booking, "nights": nights, "adults": adults,
+            "would_be": amount, "settled": bool(bill and bill["owed"] <= 0.005),
+            "owed": bill["owed"] if bill else 0.0,
+        }
+        (departed if departure <= today else upcoming).append(row)
+    return {
+        "upcoming": upcoming, "departed": departed, "rate": rate,
+        "upcoming_total": round(sum(r["would_be"] for r in upcoming), 2),
+        "departed_total": round(sum(r["would_be"] for r in departed), 2),
+        "count": len(upcoming) + len(departed),
+    }
+
+
+def charge_city_tax_now(conn, booking_id):
+    """Stamp the taxe de sejour on one stay. Returns (ok, message).
+
+    Computed from TODAY'S rate, and the message says so. The rate is the
+    commune's and does change; a stay from two years ago charged at this year's
+    rate is not what was owed then. For a stay still to come that is exactly
+    right, which is why the page separates the two.
+    """
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?",
+                           (booking_id,)).fetchone()
+    if not booking:
+        return False, "No such booking."
+    if float(booking["city_tax"] or 0) > 0:
+        return False, "That stay already carries the tax."
+    arrival = parse_date(booking["arrival_date"])
+    departure = parse_date(booking["departure_date"])
+    nights = (departure - arrival).days if (arrival and departure) else 0
+    if nights <= 0:
+        return False, "That stay has no nights to charge for."
+    amount, adults, rate = compute_city_tax(
+        conn, booking["party_size"], booking["guests_under_18"], nights)
+    if amount <= 0:
+        return False, "Nothing to charge — every guest on that stay is exempt."
+    conn.execute("UPDATE bookings SET city_tax = ? WHERE id = ?", (amount, booking_id))
+    log_audit(conn, "city_tax_charged", target=booking["reference_code"],
+              details=f"{amount:.2f} ({adults} adults x {nights} nights x {rate})")
+    return True, (f"€{amount:.2f} added to {booking['guest_name']} "
+                  f"({adults} adult{'' if adults == 1 else 's'} x {nights} "
+                  f"night{'' if nights == 1 else 's'} at €{rate:.2f}).")
 
 
 def city_tax_working(conn, start, end):

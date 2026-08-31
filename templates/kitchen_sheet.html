@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Kitchen sheet — {{ sheet.day|date_short }}{% endblock %}
+{% block content %}
+
+{#
+  Printed and pinned up, so the page furniture is marked not to print and the
+  covers lead. A chef needs two numbers before any detail: how many are eating,
+  and how many of those need something different.
+
+  The notes are RENDERED, never cached. The privacy notice says dietary and
+  medical notes are deleted once the event is over and
+  run_health_notes_purge_job makes that true; a sheet that stored a copy would
+  quietly make the notice false.
+#}
+<div class="page-head no-print">
+  <h1>Kitchen sheet</h1>
+  <div>
+    <a href="{{ url_for('kitchen_day_sheet', day=prev_day) }}" class="btn-mini">← Day before</a>
+    <a href="{{ url_for('kitchen_day_sheet', day=next_day) }}" class="btn-mini">Day after →</a>
+    <button type="button" class="btn-primary" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+<h2 style="margin-top:0;">{{ sheet.day|date_short }}</h2>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ sheet.covers }}</span>
+      <span class="stat-tile-label">eating in the house</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ sheet.flagged }}</span>
+      <span class="stat-tile-label">{{ 'party needs' if sheet.flagged == 1 else 'parties need' }} something different</span>
+    </span>
+  </div>
+</div>
+
+{% if not sheet.sections %}
+  <p class="upload-hint">Nobody is booked in on this day — no stays, no dinner
+  reservations, no ateliers and no events.</p>
+{% endif %}
+
+{% for section in sheet.sections %}
+<h3 style="margin-top:26px;">
+  {{ section.title }} — {{ section.covers }}
+  {{ 'cover' if section.covers == 1 else 'covers' }}
+</h3>
+{% if not section.rows %}
+  <p class="upload-hint">{{ section.covers }}
+  {{ 'person' if section.covers == 1 else 'people' }}, nothing noted.</p>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Who</th><th>Where</th><th class="num">Party</th><th>What they need</th></tr>
+    </thead>
+    <tbody>
+      {% for r in section.rows %}
+      <tr>
+        <td>{{ r.who }}</td>
+        <td>{{ r.where }}</td>
+        <td class="num">{{ r.party or '—' }}</td>
+        <td>
+          {% for note in r.notes %}
+          <div{% if not loop.first %} style="margin-top:4px;"{% endif %}>{{ note }}</div>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if sheet.empty_sections %}
+<p class="upload-hint no-print" style="margin-top:20px;">
+  Nothing on for: {{ sheet.empty_sections|join(', ') }}.
+</p>
+{% endif %}
+
+<style>
+/* A sheet with a navigation menu across the top is not a sheet. */
+@media print{
+  .no-print{ display:none !important; }
+  h3{ page-break-after:avoid; }
+  table{ page-break-inside:auto; }
+  tr{ page-break-inside:avoid; }
+}
+</style>
+
+{% endblock %}

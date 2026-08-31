@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Gift vouchers{% endblock %}
+{% block content %}
+
+{#
+  A voucher is a LIABILITY, not a sale: money the house has taken for a stay or
+  a dinner that has not happened yet. That is why the band leads on what is
+  still to spend rather than on what has been sold — the second figure flatters,
+  the first is the one an accountant asks for.
+#}
+<div class="page-head">
+  <h1>Gift vouchers</h1>
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<details class="detail-card" style="max-width:720px; margin-bottom:20px;">
+  <summary><strong>Sell a voucher</strong></summary>
+  <form method="post" action="{{ url_for('new_gift_voucher') }}" style="margin-top:14px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="v_amount">Worth (€)</label>
+        <input id="v_amount" type="number" name="amount" min="1" step="0.01" required>
+      </div>
+      <div>
+        <label class="field-label" for="v_expires">Expires (optional)</label>
+        <input id="v_expires" type="date" name="expires_on">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="v_buyer">Bought by</label>
+        <input id="v_buyer" type="text" name="purchaser_name">
+      </div>
+      <div>
+        <label class="field-label" for="v_buyer_email">Their email</label>
+        <input id="v_buyer_email" type="email" name="purchaser_email">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="v_for">For</label>
+        <input id="v_for" type="text" name="recipient_name" placeholder="Who it is a gift for">
+      </div>
+      <div>
+        <label class="field-label" for="v_note">Note to yourself</label>
+        <input id="v_note" type="text" name="note" placeholder="Only you see this">
+      </div>
+    </div>
+    <label class="field-label" for="v_message">Message on the card</label>
+    <input id="v_message" type="text" name="message" placeholder="Optional, printed on the voucher">
+    <p class="upload-hint">The code is generated when you save, in four groups of
+    four so it can be read aloud over the telephone. Leaving the expiry blank
+    means it does not expire.</p>
+    <button type="submit" class="btn-primary">Issue voucher</button>
+  </form>
+</details>
+
+{% if lv.rows %}{% with lv = lv %}{% include "_list_toolbar.html" %}{% endwith %}{% endif %}
+
+{% if not lv.rows %}
+  <p class="upload-hint">No vouchers yet. Sell one above and it appears here with
+  a code and a balance.</p>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th><th>For</th><th class="num">Worth</th>
+        <th class="num">Left</th><th>State</th><th>Expires</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in lv.rows %}
+      <tr>
+        <td>
+          <a href="{{ url_for('gift_voucher_detail', voucher_id=r.voucher['id']) }}"
+             style="font-variant-numeric:tabular-nums;">{{ r.voucher['code'] }}</a>
+        </td>
+        <td>
+          {{ r.voucher['recipient_name'] or '—' }}
+          {% if r.voucher['purchaser_name'] %}
+          <span class="upload-hint">from {{ r.voucher['purchaser_name'] }}</span>
+          {% endif %}
+        </td>
+        <td class="num">€{{ '%.2f'|format(r.original) }}</td>
+        <td class="num"><strong>€{{ '%.2f'|format(r.balance) }}</strong></td>
+        <td>
+          {# mini-status + status-<name>, the classes the rest of the app uses.
+             .pill does not exist in either stylesheet; a class nobody defines
+             renders as unstyled text and looks like a rendering bug. #}
+          {% if r.state == 'active' %}<span class="mini-status status-confirmed">Still to spend</span>
+          {% elif r.state == 'spent' %}<span class="mini-status status-past">Spent</span>
+          {% elif r.state == 'expired' %}<span class="mini-status status-pending">Expired</span>
+          {% else %}<span class="mini-status status-cancelled">Cancelled</span>{% endif %}
+        </td>
+        <td>{{ r.voucher['expires_on']|date_short if r.voucher['expires_on'] else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "public_base.html" %}
+{% block title %}Check a gift voucher{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+{#
+  noindex, because a page that answers "what is this code worth" should not be
+  in a search index alongside the codes people paste into forums.
+
+  It deliberately says NOTHING about who bought the voucher or who it was for. A
+  voucher code is a bearer instrument: somebody holding one is entitled to know
+  what it is worth and nothing at all about the household it came from.
+#}
+<div class="g-wrap g-wrap--narrow">
+  <h1>Check a gift voucher</h1>
+  <p>Enter the code from the card to see what is left on it.</p>
+
+  <form method="post" action="{{ url_for('check_gift_voucher') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="g-field">
+      <label for="vc_code">Voucher code</label>
+      <input id="vc_code" type="text" name="code" value="{{ code }}"
+             autocomplete="off" spellcheck="false"
+             placeholder="ABCD-EFGH-JKLM-NPQR" required
+             style="font-variant-numeric:tabular-nums; letter-spacing:.04em;">
+      <span class="g-hint">Spaces, hyphens and capitals do not matter.</span>
+    </p>
+    <button type="submit" class="g-btn g-btn--solid">Check the balance</button>
+  </form>
+
+  {% if result %}
+  <div class="g-card" style="margin-top:var(--s4);">
+    <p class="g-mb-label">Left to spend</p>
+    <p style="font-size:32px; margin:0;">€{{ '%.2f'|format(result.balance) }}</p>
+    {% if result.balance < result.original %}
+    <p class="g-hint">Of €{{ '%.2f'|format(result.original) }} originally.</p>
+    {% endif %}
+    {% if result.state == 'expired' %}
+    <p class="g-hint">This voucher expired on {{ result.expires_on|date_short }} —
+    do get in touch and we will see what we can do.</p>
+    {% elif result.state == 'spent' %}
+    <p class="g-hint">This one has been spent in full. Thank you.</p>
+    {% elif result.expires_on %}
+    <p class="g-hint">Valid until {{ result.expires_on|date_short }}.</p>
+    {% endif %}
+    <p class="g-hint">To use it, mention the code when you book or when you
+    arrive.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

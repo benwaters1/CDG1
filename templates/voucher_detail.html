@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Voucher {{ ledger.voucher['code'] }}{% endblock %}
+{% block content %}
+
+{#
+  The voucher's own history, because the balance is a LEDGER and not a counter.
+  A voucher part-spent at the till and part-spent against a stay has to
+  reconcile months later, and it can only do that if every redemption is on the
+  page with what it was spent on.
+#}
+<div class="page-head no-print">
+  <h1 style="font-variant-numeric:tabular-nums;">{{ ledger.voucher['code'] }}</h1>
+  <div>
+    <button type="button" class="btn-primary" onclick="window.print()">Print</button>
+    <a href="{{ url_for('management_vouchers') }}" class="btn-mini">All vouchers</a>
+  </div>
+</div>
+
+<div class="detail-card" style="max-width:640px;">
+  <div class="field-row-2">
+    <div>
+      <p class="field-label">Worth</p>
+      <p style="font-size:22px; margin:0;">€{{ '%.2f'|format(ledger.original) }}</p>
+    </div>
+    <div>
+      <p class="field-label">Left to spend</p>
+      <p style="font-size:22px; margin:0;"><strong>€{{ '%.2f'|format(ledger.balance) }}</strong></p>
+    </div>
+  </div>
+  <p style="margin-top:12px;">
+    {% if ledger.state == 'active' %}<span class="mini-status status-confirmed">Still to spend</span>
+    {% elif ledger.state == 'spent' %}<span class="mini-status status-past">Spent in full</span>
+    {% elif ledger.state == 'expired' %}<span class="mini-status status-pending">Expired {{ ledger.voucher['expires_on']|date_short }}</span>
+    {% else %}<span class="mini-status status-cancelled">Cancelled</span>{% endif %}
+    {% if ledger.voucher['expires_on'] and ledger.state == 'active' %}
+    <span class="upload-hint">expires {{ ledger.voucher['expires_on']|date_short }}</span>
+    {% endif %}
+  </p>
+  {# field-label + p, the pattern this card already uses above. A <dl> here had
+     a class with no rules behind it, which renders as a browser-default list
+     inside a styled card and reads as a bug. #}
+  <div style="margin-top:12px;">
+    {% if ledger.voucher['recipient_name'] %}
+    <p class="field-label">For</p><p style="margin:0 0 8px;">{{ ledger.voucher['recipient_name'] }}</p>
+    {% endif %}
+    {% if ledger.voucher['purchaser_name'] %}
+    <p class="field-label">Bought by</p><p style="margin:0 0 8px;">{{ ledger.voucher['purchaser_name'] }}</p>
+    {% endif %}
+    {% if ledger.voucher['message'] %}
+    <p class="field-label">Message on the card</p><p style="margin:0 0 8px;">{{ ledger.voucher['message'] }}</p>
+    {% endif %}
+    <p class="field-label">Issued</p><p style="margin:0;">{{ ledger.voucher['created_at'][:10]|date_short }}</p>
+  </div>
+  {% if ledger.voucher['note'] %}
+  <p class="upload-hint no-print">Your note: {{ ledger.voucher['note'] }}</p>
+  {% endif %}
+</div>
+
+{% if ledger.spendable %}
+<div class="detail-card no-print" style="max-width:640px; margin-top:20px;">
+  <h3 style="margin-top:0;">Spend some of it</h3>
+  <form method="post" action="{{ url_for('spend_gift_voucher', voucher_id=ledger.voucher['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="sp_amount">Amount (€)</label>
+        <input id="sp_amount" type="number" name="amount" min="0.01"
+               max="{{ '%.2f'|format(ledger.balance) }}" step="0.01" required>
+      </div>
+      <div>
+        <label class="field-label" for="sp_kind">Spent on</label>
+        <select id="sp_kind" name="kind">
+          {% for key, label in kinds.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <label class="field-label" for="sp_booking">Against a stay (optional)</label>
+    <select id="sp_booking" name="booking_id">
+      <option value="">Not against a stay</option>
+      {% for o in owing %}
+      <option value="{{ o.booking['id'] }}">
+        {{ o.booking['guest_name'] }} — {{ o.booking['room_name'] or 'room TBC' }},
+        {{ o.booking['arrival_date']|date_short }} (€{{ '%.2f'|format(o.owed) }} owing)
+      </option>
+      {% endfor %}
+    </select>
+    <label class="field-label" for="sp_ref">Reference (optional)</label>
+    <input id="sp_ref" type="text" name="reference" placeholder="Till receipt, table, whatever helps later">
+    <p class="upload-hint">Choosing a stay records it as a payment on that
+    booking, so the bill, the balance chase and what the house is owed all see
+    it. More than the balance is refused rather than trimmed — with a guest
+    waiting, quietly taking less is how a voucher and a bill start disagreeing.</p>
+    <button type="submit" class="btn-primary">Take it off the voucher</button>
+  </form>
+</div>
+{% endif %}
+
+<h3 class="no-print" style="margin-top:24px;">What has been spent</h3>
+{% if not ledger.redemptions %}
+  <p class="upload-hint">Nothing spent yet.</p>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>On</th><th>Reference</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      {% for r in ledger.redemptions %}
+      <tr>
+        <td>{{ r['created_at'][:10]|date_short }}</td>
+        <td>{{ kinds.get(r['kind'], r['kind']) }}</td>
+        <td>{{ r['reference'] or '—' }}</td>
+        <td class="num">€{{ '%.2f'|format(r['amount']) }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td colspan="3"><strong>Spent</strong></td>
+        <td class="num"><strong>€{{ '%.2f'|format(ledger.spent) }}</strong></td>
+      </tr>
+      <tr>
+        <td colspan="3">Left</td>
+        <td class="num">€{{ '%.2f'|format(ledger.balance) }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('void_gift_voucher', voucher_id=ledger.voucher['id']) }}"
+      class="no-print" style="margin-top:20px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="btn-mini">
+    {{ 'Reinstate this voucher' if ledger.voucher['status'] == 'void' else 'Cancel this voucher' }}
+  </button>
+  <span class="upload-hint">Cancelling keeps the history — deleting would leave
+  money already spent with nothing to account for it.</span>
+</form>
+
+{% endblock %}

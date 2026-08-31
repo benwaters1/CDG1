@@ -134,6 +134,17 @@
           <label for="message">Tell us about your event</label>
           <textarea id="message" name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan">{{ prefill_message | default('') }}</textarea>
         </p>
+        {# Captured, not validated. There is no price on an enquiry yet to take a
+           discount off, and refusing an enquiry because a code was mistyped
+           would lose a wedding over a typo. The house sees what was claimed and
+           applies it when it quotes. #}
+        <p class="g-field">
+          <label for="promo_code">Promo code (optional)</label>
+          <input type="text" id="promo_code" name="promo_code" autocomplete="off"
+                 value="{{ prefill_promo_code | default('') }}">
+          <span class="g-hint">If you have been given one, we will apply it to
+          your quote.</span>
+        </p>
         <button type="submit" class="g-btn g-submit">Send enquiry</button>
         <p class="g-foot-note">This is an enquiry, not a booking — we will follow up to discuss availability, pricing and details. You will get a reference code and a link to check its status.</p>
       </form>

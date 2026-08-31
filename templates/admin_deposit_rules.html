@@ -6,7 +6,7 @@
   <h1>Deposit Rules</h1>
   <a href="{{ url_for('management') }}" class="btn-mini">Back to Management</a>
 </div>
-<p class="pay-disclaimer" style="margin-top:-10px;">One place to see every deposit rule across restaurant and workshop bookings. A rule can be scoped to a date range, a minimum party size, or both — the most specific matching rule wins. A booking that matches no rule falls back to that category's base deposit percentage below.</p>
+<p class="pay-disclaimer" style="margin-top:-10px;">One place to see every deposit rule across stays, dinners, ateliers and events. A rule can be scoped to a date range, a minimum party size, or both — the most specific matching rule wins. A booking that matches no rule falls back to that category's base deposit percentage below.</p>
 
 <div class="detail-card" style="max-width:640px; margin-bottom:20px;">
   <h3 style="margin-top:0;">Base deposit percentages (the fallback)</h3>
@@ -35,6 +35,18 @@
       <button type="submit" class="btn-mini">Save</button>
     </form>
   </details>
+  {# Events have their own box rather than a second <summary> in the room
+     one: a <details> takes exactly one summary, and the second rendered
+     inside the expanded body where nobody would read it as a heading. #}
+  <details class="refund-box" style="margin-bottom:16px;">
+    <summary>Events: {% if event_percent %}{{ '%g'|format(event_percent) }}% of the quote up front{% else %}no deposit taken{% endif %}</summary>
+    <p class="upload-hint">
+      An event is quoted rather than priced off a rate card, so the deposit is
+      a percentage of whatever the quote comes to, worked out when the quote is
+      set. A rule below can vary it by date or party size — a wedding in August
+      and a meeting in February are not held on the same terms.
+    </p>
+  </details>
 
   <p class="upload-hint">Restaurant: {% if restaurant_settings['deposit_percent'] %}{{ restaurant_settings['deposit_percent']|int }}%{% else %}not set — pays in full online{% endif %} · <a href="{{ url_for('admin_restaurant_settings') }}" style="color:var(--steel);">change</a></p>
   {% for w in workshops %}
@@ -49,10 +61,14 @@
     <div class="field-row-2">
       <div>
         <label class="field-label">Applies to</label>
+        {# Rendered from DEPOSIT_RULE_CATEGORIES rather than typed out here.
+           This list and the table's CHECK were separate, so a category the
+           database accepted could be impossible to choose on the page --
+           which is exactly what happened when events were added. #}
         <select name="category">
-          <option value="restaurant">Restaurant</option>
-          <option value="workshop">Workshop</option>
-          <option value="room">Room stay</option>
+          {% for key, label in categories %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
         </select>
       </div>
       <div>
