@@ -2388,6 +2388,17 @@ def init_db():
         -- a STAY; a returning guest's fiche from two years ago is not a record
         -- the house is entitled to keep because they came back, and holding it
         -- there would quietly make the six-month retention unenforceable.
+        -- One group across several rooms. Holds nothing but who they are:
+        -- the rooms, dates, prices and bills stay on the bookings, which is
+        -- where they already work.
+        CREATE TABLE IF NOT EXISTS booking_parties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            lead_booking_id INTEGER,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS police_register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
@@ -3489,6 +3500,13 @@ def init_db():
         ("vehicle_odometer", "ALTER TABLE vehicles ADD COLUMN odometer_km INTEGER"),
         ("vehicle_odometer_at", "ALTER TABLE vehicles ADD COLUMN odometer_read_at TEXT"),
         ("vehicle_off_road", "ALTER TABLE vehicles ADD COLUMN off_road INTEGER NOT NULL DEFAULT 0"),
+        # A family taking three rooms was three unconnected bookings: three
+        # confirmations, three bills, three arrival texts. The party is
+        # deliberately thin — a name and an id — because each booking is
+        # genuinely its own stay, and a "party booking" owning the money would
+        # have to reinvent everything a booking already does.
+        ("booking_party_id", "ALTER TABLE bookings ADD COLUMN party_id INTEGER "
+                             "REFERENCES booking_parties(id) ON DELETE SET NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -27080,7 +27098,20 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
             WHERE status = 'confirmed' AND {spec["date_column"]} = ?
               AND {spec["stamp"]} IS NULL""", (when,)).fetchall()
 
+    # ONE MESSAGE TO A PARTY, not one per room. A family taking three rooms
+    # was getting three identical texts to the same telephone on the same
+    # morning, each billed. The rooms they are not written about are stamped
+    # all the same, or the next run would text them again for the same stay.
+    leads = set(party_lead_bookings(conn, [b["id"] for b in arriving]))
+    quiet = [b for b in arriving if b["id"] not in leads]
+    arriving = [b for b in arriving if b["id"] in leads]
+    for b in quiet:
+        conn.execute(f"UPDATE bookings SET {spec['stamp']} = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), b["id"]))
+        conn.commit()
+
     sent = held = skipped = 0
+    with_party = len(quiet)
     reasons = {}
     for booking in arriving:
         number, refusal = can_text(conn, booking["guest_phone"], "transactional")
@@ -27114,6 +27145,12 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
         parts.append(f"{held} waiting for a provider")
     if skipped:
         parts.append(f"{skipped} with no number we could use")
+    if with_party:
+        # Said out loud, because a run that texted four people yesterday and
+        # two today looks like something breaking rather than two of them
+        # being in the same family.
+        parts.append(f"{with_party} covered by somebody else's message "
+                     "in the same party")
     return ", ".join(parts) or "nothing to send"
 
 
@@ -29958,8 +29995,11 @@ def admin_bookings():
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
 
     all_bookings = conn.execute(
-        """SELECT bookings.*, rooms.name AS room_name FROM bookings
-           JOIN rooms ON rooms.id = bookings.room_id
+        """SELECT bookings.*, rooms.name AS room_name,
+                  booking_parties.name AS party_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+             LEFT JOIN booking_parties ON booking_parties.id = bookings.party_id
            ORDER BY (bookings.status = 'pending') DESC,
                     (bookings.departure_date < date('now')) ASC,
                     bookings.arrival_date"""
@@ -30630,6 +30670,79 @@ def delete_police_fiche(fiche_id):
     conn.close()
     flash("Removed from the register.", "success")
     return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/parties/new", methods=["POST"])
+@owner_required
+def new_booking_party():
+    """Tie several bookings together as one group.
+
+    Formed from bookings that already exist rather than as a booking mode of
+    its own: a family rings up, takes three rooms one at a time, and only
+    then is it obviously one party. Making it a mode would mean deciding at
+    the wrong end.
+    """
+    ids = [int(i) for i in request.form.getlist("booking_ids") if str(i).isdigit()]
+    name = (request.form.get("name", "") or "").strip()[:120]
+    if len(ids) < 2:
+        flash("A party needs at least two bookings. One booking is a booking.",
+              "error")
+        return redirect(url_for("admin_bookings"))
+
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT * FROM bookings WHERE id IN ({','.join('?' * len(ids))}) "
+        "ORDER BY arrival_date", tuple(ids)).fetchall()
+    if len(rows) != len(ids):
+        conn.close()
+        abort(404)
+    # A booking already in another party is not silently moved: that would
+    # take a stay out of somebody else's group without saying so.
+    already = [r for r in rows if r["party_id"]]
+    if already:
+        conn.close()
+        flash(f"{already[0]['reference_code']} is already in a party. "
+              "Take it out of that one first.", "error")
+        return redirect(url_for("admin_bookings"))
+
+    if not name:
+        # The lead guest's surname, which is what the house would call them.
+        lead_name = (rows[0]["guest_name"] or "").strip()
+        name = (lead_name.split(" ")[-1] + " party") if lead_name else "Party"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "INSERT INTO booking_parties (name, lead_booking_id, created_at) VALUES (?, ?, ?)",
+        (name, rows[0]["id"], now_iso))
+    party_id = cur.lastrowid
+    conn.execute(
+        f"UPDATE bookings SET party_id = ? WHERE id IN ({','.join('?' * len(ids))})",
+        (party_id,) + tuple(ids))
+    log_audit(conn, "booking_party_created", target=name,
+              details=", ".join(r["reference_code"] for r in rows))
+    conn.commit()
+    conn.close()
+    flash(f"{name}: {len(ids)} rooms tied together. They will be written to "
+          "once rather than once each.", "success")
+    return redirect(url_for("admin_bookings"))
+
+
+@app.route("/admin/parties/<int:party_id>/disband", methods=["POST"])
+@owner_required
+def disband_booking_party(party_id):
+    """Untie a party. The bookings themselves are untouched."""
+    conn = get_db()
+    party = conn.execute("SELECT * FROM booking_parties WHERE id = ?",
+                         (party_id,)).fetchone()
+    if not party:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE bookings SET party_id = NULL WHERE party_id = ?", (party_id,))
+    conn.execute("DELETE FROM booking_parties WHERE id = ?", (party_id,))
+    log_audit(conn, "booking_party_disbanded", target=party["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{party['name']} untied. Every booking is on its own again.", "success")
+    return redirect(url_for("admin_bookings"))
 
 
 @app.route("/management/empty-nights")
@@ -36620,6 +36733,89 @@ ANONYMISE_RATHER_THAN_DELETE = {
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
+
+
+def party_for_booking(conn, booking_id):
+    """The party a booking belongs to, with every stay in it.
+
+    Returns None for a booking that is on its own, which is most of them —
+    a house of seven rooms does not want a party wrapper round every single
+    reservation.
+    """
+    row = conn.execute(
+        """SELECT booking_parties.* FROM booking_parties
+             JOIN bookings ON bookings.party_id = booking_parties.id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not row:
+        return None
+    return party_detail(conn, row["id"])
+
+
+def party_detail(conn, party_id):
+    """A party, its stays, and what the whole group owes.
+
+    The money is summed from each booking's own bill rather than recomputed:
+    there is one definition of what a stay costs and this is not a second one.
+    """
+    party = conn.execute("SELECT * FROM booking_parties WHERE id = ?",
+                         (party_id,)).fetchone()
+    if not party:
+        return None
+    stays = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.party_id = ?
+            ORDER BY bookings.arrival_date, rooms.name""", (party_id,)).fetchall()
+    total = owed = paid = 0.0
+    for b in stays:
+        bill = booking_bill(conn, b["id"])
+        if not bill:
+            continue
+        total += bill["total"]
+        owed += bill["owed"]
+        paid += bill["paid"]
+    arrivals = [parse_date(b["arrival_date"]) for b in stays if b["arrival_date"]]
+    departures = [parse_date(b["departure_date"]) for b in stays if b["departure_date"]]
+    return {
+        "party": party, "stays": stays, "rooms": len(stays),
+        "guests": sum((b["party_size"] or 1) for b in stays),
+        "total": round(total, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        # The span of the whole group, which is not any one booking's dates.
+        "arrival": min(arrivals).isoformat() if arrivals else None,
+        "departure": max(departures).isoformat() if departures else None,
+        # Whoever the house talks to. Falls back to the earliest arrival, so
+        # there is always somebody rather than nobody.
+        "lead": next((b for b in stays if b["id"] == party["lead_booking_id"]),
+                     stays[0] if stays else None),
+    }
+
+
+def party_lead_bookings(conn, booking_ids):
+    """Of a set of bookings, the ones that should be written to.
+
+    A party gets ONE arrival text and one confirmation, not one per room. The
+    lead is written to; the others are in the message. Anything not in a party
+    is its own lead, so a single booking behaves exactly as it always did.
+    """
+    keep, seen_parties = [], set()
+    for bid in booking_ids:
+        row = conn.execute("SELECT id, party_id FROM bookings WHERE id = ?",
+                           (bid,)).fetchone()
+        if not row:
+            continue
+        if not row["party_id"]:
+            keep.append(bid)
+            continue
+        if row["party_id"] in seen_parties:
+            continue
+        seen_parties.add(row["party_id"])
+        party = conn.execute("SELECT lead_booking_id FROM booking_parties WHERE id = ?",
+                             (row["party_id"],)).fetchone()
+        lead = party["lead_booking_id"] if party else None
+        # If the lead is not in the set being written to, the first of the set
+        # stands in — better one message to somebody in the party than none.
+        keep.append(lead if lead in booking_ids else bid)
+    return keep
 
 
 def empty_nights(conn, *, days=90, today=None):
