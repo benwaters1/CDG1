@@ -199,6 +199,7 @@ SUITES = [
     "test_empty_nights",
     "test_booking_parties",
     "test_handover_check",
+    "test_repair_handover",
 ]
 
 

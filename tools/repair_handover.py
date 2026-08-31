@@ -356,11 +356,36 @@ def main():
         ("the ticked extras on the booking form", repair_extra_prefill),
         ("the typed dates on the event enquiry", repair_event_date_prefill),
     ]
-    total = 0
+    total, failed = 0, []
     for label, fn in steps:
-        n = fn()
+        # Each repair is isolated. This script died on step 2 of 10 once —
+        # an anchor it searched for was no longer in the file, .index() raised,
+        # and the eight steps after it never ran. Nothing said so: the report
+        # listed what it had managed before falling over, which reads exactly
+        # like a run that found nothing left to do. A step that cannot run is
+        # a thing to say out loud, not a reason to stop.
+        try:
+            n = fn()
+        except FileNotFoundError:
+            # The file this step is about is not in this tree at all, so there
+            # is nothing here to put back. Said out loud, but not counted as a
+            # failure — otherwise a partial checkout could never exit 0.
+            print(f"  {'not in tree':<14} {'':<3} {label}")
+            continue
+        except Exception as e:
+            failed.append((label, f"{type(e).__name__}: {e}"))
+            print(f"  {'COULD NOT RUN':<14} {'':<3} {label}")
+            continue
         total += n
         print(f"  {'restored' if n else 'already fine':<14} {n if n else '':<3} {label}")
+
+    if failed:
+        print(f"\n{total} repair(s), and {len(failed)} that could not run:")
+        for label, err in failed:
+            print(f"  - {label}: {err}")
+        print("\nPut those back by hand — the suite will tell you what they were "
+              "for. Then run: python tests/run.py")
+        return 1
     print(f"\n{total} repair(s). Now run: python tests/run.py")
     return 0
 
