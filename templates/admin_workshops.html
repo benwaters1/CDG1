@@ -64,7 +64,29 @@
             </div>
             {% endif %}
             · <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">{{ row.rooms_assigned }}/{{ total_rooms }} rooms assigned — see rooms</a>
+            {% if row.materials and row.materials.lines %}{% set mp = row.materials %}
+            <div class="upload-hint" style="margin-top:4px;">
+              <b>Materials</b> for {{ mp.heads }} {{ 'place' if mp.heads == 1 else 'places' }}:
+              {% for l in mp.lines %}{{ '%g'|format(l.need) }} {{ l.unit }} {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+              {%- if mp.cost %} · €{{ '%.2f'|format(mp.cost) }}{% endif %}.
+              {% if mp.taken_out %}
+                <span class="mini-status status-inactive">taken out of stock</span>
+              {% elif mp.short %}
+                <span style="color:var(--rust);">Short {% for l in mp.short %}{{ '%g'|format(l.shortfall) }} {{ l.unit }} of {{ l.name }}{% if not loop.last %}, {% endif %}{% endfor %}.</span>
+              {% endif %}
+            </div>
+            {% endif %}
           </span>
+          {% if row.materials and row.materials.lines and not row.materials.taken_out %}
+          {# Deliberately a button rather than something automatic on the end
+             date: only somebody who was there knows it actually ran, and a
+             job that depletes stock for a workshop that was called off is
+             worse than one that never fires. #}
+          <form method="post" action="{{ url_for('consume_workshop_materials', session_id=s['id']) }}" onsubmit="return confirm('Take these materials out of stock? This cannot be undone from here.');" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="small-link" style="background:none;border:0;padding:0;cursor:pointer;color:var(--steel);">Take out of stock</button>
+          </form>
+          {% endif %}
           <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
           <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
           <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
@@ -120,6 +142,50 @@
       <p class="pay-disclaimer" style="margin-top:-4px;">Capacity is the most it can take; the minimum is the fewest it can run with. Set one and a session that will not reach it appears on your home page while there is still time to ring the waitlist or call it off.</p>
       <button type="submit" class="btn-mini">+ Add session</button>
     </form>
+
+    <p class="field-label" style="margin-top:14px;">What it uses up</p>
+    {% set mats = materials_by_workshop.get(w['id'], []) %}
+    {% if not mats %}
+      <p class="empty-inline">Nothing recorded. Add what it consumes and each session says what to have ready.</p>
+    {% else %}
+      <div class="doc-list">
+        {% for mt in mats %}
+        <div class="doc-row">
+          <span style="flex:1;">
+            {{ mt['name'] }}
+            {%- if mt['qty_per_person'] %} · {{ '%g'|format(mt['qty_per_person']) }} {{ mt['unit'] }} per person{% endif %}
+            {%- if mt['qty_per_session'] %} · {{ '%g'|format(mt['qty_per_session']) }} {{ mt['unit'] }} per session{% endif %}
+            {%- if not mt['item_active'] %} <span class="mini-status status-inactive">item retired</span>{% endif %}
+            {%- if mt['note'] %} <span class="upload-hint">— {{ mt['note'] }}</span>{% endif %}
+          </span>
+          <form method="post" action="{{ url_for('remove_workshop_material', material_id=mt['id']) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="doc-delete">×</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if stock_choices %}
+    <form method="post" action="{{ url_for('add_workshop_material', workshop_id=w['id']) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field-row-2">
+        <select name="stock_item_id" required>
+          <option value="">Something from stock…</option>
+          {% for it in stock_choices %}
+          <option value="{{ it['id'] }}">{{ it['name'] }} ({{ it['unit'] }})</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="note" placeholder="Note (optional)">
+      </div>
+      <div class="field-row-2">
+        <input type="text" name="qty_per_person" placeholder="Per person (e.g. 2)">
+        <input type="text" name="qty_per_session" placeholder="Per session (e.g. 8)">
+      </div>
+      <button type="submit" class="btn-mini">+ Add material</button>
+    </form>
+    <p class="pay-disclaimer" style="margin-top:-4px;">Per person scales with who comes; per session does not — eight aprons is eight aprons whether four people come or ten. Set either or both.</p>
+    {% endif %}
 
     <p class="field-label" style="margin-top:14px;">Custom registration questions</p>
     {% set fields = custom_fields_by_workshop.get(w['id'], []) %}

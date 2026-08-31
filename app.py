@@ -2419,6 +2419,20 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- What a workshop uses up. Against the WORKSHOP rather than the
+        -- session, because the recipe is a property of the thing being
+        -- taught -- every running of it uses the same materials, scaled to
+        -- however many people came.
+        CREATE TABLE IF NOT EXISTS workshop_materials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workshop_id INTEGER NOT NULL REFERENCES workshops(id) ON DELETE CASCADE,
+            stock_item_id INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+            qty_per_person REAL NOT NULL DEFAULT 0,
+            qty_per_session REAL NOT NULL DEFAULT 0,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS police_register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
@@ -3538,6 +3552,13 @@ def init_db():
         # by then people have booked flights.
         ("workshop_decide_by", "ALTER TABLE workshop_sessions ADD COLUMN "
                                "decide_by_days INTEGER NOT NULL DEFAULT 21"),
+        # A consumption is written against the session that consumed it. Two
+        # reasons: the ledger stays answerable ("where did forty kilos of
+        # clay go"), and taking stock out becomes idempotent, because the
+        # second press of the button can see the first.
+        ("stock_workshop_session", "ALTER TABLE stock_movements ADD COLUMN "
+                                   "workshop_session_id INTEGER REFERENCES "
+                                   "workshop_sessions(id) ON DELETE SET NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -10565,17 +10586,19 @@ def stock_levels(conn, item_ids=None):
 
 def record_stock_movement(conn, stock_item_id, delta, reason, *, unit_cost=None,
                           expense_id=None, booking_extra_id=None, note=None,
-                          user_id=None):
+                          user_id=None, workshop_session_id=None):
     """Append one movement. Callers commit — so a sale and the stock it consumes
     land together or not at all."""
     if reason not in STOCK_REASONS:
         raise ValueError(f"unknown stock reason {reason!r}")
     conn.execute(
         """INSERT INTO stock_movements (stock_item_id, delta, reason, unit_cost,
-           expense_id, booking_extra_id, note, created_by_user_id, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)""",
+           expense_id, booking_extra_id, note, created_by_user_id, created_at,
+           workshop_session_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
         (stock_item_id, delta, reason, unit_cost, expense_id, booking_extra_id,
-         note, user_id, datetime.now(timezone.utc).isoformat()),
+         note, user_id, datetime.now(timezone.utc).isoformat(),
+         workshop_session_id),
     )
 
 
@@ -15535,6 +15558,24 @@ def owner_home_warnings(conn, today):
     # then the answer is a telephone call rather than a cancellation, and
     # telling the owner to cancel a session they could fill would be worse
     # than saying nothing.
+    # Not enough on the shelf to run a workshop that is nearly here. Ten
+    # days, which is the last point at which anything can be ordered and
+    # arrive -- a shortfall found the evening before is not a warning.
+    no_materials = sessions_short_of_materials(conn, today)
+    if no_materials:
+        first = no_materials[0]
+        worst = max(first["short"], key=lambda l: l["shortfall"])
+        add("warning",
+            f"{len(no_materials)} workshop"
+            f"{'' if len(no_materials) == 1 else 's'} without the materials to run",
+            f"{first['session']['title']} on "
+            f"{format_date_short(first['session']['start_date'])} is short "
+            f"{worst['shortfall']:g} {worst['unit']} of {worst['name']}"
+            + (f" and {len(first['short']) - 1} other thing"
+               f"{'' if len(first['short']) == 2 else 's'}"
+               if len(first["short"]) > 1 else "") + ".",
+            len(no_materials), "admin_workshops")
+
     short_sessions = [w for w in sessions_at_risk(conn, today) if w["urgent"]]
     if short_sessions:
         worst = short_sessions[0]
@@ -27673,6 +27714,23 @@ def phone_from_form(field="guest_phone"):
     return normalise_phone(raw) or raw
 
 
+def parse_quantity(raw):
+    """A typed-in amount of something. None if the box was empty or junk.
+
+    Three decimal places rather than parse_money's two: this weighs clay,
+    not euros, and grams on a kilo are a real quantity. Negative is refused
+    — a workshop that uses minus two kilos of anything is a typo.
+    """
+    text = (raw or "").strip().replace(",", ".")
+    if not text:
+        return None
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return round(value, 3) if value >= 0 else None
+
+
 def parse_money(raw):
     """A typed-in amount, or None if the box was left empty or filled with junk.
 
@@ -33494,6 +33552,141 @@ def update_restaurant_waitlist_status(entry_id):
 # guest self-service experience across all three.
 # ---------------------------------------------------------------------------
 
+# Far enough ahead that something can still be ordered. A shortfall found
+# the evening before is not a warning, it is an apology.
+WORKSHOP_MATERIALS_WARN_DAYS = 10
+
+
+def session_materials(conn, session_id):
+    """What this running of the workshop needs, against what is on the shelf.
+
+    Counted on confirmed heads, the same figure the minimum-to-run uses and
+    for the same reason: somebody who has not paid a deposit does not use
+    two kilos of clay.
+
+    Per-session quantities do not scale -- eight aprons is eight aprons
+    whether four people come or ten -- and per-person ones do. A list that
+    only had one of the two would force every entry into the wrong shape,
+    and whoever fills it in rounds, which is how a list stops being read.
+    """
+    session = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
+    if not session:
+        return None
+
+    heads = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM workshop_bookings
+            WHERE session_id = ? AND status = 'confirmed'""",
+        (session_id,)).fetchone()["c"]
+
+    rows = conn.execute(
+        """SELECT workshop_materials.*, stock_items.name, stock_items.unit,
+                  stock_items.unit_cost, stock_items.active
+             FROM workshop_materials
+             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
+            WHERE workshop_materials.workshop_id = ?
+            ORDER BY stock_items.name""",
+        (session["workshop_id"],)).fetchall()
+    if not rows:
+        return {"session": session, "heads": heads, "lines": [], "short": [],
+                "taken_out": False, "cost": 0.0}
+
+    levels = stock_levels(conn, [r["stock_item_id"] for r in rows])
+
+    # Already taken out? Asked once for the session rather than per line.
+    taken = {r["stock_item_id"]: r["d"] for r in conn.execute(
+        """SELECT stock_item_id, COALESCE(SUM(delta), 0) AS d
+             FROM stock_movements WHERE workshop_session_id = ?
+            GROUP BY stock_item_id""", (session_id,)).fetchall()}
+
+    lines, short, cost = [], [], 0.0
+    for r in rows:
+        need = (r["qty_per_session"] or 0) + (r["qty_per_person"] or 0) * heads
+        have = levels.get(r["stock_item_id"], 0)
+        line = {
+            "material": r, "name": r["name"], "unit": r["unit"],
+            "need": round(need, 3), "have": round(have, 3),
+            "shortfall": round(max(0, need - have), 3),
+            # An item taken out of stock for this session already. Kept as a
+            # signed figure because that is what the ledger holds.
+            "already_out": round(abs(taken.get(r["stock_item_id"], 0)), 3),
+            "cost": round(need * (r["unit_cost"] or 0), 2),
+            "retired": not r["active"],
+        }
+        cost += line["cost"]
+        lines.append(line)
+        if line["shortfall"] > 0:
+            short.append(line)
+
+    return {"session": session, "heads": heads, "lines": lines, "short": short,
+            # Anything at all written against this session means the button
+            # has been pressed. Not "every line", because an item can
+            # legitimately net to nothing.
+            "taken_out": bool(taken),
+            "cost": round(cost, 2)}
+
+
+def consume_session_materials(conn, session_id, user_id=None):
+    """Take the materials out of stock, once.
+
+    Idempotent by looking for movements already written against this
+    session. The alternative -- a flag on the session -- is a second place
+    the truth lives, and the ledger already knows.
+
+    Recorded as a sale, because that is what it is: the guest paid for the
+    workshop and the clay was part of what they bought. The other reasons
+    would each be a lie -- wastage says it was spoiled, correction says the
+    figures were wrong.
+    """
+    plan = session_materials(conn, session_id)
+    if plan is None:
+        return None
+    if plan["taken_out"]:
+        return {"written": 0, "already": True, "plan": plan}
+
+    label = f"{plan['session']['title']} — {plan['session']['start_date']}"
+    written = 0
+    for line in plan["lines"]:
+        if line["need"] <= 0:
+            continue
+        record_stock_movement(
+            conn, line["material"]["stock_item_id"], -abs(line["need"]), "sale",
+            unit_cost=line["material"]["unit_cost"],
+            note=label, user_id=user_id, workshop_session_id=session_id)
+        written += 1
+    return {"written": written, "already": False, "plan": plan}
+
+
+def sessions_short_of_materials(conn, today=None, days=None):
+    """Sessions coming up without enough on the shelf to run them.
+
+    Only the ones close enough to matter and far enough away to fix: a
+    shortfall found the evening before is not a warning, it is an apology.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    days = WORKSHOP_MATERIALS_WARN_DAYS if days is None else days
+    rows = conn.execute(
+        """SELECT workshop_sessions.id FROM workshop_sessions
+            WHERE workshop_sessions.start_date >= ?
+              AND workshop_sessions.start_date <= ?
+              AND EXISTS (SELECT 1 FROM workshop_materials
+                           WHERE workshop_materials.workshop_id =
+                                 workshop_sessions.workshop_id)
+            ORDER BY workshop_sessions.start_date""",
+        (today.isoformat(), (today + timedelta(days=days)).isoformat())).fetchall()
+    out = []
+    for r in rows:
+        plan = session_materials(conn, r["id"])
+        # Already taken out of stock is not a shortfall — the shelf is low
+        # BECAUSE the workshop has had it.
+        if plan and plan["short"] and not plan["taken_out"]:
+            out.append(plan)
+    return out
+
+
 WORKSHOP_DECIDE_BY_DAYS = 21
 
 # Once the decision date is inside a week, a session that is still short is
@@ -33606,6 +33799,18 @@ def admin_workshops():
     # Read once for the whole page and keyed by session, rather than asked
     # per session inside the loop below.
     at_risk_by_session = {w["session"]["id"]: w for w in sessions_at_risk(conn, today)}
+    materials_by_workshop = {}
+    for row in conn.execute(
+        """SELECT workshop_materials.*, stock_items.name, stock_items.unit,
+                  stock_items.active AS item_active
+             FROM workshop_materials
+             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
+            ORDER BY stock_items.name""").fetchall():
+        materials_by_workshop.setdefault(row["workshop_id"], []).append(row)
+    # Only offered where there is something to pick from.
+    stock_choices = conn.execute(
+        "SELECT id, name, unit FROM stock_items WHERE active = 1 ORDER BY name"
+    ).fetchall()
     sessions_by_workshop, past_by_workshop = {}, {}
     for w in workshops:
         sessions = conn.execute(
@@ -33623,6 +33828,10 @@ def admin_workshops():
                 "session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"]),
                 "rooms_assigned": rooms_assigned,
                 "at_risk": at_risk_by_session.get(s["id"]),
+                # Only where there is a list to plan against, so a workshop
+                # with no materials costs nothing per session.
+                "materials": (session_materials(conn, s["id"])
+                              if materials_by_workshop.get(w["id"]) else None),
             }
             if (s["end_date"] or s["start_date"]) >= today.isoformat():
                 rows.append(entry)
@@ -33651,6 +33860,8 @@ def admin_workshops():
         past_by_workshop=past_by_workshop,
         today=today, total_rooms=total_rooms,
         custom_fields_by_workshop=custom_fields_by_workshop,
+                           materials_by_workshop=materials_by_workshop,
+                           stock_choices=stock_choices,
         overview=overview, period=period,
         upcoming_count=upcoming_count, spots_remaining=spots_remaining,
     )
@@ -33778,6 +33989,111 @@ def delete_workshop(workshop_id):
     conn.commit()
     conn.close()
     flash("Workshop removed.", "success")
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/<int:workshop_id>/materials", methods=["POST"])
+@owner_required
+def add_workshop_material(workshop_id):
+    """What this workshop uses up, per session and per head."""
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM workshops WHERE id = ?", (workshop_id,)).fetchone():
+        conn.close()
+        abort(404)
+
+    item_raw = (request.form.get("stock_item_id", "") or "").strip()
+    per_person = parse_quantity(request.form.get("qty_per_person", ""))
+    per_session = parse_quantity(request.form.get("qty_per_session", ""))
+    note = (request.form.get("note", "") or "").strip()[:200]
+
+    item = None
+    if item_raw.isdigit():
+        item = conn.execute("SELECT * FROM stock_items WHERE id = ?",
+                            (int(item_raw),)).fetchone()
+    if not item:
+        conn.close()
+        flash("Choose something from the stock list.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    # An entry that consumes nothing is a line on a list that will be read
+    # every time the workshop runs and mean nothing every time.
+    if (per_person or 0) <= 0 and (per_session or 0) <= 0:
+        conn.close()
+        flash("Set how much it uses — per person, per session, or both.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    existing = conn.execute(
+        """SELECT id FROM workshop_materials
+            WHERE workshop_id = ? AND stock_item_id = ?""",
+        (workshop_id, item["id"])).fetchone()
+    if existing:
+        # Editing rather than a second row for the same thing. Two rows for
+        # one item both look right and the total is silently doubled.
+        conn.execute(
+            """UPDATE workshop_materials SET qty_per_person = ?, qty_per_session = ?,
+                      note = ? WHERE id = ?""",
+            (per_person or 0, per_session or 0, note or None, existing["id"]))
+        flash(f"{item['name']} updated.", "success")
+    else:
+        conn.execute(
+            """INSERT INTO workshop_materials (workshop_id, stock_item_id,
+                       qty_per_person, qty_per_session, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (workshop_id, item["id"], per_person or 0, per_session or 0,
+             note or None, datetime.now(timezone.utc).isoformat()))
+        flash(f"{item['name']} added to what this workshop uses.", "success")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/materials/<int:material_id>/remove", methods=["POST"])
+@owner_required
+def remove_workshop_material(material_id):
+    conn = get_db()
+    row = conn.execute(
+        """SELECT workshop_materials.*, stock_items.name FROM workshop_materials
+             JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
+            WHERE workshop_materials.id = ?""", (material_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM workshop_materials WHERE id = ?", (material_id,))
+    conn.commit()
+    conn.close()
+    # Stock already taken out for a session stays taken out. The ledger is a
+    # record of what happened, and what happened does not change because
+    # somebody edited a list afterwards.
+    flash(f"{row['name']} removed. Anything already taken out of stock stays out.",
+          "success")
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/consume", methods=["POST"])
+@owner_required
+def consume_workshop_materials(session_id):
+    """Take what the session used out of stock."""
+    conn = get_db()
+    user = current_user()
+    result = consume_session_materials(conn, session_id, user_id=user["id"])
+    if result is None:
+        conn.close()
+        abort(404)
+    if result["already"]:
+        conn.close()
+        flash("Already taken out of stock for this session.", "error")
+        return redirect(url_for("admin_workshops"))
+    if not result["written"]:
+        conn.close()
+        flash("Nothing to take out — this workshop has no materials against it, "
+              "or nobody confirmed a place.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    log_audit(conn, "workshop_materials_consumed", target=str(session_id),
+              details=f"{result['written']} item(s)")
+    conn.commit()
+    conn.close()
+    flash(f"{result['written']} item(s) taken out of stock.", "success")
     return redirect(url_for("admin_workshops"))
 
 
@@ -37215,6 +37531,7 @@ WATCH_TASK_KINDS = {
     "vehicle": "A vehicle without valid papers",
     "policy": "Insurance that has run out",
     "workshop": "A workshop short of the number it needs",
+    "materials": "A workshop without the materials to run",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -38045,6 +38362,24 @@ def watch_task_findings(conn, today=None):
     # the rest: one more confirmed booking and the next run drops it, which
     # is the honest behaviour -- the session is no longer at risk, whatever
     # a list of past problems might say.
+    # Self-closing like the rest: buy the clay and the next run drops it.
+    for plan in take("materials", sessions_short_of_materials(conn, today)):
+        missing = ", ".join(
+            f"{l['shortfall']:g} {l['unit']} of {l['name']}"
+            for l in plan["short"][:4])
+        found.append((
+            "materials",
+            f"{plan['session']['title']} on {plan['session']['start_date']} "
+            f"\u2014 not enough to run it",
+            (f"Short of: {missing}"
+             + (f", and {len(plan['short']) - 4} more" if len(plan["short"]) > 4
+                else "")
+             + f".\n\nCounted on {plan['heads']} confirmed "
+               f"{'place' if plan['heads'] == 1 else 'places'}. More bookings "
+               "means more of it."),
+            plan["session"]["start_date"],
+            "normal"))
+
     for w in take("workshop", [w for w in sessions_at_risk(conn, today) if w["urgent"]]):
         ring = w["waitlist_could_fill"]
         found.append((
