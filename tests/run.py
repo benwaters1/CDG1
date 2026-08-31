@@ -174,6 +174,8 @@ SUITES = [
     "test_walk_in",
     "test_owner_writes",
     "test_pennylane_revenue",
+    "test_booking_race",
+    "test_restore_drill",
     "test_handover_check",
 ]
 
