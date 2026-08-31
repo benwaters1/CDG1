@@ -4276,7 +4276,7 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
-        "revenue_to_send", "send_revenue_to_pennylane",
+        "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "record_manual_booking_payment",
         "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
         "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
@@ -33132,6 +33132,101 @@ def send_booking_to_pennylane(conn, booking, user_id=None):
     return True, f"Sent €{total:.2f} for {booking['reference_code']}."
 
 
+def pos_day_pennylane_lines(conn, closure):
+    """A day's takings as accounting lines, one per VAT rate.
+
+    Straight off the closure's own vat_json rather than recounted from the
+    tabs. That figure was hashed into the Z-report when the day was closed and
+    cannot move afterwards; recounting could quietly disagree with the report
+    the house already signed off, which is the one thing a ledger must never do.
+
+    One invoice for the day, not one per diner. A table of two who paid cash
+    and left is not a customer you invoice, and forty of them would be forty
+    customer records nobody will ever look at.
+    """
+    bands = json.loads(closure["vat_json"] or "{}")
+    code = app_setting(conn, "pennylane_account_restaurant",
+                       PENNYLANE_REVENUE_DEFAULTS)
+    lines = []
+    for rate, band in sorted(bands.items(), key=lambda kv: float(kv[0])):
+        net = round(float(band.get("net") or 0), 2)
+        vat = round(float(band.get("vat") or 0), 2)
+        if not net and not vat:
+            continue
+        line = {"currency_amount": f"{net:.2f}", "currency_tax": f"{vat:.2f}",
+                "vat_rate": pennylane_vat_code(rate),
+                "label": f"Restaurant takings at {rate}%"[:200]}
+        if code:
+            line["ledger_account_number"] = code
+        lines.append(line)
+    return lines
+
+
+def send_pos_day_to_pennylane(conn, closure, user_id=None):
+    """One closed service day, as a customer invoice. Returns (ok, message).
+
+    Only a CLOSED day can go. An open one can still take another tab, and an
+    invoice for a figure that is still moving is worse than no invoice — the
+    closure row is both the source of the numbers and the proof they have
+    stopped changing.
+    """
+    if not pennylane_configured():
+        return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
+    if closure["kind"] != "day":
+        return False, "Only a closed day goes as takings."
+    existing = pennylane_already_sent(conn, "pos_day", closure["id"])
+    if existing:
+        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+                       + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
+                       + ".")
+    lines = pos_day_pennylane_lines(conn, closure)
+    if not lines:
+        return False, f"Nothing was taken on {closure['period']}."
+    net = sum(float(l["currency_amount"]) for l in lines)
+    tax = sum(float(l["currency_tax"]) for l in lines)
+    total = round(net + tax, 2)
+    if total <= 0:
+        return False, f"Nothing was taken on {closure['period']}."
+
+    # One standing customer for the till, because the people are not the
+    # customer here — the day's service is.
+    ok, customer = pennylane_find_customer("Restaurant takings")
+    if not ok or not customer:
+        return False, f"Could not file a customer for the till: {customer}"
+
+    ok, payload = pennylane_import_customer_invoice(
+        customer_id=customer, date=closure["period"], deadline=closure["period"],
+        amount=total, tax=round(tax, 2), lines=lines,
+        invoice_number=f"POS-{closure['period']}",
+        external_reference=f"pos-day-{closure['period']}",
+    )
+    if not ok:
+        return False, f"Pennylane refused it: {payload}"
+    conn.execute(
+        """INSERT OR IGNORE INTO pennylane_exports (kind, source_id, pennylane_id,
+           amount, sent_at, sent_by_user_id) VALUES ('pos_day', ?, ?, ?, ?, ?)""",
+        (closure["id"], str((payload or {}).get("id") or ""), total,
+         datetime.now(timezone.utc).isoformat(), user_id))
+    return True, f"Sent €{total:.2f} of takings for {closure['period']}."
+
+
+@app.route("/management/revenue-to-send/day/<int:closure_id>", methods=["POST"])
+@owner_required
+def send_pos_day_revenue(closure_id):
+    conn = get_db()
+    closure = conn.execute("SELECT * FROM pos_closures WHERE id = ?", (closure_id,)).fetchone()
+    if not closure:
+        conn.close()
+        abort(404)
+    ok, message = send_pos_day_to_pennylane(conn, closure, user_id=session.get("user_id"))
+    if ok:
+        log_audit(conn, "takings_sent_to_pennylane", target=closure["period"])
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("revenue_to_send"))
+
+
 @app.route("/management/revenue-to-send")
 @owner_required
 def revenue_to_send():
@@ -33157,11 +33252,22 @@ def revenue_to_send():
         statement = guest_statement(conn, booking)
         rows.append({"booking": booking, "total": round(float(statement["total"] or 0), 2),
                      "sent": sent})
+    # Read before the close, like the stays above it.
+    days = []
+    for closure in conn.execute(
+            """SELECT * FROM pos_closures WHERE kind = 'day'
+                ORDER BY period DESC LIMIT 120""").fetchall():
+        days.append({"closure": closure,
+                     "total": round(float(closure["gross_total"] or 0), 2),
+                     "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
+    days_waiting = [d for d in days if not d["sent"] and d["total"] > 0]
     return render_template(
-        "revenue_to_send.html", rows=rows, waiting=waiting,
-        waiting_total=round(sum(r["total"] for r in waiting), 2),
+        "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
+        days_waiting=days_waiting,
+        waiting_total=round(sum(r["total"] for r in waiting)
+                            + sum(d["total"] for d in days_waiting), 2),
         configured=pennylane_configured())
 
 

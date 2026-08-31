@@ -34,6 +34,9 @@ def _cleanup():
     conn = db()
     conn.execute("DELETE FROM pennylane_exports WHERE source_id IN "
                  "(SELECT id FROM bookings WHERE guest_name LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM pennylane_exports WHERE kind = 'pos_day' AND source_id IN "
+                 "(SELECT id FROM pos_closures WHERE period LIKE '2099%')")
+    conn.execute("DELETE FROM pos_closures WHERE period LIKE '2099%'")
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
@@ -185,6 +188,80 @@ def run():
         s.check("naming the token", "PENNYLANE_API_TOKEN" in msg6, detail=msg6)
         s.check("and nothing was attempted", len(sent) == before)
         m.pennylane_configured = lambda: True
+
+        s.section("A closed service day goes as one invoice, not one per diner")
+        # Forty tables of two are not forty customers. The figures come off the
+        # closure's own Z-report, which was hashed when the day was closed, so
+        # the invoice and the report the house signed off cannot disagree.
+        conn = db()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO pos_closures (kind, period, gross_total, discount_total,
+               service_total, taken_total, vat_json, by_method_json, ticket_count,
+               covers, perpetual_total, prev_hash, hash, closed_at)
+               VALUES ('day', ?, 330.0, 0, 0, 330.0, ?, '{}', 12, 24, 0, '', ?, ?)""",
+            (f"2099-01-0{1}",
+             '{"10.0": {"gross": 220.0, "vat": 20.0, "net": 200.0},'
+             ' "20.0": {"gross": 110.0, "vat": 18.33, "net": 91.67}}',
+             "zzhash", now))
+        conn.commit()
+        closure = conn.execute(
+            "SELECT * FROM pos_closures WHERE period = '2099-01-01'").fetchone()
+        before = len(sent)
+        ok7, msg7 = m.send_pos_day_to_pennylane(conn, closure, user_id=owner["id"])
+        conn.commit()
+        conn.close()
+        s.check("it is accepted", ok7, detail=msg7)
+        s.check("one invoice for the whole day", len(sent) == before + 1,
+                detail=f"{len(sent) - before}")
+        if len(sent) > before:
+            body = sent[-1]
+            s.check("for what the Z-report says was taken",
+                    abs(float(body["amount"]) - 330.0) < 0.02,
+                    detail=f"{body['amount']} vs 330.00 on the closure")
+            s.check("split by rate, food and drink apart",
+                    len(body["lines"]) == 2,
+                    detail=f"{[(l['label'], l['vat_rate']) for l in body['lines']]}")
+            s.check("at the French codes for those rates",
+                    {l["vat_rate"] for l in body["lines"]} == {"FR_100", "FR_200"},
+                    detail=f"{[l['vat_rate'] for l in body['lines']]}")
+            s.check("and the lines add up to the day",
+                    abs(sum(float(l["currency_amount"]) + float(l["currency_tax"])
+                            for l in body["lines"]) - 330.0) < 0.02,
+                    detail=f"{body['lines']}")
+            s.check("dated the service day, not today",
+                    body["date"] == "2099-01-01", detail=f"{body['date']}")
+
+        s.section("And a day cannot go twice either")
+        conn = db()
+        ok8, msg8 = m.send_pos_day_to_pennylane(conn, closure, user_id=owner["id"])
+        conn.commit()
+        conn.close()
+        s.check("the second is refused", not ok8, detail=msg8)
+        s.check("and says when the first went", "already sent" in msg8.lower(),
+                detail=msg8)
+
+        s.section("A month or year closure is not a day's takings")
+        # Same table, three kinds of row. Sending a month after its days would
+        # book the same money twice.
+        conn = db()
+        conn.execute(
+            """INSERT INTO pos_closures (kind, period, gross_total, discount_total,
+               service_total, taken_total, vat_json, by_method_json, ticket_count,
+               covers, perpetual_total, prev_hash, hash, closed_at)
+               VALUES ('month', '2099-01', 9000.0, 0, 0, 9000.0,
+               '{"10.0": {"gross": 9000.0, "vat": 818.18, "net": 8181.82}}',
+               '{}', 300, 600, 0, '', 'zzhash2', ?)""", (now,))
+        conn.commit()
+        month = conn.execute(
+            "SELECT * FROM pos_closures WHERE kind='month' AND period='2099-01'").fetchone()
+        before = len(sent)
+        ok9, msg9 = m.send_pos_day_to_pennylane(conn, month)
+        conn.commit()
+        conn.close()
+        s.check("refused", not ok9, detail=msg9)
+        s.check("and nothing was sent", len(sent) == before,
+                detail="the same takings would be booked twice")
 
         s.section("The page it is done from")
         r = oc.get("/management/revenue-to-send")

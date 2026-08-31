@@ -25,8 +25,8 @@
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">{{ waiting|length }}</span>
-      <span class="stat-tile-label">Stays waiting</span>
+      <span class="stat-tile-value">{{ waiting|length + days_waiting|length }}</span>
+      <span class="stat-tile-label">Stays and days waiting</span>
     </span>
   </div>
 </div>
@@ -36,6 +36,7 @@
 <code>PENNYLANE_API_TOKEN</code> and these will be here waiting.</p>
 {% endif %}
 
+<h2 class="section-heading">Stays</h2>
 {% if not rows %}
 <div class="empty-state">No departed stays yet.</div>
 {% else %}
@@ -71,6 +72,55 @@
           {% if not r['sent'] and r['total'] > 0 and configured %}
           <form method="post" action="{{ url_for('send_revenue_to_pennylane', booking_id=b['id']) }}"
                 onsubmit="return confirm('Send €{{ '%.2f'|format(r['total']) }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Send</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading" style="margin-top:26px;">Restaurant, by service day</h2>
+{#
+  One invoice for the day, not one per diner: a table of two who paid cash and
+  left is not a customer you invoice. The figures come from the closure's own
+  Z-report, which was hashed when the day was closed and cannot move — so an
+  invoice and the report the house signed off can never disagree.
+
+  Only closed days appear. An open one can still take another tab.
+#}
+{% if not days %}
+<div class="empty-state">No days have been closed off yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Service day</th><th class="num">Tickets</th><th class="num">Taken</th><th>Accountant</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for d in days %}
+      <tr>
+        <td>{{ d['closure']['period']|date_short }}</td>
+        <td class="num">{{ d['closure']['ticket_count'] }}</td>
+        <td class="num">€{{ '%.2f'|format(d['total']) }}</td>
+        <td>
+          {% if d['sent'] %}
+          <span class="mini-status status-active">Sent</span>
+          <span class="g-hint">{{ d['sent']['sent_at'][:10] }}{% if d['sent']['pennylane_id'] %} · {{ d['sent']['pennylane_id'] }}{% endif %}</span>
+          {% elif d['total'] <= 0 %}
+          <span class="g-hint">Nothing taken</span>
+          {% else %}
+          <span class="mini-status status-pending">Waiting</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not d['sent'] and d['total'] > 0 and configured %}
+          <form method="post" action="{{ url_for('send_pos_day_revenue', closure_id=d['closure']['id']) }}"
+                onsubmit="return confirm('Send €{{ '%.2f'|format(d['total']) }} of takings for {{ d['closure']['period'] }} to Pennylane? This writes a real invoice.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Send</button>
           </form>
