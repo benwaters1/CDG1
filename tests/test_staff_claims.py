@@ -108,6 +108,25 @@ def run():
             detail="putting somebody on a dinner service has been audited since "
                    "the beginning; agreeing to pay them was not")
 
+    s.section("The accountant is told when it was spent")
+    # Fixing the date for supplier invoices left staff claims still dated by
+    # the day they were handed in -- and expense_document_date, written for
+    # both, was called by nothing. A March receipt filed in April went to the
+    # accountant as April.
+    import inspect
+    src = inspect.getsource(m.send_to_pennylane)
+    s.check("the send uses the date on the paper, whichever paper it is",
+            "expense_document_date" in src,
+            detail="reading invoice_date alone dates every staff claim by "
+                   "its upload")
+    conn = db()
+    claim_row = conn.execute("SELECT * FROM expenses WHERE id = ?", (claim["id"],)).fetchone()
+    conn.close()
+    s.check("and for this claim that is the date of spend",
+            m.expense_document_date(claim_row) == spent,
+            detail=f"{m.expense_document_date(claim_row)}, filed "
+                   f"{(claim_row['submitted_at'] or '')[:10]}")
+
     s.section("What is still owed, and for how long")
     conn = db()
     with m.app.test_request_context():
