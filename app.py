@@ -4325,6 +4325,7 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
+        "admin_city_tax", "export_city_tax_csv",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
         "record_manual_booking_payment",
@@ -19716,6 +19717,8 @@ PALETTE_PAGES = [
      "clock in out fix amend hours wrong"),
     ("VAT", "admin_vat",
      "tva tax return quarter declaration"),
+    ("Taxe de sejour", "admin_city_tax",
+     "city tax tourist tax commune declaration nights return"),
     ("Pennylane", "admin_pennylane",
      "accounting ledger accountant sync bookkeeping"),
     ("Annual summary", "annual_summary",
@@ -22570,6 +22573,53 @@ def admin_vat():
               "vat_extras", "vat_events")}
     conn.close()
     return render_template("admin_vat.html", working=working, period=period, rates=rates)
+
+
+@app.route("/admin/city-tax")
+@owner_required
+def admin_city_tax():
+    """What the commune is owed, and the working behind it."""
+    conn = get_db()
+    period = period_from_request()
+    working = city_tax_working(conn, parse_date(period["start_iso"]),
+                               parse_date(period["end_iso"]))
+    conn.close()
+    return render_template("admin_city_tax.html", working=working, period=period)
+
+
+@app.route("/admin/city-tax/export.csv")
+@owner_required
+def export_city_tax_csv():
+    """The declaration as a file, one line per stay.
+
+    A commune asks for the working, not just the total — nights, how many were
+    chargeable and how many exempt. One row per stay so a query about any single
+    line can be answered from the same document that was filed.
+    """
+    conn = get_db()
+    period = period_from_request()
+    working = city_tax_working(conn, parse_date(period["start_iso"]),
+                               parse_date(period["end_iso"]))
+    conn.close()
+    fieldnames = ["reference", "guest", "room", "arrival", "departure",
+                  "nights_in_period", "nights_total", "adults", "under_18",
+                  "adult_nights", "exempt_nights", "amount", "settled"]
+    rows = [{
+        "reference": r["reference"], "guest": r["guest"], "room": r["room"] or "",
+        "arrival": r["arrival"], "departure": r["departure"],
+        "nights_in_period": r["nights"], "nights_total": r["total_nights"],
+        "adults": r["adults"], "under_18": r["exempt_guests"],
+        "adult_nights": r["adult_nights"], "exempt_nights": r["exempt_nights"],
+        "amount": f"{r['amount']:.2f}", "settled": "yes" if r["settled"] else "no",
+    } for r in working["rows"]]
+    rows.append({k: "" for k in fieldnames} | {
+        "reference": "TOTAL", "nights_in_period": working["nights"],
+        "adult_nights": working["adult_nights"],
+        "exempt_nights": working["exempt_nights"],
+        "amount": f"{working['total']:.2f}",
+    })
+    return csv_response(fieldnames, rows,
+                        f"taxe-de-sejour-{period['start_iso']}.csv")
 
 
 @app.route("/admin/vat/export.csv")
@@ -37495,12 +37545,39 @@ def build_backup_zip(include_media=True):
                 os.remove(tmp_db_path)
 
         if include_media:
+            # A file that disappears between the listing and the write is
+            # skipped, not fatal.
+            #
+            # os.walk lists what is on disk and zf.write reads it a moment
+            # later; anything removed in between raises and, before this,
+            # abandoned the whole backup. The app runs eight threads, so a
+            # backup taken while somebody deletes an expense receipt — or
+            # while the health-notes purge does its rounds — lost EVERYTHING
+            # over one absent attachment. A backup missing one file is worth
+            # having; no backup is not.
+            #
+            # What was skipped goes into the zip as a note, so a short backup
+            # is visibly short rather than quietly incomplete — whoever
+            # restores it can see that files were left out and how many.
+            skipped = []
             for folder, arc_prefix in ((UPLOAD_DIR, "uploads"), (ROOM_PHOTO_DIR, "room_photos")):
                 for root, _dirs, files in os.walk(folder):
                     for fname in files:
                         full = os.path.join(root, fname)
                         rel = os.path.relpath(full, folder)
-                        zf.write(full, os.path.join(arc_prefix, rel))
+                        try:
+                            zf.write(full, os.path.join(arc_prefix, rel))
+                        except (OSError, ValueError) as exc:
+                            skipped.append(f"{arc_prefix}/{rel}: {exc}")
+            if skipped:
+                app.logger.warning("backup skipped %d unreadable file(s)",
+                                   len(skipped))
+                zf.writestr(
+                    "FILES_SKIPPED.txt",
+                    "These files were listed on disk but could not be read "
+                    "when this backup was taken, so they are NOT in it.\n"
+                    "Everything else, including the database, is.\n\n"
+                    + "\n".join(skipped) + "\n")
     return buf.getvalue()
 
 
@@ -41212,6 +41289,84 @@ def compute_city_tax(conn, party_size, guests_under_18, nights):
     adults = max(0, int(party_size or 0) - int(guests_under_18 or 0))
     nights = max(0, int(nights or 0))
     return round(adults * nights * rate, 2), adults, rate
+
+
+def city_tax_working(conn, start, end):
+    """Taxe de sejour for a declaration period. `end` is EXCLUSIVE.
+
+    The tax is collected from the guest on the commune's behalf and handed over
+    periodically with a return. Everything needed for it was in the database and
+    there was nowhere to read it: vat_working leaves it out on purpose — it is
+    not the chateau's revenue — and nothing else picked it up, so the figure had
+    to be rebuilt by hand from the bookings every time it fell due.
+
+    THE ONE ARITHMETIC THAT MATTERS is a stay straddling the boundary. A guest
+    arriving on the 28th of September and leaving on the 3rd of October owes
+    three nights to September and two to October, and counting the whole stay in
+    either month is both wrong and wrong in a way nobody notices until two
+    returns disagree with the bank.
+
+    So nights are clipped to the period, and the amount is apportioned from what
+    the guest was ACTUALLY CHARGED rather than recomputed at today's rate. If
+    the commune raises the rate mid-year, recomputing would put a figure on the
+    return that never appeared on anybody's bill.
+
+    Under-18s are exempt and are counted separately, because the return asks for
+    exempt nights as well as chargeable ones.
+
+    Cancelled and declined stays are excluded: no nights were spent, so nothing
+    is owed. A stay that is unpaid is still declared — the tax is due on the
+    nights, not on our success in collecting them — but the unpaid amount is
+    reported so the house can see what it is handing over ahead of receiving.
+    """
+    s_iso, e_iso = start.isoformat(), end.isoformat()
+    rows, unpaid_total = [], 0.0
+    for booking in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'
+                  AND bookings.arrival_date < ?
+                  AND bookings.departure_date > ?
+                ORDER BY bookings.arrival_date""", (e_iso, s_iso)).fetchall():
+        arrival = parse_date(booking["arrival_date"])
+        departure = parse_date(booking["departure_date"])
+        if not (arrival and departure) or departure <= arrival:
+            continue
+        total_nights = (departure - arrival).days
+        # Clipped to the period, half-open at both ends.
+        first = max(arrival, start)
+        last = min(departure, end)
+        nights = (last - first).days
+        if nights <= 0:
+            continue
+        adults = max(0, int(booking["party_size"] or 0)
+                     - int(booking["guests_under_18"] or 0))
+        exempt = max(0, int(booking["guests_under_18"] or 0))
+        charged = round(float(booking["city_tax"] or 0), 2)
+        # Apportioned from what was charged, so the return and the bills agree.
+        amount = round(charged * nights / total_nights, 2) if total_nights else 0.0
+        bill = booking_bill(conn, booking["id"])
+        if bill and bill["owed"] > 0.005:
+            unpaid_total += amount
+        rows.append({
+            "booking": booking, "reference": booking["reference_code"],
+            "guest": booking["guest_name"], "room": booking["room_name"],
+            "arrival": booking["arrival_date"], "departure": booking["departure_date"],
+            "nights": nights, "total_nights": total_nights,
+            "adults": adults, "exempt_guests": exempt,
+            "adult_nights": adults * nights, "exempt_nights": exempt * nights,
+            "amount": amount, "settled": not (bill and bill["owed"] > 0.005),
+        })
+    return {
+        "rows": rows,
+        "rate": tax_rate(conn, "city_tax_per_adult_per_night"),
+        "nights": sum(r["nights"] for r in rows),
+        "adult_nights": sum(r["adult_nights"] for r in rows),
+        "exempt_nights": sum(r["exempt_nights"] for r in rows),
+        "total": round(sum(r["amount"] for r in rows), 2),
+        "unpaid": round(unpaid_total, 2),
+        "stays": len(rows),
+    }
 
 
 def vat_breakdown(lines):

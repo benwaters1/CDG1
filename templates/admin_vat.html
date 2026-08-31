@@ -11,7 +11,10 @@
   </div>
 </div>
 
-{% include "_period_bar.html" ignore missing %}
+{# Was `include "_period_bar.html" ignore missing` — a filename that does
+   not exist, so `ignore missing` swallowed it and this page has had no
+   period control at all. Eleven other pages use the real partial. #}
+{% with endpoint = 'admin_vat' %}{% include "_period_selector.html" %}{% endwith %}
 
 {#
   The honest framing, first and unmissable. The figures below replace a manual
@@ -105,5 +108,8 @@
 <p class="pay-disclaimer">
   {{ t('Taxe de séjour is not on this page. It is collected for the commune rather than earned by the château, and it is held apart from room prices — so nothing here includes it.') }}
 </p>
+  <p class="pay-disclaimer">
+    <a href="{{ url_for('admin_city_tax') }}">{{ t('The declaration for it is here.') }}</a>
+  </p>
 
 {% endblock %}

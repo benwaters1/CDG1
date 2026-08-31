@@ -140,6 +140,49 @@ def run():
     # committed row exists only in the -wal: a flat copy sees none of it and
     # src.backup(), which reads through the log, sees all of it.
     blob = m.build_backup_zip(include_media=True)
+
+    s.section("A file that vanished does not cost the whole backup")
+    # os.walk lists what is on disk and zf.write reads it a moment later.
+    # Anything removed in between used to raise and abandon the entire backup —
+    # and the app runs eight threads, so a backup taken while somebody deleted
+    # an expense receipt lost everything over one absent attachment. This suite
+    # crashed on exactly that: another suite left a documents row whose file was
+    # already gone.
+    import os as _os
+    import zipfile as _zip
+    ghost = _os.path.join(m.UPLOAD_DIR, "zzdrill-vanishing.pdf")
+    _os.makedirs(m.UPLOAD_DIR, exist_ok=True)
+    with open(ghost, "wb") as fh:
+        fh.write(b"zz")
+    real_write = _zip.ZipFile.write
+
+    def write_but_lose_one(self, filename, arcname=None, *a, **kw):
+        if filename == ghost:
+            _os.remove(ghost)          # gone between the listing and the write
+        return real_write(self, filename, arcname, *a, **kw)
+
+    try:
+        _zip.ZipFile.write = write_but_lose_one
+        blob2 = m.build_backup_zip(include_media=True)
+    finally:
+        _zip.ZipFile.write = real_write
+        if _os.path.exists(ghost):
+            _os.remove(ghost)
+    s.check("a backup is still produced", bool(blob2) and len(blob2) > 1000,
+            detail=f"{len(blob2) if blob2 else 0} bytes — one missing "
+                   "attachment used to lose the database too")
+    with _zip.ZipFile(__import__("io").BytesIO(blob2)) as z:
+        names = z.namelist()
+        s.check("the database is still in it", "gudanes_hr.db" in names,
+                detail=f"{names[:4]}")
+        s.check("and it says which file was left out",
+                "FILES_SKIPPED.txt" in names,
+                detail=f"{names[:6]} — a short backup has to be visibly short")
+        if "FILES_SKIPPED.txt" in names:
+            note = z.read("FILES_SKIPPED.txt").decode("utf-8")
+            s.check("naming it", "zzdrill-vanishing.pdf" in note,
+                    detail=f"{note[:160]!r}")
+
     live2.close()
     s.check("a backup was produced at all", bool(blob), detail=f"{len(blob)} bytes")
     try:

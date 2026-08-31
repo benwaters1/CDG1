@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Taxe de séjour{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Taxe de séjour</h1>
+  <div>
+    <a href="{{ url_for('export_city_tax_csv', period=period.period, date=period.anchor_iso) }}"
+       class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('admin_vat') }}" class="btn-mini">VAT</a>
+  </div>
+</div>
+
+{% with endpoint = 'admin_city_tax' %}{% include "_period_selector.html" %}{% endwith %}
+
+{#
+  Collected from the guest on the commune's behalf and handed over with a
+  return. Everything needed was already in the database and there was nowhere to
+  read it: the VAT working leaves it out on purpose, because it is not the
+  château's revenue, and nothing else picked it up.
+
+  Nights are clipped to the period. A guest arriving on the 28th of September
+  and leaving on the 3rd of October owes three nights to September and two to
+  October, and putting the whole stay in either month is wrong in a way nobody
+  notices until two returns disagree with the bank.
+#}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(working.total) }}</span>
+      <span class="stat-tile-label">Owed to the commune</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ working.adult_nights }}</span>
+      <span class="stat-tile-label">Chargeable adult-nights</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('guests', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ working.exempt_nights }}</span>
+      <span class="stat-tile-label">Exempt (under 18)</span>
+    </span>
+  </div>
+</div>
+
+<p class="upload-hint">At €{{ '%.2f'|format(working.rate) }} per adult per night,
+across {{ working.stays }} stay{{ '' if working.stays == 1 else 's' }}.
+{% if working.unpaid %}
+<strong>€{{ '%.2f'|format(working.unpaid) }} of this is on stays that have not
+settled yet</strong> — the tax is due on the nights, not on our collecting it,
+so it is declared either way.
+{% endif %}
+</p>
+
+{% if not working.rows %}
+<div class="empty-state">Nobody stayed in this period.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Guest</th><th>Stay</th>
+        <th class="num">Nights here</th><th class="num">Adults</th>
+        <th class="num">Under 18</th><th class="num">Adult-nights</th>
+        <th class="num">Owed</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in working.rows %}
+      <tr>
+        <td>
+          {{ r.guest }}
+          <span class="g-hint">{{ r.reference }}{% if not r.settled %} · unpaid{% endif %}</span>
+        </td>
+        <td>
+          {{ r.room }}
+          <span class="g-hint">{{ r.arrival|date_short }} → {{ r.departure|date_short }}</span>
+        </td>
+        <td class="num">
+          {{ r.nights }}{% if r.nights != r.total_nights %}<span class="g-hint">of {{ r.total_nights }}</span>{% endif %}
+        </td>
+        <td class="num">{{ r.adults }}</td>
+        <td class="num">{{ r.exempt_guests or '' }}</td>
+        <td class="num">{{ r.adult_nights }}</td>
+        <td class="num">€{{ '%.2f'|format(r.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="2">Total</th>
+        <th class="num">{{ working.nights }}</th>
+        <th></th>
+        <th class="num">{{ working.exempt_nights }}</th>
+        <th class="num">{{ working.adult_nights }}</th>
+        <th class="num">€{{ '%.2f'|format(working.total) }}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endif %}
+
+<p class="upload-hint" style="margin-top:12px;">
+  Amounts are apportioned from what each guest was actually charged, not
+  recomputed at today's rate — if the commune raises the rate mid-year,
+  recomputing would put a figure on the return that never appeared on anybody's
+  bill. Cancelled stays are excluded: no nights were spent, so nothing is owed.
+</p>
+
+{% endblock %}
