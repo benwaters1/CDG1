@@ -239,6 +239,146 @@ def run():
             f"/admin/events/{fresh['id']}/payment" in html,
             detail="the form exists and the page does not link to it")
 
+    s.section("The contact can see where they stand, and pay")
+    # The page showed the quoted price and stopped. Somebody who had already
+    # sent a deposit had no way to see it had landed — and until events had a
+    # money model at all, there was nothing to show them.
+    seen = _event("H", price=3000.0, held=date.today() + timedelta(days=200))
+    oc.post(f"/admin/events/{seen['id']}/payment",
+            data={"amount": "900", "method": "bank_transfer"}, follow_redirects=True)
+    anon = m.app.test_client()
+    page = anon.get(f"/events/manage/{seen['manage_token']}")
+    if page.status_code != 200:
+        page = anon.get(f"/event/{seen['manage_token']}")
+    html = page.get_data(as_text=True)
+    s.check("their page opens", page.status_code == 200, detail=f"HTTP {page.status_code}")
+    s.check("the deposit they sent is shown", "900.00" in html,
+            detail="a contact who paid had no way to see it arrive")
+    s.check("and what is left on it", "2100.00" in html, detail=f"{html.count('2100')}")
+
+    s.section("Paying part of it, which is the norm for an event")
+    was_enabled = m.stripe_enabled
+    was_session = m.stripe.checkout.Session
+    asked = []
+
+    class _Stub:
+        @staticmethod
+        def create(**kwargs):
+            asked.append(kwargs)
+            return type("S", (), {"url": "https://stripe.invalid/e"})()
+
+    try:
+        m.stripe_enabled = lambda: True
+        m.stripe.checkout.Session = _Stub
+        html2 = anon.get(f"/events/manage/{seen['manage_token']}").get_data(as_text=True)
+        if 'name="amount"' not in html2:
+            html2 = anon.get(f"/event/{seen['manage_token']}").get_data(as_text=True)
+        s.check("with Stripe on they are offered an amount box",
+                'name="amount"' in html2,
+                detail="an event is held with a deposit and settled later; "
+                       "whole-balance-only means nobody pays online")
+        r = anon.post(f"/events/pay/{seen['manage_token']}", data={"amount": "500"})
+        s.check("it goes to a card page", r.status_code in (302, 303),
+                detail=f"HTTP {r.status_code}")
+        s.check("for the five hundred they chose",
+                bool(asked) and asked[-1]["line_items"][0]["price_data"]["unit_amount"] == 50000,
+                detail=f"{asked[-1]['line_items'][0]['price_data']['unit_amount'] if asked else None}")
+        s.check("labelled a part payment",
+                bool(asked) and "part payment" in
+                asked[-1]["line_items"][0]["price_data"]["product_data"]["name"])
+        asked.clear()
+        anon.post(f"/events/pay/{seen['manage_token']}", data={"amount": "9999"})
+        s.check("over the balance is clamped to it",
+                bool(asked) and asked[-1]["line_items"][0]["price_data"]["unit_amount"] == 210000,
+                detail=f"{asked[-1]['line_items'][0]['price_data']['unit_amount'] if asked else None}")
+        asked.clear()
+        anon.get(f"/events/pay/{seen['manage_token']}")
+        s.check("and a plain link asks for the whole balance",
+                bool(asked) and asked[-1]["line_items"][0]["price_data"]["unit_amount"] == 210000,
+                detail=f"{asked[-1]['line_items'][0]['price_data']['unit_amount'] if asked else None}")
+        settled = _event("I", price=100.0, paid=100.0)
+        asked.clear()
+        anon.get(f"/events/pay/{settled['manage_token']}")
+        s.check("a settled event offers no card page", not asked, detail=f"{len(asked)}")
+    finally:
+        m.stripe_enabled = was_enabled
+        m.stripe.checkout.Session = was_session
+    s.check("stripe is off again for whoever runs next", not m.stripe_enabled())
+
+    s.section("Landing after paying credits it once, however many reloads")
+    # Stripe retries and a contact reloads a page that took a moment, so the
+    # same session arrives several times. Crediting twice would tell somebody
+    # they had paid for a wedding they had half paid for.
+    landing = _event("J", price=2000.0, held=date.today() + timedelta(days=150))
+    was_enabled2 = m.stripe_enabled
+    was_session2 = m.stripe.checkout.Session
+
+    class _Retrieve:
+        sessions = {}
+
+        @staticmethod
+        def retrieve(session_id):
+            found = _Retrieve.sessions.get(session_id)
+            if found is None:
+                raise Exception("no such session")
+            return found
+
+    try:
+        m.stripe_enabled = lambda: True
+        m.stripe.checkout.Session = _Retrieve
+        _Retrieve.sessions = {
+            "sess_evt": {"id": "sess_evt", "payment_status": "paid",
+                         "amount_total": 60000,
+                         "metadata": {"kind": "event_payment"}},
+            "sess_unpaid": {"id": "sess_unpaid", "payment_status": "unpaid",
+                            "amount_total": 60000, "metadata": {}},
+        }
+        token = landing["manage_token"]
+        r = anon.get(f"/events/paid/{token}?session_id=sess_evt", follow_redirects=True)
+        s.check("they land back on their own page", r.status_code == 200,
+                detail=f"HTTP {r.status_code}")
+        s.check("six hundred is credited",
+                abs(_bill(landing["id"])["paid"] - 600) < 0.01,
+                detail=f"{_bill(landing['id'])['paid']}")
+        s.check("and they are told what is left",
+                any("1400" in f for f in flashes(r)) or "1400" in r.get_data(as_text=True),
+                detail=f"{flashes(r)[:1]}")
+        for _ in range(3):
+            anon.get(f"/events/paid/{token}?session_id=sess_evt", follow_redirects=True)
+        s.check("reloading does not credit it again",
+                abs(_bill(landing["id"])["paid"] - 600) < 0.01,
+                detail=f"{_bill(landing['id'])['paid']} — a contact would be told "
+                       "they had paid for a wedding they had half paid for")
+        s.check("and only one payment line exists",
+                len([x for x in _payments(landing["id"])
+                     if (x["reference"] or "") == "sess_evt"]) == 1,
+                detail=f"{len(_payments(landing['id']))} lines")
+
+        s.section("A payment that did not complete credits nothing")
+        before = _bill(landing["id"])["paid"]
+        r = anon.get(f"/events/paid/{token}?session_id=sess_unpaid", follow_redirects=True)
+        s.check("nothing is credited",
+                abs(_bill(landing["id"])["paid"] - before) < 0.01,
+                detail=f"{_bill(landing['id'])['paid']}")
+        import html as _html
+        said = " ".join(_html.unescape(f) for f in flashes(r)).lower()
+        s.check("and they are told plainly rather than shown a blank page",
+                "completed" in said or "nothing has been charged" in said,
+                detail=f"{flashes(r)[:1]}")
+
+        s.section("A session nobody issued, and a token nobody holds")
+        s.check("an unknown session is a 404",
+                anon.get(f"/events/paid/{token}?session_id=made_up").status_code == 404)
+        s.check("no session id at all is a 404",
+                anon.get(f"/events/paid/{token}").status_code == 404)
+        s.check("an unknown token is a 404",
+                anon.get("/events/paid/not-a-token?session_id=sess_evt").status_code == 404)
+    finally:
+        m.stripe_enabled = was_enabled2
+        m.stripe.checkout.Session = was_session2
+    s.check("Session.retrieve is the library's own again",
+            m.stripe.checkout.Session is not _Retrieve)
+
     s.section("Guards")
     before = _bill(over["id"])["paid"]
     code = ec.post(f"/admin/events/{over['id']}/payment",

@@ -25453,8 +25453,148 @@ def event_manage(manage_token):
         conn.close()
         return redirect(url_for("event_manage", manage_token=manage_token))
 
+    # What they owe, read before the close. The page showed the quoted price
+    # and nothing else, so a contact who had already sent a deposit had no
+    # way to see it had landed —
+    # events had no money model at all until now, and this is the guest's end of
+    # it.
+    bill = event_bill(conn, inquiry["id"])
     conn.close()
-    return render_template("event_manage.html", inquiry=inquiry)
+    return render_template("event_manage.html", inquiry=inquiry, bill=bill,
+                           stripe_enabled=stripe_enabled())
+
+
+def start_event_stripe_payment(conn, event_id, amount=None):
+    """Checkout URL for an event, or for part of it. None if there is nothing.
+
+    Events are the one stream where PART PAYMENT IS THE NORM rather than the
+    exception, and that is why this differs from a stay. A wedding is held with
+    a deposit a year out and settled nearer the day; nobody pays for one in a
+    single click, and offering only the whole figure would mean nobody paid
+    online at all.
+
+    Clamped to what is owed, like the guest's button on a stay: somebody typing
+    a round number over the balance means "all of it", and taking money the
+    house must give back is worse than rounding their intention down.
+    """
+    if not stripe_enabled():
+        return None
+    bill = event_bill(conn, event_id)
+    if not bill or bill["quoted"] <= 0 or bill["owed"] <= 0:
+        return None
+    event = bill["event"]
+    if event["status"] in ("cancelled", "declined"):
+        return None
+    charge = bill["owed"]
+    if amount is not None:
+        try:
+            wanted = round(float(amount), 2)
+        except (TypeError, ValueError):
+            wanted = 0
+        if wanted > 0:
+            charge = min(wanted, bill["owed"])
+    if charge < 0.5:
+        return None
+    part = charge + 0.005 < bill["owed"]
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": (
+                        f"{event['event_type']} ({event['reference_code'] or event['id']})"
+                        + (" \u2014 part payment" if part else ""))},
+                    "unit_amount": int(round(charge * 100)),
+                },
+                "quantity": 1,
+            }],
+            customer_email=event["contact_email"],
+            success_url=url_for("event_stripe_success",
+                                manage_token=event["manage_token"],
+                                _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=url_for("event_manage", manage_token=event["manage_token"],
+                               _external=True),
+            metadata={"event_id": str(event_id), "kind": "event_payment"},
+        )
+    except Exception:
+        return None
+    return checkout_session.url
+
+
+@app.route("/events/pay/<manage_token>", methods=["GET", "POST"])
+@csrf.exempt
+def event_pay(manage_token):
+    """Send an event contact to a card page for their deposit or balance.
+
+    CSRF-exempt for the same reason the other guest-facing money routes are:
+    they arrive from their own confirmation with no session, and the worst a
+    forged POST can do is show somebody a card page for their own event, which
+    charges nobody until they choose to pay.
+    """
+    conn = get_db()
+    event = conn.execute("SELECT id FROM event_inquiries WHERE manage_token = ?",
+                         (manage_token,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    amount = None
+    if request.method == "POST":
+        raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+        if raw:
+            amount = raw
+    url = start_event_stripe_payment(conn, event["id"], amount=amount)
+    conn.close()
+    if not url:
+        flash("There is nothing to pay on this at the moment, or card payment "
+              "is not connected yet. Do get in touch.", "error")
+        return redirect(url_for("event_manage", manage_token=manage_token))
+    return redirect(url, code=303)
+
+
+@app.route("/events/paid/<manage_token>")
+def event_stripe_success(manage_token):
+    """Where they land after paying.
+
+    Credited ONCE. Stripe retries and a contact reloads a page that took a
+    moment, so the same session arrives several times; the guard is the session
+    id written on the payment row, exactly as it is for a stay. Crediting twice
+    would tell somebody they had paid for a wedding they had half paid for.
+    """
+    session_id = (request.args.get("session_id") or "").strip()
+    if not session_id or not stripe_enabled():
+        abort(404)
+    conn = get_db()
+    event = conn.execute("SELECT * FROM event_inquiries WHERE manage_token = ?",
+                         (manage_token,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    try:
+        checkout = stripe.checkout.Session.retrieve(session_id)
+    except Exception:
+        conn.close()
+        abort(404)
+    if sval(checkout, "payment_status") != "paid":
+        conn.close()
+        flash("That payment wasn't completed. Nothing has been charged.", "error")
+        return redirect(url_for("event_manage", manage_token=manage_token))
+    already = conn.execute(
+        "SELECT 1 FROM event_payments WHERE reference = ?", (session_id,)).fetchone()
+    if not already:
+        amount = (sval(checkout, "amount_total") or 0) / 100.0
+        if amount > 0:
+            record_event_payment(conn, event["id"], amount, method="card_link",
+                                 reference=session_id)
+            conn.commit()
+    bill = event_bill(conn, event["id"])
+    conn.close()
+    left = bill["owed"] if bill else 0
+    flash("Thank you — your payment has been received."
+          + (f" \u20ac{left:.2f} remains on the event." if left > 0.005 else ""),
+          "success")
+    return redirect(url_for("event_manage", manage_token=manage_token))
 
 
 @app.route("/admin/events")

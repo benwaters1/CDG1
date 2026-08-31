@@ -16,7 +16,33 @@
       {% if inquiry['alternate_date'] %}<div><dt>Alternate date</dt><dd>{{ inquiry['alternate_date']|date_short }}</dd></div>{% endif %}
       {% if inquiry['guest_count'] %}<div><dt>Guests</dt><dd>{{ inquiry['guest_count'] }}</dd></div>{% endif %}
       {% if inquiry['quoted_price'] %}<div><dt>Quoted price</dt><dd>€{{ '%.2f'|format(inquiry['quoted_price']) }}</dd></div>{% endif %}
+      {# What has been received, and what is left. The page showed the quote
+         and stopped, so somebody who had already sent a deposit had no way
+         to see it had landed — and events had no money model at all until
+         now, so there was nothing to show. #}
+      {% if bill and bill.paid %}<div><dt>Received</dt><dd>€{{ '%.2f'|format(bill.paid) }}</dd></div>{% endif %}
+      {% if bill and bill.owed %}<div><dt>Still to pay</dt><dd><strong>€{{ '%.2f'|format(bill.owed) }}</strong></dd></div>
+      {% elif bill and bill.quoted and bill.settled %}<div><dt>Settled</dt><dd>Thank you</dd></div>{% endif %}
     </dl>
+
+    {% if bill and bill.owed > 0 and stripe_enabled %}
+    {# An event is held with a deposit a year out and settled nearer the day,
+       so part payment is the NORM here rather than the exception — offering
+       only the whole figure would mean nobody paid online at all. #}
+    <form method="post" action="{{ url_for('event_pay', manage_token=inquiry['manage_token']) }}"
+          class="g-mb-part__form" style="margin-top:var(--s2);">
+      <label class="g-mb-label" for="ev_amount">Pay towards this</label>
+      <input id="ev_amount" type="number" name="amount" inputmode="decimal"
+             min="0.50" max="{{ '%.2f'|format(bill.owed) }}" step="0.01"
+             placeholder="{{ '%.2f'|format(bill.owed) }}">
+      <button type="submit" class="g-btn g-btn--solid">Continue</button>
+    </form>
+    <p class="g-hint">Leave the amount blank to pay the balance in full. Anything
+    you pay now comes off the total and the rest can follow whenever suits.</p>
+    {% elif bill and bill.owed > 0 %}
+    <p class="g-hint" style="margin-top:var(--s2);">Card payment isn't connected
+    yet — do get in touch and we will arrange it.</p>
+    {% endif %}
     {% if inquiry['message'] %}
     <div class="g-mb-note">
       <span class="g-mb-dt">Your message</span>
