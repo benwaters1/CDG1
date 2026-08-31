@@ -1,12 +1,19 @@
 {% extends "public_base.html" %}
-{% block title %}{{ t('Your château account') }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% set sticky_bar = 'none' %}
+{% block title %}Your Bookings{% endblock %}
 {% block content %}
 
 <div class="g-mb-card">
+  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
+    <path d="M0 13h38"/><path d="M82 13h38"/>
+    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
+    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
+    <circle cx="60" cy="13" r="1.4"/>
+  </svg>
   <p class="g-eyebrow">{{ t('Your account') }}</p>
   <h1>{{ profile['name'] or t('Your château account') }}</h1>
-  <p class="g-p">Everything you have with us, in one place. Keep this link — it's yours, and it works without a password.</p>
+  <p class="g-p">Everything you have with us, in one place. Keep this link — it is yours, and it works without a password.</p>
 
   {% if not stays and not ateliers and not dinners %}
   <div class="g-mb-card">
@@ -18,7 +25,7 @@
   {% if stays %}
   <h2 class="section-heading">{{ t('Your stays') }}</h2>
   {% for stay in stays %}
-  <div class="g-mb-card" style="margin-bottom:12px;">
+  <div class="g-mb-card" style="margin-bottom:var(--s3);">
     <dl class="g-facts-list">
       <div><dt>{{ t('Room') }}</dt><dd>{{ stay['room_name'] }}</dd></div>
       <div><dt>{{ t('Dates') }}</dt><dd>{{ stay['arrival_date']|date_short }} → {{ stay['departure_date']|date_short }}</dd></div>
@@ -26,9 +33,9 @@
       <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ stay['status'] }}">{{ stay['status'] }}</span></dd></div>
     </dl>
     {% if bills.get(stay['id']) %}
-    <p class="g-p" style="margin-top:10px;">Still to pay: <strong>€{{ '%.2f'|format(bills[stay['id']].owed) }}</strong></p>
+    <p class="g-p" style="margin-top:var(--s2);">Still to pay: <strong>€{{ '%.2f'|format(bills[stay['id']].owed) }}</strong></p>
     {% endif %}
-    <a href="{{ url_for('manage_booking', manage_token=stay['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:10px; display:inline-block;">
+    <a href="{{ url_for('manage_booking', manage_token=stay['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">
       {% if stay['arrival_date'] >= today %}{{ t('Manage this stay') }}{% else %}{{ t('View this stay') }}{% endif %}
     </a>
   </div>
@@ -38,14 +45,14 @@
   {% if ateliers %}
   <h2 class="section-heading">{{ t('Your ateliers') }}</h2>
   {% for reg in ateliers %}
-  <div class="g-mb-card" style="margin-bottom:12px;">
+  <div class="g-mb-card" style="margin-bottom:var(--s3);">
     <dl class="g-facts-list">
       <div><dt>Atelier</dt><dd>{{ reg['workshop_title'] }}</dd></div>
       <div><dt>{{ t('Dates') }}</dt><dd>{{ reg['start_date']|date_short }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date']|date_short }}{% endif %}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ reg['reference_code'] }}</dd></div>
       <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ reg['status'] }}">{{ reg['status'] }}</span></dd></div>
     </dl>
-    <a href="{{ url_for('workshop_manage', manage_token=reg['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:10px; display:inline-block;">{{ t('Manage this registration') }}</a>
+    <a href="{{ url_for('workshop_manage', manage_token=reg['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">{{ t('Manage this registration') }}</a>
   </div>
   {% endfor %}
   {% endif %}
@@ -53,7 +60,7 @@
   {% if dinners %}
   <h2 class="section-heading">{{ t('Your dinners') }}</h2>
   {% for dinner in dinners %}
-  <div class="g-mb-card" style="margin-bottom:12px;">
+  <div class="g-mb-card" style="margin-bottom:var(--s3);">
     <dl class="g-facts-list">
       <div><dt>Date</dt><dd>{{ dinner['dinner_date']|date_short }}</dd></div>
       <div><dt>{{ t('Party size') }}</dt><dd>{{ dinner['party_size'] }}</dd></div>
@@ -61,14 +68,14 @@
       <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ dinner['status'] }}">{{ dinner['status'] }}</span></dd></div>
     </dl>
     {% if dinner['manage_token'] %}
-    <a href="{{ url_for('restaurant_manage', manage_token=dinner['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:10px; display:inline-block;">{{ t('Manage this booking') }}</a>
+    <a href="{{ url_for('restaurant_manage', manage_token=dinner['manage_token']) }}" class="g-btn g-btn--sm" style="margin-top:var(--s2); display:inline-block;">{{ t('Manage this booking') }}</a>
     {% endif %}
   </div>
   {% endfor %}
   {% endif %}
 
-  <p class="g-hint" style="margin-top:18px;">
-    Something not right, or something you'd like to add? Reply to any email from us and we'll sort it.
+  <p class="g-hint" style="margin-top:var(--s4);">
+    Something not right, or something you'd like to add? Reply to any email from us and we will sort it.
   </p>
 </div>
 

@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
-{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 {# CONTRACT — read-only. Uses booking.* and the same url_for endpoints as

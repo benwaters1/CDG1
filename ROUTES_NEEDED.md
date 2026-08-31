@@ -1,68 +1,43 @@
-# Routes still to add
+# Three routes to add
 
-Two one-liners. Both templates are in this zip and will 404 until these exist.
+The three event pages are templates only — they need routes. Each is a plain
+render with no data, so they can sit next to `events_info`:
 
-```python
-@app.route("/contact")
-def contact():
-    return render_template("contact.html")
-```
+    @app.route("/events/weddings")
+    def events_weddings():
+        return render_template("events_weddings.html")
 
-`/facilities` and `/whats-on` are already live — confirmed against the running
-app. `/contact` is new.
+    @app.route("/events/private")
+    def events_private():
+        return render_template("events_private.html")
 
-## Also worth running, if not already
+    @app.route("/events/photoshoots")
+    def events_photoshoots():
+        return render_template("events_photoshoots.html")
 
-- `WHATS_ON_SETUP.md` — the table, routes and the four standing markets.
-  The public page's standing-week section renders nothing without the seed.
-- `WORKSHOP_FIELDS.md` — three optional columns plus the five ateliers with
-  their real 2026–27 dates and prices from the .com.
-- `DATE_FILTERS.md` — registers `date_short` and `date_range`. **Without
-  these the workshop pages print raw ISO dates** like `2027-07-10`.
+## Until then, nothing breaks
 
+The header submenu guards each link:
 
----
+    {% if 'events_weddings' in url_map %}{{ url_for('events_weddings') }}
+    {% else %}{{ url_for('events_info') }}#weddings{% endif %}
 
-# The homepage is passed no data
+Without the routes the links fall back to the anchors on the events page. A
+missing endpoint therefore cannot raise a BuildError and take down the header
+on every page.
 
-`dashboard()` calls `render_template("home.html")` with nothing. That is why the
-front page reads as a menu of links rather than a page: it cannot show a room or
-a workshop, because it has never been given one.
+To switch them on, pass the endpoint names into the template context — for
+example in a context processor:
 
-Comparable houses show the actual rooms on the homepage — named, priced,
-described — instead of a category tile that links away.
+    @app.context_processor
+    def inject_url_map():
+        return {"url_map": {r.endpoint for r in app.url_map.iter_rules()}}
 
-```python
-@app.route("/")
-def dashboard():
-    # Two audiences, one address. A visitor gets the château's front page; a
-    # signed-in member of staff gets their dashboard.
-    if not current_user():
-        conn = get_db()
-        # The front page shows real rooms and real workshop dates rather than
-        # category tiles — a visitor should see what is actually for sale
-        # without having to click through first.
-        rooms = conn.execute(
-            """SELECT * FROM rooms WHERE active = 1
-                ORDER BY sort_order, price_per_night LIMIT 4"""
-        ).fetchall()
+## Sitemap and canonical
 
-        today = datetime.now(timezone.utc).date().isoformat()
-        upcoming = conn.execute(
-            """SELECT ws.*, w.title, w.price_per_person, w.nights_label,
-                      w.id AS workshop_id
-                 FROM workshop_sessions ws
-                 JOIN workshops w ON w.id = ws.workshop_id
-                WHERE w.active = 1 AND ws.start_date >= ?
-                ORDER BY ws.start_date LIMIT 3""",
-            (today,),
-        ).fetchall()
-        conn.close()
-        return render_template("home.html", rooms=rooms, upcoming=upcoming)
-    return staff_dashboard()
-```
+Add the three URLs to the sitemap. Each page carries its own title and meta
+description, so they will not compete with events_info for the same terms:
 
-**Check the column names against your own `rooms` table** — if it has no
-`sort_order` or `active`, drop those from the query. The template treats both
-lists as optional and renders nothing when they are empty, so the route change
-is safe to apply before the data is perfect.
+  /events/weddings      "Weddings"
+  /events/private       "Private Events"
+  /events/photoshoots   "Photoshoots & Film"

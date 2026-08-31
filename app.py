@@ -25408,6 +25408,26 @@ def events_info():
     return render_template("events_info.html", event_types=types)
 
 
+# The three kinds of event, each on its own page. /events is the overview and
+# stays the one the enquiry form lives on; these carry their own title and
+# meta description so they answer a search for "château wedding venue Ariège"
+# rather than competing with the overview for it. Plain renders — the enquiry
+# they lead to is still submit_event_inquiry.
+@app.route("/events/weddings")
+def events_weddings():
+    return render_template("events_weddings.html")
+
+
+@app.route("/events/private")
+def events_private():
+    return render_template("events_private.html")
+
+
+@app.route("/events/photoshoots")
+def events_photoshoots():
+    return render_template("events_photoshoots.html")
+
+
 @app.route("/events/inquire", methods=["POST"])
 def submit_event_inquiry():
     event_type = request.form.get("event_type", "").strip()
@@ -45372,7 +45392,9 @@ def sitemap():
     """
     pages = [
         ("dashboard", "1.0"), ("book_rooms", "0.9"), ("workshops_public", "0.9"),
-        ("restaurant_info", "0.8"), ("events_info", "0.8"), ("facilities_page", "0.7"),
+        ("restaurant_info", "0.8"), ("events_info", "0.8"),
+        ("events_weddings", "0.7"), ("events_private", "0.6"),
+        ("events_photoshoots", "0.6"), ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]

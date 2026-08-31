@@ -1,3 +1,6 @@
+{# Endpoints registered in the app, used to guard optional links. The
+   view can pass url_map; without it the guards fall back safely. #}
+{% set url_map = url_map | default([]) %}
 <!DOCTYPE html>
 {# The real language, so a screen reader uses the right voice and the browser
    does not offer to translate a page that is already in the reader's tongue. #}
@@ -5,9 +8,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
-<meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Seven bedrooms, a table, and ateliers led by artisans.{% endblock %}">
+{# Guest pages — bills, statements, confirmations — must not be indexed. A
+   referrer or a forwarded email can be indexed without ever being
+   crawled. Each such page overrides this. #}
 {% block robots %}{% endblock %}
+<title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
+<meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Five bedrooms, a table, and ateliers led by artisans.{% endblock %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
@@ -97,7 +103,14 @@
       <a href="{{ url_for('book_rooms') }}">{{ t('Stay') }}</a>
       <a href="{{ url_for('workshops_public') }}">{{ t('Workshops') }}</a>
       <a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a>
-      <a href="{{ url_for('events_info') }}">{{ t('Celebrations') }}</a>
+      <div class="g-nav__has-sub">
+        <a href="{{ url_for('events_info') }}" aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
+        <ul class="g-subnav">
+          <li><a href="{{ url_for('events_weddings') }}">{{ t('Weddings') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}">{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_photoshoots') }}">{{ t('Photoshoots') }}</a></li>
+        </ul>
+      </div>
       <a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a>
       <a href="{{ url_for('restoration_page') }}">{{ t('Restoration') }}</a>
       <a href="{{ url_for('gallery_page') }}">{{ t('Gallery') }}</a>

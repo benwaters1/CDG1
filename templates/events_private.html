@@ -1,0 +1,51 @@
+{% extends "public_base.html" %}
+{% block title %}Private Events{% endblock %}
+{% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, forty seated, the kitchen yours.{% endblock %}
+{% set crumbs = [('Events', url_for('events_info')), ('Private', None)] %}
+{% block content %}
+{% from '_marks.html' import mark %}
+
+<section class="g-hero g-hero--short">
+  <div class="g-hero__wash"></div>
+  <div class="g-wrap">
+    <p class="g-hero__eyebrow">Ariège · Private Hire</p>
+    <h1 class="g-hero__title">A private house for a few days</h1>
+    <p class="g-hero__lede">Birthdays, anniversaries, milestone dinners, and reasons that need no name.</p>
+    <p><a href="#enquire" class="g-btn g-btn--solid">Ask about private hire</a></p>
+  </div>
+</section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Shape Of It</p>
+  <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
+  <p class="g-p g-lede-first">Most private hires run two or three days rather than one evening. The house is yours throughout — the salons, the kitchen, the gardens, the pool below the cherry trees.</p>
+  <p class="g-p">Dinner is cooked in the Renaissance kitchen by a Cordon Bleu-trained cheffe de pâtisserie and served in the dining salon. Menus are built with you rather than chosen from a card.</p>
+
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Seated</dt><dd>Up to forty indoors; more on the terraces</dd></div>
+    <div><dt>Sleeping</dt><dd>Fifteen in five bedrooms</dd></div>
+    <div><dt>The kitchen</dt><dd>Yours. Menus made around what the gardens and the Sunday market give</dd></div>
+    <div><dt>Grounds</dt><dd>Six acres, a pool among the cherry trees, a tennis court lined for practice</dd></div>
+    <div><dt>Youngest guest</dt><dd>Eight</dd></div>
+  </dl></div></div>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Worth Knowing</p>
+  <h2 class="g-place">A Working Restoration</h2>
+  <p class="g-p g-lede-first">The château has been under restoration since 2013 and is not finished. Ninety-four rooms; five are ready. The rest are in every state between ruin and repair.</p>
+  <p class="g-p">Guests walk past that work rather than around it. It is the reason the house is worth taking, and the reason it costs what it does — the finished rooms pay for the rest.</p>
+  <p class="g-limit"><span class="g-limit__k">Quiet</span>No other guests while you are here. One party at a time.</p>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('candle') }}</div>
+
+<!-- ============ ENQUIRE ============ -->
+<section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
+  <p class="g-eyebrow">Tell Us</p>
+  <h2 class="g-place">What are you marking?</h2>
+  <p class="g-p">Tell us the occasion, roughly when, and how many. We will come back with what the house can do and what it costs.</p>
+  <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
+</div></section>
+{% endblock %}
