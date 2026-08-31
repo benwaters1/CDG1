@@ -68,8 +68,19 @@
   {% endif %}
 
   <label class="field-label" for="wi_party">Guests</label>
-  <input id="wi_party" type="number" name="party_size" min="1" step="1"
-         value="{{ form.get('party_size', '2') }}">
+  <div class="field-row-2">
+    <div>
+      <input id="wi_party" type="number" name="party_size" min="1" step="1"
+             value="{{ form.get('party_size', '2') }}">
+    </div>
+    <div>
+      <label class="field-label" for="wi_under18">Of those, under 18</label>
+      <input id="wi_under18" type="number" name="guests_under_18" min="0" step="1"
+             value="{{ form.get('guests_under_18', '0') }}">
+    </div>
+  </div>
+  <p class="upload-hint">Under-18s are exempt from the taxe de séjour, so this
+  changes what the stay owes and what the commune is told.</p>
 
   <div class="field-row-2">
     <div>

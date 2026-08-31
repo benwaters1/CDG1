@@ -44,6 +44,18 @@ def _cleanup():
     conn.close()
 
 
+# This fixture WRITES city_tax itself, and that is deliberate here: these checks
+# are about the declaration's arithmetic - nights clipped to the period, the
+# amount apportioned across a stay that straddles two months - and that needs
+# controlled figures rather than whatever the rate happens to be.
+#
+# It is also how the missing write went unnoticed for so long. Nothing in the app
+# wrote that column, so the declaration reported nothing collected, and this
+# suite passed throughout because it supplied the value the app should have. The
+# app's own write path is covered in test_city_tax_charged, which books through
+# the form and never touches either column by hand. Keep it that way: if this
+# file is ever the only place city_tax is set, the feature is dead again and
+# green.
 def _stay(ref, arrive, nights, *, party=2, under18=0, city_tax=None,
           status="confirmed", paid=None):
     conn = db()

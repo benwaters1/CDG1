@@ -175,6 +175,7 @@ SUITES = [
     "test_owner_writes",
     "test_shell_cache",
     "test_city_tax",
+    "test_city_tax_charged",
     "test_event_money",
     "test_event_terms",
     "test_no_email_guest",

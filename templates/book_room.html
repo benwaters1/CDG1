@@ -94,6 +94,17 @@
             <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
             <span class="g-hint">Up to {{ room['max_occupancy'] }} in this room.</span>
           </p>
+          {# Taxe de sejour is charged per ADULT per night, so a family with
+             children pays for the adults. Asking is the only way to get it
+             right: assuming everybody is an adult overcharges families, and
+             the figure declared to the commune is wrong in the same breath. #}
+          <p class="g-field g-field--narrow">
+            <label for="guests_under_18">Of those, under 18</label>
+            <input type="number" inputmode="numeric" id="guests_under_18"
+                   name="guests_under_18" min="0" max="{{ room['max_occupancy'] }}"
+                   value="{{ prefill_under_18 or 0 }}">
+            <span class="g-hint">Under-18s are exempt from the taxe de séjour.</span>
+          </p>
         </section>
 
 <div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
