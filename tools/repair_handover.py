@@ -138,7 +138,12 @@ def repair_workshop_payments():
     if "part_amount" not in head:
         print("  ! git's copy has no part-payment block either — repair by hand")
         return 0
-    start = head.index("    {# Part-payments and the auto-charge notice.")
+    # Anchored on the markup, not on the comment above it. The comment was
+    # dropped upstream and this line raised ValueError, which stopped the whole
+    # script on repair 2 of 8 -- so the six after it silently never ran. A
+    # repair tool that dies partway is worse than one that skips a step,
+    # because the report still says what it managed before it fell over.
+    start = head.rindex("\n    <form", 0, head.index('id="part_amount"')) + 1
     end = head.index("    {% endif %}", head.index('name="autocharge_opt_out"'))
     block = head[start:end + len("    {% endif %}\n")]
     pay = [l for l in src.split("\n") if "workshop_pay_balance" in l and "g-btn" in l]
@@ -253,10 +258,24 @@ def repair_plate_row_rule():
     if anchor not in src:
         print("  ! gudanes.css: no .g-plate__l rule to anchor to")
         return 0
-    rule = ("/* A row inside the plate. The markup keeps arriving with this\n"
-            "   wrapper and the stylesheet without the rule. It sits above\n"
-            "   .g-plate::before's inset border, and that is all it does. */\n"
-            ".g-plate__row{ position: relative; }\n")
+    # Taken from git rather than written out here. The literal below said
+    # `position: relative`, which was right when it was written and has since
+    # been replaced on main by `min-width: 0` for a reason the comment beside
+    # it gives. A repair that restores the older of two fixes is still a
+    # revert, and this one had already put the stale rule back once.
+    rule = None
+    try:
+        head = subprocess.run(
+            ["git", "show", f"HEAD:{rel}"], cwd=ROOT, capture_output=True,
+            text=True, encoding="utf-8", check=True).stdout.replace("\r\n", "\n")
+        at = head.index(".g-plate__row{")
+        start = head.rindex("/*", 0, at) if "/*" in head[max(0, at - 400):at] else at
+        rule = head[start:head.index("\n", at) + 1]
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        pass
+    if not rule:
+        print("  ! could not read the current .g-plate__row rule from git")
+        return 0
     _write(rel, src.replace(anchor, rule + anchor, 1))
     return 1
 

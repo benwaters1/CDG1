@@ -97,7 +97,7 @@
       <a href="{{ url_for('book_rooms') }}">{{ t('Stay') }}</a>
       <a href="{{ url_for('workshops_public') }}">{{ t('Workshops') }}</a>
       <a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a>
-      <a href="{{ url_for('events_info') }}">{{ t('Events') }}</a>
+      <a href="{{ url_for('events_info') }}">{{ t('Celebrations') }}</a>
       <a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a>
       <a href="{{ url_for('restoration_page') }}">{{ t('Restoration') }}</a>
       <a href="{{ url_for('gallery_page') }}">{{ t('Gallery') }}</a>
@@ -128,7 +128,7 @@
         </a>
         <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><path d="M6 3v7a6 6 0 0 0 12 0V3M12 17v4M8 21h8"/></svg>
-          {{ t('Weddings & Events') }}
+          {{ t('Weddings & Celebrations') }}
         </a>
         <a href="{{ url_for('events_info') }}" class="g-navwrap__item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true" focusable="false"><rect x="3" y="6" width="14" height="12" rx="1"/><path d="M17 10l4-2v8l-4-2"/></svg>
@@ -370,7 +370,7 @@
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Nightly stays') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
           <li><a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a></li>
-          <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Events') }}</a></li>
+          <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
         </ul>
@@ -408,7 +408,7 @@
 <div class="g-stickybar">
   <span class="g-stickybar__t">
     <b>{% if _sb == 'dining' %}{{ t('Dine at La Table') }}
-       {%- elif _sb == 'events' %}{{ t('Weddings & Events') }}
+       {%- elif _sb == 'events' %}{{ t('Weddings & Celebrations') }}
        {%- elif _sb == 'atelier' %}{{ t('Château Ateliers') }}
        {%- else %}{{ t('Stay the Night') }}{% endif %}</b>
     <span>Château de Gudanes</span>
@@ -680,6 +680,19 @@
       if (f.dataset.submitted === '1') return;
       if (typeof f.checkValidity === 'function' && !f.checkValidity()) return;
       f.dataset.submitted = '1';
+      /* If we are still on this page after a few seconds the submission did
+         not take — a validation failure the browser handled, or a dropped
+         connection. Release the button rather than stranding the guest. */
+      setTimeout(function(){
+        if (!document.body.contains(f)) return;
+        f.dataset.submitted = '0';
+        f.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function(b){
+          if (b.tagName === 'BUTTON' && b.dataset.html !== undefined) b.innerHTML = b.dataset.html;
+          else if (b.dataset.label) b.value = b.dataset.label;
+          b.disabled = false;
+          b.removeAttribute('aria-busy');
+        });
+      }, 8000);
       f.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function(b){
         if (b.tagName === 'BUTTON') {
           b.dataset.html = b.innerHTML;
@@ -765,12 +778,16 @@
   var fields = document.querySelectorAll('[data-rp-open]');
   if (!fields.length) return;
 
-  var aIn = document.getElementById('hs_arrival') || document.querySelector('[name=arrival]');
-  var dIn = document.getElementById('hs_departure') || document.querySelector('[name=departure]');
+  /* Bind by name, so the picker works on any page carrying an arrival and
+     departure pair — not only the homepage it was first written for. */
+  var aIn = document.querySelector('input[type=date][name=arrival]');
+  var dIn = document.querySelector('input[type=date][name=departure]');
   if (!aIn || !dIn) return;
 
   /* JavaScript is running, so show the buttons and hide the raw inputs. */
-  document.querySelectorAll('.g-rp__f').forEach(function(f){ f.classList.add('is-rp'); });
+  document.querySelectorAll('[data-rp-open]').forEach(function(b){
+    var f = b.parentElement; if (f) f.classList.add('is-rp', 'g-rp__f');
+  });
   fields.forEach(function(b){ b.hidden = false; });
 
   var MONTHS = ['January','February','March','April','May','June',

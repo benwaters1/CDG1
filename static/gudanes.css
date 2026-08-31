@@ -3370,6 +3370,24 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   content: ''; position: absolute; inset: 6px;
   border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
 }
+/* A row inside the plate. The markup keeps arriving with this
+   wrapper and the stylesheet without the rule. It sits above
+   .g-plate::before's inset border, and that is all it does. */
+/* ==========================================================================
+   THE PLATE
+   A bordered panel for the facts a page is built on — double-ruled in gilt,
+   the way a printed plate is mounted. Used where a page needs one place a
+   reader can check rather than a paragraph they must parse.
+   ========================================================================== */
+.g-plate{
+  margin-top: var(--s7); padding: clamp(20px, 3vw, 36px);
+  border: 2px solid var(--gilt); background: var(--white);
+  position: relative;
+}
+.g-plate::before{
+  content: ''; position: absolute; inset: 6px;
+  border: 1px solid var(--gilt); opacity: .4; pointer-events: none;
+}
 .g-plate__row{ min-width: 0; }
 .g-plate__l{ display: grid; gap: var(--s4) var(--s7); margin: 0; }
 @media (min-width: 48rem){ .g-plate__l{ grid-template-columns: 1fr 1fr; } }
@@ -4012,3 +4030,31 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 /* Reflow on the space available rather than a fixed two columns, so five
    rooms sit 3 + 2 on a wide screen instead of leaving one stranded. */
 .g-cards{ grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr)); }
+
+/* ==========================================================================
+   IMAGE BANDS ON A NARROW SCREEN
+   grid-auto-flow: column puts every image on one row whatever the width, so
+   a five-image band rendered at 74px each on a phone — too small to read as
+   photographs. Below tablet the band becomes a horizontal scroller with each
+   image at a usable size, which is how a strip of photographs should behave
+   on a phone anyway.
+   ========================================================================== */
+@media (max-width: 60rem){
+  .g .g-band{
+    grid-auto-flow: column;
+    grid-auto-columns: min(78vw, 22rem);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: var(--s3);
+    padding-inline: var(--s4);
+    scrollbar-width: none;
+  }
+  .g .g-band::-webkit-scrollbar{ display: none; }
+  .g .g-band img{
+    scroll-snap-align: center;
+    /* Explicit, so a slow or failed image cannot collapse the track. */
+    width: min(78vw, 22rem); min-width: min(78vw, 22rem);
+    aspect-ratio: 4 / 3; height: auto; object-fit: cover;
+  }
+}

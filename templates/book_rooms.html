@@ -56,9 +56,16 @@
 <section class="g-book-bar"><div class="g-wrap">
   <form method="get" class="g-search" aria-label="Check availability">
     <div class="g-search__f"><label for="s_arrival">Arrival</label>
-      <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}"></div>
+      <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}">
+      <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
+        <span class="g-rp__val" data-rp-label="arrival">{{ t('Add dates') }}</span>
+      </button></div>
     <div class="g-search__f"><label for="s_departure">Departure</label>
-      <input type="date" id="s_departure" name="departure" value="{{ departure }}"></div>
+      <input type="date" id="s_departure" name="departure" value="{{ departure }}">
+      <button type="button" class="g-rp__btn" data-rp-open="departure" hidden>
+        <span class="g-rp__val" data-rp-label="departure">{{ t('Add dates') }}</span>
+        <span class="g-rp__nights" data-rp-nights></span>
+      </button></div>
     <div class="g-search__f"><label for="s_party">Guests</label>
       <input type="number" inputmode="numeric" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
     <button type="submit" class="g-btn g-search__go">Check availability</button>
@@ -411,7 +418,8 @@
   <p class="g-p">Five rooms, each different. This is the quickest way to see which suits.</p>
 
   <div class="g-compare-wrap">
-    <table class="g-compare">
+    <div class="table-wrap">
+      <table class="g-compare">
       <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
       <thead>
         <tr>
@@ -441,7 +449,8 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+      </table>
+    </div>
   </div>
   <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
 </div></section>
