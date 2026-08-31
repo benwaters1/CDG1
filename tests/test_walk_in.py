@@ -49,6 +49,23 @@ def _room():
     return row
 
 
+def _accom(bill):
+    """What the stay itself costs: the bill less the taxe de sejour.
+
+    A walk-in now carries a stamped city tax, so bill["total"] is the room plus
+    the tax. Every check in this file is about ROOM pricing -- the rate card
+    honoured, a desk discount applied, an over-price ignored -- so comparing the
+    whole total against a rack rate measures two things and reports on one.
+    """
+    return round(sum(l["amount"] for l in bill["lines"]
+                     if l.get("kind") != "city_tax"), 2)
+
+
+def _tax(bill):
+    return round(sum(l["amount"] for l in bill["lines"]
+                     if l.get("kind") == "city_tax"), 2)
+
+
 def _rack(room, a, d):
     conn = db()
     try:
@@ -108,8 +125,12 @@ def run():
         s.check("with no email on it", not (made["guest_email"] or "").strip())
         s.check("and it has a reference to quote", bool(made["reference_code"]))
         s.check("priced from the rate card",
-                abs(_bill(made["id"])["total"] - rack) < 0.01,
-                detail=f"{_bill(made['id'])['total']} vs {rack}")
+                abs(_accom(_bill(made["id"])) - rack) < 0.01,
+                detail=f"{_accom(_bill(made['id']))} vs {rack}")
+        s.check("with the taxe de sejour on top as its own line",
+                _tax(_bill(made["id"])) > 0,
+                detail="a stay taken at the desk owes the tax like any other, "
+                       "and the commune is told what was charged")
 
     s.section("The same room, the same nights, twice")
     # The only mistake on this page a guest cannot be talked round.
@@ -132,10 +153,11 @@ def run():
     if cheap:
         bill = _bill(cheap["id"])
         s.check("the bill charges the agreed price, not the rack rate",
-                abs(bill["total"] - (rack2 - 120)) < 0.01,
-                detail=f"{bill['total']} vs {rack2 - 120:.2f}")
+                abs(_accom(bill) - (rack2 - 120)) < 0.01,
+                detail=f"{_accom(bill)} vs {rack2 - 120:.2f}")
         s.check("and what they owe agrees with it",
-                abs(bill["owed"] - (rack2 - 120)) < 0.01, detail=f"{bill['owed']}")
+                abs(bill["owed"] - (rack2 - 120) - _tax(bill)) < 0.01,
+                detail=f"{bill['owed']}")
         labels = [l["label"] for l in bill["lines"]]
         s.check("the nights still show at the advertised price",
                 any(f"{rack2:.2f}" == f"{l['amount']:.2f}" for l in bill["lines"]),
@@ -155,8 +177,8 @@ def run():
     s.check("it is taken", bool(over))
     if over:
         s.check("at the rate card, not above it",
-                abs(_bill(over["id"])["total"] - rack3) < 0.01,
-                detail=f"{_bill(over['id'])['total']} vs {rack3}")
+                abs(_accom(_bill(over["id"])) - rack3) < 0.01,
+                detail=f"{_accom(_bill(over['id']))} vs {rack3}")
 
     s.section("Money handed over at the desk goes on with it")
     a4 = a + timedelta(days=30)
@@ -167,8 +189,9 @@ def run():
     s.check("it is taken", bool(paid))
     if paid:
         s.check("and comes off what they owe",
-                abs(_bill(paid["id"])["owed"] - (rack4 - 150)) < 0.01,
-                detail=f"{_bill(paid['id'])['owed']} vs {rack4 - 150}")
+                abs(_bill(paid["id"])["owed"]
+                    - (rack4 - 150 + _tax(_bill(paid["id"])))) < 0.01,
+                detail=f"{_bill(paid['id'])['owed']} vs {rack4 - 150} plus tax")
         conn = db()
         line = conn.execute(
             "SELECT * FROM booking_payments WHERE booking_id = ? ORDER BY id DESC LIMIT 1",

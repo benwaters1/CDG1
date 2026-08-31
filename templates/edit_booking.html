@@ -23,8 +23,18 @@
       </div>
     </div>
 
-    <label class="field-label">Party size</label>
-    <input type="number" name="party_size" min="1" max="{{ booking['max_occupancy'] }}" value="{{ booking['party_size'] }}" required>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label">Party size</label>
+        <input type="number" name="party_size" min="1" max="{{ booking['max_occupancy'] }}" value="{{ booking['party_size'] }}" required>
+      </div>
+      <div>
+        <label class="field-label">Of those, under 18</label>
+        <input type="number" name="guests_under_18" min="0" max="{{ booking['max_occupancy'] }}" value="{{ booking['guests_under_18'] or 0 }}">
+      </div>
+    </div>
+    <p class="upload-hint">Changing either recalculates the taxe de séjour on
+    this stay, and with it what the commune is owed for the period.</p>
 
     <label class="field-label">Phone</label>
     <input type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}">

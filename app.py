@@ -10725,6 +10725,26 @@ def booking_bill(conn, booking_id):
     if discount:
         lines.append({"label": "Discount", "amount": -discount, "kind": "discount"})
 
+    # Taxe de sejour. The statement has always added this to the guest's total
+    # and this - THE definition of what a stay owes, behind the Pay button, the
+    # balance chase and the outstanding list - left it out, so a guest who paid
+    # what the bill asked was then sent a document showing a balance.
+    #
+    # The figure STAMPED on the booking, and nothing else. No fallback to a
+    # computation: a stay taken before this was written was never charged the
+    # tax and cannot be now, so inventing one here would move what an existing
+    # guest owes for a stay already agreed - in some cases already paid in full.
+    # Matches city_tax_working, which produces the actual declaration from what
+    # was charged for exactly this reason.
+    #
+    # A line rather than an addition to the room total, because it carries no
+    # VAT and is collected on the commune's behalf.
+    if nights and booking["status"] not in ("cancelled",):
+        stay_tax = round(float(booking["city_tax"] or 0), 2)
+        if stay_tax:
+            lines.append({"label": "Taxe de sejour", "amount": stay_tax,
+                          "kind": "city_tax"})
+
     extras = extras_for_booking(conn, "room", booking_id)
     for extra in extras:
         # Same rule as EXTRAS_COUNTED_SQL, on rows rather than in SQL.
@@ -14351,7 +14371,8 @@ def send_notification(conn, user_id, kind, title, body=None, link=None, related_
 def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, departure,
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
-                    total_price_override=None, discount_amount_override=None):
+                    total_price_override=None, discount_amount_override=None,
+                   guests_under_18=0):
     nights = (departure - arrival).days
     extras_total = sum(e["price"] for e in chosen_extras)
 
@@ -14379,6 +14400,18 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
 
     reference_code = make_reference_code()
     manage_token = secrets.token_urlsafe(24)
+    # Taxe de sejour, STAMPED HERE rather than worked out later.
+    #
+    # The rate is set by the commune and does change. Recomputing a past stay
+    # from today's rate would restate a declaration already filed, so the figure
+    # in force on the day the guest agreed to it is the one kept.
+    #
+    # NOT added to total_price. The tax carries no VAT and belongs to the
+    # commune rather than the house, so it is a line of its own on the bill, on
+    # the statement and at the card page - one number in three places instead of
+    # a total that means something different in each.
+    city_tax, tax_adults, tax_rate_used = compute_city_tax(
+        conn, party_size, guests_under_18, nights)
     # What was asked for now, and what falls due before they travel. At the
     # default of 0% this is (total, 0, None) — today's behaviour exactly, and
     # no schedule written.
@@ -14397,15 +14430,17 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             arrival_date, departure_date, party_size, special_requests, total_price,
             extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id, created_at,
             promo_code_id, discount_amount,
-            deposit_amount, deposit_paid_at, balance_amount, balance_due_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            deposit_amount, deposit_paid_at, balance_amount, balance_due_date,
+            guests_under_18, city_tax)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (room["id"], reference_code, manage_token, guest_name, guest_email, guest_phone,
          arrival.isoformat(), departure.isoformat(), party_size, special_requests or None,
          total_price, extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id,
          datetime.now(timezone.utc).isoformat(),
          promo["id"] if promo else None, discount_amount or None,
          deposit_amount if balance_amount else None, deposit_paid_at,
-         balance_amount or None, balance_due),
+         balance_amount or None, balance_due,
+         int(guests_under_18 or 0), city_tax),
     )
     # Recorded in the SAME transaction as the booking insert, not a
     # separate commit after — otherwise a crash between the two would
@@ -14421,6 +14456,11 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         f"Departure: {format_date_human(departure.isoformat())}",
         f"Party size: {party_size}",
     ]
+    if city_tax:
+        detail_lines.append(
+            f"Taxe de sejour: €{city_tax:.2f} ({tax_adults} adult"
+            f"{'' if tax_adults == 1 else 's'} x {nights} night"
+            f"{'' if nights == 1 else 's'} x €{tax_rate_used:.2f})")
     if extras_summary:
         detail_lines.append(f"Add-ons: {extras_summary}")
     if promo and discount_amount:
@@ -14503,6 +14543,7 @@ def create_booking_from_stripe_session(conn, session):
         chosen_extras, payment_status="paid",
         stripe_session_id=session["id"], stripe_payment_intent_id=sval(session, "payment_intent"),
         promo_code=meta.get("promo_code") or None,
+        guests_under_18=int(meta.get("guests_under_18") or 0),
         # Trust what was quoted and charged, not today's prices. Absent on
         # sessions created before this was added, in which case create_booking
         # recomputes exactly as it always did.
@@ -23081,22 +23122,19 @@ def admin_tax():
         """SELECT party_size, guests_under_18, arrival_date, departure_date, city_tax
            FROM bookings WHERE status = 'confirmed' AND arrival_date >= ?""",
         (date(today.year, 1, 1).isoformat(),)).fetchall()
-    owed = 0.0
-    for b in stays:
-        if b["city_tax"]:
-            owed += b["city_tax"]
-        else:
-            a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
-            nights = max(0, (d - a).days) if a and d else 0
-            amount, _, _ = compute_city_tax(conn, b["party_size"], b["guests_under_18"], nights)
-            owed += amount
+    # What was actually charged. Working out what it WOULD have been for stays
+    # that were never charged it would tell the owner they owe the commune money
+    # they never took, which is the one direction a tax figure must not err in.
+    owed = round(sum(float(b["city_tax"] or 0) for b in stays), 2)
+    uncharged = sum(1 for b in stays if not b["city_tax"])
     accounts = ledger_account_choices(conn, "4")
     conn.close()
     overview = [
         overview_cell("City tax", f"€{current['city_tax_per_adult_per_night']}", sub="/adult/night"),
         overview_cell("Exempt under", current["city_tax_exempt_under_age"], sub="yrs"),
         overview_cell("Collected this year", euro(owed), hint="owed to the commune"),
-        overview_cell("Stays counted", len(stays)),
+        overview_cell("Stays counted", len(stays),
+                      sub=(f"{uncharged} with no tax charged" if uncharged else None)),
     ]
     return render_template("admin_tax.html", current=current, overview=overview,
                            accounts=accounts, owed=owed)
@@ -24293,6 +24331,7 @@ def book_room_prefill(form=None):
         "prefill_email": field("guest_email"),
         "prefill_phone": field("guest_phone"),
         "prefill_party_size": field("party_size"),
+        "prefill_under_18": field("guests_under_18"),
         "prefill_requests": field("special_requests"),
         "prefill_promo": field("promo_code"),
         "prefill_extras": {int(i) for i in (form.getlist("extras")
@@ -24325,6 +24364,11 @@ def book_room(room_id):
         guest_email = request.form.get("guest_email", "").strip().lower()
         guest_phone = phone_from_form("guest_phone")
         party_size_raw = request.form.get("party_size", "").strip()
+        # How many of the party are children. The taxe de sejour is per ADULT
+        # per night, so without this every guest is charged as an adult -- and
+        # the field did not exist, which is why guests_under_18 was read in
+        # seven places and written in none.
+        under_18_raw = request.form.get("guests_under_18", "").strip()
         special_requests = request.form.get("special_requests", "").strip()
         selected_extra_ids = {int(i) for i in request.form.getlist("extras") if i.isdigit()}
         agreed_to_terms = request.form.get("agree_terms") == "on"
@@ -24332,6 +24376,12 @@ def book_room(room_id):
 
         arrival, departure = parse_date(arrival_raw), parse_date(departure_raw)
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
+        # Clamped to the party: a family of two cannot have three children on
+        # the booking, and a negative would make the tax larger than the adults
+        # in the room justify.
+        guests_under_18 = int(under_18_raw) if under_18_raw.isdigit() else 0
+        if party_size:
+            guests_under_18 = max(0, min(guests_under_18, party_size))
 
         error = None
         if not guest_name or not guest_email:
@@ -24387,6 +24437,13 @@ def book_room(room_id):
                 flash(f"Promo code not applied: {promo_error}", "error")
         discounted_room_total = round(room_total - discount_amount, 2)
         grand_total = discounted_room_total + sum(e["price"] for e in chosen_extras)
+        # Taxe de sejour, kept OUT of grand_total on purpose. grand_total is
+        # what the deposit percentage is taken of and what gets stored as
+        # total_price; folding a tax that carries no VAT and belongs to the
+        # commune into it would make one number mean three things. It is charged
+        # as its own line below.
+        checkout_city_tax, _cta, _ctr = compute_city_tax(
+            conn, party_size, guests_under_18, nights)
 
         # What the card is actually charged today. With no deposit configured
         # this is the whole thing and the lines below are itemised as before.
@@ -24429,7 +24486,21 @@ def book_room(room_id):
                 })
             # Only when the whole amount is being taken. The deposit line above
             # is already a percentage OF the extras as well, so listing them
-            # again would charge for them twice.
+            # again would charge for them twice. The tax follows the same rule:
+            # on a deposit booking it falls into the balance due later, which is
+            # what the guest is told on the deposit line itself.
+            if not balance_later and checkout_city_tax:
+                line_items.append({
+                    "price_data": {
+                        "currency": "eur",
+                        "product_data": {"name": (
+                            f"Taxe de sejour ({_cta} adult"
+                            f"{'' if _cta == 1 else 's'} x {nights} night"
+                            f"{'' if nights == 1 else 's'})")},
+                        "unit_amount": int(round(checkout_city_tax * 100)),
+                    },
+                    "quantity": 1,
+                })
             if not balance_later:
                 for e in chosen_extras:
                     line_items.append({
@@ -24456,6 +24527,7 @@ def book_room(room_id):
                         "arrival_date": arrival.isoformat(),
                         "departure_date": departure.isoformat(),
                         "party_size": str(party_size),
+                        "guests_under_18": str(guests_under_18),
                         "special_requests": special_requests[:490],
                         "extra_ids": ",".join(str(e["id"]) for e in chosen_extras),
                         "promo_code": promo_code if discount_amount else "",
@@ -24496,6 +24568,7 @@ def book_room(room_id):
                 "arrival": arrival_raw, "departure": departure_raw,
                 "guest_name": guest_name, "guest_email": guest_email,
                 "guest_phone": guest_phone, "party_size": party_size_raw,
+                "guests_under_18": guests_under_18,
                 "special_requests": special_requests[:490],
                 "promo_code": promo_code,
                 "extras": sorted(e["id"] for e in chosen_extras),
@@ -24505,6 +24578,7 @@ def book_room(room_id):
         _, manage_token = create_booking(
             conn, room, guest_name, guest_email, guest_phone, arrival, departure,
             party_size, special_requests, chosen_extras, promo_code=promo_code or None,
+            guests_under_18=guests_under_18,
         )
         conn.close()
         return redirect(url_for("booking_confirmation", manage_token=manage_token))
@@ -31326,6 +31400,7 @@ def edit_booking(booking_id):
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         party_size_raw = request.form.get("party_size", "").strip()
+        under_18_raw = request.form.get("guests_under_18", "").strip()
         guest_phone = phone_from_form("guest_phone")
         special_requests = request.form.get("special_requests", "").strip()
 
@@ -31356,11 +31431,20 @@ def edit_booking(booking_id):
         new_total = compute_room_total(conn, room_for_pricing, arrival, departure) + extras_portion
         new_total = new_total or None
 
+        # The tax follows the stay. Moving a booking a night longer or adding a
+        # guest changes what the commune is owed, and leaving the stamped figure
+        # behind would put the declaration out by the difference without anything
+        # looking wrong on the page.
+        under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
+        under_18 = max(0, min(under_18, party_size))
+        new_city_tax, _a, _r = compute_city_tax(
+            conn, party_size, under_18, (departure - arrival).days)
+
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
-               special_requests=?, total_price=? WHERE id=?""",
+               special_requests=?, total_price=?, guests_under_18=?, city_tax=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
-             special_requests or None, new_total, booking_id),
+             special_requests or None, new_total, under_18, new_city_tax, booking_id),
         )
         conn.commit()
 
@@ -35457,6 +35541,10 @@ def walk_in_booking():
             party = max(1, int(request.form.get("party_size", "2") or 2))
         except ValueError:
             party = 2
+        try:
+            under_18 = max(0, min(party, int(request.form.get("guests_under_18", "0") or 0)))
+        except ValueError:
+            under_18 = 0
         notes = (request.form.get("special_requests", "") or "").strip()
 
         room = None
@@ -35509,6 +35597,7 @@ def walk_in_booking():
             payment_status="unpaid",
             total_price_override=charge,
             discount_amount_override=discount or None,
+            guests_under_18=under_18,
         )
         booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
                                (reference_code,)).fetchone()
@@ -44273,10 +44362,12 @@ def guest_statement(conn, booking):
     except sqlite3.OperationalError:
         pass
 
-    city_tax = float(booking["city_tax"] or 0)
-    if not city_tax:
-        city_tax, _a, _r = compute_city_tax(
-            conn, booking["party_size"], booking["guests_under_18"], nights)
+    # Stamped only. This used to work out a figure of its own whenever the
+    # column was 0, which was every booking, so the statement quietly added a
+    # charge the house had never asked for to a document that is the guest's VAT
+    # record - and disagreed with booking_bill, THE definition of what a stay
+    # owes, by exactly that amount on every stay.
+    city_tax = round(float(booking["city_tax"] or 0), 2)
     adults = max(0, int(booking["party_size"] or 0) - int(booking["guests_under_18"] or 0))
 
     vat = vat_breakdown(
