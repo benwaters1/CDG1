@@ -1899,7 +1899,7 @@ def init_db():
             instructor_name TEXT,
             instructor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
             price_per_person REAL NOT NULL DEFAULT 0,
-            default_capacity INTEGER NOT NULL DEFAULT 10,
+            default_capacity INTEGER NOT NULL DEFAULT 15,
             active INTEGER NOT NULL DEFAULT 1,
             sort_order INTEGER NOT NULL DEFAULT 0,
             photo_filename TEXT,
@@ -1911,7 +1911,7 @@ def init_db():
             workshop_id INTEGER NOT NULL REFERENCES workshops(id) ON DELETE CASCADE,
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
-            capacity INTEGER NOT NULL DEFAULT 10,
+            capacity INTEGER NOT NULL DEFAULT 15,
             notes TEXT,
             created_at TEXT NOT NULL
         );
@@ -4330,7 +4330,7 @@ def init_db():
     if not real_workshops:
         for workshop in DEFAULT_WORKSHOPS:
             fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
-            fields.update({"active": 1, "default_capacity": 10,
+            fields.update({"active": 1, "default_capacity": 15,
                            "created_at": datetime.now(timezone.utc).isoformat()})
             if "deposit_percent" in ws_cols:
                 fields["deposit_percent"] = 30
@@ -4385,7 +4385,7 @@ def init_db():
                             (workshop["title"],)).fetchone():
                 continue
             fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
-            fields.update({"active": 1, "default_capacity": 10,
+            fields.update({"active": 1, "default_capacity": 15,
                            "created_at": datetime.now(timezone.utc).isoformat()})
             if "deposit_percent" in ws_cols:
                 fields["deposit_percent"] = 30
@@ -35659,7 +35659,8 @@ def new_workshop():
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
-             int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else 10,
+             int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
+             else DEFAULT_WORKSHOP_CAPACITY,
              max_order + 1,
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else 30,
              inclusions or None, itinerary or None, supplement,
@@ -35983,6 +35984,68 @@ def new_workshop_session(workshop_id):
         flash(f"Session added — heads up, {' and '.join(parts)} overlap these dates.", "error")
     else:
         flash("Session added.", "success")
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/edit", methods=["POST"])
+@owner_required
+def edit_workshop_session(session_id):
+    """Change a session's capacity, dates or note after it exists.
+
+    Capacity could only be set when the session was created, so the only way
+    to change it was to delete the session and make another — which throws
+    away every registration attached to it. That is not a thing anybody would
+    do on purpose, so in practice the number was fixed forever at whatever the
+    default happened to be on the day.
+
+    The one rule: it cannot go below what is already booked into it. Places
+    are sold against this number, and a capacity under the heads already
+    coming does not un-sell them — it just makes every "spots left" figure on
+    the public site negative and the atelier read as overbooked when it is
+    merely mis-typed.
+    """
+    conn = get_db()
+    session_row = conn.execute(
+        "SELECT * FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone()
+    if not session_row:
+        conn.close()
+        abort(404)
+    taken = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM workshop_bookings
+            WHERE session_id = ? AND status IN ('confirmed', 'pending')""",
+        (session_id,)).fetchone()["c"] or 0
+
+    raw = (request.form.get("capacity") or "").strip()
+    if not raw.isdigit() or int(raw) < 1:
+        conn.close()
+        flash("Capacity has to be a whole number of places.", "error")
+        return redirect(url_for("admin_workshops"))
+    capacity = int(raw)
+    if capacity < taken:
+        conn.close()
+        flash(f"{taken} place(s) are already booked on that session, so it "
+              f"cannot be set to {capacity}.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    start = parse_date(request.form.get("start_date", "")) or parse_date(session_row["start_date"])
+    end = parse_date(request.form.get("end_date", "")) or start
+    if end < start:
+        conn.close()
+        flash("End date can't be before the start date.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    conn.execute(
+        """UPDATE workshop_sessions SET capacity = ?, start_date = ?, end_date = ?, notes = ?
+            WHERE id = ?""",
+        (capacity, start.isoformat(), end.isoformat(),
+         (request.form.get("notes") or "").strip() or None, session_id))
+    # Capacity is what places are sold against, so a change to it is a change
+    # to what the house has promised, not a settings tweak.
+    log_audit(conn, "workshop_session_edited", target=str(session_id),
+              details=f"capacity {session_row['capacity']} -> {capacity}")
+    conn.commit()
+    conn.close()
+    flash("Session updated.", "success")
     return redirect(url_for("admin_workshops"))
 
 
@@ -39566,6 +39629,12 @@ def generate_maintenance_tasks(conn, *, today=None, user_id=None):
 # Only the blocking kind become tasks. A warning worth reading is not the same
 # as a job worth putting on somebody's list, and a task list that fills with
 # things nobody is expected to act on is a list people stop opening.
+# Fifteen is what the house takes on an atelier. Ten was the seeded default
+# and was never a decision anybody made. Named here because the column default
+# only reaches a database created after it changed — every existing one keeps
+# handing out the old number until the code stops asking.
+DEFAULT_WORKSHOP_CAPACITY = 15
+
 WATCH_TASK_ORIGIN = "watch"
 
 # Per kind, not overall: one very bad week of rota should not push a fault
