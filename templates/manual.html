@@ -2,6 +2,11 @@
 {% block title %}Employee Manual{% endblock %}
 {% block content %}
 
+{% if last_updated %}
+{# A staff manual with no date on it is one nobody can tell is current. #}
+<p class="upload-hint">Last changed {{ last_updated[:10] }}.</p>
+{% endif %}
+
 <div class="page-head">
   <h1>{{ t('Employee Manual') }}</h1>
 </div>

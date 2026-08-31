@@ -2,6 +2,21 @@
 {% block title %}Wages{% endblock %}
 {% block content %}
 
+{# Somebody on the payroll with no wage recorded. This was already being
+   worked out and handed to this page, and the page did not mention it — so
+   the one thing that stops a payroll run being possible was invisible on the
+   page about wages. #}
+{% if missing %}
+<div class="pass-short" style="margin-bottom:14px;">
+  <strong>{{ missing|length }} without a wage on file</strong>
+  <span class="pass-short-row">
+    {% for r in missing %}{{ r['name'] }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </span>
+  <span class="upload-hint">A payroll figure cannot be worked out for somebody
+    with no rate recorded, so these are the rows that stop a run.</span>
+</div>
+{% endif %}
+
 <div class="page-head">
   <h1>Wages</h1>
   <a href="{{ url_for('admin_payroll') }}" class="btn-mini">Payroll pack</a>

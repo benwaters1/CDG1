@@ -171,11 +171,16 @@ FR = {
     "per night": "par nuit",
     "Total": "Total",
     "Still to pay": "Reste à payer",
-    "The declaration for it is here.": "La déclaration se trouve ici.",
-    "Pay part of it instead": "Payer une partie seulement",
-    "How much would you like to pay now?": "Combien souhaitez-vous régler maintenant ?",
-    "Continue": "Continuer",
-    "The rest stays on your bill and can be paid any time, or on arrival.":
+    "The declaration for it is here.": "La déclaration se trouve ici.",
+
+    "Pay part of it instead": "Payer une partie seulement",
+
+    "How much would you like to pay now?": "Combien souhaitez-vous régler maintenant ?",
+
+    "Continue": "Continuer",
+
+    "The rest stays on your bill and can be paid any time, or on arrival.":
+
         "Le solde reste sur votre note et peut être réglé à tout moment, ou à votre arrivée.",
     "Paid in full — thank you.": "Intégralement réglé — merci.",
     "Reference": "Référence",
@@ -307,6 +312,8 @@ FR = {
     "Clock out": "Pointer la sortie",
     "Clock in": "Pointer l'arrivée",
     "Nobody staying right now.": "Aucun client sur place actuellement.",
+    "Arriving today": "Arrivées aujourd'hui",
+    "Leaving today": "Départs aujourd'hui",
     "Dietary": "Régime alimentaire",
     "Asked for": "Demandé",
     "Nothing else on file.": "Rien d'autre au dossier.",
@@ -635,11 +642,16 @@ ES = {
     "per night": "por noche",
     "Total": "Total",
     "Still to pay": "Pendiente de pago",
-    "The declaration for it is here.": "La declaración está aquí.",
-    "Pay part of it instead": "Pagar solo una parte",
-    "How much would you like to pay now?": "¿Cuánto desea pagar ahora?",
-    "Continue": "Continuar",
-    "The rest stays on your bill and can be paid any time, or on arrival.":
+    "The declaration for it is here.": "La declaración está aquí.",
+
+    "Pay part of it instead": "Pagar solo una parte",
+
+    "How much would you like to pay now?": "¿Cuánto desea pagar ahora?",
+
+    "Continue": "Continuar",
+
+    "The rest stays on your bill and can be paid any time, or on arrival.":
+
         "El resto queda en su cuenta y puede pagarse en cualquier momento, o a su llegada.",
     "Paid in full — thank you.": "Pagado en su totalidad — gracias.",
     "Reference": "Referencia",
@@ -771,6 +783,8 @@ ES = {
     "Clock out": "Fichar salida",
     "Clock in": "Fichar entrada",
     "Nobody staying right now.": "Ningún huésped alojado ahora mismo.",
+    "Arriving today": "Llegadas de hoy",
+    "Leaving today": "Salidas de hoy",
     "Dietary": "Dieta",
     "Asked for": "Ha pedido",
     "Nothing else on file.": "Nada más en el expediente.",

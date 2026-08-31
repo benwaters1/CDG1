@@ -3,6 +3,17 @@
 {% block title %}Restaurant{% endblock %}
 {% block content %}
 
+{# Tables waiting on a decision. Counted on every load of this page and never
+   shown, so a booking nobody had confirmed was a booking nobody could see
+   without going looking for it. #}
+{% if pending_count %}
+<div class="pass-short" style="margin-bottom:12px;">
+  <strong>{{ pending_count }} table{{ '' if pending_count == 1 else 's' }} waiting on you</strong>
+  <span class="upload-hint">A dinner request that is not confirmed is a table
+    the kitchen has not been told about.</span>
+</div>
+{% endif %}
+
 <div class="page-head">
   <h1>Restaurant</h1>
   <div style="display:flex; gap:10px; align-items:center;">

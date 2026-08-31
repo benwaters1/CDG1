@@ -3,6 +3,20 @@
 {% block title %}Recurring Costs{% endblock %}
 {% block content %}
 
+{# A standing cost with no supplier behind it cannot be chased, questioned or
+   reconciled against an invoice — it is a number leaving the account every
+   month with nobody's name on it. #}
+{% if unattached %}
+<div class="pass-short" style="margin-bottom:12px;">
+  <strong>{{ unattached|length }} with no supplier attached</strong>
+  <span class="pass-short-row">
+    {% for c in unattached %}{{ c['name'] }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </span>
+  <span class="upload-hint">Attaching one lets the cost be matched to an
+    invoice, and the supplier to be asked about it.</span>
+</div>
+{% endif %}
+
 <div class="page-head">
   <h1>Recurring Costs</h1>
   <div style="display:flex; gap:10px; align-items:center;">

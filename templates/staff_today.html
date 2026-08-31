@@ -33,6 +33,28 @@
   {% if guests_here %}<span class="today-count">{{ guests_here|length }}</span>{% endif %}
 </h2>
 
+{# The two facts that change what somebody DOES today, called out above the
+   list rather than left for them to work out from dates. Both were already
+   being calculated and passed to this page, and neither was shown. #}
+{% if arrivals_today or departures_today %}
+<div class="pass-short" style="margin-bottom:12px;">
+  {% if arrivals_today %}
+  <span class="pass-short-row">
+    <strong>{{ t('Arriving today') }}:</strong>
+    {% for g in arrivals_today %}{{ g.name }}{% if g.room %} ({{ g.room }}){% endif %}
+      {%- if not loop.last %}, {% endif %}{% endfor %}
+  </span>
+  {% endif %}
+  {% if departures_today %}
+  <span class="pass-short-row">
+    <strong>{{ t('Leaving today') }}:</strong>
+    {% for g in departures_today %}{{ g.name }}{% if g.room %} ({{ g.room }}){% endif %}
+      {%- if not loop.last %}, {% endif %}{% endfor %}
+  </span>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if not guests_here %}
   <div class="empty-state">{{ t('Nobody staying right now.') }}</div>
 {% else %}

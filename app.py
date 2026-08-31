@@ -16055,7 +16055,6 @@ def staff_dashboard():
             guests=owner_home_guests(conn, today),
             rooms_total=conn.execute(
                 "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0,
-            my_shift=my_shift,
         )
         conn.close()
         return page
@@ -16065,7 +16064,7 @@ def staff_dashboard():
         "dashboard.html", team=team, stats=stats, briefing=briefing, my_tasks=my_tasks,
         who_is_here=who_is_here, today=today, month_stats=month_stats,
         my_upcoming_shifts=my_upcoming_shifts, who_is_off_today=who_is_off_today,
-        on_shift_by_user=on_shift_by_user, on_shift_now=on_shift_now, my_shift=my_shift,
+        on_shift_by_user=on_shift_by_user, on_shift_now=on_shift_now,
         anniversaries=anniversaries, probation_due=probation_due, unstaffed_days=unstaffed_days,
         reviews_due=reviews_due,
         expiring_docs=expiring_docs, overtime=overtime,
@@ -21437,7 +21436,7 @@ def breakfast():
         by_category.setdefault(i["category"] or "Other", []).append(i)
     return render_template(
         "breakfast.html", by_category=by_category, checked_today=checked_today,
-        guest_count=guest_count, occupied_today=occupied_today, item_count=len(items), guest_notes=guest_notes,
+        guest_count=guest_count, occupied_today=occupied_today, guest_notes=guest_notes,
     )
 
 
@@ -22702,7 +22701,6 @@ def guest_account(token):
         "guest_account.html", email=session_row["email"], token=token,
         data=data, today=today, extras=extras, balance=balance,
         can_pay_online=stripe_enabled(),
-        extra_categories=EXTRA_CATEGORIES,
         restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
         expires=session_row["expires_at"])
 
@@ -23191,7 +23189,6 @@ def expenses():
         # "paid" was only a word: still-owed and approved-a-while-ago were the
         # same query.
         owed_to_staff=owed_to_staff, ageing=ageing,
-        stale_claim_days=STALE_CLAIM_DAYS,
         # Only offer the scan button when a scanner is configured — a button
         # that cannot work from Perth is worse than no button.
         scanner_ready=scanner_configured(),
@@ -23668,11 +23665,6 @@ def book_rooms():
     nothing_available = searched and rooms and not any(availability.values())
 
     grid = guest_availability_grid(conn, rooms, request.args.get("month", ""))
-    gallery_photos_by_room = {}
-    for room in rooms:
-        gallery_photos_by_room[room["id"]] = conn.execute(
-            "SELECT * FROM room_photos WHERE room_id = ? ORDER BY sort_order, id", (room["id"],)
-        ).fetchall()
     featured_reviews = conn.execute(
         """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
            LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
@@ -23687,7 +23679,7 @@ def book_rooms():
         nothing_available=nothing_available,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
-        gallery_photos_by_room=gallery_photos_by_room, featured_reviews=featured_reviews,
+        featured_reviews=featured_reviews,
         **grid,
     )
 
@@ -26058,7 +26050,7 @@ def restaurant_info():
     opening_date = parse_date(settings["opening_date"]) if settings and settings["opening_date"] else None
     not_yet_open = bool(opening_date and opening_date > datetime.now(timezone.utc).date())
     return render_template(
-        "restaurant_info.html", settings=settings, not_yet_open=not_yet_open,
+        "restaurant_info.html", settings=settings,
         items_by_category=items_by_category, menu_categories=MENU_CATEGORIES,
     )
 
@@ -27784,11 +27776,12 @@ def workshops_public():
             {"session": s, "remaining": workshop_session_remaining_capacity(conn, s["id"])} for s in sessions
         ]
     featured_reviews = conn.execute(
-        """SELECT workshop_feedback.*, workshops.title FROM workshop_feedback
+        """SELECT workshop_feedback.*, workshops.title AS workshop_title
+             FROM workshop_feedback
            LEFT JOIN workshop_bookings ON workshop_bookings.id = workshop_feedback.workshop_booking_id
            LEFT JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            LEFT JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-           WHERE workshop_feedback.featured = 1
+           WHERE workshop_feedback.featured = 1 AND workshop_feedback.rating IS NOT NULL
            ORDER BY workshop_feedback.rating DESC, workshop_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
     conn.close()
@@ -32371,7 +32364,7 @@ def promo_code_blast(code_id):
     conn.close()
     return render_template(
         "admin_promo_blast.html", promo=promo, segments=segments, since_months=since_months_raw,
-        recipient_count=len(recipients), all_segments=GUEST_BLAST_SEGMENTS,
+        recipient_count=len(recipients),
     )
 
 
@@ -32612,7 +32605,6 @@ def admin_workshops():
         past_rows.reverse()  # most recent first
         sessions_by_workshop[w["id"]] = rows
         past_by_workshop[w["id"]] = past_rows
-    instructors = conn.execute("SELECT * FROM users WHERE role IN ('owner', 'employee') ORDER BY role DESC, name").fetchall()
     custom_fields_by_workshop = {}
     for row in conn.execute("SELECT * FROM workshop_custom_fields ORDER BY sort_order").fetchall():
         custom_fields_by_workshop.setdefault(row["workshop_id"], []).append(row)
@@ -32626,7 +32618,7 @@ def admin_workshops():
     return render_template(
         "admin_workshops.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
         past_by_workshop=past_by_workshop,
-        instructors=instructors, today=today, total_rooms=total_rooms,
+        today=today, total_rooms=total_rooms,
         custom_fields_by_workshop=custom_fields_by_workshop,
         overview=overview, period=period,
         upcoming_count=upcoming_count, spots_remaining=spots_remaining,
@@ -32945,7 +32937,7 @@ def admin_workshop_registrations():
     conn.close()
     return render_template(
         "admin_workshop_registrations.html", registrations=registrations, status_filter=status_filter,
-        session_filter=session_filter, pending_count=pending_count, rooms=rooms,
+        pending_count=pending_count, rooms=rooms,
         guests_by_booking=guests_by_booking, custom_responses_by_booking=custom_responses_by_booking,
         transactions_by_booking=transactions_by_booking, balance_by_booking=balance_by_booking,
         messages_by_booking=messages_by_booking,
@@ -36533,7 +36525,7 @@ def rota_clashes_page():
     ]
     return render_template("rota_clashes.html", rows=rows, overview=overview,
                            by_kind=by_kind, kinds=ROTA_CONFLICT_KINDS,
-                           past=past, days=days, today=today, end=end)
+                           past=past, days=days, today=today)
 
 
 @app.route("/admin/cover")
@@ -36570,7 +36562,7 @@ def cover_gaps_page():
         overview_cell("With guests in the house", len(guests), alert=bool(guests)),
     ]
     return render_template("cover_gaps.html", rows=rows, gaps=gaps, hollow=hollow,
-                           overview=overview, days=days, today=today, end=end)
+                           overview=overview, days=days, today=today)
 
 
 @app.route("/admin/overtime")
@@ -36826,7 +36818,7 @@ def held_not_earned_page():
         overview_cell("Bookings involved", data["count"]),
     ]
     return render_template("held_not_earned.html", data=data, overview=overview,
-                           today=today, this_year=this_year)
+                           today=today)
 
 
 def _maintenance_fields():
@@ -37071,8 +37063,7 @@ def management_vehicles():
         recent_transfers=recent_transfers, next_transfer_by_vehicle=next_transfer_by_vehicle,
         insurance_by_vehicle=insurance_by_vehicle,
         spend_by_vehicle=spend_by_vehicle, drivers=drivers, papers=papers,
-        today_iso=datetime.now(LOCAL_TZ).date().isoformat(),
-    )
+            )
 
 
 @app.route("/management/vehicles/export.csv")
@@ -38719,7 +38710,6 @@ def ops_calendar():
     conn.close()
     return render_template(
         "ops_calendar.html", cal=cal, today=datetime.now(timezone.utc).date(),
-        this_month=datetime.now(timezone.utc).date().strftime("%Y-%m"),
     )
 
 

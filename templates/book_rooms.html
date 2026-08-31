@@ -186,7 +186,12 @@
           {% if availability.get(room['id']) %}
             <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book in</a>
           {% else %}
-            <span class="g-btn g-btn--off g-card__cta">Not available these dates</span>
+            {# The REASON, which was already worked out and thrown away.
+               "Requires a 3-night minimum" is a booking a guest can still
+               make; "not available" reads as sold out and loses it. #}
+            <span class="g-btn g-btn--off g-card__cta">
+              {{ unavailable_reason.get(room['id'], 'Not available these dates') }}
+            </span>
           {% endif %}
         {% else %}
           <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id']) }}">Book in</a>

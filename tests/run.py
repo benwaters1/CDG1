@@ -188,6 +188,7 @@ SUITES = [
     "test_vehicle_papers",
     "test_cover_register",
     "test_police_register",
+    "test_dead_context",
     "test_handover_check",
 ]
 

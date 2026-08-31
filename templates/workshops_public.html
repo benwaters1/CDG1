@@ -561,4 +561,35 @@
   </div>
 </div></section>
 
+
+{# What people who came actually said. The page has been handed these on every
+   load since the feature was built and rendered none of them, which is the
+   same fault the booking page had: "Feature on booking page" was a button
+   with no effect on either. #}
+{% if featured_reviews %}
+<section class="g-sec g-says"><div class="g-wrap">
+  <h2 class="g-place">What People Say</h2>
+  <div class="g-says__grid">
+    {% for r in featured_reviews %}
+    <figure class="g-say">
+      <blockquote class="g-say__q">{{ r['comment'] or 'A very good day.' }}</blockquote>
+      <figcaption class="g-say__by">
+        {{ (r['guest_name'] or 'A guest').split(' ')[0] }}
+        <span class="g-say__src">
+          {{ '\u2605' * r['rating'] }}{{ '\u2606' * (5 - r['rating']) }}
+          {%- if r['workshop_title'] %} \u00b7 {{ r['workshop_title'] }}{% endif %}
+        </span>
+      </figcaption>
+      {% if r['reply'] %}
+      <p class="g-say__reply">
+        <span class="g-say__reply-by">Ch\u00e2teau de Gudanes</span>
+        {{ r['reply'] }}
+      </p>
+      {% endif %}
+    </figure>
+    {% endfor %}
+  </div>
+</div></section>
+{% endif %}
+
 {% endblock %}
