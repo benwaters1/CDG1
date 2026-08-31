@@ -6553,9 +6553,18 @@ def management_overview(conn, period, today):
     the window's activity, which would always read zero."""
     soon = (today + timedelta(days=60)).isoformat()
     iso = today.isoformat()
+    # Split, because `expiry_date < soon` is true of a policy expiring next
+    # week AND of one that lapsed six months ago. Counted together they read
+    # as the same number, so the band could not tell "renew this" from "you
+    # have been uninsured since March".
+    insurance_lapsed = conn.execute(
+        """SELECT COUNT(*) AS c FROM insurance_policies
+           WHERE expiry_date IS NOT NULL AND expiry_date != '' AND expiry_date < ?""",
+        (iso,)).fetchone()["c"]
     insurance = conn.execute(
         """SELECT COUNT(*) AS c FROM insurance_policies
-           WHERE expiry_date IS NOT NULL AND expiry_date < ?""", (soon,),
+           WHERE expiry_date IS NOT NULL AND expiry_date != ''
+             AND expiry_date >= ? AND expiry_date < ?""", (iso, soon),
     ).fetchone()["c"]
     documents = conn.execute(
         """SELECT COUNT(*) AS c FROM company_documents
@@ -6578,8 +6587,14 @@ def management_overview(conn, period, today):
         "  FROM recurring_costs WHERE active = 1"
     ).fetchone()["t"]
     return [
+        # Lapsed first, and only when there are any. A zero here would be a
+        # cell reading "0 not covered" every day of the year, which is how a
+        # band stops being read at all.
+        *([overview_cell("Not covered", insurance_lapsed, alert=True,
+                         hint="policies that have already run out")]
+          if insurance_lapsed else []),
         overview_cell("Insurance expiring", insurance, alert=insurance,
-                      hint="within 60 days"),
+                      hint="in the next 60 days"),
         overview_cell("Documents expiring", documents, alert=documents,
                       hint="within 60 days"),
         overview_cell("Vehicles needing attention", vehicles_due, alert=vehicles_due),
@@ -15285,6 +15300,20 @@ def owner_home_warnings(conn, today):
     # Only the ones already expired reach the front page. Something due in
     # three weeks is a task, not an alarm, and a panel that shouts about both
     # teaches the owner to skim the one that matters.
+    # A policy that has already run out. Without the vehicle ones: the check
+    # below names the CAR, which is the more useful sentence, and counting
+    # both would put two lines on the panel about one lapsed van policy.
+    uncovered = lapsed_cover(conn, today, include_vehicles=False)
+    if uncovered:
+        worst = uncovered[0]
+        add("blocker",
+            f"{len(uncovered)} insurance polic{'y has' if len(uncovered) == 1 else 'ies have'} run out",
+            f"{worst['policy']['provider']} \u2014 {worst['what']}"
+            + (f", {worst['days']} day{'' if worst['days'] == 1 else 's'} ago"
+               if worst["days"] is not None else "")
+            + ". The house is open to the public; this is cover it does not have.",
+            len(uncovered), "management_company_info")
+
     illegal = [p for p in vehicle_papers(conn, today)
                if p["state"] == "expired" and not p["vehicle"]["off_road"]]
     if illegal:
@@ -35561,6 +35590,7 @@ WATCH_TASK_KINDS = {
     "backup": "No backup is arriving",
     "job": "An automation job keeps failing",
     "vehicle": "A vehicle without valid papers",
+    "policy": "Insurance that has run out",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -35595,6 +35625,58 @@ def watch_task_assignees(conn):
 # Far enough ahead to book a garage, near enough that it is not noise. A
 # contrôle technique slot in the Ariège in August is not a same-week booking.
 VEHICLE_PAPERS_WARN_DAYS = 30
+
+
+# Long enough to get a quote and argue about it, short enough not to be noise.
+INSURANCE_WARN_DAYS = 45
+
+
+def insurance_cover(conn, today=None):
+    """Every policy, and whether the house is actually covered by it.
+
+    Three states rather than one number, because "renew this in a fortnight"
+    and "you have not been covered since March" are not the same news and the
+    band that counted them together could not say which it meant.
+
+    A policy with no expiry date is its own state. It is not covered and it is
+    not lapsed — it is a record nobody finished, and treating it as either
+    would be inventing a fact about the house's insurance.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    soon = day + timedelta(days=INSURANCE_WARN_DAYS)
+    out = []
+    for p in conn.execute(
+            """SELECT insurance_policies.*, vehicles.name AS vehicle_name
+                 FROM insurance_policies
+                 LEFT JOIN vehicles ON vehicles.id = insurance_policies.vehicle_id
+                ORDER BY COALESCE(insurance_policies.expiry_date, '9999-12-31')""").fetchall():
+        expires = parse_date(p["expiry_date"] or "")
+        if not expires:
+            state, days = "no_date", None
+        elif expires < day:
+            state, days = "lapsed", (day - expires).days
+        elif expires <= soon:
+            state, days = "expiring", (expires - day).days
+        else:
+            state, days = "ok", (expires - day).days
+        out.append({"policy": p, "expires": expires, "state": state, "days": days,
+                    "what": p["coverage_type"] or "cover",
+                    "on": p["vehicle_name"]})
+    return out
+
+
+def lapsed_cover(conn, today=None, include_vehicles=True):
+    """Policies that have run out. Optionally without the vehicle ones.
+
+    The vehicle check reports the CAR, by name, which is the more useful
+    sentence — "the Berline is not legal to drive" beats "policy P-4471 has
+    expired". So the owner's home page asks for these without them, or one
+    lapsed van policy produces two lines about the same problem and the panel
+    starts looking padded.
+    """
+    return [c for c in insurance_cover(conn, today)
+            if c["state"] == "lapsed"
+            and (include_vehicles or not c["policy"]["vehicle_id"])]
 
 
 def vehicle_papers(conn, today=None):
@@ -35675,6 +35757,25 @@ def watch_task_findings(conn, today=None):
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting
     # "expires in 12 days" in it would raise a fresh task every morning.
+    # A policy running out, or already gone. Vehicle policies are left to the
+    # vehicle finding, which says which car it is.
+    for c in take("policy", [x for x in insurance_cover(conn, today)
+                             if x["state"] in ("lapsed", "expiring")
+                             and not x["policy"]["vehicle_id"]]):
+        gone = c["state"] == "lapsed"
+        found.append((
+            "policy",
+            f"{c['policy']['provider']} \u2014 {c['what']} "
+            + ("has run out" if gone else "runs out soon"),
+            (f"Policy {c['policy']['policy_number'] or '(no number)'}"
+             + (f" ran out on {c['expires'].isoformat()}." if gone and c["expires"]
+                else f" runs out on {c['expires'].isoformat()}." if c["expires"] else ".")
+             + ("\n\nThe house is open to the public. This is cover it does not "
+                "have, today." if gone else
+                "\n\nRenew it, or record the new dates when the renewal comes in.")),
+            (c["expires"].isoformat() if c["expires"] else today.isoformat()),
+            "high" if gone else "normal"))
+
     papers = [p for p in vehicle_papers(conn, today) if p["chase"]]
     for p in take("vehicle", papers):
         v, what, when = p["vehicle"], p["worst_what"], p["worst_when"]
