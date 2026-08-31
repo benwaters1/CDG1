@@ -307,6 +307,86 @@ def run():
     conn.execute("DELETE FROM maintenance_schedules WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
 
+    s.section("Approving a bill does not make the money look better")
+    # The hole this section exists for. Only 'pending' expenses were counted,
+    # so a supplier invoice the owner had APPROVED — a debt agreed, the most
+    # certain outflow in the whole forecast — disappeared from it, and the
+    # figure improved the moment somebody said yes to a bill.
+    ac = db()
+    _room = ac.execute("SELECT id FROM rooms LIMIT 1").fetchone()
+    due = (datetime.now(m.LOCAL_TZ).date() + timedelta(days=20)).isoformat()
+    ac.execute(
+        """INSERT INTO expenses (kind, vendor_name, description, amount, status,
+           invoice_number, invoice_date, due_date, submitted_at)
+           VALUES ('supplier_invoice', ?, ?, 640.0, 'pending', 'AH-1', ?, ?, ?)""",
+        ("ZTAHEAD Charpentier", "ZTAHEAD roof timbers",
+         datetime.now(m.LOCAL_TZ).date().isoformat(), due,
+         datetime.now(timezone.utc).isoformat()))
+    ac.commit()
+    eid = ac.execute("SELECT id FROM expenses WHERE description = ?",
+                       ("ZTAHEAD roof timbers",)).fetchone()["id"]
+    with m.app.test_request_context():
+        pending_view = m.money_ahead(ac, days=90)
+    ac.execute("UPDATE expenses SET status = 'approved' WHERE id = ?", (eid,))
+    ac.commit()
+    with m.app.test_request_context():
+        approved_view = m.money_ahead(ac, days=90)
+    ac.close()
+
+    s.check("a bill awaiting a decision is in the forecast",
+            any("ZTAHEAD" in o["label"] for o in pending_view["outgoing"]),
+            detail="money the house is being asked for")
+    s.check("and approving it does not remove it",
+            any("ZTAHEAD" in o["label"] for o in approved_view["outgoing"]),
+            detail="it used to vanish, so saying yes to a bill improved the "
+                   "money ahead")
+    s.check("the total does not fall when a bill is agreed",
+            approved_view["total_out"] >= pending_view["total_out"] - 0.01,
+            detail=f"{pending_view['total_out']} -> {approved_view['total_out']}")
+
+    agreed = [o for o in approved_view["outgoing"] if "ZTAHEAD" in o["label"]]
+    s.check("an agreed invoice sits on the day it falls due, not on today",
+            agreed and agreed[0]["date"] == due,
+            detail=f"{agreed[0]['date'] if agreed else '?'}, expected {due} — "
+                   "everything used to pile onto today because there was no "
+                   "due date to put it on")
+    s.check("and it carries the invoice number, so it can be found",
+            agreed and agreed[0]["ref"] == "AH-1",
+            detail=str(agreed[0]["ref"]) if agreed else "")
+
+    s.check("agreed and undecided are reported apart",
+            approved_view["agreed_out"] + approved_view["undecided_out"]
+            <= approved_view["total_out"] + 0.01,
+            detail=f"agreed {approved_view['agreed_out']}, "
+                   f"undecided {approved_view['undecided_out']}, "
+                   f"total {approved_view['total_out']}")
+    s.check("and the agreed side is not empty now there is an agreed bill",
+            approved_view["agreed_out"] >= 640.0,
+            detail=str(approved_view["agreed_out"]))
+
+    s.section("What we owe our own people is owed now, not in thirty days")
+    ac = db()
+    ac.execute(
+        """INSERT INTO expenses (kind, submitted_by_user_id, description, amount,
+           status, due_date, submitted_at)
+           VALUES ('staff_expense', ?, ?, 55.0, 'approved', ?, ?)""",
+        (_emp["id"], "ZTAHEAD their own money",
+         (datetime.now(m.LOCAL_TZ).date() + timedelta(days=60)).isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    ac.commit()
+    with m.app.test_request_context():
+        with_claim = m.money_ahead(ac, days=90)
+    ac.execute("DELETE FROM expenses WHERE description LIKE 'ZTAHEAD%'")
+    ac.commit()
+    ac.close()
+    claim = [o for o in with_claim["outgoing"] if "own people" in o["label"]]
+    s.check("a reimbursement is in the forecast", bool(claim),
+            detail=str([o["kind"] for o in with_claim["outgoing"]])[:110])
+    s.check("dated today, whatever due date happens to be on the row",
+            claim and claim[0]["date"] == datetime.now(m.LOCAL_TZ).date().isoformat(),
+            detail=f"{claim[0]['date'] if claim else '?'} — somebody who spent "
+                   "their own money is not a supplier on thirty-day terms")
+
     s.section("On the page")
     r = oc.get("/management/money-ahead")
     s.check("it opens", r.status_code == 200, detail=str(r.status_code))

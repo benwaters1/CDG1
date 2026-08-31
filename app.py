@@ -32994,7 +32994,14 @@ def money_ahead_page():
     overview = [
         overview_cell("Expected in", euro(ahead["total_in"]),
                       hint=f"over {ahead['days']} days"),
-        overview_cell("Expected out", euro(ahead["total_out"])),
+        # Split, because an agreed invoice and a bill somebody may yet reject
+        # are not the same kind of certain, and one figure covering both gets
+        # planned against as though it were.
+        overview_cell("Expected out", euro(ahead["total_out"]),
+                      hint=(f"{euro(ahead['agreed_out'])} agreed"
+                            + (f", {euro(ahead['undecided_out'])} awaiting a decision"
+                               if ahead["undecided_out"] else "")
+                            if ahead["agreed_out"] or ahead["undecided_out"] else None)),
         overview_cell("Difference", euro(ahead["net"]), alert=ahead["net"] < 0,
                       hint="not a balance" if ahead["opening"] is None else None),
     ]
@@ -33203,14 +33210,42 @@ def money_ahead(conn, *, days=90, today=None):
                              "label": f"{p['provider']} — {p['coverage_type'] or 'insurance'}",
                              "kind": "Insurance", "ref": p["policy_number"]})
 
-    # Supplier invoices waiting on a decision. They carry no due date, so they
-    # sit on today rather than being invented onto a date — they are owed now,
-    # which is exactly why they are still on the approvals queue.
+    # AGREED AND DATED. An approved invoice is a debt the house has accepted;
+    # it is the most certain thing in this whole forecast. It used not to be
+    # here at all — only 'pending' was counted — so approving an invoice made
+    # the money ahead look better, which is exactly backwards. It could not
+    # have been placed anywhere sensible before either: invoices carried no
+    # due date, and putting a bill due in five weeks onto today would have
+    # been its own kind of wrong.
+    for e in conn.execute(
+            """SELECT * FROM expenses
+                WHERE status = 'approved' AND paid_at IS NULL
+                  AND COALESCE(amount, 0) > 0""").fetchall():
+        # Staff are not suppliers. Somebody who spent their own money on the
+        # house is owed it now, not on a supplier's thirty-day clock.
+        if e["kind"] == "staff_expense":
+            when, label, kind = today, "owed back to our own people", "Reimbursement"
+        else:
+            due = parse_date(e["due_date"] or "") or today
+            when = max(due, today)          # an overdue bill is owed today, not in the past
+            label, kind = e["vendor_name"] or e["description"], "Supplier invoice"
+        if not (today <= when <= last):
+            continue
+        outgoing.append({
+            "date": when.isoformat(), "amount": round(e["amount"], 2),
+            "label": f"{label}"
+                     + (f" — {e['invoice_number']}" if e["invoice_number"] else ""),
+            "kind": kind, "ref": e["invoice_number"] or None})
+
+    # BEING ASKED FOR, not yet agreed. It might be rejected or queried, so it
+    # is labelled as undecided rather than counted as certain — but leaving it
+    # out entirely would mean the queue of bills on somebody's desk was money
+    # the forecast had never heard of.
     for e in conn.execute(
             """SELECT * FROM expenses WHERE status = 'pending'
                  AND COALESCE(amount, 0) > 0""").fetchall():
         outgoing.append({"date": today.isoformat(), "amount": round(e["amount"], 2),
-                         "label": f"{e['vendor_name']} — awaiting your decision",
+                         "label": f"{e['vendor_name'] or e['description']} — awaiting your decision",
                          "kind": "Awaiting approval", "ref": None})
 
     # Wages, if a monthly figure has been set. Dated to the end of each month,
@@ -33290,7 +33325,16 @@ def money_ahead(conn, *, days=90, today=None):
     work_unpriced = len([w for w in upcoming_work if not w["amount"]])
 
     total_out = round(sum(o["amount"] for o in outgoing), 2)
+    # Not all "out" is the same kind of out. An agreed invoice and a bill
+    # somebody may yet reject are both money, and reporting them as one figure
+    # invites planning against a number that includes things that will never
+    # happen.
+    agreed_out = round(sum(o["amount"] for o in outgoing
+                           if o["kind"] in ("Supplier invoice", "Reimbursement")), 2)
+    undecided_out = round(sum(o["amount"] for o in outgoing
+                              if o["kind"] == "Awaiting approval"), 2)
     return {
+        "agreed_out": agreed_out, "undecided_out": undecided_out,
         "upcoming_work": upcoming_work, "work_total": work_total,
         "work_unpriced": work_unpriced,
         "from": today.isoformat(), "to": last.isoformat(), "days": (last - today).days,
