@@ -62,6 +62,7 @@ def _cleanup():
             conn.execute(sql, p)
         except Exception:                                      # noqa: BLE001
             pass
+    conn.execute("DELETE FROM menu_items WHERE name = ?", (TAG + " dish",))
     conn.commit()
     conn.close()
 
@@ -138,7 +139,22 @@ def run():
                  (TAG + " nonsense",))["c"] == 0, detail=str(flashes(r)))
 
     s.section("Turning a dish and a drinks package on and off")
-    item = _one("SELECT id, active FROM menu_items LIMIT 1")
+    # Made rather than borrowed. This read "SELECT ... LIMIT 1" and assumed the
+    # database had a dish in it; a fresh seed has none, so the section failed on
+    # a missing fixture rather than on anything the toggle does. Borrowing
+    # whatever happens to exist is also how one suite starts depending on
+    # another's leftovers.
+    item = _one("SELECT id, active FROM menu_items WHERE name = ?", (TAG + " dish",))
+    if item is None:
+        conn = db()
+        conn.execute(
+            """INSERT INTO menu_items (name, category, course, price, active,
+               available, sold_in_pos, sort_order, created_at)
+               VALUES (?, 'main', 'main', 18.0, 1, 1, 1, 0, ?)""",
+            (TAG + " dish", datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        item = _one("SELECT id, active FROM menu_items WHERE name = ?", (TAG + " dish",))
     s.check("there is a menu item to toggle", item is not None)
     if item:
         was = item["active"]

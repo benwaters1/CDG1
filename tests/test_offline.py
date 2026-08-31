@@ -133,8 +133,15 @@ def run():
     s.check("/sw.js is served", r.status_code == 200, detail=f"HTTP {r.status_code}")
     s.check("as JavaScript", "javascript" in r.headers.get("Content-Type", ""),
             detail=r.headers.get("Content-Type"))
+    # Matched on the shape of the real worker rather than on the cache name.
+    # The name used to be the constant "gudanes-shell-v1" and this read
+    # "gudanes-shell-v"; it now carries a hash of the shell's contents, so the
+    # literal "v" is gone and asserting it would fail on a working worker. What
+    # actually distinguishes the real file from a stub is that it precaches the
+    # offline page and names its cache at all.
     s.check("and it is the same worker, not a stub",
-            b"gudanes-shell-v" in r.data)
+            b"gudanes-shell-" in r.data and b"/static/offline.html" in r.data,
+            detail=f"{r.data[:120]!r}")
     s.check("the page registers that path, not the /static/ one",
             "register('/sw.js')" in base,
             detail="still registering from /static/, which cannot control the app")

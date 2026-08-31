@@ -29308,6 +29308,54 @@ def t(text, **kwargs):
     return out
 
 
+_SHELL_VERSION = None
+
+
+def shell_cache_version():
+    """A cache name that changes whenever anything precached does.
+
+    THE BUG THIS FIXES. sw.js carried `var CACHE = 'gudanes-shell-v1'` and a
+    comment saying to bump it by hand when the precached list changed. The
+    activate handler deletes every cache whose name is not the current one, so
+    that constant is the ONLY thing that can clear an installed shell — and it
+    stayed at v1 through every deploy.
+
+    The shell precaches both stylesheets. So a phone or an iPad with the app on
+    its home screen has been serving the CSS from whenever it first installed,
+    and ten design handovers were invisible on exactly the devices the house
+    actually uses. Nothing errored; the pages simply looked like last month.
+
+    Computed from the CONTENTS of sw.js and of every /static/ file it lists, so
+    it cannot be forgotten: change a stylesheet and the name changes with it.
+    The list is read out of sw.js rather than repeated here, because two lists
+    would drift and the drift would be silent.
+
+    Computed once. The files cannot change inside a running process, and a
+    deploy restarts it — which is the moment the name needs to move.
+    """
+    global _SHELL_VERSION
+    if _SHELL_VERSION:
+        return _SHELL_VERSION
+    static_dir = os.path.join(BASE_DIR, "static")
+    digest = hashlib.sha256()
+    try:
+        with io.open(os.path.join(static_dir, "sw.js"), "rb") as fh:
+            source = fh.read()
+    except OSError:
+        return "unversioned"
+    digest.update(source)
+    for rel in re.findall(rb"'/static/([^']+)'", source):
+        try:
+            with io.open(os.path.join(static_dir, rel.decode("utf-8")), "rb") as fh:
+                digest.update(fh.read())
+        except OSError:
+            # A missing file still has to change the name, or removing one from
+            # the shell would leave the old copy cached for good.
+            digest.update(b"missing:" + rel)
+    _SHELL_VERSION = digest.hexdigest()[:12]
+    return _SHELL_VERSION
+
+
 @app.route("/sw.js")
 def service_worker():
     """The service worker, served from the site root rather than /static/.
@@ -29318,10 +29366,23 @@ def service_worker():
     appear on any page a staff member actually opens. Served from here its
     scope is the whole site, which is what makes the offline handling work at
     all. The file itself still lives in static/.
+
+    Rendered rather than sent, so the cache name carries a hash of what is
+    actually in the shell. See shell_cache_version.
     """
-    return send_from_directory(
-        os.path.join(BASE_DIR, "static"), "sw.js",
-        mimetype="application/javascript")
+    static_dir = os.path.join(BASE_DIR, "static")
+    try:
+        with io.open(os.path.join(static_dir, "sw.js"), "r", encoding="utf-8") as fh:
+            source = fh.read()
+    except OSError:
+        abort(404)
+    source = source.replace("'gudanes-shell-v1'",
+                            f"'gudanes-shell-{shell_cache_version()}'")
+    response = app.response_class(source, mimetype="application/javascript")
+    # The browser is meant to re-fetch this to notice a new worker at all. A
+    # cached sw.js is a shell that can never be replaced.
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 
 @app.route("/language/<code>")
