@@ -20077,6 +20077,9 @@ PALETTE_PAGES = [
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
     ("Vehicles", "management_vehicles", "cars van fuel contrôle technique insurance"),
+    ("Empty nights", "empty_nights_page",
+     "occupancy vacancy unsold free rooms gaps availability forecast yield "
+     "which nights are empty"),
     ("Data requests", "data_requests",
      "gdpr rgpd subject access erasure right to be forgotten what we hold "
      "copy of my data delete me portable"),
@@ -30629,6 +30632,39 @@ def delete_police_fiche(fiche_id):
     return redirect(url_for("police_register_page"))
 
 
+@app.route("/management/empty-nights")
+@owner_required
+def empty_nights_page():
+    """What is unsold, and which of it sits together.
+
+    money_ahead answers what is coming in; this answers what is not. The app
+    has only ever had an occupancy RATE for months already gone — a percentage,
+    after the fact — and no way to see that eleven nights in October are free.
+    """
+    days = request.args.get("days", "90")
+    days = int(days) if days.isdigit() else 90
+    conn = get_db()
+    data = empty_nights(conn, days=days)
+    conn.close()
+    overview = [
+        overview_cell("Nights unsold", data["free_nights"],
+                      hint=f"of {data['possible_nights']} across "
+                           f"{data['rooms']} rooms"),
+        overview_cell("Occupancy", f"{data['occupancy']}%",
+                      alert=data["occupancy"] < 30,
+                      hint=f"next {data['days']} days"),
+        # The wording carries the caveat, because the number on its own reads
+        # as money somebody lost.
+        overview_cell("At today's rates", euro(data["value_at_rate"]),
+                      hint="what selling them would come to \u2014 not lost money"),
+        overview_cell("Gaps worth filling", len(data["sellable"]),
+                      hint="long enough to book"),
+    ]
+    return render_template("empty_nights.html", overview=overview, days=days,
+                           runs=data["runs"], sellable=data["sellable"],
+                           data=data)
+
+
 @app.route("/admin/data-requests", methods=["GET"])
 @owner_required
 def data_requests():
@@ -36584,6 +36620,100 @@ ANONYMISE_RATHER_THAN_DELETE = {
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
+
+
+def empty_nights(conn, *, days=90, today=None):
+    """Every unsold room-night in the window, and the runs they form.
+
+    A night counts as sold if a confirmed OR pending booking covers it, and
+    unsellable if a block covers it. Pending counts because somebody has asked
+    for it and the calendar is already holding it — showing it as free is how
+    the same night gets offered twice.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    last = day + timedelta(days=max(1, min(730, days)))
+
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    taken = {r["id"]: set() for r in rooms}
+
+    for b in conn.execute(
+            """SELECT room_id, arrival_date, departure_date FROM bookings
+                WHERE status IN ('confirmed', 'pending')
+                  AND departure_date > ? AND arrival_date < ?""",
+            (day.isoformat(), last.isoformat())).fetchall():
+        start, end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not start or not end:
+            continue
+        night = max(start, day)
+        while night < min(end, last):
+            taken.setdefault(b["room_id"], set()).add(night)
+            night += timedelta(days=1)
+
+    blocked = {r["id"]: set() for r in rooms}
+    for bl in conn.execute(
+            """SELECT room_id, start_date, end_date FROM blocked_dates
+                WHERE end_date > ? AND start_date < ?""",
+            (day.isoformat(), last.isoformat())).fetchall():
+        start, end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
+        if not start or not end:
+            continue
+        night = max(start, day)
+        while night < min(end, last):
+            blocked.setdefault(bl["room_id"], set()).add(night)
+            night += timedelta(days=1)
+
+    runs, free_by_night, total_value, free_count = [], {}, 0.0, 0
+    for room in rooms:
+        rate = float(room["price_per_night"] or 0)
+        current = []
+        night = day
+        while night < last:
+            busy = night in taken.get(room["id"], ()) or night in blocked.get(room["id"], ())
+            if busy:
+                if current:
+                    runs.append({"room": room,
+                                 # ISO, like every other date this app hands a
+                                 # template: date_short takes a string.
+                                 "from": current[0].isoformat(),
+                                 "to": current[-1].isoformat(),
+                                 "nights": len(current),
+                                 "value": round(rate * len(current), 2),
+                                 # A run shorter than the room's own minimum
+                                 # cannot be sold as it stands, which is a
+                                 # different problem from an empty week.
+                                 "below_minimum": bool(room["min_nights"]
+                                                       and len(current) < room["min_nights"])})
+                    current = []
+            else:
+                current.append(night)
+                free_by_night[night.isoformat()] = free_by_night.get(night.isoformat(), 0) + 1
+                free_count += 1
+                total_value += rate
+            night += timedelta(days=1)
+        if current:
+            runs.append({"room": room, "from": current[0].isoformat(),
+                         "to": current[-1].isoformat(),
+                         "nights": len(current), "value": round(rate * len(current), 2),
+                         "below_minimum": bool(room["min_nights"]
+                                               and len(current) < room["min_nights"])})
+
+    # Longest first: a week between two bookings is something a guest can
+    # actually take, and a stray Tuesday is not.
+    runs.sort(key=lambda r: (-r["nights"], r["from"]))
+    sellable = [r for r in runs if not r["below_minimum"]]
+    possible = len(rooms) * (last - day).days
+    return {
+        "from": day.isoformat(), "to": last.isoformat(), "days": (last - day).days,
+        "rooms": len(rooms), "runs": runs, "sellable": sellable,
+        "free_nights": free_count, "possible_nights": possible,
+        "occupancy": round((possible - free_count) / possible * 100) if possible else 0,
+        # At today's rate, and said as that. Not "lost": a house is never full,
+        # and a figure labelled lost gets subtracted from a plan that was never
+        # real.
+        "value_at_rate": round(total_value, 2),
+        "by_night": free_by_night,
+    }
 
 
 def room_board(conn, today=None):

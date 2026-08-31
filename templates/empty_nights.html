@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Empty nights{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Empty nights</h1>
+  <form method="get" style="display:flex; gap:8px; align-items:flex-end;">
+    <div>
+      <label class="field-label" for="en_days">Looking ahead</label>
+      <select id="en_days" name="days" onchange="this.form.submit()">
+        {% for d in [30, 60, 90, 180, 365] %}
+        <option value="{{ d }}" {{ 'selected' if days == d }}>{{ d }} days</option>
+        {% endfor %}
+      </select>
+    </div>
+    <noscript><button type="submit" class="btn-mini">Show</button></noscript>
+  </form>
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<p class="pay-disclaimer">
+  {# Said plainly, because the alternative reading is the expensive one. #}
+  The figure is what these nights would come to at today's rates. It is
+  <strong>not</strong> lost money: a house is never full, and a number labelled
+  "lost" gets subtracted from a plan that was never real. It is what is unsold,
+  and what selling it would be worth.
+</p>
+
+<h2 class="section-heading">Gaps worth filling</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Longest first. Eleven scattered single nights and one eleven-night gap are the
+  same number and completely different problems — nobody books a Tuesday on its
+  own, and a week between two bookings is something a guest can actually take.
+</p>
+
+{% if not sellable %}
+  <div class="empty-state">
+    Nothing bookable is sitting empty in this window. That is either a very good
+    season or a window too short to see one.
+  </div>
+{% else %}
+<div class="table-wrap">
+<table class="data-table">
+  <thead>
+    <tr><th>Room</th><th>From</th><th>To</th><th class="num">Nights</th><th class="num">At today's rate</th></tr>
+  </thead>
+  <tbody>
+    {% for r in sellable %}
+    <tr>
+      <th scope="row">{{ r.room['name'] }}</th>
+      <td>{{ r['from']|date_short }}</td>
+      <td>{{ r['to']|date_short }}</td>
+      <td class="num">{{ r.nights }}</td>
+      <td class="num">€{{ '%.0f'|format(r.value) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% set stubs = runs | rejectattr('below_minimum', 'equalto', false) | list %}
+{% if stubs %}
+<h2 class="section-heading">Too short to sell as they stand</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Shorter than the room's own minimum stay. Not a gap to market — a gap to
+  notice, because a one-night hole between two bookings is usually the shape of
+  a booking that could have been moved.
+</p>
+<div class="table-wrap">
+<table class="data-table">
+  <thead><tr><th>Room</th><th>From</th><th class="num">Nights</th><th class="num">Minimum</th></tr></thead>
+  <tbody>
+    {% for r in stubs %}
+    <tr>
+      <th scope="row">{{ r.room['name'] }}</th>
+      <td>{{ r['from']|date_short }}</td>
+      <td class="num">{{ r.nights }}</td>
+      <td class="num">{{ r.room['min_nights'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">What to do with them</h2>
+<div class="pass-short">
+  <span class="pass-short-row">
+    <a href="{{ url_for('admin_waitlist') }}">The waitlist</a> — somebody already asked
+    for dates the house could not give them. That is the warmest list there is.
+  </span>
+  <span class="pass-short-row">
+    <a href="{{ url_for('admin_promo_codes') }}">A promo code</a>, sent to past
+    guests or the newsletter. Both go out through the same send, and both
+    respect the do-not-write list.
+  </span>
+</div>
+
+{% endblock %}
