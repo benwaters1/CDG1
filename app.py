@@ -20059,6 +20059,9 @@ PALETTE_PAGES = [
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
     ("Vehicles", "management_vehicles", "cars van fuel contrôle technique insurance"),
+    ("Data requests", "data_requests",
+     "gdpr rgpd subject access erasure right to be forgotten what we hold "
+     "copy of my data delete me portable"),
     ("Guest register", "police_register_page",
      "police fiche individuelle nationality passport foreign guests declaration prefecture gendarmerie"),
     ("Transfers", "all_transfers", "airport pickup driving"),
@@ -30515,6 +30518,92 @@ def delete_police_fiche(fiche_id):
     return redirect(url_for("police_register_page"))
 
 
+@app.route("/admin/data-requests", methods=["GET"])
+@owner_required
+def data_requests():
+    """What the house holds about one person, ready to send them.
+
+    The privacy notice has promised this since it was written — a copy of
+    what we hold, in a portable form — and nothing implemented it. Keeping
+    the promise meant querying a dozen tables by hand and hoping.
+    """
+    email = (request.args.get("email", "") or "").strip().lower()
+    conn = get_db()
+    export = guest_data_export(conn, email) if email else None
+    searched = sorted(guest_data_tables(conn))
+    conn.close()
+    return render_template("data_requests.html", email=email, export=export,
+                           searched=searched,
+                           keeps=sorted(ANONYMISE_RATHER_THAN_DELETE))
+
+
+@app.route("/admin/data-requests/export.json")
+@owner_required
+def data_request_export():
+    """The portable form, which is the word the notice actually uses.
+
+    JSON rather than a PDF: portable means a machine can read it, and a
+    person asking for their data in a portable form is usually asking so
+    that something else can take it.
+    """
+    email = (request.args.get("email", "") or "").strip().lower()
+    if not email:
+        abort(400)
+    conn = get_db()
+    export = guest_data_export(conn, email)
+    log_audit(conn, "guest_data_exported", target=email,
+              details=f"{export['row_count']} rows" if export else "nothing held")
+    conn.commit()
+    conn.close()
+    body = json.dumps(export, indent=2, default=str, ensure_ascii=False)
+    return app.response_class(
+        body, mimetype="application/json",
+        headers={"Content-Disposition":
+                 f'attachment; filename="gudanes-data-{secure_filename(email)}.json"'})
+
+
+@app.route("/admin/data-requests/erase", methods=["POST"])
+@owner_required
+def data_request_erase():
+    """Erasure, and an honest account of what could not be erased.
+
+    Typing the address again is the confirmation. A checkbox is something
+    somebody ticks while reading the next line; retyping the address is a
+    deliberate act, and this one cannot be undone from inside the app.
+    """
+    email = (request.form.get("email", "") or "").strip().lower()
+    confirm = (request.form.get("confirm_email", "") or "").strip().lower()
+    if not email:
+        abort(400)
+    if confirm != email:
+        flash("Type the address again to confirm. Nothing has been changed.",
+              "error")
+        return redirect(url_for("data_requests", email=email))
+
+    conn = get_db()
+    before = guest_data_export(conn, email)
+    if not before or not before["row_count"]:
+        conn.close()
+        flash("Nothing is held under that address.", "error")
+        return redirect(url_for("data_requests", email=email))
+
+    result = guest_data_erase(conn, email)
+    # The audit line records the ACT, and deliberately not the address in the
+    # details: this row outlives the data it is about, and writing the person
+    # back into a table that is never purged would undo the erasure by hand.
+    log_audit(conn, "guest_data_erased", target="a guest",
+              details=f"{sum(result['deleted'].values())} rows deleted, "
+                      f"{sum(result['anonymised'].values())} anonymised")
+    conn.commit()
+    conn.close()
+    gone = sum(result["deleted"].values())
+    kept = sum(result["anonymised"].values())
+    flash(f"{gone} row{'' if gone == 1 else 's'} deleted. "
+          f"{kept} kept without their name on, because the law requires the "
+          "record of a sale.", "success")
+    return redirect(url_for("data_requests"))
+
+
 @app.route("/admin/register")
 @owner_required
 def police_register_page():
@@ -36359,6 +36448,179 @@ def purge_police_register(conn, today=None):
                 WHERE departure_date IS NOT NULL AND departure_date < ?)""",
         (cutoff,))
     return {"police register entries": cur.rowcount}
+
+
+# Tables that are not a guest's, whatever columns they have. Staff, job
+# applicants, suppliers and the house's own contacts are all people, and none
+# of them is answered by a GUEST asking what is held about them — a staff
+# member's record is answered under a different process with different rules.
+NOT_GUEST_TABLES = {
+    "users", "candidates", "vendors", "contacts", "company_info",
+    "user_languages", "documents", "absences", "time_entries",
+}
+
+# Kept even when somebody asks for erasure, because French accounting law
+# requires the record of a sale. The person is removed from them; the money
+# stays. Anything not listed here is deleted outright.
+ANONYMISE_RATHER_THAN_DELETE = {
+    "bookings": ("guest_name", "guest_email", "guest_phone"),
+    "restaurant_bookings": ("guest_name", "guest_email", "guest_phone"),
+    "workshop_bookings": ("guest_name", "guest_email", "guest_phone"),
+    "refunds": ("guest_name", "guest_email"),
+    "promo_code_redemptions": ("guest_email",),
+}
+
+ERASED_MARKER = "[erased at the guest's request]"
+
+
+def guest_data_tables(conn):
+    """Every table with a column that could hold a guest's email address.
+
+    Asked of the schema rather than listed here. A list is correct on the day
+    it is written and silently wrong the first time somebody adds a table — and
+    an incomplete answer to "what do you hold about me" is worse than no answer,
+    because it claims to be everything.
+    """
+    out = {}
+    for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' "
+            "AND name NOT LIKE 'sqlite_%'").fetchall():
+        table = row["name"]
+        if table in NOT_GUEST_TABLES:
+            continue
+        cols = [c[1] for c in conn.execute(f"PRAGMA table_info({table})")]
+        keys = [c for c in cols
+                if c.lower() in ("email", "guest_email", "contact_email",
+                                 "to_address", "recipient_email")]
+        if keys:
+            out[table] = keys
+    return out
+
+
+def guest_data_export(conn, email):
+    """Everything held about one person, by email and by what hangs off it.
+
+    Two passes, because not everything carries an address. A review is tied to
+    a booking, a fiche to a stay, a workshop guest to a registration — none of
+    them has an email of its own, and an export that only searched for the
+    address would quietly leave out the most personal rows in the database.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    found = {}
+
+    for table, keys in guest_data_tables(conn).items():
+        where = " OR ".join(f"LOWER(TRIM({k})) = ?" for k in keys)
+        rows = conn.execute(f"SELECT * FROM {table} WHERE {where}",
+                            tuple(email for _ in keys)).fetchall()
+        if rows:
+            found[table] = [dict(r) for r in rows]
+
+    # What hangs off a booking. Named explicitly because the relationship is
+    # the thing that makes them personal, and a schema sweep cannot see it.
+    booking_ids = [r["id"] for r in found.get("bookings", [])]
+    if booking_ids:
+        marks = ",".join("?" * len(booking_ids))
+        for table, column in (("guest_feedback", "booking_id"),
+                              ("booking_extras", "booking_id"),
+                              ("police_register", "booking_id")):
+            try:
+                rows = conn.execute(
+                    f"SELECT * FROM {table} WHERE {column} IN ({marks})",
+                    tuple(booking_ids)).fetchall()
+            except sqlite3.OperationalError:
+                continue                     # table not in this database yet
+            if rows:
+                found.setdefault(table, []).extend(dict(r) for r in rows)
+
+    workshop_ids = [r["id"] for r in found.get("workshop_bookings", [])]
+    if workshop_ids:
+        marks = ",".join("?" * len(workshop_ids))
+        for table, column in (("workshop_feedback", "workshop_booking_id"),
+                              ("workshop_booking_guests", "workshop_booking_id")):
+            try:
+                rows = conn.execute(
+                    f"SELECT * FROM {table} WHERE {column} IN ({marks})",
+                    tuple(workshop_ids)).fetchall()
+            except sqlite3.OperationalError:
+                continue
+            if rows:
+                found.setdefault(table, []).extend(dict(r) for r in rows)
+
+    return {
+        "email": email,
+        "taken_at": datetime.now(timezone.utc).isoformat(),
+        "tables": found,
+        "row_count": sum(len(v) for v in found.values()),
+        # Said out loud, because "we searched for your email" and "we found
+        # everything about you" are different claims and only the first is
+        # one this can make honestly.
+        "searched": sorted(guest_data_tables(conn)),
+    }
+
+
+def guest_data_erase(conn, email):
+    """Remove a person from the records, keeping what the law says to keep.
+
+    A booking is not deleted. French accounting law requires the record of a
+    sale, and deleting invoices to honour a privacy request breaks one law to
+    keep another. So those rows are ANONYMISED — the money stays, the person
+    goes — and everything else is deleted outright.
+
+    Returns what happened to each, because "we have deleted everything" would
+    not be true, and somebody exercising this right is entitled to know
+    precisely what remains and why.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    deleted, anonymised = {}, {}
+
+    for table, keys in guest_data_tables(conn).items():
+        where = " OR ".join(f"LOWER(TRIM({k})) = ?" for k in keys)
+        params = tuple(email for _ in keys)
+        if table in ANONYMISE_RATHER_THAN_DELETE:
+            cols = ANONYMISE_RATHER_THAN_DELETE[table]
+            have = {c[1] for c in conn.execute(f"PRAGMA table_info({table})")}
+            sets = ", ".join(f"{c} = ?" for c in cols if c in have)
+            if not sets:
+                continue
+            # An empty string rather than NULL: several of these columns are
+            # NOT NULL, and a privacy request that fails on a constraint is a
+            # privacy request that does not happen. Empty reads as "not held",
+            # which is what is true, and the name keeps a marker so the row is
+            # legible as erased rather than looking like bad data.
+            values = tuple(ERASED_MARKER if c.endswith("name") else ""
+                           for c in cols if c in have)
+            cur = conn.execute(f"UPDATE {table} SET {sets} WHERE {where}",
+                               values + params)
+            if cur.rowcount:
+                anonymised[table] = cur.rowcount
+        else:
+            cur = conn.execute(f"DELETE FROM {table} WHERE {where}", params)
+            if cur.rowcount:
+                deleted[table] = cur.rowcount
+
+    # The fiche is deleted outright: it is held under a legal obligation with
+    # its own six-month clock, not under the accounting rules, and once the
+    # person is gone from the booking it identifies nobody anyway.
+    for table, column in (("police_register", "booking_id"),
+                          ("guest_feedback", "booking_id")):
+        try:
+            cur = conn.execute(
+                f"""DELETE FROM {table} WHERE {column} IN (
+                        SELECT id FROM bookings WHERE guest_name = ?)""",
+                (ERASED_MARKER,))
+        except sqlite3.OperationalError:
+            continue
+        if cur.rowcount:
+            deleted[table] = deleted.get(table, 0) + cur.rowcount
+
+    return {"deleted": deleted, "anonymised": anonymised,
+            "kept_because": "French accounting law requires the record of a "
+                            "sale to be kept. The money stays; the person has "
+                            "been removed from it."}
 
 
 def insurance_cover(conn, today=None):
