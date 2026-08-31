@@ -172,6 +172,7 @@ SUITES = [
     "test_auto_receipt",
     "test_part_payment",
     "test_walk_in",
+    "test_owner_writes",
     "test_pennylane_revenue",
     "test_handover_check",
 ]

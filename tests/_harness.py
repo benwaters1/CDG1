@@ -138,6 +138,17 @@ m.send_email_via_resend = _refuse(
 # three would spend money and hand a supplier's invoice, or a guest's email, to
 # a third party. Blocked before there is anything to leak.
 m.ANTHROPIC_API_KEY = None
+
+# Browser push, for the same reason and at the same stage as the two above.
+# A staff member who turns notifications on has handed us an endpoint at a
+# browser vendor's push service and a key to sign for it, and notify_user
+# reads those straight out of push_subscriptions — which, in here, is a copy
+# of the REAL table. There are no rows in it today; that is the argument for
+# blocking it now rather than the argument against, because the first person
+# to enable it on their phone would otherwise start receiving a test run.
+m.webpush = _refuse(
+    "the browser push service",
+    "stand in for notify_user in the test; a push goes to somebody's real phone")
 m.anthropic.Anthropic = _refuse(
     "the Anthropic API",
     "every call costs money and ships the document off this machine; stand in "
@@ -151,6 +162,8 @@ assert not getattr(m.stripe, "api_key", None), (
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
 assert not m.sms_enabled(), "a texting provider is configured under test"
+assert m.webpush.__name__ == "_blocked", (
+    "the browser push send is not blocked under test")
 assert not m.claude_configured(), (
     "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
     "global at import, and _load_dotenv puts the environment variable back, so "

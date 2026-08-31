@@ -331,12 +331,59 @@ def run():
                 "send all" not in html.lower(),
                 detail="a wrong batch has to be voided by hand, invoice by invoice")
 
+        s.section("And through the buttons, not only the functions")
+        # The three senders were reachable as functions and covered as such;
+        # the routes that call them were not, so a wiring mistake between a
+        # button and its function would have gone unseen.
+        fresh_stay = _stay("E")
+        before = len(sent)
+        r = oc.post(f"/management/revenue-to-send/{fresh_stay['id']}",
+                    follow_redirects=True)
+        s.check("the stay button sends", len(sent) == before + 1,
+                detail=f"HTTP {r.status_code} {flashes(r)[:1]}")
+        s.check("and says so", any("sent" in f.lower() for f in flashes(r)),
+                detail=f"{flashes(r)[:1]}")
+
+        conn = db()
+        conn.execute(
+            """INSERT INTO pos_closures (kind, period, gross_total, discount_total,
+               service_total, taken_total, vat_json, by_method_json, ticket_count,
+               covers, perpetual_total, prev_hash, hash, closed_at)
+               VALUES ('day', '2099-02-02', 110.0, 0, 0, 110.0,
+               '{"10.0": {"gross": 110.0, "vat": 10.0, "net": 100.0}}',
+               '{}', 4, 8, 0, '', 'zzhash3', ?)""", (now,))
+        conn.commit()
+        day2 = conn.execute(
+            "SELECT id FROM pos_closures WHERE period = '2099-02-02'").fetchone()
+        conn.close()
+        before = len(sent)
+        r = oc.post(f"/management/revenue-to-send/day/{day2['id']}",
+                    follow_redirects=True)
+        s.check("the takings button sends", len(sent) == before + 1,
+                detail=f"HTTP {r.status_code} {flashes(r)[:1]}")
+
+        before = len(sent)
+        r = oc.post(f"/management/revenue-to-send/workshop/{wb['id']}",
+                    follow_redirects=True)
+        s.check("the atelier button refuses a second send",
+                len(sent) == before,
+                detail=f"{flashes(r)[:1]} — it already went earlier in this suite")
+        s.check("and says why", any("already sent" in f.lower() for f in flashes(r)),
+                detail=f"{flashes(r)[:1]}")
+
         s.section("Guards")
         before = len(sent)
         s.check("an employee cannot open it",
                 ec.get("/management/revenue-to-send").status_code in (302, 403))
         code = ec.post(f"/management/revenue-to-send/{fresh['id']}").status_code
         s.check("nor send anything", code in (302, 403), detail=f"HTTP {code}")
+        for label, path in (("takings", f"/management/revenue-to-send/day/{day2['id']}"),
+                            ("an atelier", f"/management/revenue-to-send/workshop/{wb['id']}")):
+            s.check(f"nor {label}", ec.post(path).status_code in (302, 403))
+        s.check("a closure that does not exist is a 404",
+                oc.post("/management/revenue-to-send/day/999999").status_code == 404)
+        s.check("and a registration that does not exist too",
+                oc.post("/management/revenue-to-send/workshop/999999").status_code == 404)
         s.check("and none went", len(sent) == before)
         s.check("a stay that does not exist is a 404",
                 oc.post("/management/revenue-to-send/999999").status_code == 404)
