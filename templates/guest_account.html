@@ -292,6 +292,27 @@
 }
 </style>
 
+{# Reaching the house from the page that lists everything. Until this, the
+   only way to say anything was from inside one specific booking — the wrong
+   shape for a question about the next stay, or about two at once. #}
+<section class="g-sec">
+  <div class="g-wrap">
+    <h2 class="g-h2">Ask us something</h2>
+    <p class="g-hint">
+      Anything at all — about a stay coming up, one you have just had, or something
+      that is not on the site. It comes straight to us with your email address, so
+      there is nothing else to fill in.
+    </p>
+    <form method="post" action="{{ url_for('guest_account_message', token=token) }}"
+          style="margin-top:var(--s3);">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <textarea name="message" rows="4" required style="width:100%;"
+                placeholder="We are arriving late on the Friday — is that all right?"></textarea>
+      <button type="submit" class="g-btn" style="margin-top:var(--s2);">Send</button>
+    </form>
+  </div>
+</section>
+
 </div></section>
 
 <div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
