@@ -4166,6 +4166,7 @@ def login_required(view):
 # private until somebody decides otherwise, which is the safe direction.
 NAV_AREAS = {
     "guests": [
+        "walk_in_booking",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
@@ -10370,6 +10371,25 @@ def booking_bill(conn, booking_id):
         lines.append({
             "label": f"{booking['room_name']} — {nights} night{'' if nights == 1 else 's'}",
             "amount": room_total, "kind": "room"})
+
+    # The discount the guest was actually given.
+    #
+    # This was missing, and the room total is RECOMPUTED from the rate card
+    # rather than read from total_price — so a stay booked with a promo code
+    # was billed here as though it had none. The statement showed the
+    # discounted figure and this showed the rack rate, which is two
+    # documents disagreeing about what somebody owes. Worse, everything that
+    # asks for money reads THIS one: the manage page, the balance reminder,
+    # what we are owed, and the pay button, which would have charged the
+    # full price back to a guest who had already been promised less.
+    #
+    # A line rather than a smaller room total, so the bill still shows the
+    # nights at the price they were sold at and the discount as its own row.
+    discount = 0.0
+    if "discount_amount" in booking.keys():
+        discount = round(float(booking["discount_amount"] or 0), 2)
+    if discount:
+        lines.append({"label": "Discount", "amount": -discount, "kind": "discount"})
 
     extras = extras_for_booking(conn, "room", booking_id)
     for extra in extras:
@@ -19526,6 +19546,56 @@ def pos_pay_link(order_id):
 # what a page is FOR, not what it is called.
 PALETTE_PAGES = [
     ("Home", "dashboard", "dashboard today"),
+    ("Walk-in booking", "walk_in_booking",
+     "desk telephone book a room tonight arrival no reservation walk in"),
+    # --- Pages that existed with no way to find them -----------------------
+    #
+    # Each of these was built, wired up, guarded and tested, and then reachable
+    # only by somebody who already knew the URL. That is the same failure the
+    # nav check was written for; it could not see them because it started from
+    # THIS list, so a page missing from both the nav and the palette was
+    # invisible to the very check meant to catch it. The check now starts from
+    # the routing table instead.
+    #
+    # Keywords are what a person would actually type, not the page's title.
+    ("What's on locally", "admin_whats_on",
+     "markets events local nearby whats on things to do village"),
+    ("Money ahead", "money_ahead_page",
+     "cash flow forecast expected incoming coming in runway"),
+    ("Management outlook", "management_outlook",
+     "outlook forecast ahead labour cost rostered"),
+    ("Today sheet", "today_sheet",
+     "today print run sheet arrivals departures handover"),
+    ("Maintenance", "maintenance_page",
+     "repairs upkeep servicing due jobs house"),
+    ("Social", "management_social",
+     "instagram facebook posts marketing schedule"),
+    ("Social plans", "social_plans",
+     "instagram content plan calendar posts ahead"),
+    ("Menu of the day", "menu_day",
+     "dinner tonight courses service what is on"),
+    ("Past menus", "menu_history",
+     "menus previous served history what we cooked"),
+    ("Restaurant menu", "admin_restaurant_menu",
+     "dishes courses prices carte allergens"),
+    ("Tables", "admin_dining_tables",
+     "floor plan covers seats dining room layout"),
+    ("Drink packages", "admin_drink_packages",
+     "wine pairing beverage package inclusive drinks"),
+    ("Till journal", "pos_journal_page",
+     "pos audit trail voids what happened till"),
+    ("Till archive", "pos_archive",
+     "pos past services closed days takings history"),
+    ("Wages", "admin_wages",
+     "pay rates salary hourly what people are paid"),
+    ("Timesheet corrections", "admin_timesheet_corrections",
+     "clock in out fix amend hours wrong"),
+    ("VAT", "admin_vat",
+     "tva tax return quarter declaration"),
+    ("Pennylane", "admin_pennylane",
+     "accounting ledger accountant sync bookkeeping"),
+    ("Annual summary", "annual_summary",
+     "year end totals twelve months accountant"),
     ("Texting", "management_texting",
      "sms text message phone mobile checkin arrival consent opt out"),
     ("Calendar", "ops_calendar", "diary schedule"),
@@ -32942,6 +33012,146 @@ def management_outlook():
     ]
     return render_template("management_outlook.html", outlook=outlook,
                            overview=overview, months=months, costs=costs)
+
+
+@app.route("/admin/bookings/walk-in", methods=["GET", "POST"])
+@owner_required
+def walk_in_booking():
+    """Take a booking at the desk.
+
+    A room booking could only be made two ways: the public form, or a Stripe
+    session created by it. So somebody at the door on a wet Tuesday, or on the
+    telephone, could not be written down at all — the house had to fill in the
+    guest's own booking form pretending to be them, which sends that guest a
+    confirmation saying they booked online and cannot record the cash they are
+    holding out.
+
+    Four things it does differently from the public form, and each is the
+    reason it exists rather than a reuse of that one:
+
+      NO EMAIL REQUIRED. A walk-in may not have one, may not want to give it,
+      and is standing in front of you. Everything downstream already copes with
+      a blank address by holding its peace, so the booking is worth more than
+      the address.
+
+      THE PRICE IS THE HOUSE'S. The rate card fills it in and the desk can
+      change it, because a room sold at eight on the night it would otherwise
+      sit empty is a decision somebody makes with a person in front of them.
+      Written as a discount rather than a rewritten room rate, so the bill
+      still shows the nights at the price they are advertised at and the
+      reduction on its own line — which is what booking_bill reads.
+
+      NO EMAIL IS SENT. Somebody at the desk needs a key, not a confirmation,
+      and there is no room-booking email template to send anyway — the public
+      flow ends on a page. If they gave an address they can be sent their
+      statement or an account link from the paths that already do that.
+
+      IT REFUSES A DOUBLE BOOKING rather than warning about one. The public
+      form checks availability and so must this: a room let twice is the one
+      mistake a guest cannot be talked round.
+    """
+    conn = get_db()
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    today = datetime.now(LOCAL_TZ).date()
+
+    if request.method == "POST":
+        room_raw = (request.form.get("room_id", "") or "").strip()
+        arrival = parse_date((request.form.get("arrival_date", "") or "").strip())
+        departure = parse_date((request.form.get("departure_date", "") or "").strip())
+        name = (request.form.get("guest_name", "") or "").strip()
+        email = (request.form.get("guest_email", "") or "").strip()
+        phone = (request.form.get("guest_phone", "") or "").strip()
+        try:
+            party = max(1, int(request.form.get("party_size", "2") or 2))
+        except ValueError:
+            party = 2
+        notes = (request.form.get("special_requests", "") or "").strip()
+
+        room = None
+        if room_raw.isdigit():
+            room = conn.execute("SELECT * FROM rooms WHERE id = ?", (int(room_raw),)).fetchone()
+
+        problem = None
+        if not room:
+            problem = "Choose a room."
+        elif not name:
+            problem = "Put a name on it, even if it is only a surname."
+        elif not (arrival and departure):
+            problem = "Enter both dates."
+        elif departure <= arrival:
+            problem = "The departure has to be after the arrival."
+        elif email and not EMAIL_RE.match(email):
+            problem = "That email address does not look right — or leave it blank."
+        if not problem:
+            # Unpacked, not tested for truth: is_range_available returns
+            # (ok, reason), and a two-item tuple is always truthy — so
+            # `if not is_range_available(...)` reads as available every
+            # single time, including when it is saying no. The suite let
+            # the same room for the same nights twice before this.
+            available, why = is_range_available(conn, room["id"], arrival, departure)
+            if not available:
+                problem = (f"{room['name']} is already taken for those nights"
+                           + (f" — {why}" if why else "."))
+        if problem:
+            conn.close()
+            flash(problem, "error")
+            return render_template("walk_in_booking.html", rooms=rooms, today=today,
+                                   form=request.form)
+
+        rack = compute_room_total(conn, room, arrival, departure)
+        charge_raw = (request.form.get("total_price", "") or "").strip().replace(",", ".")
+        try:
+            charge = round(float(charge_raw), 2) if charge_raw else rack
+        except ValueError:
+            charge = rack
+        charge = max(0.0, min(charge, rack))
+        # As a discount, not a rewritten room total: booking_bill recomputes the
+        # nights from the rate card and reads discount_amount, so a smaller
+        # total_price on its own would simply be ignored by everything that
+        # asks the guest for money.
+        discount = round(rack - charge, 2)
+
+        reference_code, manage_token = create_booking(
+            conn, room, name, email, phone, arrival, departure, party, notes, [],
+            payment_status="unpaid",
+            total_price_override=charge,
+            discount_amount_override=discount or None,
+        )
+        booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
+                               (reference_code,)).fetchone()
+        conn.execute("UPDATE bookings SET status = 'confirmed' WHERE id = ?",
+                     (booking["id"],))
+
+        taken_raw = (request.form.get("amount_taken", "") or "").strip().replace(",", ".")
+        try:
+            taken = round(float(taken_raw), 2) if taken_raw else 0.0
+        except ValueError:
+            taken = 0.0
+        if taken > 0:
+            method = (request.form.get("method", "") or "cash").strip()
+            if method not in MANUAL_PAYMENT_METHODS:
+                method = "cash"
+            conn.execute(
+                """INSERT INTO booking_payments (booking_id, amount, method, reference,
+                   taken_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+                (booking["id"], taken, method, "Taken at the desk",
+                 session.get("user_id"), datetime.now(timezone.utc).isoformat()))
+            record_booking_payment(conn, booking["id"], taken)
+
+        log_audit(conn, "walk_in_booking", target=reference_code,
+                  details=f"{room['name']}, {arrival} to {departure}"
+                          + (f", €{taken:.2f} taken" if taken else ""))
+        conn.commit()
+
+        conn.close()
+        flash(f"{name} is in — {reference_code}."
+              + (f" €{taken:.2f} taken." if taken else ""), "success")
+        return redirect(url_for("management_outstanding")
+                        if not taken else url_for("admin_bookings"))
+
+    conn.close()
+    return render_template("walk_in_booking.html", rooms=rooms, today=today, form={})
 
 
 @app.route("/management/outstanding")

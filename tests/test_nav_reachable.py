@@ -79,7 +79,58 @@ def run():
     s.check("no palette entry points at a route that is gone", not missing,
             detail=", ".join(missing))
 
+    s.section("And no owner page exists that neither list mentions")
+    # THIS is the check the file was missing, and the reason it missed it is
+    # worth keeping: everything above starts from the palette or from a
+    # hand-written list of paths, so a page absent from BOTH — which is the
+    # state this whole suite exists to prevent — was invisible to it. Twenty-one
+    # pages were in exactly that state, including What's On, Money Ahead, the
+    # till journal, wages and VAT.
+    #
+    # Started from the routing table instead, which is the only list that
+    # cannot be forgotten to update.
+    lost = sorted(_unlisted(linked))
+    s.check("every owner page is in the nav or the palette", not lost,
+            detail="built and reachable only by typing the URL: " + ", ".join(lost))
+
     return s
+
+
+# Surfaces that are deliberately not browsed, with the reason. Anything not
+# here and not in the nav or palette is a page somebody forgot.
+NOT_BROWSED = (
+    # Polled by the page that owns them; a person never opens these.
+    "admin_inbox_flags_status", "admin_overview_status",
+    # Rendered inside Outlook's own pane, which has no nav of ours.
+    "admin_outlook_addin",
+)
+
+
+def _unlisted(linked):
+    """Owner pages in neither the nav nor the palette, excluding downloads,
+    new-record forms and print sheets — all of which are reached from the
+    thing they belong to and would only clutter a menu."""
+    palette = _owner_pages()
+    nav_endpoints = set()
+    adapter = m.app.url_map.bind("localhost")
+    for path in linked:
+        try:
+            nav_endpoints.add(adapter.match(path, method="GET")[0])
+        except Exception:
+            continue
+    for rule in m.app.url_map.iter_rules():
+        path = str(rule.rule)
+        if "GET" not in rule.methods or "<" in path:
+            continue
+        if not path.startswith(("/admin", "/management")):
+            continue
+        ep = rule.endpoint
+        if ep in palette or ep in nav_endpoints or ep in NOT_BROWSED:
+            continue
+        if ep.startswith(("export_", "new_")) or path.endswith((".csv", ".json",
+                                                                "/new", "/template")):
+            continue
+        yield ep
 
 
 if __name__ == "__main__":

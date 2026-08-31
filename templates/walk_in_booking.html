@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Walk-in booking{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Take a booking at the desk</h1>
+  <a href="{{ url_for('admin_bookings') }}" class="btn-mini">All bookings</a>
+</div>
+
+{#
+  For somebody at the door, or on the telephone. Until now a room booking could
+  only be made through the guest's own form or a Stripe session, so the house
+  had to pretend to be the guest to write one down.
+
+  The email is optional on purpose and sits below the things that matter. A
+  walk-in is standing in front of you; a booking with a name and no address is
+  worth far more than no booking at all.
+#}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="wi_room">Room</label>
+      <select id="wi_room" name="room_id" required>
+        <option value="">Choose…</option>
+        {% for r in rooms %}
+        <option value="{{ r['id'] }}" {{ 'selected' if form.get('room_id')|string == r['id']|string }}>
+          {{ r['name'] }}{% if r['price_per_night'] %} — €{{ '%.0f'|format(r['price_per_night']) }}/night{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="field-label" for="wi_party">Guests</label>
+      <input id="wi_party" type="number" name="party_size" min="1" step="1"
+             value="{{ form.get('party_size', '2') }}">
+    </div>
+  </div>
+
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="wi_arrival">Arriving</label>
+      <input id="wi_arrival" type="date" name="arrival_date" required
+             value="{{ form.get('arrival_date', today.isoformat()) }}">
+    </div>
+    <div>
+      <label class="field-label" for="wi_departure">Leaving</label>
+      <input id="wi_departure" type="date" name="departure_date" required
+             value="{{ form.get('departure_date', '') }}">
+    </div>
+  </div>
+
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="wi_name">Name</label>
+      <input id="wi_name" type="text" name="guest_name" required
+             value="{{ form.get('guest_name', '') }}" placeholder="A surname is enough">
+    </div>
+    <div>
+      <label class="field-label" for="wi_phone">Telephone (optional)</label>
+      <input id="wi_phone" type="tel" name="guest_phone" value="{{ form.get('guest_phone', '') }}">
+    </div>
+  </div>
+
+  <label class="field-label" for="wi_email">Email (optional)</label>
+  <input id="wi_email" type="email" name="guest_email" value="{{ form.get('guest_email', '') }}"
+         placeholder="Leave blank if they would rather not">
+  <p class="upload-hint">Without one there is nothing to send them — no statement,
+  no account link, and no way to chase a balance later. Worth asking for, not worth
+  refusing the booking over.</p>
+
+  <label class="field-label" for="wi_price">Price for the stay (optional)</label>
+  <input id="wi_price" type="number" name="total_price" step="0.01" min="0"
+         value="{{ form.get('total_price', '') }}" placeholder="Leave blank for the rate card">
+  <p class="upload-hint">Fill this in only to charge less than the advertised rate —
+  a room sold late on a night it would otherwise sit empty. It goes on the bill as a
+  discount, so the nights still show at the price they are advertised at. More than
+  the rate card is ignored.</p>
+
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="wi_taken">Taken now (optional)</label>
+      <input id="wi_taken" type="number" name="amount_taken" step="0.01" min="0"
+             value="{{ form.get('amount_taken', '') }}" placeholder="0.00">
+    </div>
+    <div>
+      <label class="field-label" for="wi_method">How</label>
+      <select id="wi_method" name="method">
+        <option value="cash">Cash</option>
+        <option value="card_in_person">Card, in person</option>
+        <option value="bank_transfer">Bank transfer</option>
+        <option value="other">Something else</option>
+      </select>
+    </div>
+  </div>
+
+  <label class="field-label" for="wi_notes">Anything to note</label>
+  <textarea id="wi_notes" name="special_requests" rows="2">{{ form.get('special_requests', '') }}</textarea>
+
+  <button type="submit" class="btn-primary" style="margin-top:14px;">Book them in</button>
+</form>
+
+{% endblock %}

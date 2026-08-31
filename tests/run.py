@@ -171,6 +171,7 @@ SUITES = [
     "test_outstanding",
     "test_auto_receipt",
     "test_part_payment",
+    "test_walk_in",
     "test_handover_check",
 ]
 
