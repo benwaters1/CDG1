@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Revenue to send{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Revenue to send</h1>
+  <a href="{{ url_for('admin_pennylane') }}" class="btn-mini">Pennylane settings</a>
+</div>
+
+{#
+  Only expenses ever reached Pennylane — money going out. Everything coming in
+  reached the accountant as a CSV somebody remembered to export, or not at all.
+
+  Departed stays only: a booking still to come is not revenue, and one halfway
+  through can still change.
+#}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('financial', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(waiting_total) }}</span>
+      <span class="stat-tile-label">Not yet with the accountant</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ waiting|length }}</span>
+      <span class="stat-tile-label">Stays waiting</span>
+    </span>
+  </div>
+</div>
+
+{% if not configured %}
+<p class="g-hint">Pennylane is not connected yet, so nothing can go. Add
+<code>PENNYLANE_API_TOKEN</code> and these will be here waiting.</p>
+{% endif %}
+
+{% if not rows %}
+<div class="empty-state">No departed stays yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Guest</th><th>Stay</th><th class="num">Invoice</th><th>Accountant</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      {% set b = r['booking'] %}
+      <tr>
+        <td>
+          <a href="{{ url_for('booking_statement', manage_token=b['manage_token']) }}">{{ b['guest_name'] }}</a>
+          <span class="g-hint">{{ b['reference_code'] }}</span>
+        </td>
+        <td>
+          {{ b['room_name'] }}
+          <span class="g-hint">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</span>
+        </td>
+        <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
+        <td>
+          {% if r['sent'] %}
+          <span class="mini-status status-active">Sent</span>
+          <span class="g-hint">{{ r['sent']['sent_at'][:10] }}{% if r['sent']['pennylane_id'] %} · {{ r['sent']['pennylane_id'] }}{% endif %}</span>
+          {% elif r['total'] <= 0 %}
+          <span class="g-hint">Nothing to invoice</span>
+          {% else %}
+          <span class="mini-status status-pending">Waiting</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not r['sent'] and r['total'] > 0 and configured %}
+          <form method="post" action="{{ url_for('send_revenue_to_pennylane', booking_id=b['id']) }}"
+                onsubmit="return confirm('Send €{{ '%.2f'|format(r['total']) }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Send</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{#
+  One at a time, on purpose. There is no "send all": an invoice sent in error is
+  invisible from here afterwards and has to be found and voided in Pennylane by
+  somebody reading a ledger, so the cost of a wrong batch is far higher than the
+  cost of a few extra clicks.
+#}
+<p class="upload-hint" style="margin-top:12px;">Sent one at a time deliberately.
+An invoice sent by mistake has to be voided in Pennylane by hand, so there is no
+send-everything button.</p>
+
+{% endblock %}

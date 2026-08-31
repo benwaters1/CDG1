@@ -296,6 +296,18 @@ AUTOMATION_SETTING_DEFAULTS = {
 # today — the full amount online, or nothing — and no schedule is written.
 # How money can arrive other than through Stripe. Free text in the column so
 # older rows keep working; a fixed set here so the form cannot invent one.
+# Which revenue account each kind of income belongs on. Blank by default and
+# left out of the payload entirely when blank, so Pennylane files it on its own
+# default rather than on a number this app guessed — a French chart puts
+# accommodation, food and tourist tax in different places and that is the
+# accountant's call, not ours.
+PENNYLANE_REVENUE_DEFAULTS = {
+    "pennylane_account_accommodation": "",
+    "pennylane_account_extras": "",
+    "pennylane_account_city_tax": "",
+    "pennylane_account_restaurant": "",
+}
+
 MANUAL_PAYMENT_METHODS = {
     "cash": "Cash",
     "bank_transfer": "Bank transfer",
@@ -3026,6 +3038,23 @@ def init_db():
         # and the person who took it. Neither had anywhere to live: the only
         # writers were Stripe paths, which have a session id and no human.
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
+        # What has already been sent to the accountant.
+        #
+        # An invoice sent twice is worse than one not sent at all: the second is
+        # invisible here and has to be found and voided in Pennylane by somebody
+        # reading a ledger. UNIQUE(kind, source_id) is the guard, so a double
+        # press, a retried request or a second person on another screen all
+        # collapse to one row and one invoice.
+        ("pennylane_exports_table", """CREATE TABLE IF NOT EXISTS pennylane_exports (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             kind TEXT NOT NULL,
+             source_id INTEGER NOT NULL,
+             pennylane_id TEXT,
+             amount REAL,
+             sent_at TEXT NOT NULL,
+             sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             UNIQUE(kind, source_id)
+         )"""),
         ("booking_payments_taken_by",
          "ALTER TABLE booking_payments ADD COLUMN taken_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"),
         ("pos_orders_receipt_emailed_to", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_to TEXT"),
@@ -4247,6 +4276,7 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
+        "revenue_to_send", "send_revenue_to_pennylane",
         "record_manual_booking_payment",
         "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
         "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
@@ -19546,6 +19576,8 @@ def pos_pay_link(order_id):
 # what a page is FOR, not what it is called.
 PALETTE_PAGES = [
     ("Home", "dashboard", "dashboard today"),
+    ("Revenue to send", "revenue_to_send",
+     "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
     # --- Pages that existed with no way to find them -----------------------
@@ -33034,6 +33066,125 @@ def walk_in_options(conn, rooms, arrival, departure):
     return out
 
 
+def send_booking_to_pennylane(conn, booking, user_id=None):
+    """One stay, as a customer invoice. Returns (ok, message).
+
+    Refuses before it reaches the network in four cases, and each one is a
+    thing that would otherwise be discovered by reading a ledger later:
+
+      ALREADY SENT. The guard is a UNIQUE row rather than a flag on the
+      booking, so a double press, a retried request and a second person on
+      another screen all collapse to one invoice.
+
+      NOTHING TO INVOICE. A cancelled stay, or one that came to nothing.
+
+      NOT CONFIGURED. Without a token this would fail at the socket, and the
+      person pressing the button should be told which setting is missing rather
+      than shown a network error.
+
+      NO CUSTOMER. Pennylane files an invoice against somebody; if the customer
+      call fails there is nothing to attach it to and sending a half-formed one
+      is worse than not sending.
+
+    The row is written AFTER Pennylane accepts it, not before. Getting that
+    backwards would mark a stay as filed when it is not, and nothing would ever
+    look at it again.
+    """
+    if not pennylane_configured():
+        return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
+    existing = pennylane_already_sent(conn, "booking", booking["id"])
+    if existing:
+        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+                       + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
+                       + ".")
+    if booking["status"] in ("cancelled", "declined"):
+        return False, "That stay was cancelled, so there is nothing to invoice."
+
+    statement = guest_statement(conn, booking)
+    total = round(float(statement["total"] or 0), 2)
+    if total <= 0:
+        return False, "There is nothing on that stay to invoice."
+    lines = booking_pennylane_lines(conn, statement)
+    if not lines:
+        return False, "Nothing on that stay could be turned into invoice lines."
+
+    ok, customer = pennylane_find_customer(booking["guest_name"], booking["guest_email"])
+    if not ok or not customer:
+        return False, f"Could not file a customer for {booking['guest_name']}: {customer}"
+
+    tax = round(sum(float(b["vat"] or 0) for b in statement["vat"]), 2)
+    ok, payload = pennylane_import_customer_invoice(
+        customer_id=customer,
+        date=booking["departure_date"] or booking["arrival_date"],
+        deadline=booking["balance_due_date"] or booking["departure_date"],
+        amount=total, tax=tax, lines=lines,
+        invoice_number=booking["reference_code"],
+        external_reference=booking["reference_code"],
+    )
+    if not ok:
+        return False, f"Pennylane refused it: {payload}"
+
+    conn.execute(
+        """INSERT OR IGNORE INTO pennylane_exports (kind, source_id, pennylane_id,
+           amount, sent_at, sent_by_user_id) VALUES ('booking', ?, ?, ?, ?, ?)""",
+        (booking["id"], str((payload or {}).get("id") or ""), total,
+         datetime.now(timezone.utc).isoformat(), user_id))
+    return True, f"Sent €{total:.2f} for {booking['reference_code']}."
+
+
+@app.route("/management/revenue-to-send")
+@owner_required
+def revenue_to_send():
+    """Stays the accountant has not been given yet.
+
+    Only expenses ever reached Pennylane — money going out. Everything coming
+    in reached the accountant as a CSV somebody remembered to export, or not at
+    all.
+
+    Departed stays only. A booking still to come is not revenue, and one that
+    is halfway through can still change.
+    """
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date().isoformat()
+    rows = []
+    for booking in conn.execute(
+            """SELECT bookings.*, rooms.name AS room_name FROM bookings
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE bookings.status = 'confirmed'
+                  AND bookings.departure_date < ?
+                ORDER BY bookings.departure_date DESC LIMIT 300""", (today,)).fetchall():
+        sent = pennylane_already_sent(conn, "booking", booking["id"])
+        statement = guest_statement(conn, booking)
+        rows.append({"booking": booking, "total": round(float(statement["total"] or 0), 2),
+                     "sent": sent})
+    conn.close()
+    waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
+    return render_template(
+        "revenue_to_send.html", rows=rows, waiting=waiting,
+        waiting_total=round(sum(r["total"] for r in waiting), 2),
+        configured=pennylane_configured())
+
+
+@app.route("/management/revenue-to-send/<int:booking_id>", methods=["POST"])
+@owner_required
+def send_revenue_to_pennylane(booking_id):
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    ok, message = send_booking_to_pennylane(conn, booking, user_id=session.get("user_id"))
+    if ok:
+        log_audit(conn, "revenue_sent_to_pennylane", target=booking["reference_code"])
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("revenue_to_send"))
+
+
 @app.route("/admin/bookings/walk-in", methods=["GET", "POST"])
 @owner_required
 def walk_in_booking():
@@ -40733,6 +40884,111 @@ def pennylane_import_supplier_invoice(*, file_attachment_id, supplier_id, date, 
     if transaction_reference:
         body["transaction_reference"] = transaction_reference
     return _pennylane_request("POST", "/supplier_invoices/import", json_body=body)
+
+
+def pennylane_import_customer_invoice(*, customer_id, date, deadline, amount, tax,
+                                     lines, invoice_number=None, currency="EUR",
+                                     external_reference=None):
+    """Create a customer invoice: money coming IN.
+
+    The mirror of pennylane_import_supplier_invoice, and deliberately the same
+    shape — amounts as STRINGS because Pennylane checks the lines add up to the
+    total, and a float printing as 512.0000000001 fails that with nothing
+    useful to read.
+
+    No file_attachment_id: a supplier invoice is a document somebody sent us and
+    has to carry the scan, while this one is a document WE are issuing.
+    """
+    def money(v):
+        return f"{round(float(v or 0), 2):.2f}"
+
+    body = {
+        "customer_id": customer_id, "date": date, "deadline": deadline or date,
+        "currency": currency,
+        "currency_amount": money(amount),
+        "currency_amount_before_tax": money(float(amount or 0) - float(tax or 0)),
+        "currency_tax": money(tax), "invoice_lines": lines,
+    }
+    if invoice_number:
+        body["invoice_number"] = invoice_number
+    if external_reference:
+        body["external_reference"] = external_reference
+    return _pennylane_request("POST", "/customer_invoices/import", json_body=body)
+
+
+def pennylane_find_customer(name, email=None):
+    """Find a customer by name, creating one if there is no match.
+
+    Same shape as pennylane_find_supplier. A guest with no email still gets a
+    customer record — a walk-in who paid cash is revenue like any other, and
+    refusing to file it because we have no address for them would leave a hole
+    in the ledger.
+    """
+    if not (name or "").strip():
+        return False, "No name to file this under."
+    ok, payload = _pennylane_request("GET", "/customers", params={"filter": name.strip()})
+    if ok:
+        for row in (payload or {}).get("items", payload if isinstance(payload, list) else []) or []:
+            if (row.get("name") or "").strip().lower() == name.strip().lower():
+                return True, row.get("id")
+    body = {"name": name.strip(), "customer_type": "individual"}
+    if email:
+        body["emails"] = [email]
+    ok, payload = _pennylane_request("POST", "/customers", json_body=body)
+    if ok:
+        return True, (payload or {}).get("id")
+    return False, payload
+
+
+def pennylane_already_sent(conn, kind, source_id):
+    row = conn.execute(
+        "SELECT * FROM pennylane_exports WHERE kind = ? AND source_id = ?",
+        (kind, source_id)).fetchone()
+    return row
+
+
+def pennylane_vat_code(rate):
+    """Pennylane's code for a French VAT rate. 20 -> FR_200, 10 -> FR_100."""
+    return f"FR_{int(round(float(rate or 0) * 10)):03d}"
+
+
+def booking_pennylane_lines(conn, statement):
+    """A stay as accounting lines, split by the rate each part carries.
+
+    Straight off guest_statement rather than recomputed, because that is the
+    document the guest was given and the ledger has to agree with it. The
+    taxe de sejour is its own line at zero, which is what it is: collected on
+    the commune's behalf and not the house's income.
+    """
+    lines = []
+    for band in statement["vat"]:
+        net = round(float(band["net"] or 0), 2)
+        if not net:
+            continue
+        line = {"currency_amount": f"{net:.2f}",
+                "currency_tax": f"{round(float(band['vat'] or 0), 2):.2f}",
+                "vat_rate": pennylane_vat_code(band["rate"]),
+                "label": f"Accommodation and extras at {band['rate']}%"[:200]}
+        code = app_setting(conn, "pennylane_account_accommodation",
+                           PENNYLANE_REVENUE_DEFAULTS)
+        if code:
+            line["ledger_account_number"] = code
+        lines.append(line)
+    city = round(float(statement["city_tax"] or 0), 2)
+    if city:
+        line = {"currency_amount": f"{city:.2f}", "currency_tax": "0.00",
+                "vat_rate": pennylane_vat_code(0), "label": "Taxe de sejour"}
+        code = app_setting(conn, "pennylane_account_city_tax",
+                           PENNYLANE_REVENUE_DEFAULTS)
+        if code:
+            line["ledger_account_number"] = code
+        lines.append(line)
+    return lines
+
+
+def app_setting(conn, key, defaults):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return (row["value"] if row else defaults.get(key, "")) or ""
 
 
 def pennylane_find_supplier(name):
