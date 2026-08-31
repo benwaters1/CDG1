@@ -61,12 +61,17 @@ held rather than sent. It goes out on its own once one is.</p>
       {% set b = r['booking'] %}
       <tr>
         <td>
-          <a href="{{ url_for('manage_booking', manage_token=b['manage_token']) }}">{{ b['guest_name'] }}</a>
-          <span class="g-hint">{{ b['reference_code'] }}</span>
+          {# Display fields off the row, not a stay's columns: an event has a
+             contact rather than a guest, one date rather than two, and no
+             room. Reading b['room_name'] here printed blanks for events and
+             pointed their link at a room page. #}
+          <a href="{{ url_for(r['link_endpoint'], **r['link_args']) }}">{{ r['who'] }}</a>
+          <span class="g-hint">{{ r['reference'] }}</span>
         </td>
         <td>
-          {{ b['room_name'] }}
-          <span class="g-hint">{{ b['arrival_date']|date_short }} → {{ b['departure_date']|date_short }}</span>
+          {{ r['what'] }}
+          {% if r['kind'] != 'stay' %}<span class="mini-status status-inactive">{{ r['kind'] }}</span>{% endif %}
+          <span class="g-hint">{{ r['when'] }}</span>
         </td>
         <td>
           {% if r['state'] == 'gone' %}
@@ -88,6 +93,7 @@ held rather than sent. It goes out on its own once one is.</p>
              person. None of it could be recorded before: the only writers
              were Stripe paths, so a guest who paid by hand went on being
              asked for money they had already handed over. #}
+          {% if r['kind'] == 'stay' %}
           <details class="owed-take">
             <summary>Record a payment</summary>
             <form method="post"
@@ -108,13 +114,18 @@ held rather than sent. It goes out on its own once one is.</p>
               <button type="submit" class="btn-mini">Record</button>
             </form>
           </details>
-          {% if b['guest_email'] %}
+          {% endif %}
+          {% if r['kind'] == 'stay' and r['email'] %}
           <form method="post"
                 action="{{ url_for('chase_outstanding_balance', booking_id=b['id']) }}"
                 onsubmit="return confirm('Email {{ b['guest_name']|e }} about €{{ '%.2f'|format(r['owed']) }}?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Ask for it</button>
           </form>
+          {% elif r['kind'] == 'event' %}
+          {# An event has its own payment route and no manage page;
+             the enquiry itself is where its money is recorded. #}
+          <a href="{{ url_for('admin_events') }}" class="btn-mini">On the enquiry</a>
           {% else %}
           <span class="g-hint">No email on file</span>
           {% endif %}

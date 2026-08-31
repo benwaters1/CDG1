@@ -148,7 +148,36 @@
     {%- if e['spaces'] %} · {{ e['spaces'] }}{% endif %}
     {%- if e['guest_count'] %} · {{ e['guest_count'] }} guests{% endif %}
     {%- if e['quoted_price'] %} · Quoted €{{ '%.2f'|format(e['quoted_price']) }}{% endif %}
+    {%- set bill = bills.get(e['id']) if bills else None %}
+    {%- if bill and bill.paid %} · €{{ '%.2f'|format(bill.paid) }} received{% endif %}
+    {%- if bill and bill.owed %} · <strong>€{{ '%.2f'|format(bill.owed) }} still to pay</strong>
+    {%- elif bill and bill.quoted and bill.settled %} · settled{% endif %}
   </p>
+
+  {# Recording money on an event. The route existed and nothing linked to it,
+     so a wedding deposit could only be entered by somebody who knew the URL.
+     More than is owed is refused rather than clamped — a number typed here
+     with the file open is more likely a slip than an intention. #}
+  {% if bill and bill.quoted > 0 and bill.owed > 0 %}
+  <details class="owed-take">
+    <summary>Record a payment</summary>
+    <form method="post" action="{{ url_for('record_event_payment_route', inquiry_id=e['id']) }}"
+          class="owed-take__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="number" name="amount" step="0.01" min="0.01"
+             max="{{ '%.2f'|format(bill.owed) }}"
+             placeholder="{{ '%.2f'|format(bill.owed) }}" aria-label="How much" required>
+      <select name="method" aria-label="How it arrived">
+        {% for key, label in (payment_methods or {}).items() %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="reference" placeholder="Reference (optional)"
+             aria-label="Reference">
+      <button type="submit" class="btn-mini">Record</button>
+    </form>
+  </details>
+  {% endif %}
   <p class="upload-hint">
     {{ e['contact_email'] or 'no email' }}{% if e['contact_phone'] %} · {{ e['contact_phone'] }}{% endif %}
     {%- if e['contact_email'] %} · <a href="{{ url_for('guest_booking_history', email=e['contact_email']) }}" class="small-link" style="color:var(--steel);">full history</a>{% endif %}

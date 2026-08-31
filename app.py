@@ -307,6 +307,7 @@ PENNYLANE_REVENUE_DEFAULTS = {
     "pennylane_account_city_tax": "",
     "pennylane_account_restaurant": "",
     "pennylane_account_workshops": "",
+    "pennylane_account_events": "",
 }
 
 MANUAL_PAYMENT_METHODS = {
@@ -3053,6 +3054,26 @@ def init_db():
         # A payment taken by hand needs the bank line it will be matched to,
         # and the person who took it. Neither had anywhere to live: the only
         # writers were Stripe paths, which have a session id and no human.
+        # An event had a quoted_price and nothing else — no deposit, no amount
+        # received, no payments. So the largest single transactions the house
+        # takes, a wedding at several thousand euros, lived entirely outside it:
+        # no bill, no balance, nothing to chase, and nothing for the accountant.
+        # Rooms, the restaurant and the ateliers all had a full money model.
+        ("event_inquiries_amount_paid",
+         "ALTER TABLE event_inquiries ADD COLUMN amount_paid REAL NOT NULL DEFAULT 0"),
+        ("event_inquiries_deposit_amount",
+         "ALTER TABLE event_inquiries ADD COLUMN deposit_amount REAL"),
+        ("event_inquiries_balance_due_date",
+         "ALTER TABLE event_inquiries ADD COLUMN balance_due_date TEXT"),
+        ("event_payments_table", """CREATE TABLE IF NOT EXISTS event_payments (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             amount REAL NOT NULL,
+             method TEXT NOT NULL DEFAULT 'bank_transfer',
+             reference TEXT,
+             taken_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             created_at TEXT NOT NULL
+         )"""),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
         # What has already been sent to the accountant.
         #
@@ -4352,6 +4373,7 @@ NAV_AREAS = {
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
         "admin_city_tax", "export_city_tax_csv",
+        "record_event_payment_route", "send_event_revenue",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
         "record_manual_booking_payment",
@@ -10215,6 +10237,54 @@ def outstanding_balances(conn, *, today=None):
             "booking": booking, "owed": bill["owed"], "total": bill["total"],
             "paid": bill["paid"], "state": state, "days_late": days,
             "due_date": due_date, "departed": departed,
+            # Display fields, so the page does not have to know what kind of
+            # thing owes the money. Added when events joined this list: they
+            # have a contact rather than a guest, a date rather than two, and no
+            # room at all, and the template was reading a stay's columns
+            # straight off the row.
+            "kind": "stay",
+            "who": booking["guest_name"],
+            "what": booking["room_name"] or "",
+            "when": (f"{booking['arrival_date']} \u2192 {booking['departure_date']}"),
+            "reference": booking["reference_code"],
+            "email": booking["guest_email"],
+            # Endpoint and arguments rather than a built URL: url_for needs an
+            # application context and this function is called directly by
+            # reports and by the suite, where there is none.
+            "link_endpoint": "manage_booking",
+            "link_args": {"manage_token": booking["manage_token"]},
+        })
+    # Events too. A wedding is the largest single thing the house is owed, and
+    # until events had a money model at all they could not appear here.
+    for event in conn.execute(
+            """SELECT * FROM event_inquiries WHERE status = 'confirmed'
+                ORDER BY preferred_date""").fetchall():
+        bill = event_bill(conn, event["id"])
+        if not bill or bill["owed"] <= 0.005:
+            continue
+        held = event["preferred_date"] or ""
+        past = bool(held) and held < iso
+        due_date = event["balance_due_date"]
+        if past:
+            state, days = "gone", _days_between(held, iso)
+        elif due_date and due_date < iso:
+            state, days = "overdue", _days_between(due_date, iso)
+        else:
+            state, days = "due", 0
+        rows.append({
+            "booking": event, "owed": bill["owed"], "total": bill["quoted"],
+            "paid": bill["paid"], "state": state, "days_late": days,
+            "due_date": due_date, "departed": past,
+            "kind": "event",
+            "who": event["contact_name"],
+            "what": event["event_type"] or "Event",
+            "when": held or "date to confirm",
+            "reference": event["reference_code"] or f"EVT-{event['id']}",
+            "email": event["contact_email"],
+            # No manage page for an event, so the row points at the events
+            # list rather than at a room's page with an event's token on it.
+            "link_endpoint": "admin_events",
+            "link_args": {},
         })
     order = {"gone": 0, "overdue": 1, "due": 2}
     rows.sort(key=lambda r: (order[r["state"]], -r["days_late"], -r["owed"]))
@@ -25359,6 +25429,11 @@ def admin_events():
     new_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'new'").fetchone()["c"]
     confirmed_count = conn.execute("SELECT COUNT(*) AS c FROM event_inquiries WHERE status = 'confirmed'").fetchone()["c"]
     types = event_types(conn)
+    # What each one has actually been paid, read before the close like
+    # everything else here. The route to record a payment existed and
+    # nothing on this page linked to it, so the only way to use it was to
+    # know the URL.
+    bills = {e["id"]: event_bill(conn, e["id"]) for e in inquiries}
     conn.close()
 
     # Split by whether the event has actually happened yet. Previously one
@@ -25380,6 +25455,7 @@ def admin_events():
         "admin_events.html", inquiries=inquiries, upcoming=upcoming, past=past,
         status_filter=status_filter, today=datetime.now(timezone.utc).date(),
         new_count=new_count, confirmed_count=confirmed_count, event_types=types,
+        bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
     )
 
 
@@ -25483,6 +25559,57 @@ def new_event_inquiry():
         # the next write fails with "database is locked".
         conn.close()
     flash(f"{contact_name}'s {event_type} added.", "success")
+    return redirect(url_for("admin_events"))
+
+
+@app.route("/admin/events/<int:inquiry_id>/payment", methods=["POST"])
+@owner_required
+def record_event_payment_route(inquiry_id):
+    """Record a deposit or a balance on an event.
+
+    Refuses more than is owed rather than clamping, the same way the desk
+    payment on a stay does: a number typed here with the file open is far more
+    likely a slip than an intention, and quietly taking less than the figure in
+    front of you is how a ledger and a bank statement start disagreeing.
+    """
+    conn = get_db()
+    bill = event_bill(conn, inquiry_id)
+    if not bill:
+        conn.close()
+        abort(404)
+    raw = (request.form.get("amount", "") or "").strip().replace(",", ".")
+    try:
+        amount = round(float(raw), 2)
+    except ValueError:
+        amount = 0
+    if amount <= 0:
+        conn.close()
+        flash("Enter how much was received.", "error")
+        return redirect(url_for("admin_events"))
+    if bill["quoted"] <= 0:
+        conn.close()
+        flash("Put a price on the event before recording money against it.", "error")
+        return redirect(url_for("admin_events"))
+    if amount > bill["owed"] + 0.01:
+        conn.close()
+        flash(f"That is more than the €{bill['owed']:.2f} outstanding on this event.",
+              "error")
+        return redirect(url_for("admin_events"))
+    method = (request.form.get("method", "") or "bank_transfer").strip()
+    if method not in MANUAL_PAYMENT_METHODS:
+        method = "bank_transfer"
+    reference = (request.form.get("reference", "") or "").strip() or None
+    after = record_event_payment(conn, inquiry_id, amount, method=method,
+                                 reference=reference, user_id=session.get("user_id"))
+    log_audit(conn, "event_payment_recorded",
+              target=bill["event"]["reference_code"] or str(inquiry_id),
+              details=f"€{amount:.2f}" + (f" ({reference})" if reference else ""))
+    conn.commit()
+    conn.close()
+    left = after["owed"] if after else 0
+    flash(f"€{amount:.2f} recorded."
+          + (f" €{left:.2f} still to pay." if left > 0.005 else " Settled."),
+          "success")
     return redirect(url_for("admin_events"))
 
 
@@ -33821,6 +33948,81 @@ def send_workshop_revenue(booking_id):
     return redirect(url_for("revenue_to_send"))
 
 
+def send_event_to_pennylane(conn, event, user_id=None):
+    """One event, as a customer invoice. Returns (ok, message).
+
+    Dated on the event itself rather than on when it was quoted: a wedding
+    agreed in January and held in August belongs in August's books.
+
+    Only a confirmed event that has been priced. A quote is not revenue, and an
+    enquiry that came to nothing is not either.
+    """
+    if not pennylane_configured():
+        return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
+    existing = pennylane_already_sent(conn, "event", event["id"])
+    if existing:
+        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+                       + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
+                       + ".")
+    if event["status"] != "confirmed":
+        return False, "Only a confirmed event is revenue."
+    bill = event_bill(conn, event["id"])
+    total = round(float(bill["quoted"] if bill else 0), 2)
+    if total <= 0:
+        return False, "Put a price on the event before invoicing it."
+
+    rate = tax_rate(conn, "vat_events")
+    rate = float(rate) if rate is not None else 20.0
+    net = round(total / (1 + rate / 100), 2) if rate else total
+    line = {"currency_amount": f"{net:.2f}",
+            "currency_tax": f"{round(total - net, 2):.2f}",
+            "vat_rate": pennylane_vat_code(rate),
+            "label": (f"{event['event_type']} — "
+                      f"{event['preferred_date'] or 'date to confirm'}")[:200]}
+    code = app_setting(conn, "pennylane_account_events", PENNYLANE_REVENUE_DEFAULTS)
+    if code:
+        line["ledger_account_number"] = code
+
+    ok, customer = pennylane_find_customer(event["contact_name"], event["contact_email"])
+    if not ok or not customer:
+        return False, f"Could not file a customer for {event['contact_name']}: {customer}"
+
+    when = event["preferred_date"] or (event["created_at"] or "")[:10]
+    ok, payload = pennylane_import_customer_invoice(
+        customer_id=customer, date=when,
+        deadline=event["balance_due_date"] or when,
+        amount=total, tax=round(total - net, 2), lines=[line],
+        invoice_number=event["reference_code"] or f"EVT-{event['id']}",
+        external_reference=event["reference_code"] or f"EVT-{event['id']}",
+    )
+    if not ok:
+        return False, f"Pennylane refused it: {payload}"
+    conn.execute(
+        """INSERT OR IGNORE INTO pennylane_exports (kind, source_id, pennylane_id,
+           amount, sent_at, sent_by_user_id) VALUES ('event', ?, ?, ?, ?, ?)""",
+        (event["id"], str((payload or {}).get("id") or ""), total,
+         datetime.now(timezone.utc).isoformat(), user_id))
+    return True, f"Sent €{total:.2f} for {event['reference_code'] or event['event_type']}."
+
+
+@app.route("/management/revenue-to-send/event/<int:event_id>", methods=["POST"])
+@owner_required
+def send_event_revenue(event_id):
+    conn = get_db()
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    ok, message = send_event_to_pennylane(conn, event, user_id=session.get("user_id"))
+    if ok:
+        log_audit(conn, "event_revenue_sent_to_pennylane",
+                  target=event["reference_code"] or str(event_id))
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("revenue_to_send"))
+
+
 def send_pos_day_to_pennylane(conn, closure, user_id=None):
     """One closed service day, as a customer invoice. Returns (ok, message).
 
@@ -33925,6 +34127,16 @@ def revenue_to_send():
         ateliers.append({"booking": booking, "total": round(float(charged or 0), 2),
                          "sent": pennylane_already_sent(conn, "workshop", booking["id"])})
 
+    events = []
+    for event in conn.execute(
+            """SELECT * FROM event_inquiries WHERE status = 'confirmed'
+                  AND COALESCE(preferred_date, '') < ?
+                ORDER BY preferred_date DESC LIMIT 200""", (today,)).fetchall():
+        bill = event_bill(conn, event["id"])
+        events.append({"event": event,
+                       "total": round(float(bill["quoted"] if bill else 0), 2),
+                       "sent": pennylane_already_sent(conn, "event", event["id"])})
+
     # Read before the close, like the stays above it.
     days = []
     for closure in conn.execute(
@@ -33937,13 +34149,15 @@ def revenue_to_send():
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
     days_waiting = [d for d in days if not d["sent"] and d["total"] > 0]
     ateliers_waiting = [w for w in ateliers if not w["sent"] and w["total"] > 0]
+    events_waiting = [e for e in events if not e["sent"] and e["total"] > 0]
     return render_template(
         "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
         days_waiting=days_waiting, ateliers=ateliers,
         ateliers_waiting=ateliers_waiting,
         waiting_total=round(sum(r["total"] for r in waiting)
                             + sum(d["total"] for d in days_waiting)
-                            + sum(w["total"] for w in ateliers_waiting), 2),
+                            + sum(w["total"] for w in ateliers_waiting)
+                            + sum(e["total"] for e in events_waiting), 2),
         configured=pennylane_configured())
 
 
@@ -34131,23 +34345,21 @@ def management_outstanding():
     conn.close()
     lv = list_view(
         rows, request.args,
-        search=[lambda r: r["booking"]["guest_name"],
-                lambda r: r["booking"]["guest_email"],
-                lambda r: r["booking"]["reference_code"],
-                lambda r: r["booking"]["room_name"]],
+        search=[lambda r: r["who"], lambda r: r["email"],
+                lambda r: r["reference"], lambda r: r["what"]],
         search_hint="Search guest, reference or room",
         facets=[
             facet("state", "State", lambda r: {
                 "gone": "Left owing", "overdue": "Overdue", "due": "Still to pay",
             }[r["state"]]),
+            facet("kind", "Kind", lambda r: r["kind"].title()),
         ],
         sorts=[
             sort_option("worst", "Most overdue first",
                         lambda r: ({"gone": 0, "overdue": 1, "due": 2}[r["state"]],
                                    -r["days_late"], -r["owed"])),
             sort_option("largest", "Largest first", lambda r: r["owed"], reverse=True),
-            sort_option("departure", "By departure",
-                        lambda r: r["booking"]["departure_date"] or ""),
+            sort_option("departure", "By date", lambda r: r["when"] or ""),
         ],
         default_sort="worst",
     )
@@ -41632,6 +41844,63 @@ def compute_city_tax(conn, party_size, guests_under_18, nights):
     adults = max(0, int(party_size or 0) - int(guests_under_18 or 0))
     nights = max(0, int(nights or 0))
     return round(adults * nights * rate, 2), adults, rate
+
+
+def event_bill(conn, event_id):
+    """What an event costs, what has been received, and what is still owed.
+
+    The one definition, the same way booking_bill is for a stay — so the
+    events page, a chase, and the invoice to the accountant cannot disagree
+    about a figure. Anything that wants to know what an event owes asks here.
+
+    Built on the quote rather than on a rate card: a wedding is priced by
+    negotiation and there is nothing to recompute it from. `amount_paid` is
+    additive, so a deposit followed by a balance accumulates rather than
+    overwriting — the mistake that made a stay look unpaid after a second
+    instalment.
+
+    A cancelled or declined event owes nothing. The quote survives for the
+    record; nobody is being asked for it.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        return None
+    quoted = round(float(event["quoted_price"] or 0), 2)
+    paid = round(float(event["amount_paid"] or 0), 2)
+    if event["status"] in ("cancelled", "declined"):
+        quoted = 0.0
+    deposit = event["deposit_amount"]
+    return {
+        "event": event,
+        "quoted": quoted,
+        "paid": paid,
+        "owed": round(max(quoted - paid, 0.0), 2),
+        "overpaid": round(max(paid - quoted, 0.0), 2),
+        "deposit": round(float(deposit), 2) if deposit is not None else None,
+        "deposit_paid": paid > 0.005 and deposit is not None and paid + 0.005 >= float(deposit),
+        "due_date": event["balance_due_date"],
+        "settled": quoted > 0 and paid + 0.005 >= quoted,
+    }
+
+
+def record_event_payment(conn, event_id, amount, *, method="bank_transfer",
+                         reference=None, user_id=None):
+    """Money in on an event: a line of its own, then the running total.
+
+    A line as well as a total, for the same reason a stay has one — three
+    months on, a bank statement has to be matched to a wedding by somebody who
+    was not in the room when it was agreed.
+    """
+    amount = round(float(amount or 0), 2)
+    conn.execute(
+        """INSERT INTO event_payments (event_id, amount, method, reference,
+           taken_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+        (event_id, amount, method, reference, user_id,
+         datetime.now(timezone.utc).isoformat()))
+    conn.execute(
+        "UPDATE event_inquiries SET amount_paid = COALESCE(amount_paid, 0) + ? WHERE id = ?",
+        (amount, event_id))
+    return event_bill(conn, event_id)
 
 
 def city_tax_working(conn, start, end):

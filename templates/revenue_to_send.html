@@ -25,7 +25,7 @@
   <div class="stat-tile">
     <span class="stat-tile-icon stat-tile-icon-steel">{{ icon('receipt', 19) }}</span>
     <span class="stat-tile-body">
-      <span class="stat-tile-value">{{ waiting|length + days_waiting|length + ateliers_waiting|length }}</span>
+      <span class="stat-tile-value">{{ waiting|length + days_waiting|length + ateliers_waiting|length + events_waiting|length }}</span>
       <span class="stat-tile-label">Waiting to be sent</span>
     </span>
   </div>
@@ -72,6 +72,45 @@
           {% if not r['sent'] and r['total'] > 0 and configured %}
           <form method="post" action="{{ url_for('send_revenue_to_pennylane', booking_id=b['id']) }}"
                 onsubmit="return confirm('Send €{{ '%.2f'|format(r['total']) }} for {{ b['reference_code'] }} to Pennylane? This writes a real invoice.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Send</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading" style="margin-top:26px;">Events</h2>
+{# A wedding is the largest single thing the house sells and had no money
+   model at all until now — a quoted price and nothing else. Dated on the
+   event rather than on the quote: one agreed in January and held in August
+   belongs in August. #}
+{% if not events %}
+<div class="empty-state">No events have been held yet.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Contact</th><th>Event</th><th class="num">Invoice</th><th>Accountant</th><th></th></tr></thead>
+    <tbody>
+      {% for e in events %}{% set v = e['event'] %}
+      <tr>
+        <td>{{ v['contact_name'] }}<span class="g-hint">{{ v['reference_code'] or '' }}</span></td>
+        <td>{{ v['event_type'] }}<span class="g-hint">{{ v['preferred_date']|date_short }}</span></td>
+        <td class="num">€{{ '%.2f'|format(e['total']) }}</td>
+        <td>
+          {% if e['sent'] %}<span class="mini-status status-active">Sent</span>
+          <span class="g-hint">{{ e['sent']['sent_at'][:10] }}</span>
+          {% elif e['total'] <= 0 %}<span class="g-hint">No price on it</span>
+          {% else %}<span class="mini-status status-pending">Waiting</span>{% endif %}
+        </td>
+        <td>
+          {% if not e['sent'] and e['total'] > 0 and configured %}
+          <form method="post" action="{{ url_for('send_event_revenue', event_id=v['id']) }}"
+                onsubmit="return confirm('Send €{{ '%.2f'|format(e['total']) }} to Pennylane? This writes a real invoice.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Send</button>
           </form>

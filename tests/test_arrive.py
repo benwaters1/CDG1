@@ -83,8 +83,27 @@ def run():
     stored = conn.execute("SELECT quick_pin_hash FROM users WHERE id = ?", (uid,)).fetchone()[0]
     conn.close()
     # A readable PIN is a PIN that lets anyone clock in as anyone.
-    s.check("it is stored hashed, not in the clear", stored and PIN not in stored,
-            detail=f"stored value contains the PIN: {stored!r}" if stored and PIN in stored else "")
+    #
+    # Asserted as three properties rather than as "the PIN is not a substring of
+    # the stored value". That proxy failed about one run in seventy: a scrypt
+    # record is a salt plus a hundred and twenty-eight hex characters, and a
+    # four-digit decimal PIN turns up inside that by chance often enough to
+    # train somebody to re-run the suite instead of reading it. It is also the
+    # wrong question — a reversible encoding of the PIN would pass it.
+    from werkzeug.security import check_password_hash
+    s.check("something is stored", bool(stored), detail=f"{stored!r}")
+    s.check("it is not the PIN itself", stored != PIN, detail=f"{stored!r}")
+    s.check("it is a recognised password hash",
+            bool(stored) and "$" in stored and stored.split("$")[0].split(":")[0]
+            in ("scrypt", "pbkdf2", "argon2"),
+            detail=f"{(stored or '')[:40]!r} — a format nothing can verify is not "
+                   "a hash, it is a string somebody hopes is one")
+    s.check("and it verifies against the PIN, so it really is that PIN hashed",
+            bool(stored) and check_password_hash(stored, PIN),
+            detail="stored, but not a hash of what was typed")
+    s.check("while refusing a different one",
+            bool(stored) and not check_password_hash(stored, "0000"),
+            detail="it verifies anything, so it verifies nothing")
 
     s.section("Arriving signs them in and starts their shift")
     s.check("they are not on the clock yet", _open_shifts(uid) == 0)
