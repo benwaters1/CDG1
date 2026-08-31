@@ -25,6 +25,15 @@
 {% if data.unpriced %}
 <p class="upload-hint">{{ data.unpriced }} {{ 'person has' if data.unpriced == 1 else 'people have' }} no hourly rate on file, so their hours are counted but their cost isn't.</p>
 {% endif %}
+{% if data.estimated %}
+{# A different admission from the one above. These people DO have a figure
+   against them, read out of a free-text pay note rather than typed as a
+   wage — which the house rule says is never a payroll figure. A total
+   that mixes the two without saying so reads firmer than it is. #}
+<p class="upload-hint">{{ data.estimated }} of the {{ data.estimated + data.typed }} costed
+  {{ 'was' if data.estimated == 1 else 'were' }} worked out from a pay note rather than a wage on
+  file, so this total is firmer for some people than others. Record a wage to make it a figure.</p>
+{% endif %}
 
 {% if not data.people %}
   <div class="empty-state">Nobody clocked any hours in this period.</div>

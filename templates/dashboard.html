@@ -299,6 +299,15 @@ function toggleBreak() {
       <span class="mini-name">{{ current_month_financials.month.strftime('%B') }} is running at a loss</span>
       <span class="mini-role">revenue minus expenses and estimated labour</span>
       <span class="mini-status status-inactive">€{{ '%.0f'|format(current_month_financials.net) }}</span>
+      {% if current_month_financials.labour_unpriced %}
+      {# Net is revenue minus a labour cost that cannot price somebody with
+         no wage on file, so it is overstated by exactly their wages. The
+         reports page has always said this; the page the number is actually
+         read off did not. #}
+      <span class="upload-hint">before {{ current_month_financials.labour_unpriced }}
+        {{ 'person' if current_month_financials.labour_unpriced == 1 else 'people' }}
+        with no wage on file, whose pay is not in it</span>
+      {% endif %}
     </a>
     {% endif %}
     {% for f in low_ratings %}

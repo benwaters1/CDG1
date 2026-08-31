@@ -132,6 +132,7 @@ SUITES = [
     "test_security_headers",
     "test_money_routes",
     "test_wages",
+    "test_labour_honesty",
     "test_outlook",
     "test_booking_email",
     "test_booking_form_errors",

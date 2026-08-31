@@ -59,7 +59,7 @@
   </div>
   <div class="stat-tile">
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if financials.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
-    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if financials.net < 0 }}">€{{ '%.0f'|format(financials.net) }}</span><span class="stat-tile-label">Net (estimate)</span></span>
+    <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if financials.net < 0 }}">€{{ '%.0f'|format(financials.net) }}</span><span class="stat-tile-label">Net{% if financials.labour_unpriced %} — excludes {{ financials.labour_unpriced }} unpriced{% else %} (estimate){% endif %}</span></span>
   </div>
 </div>
 

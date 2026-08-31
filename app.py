@@ -5135,7 +5135,11 @@ def estimated_labour_cost(conn, start_iso, end_iso):
     two.
     """
     b = labour_cost_breakdown(conn, start_iso, end_iso)
-    return (b["total"] if b["priced_any"] else None), b["hours"], len(b["unpriced"])
+    # The last two used to be dropped here, which is where the honesty went.
+    # A caller that only has the total cannot say what the total leaves out,
+    # and every caller wants to.
+    return ((b["total"] if b["priced_any"] else None), b["hours"],
+            len(b["unpriced"]), b["estimated_count"], b["typed_count"])
 
 
 def _shift_hours(start_time, end_time):
@@ -6021,12 +6025,20 @@ def financial_month_summary(conn, month_start, month_end):
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
 
-    labour_cost, _labour_hours, _unpriced = estimated_labour_cost(
+    (labour_cost, _labour_hours, labour_unpriced,
+     labour_estimated, labour_typed) = estimated_labour_cost(
         conn, month_start.isoformat(), month_end.isoformat())
 
     expenses_total = round(staff_expenses + supplier_expenses, 2)
     net = round(revenue - expenses_total - (labour_cost or 0), 2)
     return {
+        # What the labour figure -- and therefore net -- does and does not
+        # include. Net is revenue minus a labour cost that cannot price
+        # somebody with no wage on file, so it is overstated by their wages
+        # and the page has to be able to say so.
+        "labour_unpriced": labour_unpriced,
+        "labour_estimated": labour_estimated,
+        "labour_typed": labour_typed,
         "month": month_start, "revenue": round(revenue, 2),
         "revenue_gross": round(revenue_gross, 2), "room_revenue": round(room_revenue, 2),
         "restaurant_revenue": round(restaurant_revenue, 2), "workshop_revenue": round(workshop_revenue, 2),
@@ -13530,7 +13542,8 @@ def report_labour(conn, period):
              estimated_hourly_cost(r["hours"], r["pay_rate"], r["pay_type"]))}
         for r in rows
     ]
-    total_cost, total_hours, unpriced = estimated_labour_cost(
+    (total_cost, total_hours, unpriced,
+     estimated, typed) = estimated_labour_cost(
         conn, period["start_iso"], period["end_iso"])
     total_cost = total_cost or 0.0
 
@@ -13541,6 +13554,13 @@ def report_labour(conn, period):
         "total_hours": total_hours,
         "total_cost": total_cost,
         "unpriced": unpriced,
+        # Not the same admission as "unpriced". These people HAVE a figure
+        # against them and it was read out of a free-text pay note rather
+        # than typed as a wage, which the house rule says is never a payroll
+        # figure. A total that mixes the two without saying so reads as
+        # firmer than it is.
+        "estimated": estimated,
+        "typed": typed,
         "revenue": revenue,
         "labour_pct": round(total_cost / revenue * 100, 1) if revenue > 0 else None,
         "csv": [{"employee": p["name"], "hours": p["hours"], "shifts": p["shifts"],

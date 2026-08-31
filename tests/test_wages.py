@@ -207,7 +207,11 @@ def run():
 
     s.section("estimated_labour_cost still answers, and now from the record")
     conn = db()
-    cost, hours, unpriced = m.estimated_labour_cost(conn, "2035-03-01", "2035-04-01")
+    # Five now, not three: the counts of who was costed from a typed
+    # wage and who from a free-text pay note used to be dropped here,
+    # which is where net profit stopped being able to say what it left out.
+    (cost, hours, unpriced, estimated,
+     typed) = m.estimated_labour_cost(conn, "2035-03-01", "2035-04-01")
     conn.close()
     s.check("it returns three values as before", cost is not None and hours > 0)
     s.check("and the cost matches the breakdown's total",
