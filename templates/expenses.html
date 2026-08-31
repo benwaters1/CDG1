@@ -8,6 +8,36 @@
   <a href="{{ url_for('export_expenses_csv') }}" class="btn-mini">Export CSV</a>
 </div>
 
+{# What is actually owed, and to whom. Neither figure could be produced before:
+   every supplier invoice was due the day it was uploaded, and a staff claim
+   marked "paid" recorded no payment, so "still owed" and "approved a while
+   ago" were the same query. #}
+{% if ageing.total or owed_to_staff.total %}
+<div class="pass-short" style="margin-bottom:14px;">
+  <strong>Owed right now</strong>
+  {% if ageing.total %}
+  <span class="pass-short-row">
+    Suppliers: <strong>€{{ '%.2f'|format(ageing.total) }}</strong>
+    {%- if ageing.totals.overdue %} ·
+      <span class="mini-status status-overdue">€{{ '%.2f'|format(ageing.totals.overdue) }} overdue</span>
+    {%- endif %}
+    {%- if ageing.totals.due_soon %} · €{{ '%.2f'|format(ageing.totals.due_soon) }} due this week{% endif %}
+    {%- if ageing.totals.no_date %} · €{{ '%.2f'|format(ageing.totals.no_date) }} with no date on it{% endif %}
+  </span>
+  {% endif %}
+  {% if owed_to_staff.total %}
+  <span class="pass-short-row">
+    Our own people: <strong>€{{ '%.2f'|format(owed_to_staff.total) }}</strong> —
+    {% for p in owed_to_staff.people %}{{ p.name }} €{{ '%.2f'|format(p.total) }}
+      {%- if p.waiting_days and p.waiting_days > 14 %} <span class="mini-status status-overdue">waiting {{ p.waiting_days }} days</span>{% endif %}
+      {%- if not loop.last %} · {% endif %}{% endfor %}
+  </span>
+  <span class="upload-hint">Somebody who spent their own money on the house is
+    the last person who should have to ask twice.</span>
+  {% endif %}
+</div>
+{% endif %}
+
 
 {# Getting a bill INTO the system from wherever you happen to be. The camera
    works anywhere; the scanner only when the app can reach the printer on its
@@ -180,6 +210,8 @@
     <div class="expense-head">
       <div>
         <strong>{{ c['submitter_name'] or 'Former employee' }}</strong>{% if c['vendor_name'] %} — {{ c['vendor_name'] }}{% endif %} — €{{ '%.2f'|format(c['amount']) }}
+        {%- if c['spent_on'] %} <span class="upload-hint">spent {{ c['spent_on'] }}</span>{% endif %}
+        {%- if c['paid_at'] %} <span class="mini-status status-confirmed">paid back {{ c['paid_at'][:10] }}{% if c['paid_reference'] %} · {{ c['paid_reference'] }}{% endif %}</span>{% endif %}
         <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>
         {% if c['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
       </div>
@@ -196,7 +228,18 @@
       <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
       <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="rejected"><button type="submit" class="btn-mini btn-mini-danger">Reject</button></form>
       {% elif c['status'] == 'approved' %}
-      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark reimbursed</button></form>
+      {# How they were paid back, alongside the fact of it. "Bank transfer
+         14 May" answers the question somebody actually asks; a status
+         reading 'paid' does not. #}
+      <form method="post" action="{{ url_for('decide_expense', expense_id=c['id']) }}"
+            style="display:flex; gap:6px; align-items:center;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="status" value="paid">
+        <input type="text" name="paid_reference" maxlength="120"
+               placeholder="How (transfer, cash, payroll)"
+               aria-label="How they were paid back" style="max-width:200px;">
+        <button type="submit" class="btn-mini">Mark reimbursed</button>
+      </form>
       {% endif %}
       <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if c['restaurant_related'] else 'Mark' }} restaurant</button></form>
       <form method="post" action="{{ url_for('delete_expense', expense_id=c['id']) }}" onsubmit="return confirm('Remove this expense record?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>

@@ -3383,6 +3383,16 @@ def init_db():
         ("expense_tax_amount", "ALTER TABLE expenses ADD COLUMN tax_amount REAL"),
         ("expense_paid_at", "ALTER TABLE expenses ADD COLUMN paid_at TEXT"),
         ("expense_dup_of", "ALTER TABLE expenses ADD COLUMN duplicate_of_id INTEGER"),
+        # The date on the receipt, which is a different fact from the date it
+        # was handed in. Kept apart from invoice_date because a receipt and a
+        # supplier invoice are different documents on the same table, and one
+        # column meaning either would be a column meaning neither.
+        ("expense_spent_on", "ALTER TABLE expenses ADD COLUMN spent_on TEXT"),
+        # How somebody was actually paid back. A status saying 'paid' is not a
+        # record of a payment; it cannot answer when, or how, or by whom.
+        ("expense_paid_by", "ALTER TABLE expenses ADD COLUMN paid_by_user_id INTEGER "
+                            "REFERENCES users(id) ON DELETE SET NULL"),
+        ("expense_paid_ref", "ALTER TABLE expenses ADD COLUMN paid_reference TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -22869,11 +22879,22 @@ def expenses():
         ]
 
     supplier_upload_url = url_for("supplier_invoice_submit", token=supplier_token, _external=True)
+    reopen = get_db()
+    try:
+        owed_to_staff = staff_reimbursements_owed(reopen)
+        ageing = payables_ageing(reopen)
+    finally:
+        reopen.close()
     return render_template(
         "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
         status_filter=status_filter, q=q, totals=totals,
         pennylane_ready=pennylane_configured(),
         today_iso=datetime.now(LOCAL_TZ).date().isoformat(),
+        # What the house owes its own people, which nothing could answer while
+        # "paid" was only a word: still-owed and approved-a-while-ago were the
+        # same query.
+        owed_to_staff=owed_to_staff, ageing=ageing,
+        stale_claim_days=STALE_CLAIM_DAYS,
         # Only offer the scan button when a scanner is configured — a button
         # that cannot work from Perth is worse than no button.
         scanner_ready=scanner_configured(),
@@ -22913,6 +22934,10 @@ def submit_expense():
         amount_raw = request.form.get("amount", "").strip()
         vehicle_id = request.form.get("vehicle_id", "").strip()
         restaurant_related = 1 if request.form.get("restaurant_related") else 0
+        # The date on the receipt, which is a different fact from the date it
+        # was handed in. Claims arrive in batches weeks later, so a March
+        # purchase submitted in April went into the books as April.
+        spent_on = parse_date(request.form.get("spent_on", "").strip())
         file = request.files.get("receipt")
 
         try:
@@ -22920,11 +22945,20 @@ def submit_expense():
         except ValueError:
             amount = None
 
+        if spent_on and spent_on > datetime.now(LOCAL_TZ).date():
+            flash("That date is in the future \u2014 please check it.", "error")
+            return render_template(
+        "expense_form.html", vendors=known_vendor_names(),
+        prefill_vendor=request.args.get("vendor", ""), prefill_vehicle_id=vehicle_id,
+        today=datetime.now(LOCAL_TZ).date().isoformat(),
+    )
+
         if not description or amount is None or amount <= 0:
             flash("A description and a valid amount are required.", "error")
             return render_template(
         "expense_form.html", vendors=known_vendor_names(),
         prefill_vendor=request.args.get("vendor", ""), prefill_vehicle_id=vehicle_id,
+        today=datetime.now(LOCAL_TZ).date().isoformat(),
     )
 
         stored_name = save_expense_file(file)
@@ -22933,15 +22967,18 @@ def submit_expense():
             return render_template(
         "expense_form.html", vendors=known_vendor_names(),
         prefill_vendor=request.args.get("vendor", ""), prefill_vehicle_id=vehicle_id,
+        today=datetime.now(LOCAL_TZ).date().isoformat(),
     )
 
         conn = get_db()
         conn.execute(
             """INSERT INTO expenses
-               (kind, submitted_by_user_id, vendor_name, description, amount, filename, vehicle_id, restaurant_related, submitted_at)
-               VALUES ('staff_expense', ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (kind, submitted_by_user_id, vendor_name, description, amount, filename, vehicle_id, restaurant_related, spent_on, submitted_at)
+               VALUES ('staff_expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user["id"], vendor_name or None, description, amount, stored_name,
-             vehicle_id or None, restaurant_related, datetime.now(timezone.utc).isoformat()),
+             vehicle_id or None, restaurant_related,
+             spent_on.isoformat() if spent_on else None,
+             datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         conn.close()
@@ -22970,10 +23007,29 @@ def decide_expense(expense_id):
     # each other) re-sending the decision email — status != ? rather than
     # a fixed prior-state check, since the workflow legitimately moves
     # pending -> approved -> paid across separate, deliberate actions.
-    cur = conn.execute(
-        "UPDATE expenses SET status = ?, owner_note = ?, decided_at = ? WHERE id = ? AND status != ?",
-        (status, note or None, datetime.now(timezone.utc).isoformat(), expense_id, status),
-    )
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if status == "paid":
+        # 'Paid' used to be a word in a column. It could not answer when
+        # somebody was actually reimbursed, how, or by whom \u2014 which is the
+        # question a member of staff who spent their own money asks.
+        reference = request.form.get("paid_reference", "").strip()[:120] or None
+        cur = conn.execute(
+            "UPDATE expenses SET status = ?, owner_note = ?, decided_at = ?, "
+            "paid_at = ?, paid_by_user_id = ?, paid_reference = ? "
+            "WHERE id = ? AND status != ?",
+            (status, note or None, now_iso, now_iso,
+             (current_user()["id"] if current_user() else None),
+             reference, expense_id, status))
+    else:
+        cur = conn.execute(
+            "UPDATE expenses SET status = ?, owner_note = ?, decided_at = ? "
+            "WHERE id = ? AND status != ?",
+            (status, note or None, now_iso, expense_id, status))
+    # Agreeing to pay somebody is at least as worth recording as putting them
+    # on a dinner service, which has been audited since the beginning.
+    log_audit(conn, f"expense_{status}", target=row["vendor_name"] or row["description"][:60],
+              details=f"{float(row['amount'] or 0):.2f}"
+                      + (f" ref {reference}" if status == "paid" and reference else ""))
     conn.commit()
     if cur.rowcount == 0:
         conn.close()
@@ -41460,6 +41516,58 @@ def supplier_invoice_tax(conn, expense):
     if stated is not None:
         return round(float(stated), 2), "as stated on the invoice"
     return None, "not stated — enter the VAT from the invoice before sending"
+
+
+# A claim older than this is usually a receipt found in a coat pocket rather
+# than a recent purchase. Not refused — people do find them — but the owner is
+# told, because a six-month-old claim can fall outside what the accountant will
+# accept for the period it belongs to.
+STALE_CLAIM_DAYS = 90
+
+
+def expense_document_date(row):
+    """The date on the paper, whichever kind of paper it is.
+
+    A supplier invoice carries its own date; a receipt carries the day it was
+    spent. Before either existed, both fell back to the day somebody uploaded
+    the thing, which is a fact about the app rather than about the money.
+    """
+    for key in ("invoice_date", "spent_on"):
+        if key in row.keys() and row[key]:
+            return row[key]
+    return (row["submitted_at"] or "")[:10] or None
+
+
+def staff_reimbursements_owed(conn, today=None):
+    """What the house owes the people who work here, and since when.
+
+    This did not exist and could not have: nothing recorded when a claim was
+    actually paid, so "still owed" and "approved a long time ago" were the
+    same query. Somebody who spent their own money on the house is the last
+    person who should have to ask twice.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        """SELECT expenses.*, users.name AS person, users.email AS person_email
+             FROM expenses LEFT JOIN users ON users.id = expenses.submitted_by_user_id
+            WHERE expenses.kind = 'staff_expense'
+              AND expenses.status = 'approved'
+              AND expenses.paid_at IS NULL
+            ORDER BY expenses.submitted_at""").fetchall()
+    by_person = {}
+    for r in rows:
+        who = r["person"] or "Former employee"
+        entry = by_person.setdefault(who, {"name": who, "email": r["person_email"],
+                                           "total": 0.0, "items": [], "oldest": None})
+        entry["total"] = round(entry["total"] + float(r["amount"] or 0), 2)
+        entry["items"].append(r)
+        approved = parse_date((r["decided_at"] or "")[:10])
+        if approved and (entry["oldest"] is None or approved < entry["oldest"]):
+            entry["oldest"] = approved
+    for entry in by_person.values():
+        entry["waiting_days"] = (day - entry["oldest"]).days if entry["oldest"] else None
+    return {"people": sorted(by_person.values(), key=lambda p: -p["total"]),
+            "total": round(sum(p["total"] for p in by_person.values()), 2)}
 
 
 def payables_ageing(conn, today=None):

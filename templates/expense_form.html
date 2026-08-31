@@ -18,8 +18,16 @@
     {% endif %}
     <label class="field-label">Description</label>
     <textarea name="description" required placeholder="What was purchased and why"></textarea>
-    <label class="field-label">Amount (€)</label>
-    <input type="number" name="amount" step="0.01" min="0.01" required>
+    <label class="field-label" for="ex_amount">Amount (€)</label>
+    <input type="number" id="ex_amount" name="amount" step="0.01" min="0.01" required>
+    {# When the money actually left their pocket, which is not the day they
+       got round to filing it. Claims come in batches weeks later, so the
+       submission date put a March purchase into April's books. #}
+    <label class="field-label" for="ex_spent">When did you spend it</label>
+    <input type="date" id="ex_spent" name="spent_on" max="{{ today }}"
+           value="{{ request.form.get('spent_on', today) }}">
+    <p class="upload-hint">The date on the receipt. It is what the purchase is
+      booked against, so a receipt found later still lands in the right month.</p>
     <label class="field-label">Receipt</label>
     <input type="file" name="receipt" accept="image/*,.pdf">
     <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:6px;">
