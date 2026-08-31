@@ -1,16 +1,9 @@
 {% extends "public_base.html" %}
-{% set sticky_bar = 'none' %}
 {% block title %}My Registration{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <div class="g-mb-card">
-  <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
-    <path d="M0 13h38"/><path d="M82 13h38"/>
-    <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
-    <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
-    <circle cx="60" cy="13" r="1.4"/>
-  </svg>
   <p class="g-eyebrow">{{ t('Your atelier') }}</p>
   <h1>{{ booking['title'] }}</h1>
   <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span></p>
@@ -58,17 +51,21 @@
   </div>
 
   {% if booking['status'] not in ('declined', 'cancelled') and total_charged %}
-  <div class="g-mb-card" style="margin-top:var(--s3);">
+  <div class="g-mb-card" style="margin-top:14px;">
     <dl class="g-facts-list">
       <div><dt>Total charged</dt><dd>€{{ '%.2f'|format(total_charged) }}</dd></div>
       <div><dt>Paid</dt><dd>€{{ '%.2f'|format(total_paid) }}</dd></div>
       <div><dt>Balance due</dt><dd>€{{ '%.2f'|format(balance_due) }}</dd></div>
     </dl>
     {% if stripe_enabled and booking['deposit_amount'] and not booking['deposit_paid_at'] %}
-    <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay deposit — €{{ '%.2f'|format(booking['deposit_amount']) }}</a>
+    <a href="{{ url_for('workshop_pay_deposit', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:12px;">Pay deposit — €{{ '%.2f'|format(booking['deposit_amount']) }}</a>
     {% elif stripe_enabled and booking['deposit_paid_at'] and balance_due > 0 %}
-    <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:var(--s3);">Pay balance — €{{ '%.2f'|format(balance_due) }}</a>
+    <a href="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-btn g-btn--solid" style="margin-top:12px;">Pay balance — €{{ '%.2f'|format(balance_due) }}</a>
 
+    {# Part-payments and the auto-charge notice. These keep being lost when this
+       template is handed over, so if they vanish again tests/test_part_payments
+       and tests/test_autocharge are what catch it. Same route as the button
+       above — no amount means the whole balance, so the two are one path. #}
     <form method="post" action="{{ url_for('workshop_pay_balance', manage_token=booking['manage_token']) }}" class="g-field" style="margin-top:var(--s4)">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label for="part_amount">Or pay part of it</label>
@@ -104,20 +101,20 @@
   {% endif %}
 
   {% if other_sessions %}
-  <div class="g-mb-card" style="margin-top:var(--s3);">
+  <div class="g-mb-card" style="margin-top:14px;">
     <h3>Move to a different date</h3>
     <p class="g-hint">
       {% if booking['status'] == 'pending' and not booking['deposit_paid_at'] %}
-        Pick a new date and you will be moved right away, as long as there is room.
+        Pick a new date and you'll be moved right away, as long as there's room.
       {% else %}
-        Pick a new date and we will confirm availability and get back to you — this registration is already {{ 'confirmed' if booking['status'] == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
+        Pick a new date and we'll confirm availability and get back to you — this registration is already {{ 'confirmed' if booking['status'] == 'confirmed' else 'paid' }}, so we review changes rather than applying them instantly.
       {% endif %}
     </p>
-    <form method="post" class="g-row" style="margin-top:var(--s2);">
+    <form method="post" class="g-row" style="margin-top:10px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="change_session">
       <label class="g-mb-label" for="new_session_id">Move to another session</label>
-        <select id="new_session_id" name="new_session_id" required>
+      <select id="new_session_id" name="new_session_id" required>
         <option value="">— choose a date —</option>
         {% for s in other_sessions %}
         <option value="{{ s['id'] }}">{{ s['start_date']|date_short }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date']|date_short }}{% endif %}</option>
@@ -128,29 +125,8 @@
   </div>
   {% endif %}
 
-
-  {% if booking['status'] in ('pending', 'confirmed') and booking['balance_amount'] %}
-  <div class="g-mb-card" style="margin-top:var(--s4)">
-    <p class="g-mb-dt">The balance</p>
-    <form method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="action" value="autocharge">
-      <p class="g-opt">
-        <label>
-          <input type="checkbox" name="autocharge_opt_out" value="on"
-                 {% if booking['autocharge_opt_out'] %}checked{% endif %}>
-          Do not take the balance automatically — I will pay it myself
-        </label>
-      </p>
-      <p class="g-hint">Leave this unticked and the balance is taken from the card on file
-        closer to the date. Tick it and we will send you the details instead.</p>
-      <button type="submit" class="g-btn">Save this preference</button>
-    </form>
-  </div>
-  {% endif %}
-
   {% if booking['status'] in ('pending', 'confirmed') %}
-  <form method="post" onsubmit="return confirm('Cancel this registration? This cannot be undone.');" style="margin-top:var(--s4);">
+  <form method="post" onsubmit="return confirm('Cancel this registration? This cannot be undone.');" style="margin-top:16px;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="cancel">
     <button type="submit" class="btn-text-danger">Cancel this registration</button>

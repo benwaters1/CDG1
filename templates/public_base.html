@@ -970,5 +970,22 @@
   paintFields();
 })();
 </script>
+
+<script>
+/* Reduced motion is a request, not a preference to be overridden. If the
+   guest's system asks for it, the hero video holds on its first frame rather
+   than playing. */
+(function(){
+  if (!window.matchMedia) return;
+  var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function apply(){
+    document.querySelectorAll('video[autoplay]').forEach(function(v){
+      if (mq.matches){ v.removeAttribute('autoplay'); v.pause(); }
+    });
+  }
+  apply();
+  if (mq.addEventListener) mq.addEventListener('change', apply);
+})();
+</script>
 </body>
 </html>

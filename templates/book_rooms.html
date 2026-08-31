@@ -630,6 +630,25 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('key') }}</div>
 
+
+<!-- ============ WHERE THIS IS ============ -->
+{# The map lives on Contact. These pages need the geography stated, because
+   this is where a guest decides whether the journey is worth it. #}
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-eyebrow">Where This Is</p>
+  <h2 class="g-place">Two Hours From Toulouse, Three Minutes From the Village</h2>
+  <div class="g-facts-list">
+    <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road. We can send a car.</dd></div>
+    <div><dt>By train</dt><dd>Les Cabannes, on the Toulouse&ndash;Latour-de-Carol line. Three minutes from the gates.</dd></div>
+    <div><dt>By car</dt><dd>The N20 south from Toulouse, then the D8 through Ch&acirc;teau-Verdun. Parking at the ch&acirc;teau.</dd></div>
+    <div><dt>The address</dt><dd>2 Route de Beille, Ch&acirc;teau-Verdun, Ari&egrave;ge 09310, France</dd></div>
+  </div>
+  <p class="g-hint" style="margin-top:var(--s4)">
+    <a href="https://www.google.com/maps/search/?api=1&amp;query=Ch%C3%A2teau+de+Gudanes+Ch%C3%A2teau-Verdun" target="_blank" rel="noopener">Open in Google Maps</a>
+    &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
+  </p>
+</div></section>
+
 <!-- ============ HOW SMALL THIS IS ============ -->
 {# Every figure verified against the system: five bedrooms of ninety-four rooms, one sitting a
    night in the kitchen, one event at a time, fifteen on an atelier. The
