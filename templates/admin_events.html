@@ -200,6 +200,17 @@
       <label class="field-label">Quoted price (€)</label>
       <input type="number" name="quoted_price" step="0.01" min="0" value="{{ e['quoted_price'] if e['quoted_price'] is not none else '' }}" style="width:110px;">
     </div>
+    <div>
+      <label class="field-label">Deposit (€)</label>
+      <input type="number" name="deposit_amount" step="0.01" min="0" style="width:110px;"
+             value="{{ '%.2f'|format(e['deposit_amount']) if e['deposit_amount'] is not none else '' }}"
+             placeholder="auto">
+    </div>
+    <div>
+      <label class="field-label">Balance due</label>
+      <input type="date" name="balance_due_date" style="width:150px;"
+             value="{{ e['balance_due_date'] or '' }}">
+    </div>
     <div style="flex:2 1 200px;">
       <label class="field-label">Owner note</label>
       <input type="text" name="owner_note" value="{{ e['owner_note'] or '' }}">

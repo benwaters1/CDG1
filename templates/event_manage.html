@@ -21,6 +21,8 @@
          to see it had landed — and events had no money model at all until
          now, so there was nothing to show. #}
       {% if bill and bill.paid %}<div><dt>Received</dt><dd>€{{ '%.2f'|format(bill.paid) }}</dd></div>{% endif %}
+      {% if bill and bill.deposit and not bill.deposit_paid %}<div><dt>Deposit to hold the date</dt><dd><strong>€{{ '%.2f'|format(bill.deposit) }}</strong></dd></div>{% endif %}
+      {% if bill and bill.due_date %}<div><dt>Balance due by</dt><dd>{{ bill.due_date|date_short }}</dd></div>{% endif %}
       {% if bill and bill.owed %}<div><dt>Still to pay</dt><dd><strong>€{{ '%.2f'|format(bill.owed) }}</strong></dd></div>
       {% elif bill and bill.quoted and bill.settled %}<div><dt>Settled</dt><dd>Thank you</dd></div>{% endif %}
     </dl>
@@ -31,13 +33,17 @@
        only the whole figure would mean nobody paid online at all. #}
     <form method="post" action="{{ url_for('event_pay', manage_token=inquiry['manage_token']) }}"
           class="g-mb-part__form" style="margin-top:var(--s2);">
+      {% set suggested = bill.deposit if (bill.deposit and not bill.deposit_paid and bill.deposit <= bill.owed) else bill.owed %}
       <label class="g-mb-label" for="ev_amount">Pay towards this</label>
       <input id="ev_amount" type="number" name="amount" inputmode="decimal"
              min="0.50" max="{{ '%.2f'|format(bill.owed) }}" step="0.01"
+             value="{{ '%.2f'|format(suggested) if suggested < bill.owed else '' }}"
              placeholder="{{ '%.2f'|format(bill.owed) }}">
       <button type="submit" class="g-btn g-btn--solid">Continue</button>
     </form>
-    <p class="g-hint">Leave the amount blank to pay the balance in full. Anything
+    <p class="g-hint">{% if bill.deposit and not bill.deposit_paid and bill.deposit < bill.owed %}The
+    deposit holds your date; the balance can follow by {{ bill.due_date|date_short if bill.due_date else 'nearer the time' }}.
+    {% endif %}Leave the amount blank to pay the balance in full. Anything
     you pay now comes off the total and the rest can follow whenever suits.</p>
     {% elif bill and bill.owed > 0 %}
     <p class="g-hint" style="margin-top:var(--s2);">Card payment isn't connected

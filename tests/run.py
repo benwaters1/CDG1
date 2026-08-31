@@ -176,6 +176,7 @@ SUITES = [
     "test_shell_cache",
     "test_city_tax",
     "test_event_money",
+    "test_event_terms",
     "test_no_email_guest",
     "test_pennylane_revenue",
     "test_booking_race",

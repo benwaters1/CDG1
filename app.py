@@ -322,6 +322,18 @@ MANUAL_PAYMENT_METHODS = {
     "other": "Something else",
 }
 
+# What the house asks for on an event, unless the owner types something else
+# on the event itself. A percentage rather than a figure because an event quote
+# ranges from a lunch to a wedding, and 30% is the convention the written
+# quotes already use.
+EVENT_PAYMENT_DEFAULTS = {
+    "event_deposit_percent": "30",
+    # Further out than a stay (14 days) or a workshop (30) on purpose: an event
+    # balance is usually a bank transfer somebody has to arrange, not a tap.
+    "event_balance_due_days_before": "45",
+}
+
+
 ROOM_PAYMENT_DEFAULTS = {
     "room_deposit_percent": "0",
     "room_balance_due_days_before": "14",
@@ -2679,7 +2691,7 @@ def init_db():
 
         CREATE TABLE IF NOT EXISTS deposit_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL CHECK(category IN ('restaurant','workshop','room')),
+            category TEXT NOT NULL CHECK(category IN ('restaurant','workshop','room','event')),
             start_date TEXT,
             end_date TEXT,
             min_party_size INTEGER,
@@ -3977,6 +3989,12 @@ def init_db():
     # or for a party taking most of the house — is exactly what a deposit rule
     # is for, and rooms could not have either.
     #
+    # Events were in the same position, and it matters more for them: a wedding
+    # in August and a meeting in February are not held on the same terms, and an
+    # event deposit is the largest single sum the house asks for in advance. The
+    # guard below names the NEWEST category, so this rebuild runs exactly once
+    # per category added and is a no-op forever after.
+    #
     # SQLite cannot alter a CHECK, so the table is rebuilt. Safe to do here:
     # nothing references deposit_rules by foreign key, and the copy carries
     # every existing rule across. Guarded on the constraint text itself rather
@@ -3984,14 +4002,14 @@ def init_db():
     rules_sql = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'deposit_rules'"
     ).fetchone()
-    if rules_sql and "'room'" not in (rules_sql["sql"] or ""):
+    if rules_sql and "'event'" not in (rules_sql["sql"] or ""):
         try:
             conn.execute("ALTER TABLE deposit_rules RENAME TO deposit_rules_old")
             conn.execute("""
                 CREATE TABLE deposit_rules (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     category TEXT NOT NULL
-                        CHECK(category IN ('restaurant','workshop','room')),
+                        CHECK(category IN ('restaurant','workshop','room','event')),
                     start_date TEXT,
                     end_date TEXT,
                     min_party_size INTEGER,
@@ -25911,6 +25929,8 @@ def update_event_inquiry(inquiry_id):
     status = request.form.get("status", "").strip()
     quoted_price_raw = request.form.get("quoted_price", "").strip()
     owner_note = request.form.get("owner_note", "").strip()
+    deposit_raw = request.form.get("deposit_amount", "").strip().replace(",", ".")
+    due_raw = request.form.get("balance_due_date", "").strip()
     valid_statuses = ("new", "contacted", "quoted", "confirmed", "declined", "cancelled")
     if status not in valid_statuses:
         abort(400)
@@ -25929,9 +25949,33 @@ def update_event_inquiry(inquiry_id):
     status_changed_to_decided = status in ("confirmed", "declined") and inquiry["status"] != status
     decided_at = datetime.now(timezone.utc).isoformat() if status_changed_to_decided else inquiry["decided_at"]
 
+    # The deposit and the balance due date - the two columns event_bill and the
+    # reminder job read and nothing wrote. A typed value wins; blank means "work
+    # it out" the first time an event is confirmed and "leave it alone" after
+    # that, so re-saving a row cannot silently move a date already given to a
+    # guest in writing.
+    deposit_amount = inquiry["deposit_amount"]
+    balance_due_date = inquiry["balance_due_date"]
+    if deposit_raw:
+        try:
+            deposit_amount = round(float(deposit_raw), 2)
+        except ValueError:
+            pass
+    if due_raw:
+        try:
+            balance_due_date = date.fromisoformat(due_raw).isoformat()
+        except ValueError:
+            pass
+    if (status == "confirmed" and not deposit_raw and not due_raw
+            and deposit_amount is None and balance_due_date is None):
+        deposit_amount, balance_due_date = event_payment_terms(
+            conn, quoted_price, inquiry["preferred_date"], inquiry["guest_count"])
+
     conn.execute(
-        "UPDATE event_inquiries SET status = ?, quoted_price = ?, owner_note = ?, decided_at = ? WHERE id = ?",
-        (status, quoted_price, owner_note or None, decided_at, inquiry_id),
+        "UPDATE event_inquiries SET status = ?, quoted_price = ?, owner_note = ?, "
+        "deposit_amount = ?, balance_due_date = ?, decided_at = ? WHERE id = ?",
+        (status, quoted_price, owner_note or None, deposit_amount,
+         balance_due_date, decided_at, inquiry_id),
     )
     log_audit(conn, "event_inquiry_updated", target=inquiry["reference_code"], details=status)
     conn.commit()
@@ -26066,6 +26110,69 @@ def room_payment_setting(conn, key, cast=float):
         return cast(raw)
     except (TypeError, ValueError):
         return cast(ROOM_PAYMENT_DEFAULTS[key])
+
+
+def event_payment_setting(conn, key, cast=float):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    raw = row["value"] if row else EVENT_PAYMENT_DEFAULTS[key]
+    try:
+        return cast(raw)
+    except (TypeError, ValueError):
+        return cast(EVENT_PAYMENT_DEFAULTS[key])
+
+
+def event_payment_terms(conn, quoted, event_date_iso, party_size=None):
+    """The deposit to ask for on an event, and when the balance falls due.
+
+    Returns (deposit_amount, balance_due_date_iso), either of which may be None.
+
+    This exists because both of those columns were being READ and never
+    WRITTEN. event_bill exposed a deposit and a deposit_paid flag that were
+    always None and always False, and run_event_balance_reminder_job selects on
+    "balance_due_date IS NOT NULL" - so the job that chases the largest sum the
+    house is owed could never match a row. It ran daily, found nothing, logged
+    "no event balances due" and looked healthy forever. Its test passed because
+    the FIXTURE wrote the column, which is a state the app could not produce.
+
+    The percentage comes through resolve_deposit_percent so an event rule can
+    vary by date and party size like every other category, falling back to the
+    house percentage.
+
+    Inside the balance window there is no balance stage: the whole amount is
+    due, the same way a workshop booked inside 30 days is. A due date in the
+    past would be worse than none - it makes the reminder fire the moment the
+    event is confirmed.
+    """
+    try:
+        quoted = round(float(quoted or 0), 2)
+    except (TypeError, ValueError):
+        return None, None
+    if quoted <= 0:
+        return None, None
+
+    percent = resolve_deposit_percent(
+        conn, "event", event_date_iso or datetime.now(timezone.utc).date().isoformat(),
+        party_size or 0, event_payment_setting(conn, "event_deposit_percent"))
+    deposit = round(quoted * percent / 100.0, 2) if percent else None
+    if deposit is not None and deposit > quoted:
+        deposit = quoted
+
+    days_before = event_payment_setting(conn, "event_balance_due_days_before", cast=int)
+    due = None
+    if event_date_iso:
+        try:
+            event_date = date.fromisoformat(event_date_iso)
+        except (TypeError, ValueError):
+            event_date = None
+        if event_date:
+            candidate = event_date - timedelta(days=days_before)
+            if candidate > datetime.now(timezone.utc).date():
+                due = candidate.isoformat()
+            else:
+                # Held inside the window, so there is no balance stage: all of
+                # it is due now and the deposit stops being a deposit.
+                deposit = None
+    return deposit, due
 
 
 def room_payment_schedule(conn, arrival, total_price, party_size=None):
