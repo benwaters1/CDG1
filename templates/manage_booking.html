@@ -188,7 +188,23 @@
   <h3>Your bill</h3>
   <div class="quote-box" style="margin-top:0;">
     {% for line in bill.lines %}
-    <div class="g-mb-line"><span>{{ line.label }}</span><span>€{{ '%.2f'|format(line.amount) }}</span></div>
+    <div class="g-mb-line">
+      <span>{{ line.label }}
+        {#- Taking a line off is the house's to do, not the guest's. Some of
+            these have already been ordered in or driven somewhere by the time
+            anybody changes their mind, and the app does not know which. So the
+            guest asks and a person decides, which is how refunds work here
+            too. The button only exists for whoever is signed in as owner. -#}
+        {% if line.line_id and session.get('user_id') and user and user['role'] == 'owner' %}
+        <form method="post" style="display:inline;"
+              action="{{ url_for('cancel_booking_extra_line', line_id=line.line_id) }}"
+              onsubmit="return confirm('Take this off the bill and put any stock back?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn-text-danger" style="font-size:12px;">take off</button>
+        </form>
+        {% endif %}
+      </span><span>€{{ '%.2f'|format(line.amount) }}</span>
+    </div>
     {% endfor %}
     <div class="g-mb-total"><span>{{ t('Total') }}</span><span>€{{ '%.2f'|format(bill.total) }}</span></div>
     {% if bill.paid %}
