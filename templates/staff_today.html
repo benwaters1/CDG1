@@ -26,6 +26,55 @@
 </div>
 {% endfor %}
 
+{# ---- Which rooms can be walked into. First on a changeover morning,
+       because it is the only thing on this page that decides whether somebody
+       has to run. Derived from the turnover checklist rather than from a
+       status anybody sets, so it cannot disagree with the work. ---- #}
+{% if rooms_board %}
+<h2 class="section-heading">{{ t('Rooms') }}</h2>
+<div class="guest-cards">
+  {% for r in rooms_board %}
+  <div class="guest-card {{ 'guest-card-urgent' if r.urgent }}"
+       style="padding:10px 12px;">
+    <span class="guest-card-top">
+      <span class="guest-name">{{ r.room['name'] }}</span>
+      {% if r.state == 'occupied' %}
+        <span class="mini-status status-onshift">{{ t('Occupied') }}</span>
+      {% elif r.state == 'turnover' %}
+        <span class="mini-status status-overdue">{{ t('Needs turning over') }}</span>
+      {% elif r.state == 'arriving' %}
+        <span class="mini-status status-upcoming">{{ t('Ready, guest today') }}</span>
+      {% else %}
+        <span class="mini-status status-confirmed">{{ t('Ready') }}</span>
+      {% endif %}
+    </span>
+
+    {% if r.in_house %}
+      <span class="guest-card-meta">{{ r.in_house['guest_name'] }}
+        {%- if r.leaving %} · {{ t('leaving today') }}{% endif %}</span>
+    {% elif r.arriving %}
+      <span class="guest-card-meta">{{ r.arriving['guest_name'] }}
+        {{ t('arriving today') }}{% if r.arriving['estimated_arrival_time'] %}
+        · {{ r.arriving['estimated_arrival_time'] }}{% endif %}</span>
+    {% endif %}
+
+    {% if r.outstanding %}
+    <span class="guest-card-meta">
+      {{ r.outstanding }} {{ t('still to do') }}:
+      {% for w in r.open_work[:3] %}{{ w['title'].split(': ')[-1] }}
+        {%- if not loop.last %}, {% endif %}{% endfor %}
+      {%- if r.outstanding > 3 %} …{% endif %}
+    </span>
+    {% endif %}
+
+    {% if r.urgent %}
+    <span class="guest-card-meta"><strong>{{ t('Somebody arrives today and this room is not done.') }}</strong></span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 {# ---- Who's in the house. First, because it's what staff need before they
        walk into a room, and the whole point is greeting people by name. ---- #}
 <h2 class="section-heading">
@@ -116,19 +165,19 @@
   <div class="empty-state">{{ t('Nothing on your list today.') }}</div>
 {% else %}
   <div class="check-list">
-    {% for t in my_tasks %}
-    <div class="check-row {{ 'check-row-done' if t['status'] == 'done' }}" id="task-{{ t['id'] }}">
+    {% for task in my_tasks %}
+    <div class="check-row {{ 'check-row-done' if task['status'] == 'done' }}" id="task-{{ task['id'] }}">
       <button type="button" class="check-box" aria-label="Mark done"
-              onclick="completeTask({{ t['id'] }}, this)">
-        <span aria-hidden="true">{{ '✓' if t['status'] == 'done' else '' }}</span>
+              onclick="completeTask({{ task['id'] }}, this)">
+        <span aria-hidden="true">{{ '✓' if task['status'] == 'done' else '' }}</span>
       </button>
       <span class="check-text">
-        <span class="check-title">{{ t['title'] }}</span>
-        {% if t['room_note'] or t['notes'] %}
-        <span class="check-sub">{{ t['room_note'] or t['notes'] }}</span>
+        <span class="check-title">{{ task['title'] }}</span>
+        {% if task['room_note'] or task['notes'] %}
+        <span class="check-sub">{{ task['room_note'] or task['notes'] }}</span>
         {% endif %}
       </span>
-      {% if t['priority'] == 'high' %}<span class="mini-status status-declined">{{ t('urgent') }}</span>{% endif %}
+      {% if task['priority'] == 'high' %}<span class="mini-status status-declined">{{ t('urgent') }}</span>{% endif %}
     </div>
     {% endfor %}
   </div>

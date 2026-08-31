@@ -30375,11 +30375,15 @@ def checkout_booking(booking_id):
         return redirect(url_for("admin_bookings"))
     room_note = f"{booking['guest_name']} checked out, party of {booking['party_size']}."
     for i, title in enumerate(CHECKOUT_CHECKLIST):
+        # booking_id has been on this table the whole time and neither
+        # checklist set it, so which room a turnover task belonged to could
+        # only be guessed from a prefix on its title.
         conn.execute(
-            """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority, due_date, created_at, origin)
-               VALUES (?, ?, ?, 'high', ?, ?, 'checklist')""",
+            """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority,
+               due_date, created_at, origin, booking_id)
+               VALUES (?, ?, ?, 'high', ?, ?, 'checklist', ?)""",
             (int(assigned_to), f"{room['name']}: {title}", room_note,
-             now.date().isoformat(), now.isoformat()),
+             now.date().isoformat(), now.isoformat(), booking_id),
         )
     conn.commit()
     conn.close()
@@ -30664,9 +30668,11 @@ def prepare_arrival(booking_id):
     for item in ARRIVAL_PREP_CHECKLIST:
         title = item.format(n=party_size) if "{n}" in item else item
         conn.execute(
-            """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority, due_date, created_at, origin)
-               VALUES (?, ?, ?, 'high', ?, ?, 'checklist')""",
-            (int(assigned_to), f"{room['name']}: {title}", room_note, booking["arrival_date"], now.isoformat()),
+            """INSERT INTO tasks (assigned_to_user_id, title, room_note, priority,
+               due_date, created_at, origin, booking_id)
+               VALUES (?, ?, ?, 'high', ?, ?, 'checklist', ?)""",
+            (int(assigned_to), f"{room['name']}: {title}", room_note,
+             booking["arrival_date"], now.isoformat(), booking_id),
         )
     conn.commit()
     conn.close()
@@ -36473,6 +36479,70 @@ ANONYMISE_RATHER_THAN_DELETE = {
 ERASED_MARKER = "[erased at the guest's request]"
 
 
+def room_board(conn, today=None):
+    """Every room, and whether a guest can walk into it.
+
+    Derived from the checklist tasks rather than from a status somebody sets.
+    A room_status column would be a second thing to keep in agreement, and the
+    two would part company the first time somebody ticked the last item and
+    forgot the dropdown. Open work means not ready; no open work means ready.
+
+    The states, in the order they matter on a changeover morning:
+
+      occupied      somebody is in it tonight and is not leaving today
+      turnover      they have gone and there is work outstanding
+      arriving      empty, work done, and somebody is coming today
+      ready         empty, work done, nobody due
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    iso = day.isoformat()
+    out = []
+    for room in conn.execute(
+            "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall():
+        # Somebody who ARRIVES today is not in the room at eight in the
+        # morning — they are the reason it has to be ready. Counting them as
+        # occupied is how a changeover room disappears off the board on the
+        # one morning it matters.
+        here = conn.execute(
+            """SELECT * FROM bookings
+                WHERE room_id = ? AND status = 'confirmed'
+                  AND arrival_date < ? AND departure_date > ?""",
+            (room["id"], iso, iso)).fetchone()
+        leaving = conn.execute(
+            """SELECT * FROM bookings
+                WHERE room_id = ? AND status = 'confirmed' AND departure_date = ?""",
+            (room["id"], iso)).fetchone()
+        arriving = conn.execute(
+            """SELECT * FROM bookings
+                WHERE room_id = ? AND status = 'confirmed' AND arrival_date = ?""",
+            (room["id"], iso)).fetchone()
+        open_work = conn.execute(
+            """SELECT tasks.* FROM tasks
+                 JOIN bookings ON bookings.id = tasks.booking_id
+                WHERE tasks.origin = 'checklist' AND tasks.status != 'done'
+                  AND bookings.room_id = ?
+                ORDER BY tasks.id""", (room["id"],)).fetchall()
+
+        if here:
+            state = "occupied"
+        elif open_work:
+            state = "turnover"
+        elif arriving:
+            state = "arriving"
+        else:
+            state = "ready"
+
+        out.append({
+            "room": room, "state": state, "in_house": here, "leaving": leaving,
+            "arriving": arriving, "open_work": open_work,
+            "outstanding": len(open_work),
+            # The one that decides whether somebody has to run: a guest coming
+            # today into a room with work still open on it.
+            "urgent": bool(arriving and open_work),
+        })
+    return out
+
+
 def guest_data_tables(conn):
     """Every table with a column that could hold a guest's email address.
 
@@ -39622,8 +39692,16 @@ def staff_today():
     departures_today = [c for c in guests_here if c["leaving_today"]]
     conn.close()
 
+    # The board, on the page somebody actually opens. It is derived from the
+    # checklist tasks, so it cannot disagree with the work.
+    board_conn = get_db()
+    try:
+        rooms_board = room_board(board_conn, today)
+    finally:
+        board_conn.close()
     return render_template(
         "staff_today.html", guests_here=guests_here, my_tasks=my_tasks,
+        rooms_board=rooms_board,
         my_shift_today=my_shift_today, on_today=on_today, clocked_in=clocked_in,
         announcements_current=announcements_current, today=today,
         arrivals_today=arrivals_today, departures_today=departures_today,

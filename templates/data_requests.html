@@ -102,7 +102,7 @@
 
 <h2 class="section-heading">Where it looks</h2>
 <p class="upload-hint">
-  {% for t in searched %}{{ t.replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}
+  {% for tbl in searched %}{{ tbl.replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}
 </p>
 <p class="pay-disclaimer">
   Plus anything hanging off a booking or a workshop registration — a review, a
