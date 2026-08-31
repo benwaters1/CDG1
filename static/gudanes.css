@@ -487,8 +487,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 @media (min-width: 44rem){
   .g-split{ grid-template-columns: 1fr 1fr; }
-  .g-grid--2{ grid-template-columns: 1fr 1fr; }
-  .g-grid--3{ grid-template-columns: repeat(3, 1fr); }
+  /* .g-grid--2 and --3 are not fixed here. They reflow on the space they
+     actually have, below, so a card is never narrower than its text needs. */
   .g-reviews{ grid-template-columns: repeat(3, 1fr); }
   .g-time li{ grid-template-columns: 9rem 1fr; }
 }
@@ -594,9 +594,12 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
    A closed <details> hides its contents whatever CSS says, so the nav is a
    plain wrapper toggled by a button below the breakpoint and always open
    above it. */
-.g-navbtn{ display: none; }
+/* The menu button stays at every width. The panel is the fuller navigation —
+   it carries the journal, the currency control and the secondary links —
+   so it should never be desktop-only or mobile-only. */
+.g-navbtn{ display: inline-flex; }
 .g-nav{ display: flex; }
-.g-navwrap{ display: contents; }
+.g-navwrap{ display: block; }
 
 @media (max-width: 68rem){
   .g-nav{ display: none; }
@@ -1063,7 +1066,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    ========================================================================== */
 .g-wscards{
   display: grid; gap: var(--s5);
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
 }
 
 .g-wscard{
@@ -1568,17 +1571,9 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    with drop shadows; this is a house, not a listing.
    ========================================================================== */
 .g-says{ background: var(--stone-pale); }
-/* The house answering a review, shown beneath it. Set back and quieter than
-   the guest's own words: it is a reply, not a rebuttal, and a reply that
-   shouts over the review it answers reads worse than saying nothing. */
-.g-say__reply{ margin: var(--s3) 0 0; padding-left: var(--s3);
-  border-left: 2px solid var(--parchment-line, currentColor);
-  font-size: 15px; line-height: 1.55; color: var(--steel); }
-.g-say__reply-by{ display: block; font-size: 12px; letter-spacing: .06em;
-  text-transform: uppercase; margin-bottom: 4px; }
 .g-says__grid{
   display: grid; gap: var(--s6); margin-top: var(--s6);
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr));
 }
 .g-say{
   padding: var(--s6) 0 0; border-top: 2px solid var(--blue-deep);
@@ -1641,7 +1636,8 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s6); margin-bottom: var(--s5);
 }
-.g-mb-card h3{
+.g-mb-card h3,
+.g-mb-card .g-panel__h{
   font-family: var(--display); font-weight: 400; font-size: 22px;
   color: var(--blue-deep); margin: 0 0 var(--s4);
 }
@@ -1902,12 +1898,9 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    sixteen with their groups and icons. Both stay — the row is a shortcut,
    not a replacement, and hiding the toggle made the panel unreachable on
    desktop. */
-/* The eight-item row reaches every destination, so a MENU toggle beside it
-   is redundant — and it was the main thing making the header look busy.
-   The panel is still there below 84rem where the row is hidden. */
-@media (min-width: 84.0625rem){
-  .g .g-navbtn{ display: none !important; }
-}
+/* The toggle stays at every width. The panel carries more than the row —
+   the journal, the currency control, the secondary links — so hiding it on
+   wide screens removed the better navigation, not a duplicate of it. */
 
 /* ==========================================================================
    SKIP LINK & BACK TO TOP
@@ -3476,11 +3469,16 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-journal__form{
   display: flex; flex-wrap: wrap; gap: var(--s3);
-  justify-content: center; align-items: stretch;
+  /* Never stretch. A single-line field must not take its height from
+     whatever else happens to sit in the row — a hidden input, a visually
+     hidden label, or a button that has wrapped. */
+  justify-content: center; align-items: center;
 }
 .g-journal__form input[type=email]{
   flex: 1 1 18rem; max-width: 24rem;
-  padding: 0 var(--s4); min-height: 52px;
+  padding: 0 var(--s4);
+  /* Height stated both ways so no other stylesheet can inflate it. */
+  min-height: 52px; height: 52px; max-height: 52px; align-self: center;
   border: 1px solid var(--gilt); background: var(--white);
   font-family: var(--ui); font-size: 16px; color: var(--blue-deep);
 }
@@ -3860,11 +3858,11 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
   color: var(--blue-deep); margin: var(--s3) 0 var(--s5);
   text-shadow: none; max-width: 20ch;
 }
-/* A safety net: hero type outside a hero falls back to readable ink. */
-.g :not(.g-hero) > .g-hero__title,
-.g :not(.g-hero) > .g-hero__eyebrow,
-.g-wrap > .g-hero__title,
-.g-wrap > .g-hero__eyebrow{
+/* A safety net: hero type used outside a hero falls back to readable ink.
+   Scoped by ancestry, not by parent — an earlier version matched
+   `.g-wrap > .g-hero__title`, which is also true INSIDE a hero, and turned
+   real hero titles navy on a navy ground. */
+.g :is(.g-hero__title, .g-hero__eyebrow, .g-hero__lede, .g-hero__motto):not(.g-hero *){
   color: var(--blue-deep); text-shadow: none;
 }
 
@@ -3988,8 +3986,11 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
    210px and its text fourteen characters a line. Cards should break on the
    space they actually have rather than on a breakpoint chosen in advance.
    ========================================================================== */
+/* The track must be wide enough that the text INSIDE the card reads well,
+   not merely that the card fits. A padded card loses ~96px to its own
+   padding, so the track has to carry that plus a readable measure. */
 .g-grid--3, .g-grid--2, .g-finds, .g-incl-cards{
-  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(27rem, 100%), 1fr));
 }
 /* The quotation needs to hold a readable line in the italic display face. */
 .g-pull{ max-width: 30rem; }
@@ -4011,4 +4012,184 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
    ========================================================================== */
 /* Reflow on the space available rather than a fixed two columns, so five
    rooms sit 3 + 2 on a wide screen instead of leaving one stranded. */
-.g-cards{ grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr)); }
+.g-cards{ grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr)); }
+
+/* ==========================================================================
+   IMAGE BANDS ON A NARROW SCREEN
+   grid-auto-flow: column puts every image on one row whatever the width, so
+   a five-image band rendered at 74px each on a phone — too small to read as
+   photographs. Below tablet the band becomes a horizontal scroller with each
+   image at a usable size, which is how a strip of photographs should behave
+   on a phone anyway.
+   ========================================================================== */
+@media (max-width: 60rem){
+  .g .g-band{
+    max-width: 100vw;
+    contain: paint;
+    grid-auto-flow: column;
+    grid-auto-columns: min(78vw, 22rem);
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: var(--s3);
+    padding-inline: var(--s4);
+    scrollbar-width: none;
+  }
+  .g .g-band::-webkit-scrollbar{ display: none; }
+  .g .g-band img{
+    scroll-snap-align: center;
+    /* Explicit, so a slow or failed image cannot collapse the track. */
+    width: min(78vw, 22rem); min-width: min(78vw, 22rem);
+    aspect-ratio: 4 / 3; height: auto; object-fit: cover;
+  }
+}
+
+
+/* The press grid holds two columns down to a point; on the narrowest phones a
+   masthead and its caption need the full width. */
+@media (max-width: 24rem){
+  .g-masthead{ grid-template-columns: 1fr; }
+}
+
+
+/* The press row puts a masthead and its caption side by side. On the narrowest
+   phones there is no room for both, so they stack. */
+@media (max-width: 26rem){
+  .g-press li{ flex-direction: column; align-items: flex-start; gap: 4px; }
+}
+
+/* ==========================================================================
+   THE COMPARISON TABLE
+   A five-column table cannot narrow indefinitely. Rather than let it push the
+   whole page sideways, it scrolls within its own bounds — the page stays put
+   and the table can be swiped.
+   ========================================================================== */
+.g-compare-wrap{
+  max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  contain: paint;
+}
+.g-compare{ min-width: 34rem; }
+
+
+/* Form rows: let fields shrink and wrap rather than overshoot the container.
+   At 834px an enquiry row was running four pixels past the right edge. */
+.g-row{ flex-wrap: wrap; }
+.g-row > .g-field{ min-width: 0; flex: 1 1 12rem; }
+
+
+/* A ceiling on every paragraph in the page body, not only the classed ones.
+   Unclassed prose had no measure, so at high zoom it ran past 80 characters. */
+main p, main li, main dd{ max-width: 68ch; }
+main .g-limit, main .g-curbar, main .g-survive, main .g-plan__line,
+main .g-hero p, main td p, main th p{ max-width: none; }
+
+/* A three-card row inside a 1216px measure cannot hold three readable
+   columns — three tracks would give 35 characters a line. Two columns read
+   properly at 58; when that leaves the third card alone on its row, it takes
+   the full width rather than sitting stranded beside empty space. */
+.g-grid--3 > :nth-child(3):last-child,
+.g-grid--2 > :nth-child(3):last-child{ grid-column: 1 / -1; }
+
+/* ==========================================================================
+   A READABLE MEASURE INSIDE CARDS AND PANELS
+   The audit floor was 26 characters — set at "not catastrophically broken"
+   rather than "reads well". Typographic convention is 45-75; below about 40
+   a multi-line paragraph reads as a column of fragments. These three
+   components were sitting in the low thirties.
+   ========================================================================== */
+
+/* Cards: the grid track must carry the card's own padding plus a readable
+   line, not merely fit the card on screen. */
+.g-cards, .g-cards--rooms{
+  grid-template-columns: repeat(auto-fit, minmax(min(25rem, 100%), 1fr));
+}
+/* On a tablet the padding is what starves the text, so ease it there. */
+@media (max-width: 60rem){
+  .g-card__b, .g-panel{ padding-inline: var(--s5); }
+}
+
+/* A two-panel row needs each panel wide enough to read. Below 68rem the two
+   329px columns give 32 characters, so it becomes one column. */
+@media (max-width: 68rem){
+  .g-two{ grid-template-columns: 1fr; }
+}
+
+/* The creed quotation was 31 characters in the display face. */
+.g-creed__q{ max-width: none; }
+.g-creed__in{ max-width: 46rem; margin-inline: auto; }
+/* The last two: a half-width creed panel at 39 characters, and a quote band
+   that loses too much to padding on a small phone. */
+@media (max-width: 90rem){
+  .g-creed__half{ grid-column: 1 / -1; }
+}
+@media (max-width: 26rem){
+  .g-quote-band{ padding-inline: var(--s4); }
+}
+/* The quote band is set large and italic, so on a 360px phone it holds only
+   29 characters. Ease the size there rather than the padding — the display
+   face is what is eating the line. */
+@media (max-width: 26rem){
+  .g-quote-band p, .g-quote-band blockquote{ font-size: clamp(17px, 4.6vw, 21px); }
+}
+/* The half-width creed panel measured 39 characters even at 1920. It is
+   prose, not a caption — give it the full row at every width. */
+.g-creed__half{ grid-column: 1 / -1; }
+/* Two display-face passages still measured 29 characters on a 360px phone.
+   Large italic type simply does not fit a narrow screen at that size — ease
+   the face and reclaim the padding rather than leave a column of fragments. */
+@media (max-width: 30rem){
+  .g-quote-band p, .g-quote-band blockquote{ font-size: clamp(16px, 4.4vw, 19px); }
+  .g-quote-band{ padding-inline: var(--s3); }
+  .g-creed__q{ font-size: clamp(16px, 4.4vw, 18px); padding-inline: 0; }
+  .g-creed__in{ padding-inline: var(--s3); }
+}
+
+/* ==========================================================================
+   THE EVENTS SUBMENU
+   Events covers three distinct things — weddings, celebrations, photography
+   and film — and the row gave no sign of it. A tiered menu, opening on hover
+   and on focus so it works from the keyboard as well as the pointer.
+   ========================================================================== */
+.g-nav__has-sub{ position: relative; display: inline-flex; align-items: center; }
+.g-nav__caret{
+  display: inline-block; width: 0; height: 0; margin-left: 6px;
+  border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 4px solid currentColor; opacity: .75;
+  transition: transform .18s ease;
+}
+.g-nav__has-sub:hover .g-nav__caret,
+.g-nav__has-sub:focus-within .g-nav__caret{ transform: rotate(180deg); }
+
+.g-subnav{
+  position: absolute; top: 100%; left: 50%; transform: translateX(-50%) translateY(6px);
+  z-index: 70; margin: 0; padding: var(--s3) 0; list-style: none;
+  min-width: 15rem;
+  background: #F6F1E7;                    /* literal: sits over a hero video */
+  border: 1px solid #73562D;
+  box-shadow: 0 14px 36px rgba(14,28,48,.24);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.g-nav__has-sub:hover .g-subnav,
+.g-nav__has-sub:focus-within .g-subnav{
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+/* A gap between the link and the panel would drop the hover, so the panel
+   reaches up to meet it. */
+.g-subnav::before{ content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+
+.g .g-subnav a{
+  display: flex; align-items: center; min-height: 44px;
+  padding: 0 var(--s5); white-space: nowrap;
+  font-family: var(--ui); font-size: 14px; letter-spacing: .04em;
+  color: var(--blue-deep); text-decoration: none;
+}
+.g .g-subnav a:hover{ background: rgba(196,160,106,.2); }
+.g .g-subnav a:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2px; }
+
+/* Below the row breakpoint the panel handles navigation, so the submenu is
+   not needed and would only overlap. */
+@media (max-width: 68rem){
+  .g-nav__has-sub{ display: none; }
+}

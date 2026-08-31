@@ -9,6 +9,12 @@
     {% if counts.pending %}
     <button type="button" class="btn-mini" onclick="submitBulkBookings('{{ url_for('bulk_confirm_bookings') }}', 'Confirm everything checked?')">Confirm selected (<span id="selected-count">0</span>)</button>
     <button type="button" class="btn-mini btn-mini-danger" onclick="submitBulkBookings('{{ url_for('bulk_decline_bookings') }}', 'Decline everything checked?')">Decline selected</button>
+    {# A family taking three rooms was three unconnected bookings: three
+       confirmations, three bills, three arrival texts to the same telephone.
+       Tied from bookings that already exist, because a party is usually only
+       obvious after the third room is taken. #}
+    <button type="button" class="btn-mini"
+            onclick="submitBulkBookings('{{ url_for('new_booking_party') }}', 'Tie the checked bookings together as one party? They will be written to once rather than once each.')">Tie together as a party</button>
     {% endif %}
     <a href="{{ url_for('admin_calendar') }}" class="btn-ghost">Calendar</a>
     <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Manage rooms</a>
@@ -120,6 +126,11 @@
     <div class="expense-actions">
       {% if b['status'] == 'pending' %}
       <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;">
+      {%- if b['party_name'] %}
+      {# The row says which group it belongs to, so three rooms on three lines
+         read as one booking rather than three coincidences. #}
+      <span class="mini-status status-upcoming" title="One party across several rooms">{{ b['party_name'] }}</span>
+      {%- endif %}
       <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
       <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" onsubmit="return confirm('Decline this request?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
       {% elif b['status'] == 'confirmed' %}

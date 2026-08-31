@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Cash banking{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Cash banking</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('pos_journal_page') }}" class="btn-ghost">Till journal</a>
+    <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What the drawer was counted at, what has been paid into the bank, and the difference — which
+  is the cash that should still be in the safe. The closure already tells you whether a night
+  balanced; this tells you whether the money is still here, which is a different question and
+  the one nobody could answer.
+</p>
+
+{% include "_period_picker.html" ignore missing %}
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(position.counted) }}</span>
+      <span class="stat-tile-label">Counted out of the drawer</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(position.banked) }}</span>
+      <span class="stat-tile-label">Paid into the bank</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(position.on_hand) }}</span>
+      <span class="stat-tile-label">Should be in the safe</span>
+    </span>
+  </div>
+</div>
+
+{% if position.variance|abs > 0.005 %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">The drawer and the till disagree by €{{ '%.2f'|format(position.variance) }}</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Across this period the till expected €{{ '%.2f'|format(position.expected) }} in cash and
+    €{{ '%.2f'|format(position.counted) }} was counted. That gap is a counting question, not a
+    banking one — the banking figures below use what was <em>counted</em>, because paying in
+    what the till expected rather than what was there carries a shortfall forward silently.
+  </p>
+</div>
+{% endif %}
+
+{% if position.uncounted_days %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">{{ position.uncounted_days|length }} day(s) closed without counting the drawer</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {{ position.uncounted_days[:6]|join(', ') }}{% if position.uncounted_days|length > 6 %} and more{% endif %}.
+    Those days add nothing to what the safe should hold, because nobody said what was in it.
+    A missing count is not the same as a zero, and totalling it as one would read as cash gone.
+  </p>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Record a paying-in</h2>
+<form method="post" action="{{ url_for('record_cash_banking') }}" class="search-bar" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label" for="cb_date">Date paid in</label>
+    <input type="date" id="cb_date" name="banked_on" required>
+  </div>
+  <div>
+    <label class="field-label" for="cb_amount">Amount</label>
+    <input type="number" step="0.01" min="0.01" id="cb_amount" name="amount" required>
+  </div>
+  <div style="flex:1 1 180px;">
+    <label class="field-label" for="cb_ref">Reference</label>
+    <input type="text" id="cb_ref" name="reference" placeholder="Paying-in slip number">
+  </div>
+  <div style="flex:1 1 200px;">
+    <label class="field-label" for="cb_note">Note</label>
+    <input type="text" id="cb_note" name="note" placeholder="Optional">
+  </div>
+  <button type="submit" class="btn-primary">Record</button>
+</form>
+
+<h2 class="section-heading">Paid in</h2>
+{% if not position.bankings %}
+  <div class="empty-state">Nothing has been paid into the bank in this period.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Date</th>
+        <th class="num">Amount</th>
+        <th style="text-align:left;">Reference</th>
+        <th style="text-align:left;">Recorded by</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in position.bankings %}
+      <tr>
+        <td>{{ b['banked_on'] }}</td>
+        <td class="num">€{{ '%.2f'|format(b['amount']) }}</td>
+        <td>{{ b['reference'] or '—' }}{% if b['note'] %}<br><span class="upload-hint">{{ b['note'] }}</span>{% endif %}</td>
+        <td>{{ b['who'] or '—' }}</td>
+        <td style="text-align:right;">
+          <form method="post" action="{{ url_for('delete_cash_banking', banking_id=b['id']) }}"
+                onsubmit="return confirm('Remove this paying-in? It changes what the safe should hold.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Counted, night by night</h2>
+{% if not position.days %}
+  <div class="empty-state">No till days were closed in this period.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Service day</th>
+        <th class="num">Till expected</th>
+        <th class="num">Counted</th>
+        <th class="num">Difference</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in position.days %}
+      <tr>
+        <td>{{ d.day }}</td>
+        <td class="num">€{{ '%.2f'|format(d.expected) }}</td>
+        <td class="num">{% if d.uncounted %}<span class="upload-hint">not counted</span>{% else %}€{{ '%.2f'|format(d.counted) }}{% endif %}</td>
+        <td class="num">{% if d.uncounted %}—{% else %}€{{ '%.2f'|format(d.variance) }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

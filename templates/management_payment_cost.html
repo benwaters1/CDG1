@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Cost of taking money{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Cost of taking money</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every other page treats a payment as the amount that arrived. A card payment is not: the
+  processor keeps a percentage and a few cents of each one, and across a season that is a real
+  cost of sale sitting in nobody&rsquo;s expenses. Cash and bank transfers cost nothing to take,
+  which is the comparison worth being able to see.
+</p>
+
+<form method="post" action="{{ url_for('save_card_fee_settings') }}" class="search-bar" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label" for="cf_pct">Processor keeps (%)</label>
+    <input type="number" step="0.01" min="0" max="100" id="cf_pct" name="card_fee_percent"
+           value="{{ '%.2f'|format(data.percent) if data.configured }}" required>
+  </div>
+  <div>
+    <label class="field-label" for="cf_fixed">Plus, per payment (&euro;)</label>
+    <input type="number" step="0.01" min="0" id="cf_fixed" name="card_fee_fixed"
+           value="{{ '%.2f'|format(data.fixed) if data.configured }}">
+  </div>
+  <button type="submit" class="btn-primary">Save</button>
+</form>
+
+{% if not data.configured %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">The rate has not been set, so there is no cost to show</h3>
+  <p class="field-hint" style="margin-top:0;">
+    The money taken is below and is real. The fee is not, because nobody has said what it is,
+    and an invented processing rate is worse than a blank &mdash; it would be quoted. The real
+    one is on the Stripe dashboard, or on the terminal provider&rsquo;s statement.
+  </p>
+</div>
+{% else %}
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.fee) }}</span>
+    <span class="stat-tile-label">Kept by the processor</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ '%.2f'|format(data.effective_pct) if data.effective_pct is not none else '—' }}%</span>
+    <span class="stat-tile-label">Of everything taken</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.on_card) }}</span>
+    <span class="stat-tile-label">Taken on cards</span></span></div>
+</div>
+{% endif %}
+
+<h2 class="section-heading">By method</h2>
+{% if not data.rows %}
+  <div class="empty-state">No payments were taken in this period.</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr>
+      <th style="text-align:left;">Method</th><th class="num">Payments</th>
+      <th class="num">Taken</th><th class="num">Costs</th>
+    </tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <td>{{ r.label }}</td>
+        <td class="num">{{ r.count }}</td>
+        <td class="num">&euro;{{ '%.2f'|format(r.amount) }}</td>
+        <td class="num">
+          {%- if not r.charged %}<span class="upload-hint">nothing</span>
+          {%- elif r.fee is none %}<span class="upload-hint">rate not set</span>
+          {%- else %}&euro;{{ '%.2f'|format(r.fee) }}{% endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr>
+      <th style="text-align:left;">Total</th>
+      <th class="num">{{ data.rows|sum(attribute='count') }}</th>
+      <th class="num">&euro;{{ '%.2f'|format(data.taken) }}</th>
+      <th class="num">{% if data.fee is not none %}&euro;{{ '%.2f'|format(data.fee) }}{% else %}&mdash;{% endif %}</th>
+    </tr></tfoot>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

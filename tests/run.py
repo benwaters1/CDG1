@@ -148,6 +148,7 @@ SUITES = [
     "test_privacy",
     "test_refunds",
     "test_money_out",
+    "test_finance_functions",
     "test_outbox_lock",
     "test_form_prefill",
     "test_company_records",
@@ -182,6 +183,7 @@ SUITES = [
     "test_pennylane_revenue",
     "test_booking_race",
     "test_restore_drill",
+    "test_backup_resilience",
     "test_comms_and_escalation",
     "test_house_config",
     "test_accessibility",
@@ -197,7 +199,11 @@ SUITES = [
     "test_data_requests",
     "test_room_board",
     "test_template_shadowing",
+    "test_empty_nights",
+    "test_booking_parties",
+    "test_guest_record",
     "test_handover_check",
+    "test_repair_handover",
 ]
 
 

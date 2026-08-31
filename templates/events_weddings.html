@@ -1,0 +1,62 @@
+{% extends "public_base.html" %}
+{% block title %}Weddings{% endblock %}
+{% block description %}Weddings at a Class I Historic Monument in the French Pyrénées. One wedding at a time, the whole château yours, forty seated indoors.{% endblock %}
+{% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
+{% block content %}
+{% from '_marks.html' import mark %}
+
+<section class="g-hero g-hero--short">
+  <div class="g-hero__wash"></div>
+  <div class="g-wrap">
+    <p class="g-hero__eyebrow">Ariège · One At A Time</p>
+    <h1 class="g-hero__title">Married in a monument</h1>
+    <p class="g-hero__lede">The château is given over to you entirely. Not a wing, not an afternoon.</p>
+    <p><a href="#enquire" class="g-btn g-btn--solid">Ask about a date</a></p>
+  </div>
+</section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">What You Take</p>
+  <h2 class="g-place">The Whole House, Not a Room In It</h2>
+  <p class="g-p g-lede-first">One wedding runs at a time. For the days you have it, there are no other guests, no handover halfway through, and nobody else's party in the next room.</p>
+  <p class="g-p">Ceremonies happen in the grounds or in the historic interiors. Dinner is in the main dining salon. Above forty, dinner moves outdoors — the terraces and the parkland take larger numbers comfortably.</p>
+
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Seated indoors</dt><dd>Forty, in the main dining salon</dd></div>
+    <div><dt>Outdoors</dt><dd>Considerably more, across the terraces and six acres of parkland</dd></div>
+    <div><dt>Sleeping</dt><dd>Fifteen in the château. The village is three minutes down the hill</dd></div>
+    <div><dt>Exclusive use</dt><dd>Standard, not an upgrade</dd></div>
+    <div><dt>Youngest guest</dt><dd>Eight. The staircases are eighteenth-century and there are no handrails in places</dd></div>
+  </dl></div></div>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Be Warned</p>
+  <h2 class="g-place">It Is Not Finished, And That Is The Point</h2>
+  <p class="g-p g-lede-first">This is a restoration, not a renovation, running since 2013. Under Class I listing the walls stay as the centuries left them — bare plaster, weathered stone, protected by law.</p>
+  <p class="g-p">What you and your guests touch is new: the beds, the linen, the floors, the bathrooms. What photographs is old. Couples who want a finished house should look elsewhere, and we would rather say so now than on the day.</p>
+  <p class="g-limit"><span class="g-limit__k">Scaffolding</span>Some of it may still be up. We will tell you where, before you commit.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Getting Everyone There</p>
+  <h2 class="g-place">Two Hours From Toulouse</h2>
+  <div class="g-facts-list">
+    <div><dt>By air</dt><dd>Toulouse-Blagnac, about an hour and three quarters by road</dd></div>
+    <div><dt>By train</dt><dd>Les Cabannes, three minutes from the gates, on the Toulouse–Latour-de-Carol line</dd></div>
+    <div><dt>Beds nearby</dt><dd>Fifteen in the château; the village and valley take the rest</dd></div>
+    <div><dt>Season</dt><dd>Summer dates go a long way ahead. Spring and autumn are quieter and cost less</dd></div>
+  </div>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('ring') }}</div>
+
+<!-- ============ ENQUIRE ============ -->
+<section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
+  <p class="g-eyebrow">Tell Us</p>
+  <h2 class="g-place">Tell us the shape of it</h2>
+  <p class="g-p">Dates, a rough number, and anything you already know you want. You will get a figure rather than a brochure.</p>
+  <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
+</div></section>
+{% endblock %}

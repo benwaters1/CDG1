@@ -152,6 +152,10 @@
        'management_bank_details','new_bank_details','edit_bank_details','delete_bank_details',
        'management_financials','export_financials_csv','annual_summary','admin_refunds','export_refunds_csv',
        'management_outstanding','chase_outstanding_balance',
+       'management_debtors','export_debtors_csv',
+       'management_cash_banking','record_cash_banking','delete_cash_banking',
+       'management_on_the_books','management_break_even',
+       'management_payment_cost','save_card_fee_settings',
        'admin_reports','admin_report','export_report_csv',
        'money_ahead_page','set_opening_balance',
        'admin_tax','management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv',
@@ -306,6 +310,11 @@
         <a href="{{ url_for('expenses') }}" class="{{ 'active' if request.endpoint in ['expenses','decide_expense'] }}">{{ icon('receipt') }}Expenses &amp; Invoices</a>
         <a href="{{ url_for('management_financials') }}" class="{{ 'active' if request.endpoint=='management_financials' }}">{{ icon('financial') }}Financials</a>
         <a href="{{ url_for('management_outstanding') }}" class="{{ 'active' if request.endpoint=='management_outstanding' }}">{{ icon('financial') }}What We're Owed</a>
+        <a href="{{ url_for('management_debtors') }}" class="{{ 'active' if request.endpoint=='management_debtors' }}">{{ icon('financial') }}Debtor Ageing</a>
+        <a href="{{ url_for('management_cash_banking') }}" class="{{ 'active' if request.endpoint=='management_cash_banking' }}">{{ icon('financial') }}Cash Banking</a>
+        <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
+        <a href="{{ url_for('management_break_even') }}" class="{{ 'active' if request.endpoint=='management_break_even' }}">{{ icon('financial') }}Break-even</a>
+        <a href="{{ url_for('management_payment_cost') }}" class="{{ 'active' if request.endpoint=='management_payment_cost' }}">{{ icon('financial') }}Cost Of Taking Money</a>
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
         <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>

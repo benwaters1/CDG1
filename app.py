@@ -1371,6 +1371,20 @@ def init_db():
             created_at TEXT NOT NULL
         );
 
+        -- Cash the till counted, once it has actually reached the bank. The
+        -- closure already records what was in the drawer; nothing recorded
+        -- what left the building, so "counted" and "banked" were the same
+        -- word and the gap between them was invisible.
+        CREATE TABLE IF NOT EXISTS cash_bankings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            banked_on TEXT NOT NULL,
+            amount REAL NOT NULL,
+            reference TEXT,
+            note TEXT,
+            recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS waitlist_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -2388,6 +2402,17 @@ def init_db():
         -- a STAY; a returning guest's fiche from two years ago is not a record
         -- the house is entitled to keep because they came back, and holding it
         -- there would quietly make the six-month retention unenforceable.
+        -- One group across several rooms. Holds nothing but who they are:
+        -- the rooms, dates, prices and bills stay on the bookings, which is
+        -- where they already work.
+        CREATE TABLE IF NOT EXISTS booking_parties (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            lead_booking_id INTEGER,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS police_register (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
@@ -3489,6 +3514,13 @@ def init_db():
         ("vehicle_odometer", "ALTER TABLE vehicles ADD COLUMN odometer_km INTEGER"),
         ("vehicle_odometer_at", "ALTER TABLE vehicles ADD COLUMN odometer_read_at TEXT"),
         ("vehicle_off_road", "ALTER TABLE vehicles ADD COLUMN off_road INTEGER NOT NULL DEFAULT 0"),
+        # A family taking three rooms was three unconnected bookings: three
+        # confirmations, three bills, three arrival texts. The party is
+        # deliberately thin — a name and an id — because each booking is
+        # genuinely its own stay, and a "party booking" owning the money would
+        # have to reinvent everything a booking already does.
+        ("booking_party_id", "ALTER TABLE bookings ADD COLUMN party_id INTEGER "
+                             "REFERENCES booking_parties(id) ON DELETE SET NULL"),
     ):
         try:
             conn.execute(ddl)
@@ -4427,6 +4459,10 @@ NAV_AREAS = {
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
+        "management_debtors", "export_debtors_csv",
+        "management_cash_banking", "record_cash_banking", "delete_cash_banking",
+        "management_on_the_books", "management_break_even",
+        "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
         "record_event_payment_route", "send_event_revenue",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
@@ -20118,6 +20154,9 @@ PALETTE_PAGES = [
     ("Recurring costs", "management_recurring_costs", "subscriptions bills"),
     ("Management", "management", "settings admin"),
     ("Vehicles", "management_vehicles", "cars van fuel contrôle technique insurance"),
+    ("Empty nights", "empty_nights_page",
+     "occupancy vacancy unsold free rooms gaps availability forecast yield "
+     "which nights are empty"),
     ("Data requests", "data_requests",
      "gdpr rgpd subject access erasure right to be forgotten what we hold "
      "copy of my data delete me portable"),
@@ -23150,6 +23189,103 @@ def new_guest():
     return render_template("guest_form.html", guest=None)
 
 
+@app.route("/guests/<int:guest_id>")
+@login_required
+def guest_detail(guest_id):
+    """The whole of one guest on one page.
+
+    There was a profiles list, an edit form, and — separately — a history page
+    keyed on an email STRING. The two never met, so a profile with nothing
+    linked showed no history at all, and a guest whose address had changed had
+    theirs split in half with the lifetime spend halved underneath it.
+
+    An employee sees who they are and what they like; the money and the
+    messages are the owner's. A colleague needs to know somebody is vegetarian
+    and prefers the quiet side of the house. What they have spent is not a
+    colleague's business.
+    """
+    conn = get_db()
+    record = guest_record(conn, guest_id)
+    if not record:
+        conn.close()
+        abort(404)
+    is_owner = (current_user() or {})["role"] == "owner"
+    messages = guest_messages(conn, record["guest"]) if is_owner else []
+    party_of = {}
+    for b in record["stays"]:
+        if b["party_id"]:
+            party_of[b["id"]] = party_for_booking(conn, b["id"])
+    conn.close()
+
+    overview = None
+    if is_owner:
+        overview = [
+            overview_cell("Stays", len([b for b in record["stays"]
+                                        if b["status"] != "cancelled"]),
+                          hint=f"{record['nights']} night(s)"),
+            overview_cell("Spent with us", euro(record["spent"]),
+                          hint="gross, everything included"),
+            overview_cell("Still owed", euro(record["owed"]),
+                          alert=record["owed"] > 0),
+            overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
+        ]
+    return render_template("guest_detail.html", record=record, overview=overview,
+                           messages=messages, is_owner=is_owner,
+                           party_of=party_of,
+                           today=datetime.now(LOCAL_TZ).date().isoformat())
+
+
+@app.route("/guests/<int:guest_id>/statement")
+@owner_required
+def guest_full_statement(guest_id):
+    """One statement across everything, rather than one per stay.
+
+    guest_statement has always been per booking, which is the right thing to
+    send somebody about a stay. It is the wrong thing to answer "what have we
+    charged this person, ever" \u2014 and that question had no answer anywhere.
+    """
+    conn = get_db()
+    record = guest_record(conn, guest_id)
+    conn.close()
+    if not record:
+        abort(404)
+    return render_template("guest_full_statement.html", record=record,
+                           today=datetime.now(LOCAL_TZ).date().isoformat())
+
+
+@app.route("/guests/<int:guest_id>/link-bookings", methods=["POST"])
+@owner_required
+def link_guest_bookings(guest_id):
+    """Attach the stays that match this profile's address to the profile.
+
+    They already show on the record \u2014 matched on the address rather than
+    linked \u2014 and this makes the inference a fact. Worth doing rather than
+    leaving implicit, because a guest who later changes their address keeps
+    the history that was linked and loses the history that was only guessed.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    email = (guest["email"] or "").strip().lower()
+    if not email:
+        conn.close()
+        flash("This profile has no address to match on.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    cur = conn.execute(
+        """UPDATE bookings SET linked_guest_id = ?
+            WHERE LOWER(TRIM(guest_email)) = ? AND linked_guest_id IS NULL""",
+        (guest_id, email))
+    log_audit(conn, "guest_bookings_linked", target=guest["name"],
+              details=f"{cur.rowcount} stay(s)")
+    conn.commit()
+    conn.close()
+    flash(f"{cur.rowcount} stay{'' if cur.rowcount == 1 else 's'} attached to "
+          f"{guest['name']}.", "success")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
 @app.route("/guests/<int:guest_id>/edit", methods=["GET", "POST"])
 @owner_required
 def edit_guest(guest_id):
@@ -25443,6 +25579,26 @@ def events_info():
     return render_template("events_info.html", event_types=types)
 
 
+# The three kinds of event, each on its own page. /events is the overview and
+# stays the one the enquiry form lives on; these carry their own title and
+# meta description so they answer a search for "château wedding venue Ariège"
+# rather than competing with the overview for it. Plain renders — the enquiry
+# they lead to is still submit_event_inquiry.
+@app.route("/events/weddings")
+def events_weddings():
+    return render_template("events_weddings.html")
+
+
+@app.route("/events/private")
+def events_private():
+    return render_template("events_private.html")
+
+
+@app.route("/events/photoshoots")
+def events_photoshoots():
+    return render_template("events_photoshoots.html")
+
+
 @app.route("/events/inquire", methods=["POST"])
 def submit_event_inquiry():
     event_type = request.form.get("event_type", "").strip()
@@ -27151,7 +27307,20 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
             WHERE status = 'confirmed' AND {spec["date_column"]} = ?
               AND {spec["stamp"]} IS NULL""", (when,)).fetchall()
 
+    # ONE MESSAGE TO A PARTY, not one per room. A family taking three rooms
+    # was getting three identical texts to the same telephone on the same
+    # morning, each billed. The rooms they are not written about are stamped
+    # all the same, or the next run would text them again for the same stay.
+    leads = set(party_lead_bookings(conn, [b["id"] for b in arriving]))
+    quiet = [b for b in arriving if b["id"] not in leads]
+    arriving = [b for b in arriving if b["id"] in leads]
+    for b in quiet:
+        conn.execute(f"UPDATE bookings SET {spec['stamp']} = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), b["id"]))
+        conn.commit()
+
     sent = held = skipped = 0
+    with_party = len(quiet)
     reasons = {}
     for booking in arriving:
         number, refusal = can_text(conn, booking["guest_phone"], "transactional")
@@ -27185,6 +27354,12 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
         parts.append(f"{held} waiting for a provider")
     if skipped:
         parts.append(f"{skipped} with no number we could use")
+    if with_party:
+        # Said out loud, because a run that texted four people yesterday and
+        # two today looks like something breaking rather than two of them
+        # being in the same family.
+        parts.append(f"{with_party} covered by somebody else's message "
+                     "in the same party")
     return ", ".join(parts) or "nothing to send"
 
 
@@ -30029,8 +30204,11 @@ def admin_bookings():
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
 
     all_bookings = conn.execute(
-        """SELECT bookings.*, rooms.name AS room_name FROM bookings
-           JOIN rooms ON rooms.id = bookings.room_id
+        """SELECT bookings.*, rooms.name AS room_name,
+                  booking_parties.name AS party_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+             LEFT JOIN booking_parties ON booking_parties.id = bookings.party_id
            ORDER BY (bookings.status = 'pending') DESC,
                     (bookings.departure_date < date('now')) ASC,
                     bookings.arrival_date"""
@@ -30701,6 +30879,112 @@ def delete_police_fiche(fiche_id):
     conn.close()
     flash("Removed from the register.", "success")
     return redirect(url_for("police_register_page"))
+
+
+@app.route("/admin/parties/new", methods=["POST"])
+@owner_required
+def new_booking_party():
+    """Tie several bookings together as one group.
+
+    Formed from bookings that already exist rather than as a booking mode of
+    its own: a family rings up, takes three rooms one at a time, and only
+    then is it obviously one party. Making it a mode would mean deciding at
+    the wrong end.
+    """
+    ids = [int(i) for i in request.form.getlist("booking_ids") if str(i).isdigit()]
+    name = (request.form.get("name", "") or "").strip()[:120]
+    if len(ids) < 2:
+        flash("A party needs at least two bookings. One booking is a booking.",
+              "error")
+        return redirect(url_for("admin_bookings"))
+
+    conn = get_db()
+    rows = conn.execute(
+        f"SELECT * FROM bookings WHERE id IN ({','.join('?' * len(ids))}) "
+        "ORDER BY arrival_date", tuple(ids)).fetchall()
+    if len(rows) != len(ids):
+        conn.close()
+        abort(404)
+    # A booking already in another party is not silently moved: that would
+    # take a stay out of somebody else's group without saying so.
+    already = [r for r in rows if r["party_id"]]
+    if already:
+        conn.close()
+        flash(f"{already[0]['reference_code']} is already in a party. "
+              "Take it out of that one first.", "error")
+        return redirect(url_for("admin_bookings"))
+
+    if not name:
+        # The lead guest's surname, which is what the house would call them.
+        lead_name = (rows[0]["guest_name"] or "").strip()
+        name = (lead_name.split(" ")[-1] + " party") if lead_name else "Party"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cur = conn.execute(
+        "INSERT INTO booking_parties (name, lead_booking_id, created_at) VALUES (?, ?, ?)",
+        (name, rows[0]["id"], now_iso))
+    party_id = cur.lastrowid
+    conn.execute(
+        f"UPDATE bookings SET party_id = ? WHERE id IN ({','.join('?' * len(ids))})",
+        (party_id,) + tuple(ids))
+    log_audit(conn, "booking_party_created", target=name,
+              details=", ".join(r["reference_code"] for r in rows))
+    conn.commit()
+    conn.close()
+    flash(f"{name}: {len(ids)} rooms tied together. They will be written to "
+          "once rather than once each.", "success")
+    return redirect(url_for("admin_bookings"))
+
+
+@app.route("/admin/parties/<int:party_id>/disband", methods=["POST"])
+@owner_required
+def disband_booking_party(party_id):
+    """Untie a party. The bookings themselves are untouched."""
+    conn = get_db()
+    party = conn.execute("SELECT * FROM booking_parties WHERE id = ?",
+                         (party_id,)).fetchone()
+    if not party:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE bookings SET party_id = NULL WHERE party_id = ?", (party_id,))
+    conn.execute("DELETE FROM booking_parties WHERE id = ?", (party_id,))
+    log_audit(conn, "booking_party_disbanded", target=party["name"])
+    conn.commit()
+    conn.close()
+    flash(f"{party['name']} untied. Every booking is on its own again.", "success")
+    return redirect(url_for("admin_bookings"))
+
+
+@app.route("/management/empty-nights")
+@owner_required
+def empty_nights_page():
+    """What is unsold, and which of it sits together.
+
+    money_ahead answers what is coming in; this answers what is not. The app
+    has only ever had an occupancy RATE for months already gone — a percentage,
+    after the fact — and no way to see that eleven nights in October are free.
+    """
+    days = request.args.get("days", "90")
+    days = int(days) if days.isdigit() else 90
+    conn = get_db()
+    data = empty_nights(conn, days=days)
+    conn.close()
+    overview = [
+        overview_cell("Nights unsold", data["free_nights"],
+                      hint=f"of {data['possible_nights']} across "
+                           f"{data['rooms']} rooms"),
+        overview_cell("Occupancy", f"{data['occupancy']}%",
+                      alert=data["occupancy"] < 30,
+                      hint=f"next {data['days']} days"),
+        # The wording carries the caveat, because the number on its own reads
+        # as money somebody lost.
+        overview_cell("At today's rates", euro(data["value_at_rate"]),
+                      hint="what selling them would come to \u2014 not lost money"),
+        overview_cell("Gaps worth filling", len(data["sellable"]),
+                      hint="long enough to book"),
+    ]
+    return render_template("empty_nights.html", overview=overview, days=days,
+                           runs=data["runs"], sellable=data["sellable"],
+                           data=data)
 
 
 @app.route("/admin/data-requests", methods=["GET"])
@@ -35087,6 +35371,145 @@ def walk_in_booking():
                            form=request.args)
 
 
+@app.route("/management/on-the-books")
+@owner_required
+def management_on_the_books():
+    """Revenue already sold for months that have not happened."""
+    conn = get_db()
+    data = revenue_on_the_books(conn)
+    conn.close()
+    return render_template("management_on_the_books.html", data=data)
+
+
+@app.route("/management/break-even")
+@owner_required
+def management_break_even():
+    """What the month costs before anybody arrives, in room-nights."""
+    conn = get_db()
+    month = parse_date(request.args.get("month", "") + "-01") if request.args.get("month") else None
+    data = break_even_month(conn, month)
+    conn.close()
+    return render_template("management_break_even.html", data=data)
+
+
+@app.route("/management/cost-of-taking-money")
+@owner_required
+def management_payment_cost():
+    """What the house pays to be paid."""
+    conn = get_db()
+    period = period_from_request()
+    data = cost_of_taking_money(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    conn.close()
+    return render_template("management_payment_cost.html", data=data, period=period)
+
+
+@app.route("/management/cost-of-taking-money/settings", methods=["POST"])
+@owner_required
+def save_card_fee_settings():
+    conn = get_db()
+    pct = parse_money(request.form.get("card_fee_percent"))
+    fixed = parse_money(request.form.get("card_fee_fixed"))
+    if pct is None or pct < 0 or pct > 100:
+        conn.close()
+        flash("Enter the percentage the processor keeps, as a number.", "error")
+        return redirect(url_for("management_payment_cost"))
+    for key, value in (("card_fee_percent", f"{pct:.4f}"),
+                       ("card_fee_fixed", f"{max(0.0, fixed or 0):.4f}")):
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    log_audit(conn, "card_fee_settings_updated", details=f"{pct}% + {fixed or 0}")
+    conn.commit()
+    conn.close()
+    flash("Card fee saved.", "success")
+    return redirect(url_for("management_payment_cost"))
+
+
+@app.route("/management/cash-banking")
+@owner_required
+def management_cash_banking():
+    """Counted out of the drawer, paid into the bank, and the difference."""
+    conn = get_db()
+    period = period_from_request()
+    position = cash_position(conn, parse_date(period["start_iso"]), parse_date(period["end_iso"]))
+    conn.close()
+    return render_template("management_cash_banking.html", position=position, period=period)
+
+
+@app.route("/management/cash-banking/new", methods=["POST"])
+@owner_required
+def record_cash_banking():
+    amount = parse_money(request.form.get("amount"))
+    banked_on = (request.form.get("banked_on") or "").strip()
+    if amount is None or amount <= 0:
+        flash("Enter the amount that was paid in.", "error")
+        return redirect(url_for("management_cash_banking"))
+    if not banked_on or not parse_date(banked_on):
+        flash("Enter the date it was paid in.", "error")
+        return redirect(url_for("management_cash_banking"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO cash_bankings (banked_on, amount, reference, note,
+             recorded_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (banked_on, round(amount, 2),
+         (request.form.get("reference") or "").strip() or None,
+         (request.form.get("note") or "").strip() or None,
+         current_user()["id"], datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "cash_banked", target=banked_on, details=f"{amount:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"Recorded €{amount:.2f} paid in on {banked_on}.", "success")
+    return redirect(url_for("management_cash_banking"))
+
+
+@app.route("/management/cash-banking/<int:banking_id>/delete", methods=["POST"])
+@owner_required
+def delete_cash_banking(banking_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM cash_bankings WHERE id = ?", (banking_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM cash_bankings WHERE id = ?", (banking_id,))
+    # Deleting a banking moves what the safe should hold, so it is not a
+    # tidy-up — it is a correction to a money figure and is recorded as one.
+    log_audit(conn, "cash_banking_deleted", target=row["banked_on"],
+              details=f"{float(row['amount']):.2f}")
+    conn.commit()
+    conn.close()
+    flash("Banking removed.", "success")
+    return redirect(url_for("management_cash_banking"))
+
+
+@app.route("/management/debtors")
+@owner_required
+def management_debtors():
+    """What the house is owed, aged. The list is next door; this is the shape."""
+    conn = get_db()
+    ageing = debtor_ageing(conn)
+    conn.close()
+    return render_template("management_debtors.html", ageing=ageing)
+
+
+@app.route("/management/debtors/export.csv")
+@owner_required
+def export_debtors_csv():
+    conn = get_db()
+    ageing = debtor_ageing(conn)
+    conn.close()
+    fieldnames = ["bucket", "kind", "who", "email", "reference", "what",
+                  "days_late", "owed"]
+    labels = ageing["labels"]
+    rows = []
+    for key in ageing["order"]:
+        for it in sorted(ageing["buckets"][key], key=lambda i: -i["owed"]):
+            rows.append({"bucket": labels[key], "kind": it["kind"], "who": it["who"],
+                         "email": it["email"] or "", "reference": it["reference"],
+                         "what": it["what"], "days_late": it["days_late"],
+                         "owed": f"{it['owed']:.2f}"})
+    return csv_response(fieldnames, rows, "debtors.csv")
+
+
 @app.route("/management/outstanding")
 @owner_required
 def management_outstanding():
@@ -36673,6 +37096,323 @@ ANONYMISE_RATHER_THAN_DELETE = {
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
+
+
+def guest_record(conn, guest_id):
+    """Everything the house knows about one person, in one structure.
+
+    The money is summed from each booking's own bill rather than recomputed,
+    so there is one definition of what a stay costs and this is not a second.
+    """
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        return None
+    email = (guest["email"] or "").strip().lower()
+
+    # Two ways in, and the record keeps track of which. A linked booking is
+    # certain; one matched on the address is an inference, and a page that
+    # blurs the two is a page that will one day show somebody else's stay.
+    linked = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name, 'linked' AS matched_by
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.linked_guest_id = ?""", (guest_id,)).fetchall()
+    by_email = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name, 'address' AS matched_by
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE ? != '' AND LOWER(TRIM(bookings.guest_email)) = ?
+              AND (bookings.linked_guest_id IS NULL OR bookings.linked_guest_id != ?)""",
+        (email, email, guest_id)).fetchall()
+    stays = sorted(list(linked) + list(by_email),
+                   key=lambda b: b["arrival_date"] or "", reverse=True)
+
+    dinners = conn.execute(
+        """SELECT * FROM restaurant_bookings
+            WHERE ? != '' AND LOWER(TRIM(guest_email)) = ?
+            ORDER BY dinner_date DESC""", (email, email)).fetchall()
+    workshops = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title, workshop_sessions.start_date
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE ? != '' AND LOWER(TRIM(workshop_bookings.guest_email)) = ?
+            ORDER BY workshop_sessions.start_date DESC""", (email, email)).fetchall()
+    events = conn.execute(
+        """SELECT * FROM event_inquiries
+            WHERE ? != '' AND LOWER(TRIM(contact_email)) = ?
+            ORDER BY COALESCE(preferred_date, '') DESC""", (email, email)).fetchall()
+
+    # THE MONEY. Per stay from its own bill, so the figures here and the
+    # figures on the guest's own statement cannot disagree.
+    bills, spent, owed, paid = {}, 0.0, 0.0, 0.0
+    for b in stays:
+        bill = booking_bill(conn, b["id"])
+        if not bill:
+            continue
+        bills[b["id"]] = bill
+        if b["status"] != "cancelled":
+            spent += bill["total"]
+            owed += bill["owed"]
+            paid += bill["paid"]
+    for w in workshops:
+        if w["status"] != "cancelled":
+            spent += float(w["total_price"] or 0)
+    for d in dinners:
+        if d["status"] == "confirmed":
+            spent += float(d["total_price"] or 0) if "total_price" in d.keys() else 0.0
+
+    said = conn.execute(
+        """SELECT guest_feedback.*, bookings.reference_code
+             FROM guest_feedback
+             JOIN bookings ON bookings.id = guest_feedback.booking_id
+            WHERE bookings.id IN ({})
+            ORDER BY guest_feedback.submitted_at DESC""".format(
+                ",".join("?" * len(stays)) or "NULL"),
+        tuple(b["id"] for b in stays)).fetchall() if stays else []
+
+    return {
+        "guest": guest, "stays": stays, "dinners": dinners,
+        "workshops": workshops, "events": events, "bills": bills,
+        "feedback": said,
+        "linked_count": len(linked), "by_email_count": len(by_email),
+        "spent": round(spent, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        "nights": sum(
+            max(0, ((parse_date(b["departure_date"]) - parse_date(b["arrival_date"])).days
+                    if b["arrival_date"] and b["departure_date"]
+                    and parse_date(b["arrival_date"]) and parse_date(b["departure_date"])
+                    else 0))
+            for b in stays if b["status"] != "cancelled"),
+        "first_seen": min((b["arrival_date"] for b in stays if b["arrival_date"]),
+                          default=None),
+        "last_seen": max((b["departure_date"] for b in stays if b["departure_date"]),
+                         default=None),
+    }
+
+
+def guest_messages(conn, guest, limit=60):
+    """Every word the house has sent this person, in one list.
+
+    Mail, texts and campaign sends live in three tables and no page has ever
+    put them together — so "have we written to them about this" could only be
+    answered by opening three screens and holding the dates in your head.
+
+    Read-only and by address or number: these are records of what went out,
+    not a mailbox, and nothing here can be replied to from this page.
+    """
+    email = (guest["email"] or "").strip().lower()
+    phone = normalise_phone(guest["phone"] or "") or (guest["phone"] or "").strip()
+    out = []
+
+    if email:
+        for r in conn.execute(
+                """SELECT subject, body, created_at, sent_at, reason
+                     FROM email_outbox WHERE LOWER(TRIM(to_address)) = ?
+                    ORDER BY id DESC LIMIT ?""", (email, limit)).fetchall():
+            out.append({"kind": "email", "when": r["created_at"],
+                        "subject": r["subject"], "body": r["body"],
+                        # Held is not sent. A page that showed both the same
+                        # way would say the house had written to somebody it
+                        # had not.
+                        "sent": bool(r["sent_at"]), "note": r["reason"]})
+        for r in conn.execute(
+                """SELECT template_name, subject, status, detail, created_at
+                     FROM campaign_sends
+                    WHERE LOWER(TRIM(recipient_email)) = ?
+                    ORDER BY id DESC LIMIT ?""", (email, limit)).fetchall():
+            out.append({"kind": "campaign", "when": r["created_at"],
+                        "subject": r["subject"] or r["template_name"] or "A campaign",
+                        "body": "",
+                        # status carries whether it actually went; a campaign
+                        # that failed is not a campaign the guest received.
+                        "sent": (r["status"] or "") == "sent",
+                        "note": r["detail"] or r["template_name"]})
+    if phone:
+        for r in conn.execute(
+                """SELECT body, purpose, reason, created_at, sent_at
+                     FROM sms_outbox WHERE phone = ?
+                    ORDER BY id DESC LIMIT ?""", (phone, limit)).fetchall():
+            out.append({"kind": "text", "when": r["created_at"],
+                        "subject": r["purpose"], "body": r["body"],
+                        "sent": bool(r["sent_at"]), "note": r["reason"]})
+
+    out.sort(key=lambda x: x["when"] or "", reverse=True)
+    return out[:limit]
+
+
+def party_for_booking(conn, booking_id):
+    """The party a booking belongs to, with every stay in it.
+
+    Returns None for a booking that is on its own, which is most of them —
+    a house of seven rooms does not want a party wrapper round every single
+    reservation.
+    """
+    row = conn.execute(
+        """SELECT booking_parties.* FROM booking_parties
+             JOIN bookings ON bookings.party_id = booking_parties.id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not row:
+        return None
+    return party_detail(conn, row["id"])
+
+
+def party_detail(conn, party_id):
+    """A party, its stays, and what the whole group owes.
+
+    The money is summed from each booking's own bill rather than recomputed:
+    there is one definition of what a stay costs and this is not a second one.
+    """
+    party = conn.execute("SELECT * FROM booking_parties WHERE id = ?",
+                         (party_id,)).fetchone()
+    if not party:
+        return None
+    stays = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.party_id = ?
+            ORDER BY bookings.arrival_date, rooms.name""", (party_id,)).fetchall()
+    total = owed = paid = 0.0
+    for b in stays:
+        bill = booking_bill(conn, b["id"])
+        if not bill:
+            continue
+        total += bill["total"]
+        owed += bill["owed"]
+        paid += bill["paid"]
+    arrivals = [parse_date(b["arrival_date"]) for b in stays if b["arrival_date"]]
+    departures = [parse_date(b["departure_date"]) for b in stays if b["departure_date"]]
+    return {
+        "party": party, "stays": stays, "rooms": len(stays),
+        "guests": sum((b["party_size"] or 1) for b in stays),
+        "total": round(total, 2), "owed": round(owed, 2), "paid": round(paid, 2),
+        # The span of the whole group, which is not any one booking's dates.
+        "arrival": min(arrivals).isoformat() if arrivals else None,
+        "departure": max(departures).isoformat() if departures else None,
+        # Whoever the house talks to. Falls back to the earliest arrival, so
+        # there is always somebody rather than nobody.
+        "lead": next((b for b in stays if b["id"] == party["lead_booking_id"]),
+                     stays[0] if stays else None),
+    }
+
+
+def party_lead_bookings(conn, booking_ids):
+    """Of a set of bookings, the ones that should be written to.
+
+    A party gets ONE arrival text and one confirmation, not one per room. The
+    lead is written to; the others are in the message. Anything not in a party
+    is its own lead, so a single booking behaves exactly as it always did.
+    """
+    keep, seen_parties = [], set()
+    for bid in booking_ids:
+        row = conn.execute("SELECT id, party_id FROM bookings WHERE id = ?",
+                           (bid,)).fetchone()
+        if not row:
+            continue
+        if not row["party_id"]:
+            keep.append(bid)
+            continue
+        if row["party_id"] in seen_parties:
+            continue
+        seen_parties.add(row["party_id"])
+        party = conn.execute("SELECT lead_booking_id FROM booking_parties WHERE id = ?",
+                             (row["party_id"],)).fetchone()
+        lead = party["lead_booking_id"] if party else None
+        # If the lead is not in the set being written to, the first of the set
+        # stands in — better one message to somebody in the party than none.
+        keep.append(lead if lead in booking_ids else bid)
+    return keep
+
+
+def empty_nights(conn, *, days=90, today=None):
+    """Every unsold room-night in the window, and the runs they form.
+
+    A night counts as sold if a confirmed OR pending booking covers it, and
+    unsellable if a block covers it. Pending counts because somebody has asked
+    for it and the calendar is already holding it — showing it as free is how
+    the same night gets offered twice.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    last = day + timedelta(days=max(1, min(730, days)))
+
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    taken = {r["id"]: set() for r in rooms}
+
+    for b in conn.execute(
+            """SELECT room_id, arrival_date, departure_date FROM bookings
+                WHERE status IN ('confirmed', 'pending')
+                  AND departure_date > ? AND arrival_date < ?""",
+            (day.isoformat(), last.isoformat())).fetchall():
+        start, end = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not start or not end:
+            continue
+        night = max(start, day)
+        while night < min(end, last):
+            taken.setdefault(b["room_id"], set()).add(night)
+            night += timedelta(days=1)
+
+    blocked = {r["id"]: set() for r in rooms}
+    for bl in conn.execute(
+            """SELECT room_id, start_date, end_date FROM blocked_dates
+                WHERE end_date > ? AND start_date < ?""",
+            (day.isoformat(), last.isoformat())).fetchall():
+        start, end = parse_date(bl["start_date"]), parse_date(bl["end_date"])
+        if not start or not end:
+            continue
+        night = max(start, day)
+        while night < min(end, last):
+            blocked.setdefault(bl["room_id"], set()).add(night)
+            night += timedelta(days=1)
+
+    runs, free_by_night, total_value, free_count = [], {}, 0.0, 0
+    for room in rooms:
+        rate = float(room["price_per_night"] or 0)
+        current = []
+        night = day
+        while night < last:
+            busy = night in taken.get(room["id"], ()) or night in blocked.get(room["id"], ())
+            if busy:
+                if current:
+                    runs.append({"room": room,
+                                 # ISO, like every other date this app hands a
+                                 # template: date_short takes a string.
+                                 "from": current[0].isoformat(),
+                                 "to": current[-1].isoformat(),
+                                 "nights": len(current),
+                                 "value": round(rate * len(current), 2),
+                                 # A run shorter than the room's own minimum
+                                 # cannot be sold as it stands, which is a
+                                 # different problem from an empty week.
+                                 "below_minimum": bool(room["min_nights"]
+                                                       and len(current) < room["min_nights"])})
+                    current = []
+            else:
+                current.append(night)
+                free_by_night[night.isoformat()] = free_by_night.get(night.isoformat(), 0) + 1
+                free_count += 1
+                total_value += rate
+            night += timedelta(days=1)
+        if current:
+            runs.append({"room": room, "from": current[0].isoformat(),
+                         "to": current[-1].isoformat(),
+                         "nights": len(current), "value": round(rate * len(current), 2),
+                         "below_minimum": bool(room["min_nights"]
+                                               and len(current) < room["min_nights"])})
+
+    # Longest first: a week between two bookings is something a guest can
+    # actually take, and a stray Tuesday is not.
+    runs.sort(key=lambda r: (-r["nights"], r["from"]))
+    sellable = [r for r in runs if not r["below_minimum"]]
+    possible = len(rooms) * (last - day).days
+    return {
+        "from": day.isoformat(), "to": last.isoformat(), "days": (last - day).days,
+        "rooms": len(rooms), "runs": runs, "sellable": sellable,
+        "free_nights": free_count, "possible_nights": possible,
+        "occupancy": round((possible - free_count) / possible * 100) if possible else 0,
+        # At today's rate, and said as that. Not "lost": a house is never full,
+        # and a figure labelled lost gets subtracted from a plan that was never
+        # real.
+        "value_at_rate": round(total_value, 2),
+        "by_night": free_by_night,
+    }
 
 
 def room_board(conn, today=None):
@@ -39178,12 +39918,34 @@ def readiness_checks(conn):
             "No backup has ever been taken. The job is switched on, so either it has not run "
             "yet or it cannot send — check Admin - Automation for what it last returned.")
     elif age_h > grace_h:
+        # It used to say the job failed silently, which was true when it was
+        # written and is not any more: every run records its outcome, its
+        # message and how many it has failed in a row. So this says WHY rather
+        # than speculating, and "check Automation" becomes the last resort
+        # instead of the whole answer.
         days = age_h / 24
-        add("warn", "Data", "Backups arriving", False,
-            f"Last backup was {days:.0f} day(s) ago, but one is meant to be taken every "
-            f"{interval_h:.0f}h. It is failing silently — the job only records a success, so "
-            "a mail account that stopped working leaves no error anywhere. "
-            "Check Admin - Automation.")
+        run = conn.execute(
+            """SELECT last_status, last_message, consecutive_failures AS fails
+                 FROM automation_runs WHERE job_name = 'backup_email'""").fetchone()
+        head = (f"Last backup was {days:.0f} day(s) ago, but one is meant to be taken "
+                f"every {interval_h:.0f}h. ")
+        if run and run["last_status"] == "failed":
+            why = (f"The job has failed {run['fails']} run(s) in a row and reports: "
+                   f"{run['last_message'] or 'no message'}")
+        elif run and run["last_status"] == "ok":
+            # The worst of the three: the job believes it worked, so the copy
+            # is being made and is not arriving. That is an address problem or
+            # a mailbox problem, not a job problem.
+            why = ("The job reports success, so a copy is being made and is not "
+                   "arriving — check the address it goes to, and that mailbox.")
+        elif run:
+            why = ("The job has run but recorded no outcome, which means it last ran "
+                   "before outcomes were recorded. Admin - Automation has a Run now "
+                   "button that will say.")
+        else:
+            why = ("The job has never run. Admin - Automation has a Run now button "
+                   "that will say why.")
+        add("warn", "Data", "Backups arriving", False, head + why)
     else:
         add("warn", "Data", "Backups arriving", True,
             f"Last backup {age_h:.0f}h ago, on a {interval_h:.0f}h schedule.")
@@ -39226,11 +39988,21 @@ def admin_readiness():
                            blockers=blockers, warnings=warnings)
 
 
-def build_backup_zip(include_media=True):
+def build_backup_zip(include_media=True, skipped_out=None):
     """A zip of the database, and optionally the uploaded documents and room
     photos alongside it. Shared by the owner's manual download and the
     automated email job, so there is exactly one place that knows what a
-    backup contains."""
+    backup contains.
+
+    `skipped_out`, if given a list, receives the name of every media file
+    that could not be read. The zip already says so in FILES_SKIPPED.txt, but
+    only to whoever opens it; this is how a caller can tell the owner on the
+    day instead — the manual download writes it to the audit log, and the
+    scheduled job puts it in the line recorded against the run.
+
+    The database is the exception and is never skipped. A zip without it is
+    not a backup, so if that copy fails the error is raised and the caller
+    finds out."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         tmp_db_path = os.path.join(BASE_DIR, f"_backup_tmp_{secrets.token_hex(6)}.db")
@@ -39245,6 +40017,7 @@ def build_backup_zip(include_media=True):
             if os.path.exists(tmp_db_path):
                 os.remove(tmp_db_path)
 
+        missing = []
         if include_media:
             # A file that disappears between the listing and the write is
             # skipped, not fatal.
@@ -39279,6 +40052,11 @@ def build_backup_zip(include_media=True):
                     "when this backup was taken, so they are NOT in it.\n"
                     "Everything else, including the database, is.\n\n"
                     + "\n".join(skipped) + "\n")
+            missing.extend(skipped)
+        if skipped_out is not None:
+            # The zip says what was left out, but only to whoever opens it.
+            # This is how the caller can tell the owner today instead.
+            skipped_out.extend(missing)
     return buf.getvalue()
 
 
@@ -39287,10 +40065,16 @@ def build_backup_zip(include_media=True):
 def download_backup():
     audit_conn = get_db()
     log_audit(audit_conn, "backup_downloaded")
+
+    skipped = []
+    zip_bytes = build_backup_zip(include_media=True, skipped_out=skipped)
+    if skipped:
+        # A download has nowhere to show a message, so the only place the owner
+        # could ever learn this is the audit log. The zip says so as well.
+        log_audit(audit_conn, "backup_files_skipped",
+                  details=f"{len(skipped)}: " + "; ".join(skipped[:20]))
     audit_conn.commit()
     audit_conn.close()
-
-    zip_bytes = build_backup_zip(include_media=True)
     filename = f"gudanes-backup-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.zip"
     return app.response_class(
         zip_bytes, mimetype="application/zip",
@@ -39512,7 +40296,8 @@ def run_backup_email_job(conn):
     if not to_address:
         raise JobFailed("no owner email configured, so there is nowhere to send a backup")
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    zip_bytes = build_backup_zip(include_media=True)
+    skipped = []
+    zip_bytes = build_backup_zip(include_media=True, skipped_out=skipped)
     note = ""
     if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
         zip_bytes = build_backup_zip(include_media=False)
@@ -39527,7 +40312,9 @@ def run_backup_email_job(conn):
         raise JobFailed(f"send failed: {error}")
     log_audit(conn, "backup_auto_sent")
     conn.commit()
-    return f"sent to {to_address} ({len(zip_bytes) // 1024}KB){' (database only)' if note else ''}"
+    short = f", {len(skipped)} file(s) unreadable and left out" if skipped else ""
+    return (f"sent to {to_address} ({len(zip_bytes) // 1024}KB)"
+            f"{' (database only)' if note else ''}{short}")
 
 
 # ---------------------------------------------------------------------------
@@ -43665,6 +44452,402 @@ def payables_ageing(conn, today=None):
             "total": round(sum(totals.values()), 2)}
 
 
+# What the card processor charges. Left empty on purpose: a fee figure the
+# house did not type is a guess, and a guessed cost of sale is worse than an
+# empty page because it gets quoted.
+CARD_FEE_KEYS = ("card_fee_percent", "card_fee_fixed")
+# Which stored payment methods actually attract a card fee. `room` is a charge
+# moved to a stay and settled later by whatever method that stay uses, so
+# counting it here would charge the fee twice.
+CARD_METHODS = ("stripe", "card_link", "card_terminal", "card_in_person")
+
+
+def card_fee_settings(conn):
+    """(percent, fixed) as typed by the owner, or (None, None) if never set."""
+    rows = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings WHERE key IN (?, ?)", CARD_FEE_KEYS).fetchall()}
+    try:
+        pct = float(rows.get("card_fee_percent"))
+        fixed = float(rows.get("card_fee_fixed") or 0)
+    except (TypeError, ValueError):
+        return None, None
+    return pct, fixed
+
+
+def cost_of_taking_money(conn, start, end):
+    """What it costs the house to be paid, by method.
+
+    Every other page treats a payment as the amount that arrived. A card
+    payment is not: the processor keeps a percentage and a few cents of every
+    one, and across a season of dinners taken on the terminal that is a real
+    cost of sale sitting in nobody's expenses. Cash costs nothing to take and
+    a bank transfer costs nothing to receive, which is exactly the comparison
+    worth being able to see.
+
+    Returns configured=False rather than a number when the rate has not been
+    typed. An invented fee is worse than no page: it would be quoted.
+    """
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    pct, fixed = card_fee_settings(conn)
+    lo, hi = start.isoformat(), (end + timedelta(days=1)).isoformat()
+
+    methods = {}
+
+    def _take(method, amount):
+        m = methods.setdefault(method or "other",
+                               {"method": method or "other", "amount": 0.0, "count": 0})
+        m["amount"] = round(m["amount"] + float(amount or 0), 2)
+        m["count"] += 1
+
+    for r in conn.execute(
+            "SELECT method, amount FROM booking_payments WHERE created_at >= ? AND created_at < ?",
+            (lo, hi)).fetchall():
+        _take(r["method"], r["amount"])
+    for r in conn.execute(
+            "SELECT method, amount FROM pos_payments WHERE created_at >= ? AND created_at < ?",
+            (lo, hi)).fetchall():
+        _take(r["method"], r["amount"])
+
+    rows = []
+    for m in sorted(methods.values(), key=lambda x: -x["amount"]):
+        charged = m["method"] in CARD_METHODS
+        fee = None
+        if charged and pct is not None:
+            fee = round(m["amount"] * pct / 100.0 + m["count"] * fixed, 2)
+        rows.append({**m, "charged": charged, "fee": fee,
+                     "label": (MANUAL_PAYMENT_METHODS.get(m["method"])
+                               or POS_PAYMENT_METHODS.get(m["method"])
+                               or m["method"].replace("_", " ").capitalize())})
+    taken = round(sum(r["amount"] for r in rows), 2)
+    on_card = round(sum(r["amount"] for r in rows if r["charged"]), 2)
+    total_fee = (round(sum(r["fee"] or 0 for r in rows), 2) if pct is not None else None)
+    return {
+        "configured": pct is not None, "percent": pct, "fixed": fixed,
+        "rows": rows, "taken": taken, "on_card": on_card, "fee": total_fee,
+        # The figure worth knowing: what fraction of everything taken the
+        # processor keeps. Quoted against ALL money taken, not just the card
+        # part, because that is what it costs the business to get paid.
+        "effective_pct": (round(total_fee / taken * 100, 2)
+                          if total_fee is not None and taken else None),
+        "start": start, "end": end,
+    }
+
+
+def break_even_month(conn, month=None):
+    """How many room-nights a month has to sell before it has paid for itself.
+
+    Fixed cost is what the house owes whether anybody comes or not: the
+    recurring costs, normalised to a month, plus the salaried wage bill.
+    Hourly staff are deliberately NOT in it — they are a cost of opening, not
+    of existing, and folding them in would raise the break-even by an amount
+    that only exists once the nights are sold.
+
+    The rate is what rooms ACTUALLY achieved, not the rack rate. Break-even
+    computed on a price nobody paid is a comforting number and a false one.
+    """
+    day = month or datetime.now(LOCAL_TZ).date()
+    if isinstance(day, str):
+        day = parse_date(day)
+    first = day.replace(day=1)
+    last = date(first.year + (first.month == 12), (first.month % 12) + 1, 1)
+
+    fixed = 0.0
+    costs = []
+    for c in conn.execute(
+            "SELECT * FROM recurring_costs WHERE active = 1 ORDER BY label").fetchall():
+        amount = float(c["amount"] or 0)
+        monthly = amount / 12.0 if c["frequency"] == "annual" else amount
+        fixed += monthly
+        costs.append({"label": c["label"], "monthly": round(monthly, 2),
+                      "frequency": c["frequency"]})
+
+    salaried = 0.0
+    # Asked at the latest point inside the month rather than on the 1st.
+    # Somebody who started on the 12th is a cost this month, and asking on the
+    # 1st leaves them out of a figure the month is judged against — which
+    # understates break-even in exactly the month a new salary makes it harder
+    # to reach.
+    as_at = min(last - timedelta(days=1), datetime.now(LOCAL_TZ).date())
+    if as_at < first:
+        as_at = first
+    for w in current_wages(conn, as_at).values():
+        if w["basis"] == "monthly":
+            salaried += float(w["gross_amount"] or 0)
+    fixed += salaried
+
+    nights_sold, revenue = 0, 0.0
+    for b in conn.execute(
+            """SELECT * FROM bookings WHERE status = 'confirmed'
+                AND departure_date > ? AND arrival_date < ?""",
+            (first.isoformat(), last.isoformat())).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure or departure <= arrival:
+            continue
+        total_nights = (departure - arrival).days
+        per_night = (float(b["total_price"] or 0) - float(b["discount_amount"] or 0)) / total_nights
+        for n in range(total_nights):
+            night = arrival + timedelta(days=n)
+            if first <= night < last:
+                nights_sold += 1
+                revenue += per_night
+
+    rate = round(revenue / nights_sold, 2) if nights_sold else None
+    needed = round(fixed / rate, 1) if rate else None
+    return {
+        "month": first, "fixed": round(fixed, 2), "salaried": round(salaried, 2),
+        "recurring": round(fixed - salaried, 2), "costs": costs,
+        "nights_sold": nights_sold, "revenue": round(revenue, 2), "rate": rate,
+        "nights_needed": needed,
+        "covered": (nights_sold >= needed) if needed is not None else None,
+        "shortfall": (round(needed - nights_sold, 1)
+                      if needed is not None and nights_sold < needed else 0),
+    }
+
+
+def revenue_on_the_books(conn, today=None, months=12):
+    """Confirmed revenue for stays and places that have not happened yet,
+    by the month the money is EARNED rather than the month it arrives.
+
+    Money Ahead is the cash question — what lands in the account, dated on
+    arrival, inside a window. This is the trading question a season is judged
+    on: how full is next June, and is it fuller than this June was. The two
+    disagree on purpose. A deposit taken in January for an August week is
+    January's cash and August's revenue, and reading one as the other is how a
+    quiet autumn hides behind a good spring.
+
+    Nights are apportioned across month boundaries the way the taxe de séjour
+    return does it, because a stay from the 28th to the 3rd belongs to two
+    months and putting it wholly in either is wrong in the way nobody notices
+    until two figures disagree.
+
+    Pending is counted separately and never folded into the total. A held
+    booking is not revenue and a page that says otherwise is a page that
+    flatters itself.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(day, str):
+        day = parse_date(day)
+    first = day.replace(day=1)
+    buckets = {}
+    for i in range(months):
+        y, mth = divmod(first.month - 1 + i, 12)
+        key = date(first.year + y, mth + 1, 1).strftime("%Y-%m")
+        buckets[key] = {"month": key, "rooms": 0.0, "workshops": 0.0,
+                        "nights": 0, "pending": 0.0}
+
+    def _add(key, field, amount):
+        if key in buckets:
+            buckets[key][field] = round(buckets[key][field] + amount, 2)
+
+    for b in conn.execute(
+            """SELECT * FROM bookings
+                WHERE status IN ('confirmed', 'pending')
+                  AND departure_date >= ?""", (day.isoformat(),)).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure or departure <= arrival:
+            continue
+        total = float(b["total_price"] or 0) - float(b["discount_amount"] or 0)
+        nights = (departure - arrival).days
+        if nights <= 0:
+            continue
+        per_night = total / nights
+        for n in range(nights):
+            night = arrival + timedelta(days=n)
+            if night < day:
+                continue                       # already earned, not "on the books"
+            key = night.strftime("%Y-%m")
+            if b["status"] == "pending":
+                _add(key, "pending", per_night)
+            else:
+                _add(key, "rooms", per_night)
+                if key in buckets:
+                    buckets[key]["nights"] += 1
+
+    for wb in conn.execute(
+            """SELECT workshop_bookings.total_price, workshop_bookings.status,
+                      workshop_sessions.start_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                WHERE workshop_bookings.status IN ('confirmed', 'pending')
+                  AND workshop_sessions.start_date >= ?""", (day.isoformat(),)).fetchall():
+        start = parse_date(wb["start_date"])
+        if not start:
+            continue
+        key = start.strftime("%Y-%m")
+        amount = float(wb["total_price"] or 0)
+        _add(key, "pending" if wb["status"] == "pending" else "workshops", amount)
+
+    rows = []
+    for key in sorted(buckets):
+        r = buckets[key]
+        r["total"] = round(r["rooms"] + r["workshops"], 2)
+        rows.append(r)
+    return {
+        "today": day, "rows": rows,
+        "total": round(sum(r["total"] for r in rows), 2),
+        "rooms": round(sum(r["rooms"] for r in rows), 2),
+        "workshops": round(sum(r["workshops"] for r in rows), 2),
+        "pending": round(sum(r["pending"] for r in rows), 2),
+        "nights": sum(r["nights"] for r in rows),
+    }
+
+
+def cash_position(conn, start=None, end=None):
+    """Cash the till counted, cash that reached the bank, and the gap.
+
+    The closure already counts the drawer and records the variance against
+    what the till expected. That answers "did the drawer balance tonight". It
+    does not answer "is the cash still here", which is the question a business
+    handling notes has to be able to answer at any moment — and the two get
+    confused because both are called cash.
+
+    Counted, not taken: `taken_total` is what the till THINKS it took in cash,
+    and the drawer is what is actually there. Banking what the till expected
+    rather than what was counted is how a shortfall gets carried forward
+    quietly for a month.
+
+    Everything is bounded by service day, not calendar date, so a Tuesday
+    that ended at 01:30 banks as Tuesday.
+    """
+    end = end or service_day()
+    if isinstance(end, str):
+        end = parse_date(end)
+    start = start or (end - timedelta(days=30))
+    if isinstance(start, str):
+        start = parse_date(start)
+
+    closures = conn.execute(
+        """SELECT period, counted_cash, opening_float, by_method_json, closed_at
+             FROM pos_closures
+            WHERE kind = 'day' AND period >= ? AND period <= ?
+            ORDER BY period""", (start.isoformat(), end.isoformat())).fetchall()
+    days, counted_total, expected_total = [], 0.0, 0.0
+    for c in closures:
+        try:
+            expected = float(json.loads(c["by_method_json"] or "{}").get("cash", 0) or 0)
+        except (ValueError, TypeError):
+            expected = 0.0
+        # A day nobody counted contributes nothing to what is owed to the safe.
+        # Counting it as zero would read as "the cash went missing".
+        counted = c["counted_cash"]
+        if counted is None:
+            days.append({"day": c["period"], "expected": round(expected, 2),
+                         "counted": None, "uncounted": True})
+            continue
+        counted = float(counted) - float(c["opening_float"] or 0)
+        counted_total += counted
+        expected_total += expected
+        days.append({"day": c["period"], "expected": round(expected, 2),
+                     "counted": round(counted, 2), "uncounted": False,
+                     "variance": round(counted - expected, 2)})
+
+    bankings = conn.execute(
+        """SELECT cash_bankings.*, users.name AS who
+             FROM cash_bankings LEFT JOIN users ON users.id = cash_bankings.recorded_by_user_id
+            WHERE banked_on >= ? AND banked_on <= ?
+            ORDER BY banked_on DESC, id DESC""", (start.isoformat(), end.isoformat())).fetchall()
+    banked_total = round(sum(float(b["amount"] or 0) for b in bankings), 2)
+    uncounted = [d for d in days if d["uncounted"]]
+    return {
+        "start": start, "end": end, "days": days, "bankings": bankings,
+        "counted": round(counted_total, 2),
+        "expected": round(expected_total, 2),
+        "banked": banked_total,
+        # What should be in the safe for this window. Not a bank balance and
+        # not a profit: notes counted out of the drawer that have not yet been
+        # paid in.
+        "on_hand": round(counted_total - banked_total, 2),
+        "variance": round(counted_total - expected_total, 2),
+        "uncounted_days": [d["day"] for d in uncounted],
+    }
+
+
+DEBTOR_BUCKETS = (
+    ("current", "Not yet late", 0),
+    ("d30", "1 to 30 days", 1),
+    ("d60", "31 to 60 days", 31),
+    ("d90", "61 to 90 days", 61),
+    ("older", "Over 90 days", 91),
+)
+
+
+def debtor_ageing(conn, today=None):
+    """What guests owe the house, by how long they have owed it.
+
+    payables_ageing answers this for money going out and has since the
+    supplier invoices got due dates. Nothing answered it for money coming in.
+    /management/outstanding lists debtors one per line, sorted, which is the
+    right screen for chasing somebody — but a list does not answer "how much
+    of what we are owed is genuinely old", which is the question an accountant
+    and a bank both ask, and the one that says whether the house has a
+    collection problem or three unlucky months.
+
+    Rooms AND workshops. Rooms alone would have been easier and would have
+    produced a receivables figure that is quietly short, which is the kind of
+    number that gets believed and then disagreed with by the ledger.
+
+    Restaurant and event enquiries carry no balance to be owed — dinner is
+    settled at the table and an enquiry is a quote, not a debt — so there is
+    nothing of theirs to age.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    if isinstance(day, str):
+        day = parse_date(day)
+    items = []
+    for row in outstanding_balances(conn, today=day):
+        b = row["booking"]
+        items.append({
+            "kind": "room", "who": b["guest_name"], "email": b["guest_email"],
+            "reference": b["reference_code"], "what": b["room_name"] or "Room",
+            "owed": round(float(row["owed"]), 2),
+            "days_late": int(row["days_late"] or 0), "state": row["state"],
+        })
+    for wb in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                      workshop_sessions.start_date AS session_start
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status IN ('confirmed', 'pending')""").fetchall():
+        owed, _charged, _paid = workshop_balance_due(conn, wb["id"])
+        if owed <= 0.005:
+            continue
+        # Late from the balance due date if one was set, otherwise from the day
+        # the session started — a place on a workshop that has already run and
+        # is still unpaid is late whatever the paperwork says.
+        anchor = wb["balance_due_date"] or wb["session_start"]
+        late = _days_between(anchor, day.isoformat()) if anchor else 0
+        items.append({
+            "kind": "workshop", "who": wb["guest_name"], "email": wb["guest_email"],
+            "reference": wb["reference_code"], "what": wb["workshop_title"],
+            "owed": round(float(owed), 2), "days_late": max(0, int(late)),
+            "state": "gone" if late > 0 else "due",
+        })
+
+    buckets = {key: [] for key, _label, _floor in DEBTOR_BUCKETS}
+    for it in items:
+        late = it["days_late"]
+        key = "current"
+        for bkey, _label, floor in DEBTOR_BUCKETS:
+            if late >= floor and floor > 0:
+                key = bkey
+        buckets[key].append(it)
+    totals = {k: round(sum(i["owed"] for i in v), 2) for k, v in buckets.items()}
+    total = round(sum(totals.values()), 2)
+    return {
+        "buckets": buckets, "totals": totals, "total": total,
+        "labels": {k: l for k, l, _f in DEBTOR_BUCKETS},
+        "order": [k for k, _l, _f in DEBTOR_BUCKETS],
+        "items": sorted(items, key=lambda i: (-i["days_late"], -i["owed"])),
+        # Stated rather than left to be inferred: the share that is genuinely
+        # old is the whole point of ageing money.
+        "over_60": round(totals["d90"] + totals["older"], 2),
+    }
+
+
 def pennylane_import_supplier_invoice(*, file_attachment_id, supplier_id, date, deadline,
                                       amount, tax, lines, invoice_number=None,
                                       currency="EUR", external_reference=None,
@@ -44537,7 +45720,9 @@ def sitemap():
     """
     pages = [
         ("dashboard", "1.0"), ("book_rooms", "0.9"), ("workshops_public", "0.9"),
-        ("restaurant_info", "0.8"), ("events_info", "0.8"), ("facilities_page", "0.7"),
+        ("restaurant_info", "0.8"), ("events_info", "0.8"),
+        ("events_weddings", "0.7"), ("events_private", "0.6"),
+        ("events_photoshoots", "0.6"), ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]

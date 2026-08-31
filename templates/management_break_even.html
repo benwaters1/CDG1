@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Break-even{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Break-even</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>
+    <a href="{{ url_for('admin_wages') }}" class="btn-ghost">Wages</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What {{ data.month.strftime('%B %Y') }} costs before anybody arrives, and how many room-nights
+  that is at the rate the rooms are actually achieving. Hourly staff are deliberately not in the
+  fixed cost: they are a cost of opening rather than of existing, and folding them in would
+  raise the break-even by an amount that only exists once the nights are sold.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.fixed) }}</span>
+    <span class="stat-tile-label">Fixed cost this month</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.nights_needed %}{{ data.nights_needed }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Room-nights needed</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.nights_sold }}</span>
+    <span class="stat-tile-label">Sold so far</span></span></div>
+</div>
+
+{% if data.rate is none %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">No nights sold this month, so there is no rate to divide by</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Break-even needs an achieved nightly rate, and an achieved rate needs a night somebody
+    actually paid for. Using the listed rate instead would give a comforting number and a false
+    one. The fixed cost below stands on its own.
+  </p>
+</div>
+{% elif data.covered %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">The month is covered</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {{ data.nights_sold }} nights sold against {{ data.nights_needed }} needed, at an achieved
+    rate of &euro;{{ '%.2f'|format(data.rate) }}. Everything past this point contributes.
+  </p>
+</div>
+{% else %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">{{ data.shortfall }} more room-nights to cover the month</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {{ data.nights_sold }} sold against {{ data.nights_needed }} needed, at an achieved rate of
+    &euro;{{ '%.2f'|format(data.rate) }} a night &mdash; what the rooms are getting, not what
+    they are listed at.
+  </p>
+</div>
+{% endif %}
+
+<h2 class="section-heading">What the fixed cost is made of</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Cost</th><th class="num">Per month</th></tr></thead>
+    <tbody>
+      <tr><td>Salaried wages (gross)</td><td class="num">&euro;{{ '%.2f'|format(data.salaried) }}</td></tr>
+      {% for c in data.costs %}
+      <tr>
+        <td>{{ c.label }}{% if c.frequency == 'annual' %} <span class="upload-hint">annual, spread over twelve</span>{% endif %}</td>
+        <td class="num">&euro;{{ '%.2f'|format(c.monthly) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><th style="text-align:left;">Total</th>
+      <th class="num">&euro;{{ '%.2f'|format(data.fixed) }}</th></tr></tfoot>
+  </table>
+</div>
+
+{% endblock %}

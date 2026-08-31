@@ -11,6 +11,7 @@
     <path d="M48 13c3-3 6-4 12-4M72 13c-3-3-6-4-12-4M48 13c3 3 6 4 12 4M72 13c-3 3-6 4-12 4"/>
     <circle cx="60" cy="13" r="1.4"/>
   </svg>
+  <p class="g-eyebrow">{{ t('Your booking') }}</p>
   <h1>{{ booking['room_name'] }}</h1>
   <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>
     {% if booking['payment_status'] != 'unpaid' %}· Payment: <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}
@@ -49,7 +50,7 @@
 {% if booking['status'] in ('pending', 'confirmed') %}
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Your details') }}</h3>
+  <h2 class="g-panel__h">{{ t('Your details') }}</h2>
   <p class="g-hint">{{ t("If we have your mobile we will text you the day before with everything you need to find us. A number we cannot read means we cannot do that.") }}</p>
   <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -80,7 +81,7 @@
 </div>
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Estimated arrival time') }}</h3>
+  <h2 class="g-panel__h">{{ t('Estimated arrival time') }}</h2>
   <p class="g-hint">{{ t("Let us know roughly when to expect you, so someone's ready.") }}</p>
   <form method="post" class="g-row" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -94,7 +95,7 @@
 </div>
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Stay longer') }}</h3>
+  <h2 class="g-panel__h">{{ t('Stay longer') }}</h2>
   <p class="g-hint">If the room is free we will extend it straight away, and the extra nights go on your bill.</p>
   <form method="post" class="g-mb-acts" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -107,7 +108,7 @@
 </div>
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Change your dates') }}</h3>
+  <h2 class="g-panel__h">{{ t('Change your dates') }}</h2>
   <p class="g-hint">
     {% if booking['status'] == 'pending' and booking['payment_status'] != 'paid' %}
       Pick new dates and they'll update right away, as long as the room is free.
@@ -133,7 +134,7 @@
 
 {% if has_transfer %}
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Airport transfer') }}</h3>
+  <h2 class="g-panel__h">{{ t('Airport transfer') }}</h2>
   {% if booking['transfer_flight_number'] or booking['transfer_arrival_time'] %}
   <p class="g-hint">On file: {{ booking['transfer_flight_number'] or 'no flight number' }}{% if booking['transfer_arrival_time'] %}, arriving {{ booking['transfer_arrival_time'] }}{% endif %}{% if booking['transfer_notes'] %} — {{ booking['transfer_notes'] }}{% endif %}. Update below if anything changes.</p>
   {% else %}
@@ -160,7 +161,7 @@
 {% endif %}
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Requests') }}</h3>
+  <h2 class="g-panel__h">{{ t('Requests') }}</h2>
   <p class="g-hint">Need something for your stay — a bottle of wine waiting in the room, a late checkout, dietary notes? Tell us here.</p>
   <form method="post" style="margin-top:var(--s2);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -264,7 +265,7 @@
    rather than asking for a card each time — the balance is settled once. #}
 {% if addable and booking['status'] in ('pending', 'confirmed') %}
 <div class="g-mb-card" style="margin-top:var(--s4);">
-  <h3>{{ t('Add to your stay') }}</h3>
+  <h2 class="g-panel__h">{{ t('Add to your stay') }}</h2>
   <p class="g-hint">Added to your bill, settled with the rest.</p>
   {% for e in addable %}
   <form method="post" class="g-mb-acts" style="margin-bottom:var(--s2);">

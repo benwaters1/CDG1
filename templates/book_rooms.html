@@ -56,9 +56,16 @@
 <section class="g-book-bar"><div class="g-wrap">
   <form method="get" class="g-search" aria-label="Check availability">
     <div class="g-search__f"><label for="s_arrival">Arrival</label>
-      <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}"></div>
+      <input type="date" id="s_arrival" name="arrival" value="{{ arrival }}">
+      <button type="button" class="g-rp__btn" data-rp-open="arrival" hidden>
+        <span class="g-rp__val" data-rp-label="arrival">{{ t('Add dates') }}</span>
+      </button></div>
     <div class="g-search__f"><label for="s_departure">Departure</label>
-      <input type="date" id="s_departure" name="departure" value="{{ departure }}"></div>
+      <input type="date" id="s_departure" name="departure" value="{{ departure }}">
+      <button type="button" class="g-rp__btn" data-rp-open="departure" hidden>
+        <span class="g-rp__val" data-rp-label="departure">{{ t('Add dates') }}</span>
+        <span class="g-rp__nights" data-rp-nights></span>
+      </button></div>
     <div class="g-search__f"><label for="s_party">Guests</label>
       <input type="number" inputmode="numeric" id="s_party" name="party_size" min="1" value="{{ prefill_party_size or 2 }}"></div>
     <button type="submit" class="g-btn g-search__go">Check availability</button>
@@ -411,7 +418,8 @@
   <p class="g-p">Five rooms, each different. This is the quickest way to see which suits.</p>
 
   <div class="g-compare-wrap">
-    <table class="g-compare">
+    <div class="table-wrap">
+      <table class="g-compare">
       <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
       <thead>
         <tr>
@@ -441,7 +449,8 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+      </table>
+    </div>
   </div>
   <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
 </div></section>
@@ -620,6 +629,25 @@
 
 
 <div class="g-wrap g-mark__wrap">{{ mark('key') }}</div>
+
+
+<!-- ============ WHERE THIS IS ============ -->
+{# The map lives on Contact. These pages need the geography stated, because
+   this is where a guest decides whether the journey is worth it. #}
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-eyebrow">Where This Is</p>
+  <h2 class="g-place">Two Hours From Toulouse, Three Minutes From the Village</h2>
+  <div class="g-facts-list">
+    <div><dt>By air</dt><dd>Toulouse-Blagnac, then an hour and three quarters by road. We can send a car.</dd></div>
+    <div><dt>By train</dt><dd>Les Cabannes, on the Toulouse&ndash;Latour-de-Carol line. Three minutes from the gates.</dd></div>
+    <div><dt>By car</dt><dd>The N20 south from Toulouse, then the D8 through Ch&acirc;teau-Verdun. Parking at the ch&acirc;teau.</dd></div>
+    <div><dt>The address</dt><dd>2 Route de Beille, Ch&acirc;teau-Verdun, Ari&egrave;ge 09310, France</dd></div>
+  </div>
+  <p class="g-hint" style="margin-top:var(--s4)">
+    <a href="https://www.google.com/maps/search/?api=1&amp;query=Ch%C3%A2teau+de+Gudanes+Ch%C3%A2teau-Verdun" target="_blank" rel="noopener">Open in Google Maps</a>
+    &middot; <a href="{{ url_for('contact_page') }}#map">See it on the map</a>
+  </p>
+</div></section>
 
 <!-- ============ HOW SMALL THIS IS ============ -->
 {# Every figure verified against the system: five bedrooms of ninety-four rooms, one sitting a

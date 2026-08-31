@@ -1,0 +1,51 @@
+{% extends "public_base.html" %}
+{% block title %}Photoshoots &amp; Film{% endblock %}
+{% block description %}Location hire for photography and film at an eighteenth-century Class I Historic Monument. Ninety-four rooms between ruin and restoration.{% endblock %}
+{% set crumbs = [('Events', url_for('events_info')), ('Photoshoots', None)] %}
+{% block content %}
+{% from '_marks.html' import mark %}
+
+<section class="g-hero g-hero--short">
+  <div class="g-hero__wash"></div>
+  <div class="g-wrap">
+    <p class="g-hero__eyebrow">Ariège · Location Hire</p>
+    <h1 class="g-hero__title">Ninety-four rooms, every state</h1>
+    <p class="g-hero__lede">Bare plaster, gilded panelling, medieval stone, and an eighteenth-century façade.</p>
+    <p><a href="#enquire" class="g-btn g-btn--solid">Ask about a shoot</a></p>
+  </div>
+</section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">What Is Here</p>
+  <h2 class="g-place">Rooms Between Ruin and Restored</h2>
+  <p class="g-p g-lede-first">Ninety-four rooms across 43,000 square feet. Five are finished. The others range from stripped stone to salons with their gilding intact, which is a range of sets that cannot be built and cannot be dressed to look real.</p>
+  <p class="g-p">The façade was designed by Ange-Jacques Gabriel, principal architect to Louis XV. The house has been photographed for Vogue, AD Italia and House &amp; Garden, and classified a Class I Historic Monument since 14 June 1994.</p>
+
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Interiors</dt><dd>Bare plaster, gilded panelling, medieval stone, an eighteenth-century staircase</dd></div>
+    <div><dt>Exteriors</dt><dd>The façade, six acres of parkland, terraced gardens, the Pyrénées behind</dd></div>
+    <div><dt>Light</dt><dd>South-facing principal rooms; the valley holds light late into the evening</dd></div>
+    <div><dt>Access</dt><dd>Vehicles to the gravel. The drive was built for an approach at walking pace</dd></div>
+    <div><dt>Exclusivity</dt><dd>One booking at a time — no other guests in shot or in earshot</dd></div>
+  </dl></div></div>
+</div></section>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">The Constraints</p>
+  <h2 class="g-place">What Class I Listing Means For a Crew</h2>
+  <p class="g-p g-lede-first">Nothing may be fixed to the historic fabric. No drilling, no adhesive on plaster or panelling, no rigging from the mouldings. Freestanding rig only.</p>
+  <p class="g-p">We would rather set that out now than have it discovered on the morning of a shoot. Within it, the house is unusually accommodating: whole floors can be given over, and there is no other party to work around.</p>
+  <p class="g-limit"><span class="g-limit__k">Copyright</span>Photographs of the château belong to whoever takes them. Usage is agreed in writing before the shoot, not after.</p>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
+
+<!-- ============ ENQUIRE ============ -->
+<section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
+  <p class="g-eyebrow">Tell Us</p>
+  <h2 class="g-place">What are you shooting?</h2>
+  <p class="g-p">Dates, crew size, and what you need the rooms to do. Tell us if you need power, blackout or vehicle access and we will say plainly what is possible.</p>
+  <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
+  <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
+</div></section>
+{% endblock %}

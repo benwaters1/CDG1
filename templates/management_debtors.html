@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Debtor ageing{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Debtor ageing</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_outstanding') }}" class="btn-ghost">Who owes it</a>
+    <a href="{{ url_for('expenses') }}" class="btn-ghost">What we owe</a>
+    <a href="{{ url_for('export_debtors_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Money owed to the house, by how long it has been owed. Rooms and ateliers both — dinner is
+  settled at the table and an event enquiry is a quote rather than a debt, so neither has a
+  balance to age. <a href="{{ url_for('management_outstanding') }}">Outstanding</a> is the list
+  to work from when chasing one person; this is the shape of the whole of it.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(ageing.total) }}</span>
+      <span class="stat-tile-label">Owed in total</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '%.2f'|format(ageing.over_60) }}</span>
+      <span class="stat-tile-label">Older than 60 days</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ ageing['items']|length }}</span>
+      <span class="stat-tile-label">Unpaid bills</span>
+    </span>
+  </div>
+</div>
+
+{% if not ageing['items'] %}
+  {# It has to be able to say nothing is owed. A page that can only ever show a
+     number teaches the reader that the number is furniture. #}
+  <div class="empty-state">Nothing is outstanding. Every confirmed stay and atelier place is paid.</div>
+{% else %}
+
+<div class="table-wrap">
+  <table class="data-table" style="margin-top:var(--s3, 12px);">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Age</th>
+        <th class="num">Bills</th>
+        <th class="num">Owed</th>
+        <th class="num">Share</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for key in ageing.order %}
+      <tr>
+        <td>{{ ageing.labels[key] }}</td>
+        <td class="num">{{ ageing.buckets[key]|length }}</td>
+        <td class="num">€{{ '%.2f'|format(ageing.totals[key]) }}</td>
+        <td class="num">
+          {%- if ageing.total %}{{ '%.0f'|format(ageing.totals[key] / ageing.total * 100) }}%{% else %}—{% endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th style="text-align:left;">Total</th>
+        <th class="num">{{ ageing['items']|length }}</th>
+        <th class="num">€{{ '%.2f'|format(ageing.total) }}</th>
+        <th class="num">100%</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<h2 class="section-heading">Oldest first</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Who</th>
+        <th style="text-align:left;">For</th>
+        <th style="text-align:left;">Reference</th>
+        <th class="num">Days late</th>
+        <th class="num">Owed</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for it in ageing['items'] %}
+      <tr>
+        <td>{{ it.who }}{% if it.email %}<br><span class="upload-hint">{{ it.email }}</span>{% endif %}</td>
+        <td>{{ it.what }}<br><span class="upload-hint">{{ 'Atelier' if it.kind == 'workshop' else 'Room' }}</span></td>
+        <td>{{ it.reference }}</td>
+        <td class="num">{{ it.days_late if it.days_late else '—' }}</td>
+        <td class="num">€{{ '%.2f'|format(it.owed) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
