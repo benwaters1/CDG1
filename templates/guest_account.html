@@ -291,7 +291,10 @@
   <form method="post" action="{{ url_for('guest_account_message', token=token) }}"
         style="margin-top:var(--s3);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <textarea name="message" rows="4" required style="width:100%;"
+    {# A placeholder is not a label. It vanishes the moment they type, and a
+       reader that skips placeholders announces an unnamed box. #}
+    <label class="g-mb-label" for="account_message">Your message</label>
+    <textarea id="account_message" name="message" rows="4" required style="width:100%;"
               placeholder="We are arriving late on the Friday — is that all right?"></textarea>
     <button type="submit" class="g-btn" style="margin-top:var(--s2);">Send</button>
   </form>

@@ -115,7 +115,8 @@
     <form method="post" class="g-row" style="margin-top:var(--s2);">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="action" value="change_session">
-      <select name="new_session_id" required>
+      <label class="g-mb-label" for="new_session_id">Move to another session</label>
+        <select id="new_session_id" name="new_session_id" required>
         <option value="">— choose a date —</option>
         {% for s in other_sessions %}
         <option value="{{ s['id'] }}">{{ s['start_date']|date_short }}{% if s['end_date'] != s['start_date'] %} → {{ s['end_date']|date_short }}{% endif %}</option>

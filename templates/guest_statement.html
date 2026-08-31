@@ -92,7 +92,7 @@
   <table class="data-table" style="margin-top:var(--s4);">
     <tbody>
       <tr>
-        <td>
+        <th scope="row">
           <strong>Taxe de séjour</strong>
           <div class="g-hint">
             €{{ '%.2f'|format(s.city_tax_rate) }} per adult per night ·
@@ -100,7 +100,7 @@
             {%- if s.children %} · under-18s exempt{% endif %}
             <br>Collected on behalf of the commune. Not subject to VAT.
           </div>
-        </td>
+        </th>
         <td class="num">€{{ '%.2f'|format(s.city_tax) }}</td>
       </tr>
     </tbody>
@@ -113,13 +113,13 @@
   <table class="data-table" style="margin-top:var(--s4);">
     <tbody>
       <tr>
-        <td><strong>Total</strong></td>
+        <th scope="row"><strong>Total</strong></th>
         <td class="num"><strong>€{{ '%.2f'|format(s.total) }}</strong></td>
       </tr>
       {% if s.paid %}
-      <tr><td>Paid</td><td class="num">−€{{ '%.2f'|format(s.paid) }}</td></tr>
+      <tr><th scope="row">Paid</th><td class="num">−€{{ '%.2f'|format(s.paid) }}</td></tr>
       <tr>
-        <td><strong>{{ 'Balance due' if s.balance > 0 else 'Settled' }}</strong></td>
+        <th scope="row"><strong>{{ 'Balance due' if s.balance > 0 else 'Settled' }}</strong></th>
         <td class="num"><strong>€{{ '%.2f'|format(s.balance if s.balance > 0 else 0) }}</strong></td>
       </tr>
       {% endif %}
