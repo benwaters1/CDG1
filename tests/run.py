@@ -186,6 +186,7 @@ SUITES = [
     "test_staff_claims",
     "test_reviews",
     "test_vehicle_papers",
+    "test_cover_register",
     "test_handover_check",
 ]
 
