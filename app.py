@@ -9548,10 +9548,10 @@ def room_economics(conn, *, months=12, today=None):
     # what was sold alongside it.
     extras = {}
     for r in conn.execute(
-        """SELECT booking_id, COALESCE(SUM(unit_price * COALESCE(quantity, 1)), 0) AS total
-             FROM booking_extras
-            WHERE COALESCE(status, '') != 'cancelled'
-            GROUP BY booking_id""").fetchall():
+        f"""SELECT booking_id, COALESCE(SUM(unit_price * COALESCE(quantity, 1)), 0) AS total
+              FROM booking_extras
+             WHERE {EXTRAS_COUNTED_SQL}
+             GROUP BY booking_id""").fetchall():
         extras[r["booking_id"]] = r["total"] or 0.0
 
     for b in conn.execute(
@@ -10588,6 +10588,13 @@ def extras_for_booking(conn, category, booking_id):
            ORDER BY created_at""", (category, booking_id)).fetchall()
 
 
+# What counts as a line that happened. Written once and used by every query
+# that totals booking_extras, because four places asking the same question in
+# four ways is four chances for one of them to be missed -- which is what the
+# VAT working was.
+EXTRAS_COUNTED_SQL = "COALESCE(booking_extras.status, '') != 'cancelled'"
+
+
 def extras_total(rows, include_cancelled=False):
     return round(sum((r["unit_price"] or 0) * (r["quantity"] or 0)
                      for r in rows if include_cancelled or r["status"] != "cancelled"), 2)
@@ -10647,13 +10654,17 @@ def booking_bill(conn, booking_id):
 
     extras = extras_for_booking(conn, "room", booking_id)
     for extra in extras:
-        if extra["status"] == "cancelled":
+        # Same rule as EXTRAS_COUNTED_SQL, on rows rather than in SQL.
+        if (extra["status"] or "") == "cancelled":
             continue
         amount = round((extra["unit_price"] or 0) * (extra["quantity"] or 0), 2)
         qty = extra["quantity"] or 1
         lines.append({
             "label": extra["name"] + (f" × {qty}" if qty > 1 else ""),
-            "amount": amount, "kind": "extra"})
+            # The line's own id, so a person looking at the bill can take a
+            # line off it. Without this the only way to cancel one was to know
+            # its number, which nothing displayed.
+            "amount": amount, "kind": "extra", "line_id": extra["id"]})
 
     total = round(sum(l["amount"] for l in lines), 2)
     refunded = conn.execute(
@@ -30144,6 +30155,53 @@ def checkout_booking(booking_id):
     return redirect(url_for("admin_bookings"))
 
 
+@app.route("/admin/bookings/extras/<int:line_id>/cancel", methods=["POST"])
+@owner_required
+def cancel_booking_extra_line(line_id):
+    """Take something back off a guest's stay, and put the stock back with it.
+
+    cancel_booking_extra has existed since the extras were built — written
+    carefully, correcting the stock ledger by appending a matching movement
+    rather than rewriting the sale — and nothing has ever called it. So a
+    guest could add a case of wine to their stay and there was no way for
+    anybody to take it off again: not the guest, not the owner.
+
+    OWNER ONLY, deliberately. Some of these have already been ordered in or
+    driven somewhere by the time anybody changes their mind, and the app does
+    not know which. Refunds are a manual call in this house and so is this;
+    the guest asks, and a person decides.
+    """
+    conn = get_db()
+    line = conn.execute(
+        """SELECT booking_extras.*, bookings.reference_code, bookings.manage_token
+             FROM booking_extras
+             JOIN bookings ON bookings.id = booking_extras.booking_id
+            WHERE booking_extras.id = ?""", (line_id,)).fetchone()
+    if not line:
+        conn.close()
+        abort(404)
+    if (line["status"] or "") == "cancelled":
+        conn.close()
+        flash("That was already cancelled.", "error")
+        return redirect(request.referrer or url_for("admin_bookings"))
+
+    ok = cancel_booking_extra(conn, line_id,
+                              user_id=current_user()["id"] if current_user() else None)
+    if not ok:
+        conn.commit()
+        conn.close()
+        flash("Nothing to cancel.", "error")
+        return redirect(request.referrer or url_for("admin_bookings"))
+    log_audit(conn, "booking_extra_cancelled", target=line["reference_code"],
+              details=f"{line['name']} \u00d7 {line['quantity'] or 1}, "
+                      f"\u20ac{(line['unit_price'] or 0) * (line['quantity'] or 1):.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"{line['name']} taken off the bill, and anything it used put back "
+          "into stock.", "success")
+    return redirect(request.referrer or url_for("admin_bookings"))
+
+
 @app.route("/admin/bookings/<int:booking_id>/register", methods=["POST"])
 @owner_required
 def add_police_fiche(booking_id):
@@ -42065,9 +42123,13 @@ def vat_working(conn, start, end):
         (s_iso, e_iso)).fetchone()["t"]
     _estimate("Ateliers", shops, tax_rate(conn, "vat_workshops"))
 
+    # Cancelled lines excluded, like every other figure in this function and
+    # like the bill the guest is shown. It was the only line here with no
+    # status filter, which put money on a VAT return that nobody was charged.
     extras = conn.execute(
-        """SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM booking_extras
-           WHERE date(created_at) >= ? AND date(created_at) < ?""",
+        f"""SELECT COALESCE(SUM(unit_price * quantity), 0) AS t FROM booking_extras
+            WHERE {EXTRAS_COUNTED_SQL}
+              AND date(created_at) >= ? AND date(created_at) < ?""",
         (s_iso, e_iso)).fetchone()["t"]
     _estimate("Extras", extras, tax_rate(conn, "vat_extras"))
 
