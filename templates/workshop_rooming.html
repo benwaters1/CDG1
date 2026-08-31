@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Rooming — {{ session['title'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Rooming</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('admin_workshop_registrations', session_id=session['id']) }}" class="btn-mini">Registrations</a>
+    <a href="{{ url_for('workshop_running_sheet', session_id=session['id']) }}" class="btn-mini">Running sheet</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ session['title'] }} · {{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} to {{ session['end_date'] }}{% endif %}
+  · {{ plan.heads }} {{ 'person' if plan.heads == 1 else 'people' }} across {{ plan.rooms|length }} rooms sleeping {{ plan.beds }}.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('rooms', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ plan.unassigned|length }}</span><span class="stat-tile-label">Not yet placed</span></span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('shield', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ plan.problems|length }}</span><span class="stat-tile-label">To look at</span></span>
+  </div>
+</div>
+
+{% if plan.problems %}
+{# Every one of these is a person's decision. None of them is resolved
+   automatically, because whoever ends up disappointed should be
+   disappointed by somebody who knows about it. #}
+<div class="detail-card">
+  <h2 class="section-heading">Worth a look</h2>
+  <div class="doc-list">
+    {% for p in plan.problems %}
+    <div class="doc-row">
+      <span style="flex:1;">
+        <b>{{ p.who['guest_name'] }}</b> — {{ p.detail }}.
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if proposal.moves %}
+<div class="detail-card">
+  <h2 class="section-heading">Suggested</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">Nobody already in a room is moved — somebody put them there on purpose. This only fills in around what is decided.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Who</th><th>Room</th><th>Why</th></tr></thead>
+      <tbody>
+        {% for mv in proposal.moves %}
+        <tr>
+          <td>{{ mv.booking['guest_name'] }}{% if mv.booking['party_size'] > 1 %} (party of {{ mv.booking['party_size'] }}){% endif %}</td>
+          <td>{{ mv.room['name'] }}</td>
+          <td>{{ mv.why }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('apply_workshop_rooming', session_id=session['id']) }}" onsubmit="return confirm('Place these people in these rooms?');" style="margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-mini">Place them</button>
+  </form>
+</div>
+{% endif %}
+
+{% if proposal.unplaced %}
+<div class="detail-card">
+  <h2 class="section-heading">Nowhere to put them</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">There is not enough room for these, on the rooms as they stand.</p>
+  <div class="doc-list">
+    {% for p in proposal.unplaced %}
+    <div class="doc-row"><span style="flex:1;">{{ p['guest_name'] }}{% if p['party_size'] > 1 %} · party of {{ p['party_size'] }}{% endif %}{% if p['occupancy_type'] %} · {{ p['occupancy_type']|capitalize }}{% endif %}</span></div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="detail-card">
+  <h2 class="section-heading">As it stands</h2>
+  {% if not plan.by_room and not plan.unassigned %}
+  <p class="empty-note">Nobody is booked on this session yet.</p>
+  {% else %}
+  <div class="doc-list">
+    {% for room in plan.rooms %}
+    {% set occupants = plan.by_room.get(room['id'], []) %}
+    <div class="doc-row" style="align-items:flex-start;">
+      <span style="flex:1;">
+        <b>{{ room['name'] }}</b>
+        <span class="upload-hint">sleeps {{ room['max_occupancy'] }}</span>
+        {% if not occupants %}
+        <div class="upload-hint" style="margin-top:2px;">Empty.</div>
+        {% else %}
+        {% for o in occupants %}
+        <div class="upload-hint" style="margin-top:2px;">
+          {{ o['guest_name'] }}{% if o['party_size'] > 1 %} · party of {{ o['party_size'] }}{% endif %}
+          {%- if o['occupancy_type'] %} · {{ o['occupancy_type']|capitalize }}{% endif %}
+          {%- if o['requested_roommate'] %} · asked for {{ o['requested_roommate'] }}{% endif %}
+          {%- if o['status'] != 'confirmed' %} <span class="mini-status status-pending">{{ o['status'] }}</span>{% endif %}
+        </div>
+        {% endfor %}
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if plan.unassigned %}
+  <p class="field-label" style="margin-top:14px;">Not in a room yet</p>
+  <div class="doc-list">
+    {% for p in plan.unassigned %}
+    <div class="doc-row">
+      <span style="flex:1;">
+        {{ p['guest_name'] }}{% if p['party_size'] > 1 %} · party of {{ p['party_size'] }}{% endif %}
+        {%- if p['occupancy_type'] %} · {{ p['occupancy_type']|capitalize }}{% endif %}
+        {%- if p['requested_roommate'] %} · asked for {{ p['requested_roommate'] }}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}

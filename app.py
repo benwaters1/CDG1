@@ -27811,6 +27811,178 @@ def bookable_room_count(conn):
     return conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
 
 
+def _room_party(booking):
+    """How many beds this booking needs in one room."""
+    return max(int(booking["party_size"] or 1), 1)
+
+
+def rooming_plan(conn, session_id):
+    """Who is in which room, who is not, and what looks wrong.
+
+    Reports rather than decides. Every problem here is one a person has to
+    settle, and half of them are only visible when the whole session is
+    looked at at once -- which is the reason a per-registration dropdown
+    was never enough.
+    """
+    people = conn.execute(
+        """SELECT workshop_bookings.*, rooms.name AS room_name,
+                  rooms.max_occupancy
+             FROM workshop_bookings
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+            WHERE workshop_bookings.session_id = ?
+              AND workshop_bookings.status IN ('pending', 'confirmed')
+            ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name"
+    ).fetchall()
+
+    by_room, unassigned = {}, []
+    for p in people:
+        if p["assigned_room_id"]:
+            by_room.setdefault(p["assigned_room_id"], []).append(p)
+        else:
+            unassigned.append(p)
+
+    # Who asked for whom, matched on name because that is what the guest
+    # typed. Compared case- and space-insensitively; anything that does not
+    # match a name on this session is reported rather than guessed at.
+    names = {(p["guest_name"] or "").strip().lower(): p for p in people}
+    asked = {}
+    for p in people:
+        want = (p["requested_roommate"] or "").strip().lower()
+        if want:
+            asked[p["id"]] = names.get(want)
+
+    problems = []
+    for p in people:
+        want_raw = (p["requested_roommate"] or "").strip()
+        if not want_raw:
+            continue
+        other = asked.get(p["id"])
+        if other is None:
+            problems.append({
+                "kind": "unknown_roommate", "who": p,
+                "detail": f"asked to share with {want_raw}, who is not booked "
+                          "on this session"})
+            continue
+        # Mutual, or one-sided? A chain is a person's problem, not a
+        # solver's.
+        theirs = asked.get(other["id"])
+        if theirs is None or theirs["id"] != p["id"]:
+            problems.append({
+                "kind": "one_sided", "who": p,
+                "detail": f"asked for {other['guest_name']}, who asked for "
+                          + ((theirs["guest_name"] + " instead")
+                             if theirs else "nobody")})
+        elif (p["assigned_room_id"] and other["assigned_room_id"]
+              and p["assigned_room_id"] != other["assigned_room_id"]):
+            problems.append({
+                "kind": "split_pair", "who": p,
+                "detail": f"asked for {other['guest_name']} and they asked "
+                          "for each other, but they are in different rooms"})
+
+    for room_id, occupants in by_room.items():
+        heads = sum(_room_party(o) for o in occupants)
+        cap = occupants[0]["max_occupancy"] or 0
+        if cap and heads > cap:
+            problems.append({
+                "kind": "overfull", "who": occupants[0],
+                "detail": f"{occupants[0]['room_name']} has {heads} in it and "
+                          f"sleeps {cap}"})
+        solo = [o for o in occupants if o["occupancy_type"] == "solo"]
+        if solo and len(occupants) > 1:
+            problems.append({
+                "kind": "solo_shared", "who": solo[0],
+                "detail": f"{solo[0]['guest_name']} paid for a room alone and "
+                          f"is sharing {solo[0]['room_name']}"})
+
+    beds = sum(r["max_occupancy"] or 0 for r in rooms)
+    heads = sum(_room_party(p) for p in people)
+    return {"people": people, "rooms": rooms, "by_room": by_room,
+            "unassigned": unassigned, "problems": problems,
+            "beds": beds, "heads": heads,
+            "rooms_needed": session_rooms_used(conn, session_id)}
+
+
+def propose_rooming(conn, session_id):
+    """A suggested arrangement for whoever is not yet placed.
+
+    Never writes, and never moves anybody already assigned: somebody put
+    them there on purpose and this does not know why. It fills in around
+    what is already decided.
+
+    The order is the priority. Mutual pairs first, because those are two
+    people who have both asked; then anybody needing a room to themselves,
+    because that is paid for; then everybody else, largest party first, so
+    a party of three does not find only twin rooms left.
+    """
+    plan = rooming_plan(conn, session_id)
+    taken = {rid: sum(_room_party(o) for o in occ)
+             for rid, occ in plan["by_room"].items()}
+    rooms = {r["id"]: r for r in plan["rooms"]}
+
+    def free(room_id):
+        return (rooms[room_id]["max_occupancy"] or 0) - taken.get(room_id, 0)
+
+    def place(people_here, why):
+        need = sum(_room_party(p) for p in people_here)
+        # The smallest room that still fits, so a party of two does not take
+        # the only room a party of four could have used.
+        fits = sorted((r for r in rooms.values() if free(r["id"]) >= need),
+                      key=lambda r: (free(r["id"]), r["sort_order"]))
+        if not fits:
+            return None
+        room = fits[0]
+        taken[room["id"]] = taken.get(room["id"], 0) + need
+        return [{"booking": p, "room": room, "why": why} for p in people_here]
+
+    names = {(p["guest_name"] or "").strip().lower(): p for p in plan["people"]}
+    waiting = {p["id"]: p for p in plan["unassigned"]}
+    moves, placed = [], set()
+
+    # 1. mutual requests
+    for p in list(waiting.values()):
+        if p["id"] in placed:
+            continue
+        want = (p["requested_roommate"] or "").strip().lower()
+        other = names.get(want) if want else None
+        if not other or other["id"] not in waiting or other["id"] in placed:
+            continue
+        if (other["requested_roommate"] or "").strip().lower() != \
+                (p["guest_name"] or "").strip().lower():
+            continue
+        if p["occupancy_type"] == "solo" or other["occupancy_type"] == "solo":
+            # They asked for each other and one of them paid to be alone.
+            # Not a thing to solve quietly.
+            continue
+        made = place([p, other], "they asked for each other")
+        if made:
+            moves.extend(made)
+            placed.update({p["id"], other["id"]})
+
+    # 2. anybody who paid to be on their own
+    for p in list(waiting.values()):
+        if p["id"] in placed or p["occupancy_type"] != "solo":
+            continue
+        made = place([p], "paid for a room alone")
+        if made:
+            moves.extend(made)
+            placed.add(p["id"])
+
+    # 3. the rest, biggest party first
+    rest = sorted((p for p in waiting.values() if p["id"] not in placed),
+                  key=lambda p: -_room_party(p))
+    for p in rest:
+        made = place([p], "next room that fits")
+        if made:
+            moves.extend(made)
+            placed.add(p["id"])
+
+    return {"moves": moves,
+            "unplaced": [p for p in waiting.values() if p["id"] not in placed],
+            "plan": plan}
+
+
 def session_rooms_used(conn, session_id, exclude_id=None):
     """Rooms already spoken for on a session, from the occupancy each party chose."""
     query = """SELECT occupancy_type, party_size FROM workshop_bookings
@@ -34100,6 +34272,68 @@ def delete_workshop(workshop_id):
     conn.close()
     flash("Workshop removed.", "success")
     return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/rooming")
+@owner_required
+def workshop_rooming(session_id):
+    """Everybody on the session against the rooms, in one view.
+
+    Half the problems here are only visible when the whole session is
+    looked at at once — two people who asked for each other and ended up
+    apart is not something a per-registration dropdown can show you.
+    """
+    conn = get_db()
+    session_row = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
+    if not session_row:
+        conn.close()
+        abort(404)
+    proposal = propose_rooming(conn, session_id)
+    conn.close()
+    return render_template("workshop_rooming.html", session=session_row,
+                           plan=proposal["plan"], proposal=proposal)
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/rooming/apply",
+           methods=["POST"])
+@owner_required
+def apply_workshop_rooming(session_id):
+    """Write the proposal down.
+
+    Recalculated here rather than trusting what the page posted back: the
+    page may have been open while somebody else booked, and applying a plan
+    made against a session that has since changed is how two people end up
+    in one bed.
+    """
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM workshop_sessions WHERE id = ?",
+                        (session_id,)).fetchone():
+        conn.close()
+        abort(404)
+    proposal = propose_rooming(conn, session_id)
+    for move in proposal["moves"]:
+        conn.execute(
+            """UPDATE workshop_bookings SET assigned_room_id = ?
+                WHERE id = ? AND assigned_room_id IS NULL""",
+            (move["room"]["id"], move["booking"]["id"]))
+    if proposal["moves"]:
+        log_audit(conn, "workshop_rooming_applied", target=str(session_id),
+                  details=f"{len(proposal['moves'])} placed")
+    conn.commit()
+    conn.close()
+
+    if not proposal["moves"]:
+        flash("Nothing to place — everybody already has a room.", "error")
+    else:
+        flash(f"{len(proposal['moves'])} placed."
+              + (f" {len(proposal['unplaced'])} could not be — there is not "
+                 "enough room." if proposal["unplaced"] else ""),
+              "success")
+    return redirect(url_for("workshop_rooming", session_id=session_id))
 
 
 @app.route("/admin/workshops/<int:workshop_id>/materials", methods=["POST"])
