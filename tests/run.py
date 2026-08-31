@@ -173,6 +173,7 @@ SUITES = [
     "test_part_payment",
     "test_walk_in",
     "test_pennylane_revenue",
+    "test_booking_race",
     "test_handover_check",
 ]
 

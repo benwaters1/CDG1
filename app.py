@@ -2347,6 +2347,21 @@ def init_db():
             provider_message_id TEXT
         );
 
+        -- One row, and it holds no information anybody reads. Writing to it
+        -- takes SQLite's write lock, which is the entire point: the check for
+        -- "is this room free" and the write that acts on the answer have to be
+        -- one indivisible step, and a bare SELECT takes no lock at all.
+        --
+        -- Not one row per room. SQLite locks the database for writes, not the
+        -- row, so per-room lock rows would read as finer-grained while
+        -- serialising exactly the same — an invitation to believe in isolation
+        -- that is not there.
+        CREATE TABLE IF NOT EXISTS booking_write_lock (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            held_at TEXT
+        );
+        INSERT OR IGNORE INTO booking_write_lock (id, held_at) VALUES (1, NULL);
+
         CREATE TABLE IF NOT EXISTS email_outbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             to_address TEXT NOT NULL,
@@ -8135,6 +8150,48 @@ def compute_room_total(conn, room, arrival, departure):
         total += room_night_rate(conn, room, night)
         night += timedelta(days=1)
     return round(total, 2)
+
+
+def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
+                include_pending=True):
+    """is_range_available, with nobody else able to answer it at the same time.
+
+    THE BUG THIS EXISTS FOR. Every path that books a room asked whether the
+    dates were free and then wrote, and the two were separate steps with
+    nothing joining them. A bare SELECT takes no write lock, so two requests
+    arriving together both read "free" and both write. Nothing errors. The
+    room is let twice and the first anybody knows is two cars in the drive.
+
+    Confirming is the dangerous one rather than the public form. Two rival
+    pending requests for the same nights are NORMAL — nothing stops two people
+    asking — and confirm deliberately passes include_pending=False, because a
+    sibling pending request is not a conflict until something is actually
+    confirmed. So each of two simultaneous confirms looks at the other and
+    sees a pending it is entitled to ignore. Both pass. Both write 'confirmed'.
+    The single check most specifically written to prevent double-booking was
+    the one that could not see the other half of it.
+
+    HOW IT LOCKS. The UPDATE below is the mechanism, not bookkeeping: writing
+    any row takes SQLite's RESERVED lock, so the SELECT that follows and the
+    write that follows that are all inside one write transaction. A second
+    connection blocks on its own UPDATE (busy_timeout is 5s) until the first
+    commits, and only then takes its snapshot — so it reads the booking that
+    was just made rather than the world as it was before.
+
+    The lock is released by the CALLER'S existing conn.commit(). That is not
+    incidental: send_email falls back to the outbox on its own connection,
+    which cannot write while a transaction is open here, so every caller must
+    commit before it sends. They all already do, for exactly that reason.
+
+    Read-only callers must NOT use this. The room grid, the quote and the
+    availability calendar all ask the same question without acting on it, and
+    making them take the write lock would serialise every page on the site
+    behind whoever is mid-booking.
+    """
+    conn.execute("UPDATE booking_write_lock SET held_at = ? WHERE id = 1",
+                 (datetime.now(timezone.utc).isoformat(),))
+    return is_range_available(conn, room_id, arrival, departure,
+                              exclude_booking_id, include_pending)
 
 
 def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
@@ -14193,7 +14250,7 @@ def create_booking_from_stripe_session(conn, session):
             f"SELECT * FROM extras WHERE id IN ({placeholders})", tuple(extra_ids)
         ).fetchall()
     arrival, departure = parse_date(meta["arrival_date"]), parse_date(meta["departure_date"])
-    available, conflict_reason = is_range_available(conn, room["id"], arrival, departure, include_pending=False)
+    available, conflict_reason = claim_range(conn, room["id"], arrival, departure, include_pending=False)
     reference_code, manage_token = create_booking(
         conn, room, meta["guest_name"], meta["guest_email"], meta.get("guest_phone", ""),
         arrival, departure, int(meta["party_size"]), meta.get("special_requests", ""),
@@ -23591,7 +23648,7 @@ def book_room(room_id):
         elif not agreed_to_terms:
             error = "Please confirm you agree to the Terms & Conditions."
         else:
-            ok, reason = is_range_available(conn, room_id, arrival, departure)
+            ok, reason = claim_range(conn, room_id, arrival, departure)
             if not ok:
                 error = reason
             else:
@@ -24272,7 +24329,7 @@ def manage_booking(manage_token):
         elif (new_departure - new_arrival).days < room["min_nights"]:
             flash(f"This room requires a minimum stay of {room['min_nights']} night{'s' if room['min_nights'] != 1 else ''}.", "error")
         else:
-            ok, reason = is_range_available(conn, booking["room_id"], new_arrival, new_departure, exclude_booking_id=booking["id"])
+            ok, reason = claim_range(conn, booking["room_id"], new_arrival, new_departure, exclude_booking_id=booking["id"])
             if not ok:
                 flash(f"Those dates aren't available: {reason}", "error")
             elif booking["status"] == "pending" and booking["payment_status"] != "paid":
@@ -24343,7 +24400,7 @@ def manage_booking(manage_token):
             flash("We couldn't work that out — please get in touch.", "error")
         else:
             new_departure = departure + timedelta(days=nights)
-            ok, reason = is_range_available(
+            ok, reason = claim_range(
                 conn, booking["room_id"], departure, new_departure,
                 exclude_booking_id=booking["id"])
             if not ok:
@@ -29274,7 +29331,7 @@ def confirm_booking_by_id(conn, booking_id):
     if not booking:
         return False, "not found or not pending"
     arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
-    available, conflict_reason = is_range_available(
+    available, conflict_reason = claim_range(
         conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id, include_pending=False
     )
     if not available:
@@ -29690,7 +29747,7 @@ def edit_booking(booking_id):
         elif party_size > booking["max_occupancy"]:
             error = f"This room sleeps up to {booking['max_occupancy']}."
         else:
-            ok, reason = is_range_available(conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id)
+            ok, reason = claim_range(conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id)
             if not ok:
                 error = reason
 
@@ -33480,7 +33537,7 @@ def walk_in_booking():
             # `if not is_range_available(...)` reads as available every
             # single time, including when it is saying no. The suite let
             # the same room for the same nights twice before this.
-            available, why = is_range_available(conn, room["id"], arrival, departure)
+            available, why = claim_range(conn, room["id"], arrival, departure)
             if not available:
                 problem = (f"{room['name']} is already taken for those nights"
                            + (f" — {why}" if why else "."))
