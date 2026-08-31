@@ -451,6 +451,19 @@ body.staff-shell .btn-mini:hover{ border-color:var(--gold); color:var(--gold); b
   align-items:center; }
 .owed-take__form input[type=number]{ width:7em; }
 .owed-take__form input[type=text]{ width:11em; }
+/* Choosing a room at the desk. Big enough to hit without aiming, and a
+   taken room stays visible rather than vanishing — reception needs to be
+   able to say WHICH room is gone, not just that there are fewer. */
+.room-pick{ display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr));
+  gap:10px; margin:8px 0 4px; }
+.room-pick__tile{ display:block; position:relative; min-height:84px; padding:12px 12px 12px 38px;
+  border:1px solid var(--parchment-line); border-radius:10px; cursor:pointer; }
+.room-pick__tile input{ position:absolute; left:13px; top:14px; }
+.room-pick__tile:has(input:checked){ border-color:var(--gold); }
+.room-pick__tile.is-taken{ opacity:.55; cursor:not-allowed; }
+.room-pick__name{ display:block; font-weight:600; }
+.room-pick__price{ display:block; font-variant-numeric:tabular-nums; font-size:19px; }
+.room-pick__note{ display:block; font-size:12px; color:var(--steel); }
 .stat-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
 .stat-tile{
   display:flex; align-items:center; gap:13px;

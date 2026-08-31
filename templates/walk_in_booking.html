@@ -19,37 +19,57 @@
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <div class="field-row-2">
-    <div>
-      <label class="field-label" for="wi_room">Room</label>
-      <select id="wi_room" name="room_id" required>
-        <option value="">Choose…</option>
-        {% for r in rooms %}
-        <option value="{{ r['id'] }}" {{ 'selected' if form.get('room_id')|string == r['id']|string }}>
-          {{ r['name'] }}{% if r['price_per_night'] %} — €{{ '%.0f'|format(r['price_per_night']) }}/night{% endif %}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <label class="field-label" for="wi_party">Guests</label>
-      <input id="wi_party" type="number" name="party_size" min="1" step="1"
-             value="{{ form.get('party_size', '2') }}">
-    </div>
-  </div>
+  {# Dates first, then the rooms that are actually free for them. Reception
+     was choosing from a list of every room and being told "taken" only after
+     pressing the button, with somebody standing in front of them.
 
+     Changing the dates re-asks this same page — a plain GET, no script — so
+     the answer is always for the nights on screen. #}
   <div class="field-row-2">
     <div>
       <label class="field-label" for="wi_arrival">Arriving</label>
       <input id="wi_arrival" type="date" name="arrival_date" required
-             value="{{ form.get('arrival_date', today.isoformat()) }}">
+             value="{{ arrival.isoformat() }}">
     </div>
     <div>
       <label class="field-label" for="wi_departure">Leaving</label>
       <input id="wi_departure" type="date" name="departure_date" required
-             value="{{ form.get('departure_date', '') }}">
+             value="{{ departure.isoformat() }}">
     </div>
   </div>
+  <p class="upload-hint" style="margin-top:4px;">
+    <a href="{{ url_for('walk_in_booking') }}">Tonight</a> ·
+    changed the dates? <button type="submit" formmethod="get" class="btn-mini">Show what's free</button>
+  </p>
+
+  <label class="field-label" style="margin-top:14px;">
+    Free for {{ arrival.isoformat()|date_short }} → {{ departure.isoformat()|date_short }}
+  </label>
+  <div class="room-pick">
+    {% for o in options %}
+    <label class="room-pick__tile {{ 'is-taken' if not o.free }}">
+      <input type="radio" name="room_id" value="{{ o.room['id'] }}"
+             {{ 'disabled' if not o.free }}
+             {{ 'checked' if form.get('room_id')|string == o.room['id']|string and o.free }}
+             required>
+      <span class="room-pick__name">{{ o.room['name'] }}</span>
+      {% if o.free %}
+      <span class="room-pick__price">€{{ '%.2f'|format(o.price) }}</span>
+      <span class="room-pick__note">sleeps {{ o.sleeps }}</span>
+      {% else %}
+      <span class="room-pick__note">{{ o.why or 'Not free' }}</span>
+      {% endif %}
+    </label>
+    {% endfor %}
+  </div>
+  {% if options and not options|selectattr('free')|list %}
+  <p class="upload-hint">Nothing free for those nights. Try different dates, or
+  put them on the waiting list.</p>
+  {% endif %}
+
+  <label class="field-label" for="wi_party">Guests</label>
+  <input id="wi_party" type="number" name="party_size" min="1" step="1"
+         value="{{ form.get('party_size', '2') }}">
 
   <div class="field-row-2">
     <div>

@@ -210,6 +210,33 @@ def run():
             detail="somebody at a desk retypes it while a guest waits")
     s.check("and the party size", 'value="4"' in html)
 
+    s.section("Reception picks from what is free, and can see what is not")
+    # The page used to list every room and say "taken" only after the button
+    # was pressed, with somebody standing in front of you.
+    page = oc.get(f"/admin/bookings/walk-in?arrival_date={a.isoformat()}"
+                  f"&departure_date={d.isoformat()}")
+    html = page.get_data(as_text=True)
+    s.check("the picker opens for those nights", page.status_code == 200,
+            detail=f"HTTP {page.status_code}")
+    s.check("the room taken by the first booking is shown as taken",
+            "is-taken" in html, detail="a full house looks the same as an empty one")
+    s.check("and cannot be chosen", "disabled" in html,
+            detail="reception can pick a room that is gone")
+    s.check("it is still named rather than hidden", room["name"] in html,
+            detail="reception has to be able to say WHICH room is gone")
+    s.check("and the free nights carry a price for the stay",
+            "€" in html, detail="no price to quote")
+
+    s.section("A different set of nights asks the question again")
+    far = a + timedelta(days=120)
+    html2 = oc.get(f"/admin/bookings/walk-in?arrival_date={far.isoformat()}"
+                   f"&departure_date={(far + timedelta(days=2)).isoformat()}"
+                   ).get_data(as_text=True)
+    s.check("nights nobody has booked come back free",
+            html2.count("is-taken") < html.count("is-taken"),
+            detail=f"{html2.count('is-taken')} taken then vs "
+                   f"{html.count('is-taken')} taken now")
+
     s.section("Guards")
     before = _count()
     code = ec.post("/admin/bookings/walk-in",

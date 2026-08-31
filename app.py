@@ -33014,6 +33014,26 @@ def management_outlook():
                            overview=overview, months=months, costs=costs)
 
 
+def walk_in_options(conn, rooms, arrival, departure):
+    """Each room with what it would cost for these nights and whether it is free.
+
+    Reception should be choosing from what is actually available, not from a
+    list of every room with the answer arriving after they press the button
+    with somebody standing in front of them. `why` carries the reason a room is
+    out, because "taken" and "closed for the season" want different responses.
+    """
+    out = []
+    for room in rooms:
+        free, why = (False, "Enter both dates.")
+        price = 0.0
+        if arrival and departure and departure > arrival:
+            free, why = is_range_available(conn, room["id"], arrival, departure)
+            price = compute_room_total(conn, room, arrival, departure)
+        out.append({"room": room, "free": bool(free), "why": why or "",
+                    "price": price, "sleeps": room["max_occupancy"]})
+    return out
+
+
 @app.route("/admin/bookings/walk-in", methods=["GET", "POST"])
 @owner_required
 def walk_in_booking():
@@ -33055,8 +33075,20 @@ def walk_in_booking():
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
     today = datetime.now(LOCAL_TZ).date()
 
+    # Dates first, rooms second. Tonight and tomorrow by default, because that
+    # is what somebody at the desk is nearly always asking about; changing them
+    # re-asks the same question of the same page rather than needing a script.
+    source = request.form if request.method == "POST" else request.args
+    arrival = parse_date((source.get("arrival_date", "") or "").strip()) or today
+    departure = (parse_date((source.get("departure_date", "") or "").strip())
+                 or (arrival + timedelta(days=1)))
+    options = walk_in_options(conn, rooms, arrival, departure)
+
     if request.method == "POST":
         room_raw = (request.form.get("room_id", "") or "").strip()
+        # Parsed strictly here rather than reusing the defaulted pair above: a
+        # missing date on a POST is a mistake to report, not something to fill
+        # in with tonight behind somebody's back.
         arrival = parse_date((request.form.get("arrival_date", "") or "").strip())
         departure = parse_date((request.form.get("departure_date", "") or "").strip())
         name = (request.form.get("guest_name", "") or "").strip()
@@ -33097,7 +33129,8 @@ def walk_in_booking():
             conn.close()
             flash(problem, "error")
             return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                                   form=request.form)
+                                   options=options, arrival=arrival,
+                                   departure=departure, form=request.form)
 
         rack = compute_room_total(conn, room, arrival, departure)
         charge_raw = (request.form.get("total_price", "") or "").strip().replace(",", ".")
@@ -33151,7 +33184,9 @@ def walk_in_booking():
                         if not taken else url_for("admin_bookings"))
 
     conn.close()
-    return render_template("walk_in_booking.html", rooms=rooms, today=today, form={})
+    return render_template("walk_in_booking.html", rooms=rooms, today=today,
+                           options=options, arrival=arrival, departure=departure,
+                           form=request.args)
 
 
 @app.route("/management/outstanding")
