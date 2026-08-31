@@ -193,6 +193,9 @@ SUITES = [
     "test_dead_context",
     "test_extras_cancel",
     "test_newsletter_reach",
+    "test_data_requests",
+    "test_room_board",
+    "test_template_shadowing",
     "test_handover_check",
 ]
 

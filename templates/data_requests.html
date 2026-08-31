@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Data requests{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Data requests</h1>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Our privacy notice says a guest may ask for a copy of what we hold, ask us to
+  correct it, or ask us to delete it. This is where those are answered. It
+  searches every table with an email address in it — {{ searched|length }} of
+  them — rather than a list somebody wrote down once, so a table added later is
+  included without anybody remembering.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <label class="field-label" for="dr_email">Their email address</label>
+  <input type="email" id="dr_email" name="email" value="{{ email }}" required
+         style="min-width:280px;" placeholder="the address they wrote to you from">
+  <button type="submit" class="btn-mini">Show what we hold</button>
+</form>
+
+{% if email and export %}
+  {% if not export.row_count %}
+    <div class="empty-state">
+      Nothing is held under {{ email }}. That is an answer in itself, and worth
+      sending them.
+    </div>
+  {% else %}
+
+  <div class="pass-short" style="margin-bottom:14px;">
+    <strong>{{ export.row_count }} record{{ '' if export.row_count == 1 else 's' }}
+      across {{ export.tables|length }} table{{ '' if export.tables|length == 1 else 's' }}</strong>
+    <span class="pass-short-row">
+      <a href="{{ url_for('data_request_export', email=email) }}" class="btn-mini">
+        Download it as a file
+      </a>
+      <span class="upload-hint">JSON, because "portable" means something else
+        can read it — which is usually why somebody asks for it that way.</span>
+    </span>
+  </div>
+
+  {% for table, rows in export.tables.items() %}
+  <h2 class="section-heading">{{ table.replace('_', ' ') }} ({{ rows|length }})</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>{% for key in rows[0].keys() %}<th>{{ key.replace('_', ' ') }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          {% for key, value in row.items() %}
+          {% if loop.first %}<th scope="row">{{ value if value is not none else '—' }}</th>
+          {% else %}<td><span class="upload-hint">{{ value if value is not none else '—' }}</span></td>{% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  <!-- ------------------------------------------------------------ -->
+  <h2 class="section-heading">Erasing them</h2>
+  {# Deliberately blunt about what erasure cannot do. "We have deleted
+     everything" would not be true, and somebody exercising this right is
+     entitled to know exactly what remains and why. #}
+  <div class="pass-short">
+    <strong>What this does, and what it cannot do</strong>
+    <span class="pass-short-row">
+      Everything above is deleted, <em>except</em> the records French
+      accounting law requires us to keep — a booking, a dinner, a refund, a
+      promo code redemption. Those stay, with the name and address taken off
+      them. The money remains; the person does not.
+    </span>
+    <span class="upload-hint">
+      Kept without their name:
+      {% for k in keeps %}{{ k.replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}.
+      Deleting the record of a sale to honour a privacy request would break one
+      law to keep another.
+    </span>
+  </div>
+
+  <form method="post" action="{{ url_for('data_request_erase') }}"
+        style="margin-top:12px;"
+        onsubmit="return confirm('This cannot be undone from inside the app. Continue?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="email" value="{{ email }}">
+    {# Retyping the address is the confirmation. A checkbox is something people
+       tick while reading the next line. #}
+    <label class="field-label" for="dr_confirm">Type {{ email }} again to confirm</label>
+    <input type="email" id="dr_confirm" name="confirm_email" required
+           style="min-width:280px;" autocomplete="off">
+    <button type="submit" class="btn-text-danger" style="margin-left:8px;">
+      Erase them
+    </button>
+  </form>
+  {% endif %}
+{% endif %}
+
+<h2 class="section-heading">Where it looks</h2>
+<p class="upload-hint">
+  {% for tbl in searched %}{{ tbl.replace('_', ' ') }}{% if not loop.last %} · {% endif %}{% endfor %}
+</p>
+<p class="pay-disclaimer">
+  Plus anything hanging off a booking or a workshop registration — a review, a
+  fiche, something added to a stay — which carries no address of its own and
+  would be missed by searching for one.
+</p>
+
+{% endblock %}
