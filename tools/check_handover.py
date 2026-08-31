@@ -40,10 +40,10 @@ if it keeps finding things, the export is not being used.
 It also does not read the zip. It reads the working tree against HEAD, so it
 sees exactly what is about to be committed however the files got there.
 """
-import subprocess
-import sys
 import os
 import re
+import subprocess
+import sys
 from collections import defaultdict
 
 HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+")
@@ -109,11 +109,58 @@ def head_lines(path):
     return out.splitlines()
 
 
+def report_drift():
+    """Say which exported files moved on after the snapshot went out.
+
+    This runs before anything else because it is the only part of the report
+    that is knowable BEFORE the zip is opened, and because it explains most of
+    what the rest of the report is about to say. A handover is written against
+    a moment; the tree does not stop at that moment; every file that moved
+    since comes back carrying the version the design side was given.
+
+    Handover 33 is the worked example. Snapshot at 19:51 from a clean tree,
+    four commits on those same files by 23:01, and back came templates without
+    the noindex layer, without the balance a guest owes, without part-payment
+    and without the field that makes the arrival text possible. Nothing was
+    done wrong at either end. This paragraph is what would have taken four
+    hours off finding out.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from export_for_design import drift_since_export
+    except Exception:
+        return                      # export tool not present; nothing to say
+    try:
+        man, moved = drift_since_export()
+    except Exception as exc:
+        print(f"(could not read the export manifest: {exc})\n")
+        return
+    if not man:
+        return
+    print(f"The last export went out at {man['taken_at']}, from {man['commit']}.")
+    if not moved:
+        print("Nothing has changed in those files since. A handover built from "
+              "it\nis working against the current tree.\n")
+        return
+    print(f"\n{len(moved)} of those files have MOVED SINCE. Anything the zip "
+          "contains for\nthese arrives written against the older version, so "
+          "expect what is below\nto be missing and put it back:\n")
+    for path, commits in moved:
+        print(f"  {path}")
+        for c in commits[:4]:
+            print(f"      {c}")
+        if len(commits) > 4:
+            print(f"      ... and {len(commits) - 4} more")
+    print("\n  git diff " + man["commit"] + " -- <file>    # what it will not have\n")
+
+
 def main(argv):
     only = argv[1:]
     if not git("rev-parse", "--git-dir"):
         print("Not a git repository.")
         return 2
+
+    report_drift()
 
     files = changed_files()
     if only:

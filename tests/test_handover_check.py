@@ -192,8 +192,81 @@ def run():
         code, out = _run(cwd)
         s.check("nothing modified, nothing to say", code == 0, detail=f"exit {code}")
     finally:
-        for cwd in made:
-            shutil.rmtree(cwd, ignore_errors=True)
+        pass
+
+    s.section("Which files moved on after the snapshot went out")
+    # A clean tree at the moment of export is necessary and not sufficient.
+    # Handover 33 was taken from a spotless tree and four commits landed on
+    # those same files three hours later, so it came back missing the noindex
+    # layer, the balance a guest owes, part-payments and the mobile field.
+    # Every refusal in the export tool passed. This is what closes that: the
+    # export records what it sent, and the check names what has moved since.
+    import json as _json
+    import hashlib as _hashlib
+    here = os.path.dirname(os.path.abspath(__file__))
+    tools = os.path.join(os.path.dirname(here), "tools")
+    export_src = os.path.join(tools, "export_for_design.py")
+    s.check("the export tool is in the repo", os.path.exists(export_src),
+            detail="tools/export_for_design.py is missing")
+
+    if os.path.exists(export_src):
+        sys.path.insert(0, tools)
+        for mod in ("export_for_design",):
+            sys.modules.pop(mod, None)
+        import export_for_design as E
+
+        real_root, real_manifest = E.ROOT, E.MANIFEST
+        cwd = tempfile.mkdtemp(prefix="zzdrift_")
+        made.append(cwd)
+        try:
+            _git(cwd, "init", "-q")
+            _write(cwd, "page.html", ORIGINAL)
+            _write(cwd, "other.html", "<p>untouched</p>\n")
+            _git(cwd, "add", "page.html", "other.html")
+            _git(cwd, "commit", "-q", "-m", "final_1 handover")
+            taken = _git(cwd, "rev-parse", "--short", "HEAD").stdout.strip()
+
+            E.ROOT = cwd
+            E.MANIFEST = os.path.join(cwd, ".design-export.json")
+            _json.dump(
+                {"taken_at": "then", "commit": taken,
+                 "files": {rel: _hashlib.sha256(
+                     open(os.path.join(cwd, rel), "rb").read()).hexdigest()[:16]
+                     for rel in ("page.html", "other.html")}},
+                open(E.MANIFEST, "w", encoding="utf-8"))
+
+            _man, moved = E.drift_since_export()
+            s.check("a tree that has not moved reports no drift", moved == [],
+                    detail=str(moved))
+
+            # Now do to it exactly what happened: commit to one of the exported
+            # files after the snapshot went out.
+            _write(cwd, "page.html", WITH_FIX)
+            _git(cwd, "add", "page.html")
+            _git(cwd, "commit", "-q", "-m", "Keep guests own pages out of search results")
+
+            _man, moved = E.drift_since_export()
+            names = [p for p, _ in moved]
+            s.check("the file that moved is named", names == ["page.html"],
+                    detail=str(names))
+            s.check("and so is the commit whose work will be missing",
+                    moved and any("out of search results" in c for c in moved[0][1]),
+                    detail=str(moved[0][1]) if moved else "")
+            s.check("a file nobody touched is not named", "other.html" not in names,
+                    detail="otherwise every export reads as total drift and the "
+                           "report becomes something nobody opens")
+
+            # Changed and changed back is not drift: the zip will carry what
+            # was sent, which is what is there. Reporting it would train the
+            # reader to skim the list, which is how the real four get missed.
+            _write(cwd, "page.html", ORIGINAL)
+            _git(cwd, "add", "page.html")
+            _git(cwd, "commit", "-q", "-m", "reverted")
+            _man, moved = E.drift_since_export()
+            s.check("a change that was undone again is not drift", moved == [],
+                    detail=str(moved) + " — the hash is the authority, not the log")
+        finally:
+            E.ROOT, E.MANIFEST = real_root, real_manifest
 
     s.section("It is documented where somebody will look for it")
     # A tool nobody knows about is worth nothing, and the file that describes
@@ -208,4 +281,6 @@ def run():
             detail="somebody unzipping a handover reads that file and would "
                    "never learn this one exists")
 
+    for cwd in made:
+        shutil.rmtree(cwd, ignore_errors=True)
     return s

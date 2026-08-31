@@ -69,32 +69,44 @@ def run():
     _cleanup(conn)
 
     s.section("A long week is counted, a normal one is not")
+    # Read the house first. overtime_history counts EVERY employee in the week
+    # by design — worked_hours is the house total, not one person's — so the
+    # figures below are what this fixture ADDS, not what the week contains.
+    #
+    # It was written as an absolute, and passed for as long as no other suite
+    # happened to leave a shift in the same week. Once one did it failed for a
+    # reason with nothing to do with overtime. The two checks either side had
+    # the same fault waiting in them, so they now ask about Ana rather than
+    # about whoever else the house had working.
+    before = m.overtime_history(conn, weeks=6)
+    was_long = _week(before, _monday(-2))["worked_hours"]
+    was_ok = _week(before, _monday(-1))["worked_hours"]
+
     ana = _person(conn, "Ana")
-    # `worked_hours` is the whole house's total for that week, by design — it is
-    # not per person. Measured before and after, so the claim is about the
-    # thirty hours THIS suite added rather than about being the only employee
-    # who worked that week. It was written as an absolute and passed for as long
-    # as no other suite happened to leave a shift in the same week; once one did,
-    # it failed for a reason that had nothing to do with overtime.
-    before = _week(m.overtime_history(conn, weeks=6), _monday(-1))
-    baseline = before["worked_hours"] if before else 0.0
     _long_week(conn, ana, _monday(-2), hours=42)
     _long_week(conn, ana, _monday(-1), hours=30)      # a normal week
 
     data = m.overtime_history(conn, weeks=6)
     long_week = _week(data, _monday(-2))
     ok_week = _week(data, _monday(-1))
-    s.check("the long week is flagged", long_week and long_week["over"],
+
+    def _hers(week):
+        return next((p for p in week["over"] if p["user_id"] == ana), None) if week else None
+
+    s.check("the long week is flagged", bool(_hers(long_week)),
             detail=str(long_week["over"]) if long_week else "")
     s.check("with the hours past the standard week, not the total",
-            long_week and abs(long_week["extra_hours"] - 7) < 0.05,
-            detail=str(long_week["extra_hours"]) if long_week else "")
-    s.check("a thirty-hour week is not flagged", ok_week and ok_week["over"] == [],
+            _hers(long_week) and abs(_hers(long_week)["extra"] - 7) < 0.05,
+            detail=str(_hers(long_week)["extra"]) if _hers(long_week) else "")
+    s.check("a thirty-hour week is not flagged for her", not _hers(ok_week),
             detail=str(ok_week["over"]) if ok_week else "")
     s.check("but its hours are still counted",
-            ok_week and abs((ok_week["worked_hours"] - baseline) - 30) < 0.05,
-            detail=f"{ok_week['worked_hours']} - {baseline} baseline"
-                   if ok_week else "")
+            ok_week and abs((ok_week["worked_hours"] - was_ok) - 30) < 0.05,
+            detail=f"{was_ok} -> {ok_week['worked_hours'] if ok_week else '?'}, "
+                   "expected 30 more")
+    s.check("and so are the long week's, all forty-two of them",
+            long_week and abs((long_week["worked_hours"] - was_long) - 42) < 0.05,
+            detail=f"{was_long} -> {long_week['worked_hours'] if long_week else '?'}")
 
     s.section("Every week in the window appears, empty or not")
     # A page that only lists bad weeks cannot show that most weeks are fine,

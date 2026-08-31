@@ -39,7 +39,28 @@ WHICH FILES. Not a list kept by hand. It asks git which files past handovers
 actually delivered, the same way check_handover.py asks git which commit put a
 line there. A file the design side starts touching is in the next export
 without anybody remembering to add it.
+
+WHAT THE REFUSALS DO NOT COVER, AND WHY THERE IS A MANIFEST.
+
+A clean tree at the moment of export is necessary and not sufficient. The
+snapshot is true when it is taken and stops being true the moment anybody
+commits to one of these files — and design work takes days, during which the
+app side does not stop. Handover 33 was taken from a spotless tree at 19:51
+and four commits landed on those same files by 23:01, so it came back missing
+the noindex layer, the balance a guest owes, part-payments, the mobile number
+field and the account message box. Every refusal above passed. Nothing was
+done wrong at either end; the files moved underneath a correct snapshot.
+
+That cannot be refused away without stopping work, so instead it is written
+down. Every export records the commit it was taken from and a hash of each
+file it contained, in .design-export.json. check_handover.py reads it and
+names, before anything is installed, exactly which files have moved since —
+and what will therefore arrive stale. Four hours of archaeology becomes a
+list you read in ten seconds.
 """
+import hashlib
+import io
+import json
 import os
 import re
 import subprocess
@@ -49,6 +70,7 @@ from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "gudanes-design-current.zip")
+MANIFEST = os.path.join(ROOT, ".design-export.json")
 
 # Commits that installed a handover. Matched on the subject because that is
 # what the convention has actually been for sixteen of them.
@@ -159,6 +181,43 @@ check that can quietly come back softer.
 """
 
 
+def file_hash(rel):
+    with open(os.path.join(ROOT, rel), "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()[:16]
+
+
+def write_manifest(files, sha, when):
+    json.dump({
+        "taken_at": when,
+        "commit": sha,
+        "files": {rel: file_hash(rel) for rel in files},
+    }, io.open(MANIFEST, "w", encoding="utf-8"), indent=2, sort_keys=True)
+
+
+def drift_since_export():
+    """Which exported files have changed since the snapshot went out.
+
+    Returns (manifest, [(path, commits)]) or (None, []) if no export is
+    outstanding. A file is drifted when its contents differ from what was
+    sent — not when git says it was touched — so a change and a revert
+    cancel out, as they should.
+    """
+    if not os.path.exists(MANIFEST):
+        return None, []
+    man = json.load(io.open(MANIFEST, encoding="utf-8"))
+    moved = []
+    for rel, sent in sorted(man.get("files", {}).items()):
+        if not os.path.exists(os.path.join(ROOT, rel)):
+            moved.append((rel, ["deleted since the export"]))
+            continue
+        if file_hash(rel) == sent:
+            continue
+        log = git("log", "--oneline", f"{man['commit']}..HEAD", "--", rel).splitlines()
+        moved.append((rel, [l.strip() for l in log if l.strip()]
+                      or ["changed, but not in a commit yet"]))
+    return man, moved
+
+
 def main():
     refuse_if_not_current()
     files = design_surface()
@@ -174,11 +233,20 @@ def main():
         z.writestr("READ-ME-FIRST.txt",
                    README.format(when=when, sha=sha, count=len(files)))
 
+    # The record of what went out. Hashed rather than diffed so that a file
+    # touched and put back exactly as it was does not read as drift; only a
+    # real difference counts. Committed, because a manifest that lives only on
+    # this machine tells the next session nothing.
+    write_manifest(files, sha, when)
+
     size = os.path.getsize(OUT) / 1024
     print(f"Wrote {os.path.basename(OUT)} — {len(files)} files, {size:.0f} KB, "
           f"from main at {sha}.\n")
     print("Send this to whoever does the design work, and ask them to send back")
-    print("only the files they changed. The note inside says the same thing.")
+    print("only the files they changed. The note inside says the same thing.\n")
+    print(f"Recorded in {os.path.basename(MANIFEST)}. Commit it — it is how")
+    print("check_handover.py knows, when the zip comes back, which of these")
+    print("files moved on in the meantime and will arrive out of date.")
     return 0
 
 
