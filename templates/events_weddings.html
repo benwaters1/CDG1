@@ -62,7 +62,39 @@
   </div>
 </div></section>
 
-<div class="g-wrap g-mark__wrap">{{ mark('ring') }}</div>
+
+<!-- ============ WHAT IS IN FLOWER ============ -->
+{# What is in flower decides more wedding dates than anything except price.
+   This is what the garden and the valley actually give, month by month — so
+   a couple can see whether the month they want gives them the flowers they
+   want, before anyone quotes for imports. #}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Ce que le jardin donne<span class="g-fr__en">What the garden gives</span></p>
+  <div class="g-mark__wrap">{{ mark('peony') }}</div>
+  <p class="g-eyebrow">Month By Month</p>
+  <h2 class="g-place">What Will Be In Flower</h2>
+  <p class="g-p">The gardens are terraced below the château and the valley supplies the rest. Anything grown here costs nothing to cut; anything not in season is bought in and shows on the bill. Pick a month.</p>
+
+  <div class="g-bloom" data-bloom>
+    <div class="g-bloom__months" role="group" aria-label="Choose a month">
+      <button type="button" class="g-bloom__m" data-month="4">April</button>
+      <button type="button" class="g-bloom__m" data-month="5">May</button>
+      <button type="button" class="g-bloom__m is-on" data-month="6">June</button>
+      <button type="button" class="g-bloom__m" data-month="7">July</button>
+      <button type="button" class="g-bloom__m" data-month="8">August</button>
+      <button type="button" class="g-bloom__m" data-month="9">September</button>
+      <button type="button" class="g-bloom__m" data-month="10">October</button>
+    </div>
+
+    <div class="g-bloom__out" aria-live="polite">
+      <p class="g-bloom__lede" data-bloom-lede></p>
+      <ul class="g-bloom__list" data-bloom-list></ul>
+      <p class="g-bloom__note" data-bloom-note></p>
+    </div>
+  </div>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('rose') }}</div>
 
 <!-- ============ ENQUIRE ============ -->
 <section class="g-sec g-sec--sand" id="enquire"><div class="g-wrap">
@@ -72,4 +104,54 @@
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
+
+<script>
+/* What is in flower, month by month. Everything listed grows in the gardens
+   or the valley — the point is to show a couple what a month actually gives
+   before anyone quotes for flowers flown in. */
+(function(){
+  var root=document.querySelector('[data-bloom]');
+  if(!root) return;
+  var MONTHS={
+    4:{lede:'Cherry blossom below the pool, and the orchard still bare above it.',
+       cut:['Cherry blossom','Narcissus and daffodil','Hellebore','Forsythia','Pussy willow'],
+       note:'The earliest the gardens give much. Cool, and the blossom lasts about ten days — it cannot be planned to the weekend.'},
+    5:{lede:'The terraces come at once. Lilac over the lower wall, and the first roses.',
+       cut:['Lilac','Early garden roses','Aquilegia','Sweet rocket','Cow parsley from the lanes'],
+       note:'Green and fast-growing. The valley is at its loudest with water coming off the mountain.'},
+    6:{lede:'Peonies. The month most couples are asking for, and the reason why.',
+       cut:['Peony','Garden roses, full flush','Foxglove','Delphinium','Wild honeysuckle'],
+       note:'Everything at once, and the longest evenings of the year. Also the month that goes first.'},
+    7:{lede:'Lavender the length of the valley, and the gardens turning to herb and seed.',
+       cut:['Lavender','Repeat roses','Achillea','Scabious','Wild marjoram'],
+       note:'Hot by day, cool by nine. Dinner moves outdoors without anyone deciding to.'},
+    8:{lede:'Dahlias in the cutting beds. The mountain is dry and the light is long.',
+       cut:['Dahlia','Cosmos','Hydrangea','Sunflower','Fennel in flower'],
+       note:'The fullest colour of the year, and the least green. August is spoken for a long way ahead.'},
+    9:{lede:'Late dahlias, seed heads and the first turn in the limes.',
+       cut:['Dahlia, late','Sedum','Rudbeckia','Grasses and seed heads','Rosehips from the hedges'],
+       note:'Quieter, warmer than people expect, and considerably easier to get.'},
+    10:{lede:'Almost no flowers, and the best light on the façade all year.',
+       cut:['Hydrangea, dried','Rosehip and haw','Bare branch and berry','Chrysanthemum','Autumn foliage'],
+       note:'Foliage rather than flowers. Couples who want colour should look at bought stems, and we will say what that costs.'}
+  };
+  var lede=root.querySelector('[data-bloom-lede]'),
+      list=root.querySelector('[data-bloom-list]'),
+      note=root.querySelector('[data-bloom-note]');
+
+  function paint(m){
+    var d=MONTHS[m]; if(!d) return;
+    lede.textContent=d.lede;
+    list.innerHTML=d.cut.map(function(x){ return '<li>'+x+'</li>'; }).join('');
+    note.textContent=d.note;
+  }
+  root.addEventListener('click', function(e){
+    var b=e.target.closest('.g-bloom__m'); if(!b) return;
+    root.querySelectorAll('.g-bloom__m').forEach(function(x){ x.classList.remove('is-on'); });
+    b.classList.add('is-on');
+    paint(b.dataset.month);
+  });
+  paint(6);
+})();
+</script>
 {% endblock %}

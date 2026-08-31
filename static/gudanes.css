@@ -4400,3 +4400,49 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   height: 2px; background: var(--gilt);
 }
 .g-extra__p{ margin-top: var(--s4); }
+
+/* ==========================================================================
+   THE FLOWER CALENDAR
+   What is in flower decides more wedding dates than anything except price.
+   Set on the page ground with a gilt frame, months as a row of buttons.
+   ========================================================================== */
+.g-bloom{
+  margin-top: var(--s7);
+  border-top: 2px solid var(--gilt); border-bottom: 2px solid var(--gilt);
+  padding: var(--s6) 0;
+}
+.g-bloom__months{ display: flex; flex-wrap: wrap; gap: var(--s2); }
+.g-bloom__m{
+  min-height: 44px; padding: 0 var(--s4); cursor: pointer;
+  border: 1px solid var(--gilt); background: transparent;
+  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+}
+.g-bloom__m:hover{ background: var(--white); }
+.g-bloom__m:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-bloom__m.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+
+.g-bloom__out{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.3); }
+.g-bloom__lede{
+  margin: 0 0 var(--s5); max-width: 40rem;
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(20px, 2.2vw, 27px); line-height: 1.3; color: var(--blue-deep);
+}
+.g-bloom__list{
+  display: grid; gap: var(--s2) var(--s5); margin: 0 0 var(--s5); padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+}
+.g-bloom__list li{
+  position: relative; padding-left: var(--s5);
+  font-size: 16px; line-height: 1.6; color: var(--ink);
+}
+.g-bloom__list li::before{
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 7px; height: 7px; border: 1px solid var(--gilt); border-radius: 50%;
+}
+.g-bloom__note{
+  /* In characters, not rem: 46rem measured 102 characters at this size. */
+  margin: 0; max-width: 62ch; padding-left: var(--s5);
+  border-left: 2px solid var(--gilt);
+  font-size: 16px; line-height: 1.6; color: var(--ink-soft);
+}
