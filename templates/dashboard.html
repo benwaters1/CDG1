@@ -470,7 +470,11 @@ function toggleBreak() {
 
   {% if my_next_session %}
   <h2 class="section-heading" style="margin-top:0;">{{ my_next_session['title'] }} — Roster</h2>
-  <p class="upload-hint" style="margin-top:-10px;">{{ my_next_session['start_date'] }}{% if my_next_session['end_date'] != my_next_session['start_date'] %} → {{ my_next_session['end_date'] }}{% endif %}</p>
+  <p class="upload-hint" style="margin-top:-10px;">{{ my_next_session['start_date'] }}{% if my_next_session['end_date'] != my_next_session['start_date'] %} → {{ my_next_session['end_date'] }}{% endif %}
+    · <a href="{{ url_for('workshop_running_sheet', session_id=my_next_session['id']) }}" class="small-link">Full running sheet</a></p>
+  {# The roster here is the short version: names, diet, medical, room. The sheet
+     carries what they answered on the registration form too, which is the part
+     that changes how the thing is taught. #}
   {% if not my_next_session_roster %}
     <div class="empty-state">No confirmed registrations yet.</div>
   {% else %}

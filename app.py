@@ -33830,6 +33830,111 @@ def matching_workshop_waitlist_entries(conn, session_id):
     ).fetchall()
 
 
+def session_sheet_viewer(conn, session_id, user):
+    """The session, if this person is allowed to see its sheet.
+
+    Returns None rather than raising, so the caller decides between 404 and
+    403 -- and it returns 404 for a session that exists but is not theirs,
+    because telling an instructor "that session exists and you may not see
+    it" is a fact about the house they have no need for.
+    """
+    row = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
+                  workshops.instructor_user_id, workshops.id AS workshop_id,
+                  workshops.nights_label, workshops.sample_day
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
+    if not row:
+        return None
+    if user["role"] == "owner":
+        return row
+    if row["instructor_user_id"] and row["instructor_user_id"] == user["id"]:
+        return row
+    return None
+
+
+def session_sheet(conn, session_id):
+    """Everybody coming, and what the person teaching needs to know.
+
+    No money. Not hidden money -- money that is never loaded, so no future
+    edit to the template can put a guest's balance in front of an instructor.
+    """
+    people = conn.execute(
+        """SELECT workshop_bookings.*, rooms.name AS room_name
+             FROM workshop_bookings
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+            WHERE workshop_bookings.session_id = ?
+              AND workshop_bookings.status = 'confirmed'
+            ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
+
+    ids = [p["id"] for p in people]
+    party, answers = {}, {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for r in conn.execute(
+            f"""SELECT * FROM workshop_booking_guests
+                 WHERE workshop_booking_id IN ({marks})
+                 ORDER BY is_lead DESC, id""", ids).fetchall():
+            party.setdefault(r["workshop_booking_id"], []).append(r)
+        for r in conn.execute(
+            f"""SELECT workshop_custom_field_responses.*, workshop_custom_fields.label
+                  FROM workshop_custom_field_responses
+                  JOIN workshop_custom_fields
+                    ON workshop_custom_fields.id =
+                       workshop_custom_field_responses.custom_field_id
+                 WHERE workshop_custom_field_responses.workshop_booking_id IN ({marks})
+                   AND COALESCE(workshop_custom_field_responses.value, '') != ''
+                 ORDER BY workshop_custom_fields.sort_order""", ids).fetchall():
+            answers.setdefault(r["workshop_booking_id"], []).append(r)
+
+    rows, heads = [], 0
+    for p in people:
+        heads += p["party_size"] or 1
+        rows.append({
+            "booking": p,
+            "party": party.get(p["id"], []),
+            "answers": answers.get(p["id"], []),
+        })
+
+    # The kitchen needs the aggregate, not one line per guest. Somebody
+    # cooking for fourteen reads "two coeliac, one no dairy" -- they do not
+    # read fourteen rows to work that out, and asked to, they miss one.
+    kitchen = []
+    for r in rows:
+        note = (r["booking"]["dietary_notes"] or "").strip()
+        if note:
+            kitchen.append({"who": r["booking"]["guest_name"], "note": note})
+    medical = [{"who": r["booking"]["guest_name"],
+                "note": (r["booking"]["medical_notes"] or "").strip()}
+               for r in rows if (r["booking"]["medical_notes"] or "").strip()]
+    occasions = [{"who": r["booking"]["guest_name"],
+                  "note": (r["booking"]["special_occasion"] or "").strip()}
+                 for r in rows if (r["booking"]["special_occasion"] or "").strip()]
+    return {"rows": rows, "heads": heads, "kitchen": kitchen,
+            "medical": medical, "occasions": occasions}
+
+
+@app.route("/workshops/<int:session_id>/sheet")
+@login_required
+def workshop_running_sheet(session_id):
+    """What the instructor takes into the room.
+
+    Deliberately not under /admin: it is not an admin page, and the people
+    who need it are not administrators.
+    """
+    user = current_user()
+    conn = get_db()
+    session_row = session_sheet_viewer(conn, session_id, user)
+    if not session_row:
+        conn.close()
+        abort(404)
+    sheet = session_sheet(conn, session_id)
+    conn.close()
+    return render_template("workshop_sheet.html", session=session_row,
+                           sheet=sheet)
+
+
 @app.route("/admin/workshops/registrations")
 @owner_required
 def admin_workshop_registrations():

@@ -66,6 +66,7 @@
             · <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">{{ row.rooms_assigned }}/{{ total_rooms }} rooms assigned — see rooms</a>
           </span>
           <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+          <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
           <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
@@ -89,6 +90,7 @@
             {% if s['notes'] %} <span class="upload-hint">— {{ s['notes'] }}</span>{% endif %}
           </span>
           <a href="{{ url_for('admin_workshop_registrations', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Registrations</a>
+          <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link" style="color:var(--steel);">Running sheet</a>
         </div>
         {% endfor %}
       </div>

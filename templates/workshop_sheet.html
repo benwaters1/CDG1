@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ session['title'] }} — running sheet{% endblock %}
+
+{# Nothing about money is loaded for this page, so nothing about money can
+   be shown on it. That is the point: the admin registrations page carries
+   balances, payments and refunds, and putting an instructor in front of it
+   would mean guarding every one of those and every one added later. #}
+
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ session['title'] }}</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('dashboard') }}" class="btn-mini">Back</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ session['start_date'] }}{% if session['end_date'] != session['start_date'] %} to {{ session['end_date'] }}{% endif %}
+  · {{ sheet.heads }} {{ 'person' if sheet.heads == 1 else 'people' }} confirmed
+  {%- if session['instructor_name'] %} · {{ session['instructor_name'] }}{% endif %}.
+  Everyone who has confirmed a place. Registrations that have not been paid for are not on this sheet.
+</p>
+
+{% if sheet.kitchen or sheet.medical %}
+<div class="stat-tiles">
+  {% if sheet.kitchen %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon stat-tile-icon-gold">{{ icon('restaurant', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ sheet.kitchen|length }}</span><span class="stat-tile-label">To cook around</span></span>
+  </div>
+  {% endif %}
+  {% if sheet.medical %}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('shield', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">{{ sheet.medical|length }}</span><span class="stat-tile-label">Medical notes</span></span>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if sheet.kitchen %}
+{# Collated on purpose. Somebody cooking for fourteen reads "two coeliac,
+   one no dairy"; asked to work that out from fourteen separate rows, they
+   miss one. #}
+<div class="detail-card">
+  <h2 class="section-heading">For the kitchen</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Who</th><th>What</th></tr></thead>
+      <tbody>
+        {% for d in sheet.kitchen %}
+        <tr><td>{{ d.who }}</td><td>{{ d.note }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if sheet.medical %}
+<div class="detail-card">
+  <h2 class="section-heading">Medical</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">Told to the house so somebody knows. These are deleted once the workshop is over.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Who</th><th>What</th></tr></thead>
+      <tbody>
+        {% for d in sheet.medical %}
+        <tr><td>{{ d.who }}</td><td>{{ d.note }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if sheet.occasions %}
+<div class="detail-card">
+  <h2 class="section-heading">Worth knowing</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Who</th><th>Occasion</th></tr></thead>
+      <tbody>
+        {% for d in sheet.occasions %}
+        <tr><td>{{ d.who }}</td><td>{{ d.note }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Who is coming</h2>
+  {% if not sheet.rows %}
+  <p class="empty-note">Nobody has confirmed a place yet.</p>
+  {% else %}
+  <div class="doc-list">
+    {% for r in sheet.rows %}
+    {% set b = r.booking %}
+    <div class="doc-row" style="align-items:flex-start;">
+      <span style="flex:1;">
+        <b>{{ b['guest_name'] }}</b>
+        {%- if b['party_size'] and b['party_size'] > 1 %} · party of {{ b['party_size'] }}{% endif %}
+        {%- if b['room_name'] %} · {{ b['room_name'] }}{% endif %}
+        {%- if b['occupancy_type'] %} · {{ b['occupancy_type']|capitalize }}{% endif %}
+
+        {% if r.party %}
+        <div class="upload-hint" style="margin-top:2px;">
+          With: {% for g in r.party %}{{ g['guest_name'] }}{% if not loop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+
+        {% if b['requested_roommate'] %}
+        <div class="upload-hint" style="margin-top:2px;">Asked to share with {{ b['requested_roommate'] }}.</div>
+        {% endif %}
+
+        {% if b['dietary_notes'] %}
+        <div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Diet</span>{{ b['dietary_notes'] }}</div>
+        {% endif %}
+        {% if b['medical_notes'] %}
+        <div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Medical</span>{{ b['medical_notes'] }}</div>
+        {% endif %}
+
+        {# The workshop's own questions. Somebody set these because the
+           answers change how the thing is taught, and until now they were
+           only ever readable by the owner. #}
+        {% for a in r.answers %}
+        <div class="upload-hint" style="margin-top:2px;"><span class="detail-label">{{ a['label'] }}</span>{{ a['value'] }}</div>
+        {% endfor %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
