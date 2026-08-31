@@ -249,6 +249,24 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('mountains') }}</div>
 
+
+<!-- ============ THE JOURNAL, PROPERLY ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">Not Ready To Book</p>
+    <h2 class="g-place">Watch It Come Off The Wall</h2>
+    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
+    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
+    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="jr_email_won">Your email</label>
+      <input type="email" id="jr_email_won" name="email" placeholder="Your email" required>
+      <button type="submit" class="g-btn g-btn--solid">Read along</button>
+    </form>
+    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The valley road" loading="lazy">

@@ -4193,3 +4193,82 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 @media (max-width: 68rem){
   .g-nav__has-sub{ display: none; }
 }
+
+/* ==========================================================================
+   ROOM CARDS — ALIGNED ROWS
+   Descriptions differ in length, so price, tags and button each started at a
+   different height across a row. The card is a column: the description takes
+   the slack, and everything below it lines up with its neighbours.
+   ========================================================================== */
+.g-cards .g-card{ display: flex; flex-direction: column; }
+.g-cards .g-card__b{ display: flex; flex-direction: column; flex: 1; }
+/* The description absorbs the difference in length. */
+.g-cards .g-card__desc{ flex: 1 0 auto; margin-bottom: var(--s5); }
+/* Everything below it sits on the same line across the row. */
+.g-cards .g-card__rate{ margin-top: 0; }
+.g-cards .g-tags{ margin-top: var(--s4); }
+.g-cards .g-card__b > .g-btn,
+.g-cards .g-card__b > p:last-child{ margin-top: var(--s5); }
+/* When one card's tags wrap to an extra line the row loses its alignment.
+   Reserve the taller of the two so the buttons and tags stay level. */
+.g-cards .g-tags{ align-content: flex-start; }
+.g-cards .g-card__b > *:last-child{ margin-top: auto; }
+
+/* The homepage room blocks measured 39 characters — one short of readable.
+   Widen the block rather than shrink the type. */
+.g-homeroom__b{ padding-inline: var(--s5); }
+.g-homerooms{ grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr)); }
+
+/* ==========================================================================
+   WAITING LIST — the no-availability state
+   A guest who finds nothing available was leaving with nothing, having
+   arrived with dates. These are the most qualified people on the site.
+   ========================================================================== */
+.g-waitlist{
+  margin-top: var(--s7); padding: var(--s6);
+  border: 2px solid var(--gilt); background: var(--white);
+}
+.g-waitlist__form{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3);
+  margin-top: var(--s5);
+}
+.g-waitlist__form input[type="email"]{
+  flex: 1 1 18rem; max-width: 24rem;
+  height: 52px; min-height: 52px; max-height: 52px;
+  padding: 0 var(--s4); border: 1px solid var(--gilt);
+  background: var(--white); font-family: var(--ui); font-size: 16px;
+  color: var(--blue-deep);
+}
+.g-waitlist__form .g-btn{ height: 52px; flex: 0 0 auto; }
+.g-waitlist__form > input[type="hidden"], .g-waitlist__form > .g-vh{ position: absolute; }
+
+/* ==========================================================================
+   RETURNING GUEST
+   Quiet recognition, not a banner. Silent when the guest is unknown.
+   ========================================================================== */
+.g-welcome{
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3);
+  margin: var(--s5) 0 0; padding: var(--s4) var(--s5);
+  border-left: 2px solid var(--gilt); background: var(--sand-2);
+  font-size: 16px; color: var(--ink);
+}
+.g-welcome__k{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.g .g-welcome a{ color: var(--blue-deep); }
+
+/* The figures block already exists; this keeps it legible on the dark ground
+   used by the atelier scarcity section. */
+.g-sec--dark .g-figs__n{ color: #fff; }
+.g-sec--dark .g-figs__l{ color: #C9D4DF; }
+/* The children hint carries the minimum age, so it must read. Inside a narrow
+   field column it measured 37 characters. Let the row wrap and give the hint
+   the full width beneath both fields — never wider than the row itself. */
+.g-row{ flex-wrap: wrap; }
+.g-row .g-field--narrow{ flex: 1 1 9rem; min-width: 0; }
+.g-row .g-field--narrow .g-hint{
+  flex: 1 0 100%; width: 100%; max-width: 100%; margin-top: 4px;
+}
+/* A hint that describes the whole row, not one field. */
+.g-hint--row{ max-width: 46rem; margin-top: var(--s2); }

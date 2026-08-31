@@ -549,19 +549,31 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('brush') }}</div>
 
-<!-- ============ THE CLOSE ============ -->
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The workshop table" loading="lazy">
-  <h2 class="g-close__h">Take a week of it</h2>
-  <p class="g-close__p">Fifteen guests at most, and the château takes no others while an atelier runs. The dates that suit you are unlikely to come round twice.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See every date</a>
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
-      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
+
+<!-- ============ HOW FEW SEATS ============ -->
+{# Computed from the sessions actually published, so it can never drift from
+   what is bookable. #}
+{% set _seats = namespace(total=0, left=0, sittings=0) %}
+{% for w in workshops %}{% for r in sessions_by_workshop.get(w['id'], []) %}
+  {% set _seats.total = _seats.total + (r.capacity or 0) %}
+  {% set _seats.left = _seats.left + (r.remaining or 0) %}
+  {% set _seats.sittings = _seats.sittings + 1 %}
+{% endfor %}{% endfor %}
+{% if _seats.total %}
+<section class="g-sec g-sec--dark"><div class="g-wrap">
+  <p class="g-eyebrow">The Whole Year</p>
+  <h2 class="g-place">{{ _seats.total }} Places, All Year</h2>
+  <div class="g-figs">
+    <div class="g-figs__i"><span class="g-figs__n">{{ _seats.sittings }}</span><span class="g-figs__l">Ateliers running</span></div>
+    <div class="g-figs__i"><span class="g-figs__n">{{ _seats.total }}</span><span class="g-figs__l">Places in total</span></div>
+    <div class="g-figs__i"><span class="g-figs__n">{{ _seats.left }}</span><span class="g-figs__l">Still open</span></div>
+    <div class="g-figs__i"><span class="g-figs__n">1</span><span class="g-figs__l">Atelier at a time</span></div>
   </div>
+  <p class="g-p">That is the whole year. Not a marketing figure — the number of chairs that exist.</p>
 </div></section>
+{% endif %}
 
-
+<!-- ============ THE CLOSE ============ -->
 {# What people who came actually said. The page has been handed these on every
    load since the feature was built and rendered none of them, which is the
    same fault the booking page had: "Feature on booking page" was a button
@@ -591,5 +603,16 @@
   </div>
 </div></section>
 {% endif %}
+
+<section class="g-sec g-close"><div class="g-wrap">
+  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The workshop table" loading="lazy">
+  <h2 class="g-close__h">Take a week of it</h2>
+  <p class="g-close__p">Fifteen guests at most, and the château takes no others while an atelier runs. The dates that suit you are unlikely to come round twice.</p>
+  <div class="g-close__acts">
+      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See every date</a>
+      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night instead</a>
+      <a href="{{ url_for('contact_page') }}" class="g-btn g-btn">Ask us something</a>
+  </div>
+</div></section>
 
 {% endblock %}

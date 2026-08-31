@@ -1,10 +1,11 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room['name'], None)] %}
 {% block title %}Book {{ room['name'] }}{% endblock %}
-{% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. See what is free and rates.{% endblock %}
-{% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. See what is free and rates.{% endblock %}
+{% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
+{% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_room_copy.html' import room_copy %}
 
 
 
@@ -52,7 +53,7 @@
     {% endif %}
   </div>
 
-  {% if room['description'] %}<p class="g-p">{{ room['description'] }}</p>{% endif %}
+  {% if room['description'] %}<p class="g-p">{{ room_copy(room['name'], room['description'] or '') }}</p>{% endif %}
 
   {% if room['amenities'] %}
   <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
@@ -89,22 +90,27 @@
             <div class="g-cal__months" id="cal_months"></div>
             <p class="g-hint" id="cal_status" aria-live="polite"></p>
           </div>
-          <p class="g-field g-field--narrow">
-            <label for="party_size">Guests</label>
-            <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1" max="{{ room['max_occupancy'] }}" value="{{ prefill_party_size }}" required>
-            <span class="g-hint">Up to {{ room['max_occupancy'] }} in this room.</span>
-          </p>
-          {# Taxe de sejour is charged per ADULT per night, so a family with
-             children pays for the adults. Asking is the only way to get it
-             right: assuming everybody is an adult overcharges families, and
-             the figure declared to the commune is wrong in the same breath. #}
-          <p class="g-field g-field--narrow">
-            <label for="guests_under_18">Of those, under 18</label>
-            <input type="number" inputmode="numeric" id="guests_under_18"
-                   name="guests_under_18" min="0" max="{{ room['max_occupancy'] }}"
-                   value="{{ prefill_under_18 or 0 }}">
-            <span class="g-hint">Under-18s are exempt from the taxe de séjour.</span>
-          </p>
+          <div class="g-row">
+            <p class="g-field g-field--narrow">
+              <label for="br_adults">Adults</label>
+              <input type="number" inputmode="numeric" id="br_adults" name="adults"
+                     min="1" max="{{ room['max_occupancy'] }}"
+                     value="{{ prefill_adults or prefill_party_size or 2 }}" required>
+            </p>
+            <p class="g-field g-field--narrow">
+              <label for="br_children">Children (under 18)</label>
+              <input type="number" inputmode="numeric" id="br_children" name="guests_under_18"
+                     min="0" max="{{ room['max_occupancy'] }}" value="{{ prefill_under_18 or 0 }}">
+            </p>
+          </div>
+          {# Beneath both fields, not inside one — it describes the party. The
+             under-18 count is not decoration: taxe de séjour is charged per
+             ADULT per night, so assuming everybody is an adult overcharges
+             families and misstates the return to the commune in one go. #}
+          <p class="g-hint g-hint--row">Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de séjour.</p>
+          {# party_size is what the route already reads, so it is kept and
+             filled from the two fields above rather than replaced. #}
+          <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
         </section>
 
 <div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
@@ -582,4 +588,21 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 
 
+
+<script>
+/* Adults + children are what a guest thinks in; party_size is what the route
+   reads. Keep the hidden total in step, and never let it fall below one. */
+(function(){
+  var a=document.getElementById('br_adults'), c=document.getElementById('br_children'),
+      t=document.getElementById('party_size');
+  if(!a||!t) return;
+  function sync(){
+    var n=(parseInt(a.value,10)||0)+(parseInt(c&&c.value,10)||0);
+    t.value = n > 0 ? n : 1;
+  }
+  a.addEventListener('input', sync);
+  if(c) c.addEventListener('input', sync);
+  sync();
+})();
+</script>
 {% endblock %}

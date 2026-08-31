@@ -6,6 +6,19 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{# Shown only when the view passes a known returning guest. Silent otherwise,
+   so a stranger never sees an empty personalisation slot. #}
+{% if returning_guest %}
+<div class="g-wrap">
+  <p class="g-welcome">
+    <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
+    {% if returning_guest['last_room'] %}You stayed in {{ returning_guest['last_room'] }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}
+    <a href="{{ url_for('find_booking') }}">Your past stays</a>
+  </p>
+</div>
+{% endif %}
+
+
 {% from '_marks.html' import mark %}
 {# Nights for the whole page, from the dates already in scope. Computed here
    so no route change is needed; if the view later passes stay_nights it wins. #}
@@ -132,18 +145,7 @@
 } %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
-{% set RM_DESC = {
-  'Suite with Mountain View':
-    'The largest room in the house, on the first floor, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
-  'King Room with Mountain View':
-    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is a few steps along the corridor and yours alone — ensuites are not permitted in a monument of this class.',
-  'Family Suite with Mountain View':
-    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits a few steps away.',
-  'Double with Shared Bathroom':
-    'A quiet double on the ground floor, floral papers and a marble chimneypiece, sharing a bathroom with one other room. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
-  'Twin/Double with Shared Bathroom':
-    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Double next door. The most straightforward room in the house, and the least expensive way into it.'
-} %}
+{% from '_room_copy.html' import room_copy %}
       <img class="g-card__img"
            src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
            alt="{{ room['name'] }}" loading="lazy">
@@ -158,15 +160,19 @@
           {% if _n > 0 %}
             <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '%.0f'|format(room['price_per_night'] * _n) }}</b>
             <span>total · {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
-            <span class="g-card__per">€{{ '%.0f'|format(room['price_per_night']) }} a night</span>
+            {# On a single night the total and the nightly rate are the same
+               figure, so printing both says nothing twice. #}
+            {% if _n > 1 %}<span class="g-card__per">€{{ '%.0f'|format(room['price_per_night']) }} a night</span>{% endif %}
           {% else %}
             <b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b>
             <span>/ night</span>
           {% endif %}
         </p>
         {% endif %}
-        {% set _d = room['description'] if room['description'] and room['description']|length > 60
-                    else RM_DESC.get(room['name'], room['description']) %}
+        {# Prefer the written description. The database column holds imported
+           listing copy — generic, and in one case factually wrong — so it is
+           only used when there is no written version for that room. #}
+        {% set _d = room_copy(room['name'], room['description'] or '') %}
         {% if _d %}<p class="g-card__desc">{{ _d }}</p>{% endif %}
         {# amenities is empty on every room, so this list never rendered.
            Derive the features from facts the row does carry; a filled-in
@@ -225,7 +231,25 @@
       <button type="submit" class="g-btn g-submit">Join the waitlist</button>
     </form>
   </div>
-  {% endif %}
+  
+    {# A guest who finds nothing available currently leaves with nothing.
+       These are the people most likely to book — they arrived with dates. #}
+    <div class="g-waitlist">
+      <p class="g-eyebrow">If Those Dates Are Taken</p>
+      <h3 class="g-h3">Tell us and we will write when they open</h3>
+      <p class="g-p">Rooms come back. People move dates, and rooms open as the restoration reaches them. If you leave your dates we will write to you before they go public.</p>
+      <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-waitlist__form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="source" value="waitlist">
+        <input type="hidden" name="wanted_arrival" value="{{ arrival }}">
+        <input type="hidden" name="wanted_departure" value="{{ departure }}">
+        <label class="g-vh" for="wl_email">Your email</label>
+        <input type="email" id="wl_email" name="email" placeholder="Your email" required>
+        <button type="submit" class="g-btn g-btn--solid">Tell me when they open</button>
+      </form>
+      <p class="g-hint">Only about these dates. No newsletter unless you ask for one.</p>
+    </div>
+{% endif %}
 </div></section>
 
 
@@ -264,7 +288,7 @@
     <p class="g-p">The King Room, the Suite with Mountain View and the Family Suite each have a private bathroom a few steps away. The Double and the Twin/Double share a bathroom set between them.</p>
     <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit off the corridor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not.</p>
     <p style="margin-top:var(--s6)">
-      <a href="#book" class="g-btn g-btn--solid">See what is free</a>
+      <a href="#book" class="g-btn g-btn--solid">Check dates</a>
     </p>
   </div>
 </div></section>
@@ -395,7 +419,7 @@
   </div>
 
   <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">See what is free</a>
+    <a href="#book" class="g-btn g-btn--solid">Check dates</a>
   </p>
 </div></section>
 
@@ -445,7 +469,7 @@
             {%- else %}Private{% endif -%}
           </td>
           <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
-          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">See what is free</a></td>
+          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
         </tr>
         {% endfor %}
       </tbody>

@@ -5,6 +5,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_room_copy.html' import room_copy %}
 {% from '_marks.html' import mark %}
 {% from '_emblems.html' import emblem %}
 
@@ -115,8 +116,8 @@
       <div class="g-homeroom__b">
         {{ emblem(r['name']) }}
         <h3 class="g-homeroom__name">{{ r['name'] }}</h3>
-        {% if r.get('spec') %}<p class="g-p">{{ r['spec'] }}</p>
-        {% elif r['description'] %}<p class="g-p">{{ r['description']|truncate(120) }}</p>{% endif %}
+        {% set _rc = room_copy(r['name'], r['description'] or '') %}
+        {% if _rc %}<p class="g-p">{{ _rc|truncate(140) }}</p>{% endif %}
         <p class="g-homeroom__rate">
           {% set rate = r.get('rate') or r['price_per_night'] %}
           {% if rate %}<span class="g-fig">from €{{ '%.0f'|format(rate) }}</span> a night{% endif %}
@@ -130,7 +131,7 @@
           {% if 'mountain' in nm %}<li>Mountain view</li>{% endif %}
           <li>Breakfast included</li>
         </ul>
-        <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">See what is free</a>
+        <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>
       </div>
     </article>
     {% endfor %}
