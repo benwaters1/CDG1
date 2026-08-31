@@ -39463,11 +39463,21 @@ def admin_readiness():
                            blockers=blockers, warnings=warnings)
 
 
-def build_backup_zip(include_media=True):
+def build_backup_zip(include_media=True, skipped_out=None):
     """A zip of the database, and optionally the uploaded documents and room
     photos alongside it. Shared by the owner's manual download and the
     automated email job, so there is exactly one place that knows what a
-    backup contains."""
+    backup contains.
+
+    `skipped_out`, if given a list, receives the name of every media file
+    that could not be read. The zip already says so in FILES_SKIPPED.txt, but
+    only to whoever opens it; this is how a caller can tell the owner on the
+    day instead — the manual download writes it to the audit log, and the
+    scheduled job puts it in the line recorded against the run.
+
+    The database is the exception and is never skipped. A zip without it is
+    not a backup, so if that copy fails the error is raised and the caller
+    finds out."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         tmp_db_path = os.path.join(BASE_DIR, f"_backup_tmp_{secrets.token_hex(6)}.db")
@@ -39482,6 +39492,7 @@ def build_backup_zip(include_media=True):
             if os.path.exists(tmp_db_path):
                 os.remove(tmp_db_path)
 
+        missing = []
         if include_media:
             # A file that disappears between the listing and the write is
             # skipped, not fatal.
@@ -39516,6 +39527,11 @@ def build_backup_zip(include_media=True):
                     "when this backup was taken, so they are NOT in it.\n"
                     "Everything else, including the database, is.\n\n"
                     + "\n".join(skipped) + "\n")
+            missing.extend(skipped)
+        if skipped_out is not None:
+            # The zip says what was left out, but only to whoever opens it.
+            # This is how the caller can tell the owner today instead.
+            skipped_out.extend(missing)
     return buf.getvalue()
 
 
@@ -39524,10 +39540,16 @@ def build_backup_zip(include_media=True):
 def download_backup():
     audit_conn = get_db()
     log_audit(audit_conn, "backup_downloaded")
+
+    skipped = []
+    zip_bytes = build_backup_zip(include_media=True, skipped_out=skipped)
+    if skipped:
+        # A download has nowhere to show a message, so the only place the owner
+        # could ever learn this is the audit log. The zip says so as well.
+        log_audit(audit_conn, "backup_files_skipped",
+                  details=f"{len(skipped)}: " + "; ".join(skipped[:20]))
     audit_conn.commit()
     audit_conn.close()
-
-    zip_bytes = build_backup_zip(include_media=True)
     filename = f"gudanes-backup-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.zip"
     return app.response_class(
         zip_bytes, mimetype="application/zip",
@@ -39749,7 +39771,8 @@ def run_backup_email_job(conn):
     if not to_address:
         raise JobFailed("no owner email configured, so there is nowhere to send a backup")
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    zip_bytes = build_backup_zip(include_media=True)
+    skipped = []
+    zip_bytes = build_backup_zip(include_media=True, skipped_out=skipped)
     note = ""
     if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
         zip_bytes = build_backup_zip(include_media=False)
@@ -39764,7 +39787,9 @@ def run_backup_email_job(conn):
         raise JobFailed(f"send failed: {error}")
     log_audit(conn, "backup_auto_sent")
     conn.commit()
-    return f"sent to {to_address} ({len(zip_bytes) // 1024}KB){' (database only)' if note else ''}"
+    short = f", {len(skipped)} file(s) unreadable and left out" if skipped else ""
+    return (f"sent to {to_address} ({len(zip_bytes) // 1024}KB)"
+            f"{' (database only)' if note else ''}{short}")
 
 
 # ---------------------------------------------------------------------------
