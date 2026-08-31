@@ -37227,6 +37227,16 @@ def download_backup():
 # base64 inflates it by roughly a third.
 BACKUP_EMAIL_MAX_BYTES = 15 * 1024 * 1024
 
+# What a database-only backup has to say for itself. A named constant rather
+# than a string inside the job, because the thing worth checking is that this
+# sentence still names what is missing — and a test looking for the words
+# anywhere in that function found them in its own return line and stayed green
+# while the sentence itself was gutted.
+BACKUP_MEDIA_OMITTED_NOTE = (
+    "The database is attached, but uploaded documents and room photos were "
+    "left out this time because the full backup was too large to email. "
+    "Use Admin → Backup to download everything, including media.")
+
 
 def send_backup_email(to_address, zip_bytes, filename, note=""):
     """Emails one backup zip as an attachment.
@@ -37428,9 +37438,7 @@ def run_backup_email_job(conn):
     note = ""
     if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
         zip_bytes = build_backup_zip(include_media=False)
-        note = ("The database is attached, but uploaded documents and room photos were "
-                "left out this time because the full backup was too large to email. "
-                "Use Admin → Backup to download everything, including media.")
+        note = BACKUP_MEDIA_OMITTED_NOTE
         if len(zip_bytes) > BACKUP_EMAIL_MAX_BYTES:
             raise JobFailed(
                 f"even the database alone is {len(zip_bytes) // (1024 * 1024)}MB, "
