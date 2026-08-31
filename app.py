@@ -39415,12 +39415,34 @@ def readiness_checks(conn):
             "No backup has ever been taken. The job is switched on, so either it has not run "
             "yet or it cannot send — check Admin - Automation for what it last returned.")
     elif age_h > grace_h:
+        # It used to say the job failed silently, which was true when it was
+        # written and is not any more: every run records its outcome, its
+        # message and how many it has failed in a row. So this says WHY rather
+        # than speculating, and "check Automation" becomes the last resort
+        # instead of the whole answer.
         days = age_h / 24
-        add("warn", "Data", "Backups arriving", False,
-            f"Last backup was {days:.0f} day(s) ago, but one is meant to be taken every "
-            f"{interval_h:.0f}h. It is failing silently — the job only records a success, so "
-            "a mail account that stopped working leaves no error anywhere. "
-            "Check Admin - Automation.")
+        run = conn.execute(
+            """SELECT last_status, last_message, consecutive_failures AS fails
+                 FROM automation_runs WHERE job_name = 'backup_email'""").fetchone()
+        head = (f"Last backup was {days:.0f} day(s) ago, but one is meant to be taken "
+                f"every {interval_h:.0f}h. ")
+        if run and run["last_status"] == "failed":
+            why = (f"The job has failed {run['fails']} run(s) in a row and reports: "
+                   f"{run['last_message'] or 'no message'}")
+        elif run and run["last_status"] == "ok":
+            # The worst of the three: the job believes it worked, so the copy
+            # is being made and is not arriving. That is an address problem or
+            # a mailbox problem, not a job problem.
+            why = ("The job reports success, so a copy is being made and is not "
+                   "arriving — check the address it goes to, and that mailbox.")
+        elif run:
+            why = ("The job has run but recorded no outcome, which means it last ran "
+                   "before outcomes were recorded. Admin - Automation has a Run now "
+                   "button that will say.")
+        else:
+            why = ("The job has never run. Admin - Automation has a Run now button "
+                   "that will say why.")
+        add("warn", "Data", "Backups arriving", False, head + why)
     else:
         add("warn", "Data", "Backups arriving", True,
             f"Last backup {age_h:.0f}h ago, on a {interval_h:.0f}h schedule.")

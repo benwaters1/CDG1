@@ -38,6 +38,18 @@ def _set_backup(conn, hours_ago=None, enabled=True, interval="24"):
     conn.commit()
 
 
+def _set_last_run(conn, status=None, message="", fails=0):
+    """What the scheduled job recorded about its own last attempt."""
+    conn.execute("DELETE FROM automation_runs WHERE job_name = 'backup_email'")
+    if status is not None:
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO automation_runs (job_name, last_ran_at, last_status,
+                 last_message, consecutive_failures)
+               VALUES ('backup_email', ?, ?, ?, ?)""", (now, status, message, fails))
+    conn.commit()
+
+
 def run():
     s = Suite("backup_alert")
     conn = m.get_db()
@@ -63,8 +75,33 @@ def run():
     _set_backup(conn, hours_ago=80)
     stale = _readiness(conn)
     s.check("two missed cycles is flagged", stale["ok"] is False)
-    s.check("it says it is failing silently", "silently" in stale["detail"])
-    s.check("it points at where to look", "Automation" in stale["detail"])
+
+    # It used to say the job was failing silently, which was true when that was
+    # written: the job recorded only successes. It records every outcome now,
+    # so the page can say WHY instead of guessing, and the three causes are
+    # three different jobs for the owner.
+    _set_last_run(conn, "failed", "send failed: SMTP auth rejected", 3)
+    failed = _readiness(conn)
+    s.check("a recorded failure is quoted, not guessed at",
+            "SMTP auth rejected" in failed["detail"], detail=failed["detail"][:150])
+    s.check("with how long it has been failing",
+            "3 run(s) in a row" in failed["detail"], detail=failed["detail"][:150])
+
+    # The worst of the three, and the one a human would never guess: the job
+    # believes it worked, so a copy is being made and is not arriving.
+    _set_last_run(conn, "ok", "sent to owner@example.invalid (412KB)")
+    lying = _readiness(conn)
+    s.check("a job that reports success but no backup arrived says so",
+            "reports success" in lying["detail"], detail=lying["detail"][:150])
+    s.check("and points at the address rather than the job",
+            "address" in lying["detail"], detail=lying["detail"][:150])
+
+    _set_last_run(conn, None)
+    never_ran = _readiness(conn)
+    s.check("a job that has never run says that instead",
+            "never run" in never_ran["detail"], detail=never_ran["detail"][:150])
+    s.check("it still points at where to look", "Automation" in never_ran["detail"],
+            detail=never_ran["detail"][:150])
 
     # Never backed up at all is worse, not better, than an old one — the
     # empty case must not read as healthy just because nothing is stale.
