@@ -3408,6 +3408,17 @@ def init_db():
                              "REFERENCES users(id) ON DELETE SET NULL"),
         ("wfeedback_reply", "ALTER TABLE workshop_feedback ADD COLUMN reply TEXT"),
         ("wfeedback_replied_at", "ALTER TABLE workshop_feedback ADD COLUMN replied_at TEXT"),
+        # Contrôle technique. Not a nicety: an insurer can decline a claim on
+        # a vehicle without a valid one, so a car carrying guests with an
+        # expired CT is a car being driven uninsured.
+        ("vehicle_ct_expires", "ALTER TABLE vehicles ADD COLUMN ct_expires_on TEXT"),
+        ("vehicle_ct_note", "ALTER TABLE vehicles ADD COLUMN ct_note TEXT"),
+        # Service intervals are written in kilometres and the app only had a
+        # date, so "due in 3,000 km" had nowhere to live and nothing to
+        # measure against.
+        ("vehicle_odometer", "ALTER TABLE vehicles ADD COLUMN odometer_km INTEGER"),
+        ("vehicle_odometer_at", "ALTER TABLE vehicles ADD COLUMN odometer_read_at TEXT"),
+        ("vehicle_off_road", "ALTER TABLE vehicles ADD COLUMN off_road INTEGER NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -15271,6 +15282,21 @@ def owner_home_warnings(conn, today):
     # A guest said the stay was poor and nobody has answered. It closes
     # itself: replying or marking it read takes it off this list, which is
     # what keeps the panel able to be empty.
+    # Only the ones already expired reach the front page. Something due in
+    # three weeks is a task, not an alarm, and a panel that shouts about both
+    # teaches the owner to skim the one that matters.
+    illegal = [p for p in vehicle_papers(conn, today)
+               if p["state"] == "expired" and not p["vehicle"]["off_road"]]
+    if illegal:
+        first = illegal[0]
+        add("blocker",
+            f"{len(illegal)} vehicle{'' if len(illegal) == 1 else 's'} not legal to drive",
+            f"{first['vehicle']['name']}: {first['worst_what']} expired"
+            + (f" on {first['worst_when'].isoformat()}" if first["worst_when"] else "")
+            + ". An insurer can decline a claim, so this is a car carrying "
+              "guests uninsured.",
+            len(illegal), "management_vehicles")
+
     poor = unanswered_reviews(conn, today=today)
     if poor:
         worst = poor[0]
@@ -35534,6 +35560,7 @@ WATCH_TASK_KINDS = {
     "insurer": "The insurer has not been told",
     "backup": "No backup is arriving",
     "job": "An automation job keeps failing",
+    "vehicle": "A vehicle without valid papers",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -35565,6 +35592,66 @@ def watch_task_assignees(conn):
     return out
 
 
+# Far enough ahead to book a garage, near enough that it is not noise. A
+# contrôle technique slot in the Ariège in August is not a same-week booking.
+VEHICLE_PAPERS_WARN_DAYS = 30
+
+
+def vehicle_papers(conn, today=None):
+    """Every vehicle, and whether it is legal to put a guest in it.
+
+    Two dates, from two places, because one of them already had a home. The
+    contrôle technique is on the vehicle; the insurance is a policy, which is
+    where it has always been — insurance_policies.vehicle_id has existed since
+    that table was built and nothing ever read the two together.
+
+    Returns a row per vehicle with the worst state it is in, so a page can
+    show one line rather than making somebody join it up in their head.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    soon = day + timedelta(days=VEHICLE_PAPERS_WARN_DAYS)
+    out = []
+    for v in conn.execute("SELECT * FROM vehicles ORDER BY name").fetchall():
+        policy = conn.execute(
+            """SELECT * FROM insurance_policies
+                WHERE vehicle_id = ? AND expiry_date IS NOT NULL AND expiry_date != ''
+                ORDER BY expiry_date DESC LIMIT 1""", (v["id"],)).fetchone()
+        ct = parse_date(v["ct_expires_on"] or "")
+        ins = parse_date(policy["expiry_date"] or "") if policy else None
+
+        problems = []
+        # Order matters: expired first, because "expires in three weeks" read
+        # above "expired last month" is how the urgent one gets skimmed past.
+        if ct and ct < day:
+            problems.append(("expired", "contrôle technique", ct))
+        if ins and ins < day:
+            problems.append(("expired", "insurance", ins))
+        if ct and day <= ct <= soon:
+            problems.append(("due", "contrôle technique", ct))
+        if ins and day <= ins <= soon:
+            problems.append(("due", "insurance", ins))
+        if not ct:
+            problems.append(("unknown", "contrôle technique", None))
+        if not policy:
+            problems.append(("unknown", "insurance", None))
+
+        worst = ("ok", None, None)
+        for state in ("expired", "due", "unknown"):
+            hit = next((p for p in problems if p[0] == state), None)
+            if hit:
+                worst = hit
+                break
+        out.append({
+            "vehicle": v, "policy": policy, "ct_expires": ct, "insurance_expires": ins,
+            "problems": problems, "state": worst[0], "worst_what": worst[1],
+            "worst_when": worst[2],
+            # Off the road on purpose is not a problem to chase. A car up on
+            # blocks with no CT is somebody's decision, not an oversight.
+            "chase": worst[0] in ("expired", "due") and not v["off_road"],
+        })
+    return out
+
+
 def watch_task_findings(conn, today=None):
     """The blocking findings, as (kind, title, note, due, priority) tuples.
 
@@ -35584,6 +35671,28 @@ def watch_task_findings(conn, today=None):
         if len(items) > WATCH_TASK_CAP:
             dropped[kind] = len(items) - WATCH_TASK_CAP
         return items[:WATCH_TASK_CAP]
+
+    # A vehicle without valid papers. Titled by the vehicle and the document
+    # rather than by a date, because the title is the dedupe key: putting
+    # "expires in 12 days" in it would raise a fresh task every morning.
+    papers = [p for p in vehicle_papers(conn, today) if p["chase"]]
+    for p in take("vehicle", papers):
+        v, what, when = p["vehicle"], p["worst_what"], p["worst_when"]
+        gone = p["state"] == "expired"
+        found.append((
+            "vehicle",
+            f"{v['name']} \u2014 {what} {'has expired' if gone else 'runs out soon'}",
+            (f"{what.capitalize()} "
+             + (f"expired on {when.isoformat()}." if gone and when
+                else f"expires on {when.isoformat()}." if when else "date not recorded.")
+             + ("\n\nAn insurer can decline a claim on a vehicle with no valid "
+                "contr\u00f4le technique, so this is not only a fine \u2014 it is a car "
+                "carrying guests uninsured." if "technique" in what and gone
+                else "\n\nBook it before the date, or mark the vehicle off the road."
+                if not gone else
+                "\n\nDo not carry guests in it until this is settled.")),
+            (when.isoformat() if when else today.isoformat()),
+            "high" if gone else "normal"))
 
     clashes = [c for c in rota_conflicts(conn, today, horizon)
                if c["kind"] == "certification"]
@@ -36426,6 +36535,8 @@ def management_vehicles():
                GROUP BY vehicle_id"""
         ).fetchall()
     }
+    # The two dates that decide whether a guest can legally be put in it.
+    papers = {p["vehicle"]["id"]: p for p in vehicle_papers(conn)}
     drivers = conn.execute("SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
     conn.close()
     return render_template(
@@ -36433,7 +36544,8 @@ def management_vehicles():
         maintenance_by_vehicle=maintenance_by_vehicle, current_usage=current_usage,
         recent_transfers=recent_transfers, next_transfer_by_vehicle=next_transfer_by_vehicle,
         insurance_by_vehicle=insurance_by_vehicle,
-        spend_by_vehicle=spend_by_vehicle, drivers=drivers,
+        spend_by_vehicle=spend_by_vehicle, drivers=drivers, papers=papers,
+        today_iso=datetime.now(LOCAL_TZ).date().isoformat(),
     )
 
 
@@ -36481,16 +36593,38 @@ def edit_vehicle(vehicle_id):
     fuel_type = request.form.get("fuel_type", "").strip()
     license_plate = request.form.get("license_plate", "").strip()
     next_service_due = request.form.get("next_service_due", "").strip()
+    ct_expires_on = request.form.get("ct_expires_on", "").strip()
+    odometer_raw = request.form.get("odometer_km", "").strip()
+    off_road = 1 if request.form.get("off_road") else 0
     notes = request.form.get("notes", "").strip()
     if not name:
         flash("A name is required.", "error")
         return redirect(url_for("management_vehicles"))
+    # Refused rather than quietly kept, because a contr\u00f4le technique date that
+    # cannot be read stores as nothing, and nothing reads as "not recorded" —
+    # which is the one state the chase-up list leaves alone. Junk would make
+    # the car look settled while nobody had checked anything.
+    if ct_expires_on and not parse_date(ct_expires_on):
+        flash("That contr\u00f4le technique date could not be read.", "error")
+        return redirect(url_for("management_vehicles"))
+    odometer = int(odometer_raw) if odometer_raw.isdigit() else None
     conn = get_db()
+    # Stamped only when the number actually moves, so an edit that changes the
+    # notes does not claim somebody walked out and looked at the odometer.
+    previous = conn.execute("SELECT odometer_km FROM vehicles WHERE id = ?",
+                            (vehicle_id,)).fetchone()
+    read_at = (datetime.now(timezone.utc).isoformat()
+               if odometer is not None
+               and (previous is None or previous["odometer_km"] != odometer)
+               else None)
     conn.execute(
         """UPDATE vehicles SET name = ?, vehicle_type = ?, fuel_type = ?, license_plate = ?,
-           next_service_due = ?, notes = ? WHERE id = ?""",
+           next_service_due = ?, ct_expires_on = ?, odometer_km = ?,
+           odometer_read_at = COALESCE(?, odometer_read_at), off_road = ?,
+           notes = ? WHERE id = ?""",
         (name, vehicle_type or None, fuel_type or None, license_plate or None,
-         next_service_due or None, notes or None, vehicle_id),
+         next_service_due or None, ct_expires_on or None, odometer, read_at, off_road,
+         notes or None, vehicle_id),
     )
     log_audit(conn, "vehicle_edited", target=name)
     conn.commit()

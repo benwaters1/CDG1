@@ -26,6 +26,22 @@
         <div>
           <h3 style="margin-bottom:2px;">{{ v['name'] }}</h3>
           <span class="upload-hint">{{ v['vehicle_type'] or 'Vehicle' }}{% if v['license_plate'] %} · {{ v['license_plate'] }}{% endif %}</span>
+          {# Whether a guest can legally be put in it. The contrôle technique
+             is not a formality: an insurer can decline a claim on a vehicle
+             without a valid one, so an expired CT is a car being driven
+             uninsured rather than a car with a fine outstanding. #}
+          {% set p = papers.get(v['id']) %}
+          {% if p and v['off_road'] %}
+            <span class="mini-status status-inactive">off the road</span>
+          {% elif p and p.state == 'expired' %}
+            <span class="mini-status status-overdue">{{ p.worst_what }} expired{% if p.worst_when %} {{ p.worst_when }}{% endif %}</span>
+          {% elif p and p.state == 'due' %}
+            <span class="mini-status status-pending">{{ p.worst_what }} due {{ p.worst_when }}</span>
+          {% elif p and p.state == 'unknown' %}
+            <span class="mini-status status-inactive">no {{ p.worst_what }} on file</span>
+          {% elif p %}
+            <span class="mini-status status-confirmed">papers in date</span>
+          {% endif %}
         </div>
         <div style="display:flex; gap:6px; align-items:center;">
           <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVehicleEdit({{ v['id'] }})">Edit</span>
@@ -53,6 +69,9 @@
 
       <div class="upload-hint" style="margin-bottom:10px;">
         {% if v['next_service_due'] %}Next service due {{ v['next_service_due'] }}{% else %}No service date on file{% endif %}
+        {%- if v['odometer_km'] %} · {{ '{:,}'.format(v['odometer_km']).replace(',', ' ') }} km
+          {%- if v['odometer_read_at'] %} read {{ v['odometer_read_at'][:10] }}{% endif %}
+        {%- endif %}
         {% if spend_by_vehicle.get(v['id']) %} · €{{ '%.0f'|format(spend_by_vehicle[v['id']]) }} lifetime spend{% endif %}
       </div>
       <div style="display:flex; gap:10px; margin-bottom:14px;">
@@ -154,6 +173,16 @@
       <input type="text" name="license_plate" value="{{ v['license_plate'] or '' }}" placeholder="License plate">
       <label class="field-label">Next service due</label>
       <input type="date" name="next_service_due" value="{{ v['next_service_due'] or '' }}">
+      <label class="field-label" for="ct_{{ v['id'] }}">Contrôle technique valid until</label>
+      <input type="date" id="ct_{{ v['id'] }}" name="ct_expires_on"
+             value="{{ v['ct_expires_on'] or '' }}">
+      <label class="field-label" for="odo_{{ v['id'] }}">Odometer (km)</label>
+      <input type="number" id="odo_{{ v['id'] }}" name="odometer_km" min="0" step="1"
+             value="{{ v['odometer_km'] or '' }}">
+      <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-top:6px;">
+        <input type="checkbox" name="off_road" {{ 'checked' if v['off_road'] }}>
+        Off the road on purpose — stop chasing its papers
+      </label>
       <input type="text" name="notes" value="{{ v['notes'] or '' }}" placeholder="Notes">
       <button type="submit" class="btn-mini">Save</button>
       <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVehicleEdit({{ v['id'] }})">Cancel</span>

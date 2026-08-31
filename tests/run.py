@@ -184,6 +184,7 @@ SUITES = [
     "test_supplier_invoices",
     "test_staff_claims",
     "test_reviews",
+    "test_vehicle_papers",
     "test_handover_check",
 ]
 
