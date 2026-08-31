@@ -4328,7 +4328,7 @@ def login_required(view):
 # private until somebody decides otherwise, which is the safe direction.
 NAV_AREAS = {
     "guests": [
-        "walk_in_booking",
+        "walk_in_booking", "arrival_card",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
@@ -24567,15 +24567,93 @@ def find_booking():
         conn.commit()
         reference_code = request.form.get("reference_code", "").strip().upper()
         email = request.form.get("email", "").strip().lower()
-        booking = conn.execute(
-            "SELECT manage_token FROM bookings WHERE reference_code = ? AND guest_email = ?",
-            (reference_code, email),
-        ).fetchone()
+        surname = request.form.get("surname", "").strip().casefold()
+
+        # Either the address on the booking, or the surname.
+        #
+        # It used to be the address only, and a walk-in has none: reception
+        # books somebody in at the door, they never give an email, and there is
+        # then no route by which that guest can see their own bill, get an
+        # account link, or pay online. The booking exists and its owner cannot
+        # reach it.
+        #
+        # The reference IS the credential either way — GUD- plus six characters
+        # from secrets.choice, about two billion of them — and this route is
+        # rate-limited per hour. A surname is no weaker a second factor than an
+        # email address, which is not secret either; both rest on the reference
+        # being unguessable. What is NOT allowed is the reference on its own.
+        booking = None
+        if reference_code and email:
+            booking = conn.execute(
+                "SELECT manage_token FROM bookings WHERE reference_code = ? "
+                "AND LOWER(guest_email) = ?", (reference_code, email)).fetchone()
+        if not booking and reference_code and surname:
+            # Matched in Python, not in SQL.
+            #
+            # SQLite's LOWER and its LIKE are both ASCII-only, so a surname
+            # typed in capitals with an accent does not match one stored in
+            # title case: BÉATRICE against Béatrice fails, and so does
+            # ROUVIÈRE against Rouvière. French forms are routinely filled
+            # in capitals — it is the convention on their own identity
+            # documents — so that is not an edge case here, it is how a good
+            # proportion of guests will type it. casefold in Python gets it
+            # right for any alphabet.
+            #
+            # Fetched by reference first, which is effectively unique, so
+            # this is one row rather than a scan.
+            row = conn.execute(
+                "SELECT manage_token, guest_name FROM bookings "
+                "WHERE reference_code = ?", (reference_code,)).fetchone()
+            if row and surname in (row["guest_name"] or "").casefold():
+                booking = row
         conn.close()
         if booking:
             return redirect(url_for("manage_booking", manage_token=booking["manage_token"]))
-        flash("No booking found with that reference and email.", "error")
+        if not reference_code or not (email or surname):
+            flash("Enter your reference and either the email on the booking or "
+                  "the surname it is under.", "error")
+        else:
+            flash("No booking found with that reference and those details.", "error")
     return render_template("find_booking.html")
+
+
+@app.route("/admin/bookings/<int:booking_id>/card")
+@owner_required
+def arrival_card(booking_id):
+    """A card to hand a guest at the desk, printed from the browser.
+
+    For the guest who gave no email — the walk-in, the telephone booking taken
+    down on paper. Everything else the house sends them travels by email, so
+    without one they had nothing at all: no link to their bill, no account, and
+    no way for the balance chase to reach them.
+
+    It carries the reference and the two things they need to type, because a
+    manage token is forty characters of base64 and nobody is typing that off a
+    card. Reference plus surname is what /book/manage now accepts.
+
+    Prints from the browser for the same reason the till receipt does: the desk
+    has no card printer, and a page that prints beats one that cannot.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    bill = booking_bill(conn, booking_id)
+    company = conn.execute(
+        "SELECT legal_name, registered_address FROM company_info WHERE id = 1").fetchone()
+    conn.close()
+    try:
+        find_url = url_for("find_booking", _external=True)
+    except RuntimeError:
+        find_url = f"{PUBLIC_BASE_URL or ''}/book/manage"
+    return render_template("arrival_card.html", booking=booking, bill=bill,
+                           company=company, find_url=find_url,
+                           surname=(booking["guest_name"] or "").split()[-1]
+                           if (booking["guest_name"] or "").strip() else "")
 
 
 @app.route("/checkin/<manage_token>")

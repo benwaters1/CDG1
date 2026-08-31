@@ -171,6 +171,9 @@ FR = {
     "per night": "par nuit",
     "Total": "Total",
     "Still to pay": "Reste à payer",
+    "Or the surname it is under": "Ou le nom de famille de la réservation",
+    "Either one will do, along with the reference.":
+        "L'un ou l'autre suffit, avec la référence.",
     "The declaration for it is here.": "La déclaration se trouve ici.",
 
     "Pay part of it instead": "Payer une partie seulement",
@@ -642,6 +645,9 @@ ES = {
     "per night": "por noche",
     "Total": "Total",
     "Still to pay": "Pendiente de pago",
+    "Or the surname it is under": "O el apellido de la reserva",
+    "Either one will do, along with the reference.":
+        "Cualquiera de los dos sirve, junto con la referencia.",
     "The declaration for it is here.": "La declaración está aquí.",
 
     "Pay part of it instead": "Pagar solo una parte",

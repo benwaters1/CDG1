@@ -22,8 +22,16 @@
     </div>
     <div class="g-field">
       <label for="em">{{ t('Email you booked with') }}</label>
-      <input type="email" inputmode="email" id="em" name="email" required autocomplete="email">
+      <input type="email" inputmode="email" id="em" name="email" autocomplete="email">
     </div>
+    {# Not required any more, and a surname beside it. A guest booked at the
+       desk never gave an address, so requiring one left them with no route to
+       their own booking at all. The reference is the credential either way. #}
+    <div class="g-field">
+      <label for="sn">{{ t('Or the surname it is under') }}</label>
+      <input type="text" id="sn" name="surname" autocomplete="family-name">
+    </div>
+    <p class="g-hint">{{ t('Either one will do, along with the reference.') }}</p>
     <button type="submit" class="g-btn g-btn--solid">{{ t('Find booking') }}</button>
   </form>
 

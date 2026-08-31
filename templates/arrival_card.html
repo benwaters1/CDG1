@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Card for {{ booking['guest_name'] }}{% endblock %}
+{% block content %}
+
+{#
+  A card to hand a guest at the desk. For the one who gave no email — the
+  walk-in, the booking taken down over the telephone. Everything else the house
+  sends travels by email, so without one they had nothing: no link to their
+  bill, no account, and no way for a balance chase to reach them.
+
+  It carries the reference and the surname, because those are the two things
+  /book/manage now accepts. A manage token is forty characters and nobody is
+  typing that off a card.
+#}
+<div class="page-head no-print">
+  <h1>Card for {{ booking['guest_name'] }}</h1>
+  <div>
+    <button type="button" class="btn-primary" onclick="window.print()">Print</button>
+    <a href="{{ url_for('admin_bookings') }}" class="btn-mini">Back to bookings</a>
+  </div>
+</div>
+
+<p class="upload-hint no-print">Hand this over at check-in. It is the only way a
+guest with no email address on file can reach their own bill — everything else
+we send goes by email.</p>
+
+<div class="arrival-card">
+  <p class="arrival-card__house">
+    {{ company['legal_name'] if company and company['legal_name'] else 'Château de Gudanes' }}
+  </p>
+
+  <p class="arrival-card__name">{{ booking['guest_name'] }}</p>
+  <p class="arrival-card__stay">
+    {{ booking['room_name'] or 'Room to be confirmed' }}<br>
+    {{ booking['arrival_date']|date_short }} → {{ booking['departure_date']|date_short }}
+    {%- if booking['party_size'] %} · {{ booking['party_size'] }} guest{{ '' if booking['party_size'] == 1 else 's' }}{% endif %}
+  </p>
+
+  <p class="arrival-card__label">Your reference</p>
+  <p class="arrival-card__ref">{{ booking['reference_code'] }}</p>
+
+  <p class="arrival-card__label">To see your bill or pay online</p>
+  <p class="arrival-card__url">{{ find_url }}</p>
+  <p class="arrival-card__how">
+    Enter the reference above and the surname
+    {%- if surname %} <strong>{{ surname }}</strong>{% endif %}.
+  </p>
+
+  {% if bill and bill.owed > 0 %}
+  <p class="arrival-card__owed">
+    Still to pay: <strong>€{{ '%.2f'|format(bill.owed) }}</strong>
+    {%- if bill.paid %} · €{{ '%.2f'|format(bill.paid) }} received{% endif %}
+  </p>
+  {% elif bill and bill.total %}
+  <p class="arrival-card__owed">Settled in full — thank you.</p>
+  {% endif %}
+
+  {% if company and company['registered_address'] %}
+  <p class="arrival-card__foot">{{ company['registered_address'] }}</p>
+  {% endif %}
+</div>
+
+<style>
+/* Sized to a postcard so it prints one to a sheet and can be cut down, and
+   with the page furniture hidden — a card with a navigation menu across the top
+   is not a card. */
+.arrival-card{
+  max-width: 26em; margin: var(--s3) 0; padding: var(--s4);
+  border: 1px solid var(--parchment-line); border-radius: 10px;
+}
+.arrival-card__house{ margin:0 0 var(--s3); font-size:12px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--steel); }
+.arrival-card__name{ margin:0; font-size:24px; }
+.arrival-card__stay{ margin:var(--s1) 0 var(--s3); color:var(--steel); }
+.arrival-card__label{ margin:var(--s2) 0 2px; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--steel); }
+.arrival-card__ref{ margin:0; font-size:26px; letter-spacing:.06em;
+  font-variant-numeric:tabular-nums; }
+.arrival-card__url{ margin:0; font-size:15px; word-break:break-all; }
+.arrival-card__how{ margin:4px 0 0; font-size:13px; color:var(--steel); }
+.arrival-card__owed{ margin:var(--s3) 0 0; padding-top:var(--s2);
+  border-top:1px solid var(--parchment-line); font-variant-numeric:tabular-nums; }
+.arrival-card__foot{ margin:var(--s3) 0 0; font-size:11px; color:var(--steel); }
+@media print{
+  .no-print{ display:none !important; }
+  .arrival-card{ border:none; padding:0; max-width:none; }
+}
+</style>
+
+{% endblock %}
