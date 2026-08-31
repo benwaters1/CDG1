@@ -306,6 +306,7 @@ PENNYLANE_REVENUE_DEFAULTS = {
     "pennylane_account_extras": "",
     "pennylane_account_city_tax": "",
     "pennylane_account_restaurant": "",
+    "pennylane_account_workshops": "",
 }
 
 MANUAL_PAYMENT_METHODS = {
@@ -4277,6 +4278,7 @@ NAV_AREAS = {
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
         "management_outstanding", "chase_outstanding_balance",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
+        "send_workshop_revenue",
         "record_manual_booking_payment",
         "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
         "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
@@ -33162,6 +33164,89 @@ def pos_day_pennylane_lines(conn, closure):
     return lines
 
 
+def send_workshop_to_pennylane(conn, booking, user_id=None):
+    """One workshop registration, as a customer invoice. Returns (ok, message).
+
+    Charged on what the LEDGER says, not on the sticker price. A registration
+    picks up charges and discounts of its own — an extra night, a returning
+    guest's reduction — and workshop_balance_due is the one place those are
+    reckoned. Invoicing total_price would bill the advertised figure and leave
+    every adjustment out of the accounts.
+
+    Sent once the session has finished rather than when it is booked. A place
+    held eight months out with a deposit against it is not revenue yet, and an
+    atelier that gets cancelled after being invoiced is a credit note somebody
+    has to raise by hand.
+    """
+    if not pennylane_configured():
+        return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
+    existing = pennylane_already_sent(conn, "workshop", booking["id"])
+    if existing:
+        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+                       + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
+                       + ".")
+    if booking["status"] in ("cancelled", "declined"):
+        return False, "That registration was cancelled, so there is nothing to invoice."
+
+    _balance, charged, _paid = workshop_balance_due(conn, booking["id"])
+    total = round(float(charged or 0), 2)
+    if total <= 0:
+        return False, "There is nothing on that registration to invoice."
+
+    rate = tax_rate(conn, "vat_workshops")
+    rate = float(rate) if rate is not None else 20.0
+    net = round(total / (1 + rate / 100), 2) if rate else total
+    line = {"currency_amount": f"{net:.2f}", "currency_tax": f"{round(total - net, 2):.2f}",
+            "vat_rate": pennylane_vat_code(rate),
+            "label": (booking["workshop_title"] or "Atelier")[:200]}
+    code = app_setting(conn, "pennylane_account_workshops", PENNYLANE_REVENUE_DEFAULTS)
+    if code:
+        line["ledger_account_number"] = code
+
+    ok, customer = pennylane_find_customer(booking["guest_name"], booking["guest_email"])
+    if not ok or not customer:
+        return False, f"Could not file a customer for {booking['guest_name']}: {customer}"
+
+    when = booking["end_date"] or booking["start_date"]
+    ok, payload = pennylane_import_customer_invoice(
+        customer_id=customer, date=when, deadline=when,
+        amount=total, tax=round(total - net, 2), lines=[line],
+        invoice_number=booking["reference_code"],
+        external_reference=booking["reference_code"],
+    )
+    if not ok:
+        return False, f"Pennylane refused it: {payload}"
+    conn.execute(
+        """INSERT OR IGNORE INTO pennylane_exports (kind, source_id, pennylane_id,
+           amount, sent_at, sent_by_user_id) VALUES ('workshop', ?, ?, ?, ?, ?)""",
+        (booking["id"], str((payload or {}).get("id") or ""), total,
+         datetime.now(timezone.utc).isoformat(), user_id))
+    return True, f"Sent €{total:.2f} for {booking['reference_code']}."
+
+
+@app.route("/management/revenue-to-send/workshop/<int:booking_id>", methods=["POST"])
+@owner_required
+def send_workshop_revenue(booking_id):
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                  workshop_sessions.start_date, workshop_sessions.end_date
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    ok, message = send_workshop_to_pennylane(conn, booking, user_id=session.get("user_id"))
+    if ok:
+        log_audit(conn, "workshop_revenue_sent_to_pennylane", target=booking["reference_code"])
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("revenue_to_send"))
+
+
 def send_pos_day_to_pennylane(conn, closure, user_id=None):
     """One closed service day, as a customer invoice. Returns (ok, message).
 
@@ -33252,6 +33337,20 @@ def revenue_to_send():
         statement = guest_statement(conn, booking)
         rows.append({"booking": booking, "total": round(float(statement["total"] or 0), 2),
                      "sent": sent})
+    ateliers = []
+    for booking in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                      workshop_sessions.start_date, workshop_sessions.end_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status = 'confirmed'
+                  AND COALESCE(workshop_sessions.end_date, workshop_sessions.start_date) < ?
+                ORDER BY workshop_sessions.start_date DESC LIMIT 200""", (today,)).fetchall():
+        _b, charged, _p = workshop_balance_due(conn, booking["id"])
+        ateliers.append({"booking": booking, "total": round(float(charged or 0), 2),
+                         "sent": pennylane_already_sent(conn, "workshop", booking["id"])})
+
     # Read before the close, like the stays above it.
     days = []
     for closure in conn.execute(
@@ -33263,11 +33362,14 @@ def revenue_to_send():
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
     days_waiting = [d for d in days if not d["sent"] and d["total"] > 0]
+    ateliers_waiting = [w for w in ateliers if not w["sent"] and w["total"] > 0]
     return render_template(
         "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
-        days_waiting=days_waiting,
+        days_waiting=days_waiting, ateliers=ateliers,
+        ateliers_waiting=ateliers_waiting,
         waiting_total=round(sum(r["total"] for r in waiting)
-                            + sum(d["total"] for d in days_waiting), 2),
+                            + sum(d["total"] for d in days_waiting)
+                            + sum(w["total"] for w in ateliers_waiting), 2),
         configured=pennylane_configured())
 
 

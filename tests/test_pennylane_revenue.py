@@ -37,6 +37,11 @@ def _cleanup():
     conn.execute("DELETE FROM pennylane_exports WHERE kind = 'pos_day' AND source_id IN "
                  "(SELECT id FROM pos_closures WHERE period LIKE '2099%')")
     conn.execute("DELETE FROM pos_closures WHERE period LIKE '2099%'")
+    conn.execute("DELETE FROM pennylane_exports WHERE kind = 'workshop' AND source_id IN "
+                 "(SELECT id FROM workshop_bookings WHERE reference_code LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_transactions WHERE workshop_booking_id IN "
+                 "(SELECT id FROM workshop_bookings WHERE reference_code LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
@@ -188,6 +193,59 @@ def run():
         s.check("naming the token", "PENNYLANE_API_TOKEN" in msg6, detail=msg6)
         s.check("and nothing was attempted", len(sent) == before)
         m.pennylane_configured = lambda: True
+
+        s.section("An atelier is invoiced on its ledger, not its sticker price")
+        # A registration picks up charges and discounts of its own. Invoicing
+        # total_price would bill the advertised figure and leave every
+        # adjustment out of the accounts.
+        conn = db()
+        sid = conn.execute(
+            "SELECT id FROM workshop_sessions ORDER BY start_date LIMIT 1").fetchone()
+        now2 = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """INSERT INTO workshop_bookings (session_id, guest_name, guest_email,
+               party_size, status, reference_code, manage_token, created_at,
+               total_price, deposit_amount, balance_amount)
+               VALUES (?, ?, ?, 1, 'confirmed', ?, ?, ?, 1000, 300, 700)""",
+            (sid["id"], f"{TAG} Atelier", f"{TAG.lower()}.ws@example.invalid",
+             f"{TAG}-WS", f"tok{TAG}ws", now2))
+        conn.commit()
+        wb = conn.execute(
+            """SELECT workshop_bookings.*, workshops.title AS workshop_title,
+                      workshop_sessions.start_date, workshop_sessions.end_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.reference_code = ?""", (f"{TAG}-WS",)).fetchone()
+        # A discount of 100 on the ledger: the invoice must be 900, not 1000.
+        m.add_workshop_transaction(conn, wb["id"], "discount", "ZZ returning guest", 100.0)
+        conn.commit()
+        before = len(sent)
+        okw, msgw = m.send_workshop_to_pennylane(conn, wb, user_id=owner["id"])
+        conn.commit()
+        conn.close()
+        s.check("it is accepted", okw, detail=msgw)
+        if len(sent) > before:
+            body = sent[-1]
+            s.check("charged on the ledger, not the sticker price",
+                    abs(float(body["amount"]) - 900.0) < 0.01,
+                    detail=f"{body['amount']} — 1000 is the advertised price and "
+                           "100 was taken off on the ledger")
+            s.check("the reference goes with it",
+                    body["invoice_number"] == f"{TAG}-WS", detail=f"{body['invoice_number']}")
+            s.check("and the line adds up to the total",
+                    abs(float(body["lines"][0]["currency_amount"])
+                        + float(body["lines"][0]["currency_tax"]) - 900.0) < 0.02,
+                    detail=f"{body['lines']}")
+
+        s.section("And an atelier cannot go twice")
+        conn = db()
+        okw2, msgw2 = m.send_workshop_to_pennylane(conn, wb, user_id=owner["id"])
+        conn.commit()
+        conn.close()
+        s.check("the second is refused", not okw2, detail=msgw2)
+        s.check("and says when the first went", "already sent" in msgw2.lower(),
+                detail=msgw2)
 
         s.section("A closed service day goes as one invoice, not one per diner")
         # Forty tables of two are not forty customers. The figures come off the
