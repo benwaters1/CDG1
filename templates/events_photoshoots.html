@@ -3,6 +3,7 @@
 {% block description %}Location hire for photography and film at an eighteenth-century Class I Historic Monument. Ninety-four rooms between ruin and restoration.{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Photoshoots', None)] %}
 {% block content %}
+{% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
 <section class="g-hero g-hero--short">
@@ -14,6 +15,9 @@
     <p><a href="#enquire" class="g-btn g-btn--solid">Ask about a shoot</a></p>
   </div>
 </section>
+
+<div class="g-wrap">{{ event_tabs('photoshoots') }}</div>
+
 
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">What Is Here</p>

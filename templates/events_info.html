@@ -26,6 +26,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 {# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,
    contact_name, contact_email, contact_phone, preferred_date,
@@ -41,6 +42,9 @@
     <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a></p>
   </div>
 </section>
+
+<div class="g-wrap">{{ event_tabs('overview') }}</div>
+
 
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late

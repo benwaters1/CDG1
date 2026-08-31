@@ -3,6 +3,7 @@
 {% block description %}Weddings at a Class I Historic Monument in the French Pyrénées. One wedding at a time, the whole château yours, forty seated indoors.{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
 {% block content %}
+{% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
 <section class="g-hero g-hero--short">
@@ -15,8 +16,20 @@
   </div>
 </section>
 
+<div class="g-wrap">{{ event_tabs('weddings') }}</div>
+
+<div class="g-wrap">{{ fact_strip([
+  {'mark':'table',     'n':'40',  'l':'Seated indoors'},
+  {'mark':'key',       'n':'15',  'l':'Sleep in the château'},
+  {'mark':'ring',      'n':'One', 'l':'Wedding at a time'},
+  {'mark':'water',     'n':'6',   'l':'Acres of grounds'}
+]) }}</div>
+
+
+
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">What You Take</p>
+  <p class="g-fr">Un mariage à la fois<span class="g-fr__en">One wedding at a time</span></p>
+    <p class="g-eyebrow">What You Take</p>
   <h2 class="g-place">The Whole House, Not a Room In It</h2>
   <p class="g-p g-lede-first">One wedding runs at a time. For the days you have it, there are no other guests, no handover halfway through, and nobody else's party in the next room.</p>
   <p class="g-p">Ceremonies happen in the grounds or in the historic interiors. Dinner is in the main dining salon. Above forty, dinner moves outdoors — the terraces and the parkland take larger numbers comfortably.</p>

@@ -3,6 +3,7 @@
 {% block description %}Private dinners, birthdays, anniversaries and family gatherings at Château de Gudanes. One party at a time, forty seated, the kitchen yours.{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Private', None)] %}
 {% block content %}
+{% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
 <section class="g-hero g-hero--short">
@@ -15,8 +16,12 @@
   </div>
 </section>
 
+<div class="g-wrap">{{ event_tabs('private') }}</div>
+
+
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">The Shape Of It</p>
+  <p class="g-fr">La maison, rien qu'à vous<span class="g-fr__en">The house, entirely yours</span></p>
+    <p class="g-eyebrow">The Shape Of It</p>
   <h2 class="g-place">Smaller Than a Wedding, Longer Than a Dinner</h2>
   <p class="g-p g-lede-first">Most private hires run two or three days rather than one evening. The house is yours throughout — the salons, the kitchen, the gardens, the pool below the cherry trees.</p>
   <p class="g-p">Dinner is cooked in the Renaissance kitchen by a Cordon Bleu-trained cheffe de pâtisserie and served in the dining salon. Menus are built with you rather than chosen from a card.</p>

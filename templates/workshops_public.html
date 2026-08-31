@@ -271,6 +271,7 @@
    mentioned it. Same voice as the nightly page. #}
 <section class="g-sec"><div class="g-two">
   <div>
+    <p class="g-fr">On apprend en faisant<span class="g-fr__en">You learn by doing it</span></p>
     <p class="g-eyebrow">Dining</p>
     <h2 class="g-h2">À Table</h2>
     <p class="g-p g-lede-first">Candlelight, the fire lit in winter, and whatever the valley gave up that morning.</p>
@@ -550,6 +551,8 @@
 <div class="g-wrap g-mark__wrap">{{ mark('brush') }}</div>
 
 
+<div class="g-wrap g-mark__wrap">{{ mark('market') }}</div>
+
 <!-- ============ HOW FEW SEATS ============ -->
 {# Computed from the sessions actually published, so it can never drift from
    what is bookable. #}
@@ -573,7 +576,42 @@
 </div></section>
 {% endif %}
 
+
+<!-- ============ KEY INFORMATION ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Practical</p>
+  <h2 class="g-place">Key Information</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Address</p>
+      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Arrival</p>
+      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Getting here</p>
+      <p class="g-key__v">Toulouse-Blagnac, 1h45 by road<br>Les Cabannes station, three minutes</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Contact</p>
+      <p class="g-key__v"><a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
+      <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Youngest guest</p>
+      <p class="g-key__v">Eight. The staircases are eighteenth-century and there are no handrails in places.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Payment</p>
+      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A deposit holds the room; the balance is taken nearer the date.</p>
+    </div>
+  </div>
+</div></section>
+
 <!-- ============ THE CLOSE ============ -->
+
 {# What people who came actually said. The page has been handed these on every
    load since the feature was built and rendered none of them, which is the
    same fault the booking page had: "Feature on booking page" was a button
@@ -603,7 +641,6 @@
   </div>
 </div></section>
 {% endif %}
-
 <section class="g-sec g-close"><div class="g-wrap">
   <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The workshop table" loading="lazy">
   <h2 class="g-close__h">Take a week of it</h2>

@@ -4272,3 +4272,131 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 /* A hint that describes the whole row, not one field. */
 .g-hint--row{ max-width: 46rem; margin-top: var(--s2); }
+
+/* ==========================================================================
+   THE FRENCH LINE
+   The house is in the Ariège and the site already names its rooms in French.
+   This sets a French phrase above its English, in the display face and in
+   gilt, so the two read as one thing rather than a translation bolted on.
+   ========================================================================== */
+.g-fr{
+  display: block; margin: 0 0 var(--s2);
+  font-family: var(--display); font-style: italic; font-weight: 300;
+  font-size: clamp(17px, 1.6vw, 21px); line-height: 1.25;
+  color: var(--gilt); letter-spacing: .01em;
+}
+.g-fr__en{
+  display: block;
+  font-family: var(--ui); font-style: normal;
+  font-size: 12px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-soft);
+  margin-top: 4px;
+}
+/* On a dark ground the gilt still carries, but the English needs lifting. */
+.g-sec--dark .g-fr__en, .g-panel--dark .g-fr__en{ color: #C9D4DF; }
+
+/* A French motto used as a closing line, centred under a rule. */
+.g-devise{
+  margin: var(--s7) auto 0; padding-top: var(--s5);
+  max-width: 40rem; text-align: center;
+  border-top: 1px solid var(--gilt);
+}
+.g-devise__fr{
+  display: block; font-family: var(--display); font-style: italic;
+  font-weight: 300; font-size: clamp(19px, 2vw, 25px); line-height: 1.35;
+  color: var(--blue-deep);
+}
+.g-devise__en{
+  display: block; margin-top: var(--s3);
+  font-family: var(--ui); font-size: 13px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gilt);
+}
+
+/* ==========================================================================
+   SECTION TAB ROW
+   A property's sections listed under its title, so a reader comparing one
+   against another does not have to go back through the nav.
+   ========================================================================== */
+.g-tabs{
+  display: flex; flex-wrap: wrap; gap: 0;
+  margin: var(--s5) 0 0;
+  border-bottom: 1px solid var(--gilt);
+}
+.g .g-tabs a{
+  display: flex; align-items: center; min-height: 48px;
+  padding: 0 var(--s5); position: relative;
+  font-family: var(--ui); font-size: 14px; letter-spacing: .06em;
+  color: var(--ink-soft); text-decoration: none; white-space: nowrap;
+}
+.g .g-tabs a:hover{ color: var(--blue-deep); }
+.g .g-tabs a[aria-current="page"]{ color: var(--blue-deep); font-weight: 600; }
+.g .g-tabs a[aria-current="page"]::after{
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--blue-deep);
+}
+.g .g-tabs a:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -3px; }
+@media (max-width: 40rem){
+  .g-tabs{ overflow-x: auto; scrollbar-width: none; }
+  .g-tabs::-webkit-scrollbar{ display: none; }
+  .g .g-tabs a{ padding: 0 var(--s4); }
+}
+
+/* ==========================================================================
+   FACT STRIP
+   Hard figures under a hero, each with its drawn mark. Soho House states 36
+   bedrooms and a pool; ours are stranger, so they are worth stating plainly.
+   ========================================================================== */
+.g-strip{
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  margin: var(--s6) 0 0; padding: var(--s6) 0;
+  border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
+  text-align: center;
+}
+.g-strip__m{ display: block; color: var(--gilt); }
+.g-strip__m .g-mark{ width: 84px; height: 26px; }
+.g-strip__n{
+  display: block; margin-top: var(--s3);
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(28px, 3vw, 38px); line-height: 1;
+  color: var(--blue-deep); font-variant-numeric: lining-nums;
+}
+.g-strip__l{
+  display: block; margin-top: var(--s2);
+  font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   KEY INFORMATION
+   Address, arrival, travel, contact and payment in one block rather than
+   scattered across the site.
+   ========================================================================== */
+.g-key{
+  display: grid; gap: var(--s6) var(--s7); margin-top: var(--s6);
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+}
+.g-key__k{
+  margin: 0 0 var(--s2); font-family: var(--ui);
+  font-size: 12px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--gilt);
+}
+.g-key__v{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink); max-width: 30rem; }
+.g .g-key__v a{ color: var(--blue-deep); }
+
+/* ==========================================================================
+   EXTRAS WITH AND WITHOUT A PHOTOGRAPH
+   Not every experience has an image yet. A card without one should not sit
+   half the height of its neighbour — it takes a drawn rule in place of the
+   picture so the row still reads as a set.
+   ========================================================================== */
+.g-extra{ display: flex; flex-direction: column; }
+.g-extra__b{ display: flex; flex-direction: column; flex: 1; }
+.g-extra__d{ flex: 1 0 auto; }
+/* A card with no photograph gets a gilt rule where the image would be. */
+.g-extra:not(:has(img)) .g-extra__b{ padding-top: var(--s6); position: relative; }
+.g-extra:not(:has(img)) .g-extra__b::before{
+  content: ""; position: absolute; top: 0; left: var(--s6); right: var(--s6);
+  height: 2px; background: var(--gilt);
+}
+.g-extra__p{ margin-top: var(--s4); }

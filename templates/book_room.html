@@ -103,11 +103,8 @@
                      min="0" max="{{ room['max_occupancy'] }}" value="{{ prefill_under_18 or 0 }}">
             </p>
           </div>
-          {# Beneath both fields, not inside one — it describes the party. The
-             under-18 count is not decoration: taxe de séjour is charged per
-             ADULT per night, so assuming everybody is an adult overcharges
-             families and misstates the return to the commune in one go. #}
-          <p class="g-hint g-hint--row">Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de séjour.</p>
+          {# Beneath both fields, not inside one — it describes the party. #}
+          <p class="g-hint g-hint--row">Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de séjour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">

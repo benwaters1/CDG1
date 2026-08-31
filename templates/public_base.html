@@ -388,6 +388,7 @@
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
+          <li><a href="{% if 'press' in url_map %}{{ url_for('press') }}{% else %}{{ url_for('restoration_page') }}{% endif %}">{{ t('Press') }}</a></li>
         </ul>
       </div>
       <div>

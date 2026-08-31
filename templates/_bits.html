@@ -1,0 +1,27 @@
+
+{# A tab row tying the event pages together, so a reader comparing weddings
+   against private hire does not have to go back through the nav. #}
+{% macro event_tabs(current) %}
+<nav class="g-tabs" aria-label="Events sections">
+  <a href="{{ url_for('events_info') }}"{% if current == 'overview' %} aria-current="page"{% endif %}>Overview</a>
+  <a href="{% if 'events_weddings' in url_map %}{{ url_for('events_weddings') }}{% else %}{{ url_for('events_info') }}#weddings{% endif %}"{% if current == 'weddings' %} aria-current="page"{% endif %}>Weddings</a>
+  <a href="{% if 'events_private' in url_map %}{{ url_for('events_private') }}{% else %}{{ url_for('events_info') }}#celebrations{% endif %}"{% if current == 'private' %} aria-current="page"{% endif %}>Private</a>
+  <a href="{% if 'events_photoshoots' in url_map %}{{ url_for('events_photoshoots') }}{% else %}{{ url_for('events_info') }}#photography{% endif %}"{% if current == 'photoshoots' %} aria-current="page"{% endif %}>Photoshoots</a>
+</nav>
+{% endmacro %}
+
+{# A strip of hard figures under a hero. Soho House states 36 bedrooms, a
+   pool, a gym; ours are stranger and better, so they are worth stating in
+   the same plain way — with the drawn marks rather than stock icons. #}
+{% from '_marks.html' import mark %}
+{% macro fact_strip(items) %}
+<div class="g-strip">
+  {% for it in items %}
+  <div class="g-strip__i">
+    {% if it.mark %}<span class="g-strip__m">{{ mark(it.mark) }}</span>{% endif %}
+    <span class="g-strip__n">{{ it.n }}</span>
+    <span class="g-strip__l">{{ it.l }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}

@@ -26797,6 +26797,29 @@ def events_info():
 # meta description so they answer a search for "château wedding venue Ariège"
 # rather than competing with the overview for it. Plain renders — the enquiry
 # they lead to is still submit_event_inquiry.
+@app.context_processor
+def inject_url_map():
+    """The set of endpoint names, for templates that guard an optional link.
+
+    The design side ships links to pages whose routes may not exist yet,
+    guarded as `{% if 'events_weddings' in url_map %}`. Without url_map in the
+    context that guard is an undefined in a Jinja `in` test, which RAISES —
+    so the thing written to stop a BuildError taking down the header was
+    itself taking down every page that included it. Two handovers running,
+    the guards were stripped by hand; supplying the name is what stops it
+    coming back.
+    """
+    return {"url_map": {r.endpoint for r in app.url_map.iter_rules()}}
+
+
+# The press page. Everything on it appears on the restoration page already;
+# what it did not have was an address, and a magazine mention nobody can link
+# to is the one piece of proof on the site that cannot be cited.
+@app.route("/press")
+def press():
+    return render_template("press.html")
+
+
 @app.route("/events/weddings")
 def events_weddings():
     return render_template("events_weddings.html")
@@ -49441,7 +49464,7 @@ def sitemap():
         ("dashboard", "1.0"), ("book_rooms", "0.9"), ("workshops_public", "0.9"),
         ("restaurant_info", "0.8"), ("events_info", "0.8"),
         ("events_weddings", "0.7"), ("events_private", "0.6"),
-        ("events_photoshoots", "0.6"), ("facilities_page", "0.7"),
+        ("events_photoshoots", "0.6"), ("press", "0.5"), ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]

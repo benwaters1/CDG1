@@ -70,3 +70,20 @@ dates is what makes it a waiting list.
 `book_rooms.html` shows a recognition line only when the view passes
 `returning_guest` as `{name, last_room, last_year}`. Pass nothing and the
 block does not render.
+
+---
+
+# One more route: the press page
+
+    @app.route("/press")
+    def press():
+        return render_template("press.html")
+
+Everything on it already appears on the restoration page. Giving it an address
+makes it linkable and citable — it is the highest-authority proof on the site
+and currently exists only as passing mentions.
+
+The footer link is guarded the same way as the event pages, so it falls back
+to the restoration page until the route exists.
+
+Add /press to the sitemap.
