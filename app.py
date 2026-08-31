@@ -13626,9 +13626,12 @@ def admin_gallery():
         "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
     photos = conn.execute(
         "SELECT * FROM gallery_photos ORDER BY section_id, sort_order, id").fetchall()
-    subs = conn.execute(
-        """SELECT COUNT(*) AS confirmed FROM newsletter_subscribers
-           WHERE confirmed_at IS NOT NULL AND unsubscribed_at IS NULL""").fetchone()["confirmed"]
+    # The same definition the mailing list itself uses, rather than a second
+    # one that happens to agree most of the time. This count left out the
+    # opt-out join, so it included anybody the owner had put on the
+    # do-not-write list by hand -- which is the exact case newsletter_recipients
+    # was written to exclude.
+    subs = len(newsletter_recipients(conn))
     pending = conn.execute(
         """SELECT COUNT(*) AS c FROM newsletter_subscribers
            WHERE confirmed_at IS NULL AND unsubscribed_at IS NULL""").fetchone()["c"]
@@ -32491,7 +32494,13 @@ def delete_promo_code(code_id):
     return redirect(url_for("admin_promo_codes"))
 
 
-GUEST_BLAST_SEGMENTS = ["room", "restaurant", "workshop"]
+# The three guest segments, and the newsletter. The newsletter is a different
+# KIND of list and is kept separate on purpose: the others are people who have
+# been here, reachable because of a booking; this one is people who asked to
+# hear from us and nothing else. Mixing them into one "everybody" would lose
+# that distinction at the exact moment it matters, which is when somebody is
+# writing marketing mail.
+GUEST_BLAST_SEGMENTS = ["room", "restaurant", "workshop", "newsletter"]
 
 
 def promo_blast_recipients(conn, segments, since_date_iso=None):
@@ -32530,6 +32539,17 @@ def promo_blast_recipients(conn, segments, since_date_iso=None):
             params.append(since_date_iso)
         for row in conn.execute(query, params).fetchall():
             recipients.setdefault(row["guest_email"], row["guest_name"])
+
+    if "newsletter" in segments:
+        # Through newsletter_recipients, not a fourth query. That function is
+        # the definition of the mailing list, and a second query that agreed
+        # with it today would be a second query to keep agreeing with it.
+        #
+        # No since_date filter: a subscriber has no visit date to filter on,
+        # and quietly dropping them from a segment because they have never
+        # stayed would defeat the reason for having this segment at all.
+        for row in newsletter_recipients(conn):
+            recipients.setdefault(row["email"], None)
 
     # Anyone who has unsubscribed comes back out.
     #
