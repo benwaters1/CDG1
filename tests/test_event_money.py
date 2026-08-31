@@ -379,6 +379,90 @@ def run():
     s.check("Session.retrieve is the library's own again",
             m.stripe.checkout.Session is not _Retrieve)
 
+    s.section("A balance coming due is chased on its own")
+    # Rooms and workshops have both been chased since they had balances. Events
+    # had a due date and nothing watching it — and an event balance is the
+    # largest single sum the house is owed.
+    sent_mail = []
+    real_send = m.send_email
+
+    def capture(to, subject, body, *a, **kw):
+        sent_mail.append((to, subject, body))
+        return True
+
+    soon = _event("K", price=8000.0, held=date.today() + timedelta(days=60),
+                  due=(date.today() + timedelta(days=10)).isoformat())
+    oc.post(f"/admin/events/{soon['id']}/payment",
+            data={"amount": "2000", "method": "bank_transfer"}, follow_redirects=True)
+    far = _event("L", price=5000.0, held=date.today() + timedelta(days=300),
+                 due=(date.today() + timedelta(days=250)).isoformat())
+    settled_ev = _event("M", price=1000.0, paid=1000.0,
+                        held=date.today() + timedelta(days=60),
+                        due=(date.today() + timedelta(days=10)).isoformat())
+    try:
+        m.send_email = capture
+        conn = db()
+        with m.app.test_request_context("/"):
+            result = m.run_event_balance_reminder_job(conn, 21)
+        conn.commit()
+        conn.close()
+        to_addrs = [x[0] for x in sent_mail]
+        bodies = {x[0]: x[2] for x in sent_mail}
+        s.check("the one due inside the window is chased", len(sent_mail) >= 1,
+                detail=f"{result} / {to_addrs}")
+        if sent_mail:
+            body = sent_mail[0][2]
+            s.check("for what is actually owed, not the whole quote",
+                    "6000.00" in body,
+                    detail=f"{body[:200]!r} — 8000 is the quote and 2000 came in; "
+                           "a reminder and a bill disagreeing in front of a guest "
+                           "is the failure")
+            s.check("naming the date it is due by",
+                    str((date.today() + timedelta(days=10)).year) in body,
+                    detail=f"{body[:200]!r}")
+            s.check("and giving them somewhere to pay it",
+                    soon["manage_token"] in body, detail=f"{body[-200:]!r}")
+
+        s.section("It leaves alone what it should")
+        s.check("an event settled in full is not chased",
+                not any(f"{TAG}-M" in (b or "") for b in bodies.values()),
+                detail="somebody who has paid is asked again")
+        conn = db()
+        far_row = conn.execute("SELECT balance_reminder_sent_at FROM event_inquiries "
+                               "WHERE id = ?", (far["id"],)).fetchone()
+        conn.close()
+        s.check("nor one whose balance is months away",
+                not far_row["balance_reminder_sent_at"],
+                detail="a reminder eight months early is noise")
+
+        s.section("And it never chases the same event twice")
+        before = len(sent_mail)
+        conn = db()
+        with m.app.test_request_context("/"):
+            m.run_event_balance_reminder_job(conn, 21)
+        conn.commit()
+        conn.close()
+        s.check("a second run sends nothing", len(sent_mail) == before,
+                detail=f"{len(sent_mail)} vs {before} — the stamp is what stops it")
+
+        s.section("A send that fails leaves it to try again")
+        # Stamping regardless would mark everybody reminded and tell nobody.
+        retry = _event("N", price=4000.0, held=date.today() + timedelta(days=60),
+                       due=(date.today() + timedelta(days=5)).isoformat())
+        m.send_email = lambda *a, **kw: False
+        conn = db()
+        with m.app.test_request_context("/"):
+            m.run_event_balance_reminder_job(conn, 21)
+        conn.commit()
+        stamp = conn.execute("SELECT balance_reminder_sent_at FROM event_inquiries "
+                             "WHERE id = ?", (retry["id"],)).fetchone()
+        conn.close()
+        s.check("it is not stamped as reminded", not stamp["balance_reminder_sent_at"],
+                detail="marked reminded having told nobody, and never tried again")
+    finally:
+        m.send_email = real_send
+    s.check("the real sender is restored", m.send_email is real_send)
+
     s.section("Guards")
     before = _bill(over["id"])["paid"]
     code = ec.post(f"/admin/events/{over['id']}/payment",

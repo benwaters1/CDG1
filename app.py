@@ -261,9 +261,14 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
     "automation_workshop_balance_reminder_enabled": "1",
+    "automation_event_balance_reminder_enabled": "1",
     # Off by default. See AUTOMATION_JOBS for why.
     "automation_workshop_autocharge_enabled": "0",
     "automation_workshop_balance_reminder_days_before": "7",
+    # Longer than the other two on purpose. A wedding balance is thousands of
+    # euros and often a bank transfer somebody has to arrange, so a week's
+    # notice is not notice.
+    "automation_event_balance_reminder_days_before": "21",
     # Rooms had no chase at all. A workshop guest with an outstanding
     # balance was reminded; somebody who owed 600 EUR on a stay arriving
     # on Friday was not, so it was found at the door or not at all.
@@ -1031,6 +1036,13 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Hi {guest_name},\n\nWe've received your deposit of €{deposit_amount} for {workshop_title} ({dates}).\n"
      "{balance_line}\n"
      "Reference code: {reference_code}\n\n— Château de Gudanes"),
+    ("event_balance_reminder", "Event: Balance due reminder",
+     "The balance for your event at Ch\u00e2teau de Gudanes",
+     "Hi {contact_name},\n\nWe are looking forward to your {event_type} on "
+     "{event_date}.\n\nThere is \u20ac{balance_amount} still outstanding on it, due by "
+     "{balance_due_date}. You can settle it here, in whole or in part:\n"
+     "{manage_url}\n\n"
+     "Reference: {reference_code}\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("workshop_balance_reminder", "Workshop: Balance due reminder",
      "Balance due soon — {workshop_title}",
      "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
@@ -3085,6 +3097,11 @@ def init_db():
          "ALTER TABLE event_inquiries ADD COLUMN deposit_amount REAL"),
         ("event_inquiries_balance_due_date",
          "ALTER TABLE event_inquiries ADD COLUMN balance_due_date TEXT"),
+        # Stamped only after a reminder actually goes, so a run with no email
+        # provider leaves it unstamped and tries again once there is one —
+        # rather than marking everybody reminded and telling nobody.
+        ("event_inquiries_balance_reminder_sent_at",
+         "ALTER TABLE event_inquiries ADD COLUMN balance_reminder_sent_at TEXT"),
         ("event_payments_table", """CREATE TABLE IF NOT EXISTS event_payments (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
              event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
@@ -40980,6 +40997,65 @@ def run_workshop_balance_reminder_job(conn, days_before):
     return f"reminded {sent} of {len(due)} due booking(s)"
 
 
+def run_event_balance_reminder_job(conn, days_before):
+    """Remind an event contact that a balance is coming due.
+
+    Rooms and workshops have both been chased since they had balances; events
+    had a due date and nothing watching it, which is the asymmetry that matters
+    most because an event balance is the largest single sum the house is owed.
+
+    What is owed comes from event_bill, which is THE definition — not
+    quoted_price minus amount_paid worked out here, which is how a reminder and
+    a bill come to disagree about a figure in front of a guest.
+
+    Sent once per event. The stamp is written only after the send returns true,
+    so a run with no email provider configured leaves it unstamped and tries
+    again once one exists, rather than marking everybody reminded and telling
+    nobody. Committed inside the loop, because a write held open across the next
+    contact's send is what stops queue_undelivered keeping their copy.
+    """
+    cutoff = (datetime.now(timezone.utc).date() + timedelta(days=days_before)).isoformat()
+    due = conn.execute(
+        """SELECT * FROM event_inquiries
+            WHERE status = 'confirmed'
+              AND balance_reminder_sent_at IS NULL
+              AND contact_email IS NOT NULL AND contact_email != ''
+              AND balance_due_date IS NOT NULL AND balance_due_date <= ?
+            ORDER BY balance_due_date""", (cutoff,)).fetchall()
+    sent, owing = 0, 0
+    for event in due:
+        bill = event_bill(conn, event["id"])
+        if not bill or bill["owed"] <= 0.005:
+            continue
+        owing += 1
+        try:
+            manage_url = url_for("event_manage", manage_token=event["manage_token"],
+                                 _external=True)
+        except RuntimeError:
+            manage_url = f"{PUBLIC_BASE_URL or ''}/events/manage/{event['manage_token']}"
+        subject, body = render_email_template(conn, "event_balance_reminder", {
+            "contact_name": event["contact_name"] or "there",
+            "event_type": event["event_type"] or "event",
+            "event_date": format_date_human(event["preferred_date"])
+                          if event["preferred_date"] else "the agreed date",
+            "balance_amount": f"{bill['owed']:.2f}",
+            "balance_due_date": format_date_human(event["balance_due_date"]),
+            "manage_url": manage_url,
+            "reference_code": event["reference_code"] or "",
+        })
+        if not subject:
+            continue
+        if send_email(event["contact_email"], subject, body):
+            conn.execute(
+                "UPDATE event_inquiries SET balance_reminder_sent_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), event["id"]))
+            conn.commit()
+            sent += 1
+    if not owing:
+        return "no event balances due"
+    return f"reminded {sent} of {owing} due event(s)"
+
+
 def run_workshop_autocharge_job(conn):
     """Takes whatever is still owed on any registration whose balance is due.
 
@@ -41467,7 +41543,7 @@ def run_stale_shift_cleanup_job(conn, hours_threshold):
 
 
 PARAMETERISED_JOBS = ("workshop_balance_reminder", "room_balance_reminder",
-                      "stale_shift_cleanup")
+                      "event_balance_reminder", "stale_shift_cleanup")
 
 
 class JobFailed(Exception):
@@ -41603,6 +41679,21 @@ def automation_tick():
                 except Exception as e:
                     print(f"[automation] workshop_balance_reminder failed: {e}")
 
+        if settings["automation_event_balance_reminder_enabled"] == "1":
+            try:
+                days_before = int(settings["automation_event_balance_reminder_days_before"])
+            except (TypeError, ValueError):
+                days_before = 21
+            if claim_job_run(conn, "event_balance_reminder", 24 * 3600):
+                try:
+                    result = run_event_balance_reminder_job(conn, days_before)
+                    record_job_run(conn, "event_balance_reminder", True, result)
+                    print(f"[automation] event_balance_reminder: {result}")
+                except Exception as e:
+                    record_job_run(conn, "event_balance_reminder", False,
+                                   f"{type(e).__name__}: {e}")
+                    print(f"[automation] event_balance_reminder failed: {e}")
+
         if settings["automation_stale_shift_enabled"] == "1":
             try:
                 stale_hours = float(settings["automation_stale_shift_hours"])
@@ -41633,6 +41724,7 @@ AUTOMATION_JOB_LABELS = {
     "ical_sync": "iCal sync",
     "workshop_balance_reminder": "Workshop balance-due reminders",
     "room_balance_reminder": "Room balance-due reminders (before the guest travels)",
+    "event_balance_reminder": "Event balance-due reminders (a wedding balance is a bank transfer, not a tap)",
     "workshop_feedback_request": "Workshop feedback requests",
     "email_inbox_scan": "Inbox scan (unanswered + pricing/availability flags)",
     "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",
