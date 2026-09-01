@@ -1,7 +1,22 @@
 {% extends "public_base.html" %}
-{% block title %}{{ code }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block title %}{{ code }}{% endblock %}
 {% block content %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Not Here</p>
+  <h1 class="g-pagehead">That page has moved, or never existed</h1>
+  <p class="g-lede">The site was rebuilt recently, so an old link may simply point somewhere that has gone. These are the things people are usually after.</p>
+
+  <ul class="g-lost">
+    <li><a href="{{ url_for('book_rooms') }}"><b>Stay the night</b><span>Five bedrooms, from €220</span></a></li>
+    <li><a href="{{ url_for('workshops_public') }}"><b>The ateliers</b><span>Plaster, gilding, fresco conservation</span></a></li>
+    <li><a href="{{ url_for('restaurant_info') }}"><b>La Table</b><span>One sitting a night</span></a></li>
+    <li><a href="{{ url_for('find_booking') }}"><b>Find my booking</b><span>With the email you booked with</span></a></li>
+    <li><a href="{{ url_for('restoration_page') }}"><b>The restoration</b><span>Fifteen years, and not finished</span></a></li>
+    <li><a href="{{ url_for('contact_page') }}"><b>Write to us</b><span>Someone reads it at the château</span></a></li>
+  </ul>
+</div></section>
+
 
 {# There was no error template at all — a mistyped URL or an expired manage
    link returned the bare Flask page, which looks like the site is broken

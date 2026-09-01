@@ -658,6 +658,51 @@ def repair_event_promo_field():
     return 1
 
 
+def repair_admin_images_page():
+    """The two things the image manager arrives with, both times so far.
+
+    It is a designer page with no route yet -- nothing in app.py renders it --
+    so neither fault shows up as a broken page. They show up in the sweeps.
+
+    THE ENDPOINT. It names url_for('admin_image_upload'), and it came wrapped
+    in a guard: `if 'admin_image_upload' in url_map`. The guard does not raise
+    -- Jinja is content to say a name it has never heard of contains nothing --
+    it just always answers no, because url_map is not in the template context.
+    So the branch naming the endpoint is dead in every render, and what the
+    page actually posts to is the literal path in the else. Which is worse than
+    a crash: the day the route moves, the page keeps posting to the old path
+    and nothing says so.
+
+    THE FILE INPUT. Hidden, clicked by the slot around it, and with no name of
+    its own. The slot IS labelled, so nobody using the page is stuck -- but the
+    accessibility sweep reads the input, not the intent, and it is right to:
+    the day somebody drops the `hidden`, an unlabelled file field goes live.
+    """
+    rel = "templates/admin_images.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    fixed = 0
+    bad = ("var ENDPOINT = \"{{ url_for('admin_image_upload')")
+    if bad in src:
+        start = src.find(bad)
+        end = src.find(";", start)
+        if end != -1:
+            src = src[:start] + 'var ENDPOINT = "/admin/images/upload"' + src[end:]
+            fixed += 1
+    marker = '<input type="file" accept="image/*" hidden data-slot-input'
+    at = src.find(marker)
+    if at != -1 and "aria-label" not in src[at:at + 200]:
+        close = src.find(">", at)
+        if close != -1:
+            src = (src[:close] + ' aria-label="Choose a photograph for '
+                   '{{ slot.label }}"' + src[close:])
+            fixed += 1
+    if fixed:
+        _write(rel, src)
+    return fixed
+
+
 def repair_reverted_guest_pages():
     """Report the four pages the handovers keep shipping an older copy of.
 
@@ -711,6 +756,7 @@ def main():
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),
         ("the promo code box on the event enquiry", repair_event_promo_field),
+        ("the image manager that has no route yet", repair_admin_images_page),
         ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []

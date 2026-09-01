@@ -38,6 +38,9 @@ URL_FOR = re.compile(r"url_for\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]")
 # the route rather than only the endpoint name.
 URL_FOR_CALL = re.compile(
     r"url_for\(\s*['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]([^()]*)\)", re.S)
+H2_HEADING = r"<h2\b[^>]*>(.*?)</h2>"
+SPACE_RUN = r"\s+"
+ANY_TAG = r"<[^>]+>"
 KWARG = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*=")
 # Only absolute paths. A relative href resolves against the current page, which
 # a static check cannot judge.
@@ -86,6 +89,31 @@ def run():
             detail=" | ".join(bad_endpoints[:4]))
     s.check("no template links a path nothing serves", not dead_paths,
             detail=" | ".join(dead_paths[:4]))
+    # A handover arrives as whole files, so the way it goes wrong is a block
+    # landing twice rather than a line landing wrong. The designer caught one
+    # of these on the weddings page -- the same enquiry section repeated five
+    # hundred pixels further down -- by adding this check on their side, and
+    # said plainly it was the check that found it and not looking at the page.
+    #
+    # h2 ONLY, and that is the whole design of it. A repeated h3 is ordinary:
+    # whats_on names Mirepoix in its gallery cards and again in its directory
+    # of places, which is correct, and a check that flagged it is one somebody
+    # learns to scroll past. An h2 is a SECTION of a page, and a page does not
+    # have the same section twice.
+    dupe_headings = []
+    for rel, body in sorted(templates.items()):
+        seen, twice = set(), set()
+        for raw in re.findall(H2_HEADING, body, re.S | re.I):
+            text = re.sub(SPACE_RUN, " ", re.sub(ANY_TAG, " ", raw)).strip()
+            # A heading built out of a variable says nothing here: two of them
+            # are one line of source and two different words on the page.
+            if not text or "{{" in text or "{%" in text:
+                continue
+            (twice if text in seen else seen).add(text)
+        for text in sorted(twice):
+            dupe_headings.append(f"{rel}: {text[:40]}")
+    s.check("no page carries the same section heading twice", not dupe_headings,
+            detail=" | ".join(dupe_headings[:4]))
     s.check("no shipped template holds merge conflict markers", not markers,
             detail=" | ".join(markers[:4]))
 

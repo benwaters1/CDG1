@@ -1,0 +1,68 @@
+{# ==========================================================================
+   LIGHTBOX
+   Photographs are the strongest thing on the site and could not be viewed
+   larger than a thumbnail. Uses the native <dialog>, so Escape closes it,
+   focus is trapped, and the page behind is inert without any of that being
+   written by hand.
+
+       {% from '_lightbox.html' import lightbox %}
+       {{ lightbox() }}
+
+   Any image inside a .g-lb-scope becomes clickable. No markup change needed
+   on the images themselves.
+   ========================================================================== #}
+{% macro lightbox() %}
+<dialog class="g-lb" data-lb aria-label="Photograph">
+  <button type="button" class="g-lb__x" data-lb-close aria-label="Close">&times;</button>
+  <button type="button" class="g-lb__nav g-lb__nav--p" data-lb-prev aria-label="Previous">&#8249;</button>
+  <img class="g-lb__img" data-lb-img alt="">
+  <button type="button" class="g-lb__nav g-lb__nav--n" data-lb-next aria-label="Next">&#8250;</button>
+  <p class="g-lb__cap" data-lb-cap></p>
+</dialog>
+<script>
+(function(){
+  var dlg=document.querySelector('[data-lb]'); if(!dlg||!dlg.showModal) return;
+  var img=dlg.querySelector('[data-lb-img]'), cap=dlg.querySelector('[data-lb-cap]');
+  var shots=[], at=0;
+
+  function collect(){
+    shots=[...document.querySelectorAll('.g-lb-scope img')]
+      .filter(function(i){ return i.currentSrc || i.src; });
+    shots.forEach(function(i,n){
+      i.style.cursor='zoom-in';
+      if(!i.hasAttribute('tabindex')) i.tabIndex=0;
+      i.dataset.lbIndex=n;
+    });
+  }
+  function show(n){
+    if(!shots.length) return;
+    at=(n+shots.length)%shots.length;
+    var s=shots[at];
+    img.src=s.currentSrc||s.src;
+    img.alt=s.alt||'';
+    cap.textContent=s.alt||'';
+  }
+  function open(n){ collect(); show(n); if(!dlg.open) dlg.showModal(); }
+
+  document.addEventListener('click', function(e){
+    var i=e.target.closest('.g-lb-scope img'); if(!i) return;
+    collect(); open(+i.dataset.lbIndex||0);
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key!=='Enter' && e.key!==' ') return;
+    var i=e.target.closest && e.target.closest('.g-lb-scope img'); if(!i) return;
+    e.preventDefault(); collect(); open(+i.dataset.lbIndex||0);
+  });
+  dlg.querySelector('[data-lb-close]').addEventListener('click', function(){ dlg.close(); });
+  dlg.querySelector('[data-lb-prev]').addEventListener('click', function(){ show(at-1); });
+  dlg.querySelector('[data-lb-next]').addEventListener('click', function(){ show(at+1); });
+  dlg.addEventListener('keydown', function(e){
+    if(e.key==='ArrowLeft') show(at-1);
+    if(e.key==='ArrowRight') show(at+1);
+  });
+  /* clicking the backdrop closes */
+  dlg.addEventListener('click', function(e){ if(e.target===dlg) dlg.close(); });
+  collect();
+})();
+</script>
+{% endmacro %}

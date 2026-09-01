@@ -99,6 +99,7 @@
 }
 </script>
 {% block schema %}{% endblock %}
+<script type="application/json" id="booked-dates">{{ (booked_dates or [])|tojson }}</script>
 </head>
 <body class="g{% block bodyclass %}{% endblock %}">
 <a class="g-skip" href="#main">Skip to content</a>
@@ -106,7 +107,7 @@
 <header class="g-top">
   <div class="g-top__in">
     <a href="/" class="g-logo" aria-label="Château de Gudanes" style="--logo-src:url('https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w')">
-      <img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
+      <img loading="lazy" decoding="async" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=1500w" alt="Château de Gudanes — Restoration">
     </a>
 
 
@@ -195,7 +196,7 @@
 
         <p class="g-navwrap__group">{{ t('Gallery & Story') }}</p>
         <a href="/gallery#inside" class="g-navwrap__feature">
-          <img src="{{ url_for('static', filename='img/chateau_facade_formal.jpg') }}" alt="Château de Gudanes, front elevation">
+          <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_facade_formal.jpg') }}" alt="Château de Gudanes, front elevation">
           <span>
             <b>{{ t('Inside the Château') }}</b>
             <em>{{ t('The house as she stands today') }}</em>
@@ -392,7 +393,7 @@
 
 <footer class="g-footer">
   <div class="g-crest g-crest--foot">
-    <img src="{{ url_for('static', filename='img/chateau_engraving.png') }}"
+    <img loading="lazy" decoding="async" src="{{ url_for('static', filename='img/chateau_engraving.png') }}"
          alt="Château de Gudanes, Château-Verdun, France">
     <p class="g-crest__note">{{ t('Ariège · French Pyrénées · Restored since 2013') }}</p>
   </div>
@@ -876,6 +877,14 @@
     dIn.value = end ? iso(end) : '';
   }
 
+  /* Nights already taken. The view can pass `booked_dates` as a list of
+     ISO strings; without it the picker behaves exactly as before. */
+  var TAKEN = (function(){
+    var el = document.getElementById('booked-dates');
+    if (!el) return [];
+    try { return JSON.parse(el.textContent) || []; } catch(e){ return []; }
+  })();
+
   function month(base){
     var y = base.getFullYear(), m = base.getMonth();
     var days = new Date(y, m+1, 0).getDate();
@@ -886,17 +895,19 @@
     for (var n=1;n<=days;n++){
       var d = new Date(y, m, n), k = iso(d);
       var past = d < today;
+      var taken = TAKEN.indexOf(k) > -1;
       var isStart = start && k === iso(start);
       var isEnd = end && k === iso(end);
       var edge = end || hover;
       var inRange = start && edge && d > start && d < edge;
       var cls = 'g-rp__d';
       if (past) cls += ' is-past';
+      if (taken) cls += ' is-taken';
       if (isStart) cls += ' is-start';
       if (isEnd) cls += ' is-end';
       if (inRange) cls += ' is-in';
-      h += past
-        ? '<span class="' + cls + '">' + n + '</span>'
+      h += (past || taken)
+        ? '<span class="' + cls + '"' + (taken ? ' title="Taken" aria-label="' + n + ', taken"' : '') + '>' + n + '</span>'
         : '<button type="button" class="' + cls + '" data-d="' + k + '">' + n + '</button>';
     }
     return h + '</div></div>';

@@ -24,7 +24,7 @@
     'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w',
     'https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/71e505e9-4a57-4bd6-9ed7-96530cbaa16b/day_1_18.jpg?format=1500w'
   ] %}
-  <img class="g-roomhero"
+  <img loading="lazy" decoding="async" class="g-roomhero"
        src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
        alt="{{ room['name'] }}">
 
@@ -607,6 +607,15 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 {# Below two columns the panel sits at the foot of a long page, so the button
    is unreachable without scrolling back. This bar carries the total and the
    same submit. #}
+
+<div class="g-wrap">
+  <p class="g-backtoform">
+    <span class="g-backtoform__k">Still here?</span>
+    Everything above is worth reading before you book, and none of it changes the price.
+    <a href="#book" class="g-btn g-btn--solid">Back to the dates</a>
+  </p>
+</div>
+
 <div class="g-bookbar" role="region" aria-label="Your booking">
   <span class="g-bookbar__sum">
     <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '%.0f'|format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>

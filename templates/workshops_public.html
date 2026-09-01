@@ -17,7 +17,7 @@
 {% set WS_HERO = 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/296960eb-e33e-48c6-8f8d-dddb0ec56854/Kitchen+1.JPG?format=1500w' %}
 
 <section class="g-hero">
-  <img class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
+  <img loading="lazy" decoding="async" class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">{% if workshops %}{{ workshops|length }} Atelier{{ '' if workshops|length == 1 else 's' }} · {% endif %}Château de Gudanes</p>
@@ -737,6 +737,39 @@
   {% endif %}
 
   <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
+</div></section>
+
+
+<!-- ============ QUESTIONS ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Asked Often</p>
+  <h2 class="g-place">Questions</h2>
+  <div class="g-faq2">
+    <details class="g-faq2__i">
+      <summary>Do I need experience?</summary>
+      <p>None. Half of every atelier has never held a trowel and the artisans are used to it.</p>
+    </details>
+    <details class="g-faq2__i">
+      <summary>What should I bring?</summary>
+      <p>Clothes you would not mind ruining — lime does not wash out. Closed-toe shoes. Reading glasses if you use them.</p>
+    </details>
+    <details class="g-faq2__i">
+      <summary>Will I finish something?</summary>
+      <p>No. You are joining work in progress, and a good morning is measured in centimetres.</p>
+    </details>
+    <details class="g-faq2__i">
+      <summary>Is it physical?</summary>
+      <p>Yes. On your feet, often on a platform, often with your arms above your head. Tell us if that is a problem and we will place you where it is not.</p>
+    </details>
+    <details class="g-faq2__i">
+      <summary>Is everything included?</summary>
+      <p>Full board, all materials and tools, and transfers from Toulouse are in one price.</p>
+    </details>
+    <details class="g-faq2__i">
+      <summary>How many people?</summary>
+      <p>Fifteen at most, and no other guests in the building while an atelier runs.</p>
+    </details>
+  </div>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->
