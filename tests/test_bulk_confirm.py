@@ -134,10 +134,19 @@ def run():
         s.check("no second email goes out", not sent, detail=f"{sent}")
         s.check("they are still just confirmed",
                 _status("A") == "confirmed" and _status("B") == "confirmed")
+        # The version of this check that came before asked for "0" anywhere in
+        # the message, which a reference code with a nought in it satisfies on
+        # its own, and its second clause ("Confirmed 0") was dead because the
+        # first already matched it. It passed for the wrong reason.
+        msg2 = " ".join(flashes(r2))
         s.check("and it does not claim to have confirmed them again",
-                "0" in " ".join(flashes(r2)) or "Confirmed 0" in " ".join(flashes(r2)),
+                "Nothing was confirmed" in msg2 and "Confirmed 2" not in msg2,
                 detail=f"{flashes(r2)[:1]} — the owner is told work happened "
                        "that did not")
+        s.check("and says which ones, and why",
+                a["reference_code"] in msg2 and "already dealt with" in msg2,
+                detail=f"{flashes(r2)[:1]} — a count sends somebody to work "
+                       "out which two of forty rows it meant")
 
         s.section("Two requests for the same room and nights")
         # Nothing stops both being REQUESTED. This is the only place that

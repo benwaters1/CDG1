@@ -26,6 +26,46 @@
 
 {% include "_task_add_form.html" %}
 
+{# Hidden until something is ticked. A row of buttons that do nothing yet is
+   furniture, and this page is opened every morning by somebody who wants to
+   read it, not operate it. #}
+<div id="task-bulk-bar" style="display:none; margin-bottom:18px;">
+  <form method="post" action="{{ url_for('bulk_tasks') }}"
+        onsubmit="return collectTasks(this)"
+        style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {# Back to the week they were looking at. Sent in the form rather than read
+       off the Referer header, which is a value the browser supplies and
+       somebody else can therefore aim. #}
+    <input type="hidden" name="view" value="{{ sheet.view }}">
+    <input type="hidden" name="date" value="{{ sheet.anchor.isoformat() }}">
+
+    <strong><span id="task-selected-count">0</span> selected</strong>
+
+    <select name="employee_id" aria-label="Who the ticked tasks go to">
+      <option value="">Hand to…</option>
+      {% for e in sheet.employees %}
+      <option value="{{ e['id'] }}">{{ e['name'] }}</option>
+      {% endfor %}
+    </select>
+    {# On by default. Work moved quietly onto somebody who never looks at it is
+       not covered — it only says it is, on a screen nobody is reading. #}
+    <label style="display:flex; align-items:center; gap:5px;">
+      <input type="checkbox" name="acknowledge" checked>
+      ask them to confirm
+    </label>
+    <button type="submit" name="action" value="reassign" class="btn-mini">Hand over</button>
+
+    <input type="date" name="due_date" aria-label="The day to move the ticked tasks to">
+    <button type="submit" name="action" value="reschedule" class="btn-mini">Move day</button>
+
+    <button type="submit" name="action" value="complete" class="btn-mini">Mark done</button>
+    <button type="submit" name="action" value="delete" class="btn-mini btn-mini-danger"
+            onclick="return confirmBulkTaskDelete()">Remove</button>
+    <button type="button" class="btn-ghost" onclick="clearTaskPicks()">Clear</button>
+  </form>
+</div>
+
 {% if sheet.view == 'month' and sheet.month_grid %}
 <div style="overflow-x:auto; margin-bottom:24px;">
   <div class="table-wrap">
@@ -62,5 +102,59 @@
 {% else %}
 {% include "_task_sheet.html" %}
 {% endif %}
+
+<script>
+function taskPicks() { return document.querySelectorAll('.task-pick:checked'); }
+
+function refreshTaskBulk() {
+  var n = taskPicks().length;
+  var c = document.getElementById('task-selected-count');
+  if (c) c.textContent = n;
+  var bar = document.getElementById('task-bulk-bar');
+  if (bar) bar.style.display = n ? 'block' : 'none';
+}
+
+document.querySelectorAll('.task-pick').forEach(function(cb) {
+  cb.addEventListener('change', refreshTaskBulk);
+});
+
+// Scoped to the card or column it sits in, so "all 9" on one person means
+// theirs and not everybody's.
+document.querySelectorAll('.task-pick-all').forEach(function(cb) {
+  cb.addEventListener('change', function() {
+    var scope = cb.closest('[data-pick-scope]');
+    if (!scope) return;
+    scope.querySelectorAll('.task-pick').forEach(function(t) { t.checked = cb.checked; });
+    refreshTaskBulk();
+  });
+});
+
+function clearTaskPicks() {
+  document.querySelectorAll('.task-pick, .task-pick-all').forEach(function(t) {
+    t.checked = false;
+  });
+  refreshTaskBulk();
+}
+
+function confirmBulkTaskDelete() {
+  var n = taskPicks().length;
+  if (!n) { alert('Tick at least one task first.'); return false; }
+  return confirm('Remove ' + n + ' task' + (n === 1 ? '' : 's') + '? There is no undo.');
+}
+
+function collectTasks(form) {
+  var checked = taskPicks();
+  if (!checked.length) { alert('Tick at least one task first.'); return false; }
+  form.querySelectorAll('input[name="task_ids"]').forEach(function(el) { el.remove(); });
+  checked.forEach(function(cb) {
+    var i = document.createElement('input');
+    i.type = 'hidden';
+    i.name = 'task_ids';
+    i.value = cb.value;
+    form.appendChild(i);
+  });
+  return true;
+}
+</script>
 
 {% endblock %}

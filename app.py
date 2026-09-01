@@ -6808,6 +6808,75 @@ def saved_views_for(conn, user_id, endpoint):
         "ORDER BY name", (user_id, endpoint)).fetchall()
 
 
+# How many items to name against one reason before the rest become a count.
+# A flash naming twenty references is not read; naming three and counting the
+# remainder is.
+BULK_NAMES_SHOWN = 3
+
+
+def bulk_message(verb, noun, done, skipped, *, detail=""):
+    """The message a bulk action flashes: what worked, and what did not and why.
+
+    Every bulk action in the app counted its successes and stayed quiet about
+    the rest -- `if not row: continue`, then a cheerful total. Three of them did
+    it, and the failure is the same each time: the owner ticks ten boxes, six go
+    through, and the page says "Approved 6" with nothing to say the other four
+    did not. It reads as finished.
+
+    Worse than the silence was the one that guessed. Bulk confirm reported every
+    refusal as a date conflict, so a booking refused because somebody had left a
+    standing instruction not to accept that guest was announced as a clash with
+    another booking -- sending the owner to a calendar that was perfectly clear,
+    and burying the one refusal they actually needed to read.
+
+    So: reasons are grouped rather than repeated, because twelve rooms taken is
+    one sentence and not twelve; items are NAMED, because a count tells you
+    something went wrong and not which thing; and it is an error the moment
+    anything is skipped, since a bulk action that half worked is precisely the
+    thing that must not look clean.
+
+    `skipped` is a list of (label, reason) pairs. `detail` is a parenthetical
+    for an action whose successes are worth breaking down -- the approvals queue
+    takes two kinds of item at once. Returns (message, category) for flash().
+    """
+    total = done + len(skipped)
+    if not total:
+        return f"Nothing was selected, so nothing was {verb.lower()}.", "error"
+
+    def count(n):
+        return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+    if not skipped:
+        head = f"{verb} {count(done)}"
+    elif done:
+        head = f"{verb} {done} of {count(total)}"
+    else:
+        head = f"Nothing was {verb.lower()}"
+    if detail:
+        head += f" ({detail})"
+    if not skipped:
+        return head + ".", "success"
+
+    # Grouped by reason, in the order the reasons first came up, so the message
+    # reads in the order somebody would have met them.
+    by_reason = {}
+    for label, reason in skipped:
+        by_reason.setdefault(reason, []).append(label)
+
+    parts = []
+    for reason, labels in by_reason.items():
+        named = [l for l in labels[:BULK_NAMES_SHOWN] if l]
+        rest = len(labels) - len(named)
+        if named and rest > 0:
+            who = f"{', '.join(named)} and {rest} more"
+        elif named:
+            who = ", ".join(named)
+        else:
+            who = count(len(labels))
+        parts.append(f"{who}: {reason}")
+    return head + ". Skipped " + "; ".join(parts) + ".", "error"
+
+
 def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
               search_hint="", paged=False):
     """Apply ?q=, ?facet=value and ?sort= to a list of rows.
@@ -33820,20 +33889,31 @@ def confirm_booking(booking_id):
 def bulk_confirm_bookings():
     booking_ids = [int(i) for i in request.form.getlist("booking_ids") if i.isdigit()]
     conn = get_db()
-    confirmed = 0
-    conflicts = 0
+    # The references before anything moves, so a refusal can name the booking.
+    # A count on its own tells the owner something was skipped and leaves them
+    # to find out which of forty rows it was.
+    refs = {}
+    if booking_ids:
+        refs = {r["id"]: r["reference_code"] for r in conn.execute(
+            f"SELECT id, reference_code FROM bookings "
+            f"WHERE id IN ({','.join('?' * len(booking_ids))})",
+            tuple(booking_ids))}
+    confirmed, skipped = 0, []
     for bid in booking_ids:
         ok, reason = confirm_booking_by_id(conn, bid)
         if ok:
             confirmed += 1
-        elif reason != "not found or not pending":
-            conflicts += 1
+            continue
+        # This exact string is a sentinel: the single-booking route turns it
+        # into a 404, so it cannot be reworded where it is raised. In a list of
+        # ten it means somebody else has already dealt with that one -- which
+        # is worth saying, and used to be dropped from the count entirely.
+        if reason == "not found or not pending":
+            reason = "already dealt with by somebody else"
+        skipped.append((refs.get(bid, f"#{bid}"), reason))
     conn.commit()
     conn.close()
-    msg = f"Confirmed {confirmed} booking{'' if confirmed == 1 else 's'}."
-    if conflicts:
-        msg += f" Skipped {conflicts} due to a date conflict with another booking."
-    flash(msg, "success" if not conflicts else "error")
+    flash(*bulk_message("Confirmed", "booking", confirmed, skipped))
     return redirect(url_for("admin_bookings"))
 
 
@@ -34356,17 +34436,58 @@ def decline_booking_by_id(conn, booking_id):
     return True, refunded, refund_error
 
 
+def decline_one_and_follow_up(conn, booking_id):
+    """Decline a booking and do everything that follows from declining it.
+
+    Not the same job as decline_booking_by_id, which is the state change and the
+    guest's email. This is the whole action: the state change, the waitlist that
+    has been sitting there wanting exactly those dates, and the refund outcome
+    somebody has to be told about.
+
+    It exists because bulk decline was a loop over the core helper, so the two
+    things the single-booking ROUTE did afterwards never happened in bulk.
+    Declining ten bookings one at a time worked the waitlist ten times;
+    declining the same ten together worked it not at all -- ten room-nights came
+    free and nobody waiting for them was told. And a refund that failed at
+    Stripe was reported to nobody, which is money.
+
+    Anything that follows from declining goes in here, where a loop cannot miss
+    it. Deliberately NOT pushed down into decline_booking_by_id: that is also
+    called by expire_stale_pending_bookings on every dashboard load, and giving
+    a background job the power to email and text waitlisted guests is a
+    different decision from fixing bulk, and not one to take as a side effect.
+
+    Returns (declined, refunded, refund_error, notified).
+    """
+    declined, refunded, refund_error = decline_booking_by_id(conn, booking_id)
+    if not declined:
+        return False, refunded, refund_error, []
+    # Re-read: the helper has committed by now, and the dates are what the
+    # waitlist matches on.
+    row = conn.execute(
+        "SELECT arrival_date, departure_date FROM bookings WHERE id = ?",
+        (booking_id,)).fetchone()
+    notified = []
+    if row:
+        # Commits its own 'contacted' marking, so there is nothing to commit
+        # here -- which is what stops a second decline re-notifying the same
+        # person.
+        notified = notify_room_waitlist_opening(
+            conn, row["arrival_date"], row["departure_date"])
+    return True, refunded, refund_error, notified
+
+
 @app.route("/admin/bookings/<int:booking_id>/decline", methods=["POST"])
 @owner_required
 def decline_booking(booking_id):
     conn = get_db()
-    declined, refunded, refund_error = decline_booking_by_id(conn, booking_id)
+    declined, refunded, refund_error, notified = decline_one_and_follow_up(
+        conn, booking_id)
     if not declined:
         conn.close()
         abort(404)
     conn.commit()
     booking = conn.execute("SELECT arrival_date, departure_date FROM bookings WHERE id = ?", (booking_id,)).fetchone()
-    notified = notify_room_waitlist_opening(conn, booking["arrival_date"], booking["departure_date"])
     if notified:
         waitlist_note = f" Notified {len(notified)} waitlist guest{'s' if len(notified) != 1 else ''} automatically."
     else:
@@ -34382,10 +34503,38 @@ def decline_booking(booking_id):
 def bulk_decline_bookings():
     booking_ids = [int(i) for i in request.form.getlist("booking_ids") if i.isdigit()]
     conn = get_db()
-    declined_count = sum(1 for bid in booking_ids if decline_booking_by_id(conn, bid)[0])
+    declined, skipped, refund_failures, notified_total = 0, [], [], 0
+    for bid in booking_ids:
+        # The state BEFORE the attempt, because the helper returns no reason and
+        # afterwards the row looks the same whether this call declined it or
+        # somebody else did a minute ago.
+        was = conn.execute(
+            "SELECT reference_code, status FROM bookings WHERE id = ?",
+            (bid,)).fetchone()
+        label = was["reference_code"] if was else f"#{bid}"
+        ok, _refunded, refund_error, notified = decline_one_and_follow_up(conn, bid)
+        if not ok:
+            skipped.append((label, "no longer there" if not was
+                            else f"already {was['status']}"))
+            continue
+        declined += 1
+        notified_total += len(notified)
+        # A refund that failed is not a booking that failed to decline -- the
+        # decline stood. It is money that did not move, and the single-booking
+        # route has always said so. In bulk it was thrown away.
+        if refund_error:
+            refund_failures.append(f"{label} ({refund_error})")
     conn.commit()
     conn.close()
-    flash(f"Declined {declined_count} booking{'' if declined_count == 1 else 's'}.", "success")
+    msg, category = bulk_message("Declined", "booking", declined, skipped)
+    if notified_total:
+        msg += (f" {notified_total} waitlist guest"
+                f"{'' if notified_total == 1 else 's'} told those dates are free.")
+    if refund_failures:
+        msg += (" Refunds did NOT go through for "
+                + ", ".join(refund_failures) + " — these need doing by hand.")
+        category = "error"
+    flash(msg, category)
     return redirect(url_for("admin_bookings"))
 
 
@@ -46390,6 +46539,151 @@ def admin_tasks():
     return render_template("admin_tasks.html", today=datetime.now(timezone.utc).date(), sheet=sheet)
 
 
+BULK_TASK_ACTIONS = ("complete", "reassign", "reschedule", "delete")
+
+
+@app.route("/admin/tasks/bulk", methods=["POST"])
+@owner_required
+def bulk_tasks():
+    """One action across every ticked task.
+
+    The case this is for: somebody rings in sick and their nine jobs have to
+    become somebody else's before the morning. That was nine page loads through
+    a menu, so in practice it was done badly or not at all -- the jobs stayed in
+    the name of the person who was not coming, and the house ran off memory.
+
+    Watch tasks are not treated specially here. Ticking one off does not settle
+    anything, because the next run of generate_watch_tasks finds the problem
+    still true and raises it again -- but that is the honest answer, and it is
+    the same answer ticking one by hand has always given.
+    """
+    action = (request.form.get("action", "") or "").strip()
+    task_ids = [int(i) for i in request.form.getlist("task_ids") if i.isdigit()]
+    # Back to the week they were looking at, from the form rather than the
+    # Referer header: a redirect built out of a header a browser supplies is one
+    # somebody else can aim.
+    view = (request.form.get("view", "") or "").strip()
+    day = (request.form.get("date", "") or "").strip()
+    back_args = {"view": view} if view in ("day", "week", "month") else {}
+    if parse_date(day):
+        back_args["date"] = day
+    back = url_for("admin_tasks", **back_args)
+
+    if action not in BULK_TASK_ACTIONS:
+        flash("That is not something that can be done to a set of tasks.", "error")
+        return redirect(back)
+    if not task_ids:
+        flash("Check at least one task first.", "error")
+        return redirect(back)
+
+    conn = get_db()
+    rows = conn.execute(
+        f"""SELECT * FROM tasks WHERE id IN ({','.join('?' * len(task_ids))})""",
+        tuple(task_ids)).fetchall()
+    found = {r["id"]: r for r in rows}
+
+    # What the action needs is read and checked BEFORE anything is written, so a
+    # missing date or a person who has left refuses the whole thing rather than
+    # doing half of it and then complaining.
+    target_id, target_name, new_due = None, "", ""
+    if action == "reassign":
+        raw = (request.form.get("employee_id", "") or "").strip()
+        target = None
+        if raw.isdigit():
+            target = conn.execute("SELECT id, name FROM users WHERE id = ?",
+                                  (int(raw),)).fetchone()
+        if not target:
+            conn.close()
+            flash("Choose who the tasks go to.", "error")
+            return redirect(back)
+        target_id, target_name = target["id"], target["name"]
+    if action == "reschedule":
+        new_due = (request.form.get("due_date", "") or "").strip()
+        if not parse_date(new_due):
+            conn.close()
+            flash("Give the day to move them to.", "error")
+            return redirect(back)
+
+    # Asking the new person to confirm is the default when work changes hands.
+    # A job moved quietly onto somebody who never looks at it is not covered --
+    # it only says it is, on a screen nobody is reading.
+    ask = request.form.get("acknowledge") is not None
+    owner = current_user()
+    now = datetime.now(timezone.utc).isoformat()
+    done, skipped, moved_titles = 0, [], []
+    for tid in task_ids:
+        row = found.get(tid)
+        if not row:
+            skipped.append((f"#{tid}", "no longer there"))
+            continue
+        label = (row["title"] or f"#{tid}")[:40]
+        if action == "complete":
+            if row["status"] == "done":
+                skipped.append((label, "already done"))
+                continue
+            conn.execute(
+                "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ?",
+                (now, tid))
+        elif action == "reassign":
+            if row["assigned_to_user_id"] == target_id:
+                skipped.append((label, f"already {target_name}'s"))
+                continue
+            if ask:
+                # Mirrors direct_task exactly rather than inventing a second way
+                # of handing work over, so the employee side sees the one thing
+                # it already knows how to answer.
+                conn.execute(
+                    """UPDATE tasks SET assigned_to_user_id = ?,
+                       acknowledgment_status = 'pending', directed_at = ?,
+                       directed_by_user_id = ? WHERE id = ?""",
+                    (target_id, now, owner["id"] if owner else None, tid))
+            else:
+                conn.execute(
+                    "UPDATE tasks SET assigned_to_user_id = ? WHERE id = ?",
+                    (target_id, tid))
+            moved_titles.append(label)
+        elif action == "reschedule":
+            if (row["due_date"] or "") == new_due:
+                skipped.append((label, "already on that day"))
+                continue
+            conn.execute("UPDATE tasks SET due_date = ? WHERE id = ?", (new_due, tid))
+        elif action == "delete":
+            conn.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+        done += 1
+
+    # ONE notification for the lot. Nine jobs moving across is one piece of news
+    # to the person receiving them; nine separate notices is a reason to stop
+    # reading notices.
+    if action == "reassign" and ask and moved_titles:
+        shown = "; ".join(moved_titles[:4])
+        if len(moved_titles) > 4:
+            shown += f"; and {len(moved_titles) - 4} more"
+        send_notification(
+            conn, target_id, "task_directive",
+            f"{len(moved_titles)} task{'' if len(moved_titles) == 1 else 's'} "
+            f"moved to you" + (f" by {owner['name']}" if owner else ""),
+            body=shown, link="/")
+    if action == "delete" and done:
+        # Named, not counted. A bulk delete is the one action here with no
+        # way back, so what went needs to be readable afterwards.
+        log_audit(conn, "tasks_bulk_deleted", target=f"{done} tasks",
+                  details=", ".join((r["title"] or "") for r in rows)[:400])
+    conn.commit()
+    conn.close()
+
+    verb = {"complete": "Marked done", "reassign": "Moved",
+            "reschedule": "Moved", "delete": "Removed"}[action]
+    msg, category = bulk_message(verb, "task", done, skipped)
+    if action == "reassign" and done:
+        msg += f" Now {target_name}'s."
+        if ask:
+            msg += " They have been asked to confirm."
+    if action == "reschedule" and done:
+        msg += f" Now due {format_date_human(new_due)}."
+    flash(msg, category)
+    return redirect(back)
+
+
 @app.route("/admin/tasks/new", methods=["POST"])
 @owner_required
 def new_task():
@@ -47538,17 +47832,30 @@ def bulk_approve_queue():
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
     leave_count, expense_count = 0, 0
+    skipped = []
     to_notify = []
     for item in items:
         kind, _, raw_id = item.partition(":")
         if not raw_id.isdigit():
+            skipped.append((item[:30], "not something that can be approved"))
             continue
         item_id = int(raw_id)
         if kind == "leave":
+            # Fetched WITHOUT the pending filter on purpose, so an item somebody
+            # else has already decided can be told apart from one that has gone.
+            # Both were the same silent `continue`, and the commonest case by far
+            # is two people working the queue at once.
             req = conn.execute(
-                "SELECT * FROM leave_requests WHERE id = ? AND status = 'pending'", (item_id,)
+                "SELECT * FROM leave_requests WHERE id = ?", (item_id,)
             ).fetchone()
+            who = conn.execute("SELECT name FROM users WHERE id = ?",
+                               (req["user_id"],)).fetchone() if req else None
             if not req:
+                skipped.append((f"time off #{item_id}", "no longer there"))
+                continue
+            if req["status"] != "pending":
+                skipped.append((who["name"] if who else f"time off #{item_id}",
+                                f"already {req['status']}"))
                 continue
             conn.execute(
                 "UPDATE leave_requests SET status = 'approved', decided_at = ? WHERE id = ?",
@@ -47560,15 +47867,24 @@ def bulk_approve_queue():
                 to_notify.append((employee["email"], employee["name"], req["start_date"], req["end_date"]))
         elif kind == "expense":
             row = conn.execute(
-                "SELECT id FROM expenses WHERE id = ? AND status = 'pending'", (item_id,)
+                "SELECT id, status FROM expenses WHERE id = ?", (item_id,)
             ).fetchone()
             if not row:
+                skipped.append((f"expense #{item_id}", "no longer there"))
+                continue
+            if row["status"] != "pending":
+                skipped.append((f"expense #{item_id}",
+                                f"already {row['status']}"))
                 continue
             conn.execute(
                 "UPDATE expenses SET status = 'approved', decided_at = ? WHERE id = ?",
                 (now, item_id),
             )
             expense_count += 1
+        else:
+            # Neither kind. Silently ignored before, which meant a stale page
+            # posting an item type that no longer exists looked like a success.
+            skipped.append((item[:30], "not something this queue approves"))
     conn.commit()
     conn.close()
     for email, name, start_date, end_date in to_notify:
@@ -47578,7 +47894,12 @@ def bulk_approve_queue():
             f"Your time off request for {start_date} to {end_date} has been approved.\n\n"
             f"— Château de Gudanes",
         )
-    flash(f"Approved {leave_count} time off request(s) and {expense_count} expense(s).", "success")
+    # The breakdown stays -- two kinds of thing go through this one queue and
+    # the owner wants to know which -- but it is no longer the whole message.
+    detail = (f"{leave_count} time off, {expense_count} expense"
+              f"{'' if expense_count == 1 else 's'}")
+    flash(*bulk_message("Approved", "item", leave_count + expense_count,
+                        skipped, detail=detail))
     return redirect(url_for("admin_approvals"))
 
 
