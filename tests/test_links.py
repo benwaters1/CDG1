@@ -116,6 +116,26 @@ def run():
     s.check("every macro a template imports is one the partial exports",
             not missing_macros, detail=" | ".join(missing_macros[:4]))
 
+    # An {% include %} of a filename that does not exist is a 500 — loud, and
+    # the route sweep finds it. `ignore missing` turns the same mistake silent:
+    # the page renders perfectly with the thing simply absent. It has now cost
+    # a period control twice, on different pages and with different wrong
+    # filenames — admin_vat carries a comment about the first. So the target of
+    # an ignore-missing include has to exist too; if a partial is genuinely
+    # optional, the way to say so is a comment, not a typo nobody can see.
+    bad_includes = []
+    for rel, body in templates.items():
+        for tag in re.findall(r"{%-?\s*(?:include|extends)\s[^%]*?%}", body):
+            target = re.search(r"['\"]([^'\"]+\.html)['\"]", tag)
+            if not target:
+                continue                  # a computed name, not a literal
+            if not os.path.exists(os.path.join(TPL_DIR, os.path.basename(target.group(1)))):
+                bad_includes.append("%s -> %s%s" % (
+                    rel, target.group(1),
+                    " (ignore missing, so it fails silently)" if "ignore missing" in tag else ""))
+    s.check("every template a page includes or extends is really there",
+            not bad_includes, detail=" | ".join(bad_includes[:4]))
+
     # An endpoint that exists but is called with the wrong parameter NAME is a
     # BuildError too, and the name check above sails straight past it. Not
     # hypothetical: a handover shipped url_for('manage_booking', token=...)
