@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}What sells{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What sells</h1>
+  <a href="{{ url_for('restaurant_margins') }}" class="btn-ghost">Dish margins</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every line the till has taken, most first. Struck-off lines are left out &mdash; a voided line
+  was not sold, and counting it would rank a dish by how often it is keyed in by mistake.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  {% for n in [30, 90, 365] %}
+  <a href="{{ url_for('restaurant_what_sells', days=n) }}"
+     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
+  {% endfor %}
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not rows %}
+<div class="empty-state">The till has sold nothing in this window.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">Most sold first</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Dish</th><th class="num">Sold</th><th class="num">Took</th>
+                 <th class="num">Ingredients each</th><th class="num">Kept</th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <th scope="row">{{ r.name }}</th>
+          <td class="num">{{ '%g'|format(r.sold) }}</td>
+          <td class="num">&euro;{{ '{:,.2f}'.format(r.took) }}</td>
+          <td class="num">{% if r.cost_each is not none %}&euro;{{ '%.2f'|format(r.cost_each) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if r.kept is not none %}&euro;{{ '{:,.2f}'.format(r.kept) }}{% else %}&mdash;{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">The best seller and the best earner are rarely the same dish, which is
+    why what was <em>kept</em> sits beside what was sold. It is blank for anything with no recipe
+    against it on <a href="{{ url_for('restaurant_margins') }}">dish margins</a>.</p>
+</div>
+{% endif %}
+
+{% endblock %}

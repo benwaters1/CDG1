@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Table plan{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Table plan</h1>
+  <a href="{{ url_for('restaurant_covers') }}" class="btn-ghost">Covers coming</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ on.strftime('%A %d %B') }} &mdash; {{ covers }} covers against {{ seats }} seats laid.
+  A booking without a table is normal: most parties are seated on the night.
+</p>
+
+<form method="get" style="margin:-4px 0 14px;">
+  <input type="date" name="date" value="{{ on }}">
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Who is booked</h2>
+  {% if not bookings %}
+  <p class="empty-note">Nobody booked for this night.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Party</th><th class="num">Covers</th><th>Anything to know</th><th>Table</th></tr></thead>
+      <tbody>
+        {% for b in bookings %}
+        <tr class="{{ '' if b['dining_table_id'] else 'row-alert' }}">
+          <th scope="row">{{ b['guest_name'] }}</th>
+          <td class="num">{{ b['party_size'] }}</td>
+          <td>{% if b['dietary_notes'] %}<span class="upload-hint">{{ b['dietary_notes'] }}</span>{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('seat_restaurant_booking', booking_id=b['id']) }}"
+                  style="display:flex; gap:6px; align-items:center;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="dining_table_id" onchange="this.form.submit()">
+                <option value="">Not seated</option>
+                {% for t in tables %}
+                <option value="{{ t['id'] }}" {{ 'selected' if t['id'] == b['dining_table_id'] }}>
+                  {{ t['name'] }} ({{ t['seats'] }})</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">The tables</h2>
+  {% if not tables %}
+  <p class="empty-note">No tables laid out yet.</p>
+  {% else %}
+  <div class="doc-list">
+    {% for t in tables %}
+    {% set on_it = bookings|selectattr('dining_table_id', 'equalto', t['id'])|list %}
+    <div class="doc-row">
+      <span style="flex:1;">
+        <b>{{ t['name'] }}</b> <span class="upload-hint">seats {{ t['seats'] }}{% if t['area'] %} &middot; {{ t['area'] }}{% endif %}</span>
+        {% if on_it %}
+        <div class="upload-hint" style="margin-top:2px;">
+          {% for b in on_it %}{{ b['guest_name'] }} ({{ b['party_size'] }}){% if not loop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% else %}
+        <div class="upload-hint" style="margin-top:2px;">Empty.</div>
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Add a table</h2>
+  <div class="field-row-2">
+    <input type="text" name="name" placeholder="What it is called, e.g. By the window" required>
+    <input type="number" name="seats" min="1" placeholder="Seats (2)">
+  </div>
+  <input type="text" name="area" placeholder="Where, e.g. orangery" style="width:100%;">
+  <button type="submit" class="btn-mini" style="margin-top:8px;">Add</button>
+</form>
+
+<p class="upload-hint">Seating a party onto a full table is allowed and says so &mdash; two parties
+  on one table is a real thing at a long table and a mistake at a small one, and only the person
+  laying up knows which. It names who is already on it so the choice is an informed one.</p>
+
+{% endblock %}

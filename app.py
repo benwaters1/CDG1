@@ -2496,6 +2496,32 @@ def init_db():
         -- not the signing in, it is being able to answer who is STILL
         -- HERE -- which a book on a table cannot, because nobody reads
         -- back through it at six o'clock.
+        -- A dish is a list of things, not a field. menu_items.stock_item_id
+        -- is right for a glass poured from a bottle and useless for a
+        -- plate, so nothing has ever known which plates make money.
+        CREATE TABLE IF NOT EXISTS menu_item_ingredients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+            stock_item_id INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+            quantity REAL NOT NULL,
+            note TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(menu_item_id, stock_item_id)
+        );
+
+        -- Where a party sits. Tables are named rather than numbered
+        -- because that is how a house like this refers to them, and a
+        -- booking without one is normal -- most are seated on the night.
+        CREATE TABLE IF NOT EXISTS dining_tables (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            seats INTEGER NOT NULL DEFAULT 2,
+            area TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS site_visitors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -3860,6 +3886,11 @@ def init_db():
         # a fixed list of asset classes is an accounting decision and this
         # is not the accounting system.
         ("expenses_capital_note", "ALTER TABLE expenses ADD COLUMN capital_note TEXT"),
+        # Which table a party is on. Nullable and normally null: most are
+        # seated on the night rather than when they book.
+        ("restaurant_table", "ALTER TABLE restaurant_bookings ADD COLUMN "
+                             "dining_table_id INTEGER REFERENCES "
+                             "dining_tables(id) ON DELETE SET NULL"),
         # The day of the month a filing is really due on. Rolling forward
         # from the last date clamps to a short month and never recovers --
         # due the 31st becomes due the 28th the first February and stays
@@ -4848,6 +4879,7 @@ NAV_AREAS = {
         # DECIDING what to say about it is the owner's and is not here.
         "management_breakages", "management_cleaning", "cleaning_round_done",
         "management_visitors", "sign_out_visitor",
+        "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -16453,6 +16485,133 @@ def filings_due(conn, today=None):
 # out. Said on the page, never acted on: a register that tidies itself is
 # always neat and never true, which is worse than none because it would be
 # believed in the one situation it exists for.
+def dish_costs(conn):
+    """Per menu item: what its ingredients cost, and what that leaves.
+
+    INGREDIENTS ONLY. Not labour, not the kitchen, not the gas -- a fully
+    absorbed dish cost needs apportioning choices with several defensible
+    answers, and a number with several defensible answers gets argued with
+    rather than acted on. The same reason the night-cost page refuses to
+    state a figure per room.
+
+    A dish with nothing against it is reported as UNCOSTED rather than as
+    costing nothing. Zero would make it look like the best thing on the
+    menu, which is the exact opposite of what it means.
+    """
+    items = conn.execute(
+        """SELECT * FROM menu_items WHERE active = 1
+            ORDER BY course, sort_order, name""").fetchall()
+    if not items:
+        return []
+
+    ingredients = {}
+    for r in conn.execute(
+        """SELECT menu_item_ingredients.*, stock_items.name AS stock_name,
+                  stock_items.unit, stock_items.unit_cost
+             FROM menu_item_ingredients
+             JOIN stock_items
+               ON stock_items.id = menu_item_ingredients.stock_item_id"""
+    ).fetchall():
+        ingredients.setdefault(r["menu_item_id"], []).append(r)
+
+    out = []
+    for item in items:
+        lines = list(ingredients.get(item["id"], []))
+
+        # The single stock link menu_items has always had. A glass poured
+        # from a bottle is costed by it and has no recipe, so ignoring it
+        # would report every drink as uncosted.
+        pour = None
+        if item["stock_item_id"] and item["stock_qty_per_unit"]:
+            pour = conn.execute(
+                "SELECT name, unit, unit_cost FROM stock_items WHERE id = ?",
+                (item["stock_item_id"],)).fetchone()
+
+        priced = [l for l in lines if l["unit_cost"] is not None]
+        cost = sum(l["quantity"] * l["unit_cost"] for l in priced)
+        if pour and pour["unit_cost"] is not None:
+            cost += item["stock_qty_per_unit"] * pour["unit_cost"]
+
+        # Uncosted is not zero. A dish with nothing against it would
+        # otherwise read as the best thing on the menu.
+        has_any = bool(priced) or bool(pour and pour["unit_cost"] is not None)
+        missing = [l["stock_name"] for l in lines if l["unit_cost"] is None]
+
+        price = item["price"] or 0
+        margin = round(price - cost, 2) if has_any else None
+        out.append({
+            "item": item, "ingredients": lines, "pour": pour,
+            "cost": round(cost, 2) if has_any else None,
+            "margin": margin,
+            "margin_pct": (round(margin / price * 100) if (has_any and price)
+                           else None),
+            "costed": has_any,
+            # Named, because "partly costed" is a different and more
+            # misleading state than "not costed at all".
+            "missing_costs": missing,
+        })
+    return out
+
+
+def covers_ahead(conn, days=21, today=None):
+    """How many are booked in for dinner, by night.
+
+    Confirmed only, and no-shows taken off. Buying for people who never
+    came is the mistake this is meant to prevent, not cause.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    end = today + timedelta(days=days)
+    rows = conn.execute(
+        """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers,
+                  COUNT(*) AS bookings
+             FROM restaurant_bookings
+            WHERE status = 'confirmed' AND no_show_at IS NULL
+              AND dinner_date >= ? AND dinner_date <= ?
+            GROUP BY dinner_date ORDER BY dinner_date""",
+        (today.isoformat(), end.isoformat())).fetchall()
+    by_date = {r["dinner_date"]: r for r in rows}
+
+    out = []
+    for i in range((end - today).days + 1):
+        d = today + timedelta(days=i)
+        row = by_date.get(d.isoformat())
+        out.append({
+            "date": d,
+            "covers": row["covers"] if row else 0,
+            "bookings": row["bookings"] if row else 0,
+        })
+    return out
+
+
+def what_sells(conn, *, days=90, today=None, limit=None):
+    """Every dish the till has sold, most first.
+
+    Voided lines are left out: a line struck off was not sold, and counting
+    it would rank a dish by how often it is keyed in by mistake.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=days)).isoformat()
+    query = """SELECT pos_order_lines.name,
+                      COALESCE(SUM(pos_order_lines.quantity), 0) AS sold,
+                      COALESCE(SUM(pos_order_lines.quantity
+                                   * pos_order_lines.unit_price), 0) AS took,
+                      pos_order_lines.menu_item_id
+                 FROM pos_order_lines
+                WHERE COALESCE(pos_order_lines.voided, 0) = 0
+                  AND pos_order_lines.created_at >= ?
+                GROUP BY COALESCE(pos_order_lines.menu_item_id, -1),
+                         pos_order_lines.name
+                ORDER BY sold DESC"""
+    params = [since]
+    if limit:
+        query += " LIMIT ?"
+        params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    return [{"name": r["name"], "sold": r["sold"],
+             "took": round(r["took"], 2),
+             "menu_item_id": r["menu_item_id"]} for r in rows]
+
+
 VISITOR_LONG_HOURS = 10
 
 
@@ -21695,6 +21854,14 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Dish margins", "restaurant_margins",
+     "dish cost recipe ingredients margin menu profitable plate food cost"),
+    ("Covers coming", "restaurant_covers",
+     "covers forecast how many dinner booked ahead buying rostering"),
+    ("What sells", "restaurant_what_sells",
+     "best seller top dishes popular menu ranking till sold"),
+    ("Table plan", "restaurant_tables",
+     "table seating plan where they sit covers dinner service"),
     ("Who is on site", "management_visitors",
      "visitor contractor sign in out roofer delivery driver site register "
      "who is here"),
@@ -39542,6 +39709,219 @@ def export_vendors_csv():
     conn.close()
     fieldnames = ["name", "contact_person", "phone", "email", "payment_terms", "notes"]
     return csv_response(fieldnames, rows, "vendors.csv")
+
+
+@app.route("/restaurant/margins")
+@owner_required
+def restaurant_margins():
+    """What each dish costs to put on a plate, and what that leaves."""
+    conn = get_db()
+    dishes = dish_costs(conn)
+    stock = conn.execute(
+        "SELECT id, name, unit, unit_cost FROM stock_items WHERE active = 1 "
+        "ORDER BY name").fetchall()
+    conn.close()
+
+    costed = [d for d in dishes if d["costed"]]
+    thin = [d for d in costed
+            if d["margin_pct"] is not None and d["margin_pct"] < 50]
+    overview = [
+        overview_cell("Dishes", len(dishes)),
+        overview_cell("Costed", f"{len(costed)}/{len(dishes)}",
+                      alert=len(costed) < len(dishes),
+                      hint="an uncosted dish is not a free one"),
+        overview_cell("Under half margin", len(thin), alert=bool(thin)),
+    ]
+    return render_template("restaurant_margins.html", dishes=dishes,
+                           stock=stock, overview=overview)
+
+
+@app.route("/restaurant/margins/<int:item_id>/ingredient", methods=["POST"])
+@owner_required
+def add_dish_ingredient(item_id):
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM menu_items WHERE id = ?",
+                        (item_id,)).fetchone():
+        conn.close()
+        abort(404)
+    stock_raw = (request.form.get("stock_item_id", "") or "").strip()
+    qty = parse_quantity(request.form.get("quantity", ""))
+    if not stock_raw.isdigit() or not qty:
+        conn.close()
+        flash("Choose an ingredient and how much of it.", "error")
+        return redirect(url_for("restaurant_margins"))
+    conn.execute(
+        """INSERT INTO menu_item_ingredients (menu_item_id, stock_item_id,
+                   quantity, created_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(menu_item_id, stock_item_id)
+           DO UPDATE SET quantity = excluded.quantity""",
+        (item_id, int(stock_raw), qty, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash("Added to the dish.", "success")
+    return redirect(url_for("restaurant_margins"))
+
+
+@app.route("/restaurant/margins/ingredient/<int:row_id>/remove", methods=["POST"])
+@owner_required
+def remove_dish_ingredient(row_id):
+    conn = get_db()
+    conn.execute("DELETE FROM menu_item_ingredients WHERE id = ?", (row_id,))
+    conn.commit()
+    conn.close()
+    return redirect(request.referrer or url_for("restaurant_margins"))
+
+
+@app.route("/restaurant/covers")
+@login_required
+def restaurant_covers():
+    """How many are coming, by night. What buying and rostering both need."""
+    conn = get_db()
+    days_raw = request.args.get("days", "21")
+    days = int(days_raw) if days_raw.isdigit() and 1 <= int(days_raw) <= 120 else 21
+    ahead = covers_ahead(conn, days=days)
+    conn.close()
+    busiest = max(ahead, key=lambda d: d["covers"]) if ahead else None
+    overview = [
+        overview_cell("Covers booked", sum(d["covers"] for d in ahead),
+                      hint=f"over {days} days"),
+        overview_cell("Nights with anybody",
+                      len([d for d in ahead if d["covers"]])),
+        overview_cell("Busiest night",
+                      f"{busiest['covers']}" if busiest and busiest["covers"] else "\u2014",
+                      hint=busiest["date"].strftime("%a %d %b")
+                           if busiest and busiest["covers"] else None),
+    ]
+    return render_template("restaurant_covers.html", ahead=ahead,
+                           overview=overview, days=days)
+
+
+@app.route("/restaurant/what-sells")
+@owner_required
+def restaurant_what_sells():
+    """Every dish the till has sold, most first, against what it costs."""
+    conn = get_db()
+    days_raw = request.args.get("days", "90")
+    days = int(days_raw) if days_raw.isdigit() and 1 <= int(days_raw) <= 730 else 90
+    rows = what_sells(conn, days=days)
+    costs = {d["item"]["id"]: d for d in dish_costs(conn)}
+    conn.close()
+
+    for r in rows:
+        d = costs.get(r["menu_item_id"])
+        r["cost_each"] = d["cost"] if d else None
+        # What the house KEPT, which is the figure that reorders the list.
+        # The best seller and the best earner are rarely the same dish.
+        r["kept"] = (round(r["took"] - (d["cost"] or 0) * r["sold"], 2)
+                     if d and d["costed"] else None)
+
+    overview = [
+        overview_cell("Dishes sold", len(rows), hint=f"over {days} days"),
+        overview_cell("Took", f"\u20ac{sum(r['took'] for r in rows):,.0f}"),
+    ]
+    return render_template("restaurant_what_sells.html", rows=rows,
+                           overview=overview, days=days)
+
+
+@app.route("/restaurant/tables", methods=["GET", "POST"])
+@login_required
+def restaurant_tables():
+    """The table plan for a night."""
+    conn = get_db()
+
+    if request.method == "POST":
+        name = (request.form.get("name", "") or "").strip()[:60]
+        seats_raw = (request.form.get("seats", "") or "").strip()
+        area = (request.form.get("area", "") or "").strip()[:60]
+        if not name:
+            conn.close()
+            flash("A table needs a name.", "error")
+            return redirect(url_for("restaurant_tables"))
+        order = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) AS m FROM dining_tables"
+        ).fetchone()["m"]
+        conn.execute(
+            """INSERT INTO dining_tables (name, seats, area, active,
+                       sort_order, created_at)
+               VALUES (?, ?, ?, 1, ?, ?)""",
+            (name, int(seats_raw) if seats_raw.isdigit() and int(seats_raw) > 0 else 2,
+             area or None, order + 1, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{name} added.", "success")
+        return redirect(url_for("restaurant_tables"))
+
+    on = parse_date(request.args.get("date", "")) or datetime.now(LOCAL_TZ).date()
+    tables = conn.execute(
+        "SELECT * FROM dining_tables WHERE active = 1 ORDER BY sort_order, name"
+    ).fetchall()
+    bookings = conn.execute(
+        """SELECT restaurant_bookings.*, dining_tables.name AS table_name
+             FROM restaurant_bookings
+             LEFT JOIN dining_tables
+               ON dining_tables.id = restaurant_bookings.dining_table_id
+            WHERE restaurant_bookings.dinner_date = ?
+              AND restaurant_bookings.status = 'confirmed'
+              AND restaurant_bookings.no_show_at IS NULL
+            ORDER BY restaurant_bookings.guest_name""", (on.isoformat(),)).fetchall()
+    conn.close()
+
+    seated = [b for b in bookings if b["dining_table_id"]]
+    covers = sum(b["party_size"] or 0 for b in bookings)
+    seats = sum(t["seats"] or 0 for t in tables)
+    overview = [
+        overview_cell("Covers", covers,
+                      alert=bool(seats) and covers > seats,
+                      hint=f"{seats} seats laid" if seats else None),
+        overview_cell("Not seated", len(bookings) - len(seated),
+                      alert=len(bookings) > len(seated)),
+    ]
+    return render_template("restaurant_tables.html", tables=tables,
+                           bookings=bookings, on=on, overview=overview,
+                           seats=seats, covers=covers)
+
+
+@app.route("/restaurant/tables/seat/<int:booking_id>", methods=["POST"])
+@login_required
+def seat_restaurant_booking(booking_id):
+    """Put a party on a table, or take them off it."""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT guest_name, party_size, dinner_date FROM restaurant_bookings "
+        "WHERE id = ?", (booking_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    table_raw = (request.form.get("dining_table_id", "") or "").strip()
+    table_id = int(table_raw) if table_raw.isdigit() else None
+
+    if table_id:
+        table = conn.execute(
+            "SELECT name, seats FROM dining_tables WHERE id = ?",
+            (table_id,)).fetchone()
+        # Two parties on one table is a real thing at a long table and a
+        # mistake at a small one, so this reports rather than refuses --
+        # and says who is already there so the choice is informed.
+        already = conn.execute(
+            """SELECT guest_name, party_size FROM restaurant_bookings
+                WHERE dining_table_id = ? AND dinner_date = ? AND id != ?
+                  AND status = 'confirmed' AND no_show_at IS NULL""",
+            (table_id, row["dinner_date"], booking_id)).fetchall()
+        taken = sum(a["party_size"] or 0 for a in already)
+        if table and taken + (row["party_size"] or 0) > (table["seats"] or 0):
+            flash(f"{table['name']} seats {table['seats']} and would have "
+                  f"{taken + (row['party_size'] or 0)}"
+                  + (f" \u2014 {', '.join(a['guest_name'] for a in already)} "
+                     "already on it." if already else ".")
+                  + " Seated anyway; move somebody if that is wrong.",
+                  "error")
+
+    conn.execute("UPDATE restaurant_bookings SET dining_table_id = ? WHERE id = ?",
+                 (table_id, booking_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("restaurant_tables", date=row["dinner_date"]))
 
 
 @app.route("/management/visitors", methods=["GET", "POST"])
