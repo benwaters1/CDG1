@@ -163,6 +163,16 @@
       <input type="checkbox" name="active" {{ 'checked' if room['active'] }}>
       <span>Bookable — guests can choose this room</span>
     </label>
+    {# Two separate questions. "Bookable" is about selling a night; this is
+       about whether a residential course may put somebody in it. A room can
+       honestly be a no to the first and a yes to the second, and that
+       combination is the entire reason this exists — the rooming tool used
+       to read the nightly list and report people as unplaceable who were
+       not. #}
+    <label class="checkbox-row" style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+      <input type="checkbox" name="workshop_room" {{ 'checked' if room['workshop_room'] }}>
+      <span>A workshop may use it — even if it is not sold by the night</span>
+    </label>
   </section>
   {% endif %}
 

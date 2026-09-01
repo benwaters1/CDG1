@@ -290,6 +290,7 @@ AUTOMATION_SETTING_DEFAULTS = {
     # On by default. Each of these was written to run unattended and then
     # only ever ran from a button, which is the same as not running.
     "automation_morning_digest_enabled": "1",
+    "automation_workshop_decision_enabled": "1",
     "automation_room_feedback_enabled": "1",
     "automation_checkin_text_enabled": "1",
     "automation_checkout_text_enabled": "1",
@@ -2445,6 +2446,18 @@ def init_db():
         -- session, because the recipe is a property of the thing being
         -- taught -- every running of it uses the same materials, scaled to
         -- however many people came.
+        -- One row per reminder actually sent, so a decision that stays
+        -- open for three weeks does not send twenty-one of them. A reminder
+        -- somebody has learned to ignore is worse than none, because the
+        -- one that matters is the one they ignore.
+        CREATE TABLE IF NOT EXISTS workshop_decision_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL REFERENCES workshop_sessions(id) ON DELETE CASCADE,
+            stage TEXT NOT NULL CHECK(stage IN ('due', 'overdue')),
+            sent_at TEXT NOT NULL,
+            UNIQUE(session_id, stage)
+        );
+
         CREATE TABLE IF NOT EXISTS workshop_materials (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             workshop_id INTEGER NOT NULL REFERENCES workshops(id) ON DELETE CASCADE,
@@ -3627,6 +3640,14 @@ def init_db():
         ("stock_workshop_session", "ALTER TABLE stock_movements ADD COLUMN "
                                    "workshop_session_id INTEGER REFERENCES "
                                    "workshop_sessions(id) ON DELETE SET NULL"),
+        # A room a workshop may use, which is not the same list as the rooms
+        # the house sells by the night. Additive on purpose: `active` still
+        # means "sold as a stay" and is read at twenty-five sites, none of
+        # which need to learn about this. A workshop-only room is
+        # active = 0, workshop_room = 1 -- invisible to every stay query
+        # already, because they all filter on active.
+        ("rooms_workshop_room", "ALTER TABLE rooms ADD COLUMN "
+                                "workshop_room INTEGER NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -18325,6 +18346,32 @@ def delete_role_requirement(req_id):
 # whoever is running service has to be able to ring things up.
 # ---------------------------------------------------------------------------
 
+@app.route("/admin/stock/basket")
+@owner_required
+def stock_basket():
+    """What to buy, grouped by who to ring.
+
+    One list per supplier rather than one for the house, because that is
+    the shape of the errand: a single list of everything is a list nobody
+    can act on.
+    """
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    basket = shopping_basket(conn, today)
+    conn.close()
+    overview = [
+        overview_cell("To buy", basket["lines"], hint="things"),
+        overview_cell("Suppliers", len([g for g in basket["vendors"]
+                                        if g["vendor"]]),
+                      hint="to ring"),
+        overview_cell("At the prices on file",
+                      f"\u20ac{basket['total']:.2f}",
+                      hint="what stock says each costs"),
+    ]
+    return render_template("stock_basket.html", basket=basket,
+                           overview=overview)
+
+
 @app.route("/admin/stock")
 @owner_required
 def admin_stock():
@@ -20405,6 +20452,9 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("What to buy", "stock_basket",
+     "shopping basket order list buy stock reorder supplier vendor "
+     "workshop materials running low"),
     # --- Pages that existed with no way to find them -----------------------
     #
     # Each of these was built, wired up, guarded and tested, and then reachable
@@ -27945,6 +27995,58 @@ def morning_digest(conn, today=None):
     return subject, "\n".join(lines).rstrip() + "\n", has_anything
 
 
+def run_workshop_decision_job(conn, today=None):
+    """Tell the owner a workshop needs deciding, once per stage.
+
+    Two stages, because they are different messages. "You have a week to
+    decide" is information; "you were supposed to decide on Tuesday and it
+    is still short" deserves to interrupt. Sending the first one again
+    every morning until the date passes would turn both into wallpaper.
+    """
+    day = today or datetime.now(LOCAL_TZ).date()
+    at_risk = [w for w in sessions_at_risk(conn, day) if w["urgent"]]
+    if not at_risk:
+        return "no workshop needs deciding"
+
+    already = {(r["session_id"], r["stage"]) for r in conn.execute(
+        "SELECT session_id, stage FROM workshop_decision_reminders").fetchall()}
+
+    sent = 0
+    for w in at_risk:
+        stage = "overdue" if w["overdue"] else "due"
+        if (w["session"]["id"], stage) in already:
+            continue
+
+        if w["waitlist_could_fill"]:
+            what = (f"{w['waiting']} on the waiting list could cover it. "
+                    "Ring them before deciding anything else.")
+        elif w["overdue"]:
+            what = (f"The date for deciding passed on "
+                    f"{format_date_short(w['decide_by'].isoformat())}.")
+        else:
+            what = (f"Decide by {format_date_short(w['decide_by'].isoformat())}"
+                    f" \u2014 {w['days_left']} day"
+                    f"{'' if w['days_left'] == 1 else 's'}.")
+
+        for owner in conn.execute(
+                "SELECT id FROM users WHERE role = 'owner'").fetchall():
+            send_notification(
+                conn, owner["id"], "workshop_decision",
+                f"{w['title']} has {w['confirmed']} of {w['minimum']}",
+                f"{format_date_short(w['session']['start_date'])}. {what}",
+                link=url_for("admin_workshops"))
+        conn.execute(
+            """INSERT OR IGNORE INTO workshop_decision_reminders
+                   (session_id, stage, sent_at) VALUES (?, ?, ?)""",
+            (w["session"]["id"], stage,
+             datetime.now(timezone.utc).isoformat()))
+        sent += 1
+
+    conn.commit()
+    return (f"{sent} reminder(s) sent" if sent
+            else "already reminded about every one of these")
+
+
 def run_morning_digest_job(conn, today=None):
     """Send the morning note, unless there is genuinely nothing in it.
 
@@ -28193,6 +28295,20 @@ def bookable_room_count(conn):
     return conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
 
 
+def workshop_rooms(conn):
+    """Every room a workshop may put somebody in.
+
+    Wider than the stay inventory by design. A room can be right for four
+    nights of a course and not be something the house lists nightly, and
+    reading only `active` capped every workshop at the nightly list and
+    reported people as unplaceable who were not.
+    """
+    return conn.execute(
+        """SELECT * FROM rooms
+            WHERE active = 1 OR workshop_room = 1
+            ORDER BY sort_order, name""").fetchall()
+
+
 def _room_party(booking):
     """How many beds this booking needs in one room."""
     return max(int(booking["party_size"] or 1), 1)
@@ -28214,9 +28330,7 @@ def rooming_plan(conn, session_id):
             WHERE workshop_bookings.session_id = ?
               AND workshop_bookings.status IN ('pending', 'confirmed')
             ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
-    rooms = conn.execute(
-        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name"
-    ).fetchall()
+    rooms = workshop_rooms(conn)
 
     by_room, unassigned = {}, []
     for p in people:
@@ -30399,6 +30513,9 @@ def new_room():
             (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
+             # workshop_room defaults to 0. The checkbox is on the edit form
+             # only, like Bookable: a new room starts off both lists and
+             # putting it on either is a deliberate act afterwards.
              secrets.token_urlsafe(20), max_order + 1, photo_filename, f["amenities"]),
         )
         conn.commit()
@@ -30421,6 +30538,7 @@ def edit_room(room_id):
     if request.method == "POST":
         f = room_fields_from_form()
         active = 1 if request.form.get("active") == "on" else 0
+        workshop_room = 1 if request.form.get("workshop_room") == "on" else 0
 
         photo_filename = save_room_photo(request.files.get("photo"))
         if photo_filename is False:
@@ -30433,11 +30551,12 @@ def edit_room(room_id):
         conn.execute(
             """UPDATE rooms SET name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
-               floor=?, active=?, photo_filename=?, amenities=? WHERE id=?""",
+               floor=?, active=?, photo_filename=?, amenities=?,
+               workshop_room=? WHERE id=?""",
             (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"], active, photo_filename,
-             f["amenities"], room_id),
+             f["amenities"], workshop_room, room_id),
         )
 
         gallery_names = save_room_photos_multi(request.files.getlist("gallery_photos"))
@@ -34361,6 +34480,87 @@ def consume_session_materials(conn, session_id, user_id=None):
     return {"written": written, "already": False, "plan": plan}
 
 
+def shopping_basket(conn, today=None, days=None):
+    """Everything worth buying, and why, grouped by supplier.
+
+    Two reasons a thing is on this list, and an item wanted for both
+    appears ONCE with both reasons named. Buying something twice because
+    two parts of the app asked separately is the exact failure this
+    replaces.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    days = WORKSHOP_MATERIALS_WARN_DAYS if days is None else days
+
+    items = {i["id"]: i for i in conn.execute(
+        "SELECT * FROM stock_items WHERE active = 1").fetchall()}
+    if not items:
+        return {"vendors": [], "total": 0.0, "lines": 0}
+    levels = stock_levels(conn, list(items))
+
+    # {item_id: {"workshop": qty, "sessions": [names]}}
+    wanted = {}
+    for plan in sessions_short_of_materials(conn, today, days):
+        for line in plan["short"]:
+            iid = line["material"]["stock_item_id"]
+            slot = wanted.setdefault(iid, {"workshop": 0.0, "sessions": []})
+            # The NEED, not the shortfall: the shortfall is measured against
+            # a shelf this list is about to refill, and adding shortfalls
+            # across two sessions that each want the same eight kilos would
+            # buy sixteen.
+            slot["workshop"] += line["need"]
+            label = (f"{plan['session']['title']} "
+                     f"{format_date_short(plan['session']['start_date'])}")
+            if label not in slot["sessions"]:
+                slot["sessions"].append(label)
+
+    by_vendor = {}
+    total, lines = 0.0, 0
+    for iid, item in items.items():
+        have = levels.get(iid, 0)
+        keep = item["reorder_level"] or 0
+        need = wanted.get(iid, {}).get("workshop", 0.0)
+
+        # Cover the sessions AND leave the reorder level on the shelf. Buying
+        # only the shortfall empties the shelf the moment the workshop runs.
+        buy = round(max(0.0, need + keep - have), 3)
+        if buy <= 0:
+            continue
+
+        why = []
+        if need:
+            why.append("for " + ", ".join(wanted[iid]["sessions"][:2])
+                       + (f" and {len(wanted[iid]['sessions']) - 2} more"
+                          if len(wanted[iid]["sessions"]) > 2 else ""))
+        if have <= keep:
+            why.append(f"below the {keep:g} {item['unit']} to keep on the shelf")
+
+        cost = round(buy * (item["unit_cost"] or 0), 2)
+        total += cost
+        lines += 1
+        key = item["vendor_id"] or 0
+        by_vendor.setdefault(key, []).append({
+            "item": item, "buy": buy, "have": round(have, 3), "keep": keep,
+            "workshop_need": round(need, 3), "cost": cost,
+            "why": why,
+            # A thing wanted for both reasons is one line, said once.
+            "both": bool(need) and have <= keep,
+        })
+
+    names = {v["id"]: v for v in conn.execute("SELECT * FROM vendors").fetchall()}
+    out = []
+    for vid, rows in by_vendor.items():
+        rows.sort(key=lambda r: -r["cost"])
+        out.append({
+            "vendor": names.get(vid),
+            "rows": rows,
+            "total": round(sum(r["cost"] for r in rows), 2),
+        })
+    # Somebody to ring first; the ones with no supplier on file last, because
+    # they are a different job -- find out who sells this.
+    out.sort(key=lambda g: (g["vendor"] is None, -g["total"]))
+    return {"vendors": out, "total": round(total, 2), "lines": lines}
+
+
 def sessions_short_of_materials(conn, today=None, days=None):
     """Sessions coming up without enough on the shelf to run them.
 
@@ -34996,10 +35196,20 @@ def matching_workshop_waitlist_entries(conn, session_id):
 def session_sheet_viewer(conn, session_id, user):
     """The session, if this person is allowed to see its sheet.
 
+    Any member of staff, not only whoever teaches it. The kitchen cooks
+    around the dietary notes, whoever does the rooms needs the rooming, and
+    somebody on the desk answers the telephone about a guest they have
+    never heard of -- none of them is the instructor.
+
+    That is safe here and would not have been on the admin registrations
+    page, which is the whole reason this exists separately: this loads no
+    money. A sheet carrying balances and refund buttons is an admin screen,
+    and widening one of those to the whole staff is how a guest's
+    outstanding balance ends up on a phone in the kitchen.
+
     Returns None rather than raising, so the caller decides between 404 and
-    403 -- and it returns 404 for a session that exists but is not theirs,
-    because telling an instructor "that session exists and you may not see
-    it" is a fact about the house they have no need for.
+    403. A session that does not exist is not distinguished from one there
+    is nothing to show for.
     """
     row = conn.execute(
         """SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
@@ -35010,11 +35220,9 @@ def session_sheet_viewer(conn, session_id, user):
             WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
     if not row:
         return None
-    if user["role"] == "owner":
-        return row
-    if row["instructor_user_id"] and row["instructor_user_id"] == user["id"]:
-        return row
-    return None
+    # Anybody logged in and on the staff. The route already requires a
+    # login, and current_user() refuses an account marked inactive.
+    return row
 
 
 def session_sheet(conn, session_id):
@@ -44632,6 +44840,10 @@ AUTOMATION_JOBS = [
     # was waiting to be looked up.
     ("morning_digest", "automation_morning_digest_enabled", None, 24 * 3600,
      run_morning_digest_job),
+    # Daily. Stamped per session per stage, so a decision open for three
+    # weeks sends two reminders rather than twenty-one.
+    ("workshop_decision", "automation_workshop_decision_enabled", None, 24 * 3600,
+     run_workshop_decision_job),
     # Asking a room guest how it was. The job existed and nothing called it,
     # so the guests were being asked by nobody.
     ("room_feedback_request", "automation_room_feedback_enabled", None, 24 * 3600,
@@ -44764,6 +44976,7 @@ AUTOMATION_JOB_LABELS = {
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",
+    "workshop_decision": "Workshop: it will not reach the number it needs to run (once when the date is in sight, once if it passes)",
     "ical_sync": "iCal sync",
     "workshop_balance_reminder": "Workshop balance-due reminders",
     "room_balance_reminder": "Room balance-due reminders (before the guest travels)",

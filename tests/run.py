@@ -74,6 +74,7 @@ SUITES = [
     "test_ical_sync",
     "test_waitlist",
     "test_stock_ledger",
+    "test_shopping_basket",
     "test_waitlist_other",
     "test_house_crud",
     "test_hr_compliance",

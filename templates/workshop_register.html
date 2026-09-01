@@ -42,7 +42,7 @@
             <label for="party_size">How many of you</label>
             <input type="number" inputmode="numeric" id="party_size" name="party_size" min="1"
                    max="{{ session['capacity'] }}" value="{{ prefill_party_size }}" required>
-            <p class="g-hint">Up to {{ session['capacity'] }} on this workshop.</p>
+            <p class="g-hint">Up to {{ session['capacity'] }} on this workshop. Adults — workshops are not run for children.</p>
             {% if session['price_per_person'] %}
             <p class="g-hint" id="occupancy_total"></p>
             {% endif %}

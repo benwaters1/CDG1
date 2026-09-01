@@ -112,11 +112,35 @@ def _pack():
 
 
 def _anchor():
-    """Mid-morning a few days ago — safely inside the current month."""
+    """Mid-morning, already past, and inside the current month.
+
+    All three conditions matter and the old version dropped the second:
+
+        base.replace(day=min(max(now.day, 2), 26))
+
+    It lands in the FUTURE in two separate ways. On the first of a month
+    the clamp to 2 makes it tomorrow. And on any day, `hour=9` is ahead of
+    the clock until nine in the morning. Sampled across a month at five
+    times of day, 55 of 155 combinations produced a date that had not
+    happened yet.
+
+    Every entry the suite built then sat in the future, the timesheet
+    page's fourteen-day window ends today, and the repair forms this suite
+    checks for were not on it. It went red on a morning run or on a first,
+    and green the rest of the time — rare enough, and arbitrary enough, to
+    read as a flake rather than as a bug.
+
+    Staying inside the month is deliberate and not negotiable — the pack is
+    drawn per period, and a scenario split across two of them is testing
+    something else. So when nine in the morning has not happened yet, this
+    steps back within the day rather than into the previous month.
+    """
     now = datetime.now(timezone.utc)
-    base = now.replace(hour=9, minute=0, second=0, microsecond=0)
-    # Keep clear of the month boundary so the whole scenario lands in one period.
-    return base.replace(day=min(max(now.day, 2), 26))
+    base = now.replace(day=min(now.day, 26), hour=9,
+                       minute=0, second=0, microsecond=0)
+    if base > now:
+        base = now.replace(hour=0, minute=1, second=0, microsecond=0)
+    return base
 
 
 def run():

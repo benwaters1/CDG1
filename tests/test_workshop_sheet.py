@@ -175,20 +175,43 @@ def run():
     for word in ("Balance due", "Total charged", "Refund"):
         s.check(f"no {word.lower()}", word not in body)
 
-    s.section("An instructor sees their own workshops and no others")
+    s.section("Any member of staff can open it, not only whoever teaches")
+    # The owner's reading, and better than my original scoping: the kitchen
+    # cooks around the dietary notes, whoever does the rooms needs the
+    # rooming, and somebody on the desk answers the telephone about a guest
+    # they have never heard of. None of those people is the instructor.
     r = ec.get(f"/workshops/{other_session}/sheet")
-    s.check("a session they do not teach is refused", r.status_code == 404,
+    s.check("a session somebody else teaches opens", r.status_code == 200,
             detail=f"HTTP {r.status_code}")
-    s.check("as not-found rather than forbidden", r.status_code != 403,
-            detail="\"that exists and you may not see it\" is a fact about "
-                   "the house an instructor has no need for")
-
-    s.section("The owner can see any of them")
-    r = oc.get(f"/workshops/{other_session}/sheet")
-    s.check("including one they do not teach", r.status_code == 200,
-            detail=f"HTTP {r.status_code}")
-    s.check("and it names that session's guest",
+    s.check("and names that session's guest",
             "Damien" in r.get_data(as_text=True))
+
+    s.section("Which is only safe because there is no money on it")
+    # This check did not change and now carries more weight. Widening a page
+    # that shows balances and refund buttons to the whole staff is how a
+    # guest's outstanding balance ends up on a phone in the kitchen. This
+    # page could be widened precisely because there was nothing on it to
+    # leak -- not hidden, never loaded.
+    other_body = r.get_data(as_text=True)
+    s.check("no figure from the registration appears on it",
+            "1234.56" not in other_body,
+            detail="every guest in this suite has a total_price of 1234.56 "
+                   "against them in the database")
+    for word in ("Balance due", "Total charged", "Refund"):
+        s.check(f"no {word.lower()} either", word not in other_body)
+
+    s.section("The admin registrations page is still the owner's alone")
+    # The page this one exists INSTEAD OF. If an employee could open that,
+    # the whole argument for a separate sheet collapses.
+    r = ec.get(f"/admin/workshops/registrations", follow_redirects=False)
+    s.check("an employee cannot open it", r.status_code in (302, 303, 403),
+            detail=f"HTTP {r.status_code} \u2014 it carries balances, "
+                   "payments, refunds and a repricing form")
+
+    s.section("And the owner can see any of them")
+    r = oc.get(f"/workshops/{other_session}/sheet")
+    s.check("the owner opens it too", r.status_code == 200,
+            detail=f"HTTP {r.status_code}")
 
     s.section("A stranger cannot")
     anon = m.app.test_client()
