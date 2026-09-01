@@ -189,9 +189,28 @@ def run():
     s.section("A workshop that has never run has no alumni")
     fresh = workshop("Never Yet Run")
     session(fresh, today + timedelta(days=60))
+
+    # And the case the date rule is actually for. The one above is kept
+    # empty by the JOIN -- nobody is booked, so no arrangement of dates
+    # could produce alumni for it. Here somebody IS booked, on a session
+    # still to come: they have not done it, they are coming to it.
+    soon_only = workshop("Only Ever Ahead")
+    ahead = session(soon_only, today + timedelta(days=50))
+    register(ahead, "Helene")
     conn.commit()
+
     s.check("and reports none rather than erroring",
             m.workshop_alumni(conn, fresh) == [])
+    s.check("nor does one whose only session has yet to happen",
+            m.workshop_alumni(conn, soon_only) == [],
+            detail="somebody booked on a session still to come has not done "
+                   "it, and this is the case the date condition exists for")
+    s.check("so neither is offered as an audience",
+            not any(w["id"] in (fresh, soon_only)
+                    for w in m.workshops_with_alumni(conn)),
+            detail=str([w["title"] for w in m.workshops_with_alumni(conn)])
+                   + " — one definition now serves both pickers, so this is "
+                     "the rule they share")
 
     s.section("The owner can pick one")
     # Its own code rather than whatever is seeded: a suite that depends on

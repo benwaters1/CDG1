@@ -79,6 +79,7 @@ SUITES = [
     "test_house_crud",
     "test_hr_compliance",
     "test_campaign_email",
+    "test_workshop_announce",
     "test_email_outbox",
     "test_email_templates",
     "test_newsletter",

@@ -13651,6 +13651,12 @@ CAMPAIGN_SEGMENTS = {
     "restaurant": "Past dinner guests",
     "workshop": "Past workshop guests",
     "profiles": "All guest profiles",
+    # A different KIND of list, and the reason it is worth naming as such is
+    # written out beside GUEST_BLAST_SEGMENTS. It belongs here because the
+    # public workshops page promises dates reach it, and until now the
+    # campaign sender could not reach it at all — the blast form had a
+    # newsletter box and this one never did.
+    "newsletter": "Newsletter subscribers",
 }
 
 
@@ -13744,8 +13750,19 @@ def edit_campaign_template(template_id):
                                sample["e"] if sample else "guest@example.com")
     preview_subject, preview_body = render_campaign(template["subject"], template["body"], ctx)
 
+    # The fixed segments, plus one per workshop that has anybody who has
+    # done it. A new date is announced to the people who did the last one;
+    # "everybody who ever attended anything" is the wrong list for that.
+    #
+    # One audience query per entry, which is a handful of workshops rather
+    # than a page-load-per-guest — and the count has to be real, because it
+    # is the number the owner types back to confirm the send.
+    segments = dict(CAMPAIGN_SEGMENTS)
+    for w in workshops_with_alumni(conn):
+        segments[f"workshop:{w['id']}"] = f"Did {w['title']}"
+
     audience_counts = {
-        key: len(campaign_audience(conn, [key])) for key in CAMPAIGN_SEGMENTS
+        key: len(campaign_audience(conn, [key])) for key in segments
     }
     sends = conn.execute(
         """SELECT * FROM campaign_sends WHERE template_id = ?
@@ -13753,7 +13770,7 @@ def edit_campaign_template(template_id):
     conn.close()
     return render_template(
         "admin_email_edit.html", template=template, areas=CAMPAIGN_AREAS,
-        segments=CAMPAIGN_SEGMENTS, audience_counts=audience_counts,
+        segments=segments, audience_counts=audience_counts,
         merge_fields=CAMPAIGN_MERGE_FIELDS, preview_subject=preview_subject,
         preview_body=preview_body, sends=sends,
         email_configured=bool(RESEND_API_KEY or SMTP_HOST),
@@ -13784,7 +13801,12 @@ def send_campaign_template(template_id):
         conn.close()
         abort(404)
 
-    segments = request.form.getlist("segments")
+    # Validated rather than passed straight through. Nothing widens if a
+    # token is dropped here -- there is no fall-back-to-everybody on this
+    # route -- but the tokens now carry an argument, and letting a
+    # malformed one reach the audience builder is the shape of the bug
+    # already guarded against on the blast route.
+    segments = valid_segments(request.form.getlist("segments"))
     months_raw = request.form.get("since_months", "").strip()
     since_iso = None
     if months_raw.isdigit() and int(months_raw) > 0:
@@ -33842,6 +33864,31 @@ def valid_segments(raw):
     return out
 
 
+def workshops_with_alumni(conn, today=None):
+    """Workshops somebody has actually done, with how many people that is.
+
+    The three judgements in here have to match workshop_alumni exactly, and
+    that is why this exists once rather than twice: past sessions only,
+    confirmed bookings only, and do-not-email honoured. An audience picker
+    that offers a workshop the audience query then returns nobody for is a
+    picker the owner stops trusting.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    return conn.execute(
+        """SELECT workshops.id, workshops.title,
+                  COUNT(DISTINCT LOWER(workshop_bookings.guest_email)) AS people
+             FROM workshops
+             JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
+             JOIN workshop_bookings
+               ON workshop_bookings.session_id = workshop_sessions.id
+              AND workshop_bookings.status = 'confirmed'
+              AND workshop_bookings.do_not_email = 0
+            WHERE workshop_sessions.end_date < ?
+            GROUP BY workshops.id
+            HAVING people > 0
+            ORDER BY workshops.title""", (today.isoformat(),)).fetchall()
+
+
 def workshop_alumni(conn, workshop_id, *, exclude_session_id=None,
                     since_date_iso=None):
     """Everyone who has done this particular workshop.
@@ -34006,20 +34053,7 @@ def promo_code_blast(code_id):
     # Only workshops that have actually run: "the people who did this
     # before" is empty for one that has not happened yet, and offering it
     # would be offering a list that cannot exist.
-    alumni_workshops = conn.execute(
-        """SELECT workshops.id, workshops.title,
-                  COUNT(DISTINCT LOWER(workshop_bookings.guest_email)) AS people
-             FROM workshops
-             JOIN workshop_sessions ON workshop_sessions.workshop_id = workshops.id
-             JOIN workshop_bookings
-               ON workshop_bookings.session_id = workshop_sessions.id
-              AND workshop_bookings.status = 'confirmed'
-              AND workshop_bookings.do_not_email = 0
-            WHERE workshop_sessions.end_date < ?
-            GROUP BY workshops.id
-            HAVING people > 0
-            ORDER BY workshops.title""",
-        (datetime.now(LOCAL_TZ).date().isoformat(),)).fetchall()
+    alumni_workshops = workshops_with_alumni(conn)
     conn.close()
     return render_template(
         "admin_promo_blast.html", promo=promo, segments=segments, since_months=since_months_raw,
