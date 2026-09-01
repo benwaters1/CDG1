@@ -53,6 +53,7 @@ SUITES = [
     "test_pos_journal",
     "test_pos_archive",
     "test_menu_day",
+    "test_dinner_covers",
     "test_card_capacity",
     "test_dietary_clashes",
     "test_menu_read",

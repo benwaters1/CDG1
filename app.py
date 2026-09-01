@@ -4730,6 +4730,7 @@ NAV_AREAS = {
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
         "admin_terminal", "admin_extras", "admin_restaurant", "admin_restaurant_settings",
+        "dinner_covers_page", "export_dinner_covers_csv",
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
         "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
@@ -10301,6 +10302,132 @@ def rota_vs_clock(conn, start, end, *, today=None):
 
     out.sort(key=lambda r: (r["date"], r["employee_name"] or ""), reverse=True)
     return out
+
+
+def dinner_covers_forecast(conn, start=None, days=21):
+    """How many are likely at the table each night, and who they are.
+
+    The kitchen buys for the table it is cooking for — the restaurant page
+    says exactly that — and until now the chef had three screens and a guess.
+    Reservations are on one, arrivals on another, atelier residents on a
+    third, and nobody multiplied them.
+
+    Three sources, kept apart on purpose because they are three different
+    kinds of certainty:
+
+      booked      a confirmed restaurant reservation. A number, not an
+                  estimate. No-shows are excluded once marked.
+      in-house    guests sleeping here that night. They are not booked in for
+                  dinner and most nights most of them eat, but "most" is not
+                  a reservation, so this is shown as its own column rather
+                  than folded into the first.
+      atelier     an atelier running over that night. These DO eat here —
+                  the price covers it — so they are as certain as booked.
+
+    The projection applies a take-up rate to the in-house column only, and
+    the rate is the house's own history rather than a guess: how many
+    in-house guests actually sat down on comparable past nights. With no
+    history it says so and shows the range instead of inventing a number.
+    """
+    start = start or service_day()
+    if isinstance(start, str):
+        start = parse_date(start)
+    end = start + timedelta(days=days)
+
+    booked = {}
+    for r in conn.execute(
+            """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS c
+                 FROM restaurant_bookings
+                WHERE status = 'confirmed' AND no_show_at IS NULL
+                  AND dinner_date >= ? AND dinner_date < ?
+                GROUP BY dinner_date""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        booked[r["dinner_date"]] = r["c"] or 0
+
+    # A stay covers the nights from arrival up to, but not including,
+    # departure — somebody leaving on the 5th does not eat here on the 5th.
+    in_house = {}
+    for b in conn.execute(
+            """SELECT arrival_date, departure_date, party_size FROM bookings
+                WHERE status = 'confirmed' AND departure_date > ? AND arrival_date < ?""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not a or not d:
+            continue
+        night = max(a, start)
+        while night < min(d, end):
+            in_house[night.isoformat()] = in_house.get(night.isoformat(), 0) + (b["party_size"] or 0)
+            night += timedelta(days=1)
+
+    atelier = {}
+    for w in conn.execute(
+            """SELECT workshop_sessions.start_date, workshop_sessions.end_date,
+                      COALESCE(SUM(workshop_bookings.party_size), 0) AS heads
+                 FROM workshop_sessions
+                 JOIN workshop_bookings ON workshop_bookings.session_id = workshop_sessions.id
+                WHERE workshop_bookings.status = 'confirmed'
+                  AND workshop_sessions.end_date >= ? AND workshop_sessions.start_date < ?
+                GROUP BY workshop_sessions.id""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        a, d = parse_date(w["start_date"]), parse_date(w["end_date"])
+        if not a or not d:
+            continue
+        night = max(a, start)
+        while night <= min(d, end - timedelta(days=1)):
+            atelier[night.isoformat()] = atelier.get(night.isoformat(), 0) + (w["heads"] or 0)
+            night += timedelta(days=1)
+
+    rate, basis = _in_house_dining_rate(conn)
+    rows = []
+    d = start
+    while d < end:
+        key = d.isoformat()
+        bk, ih, at = booked.get(key, 0), in_house.get(key, 0), atelier.get(key, 0)
+        likely = bk + at + (round(ih * rate) if rate is not None else 0)
+        rows.append({
+            "date": d, "iso": key, "weekday": d.strftime("%a"),
+            "booked": bk, "in_house": ih, "atelier": at,
+            "certain": bk + at,
+            "likely": likely if rate is not None else None,
+            "most": bk + at + ih,
+        })
+        d += timedelta(days=1)
+    return {"start": start, "end": end - timedelta(days=1), "rows": rows,
+            "rate": rate, "rate_basis": basis,
+            "certain_total": sum(r["certain"] for r in rows),
+            "most_total": sum(r["most"] for r in rows)}
+
+
+def _in_house_dining_rate(conn, lookback_days=120):
+    """What share of in-house guests actually sat down, from past nights.
+
+    Measured rather than assumed. A rate somebody typed once is a rate nobody
+    revisits, and the number it produces gets ordered against.
+    """
+    today = service_day()
+    since = (today - timedelta(days=lookback_days)).isoformat()
+    seated = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
+            WHERE status = 'confirmed' AND no_show_at IS NULL
+              AND booking_id IS NOT NULL
+              AND dinner_date >= ? AND dinner_date < ?""",
+        (since, today.isoformat())).fetchone()["c"] or 0
+    nights = 0
+    for b in conn.execute(
+            """SELECT arrival_date, departure_date, party_size FROM bookings
+                WHERE status = 'confirmed' AND departure_date > ? AND arrival_date < ?""",
+            (since, today.isoformat())).fetchall():
+        a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not a or not d:
+            continue
+        lo, hi = max(a, parse_date(since)), min(d, today)
+        if hi > lo:
+            nights += (hi - lo).days * (b["party_size"] or 0)
+    if nights < 20:
+        # Too little to divide by. Saying so beats a rate built on one week.
+        return None, f"only {nights} guest-night(s) in the last {lookback_days} days"
+    return (round(seated / nights, 2),
+            f"{seated} of {nights} guest-nights sat down, last {lookback_days} days")
 
 
 def cover_gaps(conn, start, end):
@@ -37920,6 +38047,40 @@ def walk_in_booking():
     return render_template("walk_in_booking.html", rooms=rooms, today=today,
                            options=options, arrival=arrival, departure=departure,
                            form=request.args)
+
+
+@app.route("/admin/restaurant/covers")
+@owner_required
+def dinner_covers_page():
+    """What the kitchen is likely to cook for, night by night."""
+    conn = get_db()
+    try:
+        days = max(7, min(60, int(request.args.get("days", 21))))
+    except (TypeError, ValueError):
+        days = 21
+    data = dinner_covers_forecast(conn, days=days)
+    conn.close()
+    return render_template("admin_dinner_covers.html", data=data, days=days)
+
+
+@app.route("/admin/restaurant/covers/export.csv")
+@owner_required
+def export_dinner_covers_csv():
+    conn = get_db()
+    try:
+        days = max(7, min(60, int(request.args.get("days", 21))))
+    except (TypeError, ValueError):
+        days = 21
+    data = dinner_covers_forecast(conn, days=days)
+    conn.close()
+    fieldnames = ["date", "weekday", "booked", "atelier", "certain", "in_house",
+                  "likely", "most"]
+    rows = [{"date": r["iso"], "weekday": r["weekday"], "booked": r["booked"],
+             "atelier": r["atelier"], "certain": r["certain"],
+             "in_house": r["in_house"],
+             "likely": "" if r["likely"] is None else r["likely"], "most": r["most"]}
+            for r in data["rows"]]
+    return csv_response(fieldnames, rows, "dinner-covers.csv")
 
 
 @app.route("/management/on-the-books")

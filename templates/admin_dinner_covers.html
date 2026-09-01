@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Covers forecast{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Covers forecast</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_restaurant') }}" class="btn-ghost">Reservations</a>
+    <a href="{{ url_for('menu_day') }}" class="btn-ghost">The day's menu</a>
+    <a href="{{ url_for('export_dinner_covers_csv', days=days) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The kitchen buys for the table it is cooking for. Reservations were on one screen, arrivals on
+  another and atelier residents on a third, and nothing put them together &mdash; so the number
+  Saturday needs was a guess made on Tuesday. Three columns, kept apart because they are three
+  different kinds of certainty.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Nights ahead</label>
+    <input type="number" id="days" name="days" min="7" max="60" step="1" value="{{ days }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.certain_total }}</span>
+    <span class="stat-tile-label">Certain, next {{ days }} nights</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.most_total }}</span>
+    <span class="stat-tile-label">If every guest ate in</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.rate is not none %}{{ (data.rate * 100)|round|int }}%{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Of in-house guests dine</span></span></div>
+</div>
+
+{% if data.rate is none %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">There is not enough history to project a likely figure</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {{ data.rate_basis }}. So the table below shows what is <em>certain</em> and what it would be
+    if <em>everyone</em> staying ate in, and leaves the middle blank rather than inventing a rate.
+    A take-up figure built on one week is a number that gets ordered against.
+  </p>
+</div>
+{% else %}
+<p class="field-hint" style="max-width:760px;">
+  The likely column applies the house&rsquo;s own take-up to in-house guests only:
+  {{ data.rate_basis }}. Booked and atelier covers are not estimated &mdash; a reservation is a
+  number, and an atelier place includes dinner.
+</p>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Night</th>
+        <th class="num">Booked</th>
+        <th class="num">Atelier</th>
+        <th class="num">Certain</th>
+        <th class="num">In house</th>
+        <th class="num">Likely</th>
+        <th class="num">If all ate in</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.weekday in ('Sat', 'Fri') %} class="row-alert"{% endif %}>
+        <td>{{ r.weekday }} {{ r.iso }}</td>
+        <td class="num">{{ r.booked or '&mdash;'|safe }}</td>
+        <td class="num">{{ r.atelier or '&mdash;'|safe }}</td>
+        <td class="num"><strong>{{ r.certain or '&mdash;'|safe }}</strong></td>
+        <td class="num">{{ r.in_house or '&mdash;'|safe }}</td>
+        <td class="num">{% if r.likely is not none %}{{ r.likely }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ r.most or '&mdash;'|safe }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th style="text-align:left;">Total</th>
+        <th class="num">{{ data.rows|sum(attribute='booked') }}</th>
+        <th class="num">{{ data.rows|sum(attribute='atelier') }}</th>
+        <th class="num">{{ data.certain_total }}</th>
+        <th class="num">{{ data.rows|sum(attribute='in_house') }}</th>
+        <th class="num"></th>
+        <th class="num">{{ data.most_total }}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+{% endblock %}
