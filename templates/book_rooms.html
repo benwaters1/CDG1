@@ -20,6 +20,7 @@
 
 
 {% from '_marks.html' import mark %}
+{% from '_devices.html' import monogram %}
 {# Nights for the whole page, from the dates already in scope. Computed here
    so no route change is needed; if the view later passes stay_nights it wins. #}
 {% if stay_nights is not defined %}
@@ -771,9 +772,7 @@
   </div>
 </div></section>
 
-{# The monogram macro is not in _marks.html: it was left off round 8's edit
-   list, though its eight .g-mono rules did arrive in the stylesheet. Put the
-   line back the moment that file comes. #}
+<div class="g-mono__wrap">{{ monogram() }}</div>
 
 
 <div class="g-wrap">

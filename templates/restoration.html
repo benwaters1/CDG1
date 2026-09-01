@@ -21,7 +21,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_marks.html' import mark, monogram %}
+{% from '_marks.html' import mark %}
+{% from '_devices.html' import monogram %}
 {# Needs a route, e.g.:
    @app.route('/restoration')
    def restoration_page(): return render_template('restoration.html')  #}

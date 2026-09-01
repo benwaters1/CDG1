@@ -89,6 +89,33 @@ def run():
     s.check("no shipped template holds merge conflict markers", not markers,
             detail=" | ".join(markers[:4]))
 
+    # A macro imported from a partial that does not export it is an
+    # UndefinedError the moment the page renders, which is a 500 rather than a
+    # missing ornament. A handover shipped
+    # `{% from '_marks.html' import mark, monogram %}` when monogram lives in
+    # _devices.html — /book went down, and with it the route sweep, the
+    # noindex check and the restore drill, none of which say anything about an
+    # import. Named here, where the sentence is the fix.
+    missing_macros = []
+    exports = {}
+    for name in os.listdir(TPL_DIR):
+        if name.endswith(".html"):
+            src = open(os.path.join(TPL_DIR, name), encoding="utf-8").read()
+            exports[name] = set(re.findall(r"{%-?\s*macro\s+([A-Za-z_][\w]*)", src))
+    for rel, body in templates.items():
+        for partial, names in re.findall(
+                r"{%-?\s*from\s+['\"]([^'\"]+)['\"]\s+import\s+([^%]+?)-?%}", body):
+            have = exports.get(os.path.basename(partial))
+            if have is None:
+                missing_macros.append(f"{rel} imports from {partial}, which is not a template")
+                continue
+            for want in [w.strip() for w in names.split(",") if w.strip()]:
+                want = want.split(" as ")[0].strip()
+                if want and want not in have:
+                    missing_macros.append(f"{rel}: {partial} does not export {want}")
+    s.check("every macro a template imports is one the partial exports",
+            not missing_macros, detail=" | ".join(missing_macros[:4]))
+
     # An endpoint that exists but is called with the wrong parameter NAME is a
     # BuildError too, and the name check above sails straight past it. Not
     # hypothetical: a handover shipped url_for('manage_booking', token=...)
