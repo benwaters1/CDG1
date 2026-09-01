@@ -31990,6 +31990,10 @@ def admin_bookings():
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
 
+    # Needed by the facets below, which run before the block that used to
+    # compute it.
+    today_iso_pre = datetime.now(timezone.utc).date().isoformat()
+
     all_bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name,
                   booking_parties.name AS party_name
@@ -32001,19 +32005,52 @@ def admin_bookings():
                     bookings.arrival_date"""
     ).fetchall()
 
-    bookings = all_bookings
-    if status_filter:
-        bookings = [b for b in bookings if b["status"] == status_filter]
-    if room_filter.isdigit():
-        bookings = [b for b in bookings if b["room_id"] == int(room_filter)]
-    if q:
-        needle = q.lower()
-        bookings = [
-            b for b in bookings
-            if needle in (b["guest_name"] or "").lower()
-            or needle in (b["guest_email"] or "").lower()
-            or needle in (b["reference_code"] or "").lower()
-        ]
+    # THE HOUSE RULE, applied to the one list that never had it: every list
+    # gets list_view -- search, counted chips, sort -- rather than another
+    # one-off search box. This page had its own, so it was the only list in the
+    # app with no counts on its filters, no sort, and no saved views.
+    #
+    # THE OLD PARAMETERS STILL WORK. ?status=pending and ?room_id=3 are in
+    # bookmarks, in links somebody has sent, and on the second screen at the
+    # desk; a conversion that quietly stopped honouring them would look like the
+    # filters had broken. They are mapped onto the facet keys below rather than
+    # kept as a second code path.
+    room_names = {r["id"]: r["name"] for r in rooms}
+    legacy = request.args.to_dict()
+    if status_filter and not legacy.get("state"):
+        legacy["state"] = status_filter.capitalize()
+    if room_filter.isdigit() and not legacy.get("room"):
+        legacy["room"] = room_names.get(int(room_filter), "")
+
+    lv = list_view(
+        all_bookings, legacy,
+        search=["guest_name", "guest_email", "reference_code", "room_name"],
+        search_hint="Search guest, email, reference or room",
+        facets=[
+            # Pending first: a request nobody has answered is the only thing on
+            # this page with a clock running on it.
+            facet("state", "Status", lambda b: (b["status"] or "").capitalize(),
+                  order=["Pending", "Confirmed", "Checked_in", "Departed",
+                         "Cancelled", "Declined"]),
+            facet("room", "Room", lambda b: b["room_name"], limit=12),
+            facet("when", "When", lambda b: (
+                "Here now" if (b["arrival_date"] or "") <= today_iso_pre
+                              < (b["departure_date"] or "")
+                else "Still to come" if (b["arrival_date"] or "") > today_iso_pre
+                else "Been and gone"),
+                  order=["Here now", "Still to come", "Been and gone"]),
+        ],
+        sorts=[
+            sort_option("arrival", "Arriving soonest",
+                        lambda b: b["arrival_date"] or "9999-12-31"),
+            sort_option("recent", "Booked most recently",
+                        lambda b: b["created_at"] or "", reverse=True),
+            sort_option("name", "By guest",
+                        lambda b: (b["guest_name"] or "").casefold()),
+        ],
+        default_sort="arrival",
+    )
+    bookings = lv["rows"]
 
     today = datetime.now(timezone.utc).date()
     today_iso = today.isoformat()
@@ -32067,8 +32104,12 @@ def admin_bookings():
     conn.close()
     return render_template(
         "admin_bookings.html", bookings=bookings, counts=counts, rooms=rooms, employees=employees,
+        lv=lv,
         caution_by_booking=caution_by_booking, caution_levels=CAUTION_LEVELS,
-        status_filter=status_filter, room_filter=room_filter, q=q,
+        # status_filter / room_filter are no longer handed over: the toolbar renders
+        # the filters now, and they survive in the route only to map the old links
+        # onto the facets. q stays because the page heading still uses it.
+        q=q,
         arriving_today=arriving_today, departing_today=departing_today, arriving_this_week=arriving_this_week,
         returning_emails=returning_emails, confirmed_spend_by_email=confirmed_spend_by_email,
         scheduled_by_date=scheduled_by_date, today_iso=today_iso,

@@ -227,6 +227,7 @@ SUITES = [
     "test_pace",
     "test_booking_source",
     "test_saved_views",
+    "test_bookings_list",
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",

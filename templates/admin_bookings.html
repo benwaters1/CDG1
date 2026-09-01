@@ -60,35 +60,15 @@
 </div>
 {% endif %}
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label">Status</label>
-    <select name="status">
-      <option value="">All</option>
-      {% for s in ['pending','confirmed','declined','cancelled'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="field-label">Room</label>
-    <select name="room_id">
-      <option value="">All</option>
-      {% for r in rooms %}
-      <option value="{{ r['id'] }}" {{ 'selected' if room_filter == r['id']|string }}>{{ r['name'] }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="field-label">Search</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Name, email, or reference code">
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if status_filter or room_filter or q %}<a href="{{ url_for('admin_bookings') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{# The shared toolbar, at last. This page had its own three-dropdown filter
+   bar — the only list in the app that did — so it was the only one with no
+   counts on its filters, no sort and no saved views. The old ?status= and
+   ?room_id= links still work: the route maps them onto the facets rather than
+   keeping a second code path. #}
+{% include "_list_toolbar.html" %}
 
 {% if not bookings %}
-  <div class="empty-state">{% if status_filter or room_filter or q %}No bookings match those filters.{% else %}No booking requests yet.{% endif %}</div>
+  <div class="empty-state">{% if lv.filtered %}No bookings match those filters.{% else %}No booking requests yet.{% endif %}</div>
 {% else %}
   {% for b in bookings %}
   <div class="expense-card">
