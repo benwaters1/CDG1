@@ -3224,6 +3224,23 @@ def init_db():
         # "how much of this is direct" -- the question a small hotel lives on --
         # had no answer at all.
         ("bookings_source", "ALTER TABLE bookings ADD COLUMN source TEXT"),
+        # A list somebody filters the same way every morning. Stored per person
+        # and per page: "mine" on the rota means something different from
+        # "mine" on expenses, and one shared set would have two people fighting
+        # over the same three slots.
+        ("saved_views_table",
+         """CREATE TABLE IF NOT EXISTS saved_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                endpoint TEXT NOT NULL,
+                name TEXT NOT NULL,
+                query TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, endpoint, name)
+            )"""),
+        ("idx_saved_views_user",
+         "CREATE INDEX IF NOT EXISTS idx_saved_views_user "
+         "ON saved_views(user_id, endpoint)"),
         ("guests_caution", "ALTER TABLE guests ADD COLUMN caution TEXT"),
         ("guests_caution_level", "ALTER TABLE guests ADD COLUMN caution_level TEXT"),
         ("guests_caution_set_at", "ALTER TABLE guests ADD COLUMN caution_set_at TEXT"),
@@ -4605,6 +4622,7 @@ NAV_AREAS = {
     "guests": [
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
+        "save_list_view", "delete_list_view",
         "guest_duplicates",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
@@ -6438,6 +6456,40 @@ def _searchable(row, fields):
         if value is not None:
             parts.append(str(value))
     return " ".join(parts).lower()
+
+
+# What a saved view may carry. Anything else in the query string is dropped
+# rather than stored: a saved view is a set of FILTERS, and letting it keep an
+# arbitrary parameter turns it into a way to save any URL — including one with
+# somebody's email address in it, which then sits in a table forever under a
+# name like "Tuesdays".
+SAVED_VIEW_PARAMS = ("q", "sort", "page", "period", "date", "status", "state",
+                     "category", "supplier", "where", "applies", "employee_id",
+                     "room_id", "kind", "area", "level", "days", "month", "year",
+                     "tab", "who", "facet")
+
+
+def saved_view_query(args):
+    """The part of a query string worth keeping, normalised.
+
+    Sorted, so the same filters reached by different routes produce the same
+    stored string and "already saved" means what it says. Empty values dropped:
+    ?q= is not a filter, it is the search box being empty.
+    """
+    kept = []
+    for key in sorted(SAVED_VIEW_PARAMS):
+        value = (args.get(key) or "").strip()
+        if value:
+            kept.append((key, value))
+    return urlencode(kept)
+
+
+def saved_views_for(conn, user_id, endpoint):
+    if not user_id or not endpoint:
+        return []
+    return conn.execute(
+        "SELECT * FROM saved_views WHERE user_id = ? AND endpoint = ? "
+        "ORDER BY name", (user_id, endpoint)).fetchall()
 
 
 def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
@@ -15326,6 +15378,31 @@ def is_viewable(filename):
 
 
 @app.context_processor
+def _saved_views_for_this_page():
+    """Every list gets its saved views without seventeen routes being edited.
+
+    A context processor rather than a parameter on each render_template call:
+    the toolbar is one include shared by every list, so the data it needs
+    belongs in the same place. Wrapped in its own try -- a context processor
+    that raises takes down every page, including the ones with no list on them.
+    """
+    try:
+        user = current_user()
+        endpoint = request.endpoint
+        if not user or not endpoint:
+            return {"saved_views": [], "saved_view_current": ""}
+        conn = get_db()
+        try:
+            views = saved_views_for(conn, user["id"], endpoint)
+        finally:
+            conn.close()
+        return {"saved_views": views,
+                "saved_view_current": saved_view_query(request.args)}
+    except Exception:
+        return {"saved_views": [], "saved_view_current": ""}
+
+
+@app.context_processor
 def inject_user():
     user = current_user()
     pending_approvals_count = None
@@ -24182,6 +24259,55 @@ def merge_guest(guest_id):
     conn.close()
     flash(message, "success" if ok else "error")
     return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/views/save", methods=["POST"])
+@login_required
+def save_list_view():
+    """Keep the current filters on this page under a name.
+
+    The endpoint comes from the form rather than the referrer: a referrer can be
+    absent, stale, or another site entirely, and a saved view pinned to the
+    wrong page is worse than none.
+    """
+    user = current_user()
+    endpoint = (request.form.get("endpoint", "") or "").strip()
+    name = (request.form.get("name", "") or "").strip()[:40]
+    query = saved_view_query(request.form)
+    if not user or endpoint not in app.view_functions:
+        abort(404)
+    if not name:
+        flash("Give the view a name.", "error")
+        return redirect(request.referrer or url_for("dashboard"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO saved_views (user_id, endpoint, name, query, created_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, endpoint, name)
+           DO UPDATE SET query = excluded.query""",
+        (user["id"], endpoint, name, query, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"Saved as {name}.", "success")
+    return redirect(url_for(endpoint) + (f"?{query}" if query else ""))
+
+
+@app.route("/views/<int:view_id>/delete", methods=["POST"])
+@login_required
+def delete_list_view(view_id):
+    user = current_user()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM saved_views WHERE id = ?", (view_id,)).fetchone()
+    # Somebody else's saved view is not theirs to remove, and a 404 rather than
+    # a 403 keeps it from confirming one exists.
+    if not row or not user or row["user_id"] != user["id"]:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM saved_views WHERE id = ?", (view_id,))
+    conn.commit()
+    conn.close()
+    flash(f"{row['name']} removed.", "success")
+    return redirect(request.referrer or url_for(row["endpoint"]))
 
 
 @app.route("/guests/duplicates")
