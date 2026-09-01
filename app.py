@@ -3216,6 +3216,29 @@ def init_db():
         # Who handed it over and when. Without them "delivered" is a flag with
         # nobody behind it, and the guest who says the hamper never arrived
         # cannot be answered.
+        # A caution on a profile: what happened, and how strongly it should be
+        # read. Deliberately NOT folded into `notes` -- a warning nobody sees
+        # until they scroll is a warning that arrives after the booking.
+        ("guests_caution", "ALTER TABLE guests ADD COLUMN caution TEXT"),
+        ("guests_caution_level", "ALTER TABLE guests ADD COLUMN caution_level TEXT"),
+        ("guests_caution_set_at", "ALTER TABLE guests ADD COLUMN caution_set_at TEXT"),
+        ("guests_caution_set_by", "ALTER TABLE guests ADD COLUMN caution_set_by_user_id INTEGER"),
+        # Dates that matter. Stored as MM-DD, because a birthday has no year the
+        # house needs and asking for one collects a date of birth it would then
+        # have to justify holding.
+        ("guests_birthday", "ALTER TABLE guests ADD COLUMN birthday TEXT"),
+        ("guests_anniversary", "ALTER TABLE guests ADD COLUMN anniversary TEXT"),
+        ("guests_merged_into_id", "ALTER TABLE guests ADD COLUMN merged_into_id INTEGER"),
+        ("guest_notes_table",
+         """CREATE TABLE IF NOT EXISTS guest_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+                body TEXT NOT NULL,
+                written_by_user_id INTEGER,
+                created_at TEXT NOT NULL
+            )"""),
+        ("idx_guest_notes_guest",
+         "CREATE INDEX IF NOT EXISTS idx_guest_notes_guest ON guest_notes(guest_id)"),
         ("revenue_categories_table",
          """CREATE TABLE IF NOT EXISTS revenue_categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4576,6 +4599,8 @@ def login_required(view):
 NAV_AREAS = {
     "guests": [
         "walk_in_booking", "arrival_card",
+        "add_guest_note_route", "set_guest_caution", "merge_guest",
+        "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
@@ -20620,6 +20645,8 @@ PALETTE_PAGES = [
     ("Shopping list", "shopping_list", "buy"),
     ("What we owe guests", "extras_due_page",
      "extras hamper transfer flowers deliver outstanding owed jobs"),
+    ("Dates that matter", "guest_dates",
+     "birthday anniversary guest dates celebrate card"),
     ("Kitchen sheet", "kitchen_day_sheet",
      "dietary allergy allergen chef covers kitchen food notes"),
     ("Approvals", "admin_approvals", "expenses leave pending decide"),
@@ -23826,6 +23853,24 @@ def new_guest():
             conn.close()
             flash(f"A guest profile with the email {email} already exists.", "error")
             return render_template("guest_form.html", guest=None)
+
+        # SAME NAME OR SAME NUMBER, DIFFERENT ADDRESS. The unique index stops two
+        # profiles sharing an email and does nothing about this, so the second
+        # profile for a family that booked online last year and walked in this
+        # year gets created without a word -- and their allergy, their history
+        # and the note about the dog stay on the one nobody opens.
+        #
+        # A WARNING, NOT A REFUSAL. Two people really are called Martin, and a
+        # form that will not let reception save a real guest is worse than a
+        # duplicate. Saving again goes through.
+        maybe = possible_duplicate_guests(conn, name, email, phone)
+        if maybe and request.form.get("confirm_duplicate") != "1":
+            conn.close()
+            return render_template(
+                "guest_form.html", guest=None, duplicates=maybe,
+                typed={"name": name, "email": email, "phone": phone,
+                       "dietary_notes": dietary_notes, "preferences": preferences,
+                       "vip": vip, "notes": notes})
         conn.execute(
             """INSERT INTO guests (name, email, phone, dietary_notes, preferences, vip, notes, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -23839,6 +23884,152 @@ def new_guest():
         return redirect(url_for("guests"))
 
     return render_template("guest_form.html", guest=None)
+
+
+@app.route("/guests/<int:guest_id>/note", methods=["POST"])
+@login_required
+def add_guest_note_route(guest_id):
+    """Add to the running note on a guest.
+
+    Employees can write one. A colleague noticing that somebody prefers the
+    quiet side of the house is the whole value of this, and making it
+    owner-only would mean the person who noticed cannot record it.
+    """
+    user = current_user()
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    ok = add_guest_note(conn, guest_id, request.form.get("body", ""),
+                        user["id"] if user else None)
+    conn.commit()
+    conn.close()
+    flash("Note added." if ok else "Write something first.",
+          "success" if ok else "error")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/<int:guest_id>/caution", methods=["POST"])
+@owner_required
+def set_guest_caution(guest_id):
+    """Put a caution on a profile, or take it off.
+
+    OWNER ONLY, unlike the note. "Do not accept a booking from this person" is a
+    decision about who the house lets in, and it belongs to whoever answers for
+    that. An employee who thinks it warranted writes a note and says so.
+    """
+    level = (request.form.get("caution_level", "") or "").strip()
+    body = (request.form.get("caution", "") or "").strip()[:1000]
+    user = current_user()
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    if level and level not in CAUTION_LEVELS:
+        conn.close()
+        flash("Choose how strongly that should be read.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    if level and not body:
+        conn.close()
+        flash("Say what happened. A caution with no reason on it is one nobody "
+              "can act on or lift.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    if level:
+        conn.execute(
+            """UPDATE guests SET caution = ?, caution_level = ?, caution_set_at = ?,
+               caution_set_by_user_id = ? WHERE id = ?""",
+            (body, level, datetime.now(timezone.utc).isoformat(),
+             user["id"] if user else None, guest_id))
+        add_guest_note(conn, guest_id, f"Caution set ({CAUTION_LEVELS[level]}): {body}",
+                       user["id"] if user else None)
+        message = "Caution recorded."
+    else:
+        conn.execute(
+            """UPDATE guests SET caution = NULL, caution_level = NULL,
+               caution_set_at = NULL, caution_set_by_user_id = NULL WHERE id = ?""",
+            (guest_id,))
+        add_guest_note(conn, guest_id, "Caution lifted.",
+                       user["id"] if user else None)
+        message = "Caution lifted."
+    log_audit(conn, "guest_caution", target=guest["name"], details=level or "cleared")
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/<int:guest_id>/merge", methods=["POST"])
+@owner_required
+def merge_guest(guest_id):
+    """Fold another profile into this one.
+
+    Owner only: it moves somebody's history, and doing it to the wrong pair of
+    people is not something an apology fixes.
+    """
+    raw = (request.form.get("merge_id", "") or "").strip()
+    if not raw.isdigit():
+        flash("Choose a profile to merge in.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    user = current_user()
+    conn = get_db()
+    ok, message = merge_guest_profiles(conn, guest_id, int(raw),
+                                       user["id"] if user else None)
+    if ok:
+        log_audit(conn, "guest_merged", target=str(raw), details=f"into {guest_id}")
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/dates")
+@login_required
+def guest_dates():
+    """Birthdays and anniversaries coming up.
+
+    On the employee side, because doing something about one is a job rather than
+    a decision -- a card, a note to the kitchen, a word at check-in.
+    """
+    try:
+        within = max(1, min(365, int(request.args.get("days", "30"))))
+    except ValueError:
+        within = 30
+    conn = get_db()
+    rows = upcoming_guest_dates(conn, within_days=within)
+    conn.close()
+    return render_template("guest_dates.html", rows=rows, within=within,
+                           today=service_day())
+
+
+@app.route("/guests/<int:guest_id>/dates", methods=["POST"])
+@login_required
+def set_guest_dates(guest_id):
+    """Record a birthday or an anniversary.
+
+    The YEAR IS THROWN AWAY. The house wants to know that the 3rd of June
+    matters to somebody; it has no use for the year they were born, and data
+    with no use is data it would have to justify holding.
+    """
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    birthday = parse_day_month(request.form.get("birthday", ""))
+    anniversary = parse_day_month(request.form.get("anniversary", ""))
+    typed_b = (request.form.get("birthday", "") or "").strip()
+    typed_a = (request.form.get("anniversary", "") or "").strip()
+    if (typed_b and not birthday) or (typed_a and not anniversary):
+        conn.close()
+        flash("Dates go in as 3/6 or 03-06, or a whole date — the year is not kept.",
+              "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    conn.execute("UPDATE guests SET birthday = ?, anniversary = ? WHERE id = ?",
+                 (birthday, anniversary, guest_id))
+    conn.commit()
+    conn.close()
+    flash("Dates saved.", "success")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
 
 
 @app.route("/guests/<int:guest_id>")
@@ -23863,6 +24054,14 @@ def guest_detail(guest_id):
         abort(404)
     is_owner = (current_user() or {})["role"] == "owner"
     messages = guest_messages(conn, record["guest"]) if is_owner else []
+    notes = guest_notes(conn, guest_id)
+    # Profiles that might be the same person, offered here rather than on a
+    # separate page: the merge is a thing you do while looking at one of them.
+    duplicates = possible_duplicate_guests(
+        conn, record["guest"]["name"], record["guest"]["email"],
+        record["guest"]["phone"], exclude_id=guest_id) if is_owner else []
+    merged_from = conn.execute(
+        "SELECT id, name FROM guests WHERE merged_into_id = ?", (guest_id,)).fetchall()
     party_of = {}
     for b in record["stays"]:
         if b["party_id"]:
@@ -23882,6 +24081,8 @@ def guest_detail(guest_id):
             overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
         ]
     return render_template("guest_detail.html", record=record, overview=overview,
+                           notes=notes, duplicates=duplicates,
+                           merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
                            party_of=party_of,
                            today=datetime.now(LOCAL_TZ).date().isoformat())
@@ -31209,9 +31410,28 @@ def admin_bookings():
             "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'room' GROUP BY booking_id"
         ).fetchall()
     }
+    # A caution against the rows it applies to. Gathered ONCE for the page and
+    # matched in Python, not looked up per booking: a query per row is the
+    # mistake the timesheet page had to be fixed for, and this list is long.
+    cautioned = {}
+    for row in conn.execute(
+            """SELECT * FROM guests WHERE COALESCE(caution_level, '') != ''
+                 AND merged_into_id IS NULL""").fetchall():
+        if (row["email"] or "").strip():
+            cautioned["e:" + (row["email"] or "").strip().casefold()] = row
+        if (row["name"] or "").strip():
+            cautioned["n:" + " ".join((row["name"] or "").casefold().split())] = row
+    caution_by_booking = {}
+    for b in bookings:
+        hit = (cautioned.get("e:" + (b["guest_email"] or "").strip().casefold())
+               or cautioned.get("n:" + " ".join((b["guest_name"] or "").casefold().split())))
+        if hit:
+            caution_by_booking[b["id"]] = hit
+
     conn.close()
     return render_template(
         "admin_bookings.html", bookings=bookings, counts=counts, rooms=rooms, employees=employees,
+        caution_by_booking=caution_by_booking, caution_levels=CAUTION_LEVELS,
         status_filter=status_filter, room_filter=room_filter, q=q,
         arriving_today=arriving_today, departing_today=departing_today, arriving_this_week=arriving_this_week,
         returning_emails=returning_emails, confirmed_spend_by_email=confirmed_spend_by_email,
@@ -37001,6 +37221,21 @@ def walk_in_booking():
             under_18 = max(0, min(party, int(request.form.get("guests_under_18", "0") or 0)))
         except ValueError:
             under_18 = 0
+
+        # A caution, read HERE — somebody is at the desk and a room is about to
+        # be given. "Do not accept a booking" stops it, because that is what the
+        # owner recorded; the way to overrule it is to lift it, on the guest's
+        # own page, deliberately. Anything softer is said and the booking goes on.
+        caution = guest_caution_for(conn, email=email, name=name)
+        if caution and caution["caution_level"] == "refuse":
+            conn.close()
+            flash(f"There is a standing instruction not to accept a booking from "
+                  f"{caution['name']}: {caution['caution']} — lift it on their "
+                  "profile if that has changed.", "error")
+            return redirect(url_for("walk_in_booking"))
+        if caution:
+            flash(f"{CAUTION_LEVELS.get(caution['caution_level'], 'Note')} — "
+                  f"{caution['name']}: {caution['caution']}", "error")
         notes = (request.form.get("special_requests", "") or "").strip()
 
         room = None
@@ -39034,6 +39269,270 @@ ANONYMISE_RATHER_THAN_DELETE = {
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
+
+
+# How loudly a caution should be read. Three levels rather than a flag,
+# because "they smoke in the room" and "do not accept a booking from this
+# person" are not the same instruction and a single boolean makes them look it.
+CAUTION_LEVELS = {
+    "note": "Worth knowing",
+    "care": "Handle with care",
+    "refuse": "Do not accept a booking",
+}
+
+
+def guest_notes(conn, guest_id):
+    """The running note on a guest, newest first.
+
+    APPEND-ONLY, which is the whole point. guests.notes is one free-text box, so
+    whoever types last silently replaces what the last person wrote -- and the
+    thing that gets lost is always the older observation nobody thought to
+    repeat. Each entry here keeps who wrote it and when, because "prefers the
+    quiet side" from the housekeeper and from the guest's own email are worth
+    different amounts.
+    """
+    return conn.execute(
+        """SELECT guest_notes.*, users.name AS author
+             FROM guest_notes LEFT JOIN users ON users.id = guest_notes.written_by_user_id
+            WHERE guest_id = ? ORDER BY guest_notes.created_at DESC, guest_notes.id DESC""",
+        (guest_id,)).fetchall()
+
+
+def add_guest_note(conn, guest_id, body, user_id=None):
+    body = (body or "").strip()
+    if not body:
+        return False
+    conn.execute(
+        """INSERT INTO guest_notes (guest_id, body, written_by_user_id, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (guest_id, body[:2000], user_id, datetime.now(timezone.utc).isoformat()))
+    return True
+
+
+def parse_day_month(raw):
+    """A birthday as MM-DD, from whatever somebody typed. None if unreadable.
+
+    Accepts a full date and throws the year away rather than storing it. The
+    house wants to know that the 3rd of June matters to somebody, and has no use
+    for the year they were born -- and data you have no use for is data you have
+    to justify holding.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    for fmt, take in (("%Y-%m-%d", True), ("%d/%m/%Y", True),
+                      ("%m-%d", False), ("%d/%m", False)):
+        try:
+            parsed = datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+        return f"{parsed.month:02d}-{parsed.day:02d}"
+    return None
+
+
+def day_month_human(value):
+    """MM-DD as "3 June", or "" if there is nothing there."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = datetime.strptime(value, "%m-%d")
+    except ValueError:
+        return value
+    return f"{parsed.day} {parsed.strftime('%B')}"
+
+
+# 06-03 is a storage format, not something to show a person. Registered here
+# rather than beside the other filters: module level runs top to bottom, and a
+# filter registered above its own function is a NameError at import.
+app.jinja_env.filters["day_month"] = day_month_human
+
+
+def upcoming_guest_dates(conn, within_days=30, today=None):
+    """Birthdays and anniversaries coming up, soonest first.
+
+    Wrapped round the year: on the 20th of December, the 3rd of January is
+    fourteen days away and not three hundred and fifty. Getting that wrong is
+    how a list like this quietly stops showing anything in the last fortnight of
+    the year, which is exactly when the house is fullest.
+
+    A date only appears if the person has a profile the house can act on -- an
+    anniversary with no email and no stay coming up is a fact, not a job.
+    """
+    today = today or service_day()
+    rows = []
+    for guest in conn.execute(
+            """SELECT * FROM guests
+                WHERE merged_into_id IS NULL
+                  AND (COALESCE(birthday, '') != '' OR COALESCE(anniversary, '') != '')
+             """).fetchall():
+        for kind, value in (("birthday", guest["birthday"]),
+                            ("anniversary", guest["anniversary"])):
+            if not (value or "").strip():
+                continue
+            try:
+                month, day = (int(x) for x in value.split("-"))
+            except (ValueError, TypeError):
+                continue
+            for year in (today.year, today.year + 1):
+                try:
+                    when = date(year, month, day)
+                except ValueError:
+                    # 29 February in a year that has none. Marked on the 1st of
+                    # March rather than dropped: the guest still has a birthday.
+                    try:
+                        when = date(year, 3, 1)
+                    except ValueError:
+                        continue
+                days = (when - today).days
+                if 0 <= days <= within_days:
+                    rows.append({"guest": guest, "kind": kind, "when": when,
+                                 "days": days})
+                    break
+    rows.sort(key=lambda r: (r["days"], r["guest"]["name"] or ""))
+    return rows
+
+
+def guest_caution_for(conn, email=None, name=None):
+    """Any caution on the person a booking is being taken for, or None.
+
+    Looked up by ADDRESS FIRST and then by name. A caution that only matched on
+    the email address would be lifted by the guest using a different one, which
+    is the first thing somebody does after being turned down.
+
+    Compared with casefold in Python rather than LOWER in SQL: these are French
+    names, and SQLite's LOWER is ASCII-only.
+    """
+    email = (email or "").strip().casefold()
+    name_key = " ".join((name or "").casefold().split())
+    if not email and not name_key:
+        return None
+    for row in conn.execute(
+            """SELECT * FROM guests
+                WHERE COALESCE(caution_level, '') != '' AND merged_into_id IS NULL"""
+    ).fetchall():
+        if email and (row["email"] or "").strip().casefold() == email:
+            return row
+        if name_key and " ".join((row["name"] or "").casefold().split()) == name_key:
+            return row
+    return None
+
+
+def possible_duplicate_guests(conn, name, email=None, phone=None, exclude_id=None):
+    """Profiles that might already be this person.
+
+    Run BEFORE a second profile exists, because merging afterwards is somebody
+    noticing -- and the duplicate that never gets noticed is the one where the
+    guest's history, their allergy and the note about the dog all sit on the
+    profile nobody opened.
+
+    A same-email match is impossible (there is a unique index), so the useful
+    signals are the phone number and the name. Compared with casefold in Python:
+    SQLite's LOWER is ASCII-only and these are French names.
+    """
+    name_key = " ".join((name or "").casefold().split())
+    phone_key = "".join(ch for ch in (phone or "") if ch.isdigit())[-9:]
+    email_key = (email or "").strip().casefold()
+    hits = []
+    for row in conn.execute(
+            "SELECT * FROM guests WHERE merged_into_id IS NULL").fetchall():
+        if exclude_id and row["id"] == exclude_id:
+            continue
+        why = []
+        if email_key and (row["email"] or "").strip().casefold() == email_key:
+            why.append("the same email")
+        row_phone = "".join(ch for ch in (row["phone"] or "") if ch.isdigit())[-9:]
+        if phone_key and len(phone_key) >= 6 and row_phone == phone_key:
+            why.append("the same phone number")
+        if name_key and " ".join((row["name"] or "").casefold().split()) == name_key:
+            why.append("the same name")
+        if why:
+            hits.append({"guest": row, "why": why})
+    return hits
+
+
+def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
+    """Fold one profile into another. Returns (ok, message).
+
+    The same person under two addresses, or one profile with none at all -- a
+    walk-in taken at the desk, then the same family booking online next year.
+    The unique index stops two profiles sharing an email, and does nothing about
+    this.
+
+    WHAT MOVES: notes, and any booking linked by id. WHAT IS KEPT: every field on
+    the survivor that is already filled, filling its blanks from the other. A
+    merge that overwrote a good address with an older one would be a data loss
+    dressed as a tidy-up.
+
+    NOTHING IS DELETED. The absorbed profile stays, pointing at its survivor,
+    because a booking, an invoice or a conversation may reference it and a row
+    that vanishes takes the explanation with it.
+    """
+    if keep_id == merge_id:
+        return False, "That is the same profile."
+    keep = conn.execute("SELECT * FROM guests WHERE id = ?", (keep_id,)).fetchone()
+    merge = conn.execute("SELECT * FROM guests WHERE id = ?", (merge_id,)).fetchone()
+    if not keep or not merge:
+        return False, "One of those profiles no longer exists."
+    if merge["merged_into_id"]:
+        return False, f"{merge['name']} has already been merged."
+    if keep["merged_into_id"]:
+        return False, f"{keep['name']} has itself been merged into another profile."
+
+    # Blanks on the survivor are filled from the other; anything already there
+    # is left alone.
+    fills = {}
+    for column in ("email", "phone", "dietary_notes", "preferences",
+                   "name_pronunciation", "birthday", "anniversary",
+                   "caution", "caution_level"):
+        if column not in keep.keys():
+            continue
+        if not (keep[column] or "").strip() and (merge[column] or "").strip():
+            fills[column] = merge[column]
+    # The email is the one field a unique index can refuse. Only take it if the
+    # survivor has none, and the merged profile's has to be released first or
+    # the index refuses the update.
+    if "email" in fills:
+        conn.execute("UPDATE guests SET email = NULL WHERE id = ?", (merge_id,))
+    if fills:
+        sets = ", ".join(f"{c} = ?" for c in fills)
+        conn.execute(f"UPDATE guests SET {sets} WHERE id = ?",
+                     list(fills.values()) + [keep_id])
+
+    conn.execute("UPDATE guest_notes SET guest_id = ? WHERE guest_id = ?",
+                 (keep_id, merge_id))
+    moved = conn.execute("SELECT changes() AS c").fetchone()["c"]
+    # The old profile's free-text note is kept as a dated entry rather than
+    # thrown away or pasted over the survivor's.
+    if (merge["notes"] or "").strip():
+        add_guest_note(conn, keep_id,
+                       f"From the merged profile for {merge['name']}: "
+                       f"{merge['notes'].strip()}", user_id)
+    # linked_guest_id is the CERTAIN link -- guest_record treats a match on the
+    # email address as an inference and says so. Moving these is the point of a
+    # merge: the survivor inherits the stays somebody deliberately attached to
+    # the profile being folded in.
+    conn.execute(
+        "UPDATE bookings SET linked_guest_id = ? WHERE linked_guest_id = ?",
+        (keep_id, merge_id))
+    moved_stays = conn.execute("SELECT changes() AS c").fetchone()["c"]
+
+    conn.execute(
+        "UPDATE guests SET merged_into_id = ?, caution = NULL, caution_level = NULL "
+        "WHERE id = ?", (keep_id, merge_id))
+    add_guest_note(conn, keep_id,
+                   f"Merged the duplicate profile for {merge['name']} into this one.",
+                   user_id)
+    # The audit entry is written by the ROUTE, not here. log_audit reads the
+    # request to record who and from where, and this has to be callable without
+    # one -- a merge run from a script or a test is still a merge.
+    parts = []
+    if moved:
+        parts.append(f"{moved} note(s)")
+    if moved_stays:
+        parts.append(f"{moved_stays} stay(s)")
+    return True, (f"{merge['name']} folded into {keep['name']}"
+                  + (" — " + " and ".join(parts) + " moved" if parts else "") + ".")
 
 
 def guest_record(conn, guest_id):
