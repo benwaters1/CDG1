@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Exit interviews{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Exit interviews</h1>
+  <a href="{{ url_for('admin_hr') }}" class="btn-ghost">Team</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Held apart from the rest of somebody's record on purpose. It is written after the working
+  relationship has ended, and mixing it into a file that shaped decisions while they were here
+  would misrepresent both.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if leavers %}
+{# The list that makes this more than a filing cabinet: who left without
+   anybody asking. #}
+<div class="detail-card">
+  <h2 class="section-heading">Left without one</h2>
+  <div class="doc-list">
+    {% for l in leavers %}
+    <div class="doc-row">
+      <span style="flex:1;"><b>{{ l['name'] }}</b>
+        {% if l['reason_for_leaving'] %}<span class="upload-hint">{{ l['reason_for_leaving'] }}</span>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Record one</h2>
+  <div class="field-row-2">
+    <select name="user_id">
+      <option value="">Who (or type a name below)</option>
+      {% for l in leavers %}<option value="{{ l['id'] }}">{{ l['name'] }}</option>{% endfor %}
+    </select>
+    <input type="date" name="held_on" value="{{ today }}">
+  </div>
+  <input type="text" name="person_name" placeholder="Name, if they are not on the list above"
+         style="width:100%; margin-bottom:8px;">
+  <label class="field-label">Why they are leaving</label>
+  <textarea name="why_leaving" rows="2" style="width:100%;"></textarea>
+  <label class="field-label" style="margin-top:8px;">What worked</label>
+  <textarea name="what_worked" rows="2" style="width:100%;"></textarea>
+  <label class="field-label" style="margin-top:8px;">What did not</label>
+  <textarea name="what_did_not" rows="2" style="width:100%;"></textarea>
+  <div class="field-row-2" style="margin-top:8px;">
+    <input type="text" name="would_return" placeholder="Would they come back?">
+    <input type="text" name="note" placeholder="Anything else">
+  </div>
+  <button type="submit" class="btn-mini" style="margin-top:8px;">Record</button>
+</form>
+
+{% if rows %}
+<div class="detail-card">
+  <h2 class="section-heading">Held</h2>
+  <div class="doc-list">
+    {% for r in rows %}
+    <div class="doc-row" style="align-items:flex-start;">
+      <span style="flex:1;">
+        <b>{{ r['staff_name'] or r['person_name'] }}</b>
+        <span class="upload-hint">{{ r['held_on'] }}</span>
+        {% if r['why_leaving'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Why</span>{{ r['why_leaving'] }}</div>{% endif %}
+        {% if r['what_worked'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Worked</span>{{ r['what_worked'] }}</div>{% endif %}
+        {% if r['what_did_not'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Did not</span>{{ r['what_did_not'] }}</div>{% endif %}
+        {% if r['would_return'] %}<div class="upload-hint" style="margin-top:2px;"><span class="detail-label">Would return</span>{{ r['would_return'] }}</div>{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

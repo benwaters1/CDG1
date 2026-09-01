@@ -57,4 +57,31 @@
   <p class="upload-hint" style="margin-top:10px;">Saving emails the guest with the updated details.</p>
 </div>
 
+{% if booking['deposit_amount'] %}
+{# Taking a deposit was built and returning one was not, which left the
+   record permanently half a story. This writes down the decision; it moves
+   no money, the same way marking a breakage charged does not take any. #}
+<div class="detail-card">
+  <h2 class="section-heading">The deposit</h2>
+  {% if booking['deposit_returned_at'] %}
+  <p class="manual-body">&euro;{{ '%.2f'|format(booking['deposit_returned_amount'] or 0) }}
+    recorded as returned on {{ booking['deposit_returned_at'][:10] }}.
+    {% if booking['deposit_returned_note'] %}{{ booking['deposit_returned_note'] }}{% endif %}</p>
+  {% else %}
+  <form method="post" action="{{ url_for('return_deposit', booking_id=booking['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <input type="text" name="amount" placeholder="How much went back"
+             value="{{ '%.2f'|format(booking['deposit_amount']) }}">
+      <input type="text" name="note" placeholder="Why, if it was not all of it">
+    </div>
+    <button type="submit" class="btn-mini" style="margin-top:8px;">Record the return</button>
+    <p class="pay-disclaimer" style="margin-top:6px;">Part of a deposit is a real answer &mdash;
+      say why in the note. This records the decision and sends nothing: do that from the bank or
+      from Stripe, deliberately, the same way a refund is made.</p>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
 {% endblock %}

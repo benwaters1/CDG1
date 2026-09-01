@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Mileage{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Mileage</h1>
+  <a href="{{ url_for('my_expenses') }}" class="btn-ghost">Expenses</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A journey made for the house. Kept apart from expenses because there is no receipt: the claim
+  <em>is</em> the record, priced by a rate rather than by what somebody paid. The rate is copied
+  onto each claim as it is made, so changing it never silently restates what was already paid.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Claim a journey</h2>
+  <div class="field-row-2">
+    <input type="date" name="travelled_on" value="{{ today }}">
+    <input type="text" name="kilometres" placeholder="How many kilometres" required>
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="from_place" placeholder="From">
+    <input type="text" name="to_place" placeholder="To">
+  </div>
+  <input type="text" name="reason" placeholder="What for" style="width:100%;">
+  <button type="submit" class="btn-mini" style="margin-top:8px;">Claim</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">At &euro;{{ '%.2f'|format(rate) }} a kilometre.
+    Claims need approving before they are paid.</p>
+</form>
+
+{% if not claims %}
+<div class="empty-state">No claims yet.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">{{ 'Every claim' if is_owner else 'Your claims' }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>{% if is_owner %}<th>Who</th>{% endif %}<th>When</th><th>Journey</th>
+            <th class="num">km</th><th class="num">Worth</th><th>State</th></tr>
+      </thead>
+      <tbody>
+        {% for c in claims %}
+        <tr>
+          {% if is_owner %}<td>{{ c['who'] or '&mdash;' }}</td>{% endif %}
+          <td>{{ c['travelled_on'] }}</td>
+          <th scope="row">
+            {{ c['from_place'] or '?' }} &rarr; {{ c['to_place'] or '?' }}
+            {% if c['reason'] %}<span class="upload-hint">{{ c['reason'] }}</span>{% endif %}
+          </th>
+          <td class="num">{{ '%g'|format(c['kilometres']) }}</td>
+          <td class="num">&euro;{{ '%.2f'|format(c['amount']) }}
+            <span class="upload-hint">at &euro;{{ '%.2f'|format(c['rate']) }}</span></td>
+          <td>
+            {% if is_owner and c['status'] == 'pending' %}
+            <form method="post" action="{{ url_for('decide_mileage', claim_id=c['id']) }}"
+                  style="display:flex; gap:6px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" name="state" value="approved" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Approve</button>
+              <button type="submit" name="state" value="declined" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Decline</button>
+            </form>
+            {% else %}
+            {{ c['status'] }}
+            {% if is_owner and c['status'] == 'approved' %}
+            <form method="post" action="{{ url_for('decide_mileage', claim_id=c['id']) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" name="state" value="paid" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Mark paid</button>
+            </form>
+            {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if not is_owner %}
+  <p class="upload-hint">You see your own claims. The owner sees everybody's.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

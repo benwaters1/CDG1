@@ -228,6 +228,7 @@ SUITES = [
     "test_house_upkeep",
     "test_restaurant_four",
     "test_buying",
+    "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
     "test_booking_parties",

@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Shift handover{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Shift handover</h1>
+  <a href="{{ url_for('staff_today') }}" class="btn-ghost">Today</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What the next shift needs to <em>know</em> &mdash; not what they need to do. A task is something
+  to do and belongs on the task list; this is the boiler making a noise, table four celebrating,
+  the man about the roof coming back on Tuesday.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Leave a note</h2>
+  <textarea name="body" rows="4" style="width:100%;"
+            placeholder="Anything the next shift would want to know"></textarea>
+  <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+    <input type="date" name="for_date" value="{{ today }}">
+    <button type="submit" class="btn-mini">Leave it</button>
+  </div>
+</form>
+
+{% if not notes %}
+<div class="empty-state">Nothing left this week.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">This week</h2>
+  <div class="doc-list">
+    {% for n in notes %}
+    <div class="doc-row" style="align-items:flex-start;">
+      <span style="flex:1;">
+        <b>{{ n.note['for_date'] }}</b>
+        <span class="upload-hint">{{ n.note['written_by'] or 'somebody' }}
+          &middot; read by {{ n.note['read_count'] }}</span>
+        <div style="margin-top:4px; white-space:pre-wrap;">{{ n.note['body'] }}</div>
+      </span>
+      {% if not n.read_by_me %}
+      {# A note nobody read is the same as no note, so who has seen it is
+         recorded rather than assumed. #}
+      <form method="post" action="{{ url_for('mark_handover_read', note_id=n.note['id']) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--steel);">Read it</button>
+      </form>
+      {% else %}
+      <span class="upload-hint">you have read this</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

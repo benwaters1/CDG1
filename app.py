@@ -2499,6 +2499,72 @@ def init_db():
         -- A dish is a list of things, not a field. menu_items.stock_item_id
         -- is right for a glass poured from a bottle and useless for a
         -- plate, so nothing has ever known which plates make money.
+        -- What one shift needs to tell the next. Not tasks: a task is
+        -- something to do, and this is something to KNOW -- the boiler is
+        -- making a noise, table four are celebrating, the man about the
+        -- roof is coming back Tuesday.
+        CREATE TABLE IF NOT EXISTS shift_handovers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            written_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            for_date TEXT NOT NULL,
+            body TEXT NOT NULL,
+            -- Read receipts, so "did anybody see this" is answerable. A
+            -- note nobody read is the same as no note.
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS shift_handover_reads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            handover_id INTEGER NOT NULL REFERENCES shift_handovers(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            read_at TEXT NOT NULL,
+            UNIQUE(handover_id, user_id)
+        );
+
+        -- A journey somebody made for the house. Separate from expenses
+        -- because there is no receipt: the claim IS the record, and it is
+        -- priced by a rate rather than by what somebody paid.
+        CREATE TABLE IF NOT EXISTS mileage_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            travelled_on TEXT NOT NULL,
+            from_place TEXT,
+            to_place TEXT,
+            reason TEXT,
+            kilometres REAL NOT NULL,
+            -- The rate AS IT WAS when the claim was made. Copying it onto
+            -- the row rather than reading the setting later is the whole
+            -- point: changing the rate must not silently restate what
+            -- somebody was already paid.
+            rate REAL NOT NULL,
+            amount REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK(status IN ('pending','approved','declined','paid')),
+            decided_at TEXT,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            owner_note TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- What somebody said on their way out. Held apart from the rest of
+        -- their record on purpose: it is written after the working
+        -- relationship has ended, and mixing it into a file that shaped
+        -- decisions while they were here would misrepresent both.
+        CREATE TABLE IF NOT EXISTS exit_interviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            person_name TEXT NOT NULL,
+            held_on TEXT NOT NULL,
+            held_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            why_leaving TEXT,
+            what_worked TEXT,
+            what_did_not TEXT,
+            would_return TEXT,
+            note TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS menu_item_ingredients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
@@ -3897,6 +3963,21 @@ def init_db():
         # where the two differ is a discrepancy by definition.
         ("stock_invoiced_qty", "ALTER TABLE stock_movements ADD COLUMN "
                                "invoiced_quantity REAL"),
+        # Why a booking was cancelled. Asked, never required: a guest
+        # cancelling in a hurry does not owe the house an explanation, and
+        # a mandatory field collects a lie or an empty string.
+        ("bookings_cancel_reason", "ALTER TABLE bookings ADD COLUMN "
+                                   "cancel_reason TEXT"),
+        ("bookings_cancel_note", "ALTER TABLE bookings ADD COLUMN "
+                                 "cancel_note TEXT"),
+        # Returning a deposit, which is the half of taking one that was
+        # never built.
+        ("bookings_deposit_returned", "ALTER TABLE bookings ADD COLUMN "
+                                      "deposit_returned_at TEXT"),
+        ("bookings_deposit_returned_amount",
+         "ALTER TABLE bookings ADD COLUMN deposit_returned_amount REAL"),
+        ("bookings_deposit_returned_note",
+         "ALTER TABLE bookings ADD COLUMN deposit_returned_note TEXT"),
         # The day of the month a filing is really due on. Rolling forward
         # from the last date clamps to a short month and never recovers --
         # due the 31st becomes due the 28th the first February and stays
@@ -4843,6 +4924,10 @@ NAV_AREAS = {
         # was readable by that manager. They live in `management` now, with the
         # vault and the audit log. ask_hr itself stays: it is @login_required,
         # and this entry only decides where it sits in the menu.
+        # An exit interview is written after the working relationship ended
+        # and is deliberately NOT in this list: it belongs with the HR notes
+        # and the vault, where a manager cannot read what somebody said
+        # about them on the way out.
         "absence_return_to_work", "admin_compliance", "admin_hr",
         "admin_incidents", "ask_hr", "candidates", "delete_candidate",
         "delete_certification", "delete_employee",
@@ -4886,6 +4971,7 @@ NAV_AREAS = {
         "management_breakages", "management_cleaning", "cleaning_round_done",
         "management_visitors", "sign_out_visitor",
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
+        "shift_handover", "mark_handover_read", "mileage",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -16492,6 +16578,123 @@ def filings_due(conn, today=None):
 # out. Said on the page, never acted on: a register that tidies itself is
 # always neat and never true, which is worse than none because it would be
 # believed in the one situation it exists for.
+# The reasons worth telling apart. Offered as a list rather than free text
+# because a pattern is only visible if two people describe the same thing
+# the same way -- and "other" is there because a list that forces a wrong
+# answer collects wrong answers.
+CANCEL_REASONS = {
+    "plans_changed": "Their plans changed",
+    "illness": "Illness or a family matter",
+    "price": "The price",
+    "found_elsewhere": "Went somewhere else",
+    "house_could_not": "Something the house could not do",
+    "duplicate": "Booked twice by mistake",
+    "other": "Something else",
+}
+
+MILEAGE_RATE_SETTING = "mileage_rate_per_km"
+MILEAGE_RATE_DEFAULT = 0.35
+
+
+def mileage_rate(conn):
+    """What a kilometre is worth, or the default.
+
+    Copied onto each claim when it is made rather than read back later, so
+    changing it never silently restates what somebody was already paid.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (MILEAGE_RATE_SETTING,)).fetchone()
+    try:
+        return float(row["value"]) if row and row["value"] else MILEAGE_RATE_DEFAULT
+    except (TypeError, ValueError):
+        return MILEAGE_RATE_DEFAULT
+
+
+def cancellation_reasons(conn, *, months=12, today=None):
+    """Why stays were cancelled, commonest first.
+
+    Cancellations with nothing against them are counted as their own line
+    rather than dropped. Most will have none, and a chart of only the
+    explained ones would make a handful of answers look like the whole
+    picture.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=30 * months)).isoformat()
+    rows = conn.execute(
+        """SELECT COALESCE(cancel_reason, '') AS reason, COUNT(*) AS n
+             FROM bookings
+            WHERE status = 'cancelled'
+              AND COALESCE(decided_at, created_at) >= ?
+            GROUP BY COALESCE(cancel_reason, '')
+            ORDER BY n DESC""", (since,)).fetchall()
+    total = sum(r["n"] for r in rows)
+    out = []
+    for r in rows:
+        out.append({
+            "key": r["reason"] or None,
+            "label": (CANCEL_REASONS.get(r["reason"], r["reason"])
+                      if r["reason"] else "Nobody asked, or they did not say"),
+            "count": r["n"],
+            "pct": round(r["n"] / total * 100) if total else 0,
+            "unexplained": not r["reason"],
+        })
+    return {"rows": out, "total": total,
+            "explained": sum(r["count"] for r in out if not r["unexplained"])}
+
+
+def enquiry_conversion(conn, *, months=12, today=None):
+    """How many event enquiries became something.
+
+    Enquiries still open are counted apart from the ones that were settled.
+    Including them as failures would make this month always look terrible,
+    because this month's enquiries have not had time to become anything.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=30 * months)).isoformat()
+    rows = conn.execute(
+        """SELECT status, COUNT(*) AS n FROM event_inquiries
+            WHERE created_at >= ? GROUP BY status""", (since,)).fetchall()
+    by_status = {r["status"]: r["n"] for r in rows}
+
+    won = by_status.get("confirmed", 0)
+    lost = by_status.get("declined", 0) + by_status.get("cancelled", 0)
+    open_still = sum(n for st, n in by_status.items()
+                     if st not in ("confirmed", "declined", "cancelled"))
+    settled = won + lost
+    # by_status is not returned: the page reads won, lost and open, and a
+    # raw status count nothing opens is work done on every load for nobody.
+    # It stays as a local because the three figures are built from it.
+    return {
+        "won": won, "lost": lost, "open": open_still,
+        "settled": settled,
+        # Of the ones that GOT an answer. Counting the still-open ones as
+        # failures would make the current month always look terrible.
+        "rate": round(won / settled * 100) if settled else None,
+        "total": settled + open_still,
+    }
+
+
+def handover_notes(conn, *, days=7, today=None, user_id=None):
+    """Recent handover notes, newest first, with whether this person read them."""
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT shift_handovers.*, users.name AS written_by,
+                  (SELECT COUNT(*) FROM shift_handover_reads
+                    WHERE handover_id = shift_handovers.id) AS read_count
+             FROM shift_handovers
+             LEFT JOIN users ON users.id = shift_handovers.written_by_user_id
+            WHERE shift_handovers.for_date >= ?
+            ORDER BY shift_handovers.for_date DESC, shift_handovers.id DESC""",
+        (since,)).fetchall()
+    mine = set()
+    if user_id:
+        mine = {r["handover_id"] for r in conn.execute(
+            "SELECT handover_id FROM shift_handover_reads WHERE user_id = ?",
+            (user_id,)).fetchall()}
+    return [{"note": r, "read_by_me": r["id"] in mine} for r in rows]
+
+
 def delivery_shortfalls(conn, *, months=6, today=None):
     """Deliveries where what turned up was not what was charged for.
 
@@ -21975,6 +22178,14 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Why they cancel", "management_cancellations",
+     "cancellation reason why cancelled enquiry conversion events won lost"),
+    ("Shift handover", "shift_handover",
+     "handover note next shift tell pass on read"),
+    ("Mileage", "mileage",
+     "mileage kilometres travel claim car journey rate reimburse"),
+    ("Exit interviews", "exit_interviews",
+     "exit interview leaver leaving why left offboarding"),
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
@@ -39840,6 +40051,332 @@ def export_vendors_csv():
     conn.close()
     fieldnames = ["name", "contact_person", "phone", "email", "payment_terms", "notes"]
     return csv_response(fieldnames, rows, "vendors.csv")
+
+
+@app.route("/management/why-they-cancel")
+@owner_required
+def management_cancellations():
+    """Why stays were cancelled, and how many event enquiries came to anything."""
+    conn = get_db()
+    today = datetime.now(LOCAL_TZ).date()
+    reasons = cancellation_reasons(conn, today=today)
+    enquiries = enquiry_conversion(conn, today=today)
+    recent = conn.execute(
+        """SELECT id, guest_name, arrival_date, cancel_reason, cancel_note,
+                  decided_at
+             FROM bookings
+            WHERE status = 'cancelled'
+            ORDER BY COALESCE(decided_at, created_at) DESC LIMIT 40""").fetchall()
+    conn.close()
+    overview = [
+        overview_cell("Cancellations", reasons["total"], hint="in the last year"),
+        overview_cell("With a reason on them",
+                      f"{reasons['explained']}/{reasons['total']}"
+                      if reasons["total"] else "\u2014",
+                      alert=reasons["total"] and not reasons["explained"]),
+        overview_cell("Enquiries that became something",
+                      f"{enquiries['rate']}%" if enquiries["rate"] is not None
+                      else "\u2014",
+                      hint=f"{enquiries['won']} of {enquiries['settled']} "
+                           "that got an answer"),
+    ]
+    return render_template("management_cancellations.html", reasons=reasons,
+                           enquiries=enquiries, recent=recent,
+                           overview=overview, choices=CANCEL_REASONS)
+
+
+@app.route("/management/cancellations/<int:booking_id>/reason", methods=["POST"])
+@owner_required
+def set_cancel_reason(booking_id):
+    """Put a reason on a cancellation after the fact.
+
+    Most reasons arrive on the telephone rather than through a form, and a
+    reason nobody could add later would be a field that is almost always
+    empty.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT guest_name, status FROM bookings WHERE id = ?",
+        (booking_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["status"] != "cancelled":
+        conn.close()
+        flash("That booking is not cancelled.", "error")
+        return redirect(url_for("management_cancellations"))
+    reason = request.form.get("reason", "")
+    note = (request.form.get("cancel_note", "") or "").strip()[:300]
+    if reason and reason not in CANCEL_REASONS:
+        conn.close()
+        flash("That is not one of the reasons.", "error")
+        return redirect(url_for("management_cancellations"))
+    conn.execute(
+        "UPDATE bookings SET cancel_reason = ?, cancel_note = ? WHERE id = ?",
+        (reason or None, note or None, booking_id))
+    conn.commit()
+    conn.close()
+    flash(f"Noted against {row['guest_name']}.", "success")
+    return redirect(url_for("management_cancellations"))
+
+
+@app.route("/management/deposits/<int:booking_id>/return", methods=["POST"])
+@owner_required
+def return_deposit(booking_id):
+    """Record that a deposit went back.
+
+    Records the decision; it moves no money, the same way marking a
+    breakage charged does not take any. Sending it is a bank transfer or a
+    Stripe refund, made deliberately.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT guest_name, deposit_amount, deposit_returned_at FROM bookings "
+        "WHERE id = ?", (booking_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["deposit_returned_at"]:
+        conn.close()
+        flash("That deposit is already recorded as returned.", "error")
+        return redirect(request.referrer or url_for("admin_bookings"))
+
+    amount = parse_money(request.form.get("amount", ""))
+    note = (request.form.get("note", "") or "").strip()[:300]
+    if amount is None:
+        conn.close()
+        flash("Say how much went back. Part of a deposit is a real answer.",
+              "error")
+        return redirect(request.referrer or url_for("admin_bookings"))
+
+    conn.execute(
+        """UPDATE bookings SET deposit_returned_at = ?,
+                  deposit_returned_amount = ?, deposit_returned_note = ?
+            WHERE id = ? AND deposit_returned_at IS NULL""",
+        (datetime.now(timezone.utc).isoformat(), amount, note or None,
+         booking_id))
+    log_audit(conn, "deposit_returned", target=row["guest_name"],
+              details=f"\u20ac{amount:.2f}" + (f" \u2014 {note}" if note else ""))
+    conn.commit()
+    conn.close()
+    flash(f"Recorded: \u20ac{amount:.2f} back to {row['guest_name']}. "
+          "Nothing has been sent \u2014 do that from the bank or from Stripe.",
+          "success")
+    return redirect(request.referrer or url_for("admin_bookings"))
+
+
+@app.route("/handover", methods=["GET", "POST"])
+@login_required
+def shift_handover():
+    """What one shift needs to tell the next.
+
+    Not tasks. A task is something to DO; this is something to KNOW -- the
+    boiler is making a noise, table four are celebrating, the man about the
+    roof is coming back on Tuesday.
+    """
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        body = (request.form.get("body", "") or "").strip()[:2000]
+        for_date = parse_date(request.form.get("for_date", "")) \
+            or datetime.now(LOCAL_TZ).date()
+        if not body:
+            conn.close()
+            flash("Write something.", "error")
+            return redirect(url_for("shift_handover"))
+        conn.execute(
+            """INSERT INTO shift_handovers (written_by_user_id, for_date, body,
+                       created_at)
+               VALUES (?, ?, ?, ?)""",
+            (user["id"], for_date.isoformat(), body,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash("Left for the next shift.", "success")
+        return redirect(url_for("shift_handover"))
+
+    notes = handover_notes(conn, days=7, user_id=user["id"])
+    conn.close()
+    unread = [n for n in notes if not n["read_by_me"]]
+    overview = [
+        overview_cell("This week", len(notes)),
+        overview_cell("You have not read", len(unread), alert=bool(unread)),
+    ]
+    return render_template("shift_handover.html", notes=notes,
+                           overview=overview,
+                           today=datetime.now(LOCAL_TZ).date())
+
+
+@app.route("/handover/<int:note_id>/read", methods=["POST"])
+@login_required
+def mark_handover_read(note_id):
+    conn = get_db()
+    user = current_user()
+    conn.execute(
+        """INSERT OR IGNORE INTO shift_handover_reads (handover_id, user_id, read_at)
+           VALUES (?, ?, ?)""",
+        (note_id, user["id"], datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("shift_handover"))
+
+
+@app.route("/mileage", methods=["GET", "POST"])
+@login_required
+def mileage():
+    """A journey somebody made for the house.
+
+    Separate from expenses because there is no receipt: the claim IS the
+    record, priced by a rate rather than by what somebody paid.
+    """
+    conn = get_db()
+    user = current_user()
+    rate = mileage_rate(conn)
+
+    if request.method == "POST":
+        km = parse_quantity(request.form.get("kilometres", ""))
+        when = parse_date(request.form.get("travelled_on", "")) \
+            or datetime.now(LOCAL_TZ).date()
+        if not km or km <= 0:
+            conn.close()
+            flash("How many kilometres?", "error")
+            return redirect(url_for("mileage"))
+        conn.execute(
+            """INSERT INTO mileage_claims (user_id, travelled_on, from_place,
+                       to_place, reason, kilometres, rate, amount, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user["id"], when.isoformat(),
+             (request.form.get("from_place", "") or "").strip()[:120] or None,
+             (request.form.get("to_place", "") or "").strip()[:120] or None,
+             (request.form.get("reason", "") or "").strip()[:200] or None,
+             km, rate, round(km * rate, 2),
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash("Claimed. It needs approving before it is paid.", "success")
+        return redirect(url_for("mileage"))
+
+    is_owner = user["role"] == "owner"
+    query = """SELECT mileage_claims.*, users.name AS who
+                 FROM mileage_claims
+                 LEFT JOIN users ON users.id = mileage_claims.user_id"""
+    params = []
+    if not is_owner:
+        query += " WHERE mileage_claims.user_id = ?"
+        params.append(user["id"])
+    query += " ORDER BY mileage_claims.travelled_on DESC LIMIT 100"
+    claims = conn.execute(query, params).fetchall()
+    conn.close()
+
+    waiting = [c for c in claims if c["status"] == "pending"]
+    overview = [
+        overview_cell("Claims", len(claims)),
+        overview_cell("Waiting", len(waiting), alert=bool(waiting)),
+        overview_cell("A kilometre is worth", f"\u20ac{rate:.2f}",
+                      hint="copied onto each claim as it is made"),
+    ]
+    return render_template("mileage.html", claims=claims, overview=overview,
+                           rate=rate, is_owner=is_owner,
+                           today=datetime.now(LOCAL_TZ).date())
+
+
+@app.route("/mileage/<int:claim_id>/decide", methods=["POST"])
+@owner_required
+def decide_mileage(claim_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM mileage_claims WHERE id = ?",
+                       (claim_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    state = request.form.get("state", "")
+    if state not in ("approved", "declined", "paid"):
+        conn.close()
+        flash("Approve it, decline it or mark it paid.", "error")
+        return redirect(url_for("mileage"))
+    user = current_user()
+    conn.execute(
+        """UPDATE mileage_claims SET status = ?, decided_at = ?,
+                  decided_by_user_id = ?, owner_note = ? WHERE id = ?""",
+        (state, datetime.now(timezone.utc).isoformat(), user["id"],
+         (request.form.get("owner_note", "") or "").strip()[:200] or None,
+         claim_id))
+    conn.commit()
+    conn.close()
+    flash(f"Marked {state}.", "success")
+    return redirect(url_for("mileage"))
+
+
+@app.route("/admin/exit-interviews", methods=["GET", "POST"])
+@owner_required
+def exit_interviews():
+    """What somebody said on their way out.
+
+    Held apart from the rest of their record on purpose: it is written
+    after the working relationship has ended, and mixing it into a file
+    that shaped decisions while they were here would misrepresent both.
+    """
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        who_raw = (request.form.get("user_id", "") or "").strip()
+        name = (request.form.get("person_name", "") or "").strip()[:120]
+        when = parse_date(request.form.get("held_on", "")) \
+            or datetime.now(LOCAL_TZ).date()
+        if who_raw.isdigit() and not name:
+            row = conn.execute("SELECT name FROM users WHERE id = ?",
+                               (int(who_raw),)).fetchone()
+            name = row["name"] if row else ""
+        if not name:
+            conn.close()
+            flash("Whose interview is this?", "error")
+            return redirect(url_for("exit_interviews"))
+        try:
+            conn.execute(
+                """INSERT INTO exit_interviews (user_id, person_name, held_on,
+                           held_by_user_id, why_leaving, what_worked,
+                           what_did_not, would_return, note, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (int(who_raw) if who_raw.isdigit() else None, name,
+                 when.isoformat(), user["id"],
+                 (request.form.get("why_leaving", "") or "").strip()[:1000] or None,
+                 (request.form.get("what_worked", "") or "").strip()[:1000] or None,
+                 (request.form.get("what_did_not", "") or "").strip()[:1000] or None,
+                 (request.form.get("would_return", "") or "").strip()[:200] or None,
+                 (request.form.get("note", "") or "").strip()[:1000] or None,
+                 datetime.now(timezone.utc).isoformat()))
+        except sqlite3.IntegrityError:
+            conn.close()
+            flash(f"{name} already has one. Edit it rather than adding a second.",
+                  "error")
+            return redirect(url_for("exit_interviews"))
+        conn.commit()
+        conn.close()
+        flash("Recorded.", "success")
+        return redirect(url_for("exit_interviews"))
+
+    rows = conn.execute(
+        """SELECT exit_interviews.*, users.name AS staff_name
+             FROM exit_interviews
+             LEFT JOIN users ON users.id = exit_interviews.user_id
+            ORDER BY exit_interviews.held_on DESC""").fetchall()
+    # Anybody who has left and has no interview against them. The list that
+    # makes the feature more than a filing cabinet.
+    leavers = conn.execute(
+        """SELECT id, name, reason_for_leaving FROM users
+            WHERE status != 'active'
+              AND id NOT IN (SELECT COALESCE(user_id, -1) FROM exit_interviews)
+            ORDER BY name""").fetchall()
+    conn.close()
+    overview = [
+        overview_cell("Interviews", len(rows)),
+        overview_cell("Left without one", len(leavers), alert=bool(leavers)),
+    ]
+    return render_template("exit_interviews.html", rows=rows, leavers=leavers,
+                           overview=overview,
+                           today=datetime.now(LOCAL_TZ).date())
 
 
 @app.route("/management/buying")

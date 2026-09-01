@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Why they cancel{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Why they cancel</h1>
+  <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A guest cancelling because the price went up and a guest cancelling because their mother is ill
+  were the same row. Asked, never required &mdash; a guest cancelling in a hurry does not owe the
+  house an explanation, and a mandatory field collects a lie or an empty string. Most reasons
+  arrive on the telephone, so they can be added afterwards.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Why</h2>
+  {% if not reasons.rows %}
+  <p class="empty-note">Nothing cancelled in the last year.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Reason</th><th class="num">How many</th><th class="num">Share</th></tr></thead>
+      <tbody>
+        {% for r in reasons.rows %}
+        <tr>
+          <th scope="row">
+            {{ r.label }}
+            {% if r.unexplained %}
+            {# Counted as its own line rather than dropped. Most will have
+               none, and a chart of only the explained ones makes a handful
+               of answers look like the whole picture. #}
+            <span class="upload-hint">counted, not hidden</span>
+            {% endif %}
+          </th>
+          <td class="num">{{ r.count }}</td>
+          <td class="num">{{ r.pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">Event enquiries that became something</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">
+    Of the enquiries that <em>got an answer</em>. Ones still open are counted apart, because
+    treating them as failures would make the current month always look terrible &mdash; this
+    month's enquiries have not had time to become anything yet.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Became a booking</th><th>Did not</th><th>Still open</th><th>Rate</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>{{ enquiries.won }}</td>
+          <td>{{ enquiries.lost }}</td>
+          <td>{{ enquiries.open }}</td>
+          <td>{% if enquiries.rate is not none %}{{ enquiries.rate }}%{% else %}&mdash;{% endif %}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if recent %}
+<div class="detail-card">
+  <h2 class="section-heading">Recent cancellations</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Guest</th><th>Was arriving</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for b in recent %}
+        <tr>
+          <th scope="row">{{ b['guest_name'] }}</th>
+          <td>{{ b['arrival_date'] }}</td>
+          <td>
+            <form method="post" action="{{ url_for('set_cancel_reason', booking_id=b['id']) }}"
+                  style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="reason" onchange="this.form.submit()">
+                <option value="">Not said</option>
+                {% for key, label in choices.items() %}
+                <option value="{{ key }}" {{ 'selected' if key == b['cancel_reason'] }}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              {% if b['cancel_note'] %}<span class="upload-hint">{{ b['cancel_note'] }}</span>{% endif %}
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
