@@ -224,6 +224,8 @@ SUITES = [
     "test_newsletter_reach",
     "test_data_requests",
     "test_room_board",
+    "test_breakages",
+    "test_house_upkeep",
     "test_template_shadowing",
     "test_empty_nights",
     "test_booking_parties",

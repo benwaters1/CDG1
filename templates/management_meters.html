@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Meter readings{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Meter readings</h1>
+  <a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Not a bill-checking feature &mdash; the supplier sends the bill. This is the thing a bill cannot
+  tell you: whether this month is like the last one, and whether the fortnight somebody left the
+  boiler on shows up. The <em>use</em> is the figure worth reading; the reading itself only ever
+  goes up.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Write one down</h2>
+  <div class="field-row-2">
+    <input type="text" name="meter" list="known-meters" placeholder="Which meter, e.g. Electricity — main" required>
+    <datalist id="known-meters">
+      {% for name in meters %}<option value="{{ name }}">{% endfor %}
+    </datalist>
+    <input type="date" name="read_on" value="{{ today }}">
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="reading" placeholder="What the meter says" required>
+    <input type="text" name="note" placeholder="Anything worth saying">
+  </div>
+  <label class="checkbox-row" style="display:flex; align-items:center; gap:8px; margin:8px 0;">
+    <input type="checkbox" name="confirm_lower">
+    <span>This really is lower than the last one &mdash; the meter was replaced or misread</span>
+  </label>
+  <button type="submit" class="btn-mini">Record</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">A reading below the previous one is refused
+    unless you tick that box. A meter only goes up, and writing a lower number down silently would
+    make one month's use negative and the next month's enormous.</p>
+</form>
+
+{% if not history %}
+<div class="empty-state">No readings yet.</div>
+{% else %}
+{% for name in meters %}
+<div class="detail-card">
+  <h2 class="section-heading">{{ name }}</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Read on</th><th class="num">Reading</th><th class="num">Used since</th><th class="num">A day</th><th>Note</th></tr></thead>
+      <tbody>
+        {% for e in history[name] %}
+        <tr>
+          <th scope="row">{{ e.row['read_on'] }}</th>
+          <td class="num">{{ '%g'|format(e.row['reading']) }}</td>
+          <td class="num">{% if e.used is not none %}{{ '%g'|format(e.used) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">
+            {# Per day, because readings are never taken evenly and a bare
+               difference between a fortnight and a quarter is not a
+               comparison. #}
+            {% if e.per_day is not none %}{{ '%g'|format(e.per_day) }}{% else %}&mdash;{% endif %}
+          </td>
+          <td>{{ e.row['note'] or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% endblock %}

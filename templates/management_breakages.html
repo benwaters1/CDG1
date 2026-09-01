@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Breakages{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Breakages</h1>
+  <a href="{{ url_for('room_issues') }}" class="btn-ghost">Faults</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Something a guest broke or took. Not the same as a fault &mdash; a dripping shower needs a
+  plumber and is nobody's fault; this carries a question a fault never does. Everything is
+  recorded whether or not anything is said about it, because three broken glasses across a season
+  is wear and three in one stay is a conversation, and neither is visible unless both are written
+  down.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Write one down</h2>
+  <div class="field-row-2">
+    <input type="text" name="what" placeholder="What was broken or missing" required>
+    <input type="date" name="found_on" value="{{ today }}">
+  </div>
+  <div class="field-row-2">
+    <select name="room_id">
+      <option value="">Which room (optional)</option>
+      {% for r in rooms %}<option value="{{ r['id'] }}">{{ r['name'] }}</option>{% endfor %}
+    </select>
+    <select name="booking_id">
+      <option value="">Which stay (optional)</option>
+      {% for b in recent %}
+      <option value="{{ b['id'] }}">{{ b['guest_name'] }} — left {{ b['departure_date'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="replacement_cost" placeholder="What replacing it costs">
+    <input type="text" name="note" placeholder="Anything worth saying">
+  </div>
+  <button type="submit" class="btn-mini">Record it</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">Both the room and the stay are optional. A
+    breakage found in a room nobody has been in belongs to no stay, and pretending otherwise would
+    put it on the wrong guest.</p>
+</form>
+
+{% if not summary.rows %}
+<div class="empty-state">Nothing recorded in the last year.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">What has been found</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">
+    What it cost to replace and what was recovered are kept apart and never netted into one
+    figure. What the house absorbs is a cost of trading; what it recovered is a decision it made,
+    and one number would say neither.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Found</th><th>What</th><th>Where</th><th>Whose stay</th>
+            <th class="num">To replace</th><th>Decision</th></tr>
+      </thead>
+      <tbody>
+        {% for b in summary.rows %}
+        <tr>
+          <td>{{ b['found_on'] }}</td>
+          <th scope="row">{{ b['what'] }}
+            {% if b['note'] %}<span class="upload-hint">{{ b['note'] }}</span>{% endif %}</th>
+          <td>{{ b['room_name'] or '—' }}</td>
+          <td>{{ b['guest_name'] or '—' }}</td>
+          <td class="num">{% if b['replacement_cost'] %}&euro;{{ '%.2f'|format(b['replacement_cost']) }}{% else %}&mdash;{% endif %}</td>
+          <td>
+            {% if b['charge_decision'] == 'charged' %}
+              Charged &euro;{{ '%.2f'|format(b['charged_amount'] or 0) }}
+            {% elif b['charge_decision'] == 'let_it_go' %}
+              Let go
+            {% elif is_owner %}
+            {# Only the owner is offered the decision. Charging a guest for
+               damage is the same shape as refusing a refund: the house's
+               position is that somebody makes it, never a rule. #}
+            <form method="post" action="{{ url_for('decide_breakage', breakage_id=b['id']) }}"
+                  style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="charged_amount" placeholder="Amount" style="width:90px;">
+              <button type="submit" name="decision" value="charged" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Charge</button>
+              <button type="submit" name="decision" value="let_it_go" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Let it go</button>
+            </form>
+            {% else %}
+            <span class="upload-hint">not decided</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="4">Over the year</th>
+          <th class="num">&euro;{{ '%.2f'|format(summary.cost) }}</th>
+          <th>recovered &euro;{{ '%.2f'|format(summary.recovered) }}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<p class="upload-hint">Marking one as charged records the decision. It does not take money from
+  anybody &mdash; that is a line on their bill, made deliberately, the same way a refund is.</p>
+
+{% endblock %}

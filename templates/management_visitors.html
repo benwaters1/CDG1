@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Who is on site{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Who is on site</h1>
+  <a href="{{ url_for('staff_today') }}" class="btn-ghost">Today</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Anybody here who is neither staff nor a guest &mdash; the roofer, the meter reader, a delivery.
+  The point is not the signing in; it is being able to answer <em>who is still here</em>, which a
+  book on a table cannot, because nobody reads back through it at six o'clock.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Sign somebody in</h2>
+  <div class="field-row-2">
+    <input type="text" name="name" placeholder="Name" required>
+    <input type="text" name="company" placeholder="Company">
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="reason" placeholder="What they are here for">
+    <select name="host_user_id">
+      <option value="">Who is expecting them</option>
+      {% for u in staff %}<option value="{{ u['id'] }}">{{ u['name'] }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="phone" placeholder="Telephone">
+    <input type="text" name="vehicle" placeholder="Vehicle or registration">
+  </div>
+  <button type="submit" class="btn-mini">Sign in</button>
+</form>
+
+<div class="detail-card">
+  <h2 class="section-heading">Here now</h2>
+  {% if not here %}
+  <p class="empty-note">Nobody signed in.</p>
+  {% else %}
+  <p class="pay-disclaimer" style="margin-top:-6px;">Longest first, because the useful question is
+    not who arrived &mdash; it is who has been here since nine this morning with nobody sure
+    where.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Who</th><th>For what</th><th>Expecting them</th><th>Since</th><th></th></tr></thead>
+      <tbody>
+        {% for v in here|sort(attribute='hours', reverse=true) %}
+        <tr class="{{ 'row-alert' if v.probably_gone }}">
+          <th scope="row">{{ v.visitor['name'] }}
+            {% if v.visitor['company'] %}<span class="upload-hint">{{ v.visitor['company'] }}</span>{% endif %}
+            {% if v.visitor['phone'] %}<span class="upload-hint">{{ v.visitor['phone'] }}</span>{% endif %}</th>
+          <td>{{ v.visitor['reason'] or '—' }}
+            {% if v.visitor['vehicle'] %}<span class="upload-hint">{{ v.visitor['vehicle'] }}</span>{% endif %}</td>
+          <td>{{ v.host or '—' }}</td>
+          <td>
+            {{ v.hours }} hours
+            {% if v.probably_gone %}
+            {# A judgement, said as one. Somebody who forgot to sign out
+               looks exactly like somebody in the roof space, and a register
+               that tidied itself would be always neat and never true. #}
+            <span class="upload-hint">over {{ long_hours }} — probably forgot to sign out</span>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('sign_out_visitor', visitor_id=v.visitor['id']) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--steel);">Sign out</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% if recent %}
+<div class="detail-card">
+  <h2 class="section-heading">Been and gone</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Who</th><th>For what</th><th>In</th><th>Out</th></tr></thead>
+      <tbody>
+        {% for v in recent %}
+        <tr>
+          <th scope="row">{{ v['name'] }}{% if v['company'] %} · {{ v['company'] }}{% endif %}</th>
+          <td>{{ v['reason'] or '—' }}</td>
+          <td>{{ v['signed_in_at'][:16]|replace('T', ' ') }}</td>
+          <td>{{ v['signed_out_at'][:16]|replace('T', ' ') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<p class="upload-hint">Nothing is ever signed out automatically. A register that tidies itself is
+  always neat and never true &mdash; which is worse than no register in the one situation it
+  exists for, because it would be believed.</p>
+
+{% endblock %}

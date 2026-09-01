@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Cleaning round{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Cleaning round</h1>
+  <a href="{{ url_for('admin_tasks') }}" class="btn-ghost">Tasks</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The parts of the house nobody books. Turnover tasks cover the room a guest just left; this
+  covers the hall, the stairs, the salon, the windows twice a year. Measured from when each was
+  last <em>done</em> &mdash; a staircase swept four days late does not want sweeping three days
+  early next time.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not rounds %}
+<div class="empty-state">Nothing on the round yet.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">Worst first</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>What</th><th>Where</th><th>Every</th><th>Last done</th><th>Due</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rounds %}
+        <tr class="{{ 'row-alert' if r.overdue }}">
+          <th scope="row">{{ r.round['what'] }}
+            {% if r.round['note'] %}<span class="upload-hint">{{ r.round['note'] }}</span>{% endif %}</th>
+          <td>{{ r.round['area'] or '—' }}</td>
+          <td>{{ r.round['every_days'] }} days</td>
+          <td>
+            {% if r.never %}
+            {# Never done reads as due now rather than as nothing. A NULL
+               sorted on a date would quietly mean "never due". #}
+            <span style="color:var(--rust);">never</span>
+            {% else %}{{ r.last }}{% endif %}
+          </td>
+          <td>
+            {% if r.overdue %}<span style="color:var(--danger);">{{ -r.days }} days late</span>
+            {% elif r.days == 0 %}today
+            {% else %}in {{ r.days }} days{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('cleaning_round_done', round_id=r.round['id']) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="done_on" value="{{ today }}">
+              <button type="submit" class="small-link" style="background:none;border:0;cursor:pointer;color:var(--steel);">Done</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Add something</h2>
+  <div class="field-row-2">
+    <input type="text" name="what" placeholder="What, e.g. sweep the main stair" required>
+    <input type="text" name="area" placeholder="Where, e.g. entrance hall">
+  </div>
+  <div class="field-row-2">
+    <input type="number" name="every_days" min="1" placeholder="Every how many days (7)">
+    <input type="text" name="note" placeholder="Anything worth saying">
+  </div>
+  <button type="submit" class="btn-mini">Add</button>
+</form>
+
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Lost property{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Lost property</h1>
+  <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Somewhere there is a drawer. Nothing here is ever thrown away by the app &mdash; after
+  {{ keep_days }} days an item is flagged as fair to let go, and letting it go is still something
+  somebody does. The one thing a guest rings about six months later is the thing a job would have
+  binned.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Something was left behind</h2>
+  <div class="field-row-2">
+    <input type="text" name="what" placeholder="What it is" required>
+    <input type="date" name="found_on" value="{{ today }}">
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="found_where" placeholder="Where it was found">
+    <select name="booking_id">
+      <option value="">Whose stay, if known</option>
+      {% for b in recent %}
+      <option value="{{ b['id'] }}">{{ b['guest_name'] }} — left {{ b['departure_date'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="guest_name" placeholder="Or a name, if the stay is not listed">
+    <input type="text" name="guest_contact" placeholder="How to reach them">
+  </div>
+  <button type="submit" class="btn-mini">Into the drawer</button>
+</form>
+
+{% if not rows %}
+<div class="empty-state">The drawer is empty.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">What is in it</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Found</th><th>What</th><th>Where</th><th>Whose</th><th>State</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{{ 'row-alert' if r['id'] in stale_ids }}">
+          <td>{{ r['found_on'] }}</td>
+          <th scope="row">{{ r['what'] }}</th>
+          <td>{{ r['found_where'] or '—' }}</td>
+          <td>{{ r['booking_guest'] or r['guest_name'] or '—' }}
+            {% if r['guest_contact'] %}<span class="upload-hint">{{ r['guest_contact'] }}</span>{% endif %}</td>
+          <td>
+            {{ states.get(r['status'], r['status']) }}
+            {% if r['resolved_on'] %}<span class="upload-hint">{{ r['resolved_on'] }}{% if r['resolved_note'] %} · {{ r['resolved_note'] }}{% endif %}</span>{% endif %}
+            {% if r['id'] in stale_ids %}<span class="upload-hint">held over {{ keep_days }} days</span>{% endif %}
+          </td>
+          <td>
+            {% if r['status'] == 'held' %}
+            <form method="post" action="{{ url_for('resolve_lost_property', item_id=r['id']) }}"
+                  style="display:flex; gap:6px; align-items:center;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="resolved_note" placeholder="Note" style="width:110px;">
+              <button type="submit" name="state" value="returned" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Sent back</button>
+              <button type="submit" name="state" value="disposed" class="small-link"
+                      style="background:none;border:0;cursor:pointer;color:var(--steel);">Let go</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<p class="upload-hint">Items that went back or were let go stay on the list, so &ldquo;did we ever
+  send that scarf back&rdquo; is still answerable long after the drawer has been tidied.</p>
+
+{% endblock %}

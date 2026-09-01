@@ -2483,6 +2483,105 @@ def init_db():
             UNIQUE(obligation_id, covered_due_on)
         );
 
+        -- Something a guest broke or took. Deliberately separate from
+        -- room_issues: a fault is something that needs fixing and is
+        -- nobody's fault, and a breakage carries a question a fault never
+        -- does -- whether the house says anything about it.
+        -- The parts of the house nobody books. Turnover tasks cover the
+        -- room a guest just left; this covers the hall, the stairs, the
+        -- windows twice a year. Not the maintenance schedule, which is a
+        -- different rhythm: a chimney is swept by somebody who comes, and
+        -- a staircase by whoever is here.
+        -- Anybody on site who is neither staff nor a guest. The point is
+        -- not the signing in, it is being able to answer who is STILL
+        -- HERE -- which a book on a table cannot, because nobody reads
+        -- back through it at six o'clock.
+        CREATE TABLE IF NOT EXISTS site_visitors (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            company TEXT,
+            reason TEXT,
+            -- Who in the house is expecting them, so somebody can be asked.
+            host_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            phone TEXT,
+            vehicle TEXT,
+            signed_in_at TEXT NOT NULL,
+            signed_out_at TEXT,
+            signed_in_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            signed_out_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS cleaning_rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            area TEXT,
+            every_days INTEGER NOT NULL DEFAULT 7,
+            last_done_on TEXT,
+            last_done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            note TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- A reading, not a bill. The supplier sends the bill; what a bill
+        -- cannot say is whether this month is like the last one, or
+        -- whether the fortnight somebody left the boiler on shows up.
+        CREATE TABLE IF NOT EXISTS meter_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            meter TEXT NOT NULL,
+            read_on TEXT NOT NULL,
+            reading REAL NOT NULL,
+            read_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            note TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(meter, read_on)
+        );
+
+        -- Somewhere there is a drawer. Returned sets returned_on rather
+        -- than deleting, so "did we ever send that scarf back" stays
+        -- answerable.
+        CREATE TABLE IF NOT EXISTS lost_property (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            found_on TEXT NOT NULL,
+            found_where TEXT,
+            found_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            guest_name TEXT,
+            guest_contact TEXT,
+            status TEXT NOT NULL DEFAULT 'held'
+                CHECK(status IN ('held','returned','disposed')),
+            resolved_on TEXT,
+            resolved_note TEXT,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS breakages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL,
+            what TEXT NOT NULL,
+            found_on TEXT NOT NULL,
+            found_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            -- What replacing it costs. Recorded even when nothing is
+            -- charged, because "what does this cost us a season" is the
+            -- question the list is actually for.
+            replacement_cost REAL,
+            -- charge_decision is the owner's, and starts as undecided.
+            -- Never automatic: the house's position on money is that these
+            -- are decisions somebody makes, not rules.
+            charge_decision TEXT NOT NULL DEFAULT 'undecided'
+                CHECK(charge_decision IN ('undecided','let_it_go','charged')),
+            charged_amount REAL,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            decided_at TEXT,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS monthly_budgets (
             month INTEGER PRIMARY KEY CHECK(month BETWEEN 1 AND 12),
             revenue REAL,
@@ -4745,6 +4844,12 @@ NAV_AREAS = {
     ],
     "estate": [
         "admin_access", "admin_assets", "asset_photo", "checkin_vehicle", "checkout_vehicle",
+        # Recording a breakage belongs with whoever turns the room round;
+        # DECIDING what to say about it is the owner's and is not here.
+        "management_breakages", "management_cleaning", "cleaning_round_done",
+        "management_visitors", "sign_out_visitor",
+        "management_meters", "management_lost_property",
+        "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
         "delete_room_issue", "delete_shopping_item", "delete_vehicle",
         "delete_vehicle_maintenance", "edit_contact", "edit_manual_section", "edit_vehicle",
@@ -4775,6 +4880,7 @@ NAV_AREAS = {
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
         "management_night_cost", "management_filings", "record_filing",
+        "decide_breakage",
         "stop_filing",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
@@ -16343,6 +16449,166 @@ def filings_due(conn, today=None):
     return out
 
 
+# Longer than this and somebody has almost certainly forgotten to sign
+# out. Said on the page, never acted on: a register that tidies itself is
+# always neat and never true, which is worse than none because it would be
+# believed in the one situation it exists for.
+VISITOR_LONG_HOURS = 10
+
+
+def visitors_on_site(conn, now=None):
+    """Everybody who has signed in and not out, longest first.
+
+    Longest first because the useful question is not who arrived, it is
+    who has been here since nine this morning with nobody sure where.
+    """
+    now = now or datetime.now(timezone.utc)
+    rows = conn.execute(
+        """SELECT site_visitors.*, users.name AS host
+             FROM site_visitors
+             LEFT JOIN users ON users.id = site_visitors.host_user_id
+            WHERE site_visitors.signed_out_at IS NULL
+            ORDER BY site_visitors.signed_in_at""").fetchall()
+    out = []
+    for r in rows:
+        since = parse_datetime_iso(r["signed_in_at"])
+        hours = round((now - since).total_seconds() / 3600.0, 1) if since else None
+        out.append({
+            "visitor": r, "since": since, "hours": hours,
+            # A judgement, said as one. Somebody who forgot to sign out
+            # looks exactly like somebody in the roof space.
+            "probably_gone": hours is not None and hours >= VISITOR_LONG_HOURS,
+        })
+    return out
+
+
+LOST_PROPERTY_STATES = {
+    "held": "In the drawer",
+    "returned": "Sent back",
+    "disposed": "Let go",
+}
+
+# How long the house keeps something before it is fair to let it go. Said
+# out loud on the page rather than enforced: nothing is thrown away by a
+# job, because the one thing somebody rings about six months later is the
+# thing a job would have binned.
+LOST_PROPERTY_KEEP_DAYS = 90
+
+
+def cleaning_rounds_due(conn, today=None):
+    """What has not been done lately, worst first.
+
+    Measured from when it was last DONE rather than from a fixed calendar.
+    A staircase swept four days late does not want sweeping three days
+    early next time.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        "SELECT * FROM cleaning_rounds WHERE active = 1").fetchall()
+    out = []
+    for r in rows:
+        last = parse_date(r["last_done_on"]) if r["last_done_on"] else None
+        if last:
+            due = last + timedelta(days=r["every_days"] or 7)
+            days = (due - today).days
+        else:
+            # Never done. Due now rather than never, which is what a NULL
+            # would quietly mean if this sorted on a date.
+            due, days = today, 0
+        out.append({"round": r, "last": last, "due": due, "days": days,
+                    "overdue": days < 0, "never": last is None})
+    out.sort(key=lambda x: x["days"])
+    return out
+
+
+def meter_history(conn, meter=None, limit=24):
+    """Readings with the use between them worked out.
+
+    The reading is what somebody wrote on the meter; the USE is the
+    difference, and it is the only figure worth looking at. A reading on
+    its own says nothing -- it only ever goes up.
+    """
+    query = "SELECT * FROM meter_readings"
+    params = []
+    if meter:
+        query += " WHERE meter = ?"
+        params.append(meter)
+    query += " ORDER BY meter, read_on DESC"
+    rows = conn.execute(query, params).fetchall()
+
+    by_meter = {}
+    for r in rows:
+        by_meter.setdefault(r["meter"], []).append(r)
+
+    out = {}
+    for name, readings in by_meter.items():
+        entries = []
+        for i, r in enumerate(readings[:limit]):
+            older = readings[i + 1] if i + 1 < len(readings) else None
+            used = per_day = None
+            if older:
+                a, b = parse_date(older["read_on"]), parse_date(r["read_on"])
+                span = (b - a).days if (a and b) else 0
+                used = round(r["reading"] - older["reading"], 2)
+                # Per day, because readings are never taken evenly and a
+                # bare difference between a fortnight and a quarter is not
+                # a comparison.
+                per_day = round(used / span, 2) if span > 0 else None
+            entries.append({"row": r, "used": used, "per_day": per_day})
+        out[name] = entries
+    return out
+
+
+BREAKAGE_DECISIONS = {
+    "undecided": "Not decided",
+    "let_it_go": "Let it go",
+    "charged": "Charged",
+}
+
+
+def breakages_list(conn, *, undecided_only=False, months=12, today=None):
+    """What has been broken or taken, most recent first."""
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=30 * months)).isoformat()
+    query = """SELECT breakages.*, rooms.name AS room_name,
+                      bookings.guest_name, bookings.arrival_date,
+                      bookings.departure_date, users.name AS found_by
+                 FROM breakages
+                 LEFT JOIN rooms ON rooms.id = breakages.room_id
+                 LEFT JOIN bookings ON bookings.id = breakages.booking_id
+                 LEFT JOIN users ON users.id = breakages.found_by_user_id
+                WHERE breakages.found_on >= ?"""
+    params = [since]
+    if undecided_only:
+        query += " AND breakages.charge_decision = 'undecided'"
+    query += " ORDER BY breakages.found_on DESC, breakages.id DESC"
+    return conn.execute(query, params).fetchall()
+
+
+def breakage_summary(conn, *, months=12, today=None):
+    """What it costs the house a year, and what it recovered.
+
+    The two are reported apart and never netted. What the house absorbs is
+    a cost of trading and worth knowing; what it recovered is a different
+    fact, and one figure would say neither.
+    """
+    rows = breakages_list(conn, months=months, today=today)
+    cost = round(sum(r["replacement_cost"] or 0 for r in rows), 2)
+    recovered = round(sum(r["charged_amount"] or 0
+                          for r in rows if r["charge_decision"] == "charged"), 2)
+    return {
+        "rows": rows,
+        "count": len(rows),
+        "cost": cost,
+        "recovered": recovered,
+        # Not netted into one number: what the house absorbs is a cost of
+        # trading, and what it recovered is a decision it made.
+        "absorbed": round(cost - recovered, 2),
+        "undecided": len([r for r in rows
+                          if r["charge_decision"] == "undecided"]),
+    }
+
+
 def budget_for(conn, month_date, fallback=None):
     """What this month was supposed to take and spend.
 
@@ -21429,6 +21695,17 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Who is on site", "management_visitors",
+     "visitor contractor sign in out roofer delivery driver site register "
+     "who is here"),
+    ("Cleaning round", "management_cleaning",
+     "clean cleaning schedule hall stairs windows common areas housekeeping"),
+    ("Meter readings", "management_meters",
+     "meter electricity gas water oil energy reading usage consumption"),
+    ("Lost property", "management_lost_property",
+     "lost found property left behind drawer scarf"),
+    ("Breakages", "management_breakages",
+     "damage broken missing taken guest charge replace breakage"),
     ("Filings and deadlines", "management_filings",
      "vat tva taxe de sejour urssaf payroll return deadline due file "
      "filing penalty accountant"),
@@ -39265,6 +39542,457 @@ def export_vendors_csv():
     conn.close()
     fieldnames = ["name", "contact_person", "phone", "email", "payment_terms", "notes"]
     return csv_response(fieldnames, rows, "vendors.csv")
+
+
+@app.route("/management/visitors", methods=["GET", "POST"])
+@login_required
+def management_visitors():
+    """Who is on site who is neither staff nor a guest."""
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        name = (request.form.get("name", "") or "").strip()[:120]
+        company = (request.form.get("company", "") or "").strip()[:120]
+        reason = (request.form.get("reason", "") or "").strip()[:200]
+        phone = normalise_phone(request.form.get("phone", "")) \
+            or (request.form.get("phone", "") or "").strip()[:40]
+        vehicle = (request.form.get("vehicle", "") or "").strip()[:60]
+        host_raw = (request.form.get("host_user_id", "") or "").strip()
+        if not name:
+            conn.close()
+            flash("A visitor needs a name.", "error")
+            return redirect(url_for("management_visitors"))
+        conn.execute(
+            """INSERT INTO site_visitors (name, company, reason, host_user_id,
+                       phone, vehicle, signed_in_at, signed_in_by_user_id,
+                       created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (name, company or None, reason or None,
+             int(host_raw) if host_raw.isdigit() else None,
+             phone or None, vehicle or None,
+             datetime.now(timezone.utc).isoformat(), user["id"],
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{name} is signed in.", "success")
+        return redirect(url_for("management_visitors"))
+
+    now = datetime.now(timezone.utc)
+    here = visitors_on_site(conn, now)
+    recent = conn.execute(
+        """SELECT site_visitors.*, users.name AS host
+             FROM site_visitors
+             LEFT JOIN users ON users.id = site_visitors.host_user_id
+            WHERE site_visitors.signed_out_at IS NOT NULL
+            ORDER BY site_visitors.signed_in_at DESC LIMIT 40""").fetchall()
+    staff = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name"
+    ).fetchall()
+    conn.close()
+
+    stale = [v for v in here if v["probably_gone"]]
+    overview = [
+        overview_cell("On site now", len(here), alert=bool(here),
+                      hint="signed in and not out"),
+        overview_cell("Here over " + str(VISITOR_LONG_HOURS) + " hours",
+                      len(stale), alert=bool(stale),
+                      hint="probably forgot to sign out"),
+    ]
+    return render_template("management_visitors.html", here=here,
+                           recent=recent, staff=staff, overview=overview,
+                           long_hours=VISITOR_LONG_HOURS)
+
+
+@app.route("/management/visitors/<int:visitor_id>/out", methods=["POST"])
+@login_required
+def sign_out_visitor(visitor_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT name, signed_out_at FROM site_visitors WHERE id = ?",
+        (visitor_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["signed_out_at"]:
+        conn.close()
+        flash(f"{row['name']} was already signed out.", "error")
+        return redirect(url_for("management_visitors"))
+    user = current_user()
+    conn.execute(
+        """UPDATE site_visitors SET signed_out_at = ?, signed_out_by_user_id = ?
+            WHERE id = ? AND signed_out_at IS NULL""",
+        (datetime.now(timezone.utc).isoformat(), user["id"], visitor_id))
+    conn.commit()
+    conn.close()
+    flash(f"{row['name']} is signed out.", "success")
+    return redirect(url_for("management_visitors"))
+
+
+@app.route("/management/cleaning", methods=["GET", "POST"])
+@login_required
+def management_cleaning():
+    """The parts of the house nobody books.
+
+    Open to staff, because the person who sweeps the stairs is the person
+    who should be able to say they have been swept.
+    """
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        what = (request.form.get("what", "") or "").strip()[:120]
+        area = (request.form.get("area", "") or "").strip()[:60]
+        every_raw = (request.form.get("every_days", "") or "").strip()
+        note = (request.form.get("note", "") or "").strip()[:300]
+        if not what:
+            conn.close()
+            flash("Say what needs doing.", "error")
+            return redirect(url_for("management_cleaning"))
+        conn.execute(
+            """INSERT INTO cleaning_rounds (what, area, every_days, note,
+                       active, created_at)
+               VALUES (?, ?, ?, ?, 1, ?)""",
+            (what, area or None,
+             int(every_raw) if every_raw.isdigit() and int(every_raw) > 0 else 7,
+             note or None, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{what} added. It reads as due now until somebody says it is "
+              "been done.", "success")
+        return redirect(url_for("management_cleaning"))
+
+    today = datetime.now(LOCAL_TZ).date()
+    rounds = cleaning_rounds_due(conn, today)
+    conn.close()
+    late = [r for r in rounds if r["overdue"]]
+    overview = [
+        overview_cell("On the round", len(rounds)),
+        overview_cell("Behind", len(late), alert=bool(late)),
+        overview_cell("Never done", len([r for r in rounds if r["never"]]),
+                      alert=any(r["never"] for r in rounds)),
+    ]
+    return render_template("management_cleaning.html", rounds=rounds,
+                           overview=overview, today=today)
+
+
+@app.route("/management/cleaning/<int:round_id>/done", methods=["POST"])
+@login_required
+def cleaning_round_done(round_id):
+    """Say it has been done, dated today unless somebody says otherwise."""
+    conn = get_db()
+    row = conn.execute("SELECT what FROM cleaning_rounds WHERE id = ?",
+                       (round_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    user = current_user()
+    when = parse_date(request.form.get("done_on", "")) \
+        or datetime.now(LOCAL_TZ).date()
+    conn.execute(
+        """UPDATE cleaning_rounds SET last_done_on = ?, last_done_by_user_id = ?
+            WHERE id = ?""", (when.isoformat(), user["id"], round_id))
+    conn.commit()
+    conn.close()
+    flash(f"{row['what']} \u2014 done.", "success")
+    return redirect(url_for("management_cleaning"))
+
+
+@app.route("/management/cleaning/<int:round_id>/stop", methods=["POST"])
+@owner_required
+def stop_cleaning_round(round_id):
+    conn = get_db()
+    conn.execute("UPDATE cleaning_rounds SET active = 0 WHERE id = ?",
+                 (round_id,))
+    conn.commit()
+    conn.close()
+    flash("Off the round. When it was last done is kept.", "success")
+    return redirect(url_for("management_cleaning"))
+
+
+@app.route("/management/meters", methods=["GET", "POST"])
+@login_required
+def management_meters():
+    """What the house is using, from readings somebody takes."""
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        meter = (request.form.get("meter", "") or "").strip()[:60]
+        reading = parse_quantity(request.form.get("reading", ""))
+        when = parse_date(request.form.get("read_on", "")) \
+            or datetime.now(LOCAL_TZ).date()
+        note = (request.form.get("note", "") or "").strip()[:200]
+
+        if not meter or reading is None:
+            conn.close()
+            flash("A reading needs a meter and a number.", "error")
+            return redirect(url_for("management_meters"))
+
+        # A meter only ever goes up. A reading below the last one is a
+        # misread or a replaced meter, and either way writing it down
+        # silently would turn one month's use negative and the next
+        # month's enormous.
+        previous = conn.execute(
+            """SELECT reading, read_on FROM meter_readings
+                WHERE meter = ? AND read_on <= ?
+                ORDER BY read_on DESC LIMIT 1""",
+            (meter, when.isoformat())).fetchone()
+        if previous and reading < previous["reading"] \
+                and not request.form.get("confirm_lower"):
+            conn.close()
+            flash(f"That is lower than the {previous['reading']:g} read on "
+                  f"{previous['read_on']}. A meter only goes up \u2014 if it "
+                  "was replaced or misread, tick the box and it will be "
+                  "recorded as it is.", "error")
+            return redirect(url_for("management_meters"))
+
+        try:
+            conn.execute(
+                """INSERT INTO meter_readings (meter, read_on, reading,
+                           read_by_user_id, note, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (meter, when.isoformat(), reading, user["id"], note or None,
+                 datetime.now(timezone.utc).isoformat()))
+        except sqlite3.IntegrityError:
+            conn.close()
+            flash(f"{meter} already has a reading for {when.isoformat()}.",
+                  "error")
+            return redirect(url_for("management_meters"))
+        conn.commit()
+        conn.close()
+        flash("Written down.", "success")
+        return redirect(url_for("management_meters"))
+
+    history = meter_history(conn)
+    meters = sorted(history)
+    conn.close()
+    overview = [
+        overview_cell("Meters", len(meters)),
+        overview_cell("Readings", sum(len(v) for v in history.values())),
+    ]
+    return render_template("management_meters.html", history=history,
+                           meters=meters, overview=overview,
+                           today=datetime.now(LOCAL_TZ).date())
+
+
+@app.route("/management/lost-property", methods=["GET", "POST"])
+@login_required
+def management_lost_property():
+    """The drawer, written down."""
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        what = (request.form.get("what", "") or "").strip()[:200]
+        where = (request.form.get("found_where", "") or "").strip()[:120]
+        guest = (request.form.get("guest_name", "") or "").strip()[:120]
+        contact = (request.form.get("guest_contact", "") or "").strip()[:200]
+        booking_raw = (request.form.get("booking_id", "") or "").strip()
+        when = parse_date(request.form.get("found_on", "")) \
+            or datetime.now(LOCAL_TZ).date()
+        if not what:
+            conn.close()
+            flash("Say what was found.", "error")
+            return redirect(url_for("management_lost_property"))
+        conn.execute(
+            """INSERT INTO lost_property (what, found_on, found_where,
+                       found_by_user_id, booking_id, guest_name, guest_contact,
+                       created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (what, when.isoformat(), where or None, user["id"],
+             int(booking_raw) if booking_raw.isdigit() else None,
+             guest or None, contact or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash("In the drawer, and now written down.", "success")
+        return redirect(url_for("management_lost_property"))
+
+    today = datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        """SELECT lost_property.*, users.name AS found_by,
+                  bookings.guest_name AS booking_guest
+             FROM lost_property
+             LEFT JOIN users ON users.id = lost_property.found_by_user_id
+             LEFT JOIN bookings ON bookings.id = lost_property.booking_id
+            ORDER BY CASE lost_property.status WHEN 'held' THEN 0 ELSE 1 END,
+                     lost_property.found_on DESC""").fetchall()
+    recent = conn.execute(
+        """SELECT id, guest_name, departure_date FROM bookings
+            WHERE status = 'confirmed' AND departure_date <= ?
+            ORDER BY departure_date DESC LIMIT 40""",
+        (today.isoformat(),)).fetchall()
+    conn.close()
+
+    held = [r for r in rows if r["status"] == "held"]
+    # Old enough that it is fair to let it go. Said, never done: the one
+    # thing somebody rings about six months later is the thing a job would
+    # have thrown away.
+    stale = [r for r in held
+             if (parse_date(r["found_on"]) or today)
+             < today - timedelta(days=LOST_PROPERTY_KEEP_DAYS)]
+    overview = [
+        overview_cell("In the drawer", len(held)),
+        overview_cell("Held over three months", len(stale),
+                      alert=bool(stale), hint="fair to let go"),
+    ]
+    return render_template("management_lost_property.html", rows=rows,
+                           recent=recent, overview=overview, today=today,
+                           states=LOST_PROPERTY_STATES,
+                           keep_days=LOST_PROPERTY_KEEP_DAYS,
+                           stale_ids={r["id"] for r in stale})
+
+
+@app.route("/management/lost-property/<int:item_id>/resolve", methods=["POST"])
+@login_required
+def resolve_lost_property(item_id):
+    conn = get_db()
+    row = conn.execute("SELECT what FROM lost_property WHERE id = ?",
+                       (item_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    state = request.form.get("state", "")
+    if state not in ("returned", "disposed"):
+        conn.close()
+        flash("Say whether it went back or was let go.", "error")
+        return redirect(url_for("management_lost_property"))
+    note = (request.form.get("resolved_note", "") or "").strip()[:200]
+    conn.execute(
+        """UPDATE lost_property SET status = ?, resolved_on = ?,
+                  resolved_note = ? WHERE id = ?""",
+        (state, datetime.now(LOCAL_TZ).date().isoformat(), note or None,
+         item_id))
+    conn.commit()
+    conn.close()
+    # Kept rather than deleted, so "did we ever send that scarf back" stays
+    # answerable long after the drawer has been tidied.
+    flash(f"{row['what']} \u2014 recorded. It stays on the list.", "success")
+    return redirect(url_for("management_lost_property"))
+
+
+@app.route("/management/breakages", methods=["GET", "POST"])
+@login_required
+def management_breakages():
+    """What guests broke or took, and what the house did about it.
+
+    Recording is open to any member of staff, because the person who finds
+    the broken lamp is whoever is turning the room round. Deciding whether
+    to charge is the owner's, and lives on a separate route.
+    """
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        what = (request.form.get("what", "") or "").strip()[:200]
+        room_raw = (request.form.get("room_id", "") or "").strip()
+        booking_raw = (request.form.get("booking_id", "") or "").strip()
+        cost = parse_money(request.form.get("replacement_cost", ""))
+        note = (request.form.get("note", "") or "").strip()[:400]
+        found = parse_date(request.form.get("found_on", "")) \
+            or datetime.now(LOCAL_TZ).date()
+
+        if not what:
+            conn.close()
+            flash("Say what was broken or missing.", "error")
+            return redirect(url_for("management_breakages"))
+
+        conn.execute(
+            """INSERT INTO breakages (booking_id, room_id, what, found_on,
+                       found_by_user_id, replacement_cost, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (int(booking_raw) if booking_raw.isdigit() else None,
+             int(room_raw) if room_raw.isdigit() else None,
+             what, found.isoformat(), user["id"], cost, note or None,
+             datetime.now(timezone.utc).isoformat()))
+        log_audit(conn, "breakage_recorded", target=what)
+        conn.commit()
+        conn.close()
+        flash("Written down. Whether to say anything about it is a separate "
+              "decision.", "success")
+        return redirect(url_for("management_breakages"))
+
+    today = datetime.now(LOCAL_TZ).date()
+    summary = breakage_summary(conn, today=today)
+    rooms = conn.execute(
+        "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
+    # Stays that have recently ended, to attach one to. A breakage found in
+    # a room nobody has been in belongs to no stay, which is why the field
+    # is optional.
+    recent = conn.execute(
+        """SELECT id, guest_name, arrival_date, departure_date, room_id
+             FROM bookings
+            WHERE status = 'confirmed'
+              AND departure_date <= ? AND departure_date >= ?
+            ORDER BY departure_date DESC LIMIT 40""",
+        (today.isoformat(), (today - timedelta(days=60)).isoformat())).fetchall()
+    conn.close()
+
+    overview = [
+        overview_cell("Recorded", summary["count"], hint="in the last year"),
+        overview_cell("Not decided", summary["undecided"],
+                      alert=bool(summary["undecided"])),
+        overview_cell("The house absorbed",
+                      f"\u20ac{summary['absorbed']:,.2f}",
+                      hint="replacement cost less anything recovered"),
+    ]
+    return render_template("management_breakages.html", summary=summary,
+                           rooms=rooms, recent=recent, overview=overview,
+                           # BREAKAGE_DECISIONS is not passed: the template
+                           # writes the two outcomes out with their own
+                           # wording, and a map it never opens is work done
+                           # on every page load for nobody.
+                           today=today,
+                           is_owner=(user["role"] == "owner"))
+
+
+@app.route("/management/breakages/<int:breakage_id>/decide", methods=["POST"])
+@owner_required
+def decide_breakage(breakage_id):
+    """Say what the house is doing about one.
+
+    The owner's, not any member of staff's, and never automatic. Charging a
+    guest for damage is the same shape of decision as refusing a refund:
+    the house's position is that somebody makes it.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM breakages WHERE id = ?",
+                       (breakage_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+
+    decision = request.form.get("decision", "")
+    if decision not in BREAKAGE_DECISIONS or decision == "undecided":
+        conn.close()
+        flash("Choose whether it is being charged or let go.", "error")
+        return redirect(url_for("management_breakages"))
+
+    amount = parse_money(request.form.get("charged_amount", "")) \
+        if decision == "charged" else None
+    if decision == "charged" and not amount:
+        conn.close()
+        flash("Say how much is being charged.", "error")
+        return redirect(url_for("management_breakages"))
+
+    user = current_user()
+    conn.execute(
+        """UPDATE breakages SET charge_decision = ?, charged_amount = ?,
+                  decided_by_user_id = ?, decided_at = ? WHERE id = ?""",
+        (decision, amount, user["id"],
+         datetime.now(timezone.utc).isoformat(), breakage_id))
+    log_audit(conn, "breakage_decided", target=row["what"],
+              details=f"{decision}"
+                      + (f" \u20ac{amount:.2f}" if amount else ""))
+    conn.commit()
+    conn.close()
+    # Nothing is charged to a card from here. Taking the money is a
+    # separate, deliberate act on the bill, the same way a refund is.
+    flash("Recorded. Nothing has been taken from anybody \u2014 charging it is "
+          "a line on their bill." if decision == "charged"
+          else "Let go, and still on the record.", "success")
+    return redirect(url_for("management_breakages"))
 
 
 @app.route("/management/filings", methods=["GET", "POST"])
