@@ -47354,6 +47354,26 @@ def automation_loop():
         time.sleep(AUTOMATION_TICK_SECONDS)
 
 
+# The toggles the automation page writes out by hand, each with its own
+# explanation. Everything else in AUTOMATION_JOBS is generated below them,
+# so a job registered tomorrow gets its switch the same day rather than
+# running unstoppably until somebody remembers this file.
+#
+# Ten jobs were in exactly that state, including two that message guests
+# and one that deletes dietary and medical notes.
+AUTOMATION_EXPLAINED_ON_PAGE = {
+    "automation_backup_email_enabled",
+    "automation_daily_digest_enabled",
+    "automation_email_scan_enabled",
+    "automation_housekeeping_enabled",
+    "automation_ical_sync_enabled",
+    "automation_stale_shift_enabled",
+    "automation_waitlist_autonotify_enabled",
+    "automation_workshop_balance_reminder_enabled",
+    "automation_workshop_feedback_enabled",
+}
+
+
 AUTOMATION_JOB_LABELS = {
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
@@ -47397,6 +47417,13 @@ def admin_automation():
     conn.close()
     return render_template(
         "admin_automation.html", settings=settings, last_runs=last_runs, job_labels=AUTOMATION_JOB_LABELS,
+        # Anything in the registry the page does not write out by hand, so
+        # a job registered tomorrow gets its switch the same day instead of
+        # running unstoppably until somebody remembers to edit a template.
+        generated_jobs=[
+            (key, AUTOMATION_JOB_LABELS.get(name, name))
+            for name, key, _iv, _every, _fn in AUTOMATION_JOBS
+            if key and key not in AUTOMATION_EXPLAINED_ON_PAGE],
         graph_enabled=graph_enabled(), employees=employees,
         watch_kinds=WATCH_TASK_KINDS, watch_routing=watch_routing,
     )
@@ -47406,7 +47433,16 @@ def admin_automation():
 @owner_required
 def update_automation_settings():
     conn = get_db()
-    updates = {
+    # Every job in the registry, whether or not the page writes it out by
+    # hand. A checkbox that is not ticked sends nothing, so the default has
+    # to be the CURRENT value rather than "0" -- otherwise opening the page
+    # and saving would silently switch off everything not on it.
+    updates = {}
+    for _name, setting_key, _interval_key, _every, _fn in AUTOMATION_JOBS:
+        if not setting_key:
+            continue
+        updates[setting_key] = "1" if request.form.get(setting_key) else "0"
+    updates.update({
         "automation_housekeeping_enabled": "1" if request.form.get("automation_housekeeping_enabled") else "0",
         "automation_daily_digest_enabled": "1" if request.form.get("automation_daily_digest_enabled") else "0",
         "automation_ical_sync_enabled": "1" if request.form.get("automation_ical_sync_enabled") else "0",
@@ -47418,7 +47454,7 @@ def update_automation_settings():
         "automation_campaign_triggers_enabled": "1" if request.form.get("automation_campaign_triggers_enabled") else "0",
         "automation_stale_shift_enabled": "1" if request.form.get("automation_stale_shift_enabled") else "0",
         "automation_backup_email_enabled": "1" if request.form.get("automation_backup_email_enabled") else "0",
-    }
+    })
     interval_raw = request.form.get("automation_ical_sync_interval_hours", "").strip()
     try:
         updates["automation_ical_sync_interval_hours"] = str(max(1, float(interval_raw)))

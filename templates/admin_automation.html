@@ -12,6 +12,24 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="detail-grid" style="grid-template-columns:1fr; gap:16px;">
 
+    {% if generated_jobs %}
+    {# Written out from the registry rather than by hand. Ten jobs used to
+       run with no switch anywhere on this page -- two of them messaging
+       guests and one deleting dietary and medical notes -- because this
+       form was a hand-kept list beside a real one, and the real one grew.
+       Anything without its own explanation below appears here instead of
+       nowhere. #}
+    <div>
+      <p class="field-label">The rest of what runs</p>
+      {% for key, label in generated_jobs %}
+      <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; font-weight:normal; text-transform:none; margin-bottom:6px;">
+        <input type="checkbox" name="{{ key }}" {{ 'checked' if settings[key] == '1' }}>
+        <span>{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     <div>
       <label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:normal; text-transform:none;">
         <input type="checkbox" name="automation_housekeeping_enabled" {{ 'checked' if settings['automation_housekeeping_enabled'] == '1' }}>
