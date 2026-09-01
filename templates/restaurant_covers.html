@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Covers coming{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Covers coming</h1>
+  <a href="{{ url_for('restaurant_tables') }}" class="btn-ghost">Table plan</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Confirmed bookings, with no-shows taken off. Buying for people who never came is the mistake
+  this exists to prevent, not to cause.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  {% for n in [7, 21, 60] %}
+  <a href="{{ url_for('restaurant_covers', days=n) }}"
+     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
+  {% endfor %}
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Night by night</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Night</th><th class="num">Covers</th><th class="num">Bookings</th></tr></thead>
+      <tbody>
+        {% for d in ahead %}
+        <tr class="{{ 'row-alert' if d.covers >= 20 }}">
+          <th scope="row">{{ d.date.strftime('%a %d %b') }}</th>
+          <td class="num">{% if d.covers %}<strong>{{ d.covers }}</strong>{% else %}&mdash;{% endif %}</td>
+          <td class="num">{{ d.bookings or '&mdash;' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Every night in the window is listed, including the empty ones &mdash; a
+    list of only the busy nights cannot tell you which are quiet.</p>
+</div>
+
+{% endblock %}

@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Dish margins{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Dish margins</h1>
+  <a href="{{ url_for('admin_restaurant') }}" class="btn-ghost">Restaurant</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  <strong>Ingredients only.</strong> Not labour, not the kitchen, not the gas &mdash; a fully
+  absorbed dish cost needs apportioning choices with several defensible answers, and a number with
+  several defensible answers gets argued with rather than acted on. This says what goes on the
+  plate and what that leaves.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Every dish</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Dish</th><th class="num">Sells for</th><th class="num">Ingredients</th>
+            <th class="num">Leaves</th><th>What is in it</th></tr>
+      </thead>
+      <tbody>
+        {% for d in dishes %}
+        <tr>
+          <th scope="row">{{ d.item['name'] }}
+            <span class="upload-hint">{{ d.item['course'] or d.item['category'] or '' }}</span></th>
+          <td class="num">&euro;{{ '%.2f'|format(d.item['price'] or 0) }}</td>
+          <td class="num">
+            {% if d.costed %}&euro;{{ '%.2f'|format(d.cost) }}
+            {% else %}
+            {# Not zero. A dish with nothing against it would otherwise read
+               as the best thing on the menu, which is the opposite of what
+               it means. #}
+            <span class="upload-hint">not costed</span>
+            {% endif %}
+          </td>
+          <td class="num">
+            {% if d.margin is not none %}
+            <span style="color:{{ 'var(--danger)' if d.margin_pct is not none and d.margin_pct < 50 else 'inherit' }};">
+              &euro;{{ '%.2f'|format(d.margin) }}{% if d.margin_pct is not none %} &middot; {{ d.margin_pct }}%{% endif %}
+            </span>
+            {% else %}&mdash;{% endif %}
+          </td>
+          <td>
+            {% if d.pour %}
+            <span class="upload-hint">{{ '%g'|format(d.item['stock_qty_per_unit']) }}
+              {{ d.pour['unit'] }} {{ d.pour['name'] }} (poured)</span>
+            {% endif %}
+            {% for ing in d.ingredients %}
+            <span class="upload-hint">{{ '%g'|format(ing['quantity']) }} {{ ing['unit'] }}
+              {{ ing['stock_name'] }}{% if ing['unit_cost'] is none %} &mdash; no cost on file{% endif %}
+              <form method="post" action="{{ url_for('remove_dish_ingredient', row_id=ing['id']) }}" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="doc-delete" style="font-size:11px;">&times;</button>
+              </form>
+            </span>
+            {% endfor %}
+            {% if d.missing_costs %}
+            {# Partly costed is a different and more misleading state than
+               not costed at all, so it is named. #}
+            <span class="upload-hint" style="color:var(--rust);">partly costed &mdash;
+              no price on {{ d.missing_costs|join(', ') }}</span>
+            {% endif %}
+            {% if stock %}
+            <form method="post" action="{{ url_for('add_dish_ingredient', item_id=d.item['id']) }}"
+                  style="display:flex; gap:6px; margin-top:4px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <select name="stock_item_id" style="font-size:12px;">
+                <option value="">Add&hellip;</option>
+                {% for st in stock %}<option value="{{ st['id'] }}">{{ st['name'] }} ({{ st['unit'] }})</option>{% endfor %}
+              </select>
+              <input type="text" name="quantity" placeholder="How much" style="width:80px; font-size:12px;">
+              <button type="submit" class="btn-mini">+</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

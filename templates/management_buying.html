@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Buying{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Buying</h1>
+  <a href="{{ url_for('stock_basket') }}" class="btn-ghost">What to buy</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Three things you would take up with the same merchant, on one page, because they are one
+  telephone call.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">What arrived against what was charged</h2>
+  {% if not shortfalls %}
+  <p class="empty-note">Nothing recorded. The stock-in form asks what turned up; fill in the
+    invoiced quantity beside it only when the two differ.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>When</th><th>What</th><th>Supplier</th><th class="num">Arrived</th>
+                 <th class="num">Charged</th><th class="num">Worth</th></tr></thead>
+      <tbody>
+        {% for d in shortfalls %}
+        <tr class="{{ 'row-alert' if d.short }}">
+          <td>{{ d.row['created_at'][:10] }}</td>
+          <th scope="row">{{ d.row['name'] }}</th>
+          <td>{{ d.row['vendor_name'] or '&mdash;' }}
+            {% if d.row['invoice_number'] %}<span class="upload-hint">{{ d.row['invoice_number'] }}</span>{% endif %}</td>
+          <td class="num">{{ '%g'|format(d.row['delta']) }} {{ d.row['unit'] }}</td>
+          <td class="num">{{ '%g'|format(d.row['invoiced_quantity']) }} {{ d.row['unit'] }}</td>
+          <td class="num">
+            {% if d.worth is not none %}&euro;{{ '%.2f'|format(d.worth) }}{% else %}&mdash;{% endif %}
+            <span class="upload-hint">{{ 'short' if d.short else 'over' }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Both directions are listed. Short is the one that costs money; over is
+    worth knowing too, because a supplier who sends more than they billed will eventually bill
+    for it.</p>
+  {% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">What it cost last time</h2>
+  {% if not rises %}
+  <p class="empty-note">Nothing has moved more than five per cent, or nothing has been bought
+    twice from the same supplier yet.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>What</th><th>Supplier</th><th class="num">Was</th><th class="num">Now</th>
+                 <th class="num">Move</th><th>Since</th></tr></thead>
+      <tbody>
+        {% for r in rises %}
+        <tr class="{{ 'row-alert' if r.up }}">
+          <th scope="row">{{ r.name }}</th>
+          <td>{{ r.vendor or '&mdash;' }}</td>
+          <td class="num">&euro;{{ '%g'|format(r.was) }}</td>
+          <td class="num">&euro;{{ '%g'|format(r.now) }}</td>
+          <td class="num">
+            <span style="color:{{ 'var(--danger)' if r.up else 'inherit' }};">
+              {{ '+' if r.up }}{{ r.pct }}%</span>
+          </td>
+          <td>{{ r.before_when }} &rarr; {{ r.when }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Read out of the movement ledger, not off the stock item &mdash; reading
+    stock in overwrites the item's cost with the newest figure, correctly, so the item itself can
+    never say what it used to cost. Compared per item <em>and</em> per supplier: the same crate
+    from two merchants at two prices is not a price rise, it is two merchants.</p>
+  {% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">Checking a statement</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">
+    The app has never seen their statement, and inventing what they think is owed would be
+    inventing both halves. This puts <em>our</em> half in the shape theirs comes in, so a person
+    can run a finger down two lists.
+  </p>
+  <form method="get" style="margin-bottom:12px;">
+    <select name="vendor" onchange="this.form.submit()">
+      <option value="">Choose a supplier&hellip;</option>
+      {% for v in vendors %}
+      <option value="{{ v }}" {{ 'selected' if v == vendor }}>{{ v }}</option>
+      {% endfor %}
+    </select>
+  </form>
+
+  {% if statement %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Invoice date</th><th>Number</th><th>What</th><th class="num">Amount</th><th>State</th></tr></thead>
+      <tbody>
+        {% for r in statement.rows %}
+        <tr>
+          <td>{{ (r['invoice_date'] or r['submitted_at'])[:10] }}</td>
+          <td>{{ r['invoice_number'] or '&mdash;' }}</td>
+          <td>{{ r['description'] or '&mdash;' }}</td>
+          <td class="num">&euro;{{ '%.2f'|format(r['amount'] or 0) }}</td>
+          <td>{{ r['status'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="3">{{ statement.rows|length }} on our side</th>
+          <th class="num">&euro;{{ '{:,.2f}'.format(statement.total) }}</th>
+          <th>{{ statement.unpaid }} unpaid &middot; &euro;{{ '{:,.2f}'.format(statement.outstanding) }}</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
