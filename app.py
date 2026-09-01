@@ -9875,6 +9875,108 @@ def offboarding_contradictions(conn):
     return unique
 
 
+def occupancy_on(conn, days):
+    """{date: rooms occupied} for a set of dates, in one query.
+
+    One query rather than one per date: a code used forty times would
+    otherwise be forty round trips to draw one number.
+    """
+    if not days:
+        return {}
+    out = {d: 0 for d in days}
+    lo, hi = min(days), max(days)
+    rows = conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
+            WHERE status = 'confirmed'
+              AND arrival_date <= ? AND departure_date > ?""",
+        (hi.isoformat(), lo.isoformat())).fetchall()
+    for r in rows:
+        a, b = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if not a or not b:
+            continue
+        for d in days:
+            # A night is occupied if the stay covers it. Departure day is
+            # not a night, which is the same rule the rest of the app uses.
+            if a <= d < b:
+                out[d] += 1
+    return out
+
+
+def discount_outcomes(conn, *, months=12, today=None):
+    """Per promo code: what it gave away, and how full the house was then.
+
+    Deliberately NOT a return-on-investment figure. Whether a guest would
+    have come at full price is unknowable -- that guest does not exist to
+    be asked -- and a confident wrong answer about marketing spend is worse
+    than none, because it gets repeated.
+
+    The occupancy on the nights a code was used is the one piece of real
+    evidence available, and the page is explicit that it is evidence and
+    not proof.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=30 * months)).isoformat()
+
+    rooms = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+
+    codes = conn.execute(
+        """SELECT promo_codes.*,
+                  COUNT(promo_code_redemptions.id) AS uses,
+                  COALESCE(SUM(promo_code_redemptions.discount_amount), 0) AS given,
+                  COALESCE(SUM(promo_code_redemptions.final_amount), 0) AS taken
+             FROM promo_codes
+             LEFT JOIN promo_code_redemptions
+               ON promo_code_redemptions.promo_code_id = promo_codes.id
+              AND promo_code_redemptions.redeemed_at >= ?
+            GROUP BY promo_codes.id
+            ORDER BY given DESC""", (since,)).fetchall()
+
+    out = []
+    for c in codes:
+        if not c["uses"]:
+            continue
+        # The stays the code was used on, so the nights can be looked at.
+        stays = conn.execute(
+            """SELECT bookings.arrival_date, bookings.departure_date
+                 FROM bookings
+                WHERE bookings.promo_code_id = ?
+                  AND bookings.status = 'confirmed'""", (c["id"],)).fetchall()
+        nights = []
+        for r in stays:
+            a, b = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+            if not a or not b:
+                continue
+            d = a
+            while d < b:
+                nights.append(d)
+                d += timedelta(days=1)
+
+        occ = occupancy_on(conn, sorted(set(nights)))
+        # Averaged over the NIGHTS, not the stays, so a fortnight in a full
+        # house weighs more than one night in an empty one.
+        filled = [occ.get(d, 0) for d in nights]
+        avg = round(sum(filled) / len(filled), 2) if filled else None
+        pct = round(avg / rooms * 100) if (avg is not None and rooms) else None
+
+        out.append({
+            "code": c, "uses": c["uses"],
+            "given": round(c["given"], 2), "taken": round(c["taken"], 2),
+            "nights": len(nights),
+            "rooms": rooms,
+            "avg_rooms_full": avg,
+            "occupancy_pct": pct,
+            # Said as a question, never as a verdict. The threshold is a
+            # rule of thumb the page states out loud rather than a
+            # calculation pretending to be one.
+            "busy": pct is not None and pct >= 70,
+            "quiet": pct is not None and pct <= 40,
+        })
+    return {"codes": out, "rooms": rooms, "months": months,
+            "given": round(sum(c["given"] for c in out), 2),
+            "taken": round(sum(c["taken"] for c in out), 2)}
+
+
 def night_cost(conn, *, months=3, today=None, start=None, end=None):
     """What a night cost to sell over a window, split by how the cost behaves.
 
@@ -40854,6 +40956,12 @@ def discount_cost_page():
         months = 12
     start = _add_months(today.replace(day=1), -months + 1)
     data = discount_cost(conn, start=start.isoformat())
+    # How full the house was on the nights each code was used. Not proof
+    # that a code worked -- nothing can be -- but the only real evidence
+    # there is, and it belongs beside what the code cost rather than on a
+    # page of its own.
+    outcomes = {o["code"]["code"]: o
+                for o in discount_outcomes(conn, months=months)["codes"]}
     conn.close()
     share = (data["given"] / data["gross"] * 100) if data["gross"] else 0.0
     overview = [
@@ -40866,7 +40974,7 @@ def discount_cost_page():
     ]
     return render_template("discount_cost.html", data=data, overview=overview,
                            months=months, start=start.isoformat(), share=share,
-                           today=today)
+                           today=today, outcomes=outcomes)
 
 
 @app.route("/management/held-not-earned")

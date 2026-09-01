@@ -35,7 +35,8 @@
   <thead>
     <tr>
       <th>Code</th><th class="num">Used</th><th class="num">Sold for</th>
-      <th class="num">Given away</th><th class="num">Of that sale</th><th>Last used</th>
+      <th class="num">Given away</th><th class="num">Of that sale</th>
+      <th class="num">House was</th><th>Last used</th>
     </tr>
   </thead>
   <tbody>
@@ -50,6 +51,16 @@
       <td class="num">€{{ '%.2f'|format(r.gross) }}</td>
       <td class="num">€{{ '%.2f'|format(r.given) }}</td>
       <td class="num">{{ '%.1f'|format(r.share) }}%</td>
+      {# How full the house was on the nights that code was used. Not
+         proof it worked -- nothing can be -- but the only real evidence
+         there is, and the difference between a guess and an informed one. #}
+      {% set o = outcomes.get(r.code) %}
+      <td class="num">
+        {% if o and o.occupancy_pct is not none %}
+          <span style="color:{{ 'var(--rust)' if o.busy else 'inherit' }};">{{ o.occupancy_pct }}%</span>
+          <span class="upload-hint">{{ o.avg_rooms_full }} of {{ o.rooms }}</span>
+        {% else %}&mdash;{% endif %}
+      </td>
       <td>{{ r.last_used|date_short }}</td>
     </tr>
     {% endfor %}
@@ -95,5 +106,29 @@
   in here, because there is nothing recorded to count. This page is only as complete as the
   codes people actually use.
 </p>
+
+<div class="detail-card">
+  <h2 class="section-heading">Did any of it work?</h2>
+  <p class="manual-body">
+    This page will not tell you a code &ldquo;brought in&rdquo; anything, because nothing can.
+    Whether a guest would have come at full price is unknowable &mdash; that guest does not exist
+    to be asked &mdash; and a confident wrong answer about marketing spend is worse than none,
+    because it gets repeated.
+  </p>
+  <p class="manual-body">
+    So the column above is evidence, not a verdict. A code used when the house was
+    <strong>nearly full</strong> gave money away on rooms that were selling; one used when it was
+    <strong>nearly empty</strong> at least put somebody in a room. Neither settles it, because a
+    busy night may have been busy <em>because</em> of the code &mdash; which is exactly the thing
+    no data can decide.
+  </p>
+  <p class="manual-body">
+    Occupancy is averaged over the <em>nights</em> a code was used on rather than over the
+    bookings, so a fortnight in a full house weighs more than one night in an empty one. The
+    figure worth holding beside it is on
+    <a href="{{ url_for('management_night_cost') }}">what a night costs</a>: a discounted night is
+    still worth selling as long as it beats what that night actually consumes.
+  </p>
+</div>
 
 {% endblock %}
