@@ -562,9 +562,15 @@ def repair_under_18_field():
     """
     rel = "templates/book_room.html"
     src = _read(rel)
-    if 'name="children"' not in src:
-        return 0
-    new = (src.replace('name="children"', 'name="guests_under_18"')
+    if 'name="children"' not in src and "taxe de s" in src.lower():
+        return 0                          # named right AND the reason is given
+    # Whatever the field is called this round, the value has to come from the
+    # name the route actually passes, or the number is lost on every
+    # validation error without anything erroring.
+    new = (src.replace("{{ prefill_guests_under_18 or prefill_children or 0 }}",
+                       "{{ prefill_under_18 or 0 }}")
+              .replace("{{ prefill_children or 0 }}", "{{ prefill_under_18 or 0 }}")
+              .replace('name="children"', 'name="guests_under_18"')
               .replace("value=\"{{ prefill_children or 0 }}\">",
                        "value=\"{{ prefill_under_18 or 0 }}\">")
               .replace('<label for="br_children">Children</label>',

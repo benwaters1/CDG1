@@ -29,6 +29,7 @@
        alt="{{ room['name'] }}">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
+    <p class="g-fr">Votre chambre<span class="g-fr__en">Your room</span></p>
     <p class="g-eyebrow">Ariège · French Pyrénées</p>
     <h1 class="g-display" >{{ room['name'] }}</h1>
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
@@ -98,13 +99,13 @@
                      value="{{ prefill_adults or prefill_party_size or 2 }}" required>
             </p>
             <p class="g-field g-field--narrow">
-              <label for="br_children">Children (under 18)</label>
-              <input type="number" inputmode="numeric" id="br_children" name="guests_under_18"
+              <label for="br_under18">Under 18</label>
+              <input type="number" inputmode="numeric" id="br_under18" name="guests_under_18"
                      min="0" max="{{ room['max_occupancy'] }}" value="{{ prefill_under_18 or 0 }}">
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
+          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de séjour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
@@ -590,7 +591,7 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 /* Adults + children are what a guest thinks in; party_size is what the route
    reads. Keep the hidden total in step, and never let it fall below one. */
 (function(){
-  var a=document.getElementById('br_adults'), c=document.getElementById('br_children'),
+  var a=document.getElementById('br_adults'), c=document.getElementById('br_under18'),
       t=document.getElementById('party_size');
   if(!a||!t) return;
   function sync(){

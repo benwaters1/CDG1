@@ -199,9 +199,6 @@
           {% if availability.get(room['id']) %}
             <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book in</a>
           {% else %}
-            {# The REASON, which was already worked out and thrown away.
-               "Requires a 3-night minimum" is a booking a guest can still
-               make; "not available" reads as sold out and loses it. #}
             <span class="g-btn g-btn--off g-card__cta">
               {{ unavailable_reason.get(room['id'], 'Not available these dates') }}
             </span>
@@ -591,15 +588,6 @@
 </svg>
   <h2 class="g-place">What Guests Say</h2>
 
-  {# The house's OWN reviews, from guests who stayed and were asked. The
-     booking page has been querying these on every load since the feature was
-     built and rendering none of them, so "Feature on booking page" was a
-     button that did nothing at all — which is also why the only moderation
-     control the house had appeared to work.
-
-     The reply is shown with the review on purpose. A complaint answered well
-     reads better to the next guest than no complaint at all, and a page of
-     nothing but five-star quotes is the one nobody believes. #}
   {% if featured_reviews %}
   <div class="g-says__grid">
     {% for r in featured_reviews %}
@@ -782,6 +770,18 @@
     </div>
   </div>
 </div></section>
+
+{# The monogram macro is not in _marks.html: it was left off round 8's edit
+   list, though its eight .g-mono rules did arrive in the stylesheet. Put the
+   line back the moment that file comes. #}
+
+
+<div class="g-wrap">
+  <p class="g-devise">
+    <span class="g-devise__fr">« Cinq chambres prêtes. Quatre-vingt-neuf attendent. »</span>
+    <span class="g-devise__en">Five rooms ready. Eighty-nine waiting</span>
+  </p>
+</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

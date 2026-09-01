@@ -4446,3 +4446,63 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   border-left: 2px solid var(--gilt);
   font-size: 16px; line-height: 1.6; color: var(--ink-soft);
 }
+
+/* ==========================================================================
+   THE DRAWN HOUSE MARK
+   The logo is a hosted PNG, so it cannot take the ink colour or scale as an
+   ornament. This is the same mark drawn: the G under a coronet in laurel,
+   in currentColor, for use as a device rather than a masthead.
+   ========================================================================== */
+.g-monogram{ width: 56px; height: 63px; color: var(--gilt); }
+.g-monogram--lg{ width: 88px; height: 99px; }
+.g-monogram--sm{ width: 40px; height: 45px; }
+.g-sec--dark .g-monogram, .g-panel--dark .g-monogram{ color: #D9C79B; }
+.g-mono__wrap{ display: flex; justify-content: center; padding: var(--s6) 0 0; }
+
+/* A section opened by the mark rather than a rule. */
+.g-crested{ text-align: center; }
+.g-crested .g-monogram{ margin: 0 auto var(--s4); }
+
+/* ==========================================================================
+   DEFENCE AGAINST style.css
+   style.css line 357 is a bare element selector —
+       form { display: flex; flex-direction: column }
+   — and it loads before this file, so it applies to EVERY form on the public
+   site, not the staff one it was written for. Any form of ours that relies
+   on the default row direction inherits a column instead, and `flex: 1 1 Xrem`
+   then sets a HEIGHT rather than a width. That is what made the journal
+   email field 288px tall.
+
+   Rather than patch each form as it breaks, every form component here states
+   its own direction. A bare element selector cannot then reach past it.
+   ========================================================================== */
+.g-journal__form,
+.g-waitlist__form,
+.g-navwrap__news,
+.g-rp__f,
+.g-row{ flex-direction: row; }
+
+/* Forms that are genuinely grids must keep their display too. */
+.g-search,
+.g-herosearch{ display: grid; }
+
+/* Any other form of ours: row by default, wrapping rather than stacking. */
+.g form:not(.g-stack){ flex-direction: row; flex-wrap: wrap; }
+.g form.g-stack{ flex-direction: column; }
+/* A field inside a form that style.css has flipped to column still gets a
+   column-sized width. State the field's own behaviour so it fills the row
+   whatever direction the parent ends up in. */
+.g form .g-field, .g form .g-field--narrow{ min-width: 0; }
+/* Only fields inside a row share a line. A field on its own keeps the
+   measure it already had, whatever direction style.css forces on the form. */
+.g form .g-row > .g-field{ flex: 1 1 14rem; }
+.g form .g-field > label,
+.g form .g-field > .g-hint{ max-width: 62ch; }
+/* A panel that style.css has turned into a flex container sizes its children
+   by content, so a field inside one gets a fraction of the width. A form
+   panel stacks its fields and lets each fill the panel. */
+.g .g-panel > form,
+.g form.g-panel{ display: flex; flex-direction: column; }
+.g .g-panel .g-field{ width: 100%; flex: 0 0 auto; }
+.g .g-panel .g-row{ display: flex; flex-direction: row; flex-wrap: wrap; width: 100%; }
+.g .g-panel .g-row > .g-field{ flex: 1 1 12rem; width: auto; }
