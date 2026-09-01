@@ -29017,6 +29017,81 @@ def add_workshop_transaction(conn, booking_id, kind, description, amount, method
 PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
 
 
+# WHICH MERGE TAGS EACH TEMPLATE MAY USE.
+#
+# These templates are DATA: the owner edits the wording in the app, and
+# render_email_template substitutes a context dict into whatever they typed. A
+# tag the sender does not pass is left in the text UNREPLACED rather than
+# crashing the send -- deliberately, because losing a booking confirmation over
+# a typo is worse -- which means the typo goes to a guest as visible braces.
+#
+# Nothing told the owner which tags were available, so the only way to find out
+# was to send one and look. This is that list, and it is enforced two ways: the
+# edit form refuses a tag that is not here, and a test compares this against
+# what the senders actually pass so the two cannot drift.
+EMAIL_TEMPLATE_TAGS = {
+    "event_balance_reminder": ("balance_amount", "balance_due_date", "contact_name",
+                               "event_date", "event_type", "manage_url", "reference_code"),
+    "event_inquiry_confirmed": ("contact_name", "event_type", "manage_url",
+                                "price_block", "reference_code"),
+    "event_inquiry_declined": ("contact_name", "event_type", "manage_url",
+                               "price_block", "reference_code"),
+    "event_inquiry_received": ("contact_name", "event_type", "manage_url",
+                               "price_block", "reference_code"),
+    "pos_receipt": ("company_block", "guest_name", "items", "receipt_number",
+                    "service_date", "status_line", "table", "totals"),
+    "restaurant_cancelled": ("dietary_line", "dinner_date", "guest_name", "manage_url",
+                             "party_size", "price_block", "reference_code", "refund_note"),
+    "restaurant_confirmed": ("dietary_line", "dinner_date", "guest_name", "manage_url",
+                             "party_size", "price_block", "reference_code", "refund_note"),
+    "restaurant_declined": ("dietary_line", "dinner_date", "guest_name", "manage_url",
+                            "party_size", "price_block", "reference_code", "refund_note"),
+    "restaurant_reservation_received": ("dietary_line", "dinner_date", "guest_name",
+                                        "manage_url", "party_size", "price_block",
+                                        "reference_code", "refund_note"),
+    "restaurant_waitlist_opening": ("book_url", "desired_date", "name", "party_size"),
+    "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
+    "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
+    "workshop_balance_reminder": ("balance_amount", "balance_due_date", "balance_line",
+                                  "dates", "deposit_amount", "guest_name", "manage_url",
+                                  "party_size", "price_block", "reference_code",
+                                  "total_price", "workshop_title"),
+    "workshop_cancelled": ("balance_amount", "balance_due_date", "balance_line", "dates",
+                           "deposit_amount", "guest_name", "manage_url", "party_size",
+                           "price_block", "reference_code", "total_price", "workshop_title"),
+    "workshop_confirmed": ("balance_amount", "balance_due_date", "balance_line", "dates",
+                           "deposit_amount", "guest_name", "manage_url", "party_size",
+                           "price_block", "reference_code", "total_price", "workshop_title"),
+    "workshop_declined": ("balance_amount", "balance_due_date", "balance_line", "dates",
+                          "deposit_amount", "guest_name", "manage_url", "party_size",
+                          "price_block", "reference_code", "total_price", "workshop_title"),
+    "workshop_deposit_receipt": ("balance_amount", "balance_due_date", "balance_line",
+                                 "dates", "deposit_amount", "guest_name", "manage_url",
+                                 "party_size", "price_block", "reference_code",
+                                 "total_price", "workshop_title"),
+    "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
+    "workshop_registration_received": ("balance_amount", "balance_due_date", "balance_line",
+                                       "dates", "deposit_amount", "guest_name", "manage_url",
+                                       "party_size", "price_block", "reference_code",
+                                       "total_price", "workshop_title"),
+    "workshop_waitlist_opening": ("dates", "name", "register_url", "workshop_title"),
+}
+
+
+def unknown_merge_tags(template_key, subject, body):
+    """Tags in this wording that nothing will fill. Sorted, empty when fine.
+
+    An unlisted template returns nothing rather than everything: a key this map
+    has not been told about must not have its wording refused on the strength of
+    a list that does not cover it.
+    """
+    allowed = EMAIL_TEMPLATE_TAGS.get(template_key)
+    if allowed is None:
+        return []
+    used = set(re.findall(r"\{(\w+)\}", (subject or "") + " " + (body or "")))
+    return sorted(used - set(allowed))
+
+
 def render_email_template(conn, template_key, context):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
@@ -29033,7 +29108,20 @@ def render_email_template(conn, template_key, context):
     if not row:
         return None, None
     subject_src, body_src = row["subject"] or "", row["body"] or ""
-    if PLACEHOLDER_TEXT.search(subject_src + " " + body_src):
+    # A tag nothing fills is treated exactly like placeholder text: the shipped
+    # wording goes instead. Leaving it in was the older behaviour and it is the
+    # wrong trade -- the guest reads "{balance_amount}" and the house looks like
+    # it cannot send an email, which is worse than sending wording the owner did
+    # not write. The edit form refuses these, so reaching here means the row was
+    # changed some other way.
+    stray = unknown_merge_tags(template_key, subject_src, body_src)
+    if stray:
+        app.logger.error(
+            "Email template %r uses merge tags nothing fills (%s); sending the "
+            "shipped wording instead. Fix it at /management/email-templates.",
+            template_key, ", ".join(stray))
+
+    if stray or PLACEHOLDER_TEXT.search(subject_src + " " + body_src):
         shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
         if shipped:
             app.logger.error(
@@ -41872,6 +41960,11 @@ def management_email_templates():
     # and event templates that cannot use half of them.
     tags = {t["template_key"]: sorted(set(re.findall(
         r"\{(\w+)\}", (t["subject"] or "") + " " + (t["body"] or "")))) for t in templates}
+    # And which ones are AVAILABLE, which is the half that was missing: the page
+    # showed what each template used and never what it could use, so the only
+    # way to find out was to guess a tag, save it, send one and look.
+    available = {t["template_key"]: list(EMAIL_TEMPLATE_TAGS.get(t["template_key"], ()))
+                 for t in templates}
 
     lv = list_view(
         templates, request.args,
@@ -41895,7 +41988,8 @@ def management_email_templates():
         default_sort="area",
     )
     return render_template("management_email_templates.html", templates=lv["rows"], lv=lv,
-                           edited=edited, states=states, tags=tags)
+                           edited=edited, states=states, tags=tags,
+                           available=available)
 
 
 @app.route("/management/email-templates/<template_key>/restore", methods=["POST"])
@@ -41930,6 +42024,18 @@ def edit_email_template(template_key):
     if not subject or not body:
         flash("Subject and body are both required.", "error")
         return redirect(url_for("management_email_templates"))
+
+    # REFUSED HERE, at the moment of the mistake. A tag nothing fills used to be
+    # saved happily and only showed itself in a guest's inbox, and by then the
+    # only person who could see it was the guest.
+    stray = unknown_merge_tags(template_key, subject, body)
+    if stray:
+        allowed = ", ".join("{%s}" % t for t in EMAIL_TEMPLATE_TAGS.get(template_key, ()))
+        flash("Nothing fills " + ", ".join("{%s}" % t for t in stray)
+              + " in this message, so a guest would read it exactly like that. "
+              + (f"This one can use: {allowed}." if allowed else ""), "error")
+        return redirect(url_for("management_email_templates"))
+
     conn = get_db()
     existing = conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
     if not existing:
