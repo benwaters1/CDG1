@@ -35,7 +35,7 @@ read what somebody said about them on the way out.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 
 import _harness
 
@@ -59,7 +59,7 @@ def run():
     conn = db()
     oc, ec, _owner, emp = clients()
     _cleanup(conn)
-    today = date.today()
+    today = house_today()
     now = m.datetime.now(m.timezone.utc).isoformat()
 
     room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()

@@ -26,7 +26,7 @@ nothing — a cost per night when nothing sold is a question nobody asked.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 
 import _harness
 
@@ -48,7 +48,7 @@ def run():
     conn = db()
     oc, ec, _owner, _emp = clients()
     _cleanup(conn)
-    today = date.today()
+    today = house_today()
     now = m.datetime.now(m.timezone.utc).isoformat()
 
     # Everything else in the database is measured too, so the checks below

@@ -13,7 +13,7 @@ The code is captured then and applied when the owner sets a price.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -55,7 +55,7 @@ def _event(ref, *, days_out=200, status="new", promo=None):
            VALUES (?, ?, ?, ?, ?, '', ?, 60, 'ZZ', ?, 0, ?, ?)""",
         (f"{TAG}-{ref}", f"tok{TAG}{ref}".lower(), (kinds or ["wedding"])[0],
          f"{TAG} {ref}", f"{TAG.lower()}.{ref}@example.invalid".lower(),
-         (date.today() + timedelta(days=days_out)).isoformat(), status, promo,
+         (house_today() + timedelta(days=days_out)).isoformat(), status, promo,
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
     row = conn.execute("SELECT * FROM event_inquiries WHERE reference_code = ?",
@@ -116,7 +116,7 @@ def run():
     r = anon.post("/events/inquire", data={
         "event_type": "wedding", "contact_name": f"{TAG} Claimant",
         "contact_email": "zzepromo.claim@example.invalid", "contact_phone": "",
-        "preferred_date": (date.today() + timedelta(days=250)).isoformat(),
+        "preferred_date": (house_today() + timedelta(days=250)).isoformat(),
         "guest_count": "80", "message": "ZZ", "promo_code": "ZZEPROMO-WED",
     }, follow_redirects=True)
     conn = db()
@@ -157,7 +157,7 @@ def run():
     r = anon.post("/events/inquire", data={
         "event_type": "wedding", "contact_name": f"{TAG} Typo",
         "contact_email": "zzepromo.typo@example.invalid", "contact_phone": "",
-        "preferred_date": (date.today() + timedelta(days=260)).isoformat(),
+        "preferred_date": (house_today() + timedelta(days=260)).isoformat(),
         "guest_count": "40", "message": "ZZ", "promo_code": "NOT-A-REAL-CODE",
     }, follow_redirects=True)
     conn = db()

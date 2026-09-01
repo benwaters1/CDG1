@@ -23,7 +23,7 @@ Plus the obvious one: nobody sees anybody else's.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -100,7 +100,7 @@ def run():
     oc, _shared, owner, _shared_emp = clients()
     emp = _person("Mine")
     ec = _as(emp["id"])
-    today = date.today()
+    today = house_today()
     month_start = today.replace(day=1)
     when = month_start + timedelta(days=2)
 

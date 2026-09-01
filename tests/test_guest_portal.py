@@ -11,7 +11,7 @@ across guests would hand one person another's bookings and contact details.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -55,7 +55,7 @@ def _room():
 
 def _stay(room_id, email, ref, status="confirmed", days_out=260):
     conn = db()
-    arrival = date.today() + timedelta(days=days_out)
+    arrival = house_today() + timedelta(days=days_out)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name, guest_email,
            arrival_date, departure_date, party_size, status, created_at)
@@ -74,7 +74,7 @@ def _atelier(email, ref):
            active, sort_order, created_at) VALUES (?, '', 500, 10, 1, 95, ?)""",
         (f"{TAG} Atelier", now))
     wid = conn.execute("SELECT id FROM workshops WHERE title = ?", (f"{TAG} Atelier",)).fetchone()["id"]
-    start = date.today() + timedelta(days=310)
+    start = house_today() + timedelta(days=310)
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, notes, created_at)
            VALUES (?, ?, ?, 10, ?, ?)""",

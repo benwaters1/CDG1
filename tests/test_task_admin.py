@@ -26,7 +26,7 @@ survived the dict, so any pair already in a live database is cleared too.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -163,7 +163,7 @@ def run():
     s.check("two are open to begin with", still_open == 2, detail=f"{still_open}")
     conn = db()
     with m.app.test_request_context("/"):
-        m.generate_watch_tasks(conn, date.today())
+        m.generate_watch_tasks(conn, house_today())
     conn.commit()
     left = conn.execute(
         "SELECT COUNT(*) AS c FROM tasks WHERE title = ? AND status != 'done'",

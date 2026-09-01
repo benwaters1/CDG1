@@ -18,7 +18,7 @@ The rest is the usual: blank input refused, a missing id is a 404 rather than a
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -91,7 +91,7 @@ def run():
     # it writes one row per item per day, so tomorrow starts unticked. Which is
     # the only sensible behaviour for a list somebody works through at 7am, and
     # worth pinning as what it actually is.
-    today = date.today().isoformat()
+    today = house_today().isoformat()
     oc.post(f"/breakfast/{item['id']}/toggle", follow_redirects=True)
     s.check("today's tick is recorded",
             _count("breakfast_checklist_log", "item_id = ? AND checklist_date = '"

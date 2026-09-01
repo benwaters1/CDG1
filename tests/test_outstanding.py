@@ -30,7 +30,7 @@ out a fortnight ago, reads as a machine that has not noticed.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -52,7 +52,7 @@ def _stay(ref, *, arrive_in, nights=2, status="confirmed", paid=0.0,
           email="zzowed@example.invalid", due=None):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=arrive_in)
+    arrival = house_today() + timedelta(days=arrive_in)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,
@@ -94,7 +94,7 @@ def run():
     gone = _stay("GONE", arrive_in=-20)
     soon = _stay("SOON", arrive_in=30)
     late = _stay("LATE", arrive_in=10,
-                 due=(date.today() - timedelta(days=5)).isoformat())
+                 due=(house_today() - timedelta(days=5)).isoformat())
     settled = _stay("PAID", arrive_in=-10)
     _settle(settled["id"])
     cancelled = _stay("CANX", arrive_in=-15, status="cancelled")

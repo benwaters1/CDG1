@@ -16,7 +16,7 @@ not for the second, and that asymmetry is what most of these checks are about.
 import io
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -38,7 +38,7 @@ def _stay(ref, *, days_from_today, nights=2, party=2, under18=0, paid=0.0,
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 AND max_occupancy >= ? "
                         "ORDER BY id LIMIT 1", (party,)).fetchone()
-    arrival = date.today() + timedelta(days=days_from_today)
+    arrival = house_today() + timedelta(days=days_from_today)
     departure = arrival + timedelta(days=nights)
     priced = m.compute_room_total(conn, room, arrival, departure)
     conn.execute(

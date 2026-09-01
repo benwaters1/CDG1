@@ -28,7 +28,7 @@ What the rest of this holds:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -80,7 +80,7 @@ def _session_id():
 def _workshop_booking(ref, ended_days_ago=5):
     """A confirmed workshop booking whose session has already finished."""
     conn = db()
-    end = date.today() - timedelta(days=ended_days_ago)
+    end = house_today() - timedelta(days=ended_days_ago)
     ws = conn.execute("SELECT id FROM workshops LIMIT 1").fetchone()["id"]
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
@@ -106,7 +106,7 @@ def run():
     _cleanup()
     oc, _ec, _owner, _emp = clients()
     anon = m.app.test_client()
-    soon = (date.today() + timedelta(days=21)).isoformat()
+    soon = (house_today() + timedelta(days=21)).isoformat()
 
     s.section("The dinner waitlist keeps a date it can use")
     # Every refusal here redirects to /restaurant/book, which 404s while the

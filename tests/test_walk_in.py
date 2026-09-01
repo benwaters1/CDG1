@@ -25,7 +25,7 @@ cannot be talked round.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -105,7 +105,7 @@ def run():
     oc, ec, owner, emp = clients()
     room = _room()
     # Far out, so no other suite's fixture is holding these nights.
-    a = date.today() + timedelta(days=400)
+    a = house_today() + timedelta(days=400)
     d = a + timedelta(days=2)
     rack = _rack(room, a, d)
 

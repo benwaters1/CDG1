@@ -27,7 +27,7 @@ could not tell would be worse than trying.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -97,7 +97,7 @@ def run():
     conn = db()
     room = conn.execute("SELECT id FROM rooms WHERE active = 1 LIMIT 1").fetchone()
     conn.close()
-    arrival = date.today() + timedelta(days=120)
+    arrival = house_today() + timedelta(days=120)
     anon.post(f"/book/{room['id']}", data={
         "guest_name": TAG + " Amelie", "guest_email": "amelie@example.invalid",
         "guest_phone": "06 12 34 56 78", "party_size": "2",

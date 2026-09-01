@@ -18,7 +18,7 @@ Two things are load-bearing and are checked hardest:
 import io
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -105,7 +105,7 @@ def run():
     # THE SERVICE DAY, not the calendar day. The house's day runs past midnight
     # to 05:00, so a transfer at two in the morning is still the previous day's
     # job -- and extras_due uses service_day() for exactly that reason. A fixture
-    # built on date.today() disagrees with the feature for five hours a night,
+    # built on house_today() disagrees with the feature for five hours a night,
     # which is when this list matters most.
     today = m.service_day()
     stay = _stay("A")

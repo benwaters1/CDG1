@@ -21,7 +21,7 @@ nobody is covering.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -54,7 +54,7 @@ def _person(name, status="active"):
 def _wage(user_id, days_ago, amount=12.0, typed_days_ago=None):
     """A wage effective `days_ago` days back, optionally recorded later."""
     conn = db()
-    effective = (date.today() - timedelta(days=days_ago)).isoformat()
+    effective = (house_today() - timedelta(days=days_ago)).isoformat()
     typed = datetime.now(timezone.utc) - timedelta(days=typed_days_ago or 0)
     conn.execute(
         """INSERT INTO wage_records (user_id, effective_from, basis, gross_amount, created_at)
@@ -153,7 +153,7 @@ def run():
     s.section("It reaches the owner where they look")
     with m.app.test_request_context("/"):
         conn = db()
-        warnings = m.owner_home_warnings(conn, date.today())
+        warnings = m.owner_home_warnings(conn, house_today())
         conn.close()
     pay = [w for w in warnings if "Pay not reviewed" in w["title"]]
     s.check("it is on the owner home", len(pay) == 1, detail=f"{[w['title'] for w in warnings]}")
@@ -182,13 +182,13 @@ def run():
     conn = db()
     conn.execute("""UPDATE wage_records SET effective_from = ?
                     WHERE user_id IN (SELECT id FROM users WHERE name LIKE ?)""",
-                 (date.today().isoformat(), TAG + "%"))
+                 (house_today().isoformat(), TAG + "%"))
     conn.commit()
     conn.close()
     s.check("nobody is due", not _due(), detail=f"{list(_due())}")
     with m.app.test_request_context("/"):
         conn = db()
-        warnings = m.owner_home_warnings(conn, date.today())
+        warnings = m.owner_home_warnings(conn, house_today())
         conn.close()
     remaining = [w for w in warnings if "Pay not reviewed" in w["title"]]
     s.check("and the notice can be empty at all",

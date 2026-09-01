@@ -12,7 +12,7 @@ must keep allowing.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -78,7 +78,7 @@ def _attendee(session_id, ref, party=2, room_id=None):
 def run():
     s = Suite("Workshop rooms")
     _cleanup()
-    start = date.today() + timedelta(days=340)
+    start = house_today() + timedelta(days=340)
     end = start + timedelta(days=4)
     sid = _session(start, end)
     room_a, room_b = _room("Room A"), _room("Room B")

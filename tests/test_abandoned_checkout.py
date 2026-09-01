@@ -24,7 +24,7 @@ Three things this pins:
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, db, house_today
 import _harness
 
 m = _harness.m
@@ -50,8 +50,8 @@ def _extra_id():
 def _stash(client, room_id, **over):
     data = {
         "room_id": room_id,
-        "arrival": (date.today() + timedelta(days=70)).isoformat(),
-        "departure": (date.today() + timedelta(days=73)).isoformat(),
+        "arrival": (house_today() + timedelta(days=70)).isoformat(),
+        "departure": (house_today() + timedelta(days=73)).isoformat(),
         "guest_name": "ZZABAN Amelie Returning",
         "guest_email": "amelie@example.invalid",
         "guest_phone": "+33 6 99 88 77 66",

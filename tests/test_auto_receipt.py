@@ -29,7 +29,7 @@ into something anybody holding a link could post to themselves.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -64,7 +64,7 @@ def _auto(on):
 def _stay(ref, email=GUEST):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=3)
+    arrival = house_today() + timedelta(days=3)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,

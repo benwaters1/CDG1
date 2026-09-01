@@ -19,7 +19,7 @@ sheet like this quietly becomes wrong:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -38,7 +38,7 @@ def _cleanup():
     conn.close()
 
 
-DAY = date.today() + timedelta(days=21)
+DAY = house_today() + timedelta(days=21)
 
 
 def _stay(ref, *, arrive_offset, nights, party=2, requests=None, profile=None):

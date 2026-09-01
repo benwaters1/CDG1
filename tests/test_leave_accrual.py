@@ -25,7 +25,7 @@ import os as _os
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -166,7 +166,7 @@ def run():
     # figure, so whoever settles the pay has to know it was worked out.
     leaver = _employee(
         "Sylvain",
-        start=(date.today().replace(day=1) - timedelta(days=120)).isoformat())
+        start=(house_today().replace(day=1) - timedelta(days=120)).isoformat())
     oc.post(f"/directory/{leaver['id']}/toggle-status", follow_redirects=True)
     conn = db()
     labels = [r["label"] for r in conn.execute(

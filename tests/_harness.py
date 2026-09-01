@@ -367,6 +367,20 @@ def datetime_now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def house_today():
+    """What day it is AT THE HOUSE.
+
+    Not date.today(), which is the day on whatever machine is running the
+    tests. The Ariege and a developer's laptop disagree for part of every
+    day, and two suites went red at midnight because of it -- asking about
+    "today" while the app answered about a different one.
+
+    Every date this app cares about is a French calendar date. A suite
+    built on the local clock is testing where the developer is sitting.
+    """
+    return m.datetime.now(m.LOCAL_TZ).date()
+
+
 def clients():
     """Logged-in test clients: (owner, employee)."""
     ensure_owner()

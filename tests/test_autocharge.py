@@ -20,7 +20,7 @@ charging a real test card before the job is switched on.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, db, house_today
 import _harness
 
 m = _harness.m
@@ -84,7 +84,7 @@ def _booking(ref, due_date, *, card=True, opt_out=0, failed_at=None,
                VALUES (?, '', ?, 20, 1, 96, ?, 30)""", (f"{TAG} Atelier", total, now))
     wid = conn.execute("SELECT id FROM workshops WHERE title = ?", (f"{TAG} Atelier",)).fetchone()["id"]
     if not conn.execute("SELECT 1 FROM workshop_sessions WHERE notes = ?", (f"{TAG} sitting",)).fetchone():
-        start = date.today() + timedelta(days=200)
+        start = house_today() + timedelta(days=200)
         conn.execute(
             """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, notes, created_at)
                VALUES (?, ?, ?, 20, ?, ?)""",

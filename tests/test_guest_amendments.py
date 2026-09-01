@@ -29,7 +29,7 @@ What the wiring has to get right, and what this file is mostly about:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -63,7 +63,7 @@ def _capacity():
 
 def _dinner(ref, party=2, total=130.0, status="confirmed", days=30, paid="unpaid"):
     conn = db()
-    when = (date.today() + timedelta(days=days)).isoformat()
+    when = (house_today() + timedelta(days=days)).isoformat()
     conn.execute(
         """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,
            guest_email, party_size, dinner_date, status, total_price, payment_status, created_at)
@@ -87,7 +87,7 @@ def _event(ref, count=40, quote=None, status="quoted"):
            VALUES (?, ?, 'wedding', ?, ?, ?, ?, ?, ?, 'first note', ?)""",
         (f"{TAG}-{ref}", f"tok{TAG}{ref}".lower(), f"{TAG} {ref}",
          f"{TAG.lower()}@example.invalid", count, status, quote,
-         (date.today() + timedelta(days=200)).isoformat(),
+         (house_today() + timedelta(days=200)).isoformat(),
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
     row = conn.execute("SELECT * FROM event_inquiries WHERE reference_code = ?",

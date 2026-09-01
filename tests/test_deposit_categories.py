@@ -14,7 +14,7 @@ not the others fails here.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -105,7 +105,7 @@ def run():
     conn = db()
     house = m.event_payment_setting(conn, "event_deposit_percent")
     with_rule = m.resolve_deposit_percent(
-        conn, "event", (date.today() + timedelta(days=90)).isoformat(), 20, house)
+        conn, "event", (house_today() + timedelta(days=90)).isoformat(), 20, house)
     conn.close()
     s.check("a party over the threshold gets the rule's percentage",
             abs(with_rule - 40) < 0.01,
@@ -113,7 +113,7 @@ def run():
                    "resolve_deposit_percent does not see it")
     conn = db()
     small = m.resolve_deposit_percent(
-        conn, "event", (date.today() + timedelta(days=90)).isoformat(), 2, house)
+        conn, "event", (house_today() + timedelta(days=90)).isoformat(), 2, house)
     conn.close()
     s.check("and a small party still gets the house percentage",
             abs(small - house) < 0.01,

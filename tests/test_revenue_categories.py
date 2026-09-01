@@ -16,7 +16,7 @@ the till from its account.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -65,7 +65,7 @@ def _catalogue_extra(name, category, *, price=90.0, revenue=None):
 def _stay_with(extras, *, city_tax=4.80):
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    arrival = date.today() + timedelta(days=12)
+    arrival = house_today() + timedelta(days=12)
     departure = arrival + timedelta(days=2)
     priced = m.compute_room_total(conn, room, arrival, departure)
     conn.execute(

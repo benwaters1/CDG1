@@ -26,7 +26,7 @@ Stripe.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -45,7 +45,7 @@ def _cleanup():
 def _stay(ref, total=900.0, paid=0.0):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=120)
+    arrival = house_today() + timedelta(days=120)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,

@@ -28,7 +28,7 @@ that it does not carry anybody else's.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -79,7 +79,7 @@ def run():
     rooms = _rooms()
     room = rooms[0]
     other = rooms[1] if len(rooms) > 1 else None
-    arrival = date.today() + timedelta(days=40)
+    arrival = house_today() + timedelta(days=40)
     booked = _booking(room["id"], "A", arrival)
 
     s.section("The room feed is reachable with its token")

@@ -12,7 +12,7 @@ what the stay cost, and adding something later increases what is owed.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, ensure_room, flashes
+from _harness import Suite, clients, db, ensure_room, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -24,7 +24,7 @@ def _booking(nights=3, paid=0.0):
     conn = db()
     conn.execute("UPDATE rooms SET price_per_night = 250, min_nights = 1 WHERE id = ?",
                  (room["id"],))
-    arrival = date.today() + timedelta(days=600)
+    arrival = house_today() + timedelta(days=600)
     conn.execute(
         """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
            departure_date, party_size, status, reference_code, manage_token,
@@ -160,7 +160,7 @@ def run():
     hamper = conn.execute("SELECT id FROM extras WHERE name = ?", (f"{TAG} hamper",)).fetchone()["id"]
     transfer = conn.execute("SELECT id FROM extras WHERE name = ?", (f"{TAG} late transfer",)).fetchone()["id"]
     # A stay three days away, so the 14-day transfer is out of reach.
-    soon = date.today() + timedelta(days=3)
+    soon = house_today() + timedelta(days=3)
     conn.execute(
         """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
            departure_date, party_size, status, reference_code, manage_token, created_at)
@@ -215,7 +215,7 @@ def run():
 
     s.section("A guest can stay longer")
     conn = db()
-    later = date.today() + timedelta(days=800)
+    later = house_today() + timedelta(days=800)
     conn.execute(
         """INSERT INTO bookings (room_id, guest_name, guest_email, arrival_date,
            departure_date, party_size, status, reference_code, manage_token,

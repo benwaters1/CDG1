@@ -24,7 +24,7 @@ number LEAVES something out on purpose and says so.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -264,7 +264,7 @@ def run():
 
     # ------------------------------------------------------------------ 5
     s.section("Cost of taking money: what the processor keeps")
-    start, end = date.today() - timedelta(days=1), date.today() + timedelta(days=1)
+    start, end = house_today() - timedelta(days=1), house_today() + timedelta(days=1)
     cost = m.cost_of_taking_money(conn, start, end)
     s.check("with no rate typed it refuses to compute one",
             cost["configured"] is False and cost["fee"] is None,

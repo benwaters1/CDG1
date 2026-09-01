@@ -23,7 +23,7 @@ Two reasons they are worth the file:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -223,8 +223,8 @@ def run():
                  ((datetime.now(timezone.utc) - timedelta(hours=4)).isoformat(),
                   (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat(), br["id"]))
     conn.commit()
-    start = (date.today() - timedelta(days=1)).isoformat()
-    end = (date.today() + timedelta(days=1)).isoformat()
+    start = (house_today() - timedelta(days=1)).isoformat()
+    end = (house_today() + timedelta(days=1)).isoformat()
     rows = m.labour_hours_by_person(conn, start, end)
     conn.close()
     ours = next((r for r in rows if r["id"] == mine["id"]), None)

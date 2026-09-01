@@ -18,7 +18,7 @@ nothing to account for it is worse than a voucher that cannot be spent again.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -60,7 +60,7 @@ def _ledger(voucher_id):
 def _stay(ref, price=600.0):
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    arrival = date.today() + timedelta(days=25)
+    arrival = house_today() + timedelta(days=25)
     departure = arrival + timedelta(days=2)
     priced = m.compute_room_total(conn, room, arrival, departure)
     conn.execute(
@@ -194,7 +194,7 @@ def run():
     s.section("An expired voucher takes nothing, and says when it went")
     conn = db()
     conn.execute("UPDATE gift_vouchers SET expires_on = ? WHERE id = ?",
-                 ((date.today() - timedelta(days=3)).isoformat(), v2["id"]))
+                 ((house_today() - timedelta(days=3)).isoformat(), v2["id"]))
     conn.commit()
     conn.close()
     s.check("the state reads expired", _ledger(v2["id"])["state"] == "expired")
@@ -210,7 +210,7 @@ def run():
     before = db().execute("SELECT COUNT(*) c FROM gift_vouchers").fetchone()["c"]
     r = oc.post("/management/vouchers/new",
                 data={"amount": "50", "note": f"{TAG} past",
-                      "expires_on": (date.today() - timedelta(days=1)).isoformat()},
+                      "expires_on": (house_today() - timedelta(days=1)).isoformat()},
                 follow_redirects=True)
     after = db().execute("SELECT COUNT(*) c FROM gift_vouchers").fetchone()["c"]
     s.check("no voucher is created", after == before,

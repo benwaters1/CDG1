@@ -26,7 +26,7 @@ else may be written by a kind the app does not recognise.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -62,7 +62,7 @@ def _stayed(who, offset_days=-8):
     """A confirmed past room guest, so the blast has somebody to reach."""
     conn = db()
     room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()["id"]
-    arrival = date.today() + timedelta(days=offset_days)
+    arrival = house_today() + timedelta(days=offset_days)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, arrival_date, departure_date, party_size, status,
@@ -202,7 +202,7 @@ def run():
     conn.execute("INSERT INTO email_optouts (email, reason, created_at) VALUES (?, ?, ?)",
                  (left, "unsubscribed", datetime.now(timezone.utc).isoformat()))
     conn.commit()
-    recent = (date.today() - timedelta(days=30)).isoformat()
+    recent = (house_today() - timedelta(days=30)).isoformat()
     who = m.promo_blast_recipients(conn, ["room"], recent)
     conn.close()
     s.check("a past guest is in the list", kept in who, detail=str(list(who)[:4]))

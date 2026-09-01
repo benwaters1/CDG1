@@ -18,7 +18,7 @@ sells a night that is taken, the other refuses a night that is free.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, db, house_today
 import _harness
 
 m = _harness.m
@@ -60,7 +60,7 @@ def _clear_base(room_id, span=40):
     conn = db()
     try:
         for offset in range(200, 900, 10):
-            start = date.today() + timedelta(days=offset)
+            start = house_today() + timedelta(days=offset)
             taken = m.unavailable_nights(conn, room_id, start - timedelta(days=15),
                                          start + timedelta(days=span + 15))
             if not taken:

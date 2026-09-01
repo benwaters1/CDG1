@@ -59,7 +59,7 @@ def _set(key, value):
 def _book(total, days_out=90, nights=3, paid=False):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=days_out)
+    arrival = _house_today() + timedelta(days=days_out)
     was = m.send_email
     m.send_email = lambda *a, **k: True
     try:
@@ -80,6 +80,16 @@ def _book(total, days_out=90, nights=3, paid=False):
     row = conn.execute("SELECT * FROM bookings WHERE manage_token = ?", (token,)).fetchone()
     conn.close()
     return row, arrival
+
+
+def _house_today():
+    """What day it is AT THE HOUSE.
+
+    Not _house_today(), which is the day on whatever machine is running the
+    tests. The Ariege and this laptop disagree for part of every day, and
+    a suite built on the second is testing where the developer is sitting.
+    """
+    return m.datetime.now(m.LOCAL_TZ).date()
 
 
 def run():
@@ -119,10 +129,10 @@ def run():
     s.section("A due date is never in the past")
     conn = db()
     deposit, balance, due = m.room_payment_schedule(
-        conn, date.today() + timedelta(days=3), 900.0, 2)
+        conn, _house_today() + timedelta(days=3), 900.0, 2)
     conn.close()
     s.check("a stay next week still gets a workable date",
-            due >= date.today().isoformat(),
+            due >= _house_today().isoformat(),
             detail=f"{due} — the balance fell due before the booking was taken")
     s.check("and it is still split", balance > 0)
 

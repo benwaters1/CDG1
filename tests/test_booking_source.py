@@ -18,7 +18,7 @@ Two decisions carry most of the weight here:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -85,7 +85,7 @@ def run():
 
     s.section("The path stamps it, so nobody has to remember")
     room = _room()
-    arrival = date.today() + timedelta(days=45)
+    arrival = house_today() + timedelta(days=45)
     r = anon.post(f"/book/{room['id']}", data={
         "arrival_date": arrival.isoformat(),
         "departure_date": (arrival + timedelta(days=2)).isoformat(),
@@ -101,7 +101,7 @@ def run():
                    "set is a field that is mostly wrong")
 
     s.section("The desk says desk")
-    wi = date.today() + timedelta(days=60)
+    wi = house_today() + timedelta(days=60)
     oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": wi.isoformat(),
@@ -119,8 +119,8 @@ def run():
     # them booking a second one is one person planning one trip; counting that
     # as returning would make a good week of forward bookings look like loyalty.
     _raw("Past", source="direct", email="zzsrc.web@example.invalid",
-         arrival=date.today() - timedelta(days=40), nights=2, price=400)
-    again = date.today() + timedelta(days=90)
+         arrival=house_today() - timedelta(days=40), nights=2, price=400)
+    again = house_today() + timedelta(days=90)
     anon2 = m.app.test_client()
     anon2.post(f"/book/{room['id']}", data={
         "arrival_date": again.isoformat(),
@@ -181,7 +181,7 @@ def run():
     # Four one-night stays from an agent against one guest taking a fortnight is
     # not four to one in any sense the owner would act on.
     _cleanup()
-    start = date.today() + timedelta(days=200)
+    start = house_today() + timedelta(days=200)
     end = start + timedelta(days=30)
     for i in range(4):
         _raw(f"A{i}", source="agent", email=f"zzsrc.a{i}@example.invalid",

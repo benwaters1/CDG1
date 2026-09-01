@@ -26,7 +26,7 @@ purpose and the tool does not know why.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 
 import _harness
 
@@ -47,7 +47,7 @@ def _cleanup(conn):
 
 def run():
     s = Suite("Putting a workshop into rooms")
-    today = date.today()
+    today = house_today()
     conn = db()
     oc, ec, _owner, _emp = clients()
     _cleanup(conn)

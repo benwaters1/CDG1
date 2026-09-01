@@ -11,7 +11,7 @@ with it, and the guest will be right.
 from datetime import date, timedelta
 from urllib.parse import urlencode
 
-from _harness import Suite, clients, db, ensure_room
+from _harness import Suite, clients, db, ensure_room, house_today
 import _harness
 
 m = _harness.m
@@ -34,7 +34,7 @@ def run():
                             (f"{TAG} transfer",)).fetchone()["id"]
     conn.close()
 
-    arrival = date.today() + timedelta(days=400)
+    arrival = house_today() + timedelta(days=400)
     departure = arrival + timedelta(days=4)
 
     def quote(**over):
@@ -114,7 +114,7 @@ def run():
         s.check("three quotes redeem it zero times", used == 0, detail=f"{used} redemptions")
 
     s.section("What is quoted is what is charged")
-    later = date.today() + timedelta(days=430)
+    later = house_today() + timedelta(days=430)
     code, q = quote(arrival=later.isoformat(),
                     departure=(later + timedelta(days=3)).isoformat(),
                     party_size=2, extras=[extra_id])

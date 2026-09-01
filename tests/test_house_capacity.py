@@ -13,7 +13,7 @@ not what the owner's own staff can do.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -98,7 +98,7 @@ def run():
     s = Suite("House capacity")
     clients()
     _cleanup()
-    start = date.today() + timedelta(days=200)  # clear of the real ateliers
+    start = house_today() + timedelta(days=200)  # clear of the real ateliers
 
     s.section("Room bookings alone")
     _make_room_booking(f"{TAG}A", start, start + timedelta(days=3), 10)

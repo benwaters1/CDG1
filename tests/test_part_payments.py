@@ -13,7 +13,7 @@ are the same request through the same route.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, db, house_today
 import _harness
 
 m = _harness.m
@@ -39,7 +39,7 @@ def _booking(total=2000.0, deposit_paid=True):
            active, sort_order, created_at, deposit_percent)
            VALUES (?, '', ?, 8, 1, 97, ?, 30)""", (f"{TAG} Atelier", total, now))
     wid = conn.execute("SELECT id FROM workshops WHERE title = ?", (f"{TAG} Atelier",)).fetchone()["id"]
-    start = date.today() + timedelta(days=120)
+    start = house_today() + timedelta(days=120)
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity, notes, created_at)
            VALUES (?, ?, ?, 8, ?, ?)""",

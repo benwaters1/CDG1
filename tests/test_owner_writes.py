@@ -26,7 +26,7 @@ sender live would push to somebody's phone on the NEXT run, not this one.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -38,7 +38,7 @@ def _cleanup():
     conn.execute("DELETE FROM push_subscriptions WHERE endpoint LIKE 'https://zzpush%'")
     conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM tasks WHERE origin = 'checklist' AND due_date = ?",
-                 ((date.today() + timedelta(days=300)).isoformat(),))
+                 ((house_today() + timedelta(days=300)).isoformat(),))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
@@ -68,7 +68,7 @@ def _enquiries():
 def _stay(ref, offset=3):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=offset)
+    arrival = house_today() + timedelta(days=offset)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,
@@ -85,7 +85,7 @@ def _stay(ref, offset=3):
     return row
 
 
-PREP_DUE = (date.today() + timedelta(days=300)).isoformat()
+PREP_DUE = (house_today() + timedelta(days=300)).isoformat()
 
 
 def _prep_tasks():
@@ -122,7 +122,7 @@ def run():
     oc.post("/admin/events/new",
             data={"event_type": kind, "contact_name": f"{TAG} Caller",
                   "contact_phone": "+33 5 61 00 00 00",
-                  "preferred_date": (date.today() + timedelta(days=200)).isoformat(),
+                  "preferred_date": (house_today() + timedelta(days=200)).isoformat(),
                   "guest_count": "80", "message": "ZZ rang about a wedding",
                   "quoted_price": "4500"},
             follow_redirects=True)

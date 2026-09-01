@@ -13,7 +13,7 @@ about those still working.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -40,7 +40,7 @@ def _rooms():
 def _stay(ref, *, room, status="confirmed", arrival_offset=10, nights=2, name=None):
     """Dates built on the basis THE PAGE USES, which is the UTC date.
 
-    date.today() is the local one, and on this machine the two differ for part
+    house_today() is the local one, and on this machine the two differ for part
     of every day — so a fixture built on local time put a stay one day either
     side of where the page thought it was, and the "here now" boundary failed
     for a reason that had nothing to do with the feature.

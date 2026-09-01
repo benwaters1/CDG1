@@ -32,7 +32,7 @@ unsubscribe footer. Getting that backwards in either direction is the failure
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -62,7 +62,7 @@ def _cleanup():
 def _stay(ref, total=600.0, paid=0.0, status="confirmed", offset=40):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=offset)
+    arrival = house_today() + timedelta(days=offset)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,

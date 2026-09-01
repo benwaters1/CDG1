@@ -25,7 +25,7 @@ length of one form and no longer is part of the claim, not a detail.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db, flashes
+from _harness import Suite, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -65,7 +65,7 @@ def run():
     s = Suite("What the guest typed comes back")
     _cleanup()
     c = m.app.test_client()
-    soon = (date.today() + timedelta(days=60)).isoformat()
+    soon = (house_today() + timedelta(days=60)).isoformat()
 
     s.section("The restaurant keeps the allergy")
     # The restaurant is switched off in this database, and /restaurant/book
@@ -148,7 +148,7 @@ def run():
         "contact_phone": "+33 6 77 88 99 00",
         "guest_count": "80",
         "preferred_date": soon,
-        "alternate_date": (date.today() + timedelta(days=67)).isoformat(),
+        "alternate_date": (house_today() + timedelta(days=67)).isoformat(),
         "message": "A wedding in the courtyard, with dinner under the plane trees.",
     }
     r = c.post("/events/inquire", data=body, follow_redirects=True)
@@ -164,7 +164,7 @@ def run():
     s.check("the preferred date came back", soon in page,
             detail="a wedding date, retyped because the type was wrong")
     s.check("the alternate date came back",
-            (date.today() + timedelta(days=67)).isoformat() in page)
+            (house_today() + timedelta(days=67)).isoformat() in page)
     s.check("nothing was written for an enquiry that failed",
             _count("event_inquiries", "contact_name") == 0)
 

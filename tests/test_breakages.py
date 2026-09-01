@@ -27,7 +27,7 @@ Three things this holds:
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 
 import _harness
 
@@ -45,7 +45,7 @@ def run():
     conn = db()
     oc, ec, _owner, emp = clients()
     _cleanup(conn)
-    today = date.today()
+    today = house_today()
 
     s.section("The checkout list still says to look")
     # If this ever stops saying it, the page below is answering a question

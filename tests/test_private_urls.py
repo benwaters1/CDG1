@@ -30,7 +30,7 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -94,7 +94,7 @@ def _document(user_id, title, ext="pdf"):
 def _booking(ref, departure_offset=-3):
     conn = db()
     room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()["id"]
-    dep = date.today() + timedelta(days=departure_offset)
+    dep = house_today() + timedelta(days=departure_offset)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, arrival_date, departure_date, party_size, status,

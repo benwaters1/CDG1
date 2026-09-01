@@ -26,7 +26,7 @@ our half in the shape theirs arrives in.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 
 import _harness
 
@@ -47,7 +47,7 @@ def run():
     conn = db()
     oc, ec, _owner, _emp = clients()
     _cleanup(conn)
-    today = date.today()
+    today = house_today()
     now = m.datetime.now(m.timezone.utc).isoformat()
 
     conn.execute(

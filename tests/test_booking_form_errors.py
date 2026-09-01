@@ -24,7 +24,7 @@ actually goes through.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db, flashes
+from _harness import Suite, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -52,8 +52,8 @@ def run():
     _cleanup()
     room = _harness.ensure_room()
     pub = m.app.test_client()
-    good_in = (date.today() + timedelta(days=60)).isoformat()
-    good_out = (date.today() + timedelta(days=63)).isoformat()
+    good_in = (house_today() + timedelta(days=60)).isoformat()
+    good_out = (house_today() + timedelta(days=63)).isoformat()
     extra_id, extra_name = _extra_id()
 
     typed = {
@@ -93,7 +93,7 @@ def run():
     conn.close()
     r = pub.post(f"/book/{room['id']}", data=dict(
         typed, arrival_date=good_in,
-        departure_date=(date.today() + timedelta(days=61)).isoformat()))
+        departure_date=(house_today() + timedelta(days=61)).isoformat()))
     said = " ".join(flashes(r)).lower()
     s.check("one night against a three-night minimum is reported as such",
             "minimum stay" in said, detail=f"{flashes(r)[:1]}")
@@ -142,7 +142,7 @@ def run():
         ("no terms agreed", {"agree_terms": ""}),
         ("a party too large", {"party_size": "99"}),
         ("an arrival in the past",
-         {"arrival_date": (date.today() - timedelta(days=5)).isoformat()}),
+         {"arrival_date": (house_today() - timedelta(days=5)).isoformat()}),
     ):
         d = dict(typed, arrival_date=good_in, departure_date=good_out)
         d.update(override)

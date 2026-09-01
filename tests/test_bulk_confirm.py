@@ -26,7 +26,7 @@ Three properties carry this file:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -52,7 +52,7 @@ def _free(nights=3, after=300, room_id=None):
     conn = db()
     try:
         room_id = room_id or _harness.ensure_room()["id"]
-        day = date.today() + timedelta(days=after)
+        day = house_today() + timedelta(days=after)
         for _ in range(400):
             ok, _why = m.is_range_available(
                 conn, room_id, day, day + timedelta(days=nights), include_pending=False)
@@ -106,8 +106,8 @@ def run():
         s.section("Confirming a selection confirms exactly that selection")
         first_day = _free(after=300)
         a = _request("A", first_day)
-        b = _request("B", _free(after=(first_day - date.today()).days + 20))
-        untouched = _request("C", _free(after=(first_day - date.today()).days + 60))
+        b = _request("B", _free(after=(first_day - house_today()).days + 20))
+        untouched = _request("C", _free(after=(first_day - house_today()).days + 60))
         sent.clear()
         r = oc.post("/admin/bookings/bulk-confirm",
                     data={"booking_ids": [str(a["id"]), str(b["id"])]},

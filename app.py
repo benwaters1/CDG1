@@ -29220,7 +29220,12 @@ def room_payment_schedule(conn, arrival, total_price, party_size=None):
     days_before = int(room_payment_setting(conn, "room_balance_due_days_before"))
     arrival_date = arrival if hasattr(arrival, "isoformat") else parse_date(arrival)
     due = arrival_date - timedelta(days=max(days_before, 0))
-    today = datetime.now(timezone.utc).date()
+    # LOCAL today, not UTC. Arrival dates are local calendar dates, and for
+    # the hour or two after midnight in Paris the UTC date is still
+    # yesterday -- so this floor let a balance fall due before the booking
+    # was taken. The house rule about never stamping a UTC calendar date
+    # where a local one belongs, in a new place.
+    today = datetime.now(LOCAL_TZ).date()
     if due < today:
         due = today
     return deposit, balance, due.isoformat()

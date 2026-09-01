@@ -27,7 +27,7 @@ second instalment.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -48,7 +48,7 @@ def _cleanup():
 def _event(ref, *, price=4500.0, status="confirmed", held=None, paid=0.0, due=None):
     conn = db()
     kinds = m.known_event_types(conn)
-    when = (held or (date.today() - timedelta(days=20))).isoformat()
+    when = (held or (house_today() - timedelta(days=20))).isoformat()
     conn.execute(
         """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
            contact_name, contact_email, contact_phone, preferred_date, guest_count,
@@ -152,7 +152,7 @@ def run():
 
     s.section("An unpaid event is on the debtors list")
     # It could not be, before: there was no bill to put it there with.
-    owing = _event("E", price=6000.0, held=date.today() - timedelta(days=5))
+    owing = _event("E", price=6000.0, held=house_today() - timedelta(days=5))
     conn = db()
     rows = {r["reference"]: r for r in m.outstanding_balances(conn)}
     conn.close()
@@ -243,7 +243,7 @@ def run():
     # The page showed the quoted price and stopped. Somebody who had already
     # sent a deposit had no way to see it had landed — and until events had a
     # money model at all, there was nothing to show them.
-    seen = _event("H", price=3000.0, held=date.today() + timedelta(days=200))
+    seen = _event("H", price=3000.0, held=house_today() + timedelta(days=200))
     oc.post(f"/admin/events/{seen['id']}/payment",
             data={"amount": "900", "method": "bank_transfer"}, follow_redirects=True)
     anon = m.app.test_client()
@@ -309,7 +309,7 @@ def run():
     # Stripe retries and a contact reloads a page that took a moment, so the
     # same session arrives several times. Crediting twice would tell somebody
     # they had paid for a wedding they had half paid for.
-    landing = _event("J", price=2000.0, held=date.today() + timedelta(days=150))
+    landing = _event("J", price=2000.0, held=house_today() + timedelta(days=150))
     was_enabled2 = m.stripe_enabled
     was_session2 = m.stripe.checkout.Session
 
@@ -390,15 +390,15 @@ def run():
         sent_mail.append((to, subject, body))
         return True
 
-    soon = _event("K", price=8000.0, held=date.today() + timedelta(days=60),
-                  due=(date.today() + timedelta(days=10)).isoformat())
+    soon = _event("K", price=8000.0, held=house_today() + timedelta(days=60),
+                  due=(house_today() + timedelta(days=10)).isoformat())
     oc.post(f"/admin/events/{soon['id']}/payment",
             data={"amount": "2000", "method": "bank_transfer"}, follow_redirects=True)
-    far = _event("L", price=5000.0, held=date.today() + timedelta(days=300),
-                 due=(date.today() + timedelta(days=250)).isoformat())
+    far = _event("L", price=5000.0, held=house_today() + timedelta(days=300),
+                 due=(house_today() + timedelta(days=250)).isoformat())
     settled_ev = _event("M", price=1000.0, paid=1000.0,
-                        held=date.today() + timedelta(days=60),
-                        due=(date.today() + timedelta(days=10)).isoformat())
+                        held=house_today() + timedelta(days=60),
+                        due=(house_today() + timedelta(days=10)).isoformat())
     try:
         m.send_email = capture
         conn = db()
@@ -418,7 +418,7 @@ def run():
                            "a reminder and a bill disagreeing in front of a guest "
                            "is the failure")
             s.check("naming the date it is due by",
-                    str((date.today() + timedelta(days=10)).year) in body,
+                    str((house_today() + timedelta(days=10)).year) in body,
                     detail=f"{body[:200]!r}")
             s.check("and giving them somewhere to pay it",
                     soon["manage_token"] in body, detail=f"{body[-200:]!r}")
@@ -447,8 +447,8 @@ def run():
 
         s.section("A send that fails leaves it to try again")
         # Stamping regardless would mark everybody reminded and tell nobody.
-        retry = _event("N", price=4000.0, held=date.today() + timedelta(days=60),
-                       due=(date.today() + timedelta(days=5)).isoformat())
+        retry = _event("N", price=4000.0, held=house_today() + timedelta(days=60),
+                       due=(house_today() + timedelta(days=5)).isoformat())
         m.send_email = lambda *a, **kw: False
         conn = db()
         with m.app.test_request_context("/"):

@@ -26,7 +26,7 @@ Two things here are load-bearing beyond "does it work":
 import io
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -78,7 +78,7 @@ def _notes(guest_id):
 def _stay_for(guest, ref):
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    arrival = date.today() + timedelta(days=20)
+    arrival = house_today() + timedelta(days=20)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size,
@@ -364,7 +364,7 @@ def run():
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
     conn.close()
-    arrival = date.today() + timedelta(days=120)
+    arrival = house_today() + timedelta(days=120)
     r = oc.post("/admin/bookings/walk-in", data={
         "room_id": str(room["id"]),
         "arrival_date": arrival.isoformat(),
@@ -448,7 +448,7 @@ def run():
     # and ignored the moment the same person booked online.
     conn = db()
     room2 = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    online_arrival = date.today() + timedelta(days=200)
+    online_arrival = house_today() + timedelta(days=200)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size,

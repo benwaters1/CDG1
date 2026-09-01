@@ -24,7 +24,7 @@ tests the fixture, and it reports success either way.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -49,7 +49,7 @@ def _enquiry(ref, *, days_out=200, price=None, guests=80):
     """
     conn = db()
     kinds = m.known_event_types(conn)
-    when = (date.today() + timedelta(days=days_out)).isoformat()
+    when = (house_today() + timedelta(days=days_out)).isoformat()
     conn.execute(
         """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
            contact_name, contact_email, contact_phone, preferred_date, guest_count,
@@ -110,7 +110,7 @@ def run():
             (date.fromisoformat(after["preferred_date"]) - timedelta(days=45)).isoformat(),
             detail=f"{after['balance_due_date']} for {after['preferred_date']}")
     s.check("and it is in the future",
-            after["balance_due_date"] > date.today().isoformat(),
+            after["balance_due_date"] > house_today().isoformat(),
             detail="a due date already past makes the reminder fire on the spot")
 
     s.section("The reminder job can now reach an event the app confirmed")
@@ -127,7 +127,7 @@ def run():
         s.check("its due date is inside the reminder window",
                 confirmed["balance_due_date"] is not None
                 and confirmed["balance_due_date"] <=
-                (date.today() + timedelta(days=21)).isoformat(),
+                (house_today() + timedelta(days=21)).isoformat(),
                 detail=f"{confirmed['balance_due_date']}")
         result = m.run_event_balance_reminder_job(conn, 21)
         s.check("the job sees it rather than reporting nothing to do",
@@ -177,7 +177,7 @@ def run():
     after = _row(ev["id"])
     s.check("no due date is invented in the past",
             after["balance_due_date"] is None
-            or after["balance_due_date"] >= date.today().isoformat(),
+            or after["balance_due_date"] >= house_today().isoformat(),
             detail=f"{after['balance_due_date']} — a due date already gone makes "
                    "the reminder fire the moment the event is confirmed")
     s.check("and there is no deposit stage", after["deposit_amount"] is None,

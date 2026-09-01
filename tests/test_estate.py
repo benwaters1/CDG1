@@ -24,7 +24,7 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -141,7 +141,7 @@ def run():
     oc.post(f"/admin/assets/{a['id']}/update", data={
         "name": TAG + " Commode", "category": "antique", "location": "Long gallery",
         "estimated_value": "5500", "value_source": "valuation",
-        "valued_on": date.today().isoformat(), "condition": "good", "status": "held",
+        "valued_on": house_today().isoformat(), "condition": "good", "status": "held",
     }, content_type="multipart/form-data", follow_redirects=True)
     after = _row("assets", "id", a["id"])
     s.check("it moves room", after["location"] == "Long gallery",

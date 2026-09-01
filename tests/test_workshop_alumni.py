@@ -27,7 +27,7 @@ Four things worth holding:
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 
 import _harness
 
@@ -47,7 +47,7 @@ def _cleanup(conn):
 
 def run():
     s = Suite("People who did this workshop before")
-    today = date.today()
+    today = house_today()
     conn = db()
     oc, ec, _owner, _emp = clients()
     _cleanup(conn)

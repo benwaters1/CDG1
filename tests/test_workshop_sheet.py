@@ -24,7 +24,7 @@ it" is a fact about the house they have no need for.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 
 import _harness
 
@@ -52,7 +52,7 @@ def _cleanup(conn):
 
 def run():
     s = Suite("The instructor's running sheet")
-    today = date.today()
+    today = house_today()
     conn = db()
     oc, ec, _owner, emp = clients()
     _cleanup(conn)

@@ -24,7 +24,7 @@ The two decisions this suite exists to hold in place:
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db, clients, flashes
+from _harness import Suite, db, clients, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -79,7 +79,7 @@ def _find(rows, session_id):
 
 def run():
     s = Suite("A workshop that will not fill")
-    today = date.today()
+    today = house_today()
     conn = db()
     oc, ec, _owner, _emp = clients()
 

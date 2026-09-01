@@ -26,7 +26,7 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -214,12 +214,12 @@ def run():
         """INSERT INTO insurance_policies (provider, policy_number, coverage_type,
            premium, premium_frequency, expiry_date, created_at)
            VALUES (?, 'POL-1', 'buildings', 4200, 'annual', ?, ?)""",
-        (TAG + " Assureur", (date.today() + timedelta(days=40)).isoformat(),
+        (TAG + " Assureur", (house_today() + timedelta(days=40)).isoformat(),
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()
     pol = _one("insurance_policies", "provider", TAG + " Assureur")
-    new_expiry = (date.today() + timedelta(days=400)).isoformat()
+    new_expiry = (house_today() + timedelta(days=400)).isoformat()
     oc.post(f"/management/insurance/{pol['id']}/edit", data={
         "provider": TAG + " Assureur", "policy_number": "POL-2",
         "coverage_type": "buildings and contents", "premium": "4800",
@@ -263,7 +263,7 @@ def run():
            VALUES (?, ?, ?, '=cmd|calc', 'formula@example.invalid', ?, ?, 2,
            'confirmed', 'paid', 100, ?)""",
         (room, TAG + "FORMULA", TAG + "ftok",
-         date.today().isoformat(), (date.today() + timedelta(days=2)).isoformat(),
+         house_today().isoformat(), (house_today() + timedelta(days=2)).isoformat(),
          datetime.now(timezone.utc).isoformat()))
     conn.commit()
     conn.close()

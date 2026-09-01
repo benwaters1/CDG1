@@ -35,7 +35,7 @@ would have mailed a literal "{guest_name}" to the entire list.
 from datetime import date, datetime, timedelta, timezone
 import re
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -71,7 +71,7 @@ def _promo(code):
 def _guest(ref, email, name, status="confirmed"):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() - timedelta(days=30)
+    arrival = house_today() - timedelta(days=30)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,

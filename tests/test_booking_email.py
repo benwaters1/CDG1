@@ -17,7 +17,7 @@ satisfied by a mail promising a confirmation the owner has not given.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, db, house_today
 import _harness
 
 m = _harness.m
@@ -41,7 +41,7 @@ def _book(payment_status, price=900.0, offset=400):
         return True
 
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=offset)
+    arrival = house_today() + timedelta(days=offset)
     was_send = m.send_email
     m.send_email = capture
     conn = db()

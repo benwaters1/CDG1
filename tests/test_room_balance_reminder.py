@@ -24,7 +24,7 @@ Three things this has to get right, all of which cost money or goodwill:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -41,7 +41,7 @@ def _cleanup():
 def _booking(ref, days_ahead, total, paid, status="confirmed", email=None):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=days_ahead)
+    arrival = house_today() + timedelta(days=days_ahead)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, arrival_date, departure_date, party_size, status,

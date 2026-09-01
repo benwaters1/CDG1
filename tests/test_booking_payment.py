@@ -11,7 +11,7 @@ somebody goes home believing they have paid when they have not.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, db
+from _harness import Suite, db, house_today
 import _harness
 
 m = _harness.m
@@ -44,7 +44,7 @@ def _booking(price=200.0, nights=2, status="confirmed"):
            VALUES (?, ?, 1, 4, ?, 995)""", (f"{TAG} Room", _harness.secrets_token(), price))
     conn.commit()
     room_id = conn.execute("SELECT id FROM rooms WHERE name = ?", (f"{TAG} Room",)).fetchone()["id"]
-    arrival = date.today() + timedelta(days=280)
+    arrival = house_today() + timedelta(days=280)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name, guest_email,
            arrival_date, departure_date, party_size, status, created_at)

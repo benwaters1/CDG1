@@ -13,7 +13,7 @@ the same part twice.
 """
 from datetime import date, timedelta
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -31,7 +31,7 @@ def _setup():
         (f"{TAG} Watercolour", now))
     wid = conn.execute("SELECT id FROM workshops WHERE title = ?",
                        (f"{TAG} Watercolour",)).fetchone()["id"]
-    start = date.today() + timedelta(days=120)
+    start = house_today() + timedelta(days=120)
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date, capacity,
            notes, created_at) VALUES (?, ?, ?, 8, ?, ?)""",

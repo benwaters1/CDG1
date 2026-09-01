@@ -27,7 +27,7 @@ code alone:
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -49,7 +49,7 @@ def _cleanup():
 def _stay(email, ref, days_out=45, total=900.0, paid=200.0, status="confirmed"):
     conn = db()
     room = _harness.ensure_room()
-    arrival = date.today() + timedelta(days=days_out)
+    arrival = house_today() + timedelta(days=days_out)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size, status,

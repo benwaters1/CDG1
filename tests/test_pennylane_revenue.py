@@ -23,7 +23,7 @@ than the real account. The last section checks the refusal is back afterwards.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -50,7 +50,7 @@ def _cleanup():
 def _stay(ref, *, days_ago=10, status="confirmed", nights=2):
     conn = db()
     room = _harness.ensure_room()
-    departure = date.today() - timedelta(days=days_ago)
+    departure = house_today() - timedelta(days=days_ago)
     arrival = departure - timedelta(days=nights)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,

@@ -16,7 +16,7 @@ that raises, and these checks only build the lines.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db
+from _harness import Suite, clients, db, house_today
 import _harness
 
 m = _harness.m
@@ -36,7 +36,7 @@ def _cleanup():
 def _stay(ref, *, extras=(), city_tax=0.0):
     conn = db()
     room = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
-    arrival = date.today() + timedelta(days=15)
+    arrival = house_today() + timedelta(days=15)
     departure = arrival + timedelta(days=2)
     priced = m.compute_room_total(conn, room, arrival, departure)
     conn.execute(

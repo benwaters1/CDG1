@@ -28,7 +28,7 @@ why the catalogue held one item, uncategorised.
 """
 from datetime import date, datetime, timedelta, timezone
 
-from _harness import Suite, clients, db, flashes
+from _harness import Suite, clients, db, flashes, house_today
 import _harness
 
 m = _harness.m
@@ -48,7 +48,7 @@ def _cleanup():
 def _booking(ref, phone="", days=60):
     conn = db()
     room = conn.execute("SELECT id FROM rooms WHERE active = 1 LIMIT 1").fetchone()["id"]
-    arrival = date.today() + timedelta(days=days)
+    arrival = house_today() + timedelta(days=days)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size,

@@ -18,7 +18,7 @@ query are the ones worth failing over.
 WHAT IS ALLOWED THROUGH, and why each is not the fault above:
 
   - A NAME THE BASE USES. The shell reads things every page is given.
-  - A LITERAL. `today=date.today()` costs nothing and reads as context.
+  - A LITERAL. `today=house_today()` costs nothing and reads as context.
   - THE KNOWN LIST BELOW. A handful that are genuinely computed and genuinely
     unused, kept as a list of what is already known rather than a licence:
     anything NEW that starts throwing a query away fails this test.
@@ -27,7 +27,7 @@ import ast
 import os
 import re
 
-from _harness import Suite
+from _harness import Suite, house_today
 import _harness
 
 m = _harness.m
