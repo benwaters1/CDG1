@@ -23802,7 +23802,10 @@ def clear_bought_items():
 @login_required
 def breakfast():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    # The house's date, not the server's. A morning checklist and who is
+    # sleeping here are both French calendar facts, and for the two hours
+    # after midnight in Paris the UTC clock still says yesterday.
+    today = datetime.now(LOCAL_TZ).date()
     items = conn.execute(
         "SELECT * FROM breakfast_items ORDER BY COALESCE(category, 'zzz'), name"
     ).fetchall()
@@ -23836,7 +23839,9 @@ def toggle_breakfast_item(item_id):
     if not item:
         conn.close()
         return jsonify(error="not found"), 404
-    today = datetime.now(timezone.utc).date().isoformat()
+    # Must be the same day the page above reads back, or a tick made after
+    # midnight is written against a date nothing ever looks at.
+    today = datetime.now(LOCAL_TZ).date().isoformat()
     existing = conn.execute(
         "SELECT id FROM breakfast_checklist_log WHERE item_id = ? AND checklist_date = ?",
         (item_id, today),
@@ -48058,7 +48063,8 @@ def decide_leave(request_id):
 @app.route("/admin/today-sheet")
 @owner_required
 def today_sheet():
-    today = datetime.now(timezone.utc).date()
+    # Named for the day it is at the house, so that is the day it asks about.
+    today = datetime.now(LOCAL_TZ).date()
     conn = get_db()
     open_tasks = conn.execute(
         """SELECT tasks.*, users.name AS employee_name FROM tasks
