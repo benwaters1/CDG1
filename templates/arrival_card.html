@@ -60,6 +60,37 @@ we send goes by email.</p>
   {% endif %}
 </div>
 
+{#
+  For the person handing the card over, not for the guest — so it is marked
+  not to print. The card is made at the desk while they are standing there,
+  which is the one moment a preference recorded two visits ago is worth
+  anything.
+#}
+{% if profile %}
+<div class="detail-card no-print" style="max-width:26em; margin-top:16px;">
+  <p class="field-label" style="margin-top:0;">Before you hand this over</p>
+  {% if profile['caution_level'] %}
+  <p><span class="mini-status status-declined">{{ profile['caution_level']|capitalize }}</span>
+    {{ profile['caution'] }}</p>
+  {% endif %}
+  {% if profile['vip'] %}<p><span class="mini-status status-approved">VIP</span></p>{% endif %}
+  {% if profile['name_pronunciation'] %}
+  <p>Said <strong>{{ profile['name_pronunciation'] }}</strong></p>{% endif %}
+  {% if profile['dietary_notes'] %}<p>Dietary: {{ profile['dietary_notes'] }}</p>{% endif %}
+  {% if profile['preferences'] %}<p>Prefers: {{ profile['preferences'] }}</p>{% endif %}
+  {% if profile['birthday'] %}<p>Birthday {{ profile['birthday']|day_month }}</p>{% endif %}
+  {% for n in profile_notes %}
+  <p class="upload-hint">{{ n['created_at'][:10]|date_short }} — {{ n['body'] }}</p>
+  {% endfor %}
+  {% if not (profile['caution_level'] or profile['vip'] or profile['dietary_notes']
+             or profile['preferences'] or profile['name_pronunciation']
+             or profile['birthday'] or profile_notes) %}
+  <p class="upload-hint">Nothing recorded about them yet.
+    <a href="{{ url_for('guest_detail', guest_id=profile['id']) }}">Their profile</a></p>
+  {% endif %}
+</div>
+{% endif %}
+
 <style>
 /* Sized to a postcard so it prints one to a sheet and can be cut down, and
    with the page furniture hidden — a card with a navigation menu across the top

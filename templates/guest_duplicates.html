@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Duplicate profiles{% endblock %}
+{% block content %}
+
+{#
+  The per-profile version of this only helps somebody who has already opened one
+  of the two. This asks the question of the whole book, so the duplicates nobody
+  has looked at can be found at all.
+
+  One row per pair, not two. Listing A-matches-B and B-matches-A doubles the
+  length of the list and makes it read as twice the problem.
+#}
+<div class="page-head">
+  <h1>Duplicate profiles</h1>
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not found.pairs %}
+  <p class="upload-hint">Nothing that looks like the same person twice. Profiles
+  sharing an email address cannot exist — this looks for the same name or the
+  same telephone number under two different ones.</p>
+{% else %}
+<p class="upload-hint">Folding keeps everything on the profile you keep and
+fills its blanks from the other. Nothing is deleted: the other stays, pointing
+at the survivor, because a booking or an invoice may still reference it.</p>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>One</th><th>The other</th><th>Why</th><th>Fold</th></tr>
+    </thead>
+    <tbody>
+      {% for pair in found.pairs %}
+      <tr>
+        <td>
+          <a href="{{ url_for('guest_detail', guest_id=pair.a['id']) }}">{{ pair.a['name'] }}</a>
+          <span class="upload-hint">{{ pair.a['email'] or 'no email' }}{% if pair.a['phone'] %} · {{ pair.a['phone'] }}{% endif %}</span>
+        </td>
+        <td>
+          <a href="{{ url_for('guest_detail', guest_id=pair.b['id']) }}">{{ pair.b['name'] }}</a>
+          <span class="upload-hint">{{ pair.b['email'] or 'no email' }}{% if pair.b['phone'] %} · {{ pair.b['phone'] }}{% endif %}</span>
+        </td>
+        <td class="upload-hint">{{ pair.why|join(', ') }}</td>
+        <td>
+          {# Two buttons, because WHICH ONE SURVIVES is a decision only a person
+             can make — usually the one with the current address on it. #}
+          <form method="post" action="{{ url_for('merge_guest', guest_id=pair.a['id']) }}"
+                style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="merge_id" value="{{ pair.b['id'] }}">
+            <button type="submit" class="btn-mini">Keep the first</button>
+          </form>
+          <form method="post" action="{{ url_for('merge_guest', guest_id=pair.b['id']) }}"
+                style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="merge_id" value="{{ pair.a['id'] }}">
+            <button type="submit" class="btn-mini">Keep the second</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if found.total > found.shown %}
+<p class="upload-hint">Showing {{ found.shown }} of {{ found.total }}. The rest
+appear as these are dealt with — a page of four hundred pairs is one nobody
+starts.</p>
+{% endif %}
+{% endif %}
+
+{% endblock %}

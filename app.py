@@ -4600,6 +4600,7 @@ NAV_AREAS = {
     "guests": [
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
+        "guest_duplicates",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
@@ -20645,6 +20646,8 @@ PALETTE_PAGES = [
     ("Shopping list", "shopping_list", "buy"),
     ("What we owe guests", "extras_due_page",
      "extras hamper transfer flowers deliver outstanding owed jobs"),
+    ("Duplicate profiles", "guest_duplicates",
+     "duplicate merge same guest twice profiles tidy"),
     ("Dates that matter", "guest_dates",
      "birthday anniversary guest dates celebrate card"),
     ("Kitchen sheet", "kitchen_day_sheet",
@@ -23983,6 +23986,25 @@ def merge_guest(guest_id):
     return redirect(url_for("guest_detail", guest_id=guest_id))
 
 
+@app.route("/guests/duplicates")
+@owner_required
+def guest_duplicates():
+    """Profiles that might be the same person, across the whole book.
+
+    Owner-only, because the button on each row folds one person's history into
+    another's and doing that to the wrong pair is not something an apology
+    fixes.
+    """
+    conn = get_db()
+    found = duplicate_guest_pairs(conn)
+    conn.close()
+    overview = [
+        overview_cell("Pairs to look at", found["total"], alert=found["total"] > 0),
+        overview_cell("Profiles", found["profiles"]),
+    ]
+    return render_template("guest_duplicates.html", found=found, overview=overview)
+
+
 @app.route("/guests/dates")
 @login_required
 def guest_dates():
@@ -25730,6 +25752,18 @@ def arrival_card(booking_id):
     bill = booking_bill(conn, booking_id)
     company = conn.execute(
         "SELECT legal_name, registered_address FROM company_info WHERE id = 1").fetchone()
+    # What the person handing this over ought to know. The card is printed at
+    # the desk while the guest is standing there, which is the one moment a
+    # preference recorded two visits ago is worth anything.
+    profile = conn.execute(
+        """SELECT * FROM guests
+            WHERE merged_into_id IS NULL
+              AND ((? != '' AND LOWER(TRIM(email)) = ?) OR id = ?)
+            LIMIT 1""",
+        ((booking["guest_email"] or "").strip().casefold(),
+         (booking["guest_email"] or "").strip().casefold(),
+         booking["linked_guest_id"])).fetchone()
+    profile_notes = guest_notes(conn, profile["id"])[:3] if profile else []
     conn.close()
     try:
         find_url = url_for("find_booking", _external=True)
@@ -25737,6 +25771,7 @@ def arrival_card(booking_id):
         find_url = f"{PUBLIC_BASE_URL or ''}/book/manage"
     return render_template("arrival_card.html", booking=booking, bill=bill,
                            company=company, find_url=find_url,
+                           profile=profile, profile_notes=profile_notes,
                            surname=(booking["guest_name"] or "").split()[-1]
                            if (booking["guest_name"] or "").strip() else "")
 
@@ -31755,6 +31790,21 @@ def confirm_booking_by_id(conn, booking_id):
     booking = conn.execute("SELECT * FROM bookings WHERE id = ? AND status = 'pending'", (booking_id,)).fetchone()
     if not booking:
         return False, "not found or not pending"
+
+    # A CAUTION STOPS THIS TOO. The walk-in form honoured one and this did not,
+    # so a standing instruction not to accept somebody was enforced at the desk
+    # and ignored the moment they booked online -- and bulk-confirm would wave a
+    # whole morning's requests through without anybody reading a name.
+    #
+    # Refused here rather than warned, for the same reason as at the desk: the
+    # owner recorded an instruction, and the way to overrule it is to lift it on
+    # the guest's page deliberately.
+    caution = guest_caution_for(conn, email=booking["guest_email"],
+                                name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        return False, (f"there is a standing instruction not to accept a booking "
+                       f"from {caution['name']} ({caution['caution']}) — lift it "
+                       "on their profile if that has changed")
     arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
     available, conflict_reason = claim_range(
         conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id, include_pending=False
@@ -39121,6 +39171,7 @@ WATCH_TASK_KINDS = {
     "policy": "Insurance that has run out",
     "workshop": "A workshop short of the number it needs",
     "materials": "A workshop without the materials to run",
+    "celebration": "A guest with something to celebrate while they are here",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -39451,6 +39502,58 @@ def possible_duplicate_guests(conn, name, email=None, phone=None, exclude_id=Non
     return hits
 
 
+def duplicate_guest_pairs(conn, limit=60):
+    """Every pair of profiles that might be one person, across the whole book.
+
+    possible_duplicate_guests answers the question for ONE profile, which only
+    helps somebody who has already opened it. This asks it of the book, so the
+    duplicates nobody has looked at can be found at all.
+
+    ONE ROW PER PAIR, not two. Listing A-matches-B and B-matches-A doubles the
+    length of the list and makes it read as twice the problem; the pair is keyed
+    on the two ids in order.
+
+    The stronger signal is put first -- a shared phone number is a much better
+    reason to think two profiles are one person than a shared name, and a house
+    in France will have several Martins who are not related.
+    """
+    by_phone, by_name, pairs = {}, {}, {}
+    profiles = conn.execute(
+        "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY id").fetchall()
+    for row in profiles:
+        phone = "".join(ch for ch in (row["phone"] or "") if ch.isdigit())[-9:]
+        if len(phone) >= 6:
+            by_phone.setdefault(phone, []).append(row)
+        name = " ".join((row["name"] or "").casefold().split())
+        if name:
+            by_name.setdefault(name, []).append(row)
+
+    def add(rows, why, strength):
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                key = (min(a["id"], b["id"]), max(a["id"], b["id"]))
+                entry = pairs.setdefault(
+                    key, {"a": a if a["id"] < b["id"] else b,
+                          "b": b if a["id"] < b["id"] else a,
+                          "why": [], "strength": 0})
+                if why not in entry["why"]:
+                    entry["why"].append(why)
+                entry["strength"] = max(entry["strength"], strength)
+
+    for rows in by_phone.values():
+        if len(rows) > 1:
+            add(rows, "the same phone number", 2)
+    for rows in by_name.values():
+        if len(rows) > 1:
+            add(rows, "the same name", 1)
+
+    ordered = sorted(pairs.values(),
+                     key=lambda e: (-len(e["why"]), -e["strength"],
+                                    e["a"]["name"] or ""))
+    return {"pairs": ordered[:limit], "total": len(ordered),
+            "shown": min(len(ordered), limit), "profiles": len(profiles)}
+
+
 def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
     """Fold one profile into another. Returns (ok, message).
 
@@ -39516,6 +39619,19 @@ def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
         "UPDATE bookings SET linked_guest_id = ? WHERE linked_guest_id = ?",
         (keep_id, merge_id))
     moved_stays = conn.execute("SELECT changes() AS c").fetchone()["c"]
+
+    # Dinners and ateliers are matched to a profile by EMAIL ADDRESS, not by an
+    # id -- so folding an address onto the survivor is what carries them across,
+    # and an address left behind on the absorbed profile takes that history with
+    # it. Where the survivor already had its own address the other one is kept
+    # as a note, because the guest genuinely used both and somebody looking for
+    # a dinner booked under the old one needs to know it existed.
+    other_email = (merge["email"] or "").strip()
+    if other_email and (keep["email"] or "").strip().casefold() != other_email.casefold():
+        add_guest_note(
+            conn, keep_id,
+            f"Also booked as {other_email} — dinners and ateliers under that "
+            "address are theirs too.", user_id)
 
     conn.execute(
         "UPDATE guests SET merged_into_id = ?, caution = NULL, caution_level = NULL "
@@ -40187,6 +40303,40 @@ def watch_task_findings(conn, today=None):
         if len(items) > WATCH_TASK_CAP:
             dropped[kind] = len(items) - WATCH_TASK_CAP
         return items[:WATCH_TASK_CAP]
+
+    # A birthday or an anniversary belonging to somebody who will be IN THE
+    # HOUSE for it. Not every date in the book: a card for a guest who is not
+    # coming is a nice thought and not a job, and a list of those every morning
+    # is how a list stops being read.
+    #
+    # Titled by the guest and the occasion rather than the date, because the
+    # title is the dedupe key -- "in 3 days" in it would raise a fresh task
+    # every morning until it happened.
+    celebrations = []
+    for row in upcoming_guest_dates(conn, within_days=14, today=today):
+        guest = row["guest"]
+        email = (guest["email"] or "").strip().casefold()
+        here = conn.execute(
+            """SELECT 1 FROM bookings
+                WHERE status = 'confirmed'
+                  AND (linked_guest_id = ?
+                       OR (? != '' AND LOWER(TRIM(guest_email)) = ?))
+                  AND arrival_date <= ? AND departure_date > ?
+                LIMIT 1""",
+            (guest["id"], email, email, row["when"].isoformat(),
+             row["when"].isoformat())).fetchone()
+        if not here:
+            continue
+        occasion = "birthday" if row["kind"] == "birthday" else "anniversary"
+        celebrations.append((
+            "celebration",
+            f"{guest['name']} has a {occasion} while they are here",
+            f"{format_date_human(row['when'].isoformat())}"
+            + (" — VIP" if guest["vip"] else ""),
+            row["when"].isoformat(),
+            2,
+        ))
+    found.extend(take("celebration", celebrations))
 
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting

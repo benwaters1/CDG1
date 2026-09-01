@@ -441,6 +441,159 @@ def run():
             f'value="{stored}"' in body,
             detail="showing only the pretty form leaves nothing to correct")
 
+    # ============================ the expansions ==========================
+    s.section("A caution stops an online booking too, not just the desk")
+    # The hole in the first version: the walk-in form honoured a refusal and the
+    # confirm route did not, so a standing instruction was enforced at the desk
+    # and ignored the moment the same person booked online.
+    conn = db()
+    room2 = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    online_arrival = date.today() + timedelta(days=200)
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, guest_phone, arrival_date, departure_date, party_size,
+           status, total_price, amount_paid, created_at)
+           VALUES (?, ?, ?, ?, ?, '', ?, ?, 2, 'pending', 300, 0, ?)""",
+        (room2["id"], f"{TAG}-ONLINE", f"tok{TAG}online", barred["name"],
+         barred["email"], online_arrival.isoformat(),
+         (online_arrival + timedelta(days=1)).isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    pending = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
+                           (f"{TAG}-ONLINE",)).fetchone()
+    conn.close()
+    oc.post(f"/guests/{barred['id']}/caution",
+            data={"caution_level": "refuse", "caution": "Damage to the room."},
+            follow_redirects=True)
+    r = oc.post(f"/admin/bookings/{pending['id']}/confirm", follow_redirects=True)
+    conn = db()
+    still = conn.execute("SELECT status FROM bookings WHERE id = ?",
+                         (pending["id"],)).fetchone()["status"]
+    conn.close()
+    s.check("the request is not confirmed", still == "pending",
+            detail=f"{still} — enforced at the desk and waved through online")
+    s.check("and the reason is given",
+            any("standing instruction" in f.lower() for f in flashes(r)),
+            detail=f"{flashes(r)[:1]}")
+
+    s.section("And bulk-confirm does not wave it through either")
+    # The more dangerous of the two: a morning's requests accepted at once, with
+    # nobody reading a name.
+    r = oc.post("/admin/bookings/bulk-confirm",
+                data={"booking_ids": [str(pending["id"])]}, follow_redirects=True)
+    conn = db()
+    still = conn.execute("SELECT status FROM bookings WHERE id = ?",
+                         (pending["id"],)).fetchone()["status"]
+    conn.close()
+    s.check("still pending", still == "pending",
+            detail=f"{still} — one press accepted somebody the house had said no to")
+
+    s.section("Lifting it lets the booking through")
+    oc.post(f"/guests/{barred['id']}/caution", data={"caution_level": "", "caution": ""},
+            follow_redirects=True)
+    oc.post(f"/admin/bookings/{pending['id']}/confirm", follow_redirects=True)
+    conn = db()
+    now_status = conn.execute("SELECT status FROM bookings WHERE id = ?",
+                              (pending["id"],)).fetchone()["status"]
+    conn.close()
+    s.check("confirmed once the instruction is gone", now_status == "confirmed",
+            detail=f"{now_status} — the block has to be liftable, or it is a "
+                   "permanent ban nobody can undo")
+
+    s.section("The whole book is swept for duplicates, not just one profile")
+    conn = db()
+    found = m.duplicate_guest_pairs(conn)
+    conn.close()
+    mine = [x for x in found["pairs"]
+            if TAG in (x["a"]["name"] or "") and TAG in (x["b"]["name"] or "")]
+    s.check("pairs are found across the book", len(mine) >= 1,
+            detail=f"{[(x['a']['name'], x['b']['name'], x['why']) for x in mine][:3]}")
+    s.check("one row per pair, not two",
+            len({(x["a"]["id"], x["b"]["id"]) for x in found["pairs"]})
+            == len(found["pairs"]),
+            detail="A-matches-B and B-matches-A both listed reads as twice the "
+                   "problem")
+    s.check("with the lower id first, so a pair has one identity",
+            all(x["a"]["id"] < x["b"]["id"] for x in found["pairs"]),
+            detail="the same pair appears under two keys")
+    s.check("and a profile already merged is not swept up again",
+            not any(x["a"]["id"] == other["id"] or x["b"]["id"] == other["id"]
+                    for x in found["pairs"]),
+            detail="the same fold is offered forever")
+    body = oc.get("/guests/duplicates").get_data(as_text=True)
+    s.check("the page offers both directions",
+            "Keep the first" in body and "Keep the second" in body,
+            detail="which profile survives is a decision only a person can make")
+    s.check("an employee cannot open it",
+            ec.get("/guests/duplicates").status_code in (302, 403),
+            detail="the buttons on it fold one person's history into another's")
+
+    s.section("A celebration while they are here becomes a task")
+    conn = db()
+    celebrant = _guest("Fetard", email="zzgm.fete@example.invalid")
+    stay_start = m.service_day() + timedelta(days=4)
+    conn.execute("UPDATE guests SET birthday = ? WHERE id = ?",
+                 (f"{stay_start.month:02d}-{stay_start.day:02d}", celebrant["id"]))
+    room3 = conn.execute("SELECT * FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+           guest_email, guest_phone, arrival_date, departure_date, party_size,
+           status, total_price, amount_paid, linked_guest_id, created_at)
+           VALUES (?, ?, ?, ?, ?, '', ?, ?, 2, 'confirmed', 100, 0, ?, ?)""",
+        (room3["id"], f"{TAG}-FETE", f"tok{TAG}fete", celebrant["name"],
+         celebrant["email"], (stay_start - timedelta(days=1)).isoformat(),
+         (stay_start + timedelta(days=2)).isoformat(), celebrant["id"],
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    found_tasks, _dropped = m.watch_task_findings(conn, m.service_day())
+    conn.close()
+    titles = [t[1] for t in found_tasks]
+    s.check("it is among the findings",
+            any(celebrant["name"] in t and "birthday" in t for t in titles),
+            detail=f"{[t for t in titles if TAG in t]}")
+
+    s.section("But not for somebody who is not coming")
+    absent = _guest("Absent", email="zzgm.absent@example.invalid")
+    conn = db()
+    conn.execute("UPDATE guests SET birthday = ? WHERE id = ?",
+                 (f"{stay_start.month:02d}-{stay_start.day:02d}", absent["id"]))
+    conn.commit()
+    found_tasks, _dropped = m.watch_task_findings(conn, m.service_day())
+    conn.close()
+    titles = [t[1] for t in found_tasks]
+    s.check("no task for them", not any(absent["name"] in t for t in titles),
+            detail=f"{[t for t in titles if TAG in t]} — a card for a guest who "
+                   "is not here is a nice thought, not a job")
+
+    s.section("The title does not move, so it is not raised again every morning")
+    celebration_titles = [t for t in titles if "birthday" in t or "anniversary" in t]
+    s.check("no countdown in it",
+            not any(any(ch.isdigit() for ch in t) for t in celebration_titles),
+            detail=f"{celebration_titles} — the title is the dedupe key, so "
+                   "anything that moves in it raises a fresh task every morning")
+
+    s.section("The card tells whoever hands it over what they should know")
+    conn = db()
+    carded = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
+                          (f"{TAG}-FETE",)).fetchone()
+    conn.close()
+    oc.post(f"/guests/{celebrant['id']}/note",
+            data={"body": "Asked for a quiet table"}, follow_redirects=True)
+    conn = db()
+    conn.execute("UPDATE guests SET preferences = ?, dietary_notes = ? WHERE id = ?",
+                 ("Near the library", "No shellfish", celebrant["id"]))
+    conn.commit()
+    conn.close()
+    card = oc.get(f"/admin/bookings/{carded['id']}/card").get_data(as_text=True)
+    s.check("their preference is on it", "Near the library" in card,
+            detail="a preference recorded two visits ago, and the one moment it "
+                   "is worth anything is while they are standing there")
+    s.check("their dietary note too", "No shellfish" in card)
+    s.check("and the last thing anybody wrote", "quiet table" in card)
+    s.check("but that panel is marked not to print, being for the desk",
+            "Before you hand this over" in card and "no-print" in card,
+            detail="handed to the guest with the notes about them on it")
+
     s.section("Guards")
     s.check("a merged profile is not offered as a duplicate again",
             not any(d["guest"]["id"] == other["id"]
