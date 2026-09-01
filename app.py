@@ -313,14 +313,6 @@ AUTOMATION_SETTING_DEFAULTS = {
 # default rather than on a number this app guessed — a French chart puts
 # accommodation, food and tourist tax in different places and that is the
 # accountant's call, not ours.
-PENNYLANE_REVENUE_DEFAULTS = {
-    "pennylane_account_accommodation": "",
-    "pennylane_account_extras": "",
-    "pennylane_account_city_tax": "",
-    "pennylane_account_restaurant": "",
-    "pennylane_account_workshops": "",
-    "pennylane_account_events": "",
-}
 
 MANUAL_PAYMENT_METHODS = {
     "cash": "Cash",
@@ -3224,6 +3216,24 @@ def init_db():
         # Who handed it over and when. Without them "delivered" is a flag with
         # nobody behind it, and the guest who says the hamper never arrived
         # cannot be answered.
+        ("revenue_categories_table",
+         """CREATE TABLE IF NOT EXISTS revenue_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                label TEXT NOT NULL,
+                ledger_account TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                builtin INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )"""),
+        # Which category an extra's revenue belongs to. A transfer to the
+        # station is transport, not a hamper, and the accountant wants them
+        # apart.
+        ("extras_revenue_category",
+         "ALTER TABLE extras ADD COLUMN revenue_category TEXT"),
+        ("booking_extras_revenue_category",
+         "ALTER TABLE booking_extras ADD COLUMN revenue_category TEXT"),
         ("booking_extras_delivered_at",
          "ALTER TABLE booking_extras ADD COLUMN delivered_at TEXT"),
         ("booking_extras_delivered_by_user_id",
@@ -4514,6 +4524,12 @@ def init_db():
         print("   recovery configured yet, so store this somewhere safe)")
         print("=" * 70)
 
+    # The built-in revenue categories, carrying across whatever was already
+    # mapped. Called here rather than inline above because it reads app_settings
+    # written by earlier migrations, and it is idempotent -- a category the owner
+    # has edited is never touched again.
+    seed_revenue_categories(conn)
+
     conn.close()
 
 
@@ -4647,6 +4663,7 @@ NAV_AREAS = {
         "management_on_the_books", "management_break_even",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
+        "new_revenue_category", "toggle_revenue_category",
         "charge_city_tax", "charge_city_tax_upcoming",
         "record_event_payment_route", "send_event_revenue",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
@@ -10699,6 +10716,27 @@ def money_held_not_earned(conn, *, today=None):
             "furthest": max((r["on"] for r in everything), default=None)}
 
 
+# Which revenue category an extra's money belongs to, when nobody has said.
+#
+# The catalogue already had a "Transfers" category, so a transfer posts to
+# transport without anybody being asked -- and everything else to extras. An
+# extra can override it, which is what makes a category added later reachable:
+# point the spa treatment at "Spa" and its money goes there.
+EXTRA_CATEGORY_REVENUE = {"transfer": "transport"}
+
+
+def extra_revenue_category(extra):
+    """The revenue category for a catalogue extra: chosen, mapped, or extras."""
+    if extra is None or isinstance(extra, str):
+        return None
+    keys = extra.keys()
+    chosen = (extra["revenue_category"] if "revenue_category" in keys else None)
+    if chosen:
+        return chosen
+    catalogue = (extra["category"] if "category" in keys else None) or ""
+    return EXTRA_CATEGORY_REVENUE.get(catalogue, "extras")
+
+
 EXTRA_CATEGORIES = {
     "drinks": "Drinks",
     "food": "Food & hampers",
@@ -10791,6 +10829,7 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
     if isinstance(extra, str):
         name, extra_id, stock_item_id, per_unit = extra, None, None, 0
         price = unit_price or 0
+        revenue_category = None
     else:
         name = extra["name"]
         extra_id = extra["id"]
@@ -10798,13 +10837,20 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
         per_unit = (extra["stock_qty_per_unit"]
                     if "stock_qty_per_unit" in extra.keys() else 1) or 0
         price = unit_price if unit_price is not None else (extra["price"] or 0)
+        # COPIED ONTO THE LINE, not looked up later. The catalogue entry can be
+        # recategorised or deleted, and a stay sold last March has to keep
+        # posting where it posted then -- the same reason total_price is stamped
+        # on a booking rather than recomputed from the rate card.
+        revenue_category = extra_revenue_category(extra)
 
     conn.execute(
         """INSERT INTO booking_extras (category, booking_id, extra_id, name, unit_price,
-           quantity, notes, status, scheduled_for, added_by_user_id, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+           quantity, notes, status, scheduled_for, added_by_user_id,
+           revenue_category, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (category, booking_id, extra_id, name, price, quantity, notes, status,
-         scheduled_for, user_id, datetime.now(timezone.utc).isoformat()),
+         scheduled_for, user_id, revenue_category,
+         datetime.now(timezone.utc).isoformat()),
     )
     line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
@@ -22792,11 +22838,23 @@ def admin_pennylane():
     """Where the château's categories meet the accountant's codes."""
     conn = get_db()
     if request.method == "POST":
-        for stream in REVENUE_STREAMS:
+        # Saved into revenue_categories, which is what every sender now reads.
+        # It used to write revenue_account_<stream> into app_settings while the
+        # senders read pennylane_account_<something-else> -- two key namespaces,
+        # so the page could report six streams mapped and every invoice still
+        # went out with no ledger account on it.
+        for category in revenue_categories(conn, include_inactive=True):
+            field = f"revenue_{category['key']}"
+            if field not in request.form:
+                continue
             conn.execute(
-                """INSERT INTO app_settings (key, value) VALUES (?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
-                (f"revenue_account_{stream}", (request.form.get(f"revenue_{stream}", "") or "").strip()))
+                "UPDATE revenue_categories SET ledger_account = ? WHERE key = ?",
+                ((request.form.get(field, "") or "").strip() or None,
+                 category["key"]))
+            label = (request.form.get(f"label_{category['key']}", "") or "").strip()
+            if label:
+                conn.execute("UPDATE revenue_categories SET label = ? WHERE key = ?",
+                             (label, category["key"]))
         conn.commit()
         conn.close()
         flash("Account mapping saved.", "success")
@@ -22806,7 +22864,8 @@ def admin_pennylane():
         "SELECT COUNT(*) AS c, MAX(synced_at) AS at FROM pennylane_accounts").fetchone()
     expense_accounts = ledger_account_choices(conn, "6")
     revenue_accounts = ledger_account_choices(conn, "7")
-    mapping = {s: revenue_account_for(conn, s) for s in REVENUE_STREAMS}
+    categories = revenue_categories(conn, include_inactive=True)
+    mapping = {c["key"]: revenue_account_for(conn, c["key"]) for c in categories}
     uncoded = conn.execute(
         """SELECT (SELECT COUNT(*) FROM stock_items WHERE active=1 AND COALESCE(ledger_code,'')='')
                 + (SELECT COUNT(*) FROM recurring_costs WHERE active=1 AND COALESCE(ledger_code,'')='') AS c"""
@@ -22816,15 +22875,83 @@ def admin_pennylane():
         overview_cell("Accounts synced", synced["c"], alert=not synced["c"]),
         overview_cell("Expense codes", len(expense_accounts)),
         overview_cell("Revenue codes", len(revenue_accounts)),
-        overview_cell("Streams mapped", sum(1 for v in mapping.values() if v),
-                      sub=f"/{len(REVENUE_STREAMS)}", alert=any(not v for v in mapping.values())),
+        overview_cell("Categories mapped", sum(1 for v in mapping.values() if v),
+                      sub=f"/{len(categories)}",
+                      alert=any(not v for v in mapping.values())),
         overview_cell("Costs without a code", uncoded, alert=uncoded),
     ]
     return render_template("admin_pennylane.html", overview=overview,
                            expense_accounts=expense_accounts, revenue_accounts=revenue_accounts,
-                           streams=REVENUE_STREAMS, mapping=mapping,
+                           categories=categories, mapping=mapping,
                            synced_count=synced["c"], synced_at=synced["at"],
                            connected=pennylane_configured())
+
+
+@app.route("/admin/pennylane/categories/new", methods=["POST"])
+@owner_required
+def new_revenue_category():
+    """Add a category of the owner's own.
+
+    They said the list would grow and that they might rename things on
+    Pennylane's side, so the list is theirs rather than mine. A new one can be
+    pointed at by an extra straight away; the built-in ones are what the app
+    fills automatically.
+    """
+    label = (request.form.get("label", "") or "").strip()
+    account = (request.form.get("ledger_account", "") or "").strip()
+    if not label:
+        flash("Give the category a name.", "error")
+        return redirect(url_for("admin_pennylane"))
+    # A key derived from the label, so the code has something stable to hold
+    # while the label stays theirs to change.
+    base = re.sub(r"[^a-z0-9]+", "_", label.casefold()).strip("_") or "category"
+    conn = get_db()
+    key, n = base, 1
+    while conn.execute("SELECT 1 FROM revenue_categories WHERE key = ?",
+                       (key,)).fetchone():
+        n += 1
+        key = f"{base}_{n}"
+    top = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) AS s FROM revenue_categories").fetchone()["s"]
+    conn.execute(
+        """INSERT INTO revenue_categories (key, label, ledger_account, sort_order,
+           active, builtin, created_at) VALUES (?, ?, ?, ?, 1, 0, ?)""",
+        (key, label, account or None, top + 10,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"{label} added.", "success")
+    return redirect(url_for("admin_pennylane"))
+
+
+@app.route("/admin/pennylane/categories/<int:category_id>/toggle", methods=["POST"])
+@owner_required
+def toggle_revenue_category(category_id):
+    """Stop offering a category without losing what was already posted to it.
+
+    Never deleted: an account number that has been on invoices is part of the
+    record, and a category that vanishes takes the explanation of those lines
+    with it. A built-in one cannot be turned off at all -- the app posts to it
+    automatically, and hiding it would send those lines out uncoded.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM revenue_categories WHERE id = ?",
+                       (category_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["builtin"]:
+        conn.close()
+        flash(f"{row['label']} is filled by the app itself, so it stays on the "
+              "list. Point it at a different account instead.", "error")
+        return redirect(url_for("admin_pennylane"))
+    conn.execute("UPDATE revenue_categories SET active = ? WHERE id = ?",
+                 (0 if row["active"] else 1, category_id))
+    conn.commit()
+    conn.close()
+    flash(f"{row['label']} {'hidden' if row['active'] else 'back on the list'}.",
+          "success")
+    return redirect(url_for("admin_pennylane"))
 
 
 @app.route("/admin/pennylane/sync", methods=["POST"])
@@ -30353,6 +30480,7 @@ def save_room_photos_multi(files):
 def admin_extras():
     conn = get_db()
     extras = conn.execute("SELECT * FROM extras ORDER BY sort_order, name").fetchall()
+    revenue_options = revenue_categories(conn)
     conn.close()
     lv = list_view(
         extras, request.args,
@@ -30389,7 +30517,8 @@ def admin_extras():
         default_sort="order",
     )
     return render_template("admin_extras.html", extras=lv["rows"], lv=lv,
-                           categories=EXTRA_CATEGORIES)
+                           categories=EXTRA_CATEGORIES,
+                           revenue_categories=revenue_options)
 
 
 def extra_fields_from_form():
@@ -30430,6 +30559,10 @@ def extra_fields_from_form():
         "guest_bookable": 1 if request.form.get("guest_bookable") == "on" else 0,
         "lead_time_days": whole("lead_time_days", blank=0),
         "max_qty": whole("max_qty", blank=None),
+        # Blank means "work it out" -- a transfer goes to transport and anything
+        # else to extras. Set it only to send something somewhere of its own,
+        # which is how a category the owner adds later gets fed.
+        "revenue_category": (request.form.get("revenue_category", "") or "").strip() or None,
     }
 
 
@@ -30450,11 +30583,11 @@ def new_extra():
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM extras").fetchone()["m"]
     conn.execute(
         """INSERT INTO extras (name, price, description, category, guest_bookable,
-           lead_time_days, max_qty, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           lead_time_days, max_qty, revenue_category, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
-         fields["max_qty"], max_order + 1),
+         fields["max_qty"], fields["revenue_category"], max_order + 1),
     )
     conn.commit()
     conn.close()
@@ -30475,10 +30608,11 @@ def edit_extra(extra_id):
     conn = get_db()
     conn.execute(
         """UPDATE extras SET name = ?, price = ?, description = ?, category = ?,
-           guest_bookable = ?, lead_time_days = ?, max_qty = ? WHERE id = ?""",
+           guest_bookable = ?, lead_time_days = ?, max_qty = ?,
+           revenue_category = ? WHERE id = ?""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
-         fields["max_qty"], extra_id),
+         fields["max_qty"], fields["revenue_category"], extra_id),
     )
     conn.commit()
     conn.close()
@@ -36465,8 +36599,9 @@ def pos_day_pennylane_lines(conn, closure):
     customer records nobody will ever look at.
     """
     bands = json.loads(closure["vat_json"] or "{}")
-    code = app_setting(conn, "pennylane_account_restaurant",
-                       PENNYLANE_REVENUE_DEFAULTS)
+    # F&B covers the restaurant and the till both -- one category, because
+    # that is how the owner reads it and how the accountant asked for it.
+    code = revenue_account_for(conn, "fnb")
     lines = []
     for rate, band in sorted(bands.items(), key=lambda kv: float(kv[0])):
         net = round(float(band.get("net") or 0), 2)
@@ -36517,7 +36652,7 @@ def send_workshop_to_pennylane(conn, booking, user_id=None):
     line = {"currency_amount": f"{net:.2f}", "currency_tax": f"{round(total - net, 2):.2f}",
             "vat_rate": pennylane_vat_code(rate),
             "label": (booking["workshop_title"] or "Atelier")[:200]}
-    code = app_setting(conn, "pennylane_account_workshops", PENNYLANE_REVENUE_DEFAULTS)
+    code = revenue_account_for(conn, "workshops")
     if code:
         line["ledger_account_number"] = code
 
@@ -36596,7 +36731,7 @@ def send_event_to_pennylane(conn, event, user_id=None):
             "vat_rate": pennylane_vat_code(rate),
             "label": (f"{event['event_type']} — "
                       f"{event['preferred_date'] or 'date to confirm'}")[:200]}
-    code = app_setting(conn, "pennylane_account_events", PENNYLANE_REVENUE_DEFAULTS)
+    code = revenue_account_for(conn, "events")
     if code:
         line["ledger_account_number"] = code
 
@@ -45428,17 +45563,103 @@ TAX_DEFAULTS = {
     "city_tax_account": "",          # where the collected tax is parked
 }
 
-# Where each kind of income lands. Revenue is class 7 in the plan comptable;
-# held as settings because only the accountant knows which of the 154 revenue
-# accounts is right for a workshop.
-REVENUE_STREAMS = {
-    "rooms": "Room stays",
-    "restaurant": "Restaurant",
-    "workshops": "Workshops",
-    "events": "Events & weddings",
-    "extras": "Extras (champagne, transfers…)",
-    "pos": "Restaurant POS / bar",
+# Where each kind of income lands. Revenue is class 7 in the plan comptable,
+# and only the accountant knows which of the 154 revenue accounts is right for a
+# workshop -- so the account against each of these is set on /admin/pennylane.
+#
+# THESE ARE THE SEED, NOT THE LIST. The live list is the revenue_categories
+# table, because the owner adds to it and renames it as their own chart changes.
+# The KEY is what the app maps a stream to and never changes; the LABEL is
+# theirs to edit. Renaming "F&B" does not silently unhook the till.
+#
+# What each key is fed by, so a reader can check nothing is orphaned:
+#   nightly   room stays
+#   fnb       restaurant reservations and the till
+#   transport transfers -- an extra whose revenue_category says so
+#   extras    every other extra
+#   workshops atelier registrations
+#   events    weddings and hire
+#   city_tax  taxe de sejour, collected for the commune
+#   taxes     nothing automatically; here because the owner asked for it, and
+#             something has to be pointed at it by hand before it fills up
+REVENUE_CATEGORY_SEED = [
+    ("nightly", "Nightly", 10, 1),
+    ("fnb", "F&B", 20, 1),
+    ("transport", "Transport", 30, 1),
+    ("extras", "Extras", 40, 1),
+    ("workshops", "Workshops", 50, 1),
+    ("events", "Events", 60, 1),
+    ("city_tax", "City tax", 70, 1),
+    ("taxes", "Taxes", 80, 1),
+]
+
+# The old key for each new one, so an account already mapped is carried across
+# rather than silently emptied. rooms and restaurant/pos were the previous
+# names; pennylane_account_* was a SECOND set of keys that the senders read and
+# the page never wrote -- which is the bug this replaces.
+REVENUE_CATEGORY_MIGRATION = {
+    "nightly": ("revenue_account_rooms", "pennylane_account_accommodation"),
+    "fnb": ("revenue_account_restaurant", "revenue_account_pos",
+            "pennylane_account_restaurant"),
+    "extras": ("revenue_account_extras", "pennylane_account_extras"),
+    "workshops": ("revenue_account_workshops", "pennylane_account_workshops"),
+    "events": ("revenue_account_events", "pennylane_account_events"),
+    "city_tax": ("pennylane_account_city_tax",),
 }
+
+
+def seed_revenue_categories(conn):
+    """Put the built-in categories in place, once, carrying old mappings over.
+
+    Idempotent: an existing row is left exactly as the owner edited it. Only the
+    ledger account is filled in, and only when it is still blank, so a category
+    they have already pointed somewhere is never repointed by a deploy.
+    """
+    existing = {r["key"] for r in conn.execute(
+        "SELECT key FROM revenue_categories").fetchall()}
+    now = datetime.now(timezone.utc).isoformat()
+    for key, label, order, builtin in REVENUE_CATEGORY_SEED:
+        if key in existing:
+            continue
+        account = ""
+        for old_key in REVENUE_CATEGORY_MIGRATION.get(key, ()):
+            row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                               (old_key,)).fetchone()
+            if row and (row["value"] or "").strip():
+                account = row["value"].strip()
+                break
+        conn.execute(
+            """INSERT INTO revenue_categories (key, label, ledger_account,
+               sort_order, active, builtin, created_at)
+               VALUES (?, ?, ?, ?, 1, ?, ?)""",
+            (key, label, account or None, order, builtin, now))
+    conn.commit()
+
+
+def revenue_categories(conn, include_inactive=False):
+    sql = "SELECT * FROM revenue_categories"
+    if not include_inactive:
+        sql += " WHERE active = 1"
+    return conn.execute(sql + " ORDER BY sort_order, label").fetchall()
+
+
+def revenue_account_for(conn, key):
+    """The ledger account for a category, or "" if nobody has set one.
+
+    Blank is returned rather than a guess. An invoice line with no account is a
+    line the accountant codes; a line with the WRONG account is one nobody
+    notices, and unpicking it later means finding every invoice it went on.
+    """
+    row = conn.execute(
+        "SELECT ledger_account FROM revenue_categories WHERE key = ?",
+        (key,)).fetchone()
+    return ((row["ledger_account"] if row else "") or "").strip()
+
+
+def revenue_category_label(conn, key):
+    row = conn.execute("SELECT label FROM revenue_categories WHERE key = ?",
+                       (key,)).fetchone()
+    return (row["label"] if row else key) or key
 
 # Not every bill is handled the same way. This is the distinction that stops a
 # cost being counted twice.
@@ -45720,12 +45941,6 @@ def tax_rate(conn, key):
         return float(tax_setting(conn, key))
     except (TypeError, ValueError):
         return float(TAX_DEFAULTS.get(key, 0) or 0)
-
-
-def revenue_account_for(conn, stream):
-    row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (f"revenue_account_{stream}",)).fetchone()
-    return (row["value"] if row else "") or ""
 
 
 # What a voucher may be spent on. The kind is recorded on the redemption so a
@@ -47235,16 +47450,27 @@ def booking_pennylane_lines(conn, statement):
     # the extras rate equal to the accommodation rate, both fall into ONE band
     # and no amount of looking at the rate can tell them apart. So the split is
     # by component, and the rate comes along with each.
+    # The stay itself, then ONE LINE PER EXTRAS CATEGORY. A transfer to the
+    # station is transport and a hamper is not, and posting both as "extras"
+    # gives the accountant a figure they then have to split by hand from the
+    # descriptions.
+    extras_rate = tax_rate(conn, "vat_extras")
+    by_category = {}
+    for extra in statement["extras"]:
+        gross = round(float(extra["unit_price"] or 0) * float(extra["quantity"] or 0), 2)
+        if not gross:
+            continue
+        key = (extra["revenue_category"]
+               if "revenue_category" in extra.keys() else None) or "extras"
+        by_category[key] = round(by_category.get(key, 0.0) + gross, 2)
+
+    components = [("nightly", statement["accommodation"],
+                   tax_rate(conn, "vat_accommodation"))]
+    components += [(key, gross, extras_rate)
+                   for key, gross in sorted(by_category.items())]
+
     lines = []
-    components = [
-        ("accommodation", statement["accommodation"],
-         tax_rate(conn, "vat_accommodation"), "pennylane_account_accommodation",
-         "Accommodation"),
-        ("extras", statement["extras_total"],
-         tax_rate(conn, "vat_extras"), "pennylane_account_extras",
-         "Extras"),
-    ]
-    for _key, gross, rate, setting, label in components:
+    for key, gross, rate in components:
         gross = round(float(gross or 0), 2)
         if not gross:
             continue
@@ -47252,29 +47478,25 @@ def booking_pennylane_lines(conn, statement):
         if not band:
             continue
         band = band[0]
+        label = revenue_category_label(conn, key)
         line = {"currency_amount": f"{band['net']:.2f}",
                 "currency_tax": f"{band['vat']:.2f}",
                 "vat_rate": pennylane_vat_code(band["rate"]),
                 "label": f"{label} at {band['rate']}%"[:200]}
-        code = app_setting(conn, setting, PENNYLANE_REVENUE_DEFAULTS)
+        code = revenue_account_for(conn, key)
         if code:
             line["ledger_account_number"] = code
         lines.append(line)
     city = round(float(statement["city_tax"] or 0), 2)
     if city:
         line = {"currency_amount": f"{city:.2f}", "currency_tax": "0.00",
-                "vat_rate": pennylane_vat_code(0), "label": "Taxe de sejour"}
-        code = app_setting(conn, "pennylane_account_city_tax",
-                           PENNYLANE_REVENUE_DEFAULTS)
+                "vat_rate": pennylane_vat_code(0),
+                "label": revenue_category_label(conn, "city_tax")}
+        code = revenue_account_for(conn, "city_tax")
         if code:
             line["ledger_account_number"] = code
         lines.append(line)
     return lines
-
-
-def app_setting(conn, key, defaults):
-    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
-    return (row["value"] if row else defaults.get(key, "")) or ""
 
 
 def pennylane_find_supplier(name):

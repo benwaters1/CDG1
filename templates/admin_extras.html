@@ -25,6 +25,19 @@
       {% endfor %}
     </select>
   </div>
+  <div>
+    {# Where the MONEY goes, which is a different question from what the guest
+       sees it filed under. Left on "work it out" a transfer posts to Transport
+       and everything else to Extras; set it only to send something somewhere of
+       its own, which is how a category added on the Pennylane page gets fed. #}
+    <label class="field-label">Revenue goes to</label>
+    <select name="revenue_category">
+      <option value="">Work it out</option>
+      {% for rc in revenue_categories %}
+      <option value="{{ rc['key'] }}"{{ ' selected' if e is defined and e['revenue_category'] == rc['key'] }}>{{ rc['label'] }}</option>
+      {% endfor %}
+    </select>
+  </div>
   <div style="flex:1 1 220px;">
     <label class="field-label">Description</label>
     <input type="text" name="description" maxlength="300"
@@ -94,6 +107,19 @@
     <select name="category">
       {% for key, label in categories.items() %}
       <option value="{{ key }}"{{ ' selected' if key == (e['category'] if e is defined else 'other') }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    {# Where the MONEY goes, which is a different question from what the guest
+       sees it filed under. Left on "work it out" a transfer posts to Transport
+       and everything else to Extras; set it only to send something somewhere of
+       its own, which is how a category added on the Pennylane page gets fed. #}
+    <label class="field-label">Revenue goes to</label>
+    <select name="revenue_category">
+      <option value="">Work it out</option>
+      {% for rc in revenue_categories %}
+      <option value="{{ rc['key'] }}"{{ ' selected' if e is defined and e['revenue_category'] == rc['key'] }}>{{ rc['label'] }}</option>
       {% endfor %}
     </select>
   </div>

@@ -53,29 +53,77 @@
 
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Income from</th><th>Goes to account</th><th>Currently</th></tr></thead>
+      {# The name is editable too. The KEY behind each row is what the app maps
+         a stream to and never changes, so renaming "F&B" to something else does
+         not unhook the till from its account. #}
+      <thead><tr><th>Income from</th><th>Goes to account</th><th>Currently</th><th></th></tr></thead>
       <tbody>
-        {% for key, label in streams.items() %}
-        <tr>
-          <td><strong>{{ label }}</strong></td>
+        {% for c in categories %}
+        <tr{{ ' style="opacity:.55;"'|safe if not c['active'] }}>
           <td>
-            <input type="text" name="revenue_{{ key }}" list="revenue-codes"
-                   value="{{ mapping[key] }}" placeholder="e.g. 706" style="width:160px;"
+            <input type="text" name="label_{{ c['key'] }}" value="{{ c['label'] }}"
+                   style="width:150px;" aria-label="Name for {{ c['label'] }}">
+            {% if c['builtin'] %}<span class="upload-hint">filled by the app</span>
+            {% else %}<span class="upload-hint">yours</span>{% endif %}
+          </td>
+          <td>
+            <input type="text" name="revenue_{{ c['key'] }}" list="revenue-codes"
+                   value="{{ mapping[c['key']] }}" placeholder="e.g. 706" style="width:160px;"
                    {{ 'disabled' if not synced_count }}>
           </td>
           <td class="upload-hint">
-            {% if mapping[key] %}
-              {% set match = revenue_accounts|selectattr('number', 'equalto', mapping[key])|first %}
+            {% if mapping[c['key']] %}
+              {% set match = revenue_accounts|selectattr('number', 'equalto', mapping[c['key']])|first %}
               {{ match['label'] if match else 'not in the synced chart — check the code' }}
             {% else %}<span class="mini-status status-pending">not set</span>{% endif %}
+          </td>
+          <td>
+            {% if not c['builtin'] %}
+            <button type="submit" class="btn-mini" form="cat-toggle-{{ c['id'] }}">
+              {{ 'Show' if not c['active'] else 'Hide' }}</button>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-  {% if synced_count %}<button type="submit" class="btn-primary">Save mapping</button>{% endif %}
+  <button type="submit" class="btn-primary">Save mapping</button>
 </form>
+
+{# Outside the form above, because a form inside a form does not submit. Each
+   hide button points at its own by id. #}
+{% for c in categories %}
+  {% if not c['builtin'] %}
+  <form id="cat-toggle-{{ c['id'] }}" method="post"
+        action="{{ url_for('toggle_revenue_category', category_id=c['id']) }}"
+        style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+  {% endif %}
+{% endfor %}
+
+<details class="detail-card" style="max-width:560px; margin-top:16px;">
+  <summary><strong>Add a category of your own</strong></summary>
+  <form method="post" action="{{ url_for('new_revenue_category') }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="rc_label">What you call it</label>
+        <input id="rc_label" type="text" name="label" placeholder="Spa" required>
+      </div>
+      <div>
+        <label class="field-label" for="rc_account">Account</label>
+        <input id="rc_account" type="text" name="ledger_account" list="revenue-codes"
+               placeholder="e.g. 706">
+      </div>
+    </div>
+    <p class="upload-hint">The app fills the built-in ones itself. A category you
+    add here is filled by pointing an extra at it — set it on the extra under
+    Guests, Extras.</p>
+    <button type="submit" class="btn-mini">Add</button>
+  </form>
+</details>
 
 <h2 class="section-heading">Where costs land</h2>
 <p class="upload-hint" style="margin-top:-6px;">

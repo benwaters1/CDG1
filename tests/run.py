@@ -146,6 +146,7 @@ SUITES = [
     "test_city_tax_arrears",
     "test_kitchen_sheet",
     "test_pennylane_split",
+    "test_revenue_categories",
     "test_extras_due",
     "test_ics_feeds",
     "test_shift_actions",
