@@ -3,12 +3,24 @@
 {% else %}
   {% for e in sheet.employees %}
   {% set entry = sheet.by_employee.get(e['id']) %}
-  <div class="expense-card">
-    <div class="expense-head"><strong>{{ e['name'] }}</strong></div>
+  <div class="expense-card" data-pick-scope>
+    <div class="expense-head"><strong>{{ e['name'] }}</strong>
+      {# The whole reason this is here: somebody rings in sick and everything of
+         theirs has to become somebody else's before the morning. Ticking nine
+         boxes to do that is only marginally better than nine page loads. #}
+      {% if entry and entry.tasks %}
+      <label class="upload-hint" style="margin-left:auto; display:flex; align-items:center; gap:5px;">
+        <input type="checkbox" class="task-pick-all">
+        all {{ entry.tasks|length }}
+      </label>
+      {% endif %}
+    </div>
     {% if entry and entry.tasks %}
       <div class="task-list">
         {% for t in entry.tasks %}
         <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+          <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
+                 aria-label="Select {{ t['title'] }}">
           <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
           <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
           <span class="task-title">
@@ -47,11 +59,18 @@
 {% endif %}
 
 {% if sheet.unassigned_tasks %}
-<div class="expense-card">
-  <div class="expense-head"><strong>Unassigned</strong></div>
+<div class="expense-card" data-pick-scope>
+  <div class="expense-head"><strong>Unassigned</strong>
+    <label class="upload-hint" style="margin-left:auto; display:flex; align-items:center; gap:5px;">
+      <input type="checkbox" class="task-pick-all">
+      all {{ sheet.unassigned_tasks|length }}
+    </label>
+  </div>
   <div class="task-list">
     {% for t in sheet.unassigned_tasks %}
     <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
+      <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
+                 aria-label="Select {{ t['title'] }}">
       <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
       <span class="task-title">{{ t['title'] }}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
@@ -77,11 +96,20 @@
 {% endif %}
 
 {% if sheet.undated_tasks %}
-<div class="expense-card">
-  <div class="expense-head"><strong>No due date</strong></div>
+<div class="expense-card" data-pick-scope>
+  <div class="expense-head"><strong>No due date</strong>
+    {# The one group where "move day" earns its place: these have no day at
+       all, which is why they are sitting here being nobody's Tuesday. #}
+    <label class="upload-hint" style="margin-left:auto; display:flex; align-items:center; gap:5px;">
+      <input type="checkbox" class="task-pick-all">
+      all {{ sheet.undated_tasks|length }}
+    </label>
+  </div>
   <div class="task-list">
     {% for t in sheet.undated_tasks %}
     <div class="task-row" data-task-id="{{ t['id'] }}">
+      <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
+                 aria-label="Select {{ t['title'] }}">
       <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)"></button>
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
       <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span></span>

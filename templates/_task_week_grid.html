@@ -1,10 +1,22 @@
 <div class="week-grid">
   {% for day in sheet.week_days %}
-  <div class="week-day-col" data-date="{{ day.date.isoformat() }}" ondragover="event.preventDefault()" ondrop="dropTask(event, '{{ day.date.isoformat() }}')">
-    <div class="week-day-head {{ 'week-day-today' if day.date == today }}">{{ day.date.strftime('%a') }} {{ day.date.day }}</div>
+  <div class="week-day-col" data-pick-scope data-date="{{ day.date.isoformat() }}" ondragover="event.preventDefault()" ondrop="dropTask(event, '{{ day.date.isoformat() }}')">
+    <div class="week-day-head {{ 'week-day-today' if day.date == today }}">
+      {{ day.date.strftime('%a') }} {{ day.date.day }}
+      {% if day.tasks %}
+      <label style="margin-left:auto; display:flex; align-items:center; gap:4px; font-weight:normal;"
+             title="Everything on this day">
+        <input type="checkbox" class="task-pick-all">
+        all {{ day.tasks|length }}
+      </label>
+      {% endif %}
+    </div>
     {% for t in day.tasks %}
     <div class="task-card {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and day.date < today }}" draggable="true" ondragstart="dragTask(event, {{ t['id'] }})" data-task-id="{{ t['id'] }}">
       <div class="task-card-head">
+        <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
+               aria-label="Select {{ t['title'] }}"
+               onclick="event.stopPropagation();">
         <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
         <button type="button" class="task-check" onclick="event.stopPropagation(); toggleTask({{ t['id'] }}, this);">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
         <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" style="margin-left:auto;" title="Duplicate to next week">

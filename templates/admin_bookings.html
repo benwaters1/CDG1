@@ -9,13 +9,16 @@
     {% if counts.pending %}
     <button type="button" class="btn-mini" onclick="submitBulkBookings('{{ url_for('bulk_confirm_bookings') }}', 'Confirm everything checked?')">Confirm selected (<span id="selected-count">0</span>)</button>
     <button type="button" class="btn-mini btn-mini-danger" onclick="submitBulkBookings('{{ url_for('bulk_decline_bookings') }}', 'Decline everything checked?')">Decline selected</button>
+    {% endif %}
     {# A family taking three rooms was three unconnected bookings: three
        confirmations, three bills, three arrival texts to the same telephone.
        Tied from bookings that already exist, because a party is usually only
-       obvious after the third room is taken. #}
+       obvious after the third room is taken — and by then they are usually
+       CONFIRMED, which is why this sits OUTSIDE the pending gate. Inside it,
+       the one action here that has nothing to do with a pending booking was
+       the one action you could not reach without one. #}
     <button type="button" class="btn-mini"
             onclick="submitBulkBookings('{{ url_for('new_booking_party') }}', 'Tie the checked bookings together as one party? They will be written to once rather than once each.')">Tie together as a party</button>
-    {% endif %}
     <a href="{{ url_for('admin_calendar') }}" class="btn-ghost">Calendar</a>
     <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Manage rooms</a>
     <a href="{{ url_for('admin_extras') }}" class="btn-ghost">Manage extras</a>

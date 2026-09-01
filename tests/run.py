@@ -156,6 +156,8 @@ SUITES = [
     "test_shift_actions",
     "test_guest_account",
     "test_bulk_confirm",
+    "test_bulk_honesty",
+    "test_bulk_tasks",
     "test_task_admin",
     "test_payment_landing",
     "test_room_order",
