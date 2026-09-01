@@ -14485,6 +14485,45 @@ def newsletter_subscribe():
         return redirect(request.referrer or url_for("preview_home"))
 
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    # The no-availability state on the booking page posts here with
+    # source=waitlist and the dates the guest actually wanted. Until now those
+    # two fields were read by nothing, so somebody who said "write to me when
+    # that week opens" was added to the newsletter and to nothing else — and
+    # the house already has the machinery to reach them: an entry in
+    # waitlist_entries is what notify_room_waitlist_opening looks for when a
+    # booking is cancelled.
+    #
+    # The dates are parsed, not stored as typed. The restaurant waitlist had
+    # exactly this fault: prose in a date column left the guest on the list and
+    # permanently invisible to the one job that exists to reach them, with the
+    # page thanking them on the way out.
+    if (request.form.get("source") or "").strip() == "waitlist":
+        arrival = parse_date((request.form.get("wanted_arrival") or "").strip())
+        departure = parse_date((request.form.get("wanted_departure") or "").strip())
+        if arrival and departure and departure > arrival:
+            already = conn.execute(
+                """SELECT 1 FROM waitlist_entries
+                    WHERE email = ? AND desired_arrival = ? AND desired_departure = ?
+                      AND status = 'open'""",
+                (email, arrival.isoformat(), departure.isoformat())).fetchone()
+            if not already:
+                conn.execute(
+                    """INSERT INTO waitlist_entries (name, email, desired_arrival,
+                         desired_departure, party_size, notes, status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, 'open', ?)""",
+                    # name is NOT NULL and the booking page's form does not ask
+                    # for one — it takes an email and the dates. The address is
+                    # what the house has, so the address is what goes in the
+                    # column rather than a blank or an invented first name.
+                    ((request.form.get("name") or "").strip() or email, email,
+                     arrival.isoformat(), departure.isoformat(),
+                     int(request.form["party_size"])
+                     if (request.form.get("party_size") or "").strip().isdigit() else None,
+                     "From the booking page, when those dates showed nothing free.",
+                     now_iso))
+                conn.commit()
+
     opted_out = conn.execute(
         "SELECT 1 FROM email_optouts WHERE email = ?", (email,)).fetchone() is not None
     row = conn.execute(

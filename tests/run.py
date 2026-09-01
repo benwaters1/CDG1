@@ -74,6 +74,7 @@ SUITES = [
     "test_vat_working",
     "test_ical_sync",
     "test_waitlist",
+    "test_room_waitlist_signup",
     "test_stock_ledger",
     "test_shopping_basket",
     "test_waitlist_other",
