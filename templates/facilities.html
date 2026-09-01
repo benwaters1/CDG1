@@ -6,6 +6,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_weather.html' import season_note %}
 {% from '_marks.html' import mark %}
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
@@ -74,6 +75,8 @@
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
   </p>
 </div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('peaks') }}</div>
 
 <!-- ====================== WINTER / SKIING ====================== -->
 <section class="g-sec" style="background:var(--blue-deep);color:var(--sand)"><div class="g-wrap">
@@ -244,6 +247,8 @@
 
 
 
+<div class="g-wrap g-mark__wrap">{{ mark('chandelier') }}</div>
+
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
@@ -318,12 +323,8 @@
   </div>
 </div></section>
 
-<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Worth saying</span>Everything on this page sits inside a Class I monument that has been under restoration since 2013.</p></div>
+<div class="g-wrap"></div>
 
-<div class="g-wrap g-mark__wrap">{{ mark('water') }}</div>
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('peaks') }}</div>
 
 <!-- ============ THE VALLEY ============ -->
 <section class="g-sec"><div class="g-wrap">
@@ -351,6 +352,16 @@
   </div>
 
   <p class="g-limit"><span class="g-limit__k">Getting about</span>A car is worth having. The train reaches Les Cabannes, but the valley rewards wandering.</p>
+</div></section>
+
+
+<!-- ============ THE SEASON ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Ce que fait la saison<span class="g-fr__en">What the season does</span></p>
+  <p class="g-eyebrow">Nine Hundred Metres Up</p>
+  <h2 class="g-place">What the Valley Is Like Then</h2>
+  <p class="g-p">Not a forecast — a forecast is useless six months out. This is what the month actually does here, which is what people are really asking.</p>
+  {{ season_note() }}
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->

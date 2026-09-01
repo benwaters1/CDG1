@@ -44,7 +44,8 @@
 <!-- ============ THE INVITATION ============ -->
 {% if workshop['description'] %}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">The Invitation</p>
+  <p class="g-fr">L'atelier<span class="g-fr__en">The atelier</span></p>
+    <p class="g-eyebrow">The Invitation</p>
   <h2 class="g-h2 g-h2--lead">An atelier at the château</h2>
   <p class="g-p" style="white-space:pre-line">{{ workshop['description'] }}</p>
 </div></section>
@@ -251,10 +252,6 @@
   <h2 class="g-place">{{ workshop['title'] }}, at a Glance</h2>
   <dl class="g-facts-list">
     {% if workshop['nights_label'] %}<div><dt>Length</dt><dd>{{ workshop['nights_label'] }}</dd></div>{% endif %}
-    {# Said where somebody is deciding. It has always been true and the page
-       has never mentioned it, so a guest could book and find out on
-       arrival. #}
-    <div><dt>Who it is for</dt><dd>Adults</dd></div>
     {% if workshop['price_per_person'] %}<div><dt>Price</dt><dd>€{{ '%.0f'|format(workshop['price_per_person']) }} per person, all meals and wine included</dd></div>{% endif %}
     <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no others while it runs</dd></div>
     <div><dt>Where you sleep</dt><dd>In the château itself — bedrooms, not a nearby hotel</dd></div>

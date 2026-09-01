@@ -29,10 +29,13 @@
   <circle cx="52" cy="17" r="9"/><circle cx="68" cy="17" r="9"/>
   <path d="M18 17h20M82 17h20" opacity=".45"/>
 {%- elif kind == 'trowel' %}
-  {# The plasterer's trowel — the work itself #}
-  <path d="M46 10h24l-6 12H52z" stroke-linejoin="round"/>
-  <path d="M58 22v6M54 28h8"/>
-  <path d="M14 17h26M80 17h26" opacity=".45"/>
+  {# A pointing trowel seen from above: flat blade, tang, handle to one side.
+     The earlier version was a triangle on a stem and read as a wine glass. #}
+  <path d="M38 17l15-8 15 8-15 9z" stroke-linejoin="round"/>
+  <path d="M53 9v17" opacity=".45"/>
+  <path d="M68 17h6" stroke-linecap="round"/>
+  <path d="M74 13h9v8h-9z" stroke-linejoin="round"/>
+  <path d="M14 17h20M89 17h17" opacity=".45"/>
 {%- elif kind == 'facade' %}
   {# The east front — eleven bays, the pediment, the roof line #}
   <path d="M18 27h84M22 27V13l38-6 38 6v14" stroke-linejoin="round"/>
@@ -129,11 +132,118 @@
   <path d="M28 28c14-4 26-8 40-14s22-8 30-8" stroke-linecap="round"/>
   <path d="M46 20c-2-3 0-6 3-5 1 2 0 4-3 5M62 15c-2-3 0-6 3-5 1 2 0 4-3 5M78 10c-2-3 0-6 3-5 1 2 0 4-3 5" stroke-linejoin="round"/>
   <circle cx="54" cy="19" r="1.6"/><circle cx="70" cy="13" r="1.6"/>
+{%- elif kind == 'monogram' %}
+  {# The G under a coronet, in a laurel wreath — the house mark, drawn #}
+  <g transform="translate(60 17)">
+    {# coronet #}
+    <path d="M-7-13h14M-7-13l1-4 2 3 2-4 2 4 2-3 1 4" stroke-linejoin="round"/>
+    <circle cx="-6" cy="-18" r="1"/><circle cx="0" cy="-19" r="1"/><circle cx="6" cy="-18" r="1"/>
+    {# the G #}
+    <path d="M4-6a7 7 0 1 0 0 10h1v-4h-4" stroke-linejoin="round" stroke-linecap="round"/>
+    {# laurel, both sides #}
+    <path d="M-11-8c-4 3-5 9-2 13M11-8c4 3 5 9 2 13"/>
+    <path d="M-12-5c-2-1-4 0-4 2 2 1 4 0 4-2M-12 0c-2-1-4 0-4 2 2 1 4 0 4-2M-11 5c-2-1-4 0-4 2 2 1 4 0 4-2" stroke-linejoin="round"/>
+    <path d="M12-5c2-1 4 0 4 2-2 1-4 0-4-2M12 0c2-1 4 0 4 2-2 1-4 0-4-2M11 5c2-1 4 0 4 2-2 1-4 0-4-2" stroke-linejoin="round"/>
+  </g>
+{%- elif kind == 'house' %}
+  {# The east front in outline — eleven bays, the pediment, the roof #}
+  <path d="M10 30h100" opacity=".45"/>
+  <path d="M20 30V12l40-7 40 7v18" stroke-linejoin="round"/>
+  <path d="M50 5l10-3 10 3" stroke-linejoin="round"/>
+  <path d="M54 12h12l-6-4z" stroke-linejoin="round"/>
+  <path d="M27 30V17h5v13M37 30V17h5v13M47 30V17h5v13M68 30V17h5v13M78 30V17h5v13M88 30V17h5v13"/>
+  <path d="M56 30v-9h8v9"/>
+  <path d="M20 12h80" opacity=".55"/>
+{%- elif kind == 'wreath' %}
+  {# The wreath alone, for use as a divider around a figure #}
+  <path d="M60 4c-9 0-16 7-16 15s7 14 16 14 16-6 16-14S69 4 60 4z" opacity=".3"/>
+  <path d="M46 10c-5 4-6 12-2 18M74 10c5 4 6 12 2 18" stroke-linejoin="round"/>
+  <path d="M44 12c-3-1-5 0-5 2 2 2 5 1 5-2M43 18c-3-1-5 0-5 2 2 2 5 1 5-2M44 24c-3-1-5 0-5 2 2 2 5 1 5-2" stroke-linejoin="round"/>
+  <path d="M76 12c3-1 5 0 5 2-2 2-5 1-5-2M77 18c3-1 5 0 5 2-2 2-5 1-5-2M76 24c3-1 5 0 5 2-2 2-5 1-5-2" stroke-linejoin="round"/>
+{%- elif kind == 'fleuron' %}
+  {# A printer's fleuron, for setting between paragraphs #}
+  <path d="M20 17h30M70 17h30" opacity=".5"/>
+  <path d="M60 9c-4 3-4 6 0 8 4-2 4-5 0-8zM60 25c-4-3-4-6 0-8 4 2 4 5 0 8z" stroke-linejoin="round"/>
+  <path d="M52 17c3-4 6-4 8 0-2 4-5 4-8 0zM68 17c-3-4-6-4-8 0 2 4 5 4 8 0z" stroke-linejoin="round"/>
+{%- elif kind == 'lime' %}
+  {# a slaking tub, and the crust on it #}
+  <path d="M44 12h32l-4 16H48z" stroke-linejoin="round"/>
+  <path d="M44 12c4 3 28 3 32 0"/>
+  <path d="M50 18c4 2 16 2 20 0" opacity=".55"/>
+  <path d="M14 20h26M88 20h18" opacity=".45"/>
+{%- elif kind == 'brushgild' %}
+  {# gilder's tip, flat and wide #}
+  <path d="M52 8h16v10H52z" stroke-linejoin="round"/>
+  <path d="M56 18h8v12h-8z"/>
+  <path d="M54 30h12l-2 4H56z" stroke-linejoin="round"/>
+  <path d="M18 20h30M74 20h30" opacity=".45"/>
+{%- elif kind == 'fresco' %}
+  {# a fragment of wall painting, edges broken #}
+  <path d="M44 8h30l4 8-3 12H46l-4-10z" stroke-linejoin="round"/>
+  <path d="M50 14c4-2 8 2 12 0s8 2 10 0" opacity=".6"/>
+  <path d="M50 22c5-2 9 1 14 0" opacity=".45"/>
+  <path d="M16 18h22M84 18h22" opacity=".45"/>
+{%- elif kind == 'window' %}
+  {# an eighteenth-century casement, twelve panes #}
+  <rect x="46" y="6" width="28" height="24"/>
+  <path d="M60 6v24M46 14h28M46 22h28"/>
+  <path d="M42 30h36" opacity=".6"/>
+  <path d="M14 18h26M86 18h20" opacity=".45"/>
+{%- elif kind == 'scaffold' %}
+  <path d="M42 30V8M62 30V8M78 30V8"/>
+  <path d="M42 12h36M42 20h36"/>
+  <path d="M42 12l20 8M62 12l16 8" opacity=".5"/>
+  <path d="M14 30h26M84 30h22" opacity=".45"/>
+{%- elif kind == 'stone' %}
+  {# coursed stone, one block lifted out #}
+  <path d="M42 10h36v18H42z"/>
+  <path d="M42 19h36M54 10v9M66 19v9"/>
+  <path d="M54 19h12v9H54z" stroke-dasharray="3 3"/>
+  <path d="M14 19h24M86 19h20" opacity=".45"/>
+{%- elif kind == 'chandelier' %}
+  <path d="M60 4v6"/>
+  <path d="M46 12h28l-4 6H50z" stroke-linejoin="round"/>
+  <path d="M50 18v6M60 18v9M70 18v6"/>
+  <circle cx="50" cy="26" r="2"/><circle cx="60" cy="29" r="2.5"/><circle cx="70" cy="26" r="2"/>
+  <path d="M14 18h26M86 18h20" opacity=".45"/>
+{%- elif kind == 'ivy' %}
+  {# What came through the windows before 2013 — a centred trailing stem #}
+  <path d="M42 28c6 0 10-4 12-9s6-9 12-9 12 4 12 9" stroke-linecap="round"/>
+  <path d="M52 20c-4-2-4-6 0-7 3 2 3 5 0 7" stroke-linejoin="round"/>
+  <path d="M62 12c-4-2-4-6 0-7 3 2 3 5 0 7" stroke-linejoin="round"/>
+  <path d="M72 14c4-2 4-6 0-7-3 2-3 5 0 7" stroke-linejoin="round"/>
+  <circle cx="78" cy="10" r="1.6"/>
+  <path d="M14 28h24M82 28h24" opacity=".45"/>
+{%- elif kind == 'ledger' %}
+  {# the archive: a bound record, kept since 2013 #}
+  <path d="M44 8h32v22H44z"/>
+  <path d="M50 8v22" opacity=".6"/>
+  <path d="M56 14h14M56 19h14M56 24h10" opacity=".5"/>
+  <path d="M44 8c-2 2-2 20 0 22" stroke-linejoin="round"/>
+  <path d="M14 19h24M84 19h22" opacity=".45"/>
 {%- else %}
   {# A rule with a centre point, when nothing more specific fits #}
   <path d="M10 17h40M70 17h40" opacity=".55"/>
   <circle cx="60" cy="17" r="3"/>
 {%- endif %}
 
+</svg>
+{% endmacro %}
+
+{# The house mark, drawn: the G under a coronet in a laurel wreath. A square
+   viewBox of its own — in the 120x34 rule strip the coronet was a smudge. #}
+{% macro monogram(cls='') %}
+<svg class="g-monogram {{ cls }}" viewBox="0 0 64 72" fill="none" stroke="currentColor"
+     stroke-width="1.4" aria-hidden="true" focusable="false">
+  {# coronet #}
+  <path d="M20 18h24" stroke-linecap="round"/>
+  <path d="M20 18l1-9 4 6 4-8 3 8 4-6 4 8 4-6 1 7" stroke-linejoin="round"/>
+  <circle cx="21" cy="7" r="1.6"/><circle cx="32" cy="4" r="1.6"/><circle cx="43" cy="7" r="1.6"/>
+  {# the G #}
+  <path d="M40 32a13 13 0 1 0 0 16v-7h-8" stroke-linejoin="round" stroke-linecap="round"/>
+  {# laurel #}
+  <path d="M14 26c-7 7-8 22-1 31M50 26c7 7 8 22 1 31" stroke-linecap="round"/>
+  <path d="M12 30c-4-2-7 0-7 3 3 2 7 1 7-3M10 39c-4-2-7 0-7 3 3 2 7 1 7-3M11 48c-4-2-7 0-7 3 3 2 7 1 7-3" stroke-linejoin="round"/>
+  <path d="M52 30c4-2 7 0 7 3-3 2-7 1-7-3M54 39c4-2 7 0 7 3-3 2-7 1-7-3M53 48c4-2 7 0 7 3-3 2-7 1-7-3" stroke-linejoin="round"/>
 </svg>
 {% endmacro %}

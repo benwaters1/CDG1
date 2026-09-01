@@ -1,0 +1,70 @@
+{# ==========================================================================
+   ONE PROFILE THAT FOLLOWS THEM  — guest item 2
+   Dietary notes, access needs and arrival preferences are currently entered
+   per record — once for a stay, again for an atelier, again for a table.
+   This stores them once against the email and offers them back.
+
+       {% from '_guest_profile.html' import profile_form, profile_prefill %}
+       {{ profile_form(profile) }}
+
+   `profile` is a row keyed on the guest email. If nothing is passed the form
+   still renders, empty, and saves the first version.
+   ========================================================================== #}
+{% macro profile_form(p) %}
+<section class="g-panel g-prof">
+  <h2 class="g-panel__h">Your details, kept once</h2>
+  <p class="g-p">Entered here, these are offered back the next time you book a room, an atelier or a table. Change them whenever you like; nothing is applied to a booking already made without telling you.</p>
+
+  <form method="post" action="{{ url_for('find_booking') }}" class="g-prof__f">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="save_profile">
+
+    <p class="g-field">
+      <label for="pf_diet">Anything the kitchen should know</label>
+      <textarea id="pf_diet" name="dietary_notes" rows="3"
+        placeholder="Allergies, what you do not eat, anything you would rather not be served.">{{ p['dietary_notes'] if p else '' }}</textarea>
+      <span class="g-hint">Applies to dinner, the ateliers and the market morning alike.</span>
+    </p>
+
+    <p class="g-field">
+      <label for="pf_access">Getting around the house <span class="g-opt">optional</span></label>
+      <textarea id="pf_access" name="access_notes" rows="2"
+        placeholder="Stairs, mobility, anything worth thinking about.">{{ p['access_notes'] if p else '' }}</textarea>
+      <span class="g-hint">The staircases are eighteenth-century and there are no handrails in places.</span>
+    </p>
+
+    <div class="g-row">
+      <p class="g-field g-field--narrow">
+        <label for="pf_time">Usual arrival time <span class="g-opt">optional</span></label>
+        <input type="time" id="pf_time" name="usual_arrival_time"
+               value="{{ p['usual_arrival_time'] if p else '' }}">
+      </p>
+      <p class="g-field g-field--narrow">
+        <label for="pf_phone">Phone <span class="g-opt">optional</span></label>
+        <input type="tel" id="pf_phone" name="phone" value="{{ p['phone'] if p else '' }}">
+      </p>
+    </div>
+
+    <p class="g-field">
+      <label for="pf_med">Anything medical an instructor should know <span class="g-opt">optional</span></label>
+      <textarea id="pf_med" name="medical_notes" rows="2"
+        placeholder="Only relevant if you take an atelier — the work is physical.">{{ p['medical_notes'] if p else '' }}</textarea>
+      <span class="g-hint">Seen only by the person leading the atelier.</span>
+    </p>
+
+    <button type="submit" class="g-btn g-btn--solid">Save these</button>
+  </form>
+</section>
+{% endmacro %}
+
+{# Offered back on a booking form, so a returning guest confirms rather than
+   retypes. Renders nothing at all when there is no profile. #}
+{% macro profile_prefill(p) %}
+{% if p and (p['dietary_notes'] or p['access_notes']) %}
+<p class="g-limit">
+  <span class="g-limit__k">From last time</span>
+  We have your notes on file{% if p['dietary_notes'] %} — {{ p['dietary_notes']|truncate(90) }}{% endif %}.
+  They will be used unless you change them below.
+</p>
+{% endif %}
+{% endmacro %}

@@ -1,0 +1,69 @@
+{# ==========================================================================
+   WHAT THE VALLEY IS LIKE THEN  — 5
+   People book a mountain valley without knowing what the month is like. This
+   is not a forecast — it is what the season actually does, which is more use
+   six months out than a forecast could ever be.
+
+       {% from '_weather.html' import season_note %}
+       {{ season_note() }}
+   ========================================================================== #}
+{% macro season_note() %}
+<div class="g-season" data-season>
+  <div class="g-season__pick" role="group" aria-label="Choose a month">
+    {% for m in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+    <button type="button" class="g-season__m{% if loop.index == 6 %} is-on{% endif %}"
+            data-month="{{ loop.index }}">{{ m }}</button>
+    {% endfor %}
+  </div>
+  <div class="g-season__out" aria-live="polite">
+    <p class="g-season__t" data-season-t></p>
+    <ul class="g-season__l" data-season-l></ul>
+  </div>
+</div>
+<script>
+/* What the month is actually like at 900 metres in the Ariège. Written from
+   the valley, not from an average — a forecast is useless six months out and
+   this is what people are really asking. */
+(function(){
+  var root=document.querySelector('[data-season]'); if(!root) return;
+  var M={
+   1:{t:'Deep winter. Snow on the road some days, and the château is heated but old.',
+      l:['Skiing at Ax 3 Domaines, twenty-five minutes up','Dark by six','Fires lit in the salons','The quietest month to have the place']},
+   2:{t:'Still winter, and the light starts coming back at the end of it.',
+      l:['Ski weeks book furthest ahead of anything','Cold, bright days between the snow','Half-term fills fast']},
+   3:{t:'The thaw. Water comes off the mountain and the valley is loud with it.',
+      l:['Snow still on the peaks, none in the valley','First things in the garden','Cheap, and often empty']},
+   4:{t:'Cherry blossom below the pool, and the orchard still bare above it.',
+      l:['Blossom lasts about ten days','Cool evenings, fires still worth lighting','Easter is the exception to the quiet']},
+   5:{t:'Everything at once. Green, fast-growing, and the first roses.',
+      l:['Warm days, cold nights','Walking season starts','The valley at its loudest with water']},
+   6:{t:'The longest evenings of the year, and the peonies.',
+      l:['Dinner outdoors without anyone deciding to','Warm but not yet hot','Goes first of any month']},
+   7:{t:'Hot by day, cool by nine. Lavender the length of the valley.',
+      l:['The pool is used','Mountain walking at its best','Booked a long way ahead']},
+   8:{t:'The fullest colour and the driest month. Long light on the façade.',
+      l:['Hot — the thick walls do the work','Markets at their best','Spoken for months in advance']},
+   9:{t:'Warmer than people expect, and considerably easier to get.',
+      l:['The limes begin to turn','Swimming still possible early on','Our own recommendation for value']},
+   10:{t:'Almost no flowers, and the best light on the façade all year.',
+      l:['Foliage rather than colour','Mushrooms, and the chef knows where','Quiet, and cheaper']},
+   11:{t:'The valley goes in on itself. Rain, mist, and fires from mid-afternoon.',
+      l:['The most atmospheric month, if you like weather','Very quiet','Not the month for the gardens']},
+   12:{t:'Cold and clear or cold and white. Christmas books early, the rest does not.',
+      l:['Skiing from mid-month usually','Dark by five','The house at its most enclosed']}
+  };
+  var T=root.querySelector('[data-season-t]'), L=root.querySelector('[data-season-l]');
+  function paint(m){
+    var d=M[m]; if(!d) return;
+    T.textContent=d.t;
+    L.innerHTML=d.l.map(function(x){ return '<li>'+x+'</li>'; }).join('');
+  }
+  root.addEventListener('click', function(e){
+    var b=e.target.closest('[data-month]'); if(!b) return;
+    root.querySelectorAll('.g-season__m').forEach(function(x){ x.classList.remove('is-on'); });
+    b.classList.add('is-on'); paint(+b.dataset.month);
+  });
+  paint(6);
+})();
+</script>
+{% endmacro %}

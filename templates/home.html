@@ -6,7 +6,7 @@
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_room_copy.html' import room_copy %}
-{% from '_marks.html' import mark %}
+{% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
 
 
@@ -92,7 +92,8 @@
 {% set shown_rooms = rooms %}
 {% if shown_rooms %}
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Stay the Night</p>
+  <p class="g-fr">Depuis 1741<span class="g-fr__en">Since 1741</span></p>
+    <p class="g-eyebrow">Stay the Night</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>
   <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
@@ -362,6 +363,8 @@
     <span class="g-devise__en">A house is not restored. It is let back</span>
   </p>
 </div>
+
+<div class="g-mono__wrap">{{ monogram() }}</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

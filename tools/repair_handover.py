@@ -392,12 +392,19 @@ def repair_event_date_prefill():
 
 # Endpoint names the design side keeps guessing. Each is a BuildError on a
 # public page, which is a 500 rather than a wrong link.
+# The line ending the templates in this tree use.
+NEWLINE = "\r\n"
+
 WRONG_ENDPOINTS = {
     # The newsletter route has always been newsletter_subscribe. `subscribe`
     # arrives on the journal form and on the new waiting-list form.
     "url_for('subscribe')": "url_for('newsletter_subscribe')",
     # Four handovers running.
     "url_for('contact')": "url_for('contact_page')",
+    # The public gallery is gallery_page; admin_gallery is the other one. Arrived
+    # on the photoshoots page and on social.html, and 500s the page rather than
+    # merely mislinking it.
+    "url_for('gallery')": "url_for('gallery_page')",
     # guest_portal takes a token, and there is none to give at the point in
     # the page this link sits. find_booking is where somebody holding only an
     # email address can actually reach their stays.
@@ -603,6 +610,54 @@ REVERTED_PAGES = (
 )
 
 
+def repair_event_promo_field():
+    """The promo code box on the event enquiry form.
+
+    submit_event_inquiry reads request.form["promo_code"] and stores it so the
+    owner can honour a code when they quote. Without the field the route reads a
+    parameter no form sends -- the read-and-never-written shape one level up --
+    and it fails silently, because an enquiry with no code is a perfectly
+    ordinary enquiry.
+
+    The suite did not catch it either when a handover dropped it: the test posts
+    to the route rather than checking the page carries the field. That check
+    exists now, and so does this.
+    """
+    rel = "templates/events_info.html"
+    src = _read(rel)
+    if 'name="promo_code"' in src:
+        return 0
+    marker = '<textarea id="message" name="message"'
+    at = src.find(marker)
+    if at == -1:
+        return 0
+    # The end of the paragraph the textarea sits in, which is where the new
+    # field goes. Found rather than reconstructed: the surrounding markup is the
+    # designer's and changes shape between handovers.
+    close = src.find("</p>", at)
+    if close == -1:
+        return 0
+    close += len("</p>")
+    nl = "\r\n" if "\r\n" in src else "\n"
+    block = nl.join([
+        "",
+        "        {# Captured, not validated. There is no price on an enquiry yet",
+        "           to take a discount off, and refusing an enquiry because a",
+        "           code was mistyped would lose a wedding over a typo. The",
+        "           house sees what was claimed and applies it when it quotes. #}",
+        '        <p class="g-field">',
+        '          <label for="promo_code">Promo code (optional)</label>',
+        '          <input type="text" id="promo_code" name="promo_code"',
+        '                 autocomplete="off"',
+        "                 value=\"{{ prefill_promo_code | default('') }}\">",
+        '          <span class="g-hint">If you have been given one, we will',
+        "          apply it to your quote.</span>",
+        "        </p>",
+    ])
+    _write(rel, src[:close] + block + src[close:])
+    return 1
+
+
 def repair_reverted_guest_pages():
     """Report the four pages the handovers keep shipping an older copy of.
 
@@ -655,6 +710,7 @@ def main():
         ("the house's own reviews", repair_featured_reviews),
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),
+        ("the promo code box on the event enquiry", repair_event_promo_field),
         ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []

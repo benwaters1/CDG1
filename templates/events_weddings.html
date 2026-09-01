@@ -1,4 +1,6 @@
 {% extends "public_base.html" %}
+{% block title_fr %}Mariages{% endblock %}
+{% block description_fr %}Se marier dans un Monument Historique classé des Pyrénées. Un mariage à la fois, le château entier, quarante convives à l'intérieur.{% endblock %}
 {% block title %}Weddings{% endblock %}
 {% block description %}Weddings at a Class I Historic Monument in the French Pyrénées. One wedding at a time, the whole château yours, forty seated indoors.{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
@@ -62,6 +64,59 @@
   </div>
 </div></section>
 
+
+
+<!-- ============ THE SHAPE OF THE WEEKEND ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">How It Usually Runs</p>
+  <h2 class="g-place">Three Days, Not One Afternoon</h2>
+  <p class="g-p g-lede-first">Almost nobody takes the château for a day. The shape below is what most weekends settle into — not a package, and every part of it moves.</p>
+  <div class="g-timeline">
+    <ol class="g-timeline__l">
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">Friday</span>
+        <span class="g-timeline__v">Arrivals through the afternoon. Dinner for whoever is here — usually thirty or so, in the dining salon.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">Saturday morning</span>
+        <span class="g-timeline__v">Breakfast long and late. Hair and make-up in the finished rooms; the rest of the party walks or swims.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">Saturday afternoon</span>
+        <span class="g-timeline__v">Ceremony in the grounds or the historic interiors. Photographs while the light comes round onto the façade.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">Saturday evening</span>
+        <span class="g-timeline__v">Dinner — forty inside, more on the terraces. Then the salons, and nobody has to drive.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">Sunday</span>
+        <span class="g-timeline__v">The market at Les Cabannes, then a long lunch. Departures whenever people manage it.</span></li>
+    </ol>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">Music</span>Outdoors until midnight, indoors after. The nearest neighbour is not close, but the valley carries sound further than you would think.</p>
+</div></section>
+
+<!-- ============ WHO DOES WHAT ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Ce que nous faisons<span class="g-fr__en">What we do</span></p>
+  <p class="g-eyebrow">Honestly</p>
+  <h2 class="g-place">What We Do and What We Do Not</h2>
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">We do</h3>
+      <ul class="g-ticks">
+        <li>The house, exclusively, for the days you have it</li>
+        <li>All the cooking, from our own kitchen</li>
+        <li>Beds for fifteen and breakfast for everyone staying</li>
+        <li>Tables, chairs, linen, glass and the gardens</li>
+        <li>Flowers from the gardens, in season — see below</li>
+      </ul>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">We do not</h3>
+      <ul class="g-ticks g-ticks--no">
+        <li>Plan the wedding. Bring a planner if you want one planned</li>
+        <li>Provide a marquee, a dance floor or a sound system</li>
+        <li>Hold a licence — the legal ceremony happens at the mairie</li>
+        <li>Do hair, make-up, or photography</li>
+        <li>Pretend the building is finished</li>
+      </ul>
+    </div>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">The mairie</span>French weddings are legally civil. Couples marry at the mairie — Château-Verdun or Les Cabannes — and the ceremony here is the one that matters to everyone watching.</p>
+</div></section>
 
 <!-- ============ WHAT IS IN FLOWER ============ -->
 {# What is in flower decides more wedding dates than anything except price.
@@ -154,4 +209,12 @@
   paint(6);
 })();
 </script>
+
+<div class="g-wrap">
+  <p class="g-devise">
+    <span class="g-devise__fr">« Un mariage à la fois, et la maison est à vous. »</span>
+    <span class="g-devise__en">One wedding at a time, and the house is yours</span>
+  </p>
+</div>
+
 {% endblock %}

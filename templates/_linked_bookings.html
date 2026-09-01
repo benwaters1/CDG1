@@ -1,0 +1,64 @@
+{# ==========================================================================
+   BOOKINGS THAT TRAVEL TOGETHER  — guest item 4
+   Families and friends currently make two unconnected bookings with two
+   references. This shows them as one group and lets a guest add another room
+   to an existing stay.
+
+       {% from '_linked_bookings.html' import linked, add_room %}
+       {{ linked(booking, group) }}
+       {{ add_room(booking, rooms) }}
+
+   `group` is every booking sharing this one's group reference, this one
+   included. The cap is whatever the app enforces — nothing here assumes two.
+   Renders nothing when there is no group, so it is safe to include now.
+   ========================================================================== #}
+{% macro linked(b, group) %}
+{% if group and group|length > 1 %}
+<section class="g-panel g-linked">
+  <h2 class="g-panel__h">Travelling together</h2>
+  <p class="g-p">{{ group|length }} rooms on the same dates, under one arrival. Each keeps its own reference; the bill can be split or taken together.</p>
+
+  <ul class="g-linked__l">
+    {% for g in group %}
+    <li class="g-linked__i{% if g['reference'] == b['reference'] %} is-this{% endif %}">
+      <span class="g-linked__r">{{ g['room_name'] }}</span>
+      <span class="g-linked__n">{{ g['guest_name'] }}</span>
+      <span class="g-linked__c">{{ g['reference'] }}{% if g['reference'] == b['reference'] %} · yours{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="g-hint">Anyone in the group can see the others are coming. Nobody can change anyone else's booking.</p>
+</section>
+{% endif %}
+{% endmacro %}
+
+{% macro add_room(b, rooms) %}
+{% if rooms %}
+<section class="g-panel g-addroom">
+  <h2 class="g-panel__h">Add another room</h2>
+  <p class="g-p">On the same dates, linked to this booking, so it is one arrival rather than two.</p>
+
+  <form method="post" action="{{ url_for('manage_booking', manage_token=b['token']) if b['token'] else '#' }}" class="g-addroom__f">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_room">
+    <div class="g-row">
+      <p class="g-field">
+        <label for="ar_room">Which room</label>
+        <select id="ar_room" name="room_id" required>
+          <option value="">— choose —</option>
+          {% for r in rooms %}
+          <option value="{{ r['id'] }}">{{ r['name'] }} — €{{ '%.0f'|format(r['price_per_night']) }} a night</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p class="g-field g-field--narrow">
+        <label for="ar_name">Who is in it</label>
+        <input type="text" id="ar_name" name="guest_name" required placeholder="Their name">
+      </p>
+    </div>
+    <p class="g-hint g-hint--row">Availability is checked when you submit. If the room has gone since you looked, nothing is charged and we will say what else is free on those dates.</p>
+    <button type="submit" class="g-btn g-btn--solid">Add this room</button>
+  </form>
+</section>
+{% endif %}
+{% endmacro %}

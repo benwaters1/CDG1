@@ -20,7 +20,8 @@
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">What Is Here</p>
+  <p class="g-fr">Décor naturel<span class="g-fr__en">A setting that is already there</span></p>
+    <p class="g-eyebrow">What Is Here</p>
   <h2 class="g-place">Rooms Between Ruin and Restored</h2>
   <p class="g-p g-lede-first">Ninety-four rooms across 43,000 square feet. Five are finished. The others range from stripped stone to salons with their gilding intact, which is a range of sets that cannot be built and cannot be dressed to look real.</p>
   <p class="g-p">The façade was designed by Ange-Jacques Gabriel, principal architect to Louis XV. The house has been photographed for Vogue, AD Italia and House &amp; Garden, and classified a Class I Historic Monument since 14 June 1994.</p>
@@ -39,7 +40,65 @@
   <h2 class="g-place">What Class I Listing Means For a Crew</h2>
   <p class="g-p g-lede-first">Nothing may be fixed to the historic fabric. No drilling, no adhesive on plaster or panelling, no rigging from the mouldings. Freestanding rig only.</p>
   <p class="g-p">We would rather set that out now than have it discovered on the morning of a shoot. Within it, the house is unusually accommodating: whole floors can be given over, and there is no other party to work around.</p>
+  <p class="g-p"><a href="{{ url_for('gallery_page') }}#archive" class="g-btn">See rooms in every condition</a></p>
   <p class="g-limit"><span class="g-limit__k">Copyright</span>Photographs of the château belong to whoever takes them. Usage is agreed in writing before the shoot, not after.</p>
+</div></section>
+
+
+<!-- ============ WHAT A CREW NEEDS TO KNOW ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Practical</p>
+  <h2 class="g-place">Before You Send a Scout</h2>
+  <div class="g-facts-list">
+    <div><dt>Power</dt><dd>Domestic supply only. A generator is normal for anything above a two-head setup, and there is room for one off the gravel.</dd></div>
+    <div><dt>Rigging</dt><dd>Freestanding only. Nothing may be fixed to plaster, panelling or stone — this is a condition of the listing, not a preference.</dd></div>
+    <div><dt>Blackout</dt><dd>None fitted. The windows are original and cannot be drilled. Bring your own frames.</dd></div>
+    <div><dt>Vehicles</dt><dd>To the gravel. The drive was built for an approach at walking pace and will not take a low loader.</dd></div>
+    <div><dt>Unloading</dt><dd>Ground floor is level from the gravel. Everything above is an eighteenth-century staircase.</dd></div>
+    <div><dt>Crew facilities</dt><dd>Two ground-floor rooms can be given over for hair, make-up and holding.</dd></div>
+    <div><dt>Nearest hospital</dt><dd>Foix, thirty minutes. Worth knowing before a stunt or a height.</dd></div>
+    <div><dt>Signal</dt><dd>Patchy. Wi-fi in the finished rooms; do not plan on a live uplink from the east range.</dd></div>
+  </div>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('scaffold') }}</div>
+
+<!-- ============ LIGHT THROUGH THE DAY ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">La lumière, heure par heure<span class="g-fr__en">The light, hour by hour</span></p>
+  <p class="g-eyebrow">Planning a Day</p>
+  <h2 class="g-place">Where the Light Is, and When</h2>
+  <p class="g-p">The house runs east to west along a north-facing valley. That decides more about a shoot day here than anything else, so it is worth stating rather than discovering.</p>
+
+  <div class="g-light" data-light>
+    <div class="g-light__pick" role="group" aria-label="Choose a time of day">
+      <button type="button" class="g-light__h" data-hour="7">7am</button>
+      <button type="button" class="g-light__h" data-hour="9">9am</button>
+      <button type="button" class="g-light__h is-on" data-hour="12">Noon</button>
+      <button type="button" class="g-light__h" data-hour="15">3pm</button>
+      <button type="button" class="g-light__h" data-hour="18">6pm</button>
+      <button type="button" class="g-light__h" data-hour="21">9pm</button>
+    </div>
+    <div class="g-light__out" aria-live="polite">
+      <p class="g-light__t" data-light-t></p>
+      <ul class="g-light__l" data-light-l></ul>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ WHAT IT COSTS ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Money</p>
+  <h2 class="g-place">How It Is Priced</h2>
+  <p class="g-p g-lede-first">By the day, against crew size and how much of the house you need. A stills shoot in two rooms is not a film unit across the whole east range, and it is not priced as one.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Half day</dt><dd>Up to four hours, small crew, agreed rooms</dd></div>
+    <div><dt>Full day</dt><dd>Ten hours on site including set-up and strike</dd></div>
+    <div><dt>Multi-day</dt><dd>Priced per day, falling after the second</dd></div>
+    <div><dt>Overnight</dt><dd>Crew can stay — five bedrooms, fifteen beds, and the village below</dd></div>
+    <div><dt>Not included</dt><dd>Generator, catering beyond coffee, and any making good</dd></div>
+  </dl></div></div>
+  <p class="g-limit"><span class="g-limit__k">Recce</span>Come and look first. We would rather you saw the scaffolding than found it on the day.</p>
 </div></section>
 
 <div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
@@ -52,4 +111,39 @@
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
+
+<script>
+/* The light through a shoot day. The house runs east to west along a
+   north-facing valley, which decides more than anything else about when to
+   shoot what — so it is stated rather than discovered on the day. */
+(function(){
+  var root=document.querySelector('[data-light]'); if(!root) return;
+  var H={
+    7:{t:'First light comes over the ridge late — the valley holds shadow after the peaks are lit.',
+       l:['East rooms first, and briefly','Mist on the parkland most mornings to about nine','Façade still flat — not the hour for exteriors']},
+    9:{t:'The south rooms come up. This is when the salon is worth shooting.',
+       l:['Salon and dining, both south-facing','Soft and directional through original glass','Exteriors improving but still cool']},
+    12:{t:'Flat and bright. The worst hour for the façade and the best for the interiors that have no south window.',
+        l:['North rooms and the stair are usable now','Façade washes out — leave it','Courtyard and gravel are hard-lit']},
+    15:{t:'The light comes round. Warm on the west range, and the mountain begins to read.',
+        l:['Kitchen and west rooms','Parkland with the peaks behind','Best hour for anything with the valley in shot']},
+    18:{t:'The hour everyone comes for. Long light directly onto the façade.',
+        l:['Façade, full and warm','Terraces and the pool below the cherry trees','Interiors going amber — plan for it or correct it']},
+    21:{t:'Gone in summer, long gone in winter. What is left is candle and window light.',
+        l:['Unrestored salons by candle — no electric light is fitted','Very long exposures or fast glass','Nothing outside without a generator']}
+  };
+  var T=root.querySelector('[data-light-t]'), L=root.querySelector('[data-light-l]');
+  function paint(h){
+    var d=H[h]; if(!d) return;
+    T.textContent=d.t;
+    L.innerHTML=d.l.map(function(x){ return '<li>'+x+'</li>'; }).join('');
+  }
+  root.addEventListener('click', function(e){
+    var b=e.target.closest('[data-hour]'); if(!b) return;
+    root.querySelectorAll('.g-light__h').forEach(function(x){ x.classList.remove('is-on'); });
+    b.classList.add('is-on'); paint(+b.dataset.hour);
+  });
+  paint(12);
+})();
+</script>
 {% endblock %}

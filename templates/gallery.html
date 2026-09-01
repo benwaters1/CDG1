@@ -5,6 +5,7 @@
 {% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_beforeafter.html' import before_after, before_after_script %}
 {% from '_marks.html' import mark %}
 {# `galleries` comes from gallery_page(): a list of
      { 'slug': ..., 'title': ..., 'blurb': ..., 'images': [{'url','caption'}, ...] }
@@ -54,7 +55,7 @@
 
 <section class="g-sec g-sec--tight">
   <div class="g-wrap">
-    <p class="g-fr">Le château, tel qu'il est<span class="g-fr__en">The château, as it is</span></p>
+    <p class="g-fr">Ni retouché, ni rangé<span class="g-fr__en">Neither retouched nor tidied</span></p>
     <p class="g-eyebrow">The Record · Fifteen Years</p>
     <h1 class="g-pagehead">The château, as it is</h1>
   <p class="g-p g-lede-first">Photographs taken across the seasons, mostly by guests and by the family, over a decade of work.</p>
@@ -159,6 +160,8 @@
 </div>
 
 
+
+<div class="g-wrap g-mark__wrap">{{ mark('stone') }}</div>
 
 <!-- ============ EIGHT HUNDRED YEARS ============ -->
 {# Dates from the Monuments Historiques record and Wikipedia: first
@@ -282,6 +285,41 @@
   </div>
 </div></section>
 
+
+<!-- ============ THE ARCHIVE ============ -->
+<section class="g-sec g-sec--sand" id="archive"><div class="g-wrap">
+  <p class="g-fr">Avant et après<span class="g-fr__en">Before and after</span></p>
+  <p class="g-eyebrow">Fifteen Years of It</p>
+  <h2 class="g-place">Rooms That No Longer Look Like This</h2>
+
+  <p class="g-p g-lede-first">Photographs taken since 2013, of rooms in states that have gone and will not come back. A wall opened, a floor lifted, a ceiling before it was consolidated. Once a room is finished, that version of it exists only here.</p>
+  <p class="g-p">It is the reason the record was kept at all. It is also, unexpectedly, the most useful thing on this site for anyone scouting a location — the same room can be seen stripped to stone and finished, which is a choice no other building can offer.</p>
+
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">For anyone reading along</h3>
+      <p class="g-p">The archive is the long version of the journal. Ninety-four rooms, five finished, and every one of the others photographed as it was found.</p>
+      <p class="g-p"><a href="{{ url_for('restoration_page') }}" class="g-btn">The restoration</a></p>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">For location scouts</h3>
+      <p class="g-p">Tell us the condition you need and we will send what we have of it — bare stone, open plaster, part-restored, or finished. Usage is agreed in writing before a shoot, not after.</p>
+      <p class="g-p"><a href="{% if 'events_photoshoots' in url_map %}{{ url_for('events_photoshoots') }}{% else %}{{ url_for('events_info') }}#photography{% endif %}" class="g-btn">Location hire</a></p>
+    </div>
+  </div>
+
+  {# Both images exist for every finished room, so this is buildable today.
+     Swap the two src values for the real before/after pair. #}
+  {{ before_after('salon',
+      url_for('static', filename='img/salon.jpg'),
+      url_for('static', filename='img/salon.jpg'),
+      'The salon',
+      'Plaster down, panelling black with smoke, and the ivy already inside.',
+      'Gilding cleaned and consolidated. Nothing replaced that could be saved.') }}
+
+  <p class="g-limit"><span class="g-limit__k">A working archive</span>Still being added to. Every room that opens is photographed before anyone touches it.</p>
+</div></section>
+
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than
    generic, and set on navy so it reads as a full stop. #}
@@ -295,4 +333,5 @@
   </div>
 </div></section>
 
+{{ before_after_script() }}
 {% endblock %}

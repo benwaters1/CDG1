@@ -1,0 +1,48 @@
+{% extends "public_base.html" %}
+{% block title %}From Instagram{% endblock %}
+{% block description %}What is open at Château de Gudanes right now — rooms, ateliers, the table, and what has just come out from under the plaster.{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}
+{% set crumbs = [('What is open', None)] %}
+{% block content %}
+{% from '_marks.html' import mark, monogram %}
+
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-fr">Vous venez d'Instagram<span class="g-fr__en">You came from Instagram</span></p>
+  <p class="g-eyebrow">Right Now</p>
+  <h1 class="g-pagehead">You have seen the photographs</h1>
+  <p class="g-lede">This is what is actually open, and what it costs. No newsletter first.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <div class="g-grid g-grid--3">
+    <div class="g-panel">
+      <h2 class="g-h3">Stay the night</h2>
+      <p class="g-p">Five bedrooms of ninety-four rooms, from €220. Breakfast included, dinner if you want it.</p>
+      <p><a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a></p>
+    </div>
+    <div class="g-panel">
+      <h2 class="g-h3">Do the work</h2>
+      <p class="g-p">Ateliers in plaster, gilding and fresco conservation. Fifteen places, one atelier at a time.</p>
+      <p><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a></p>
+    </div>
+    <div class="g-panel">
+      <h2 class="g-h3">Eat here</h2>
+      <p class="g-p">One sitting a night in the dining salon, cooked in the Renaissance kitchen.</p>
+      <p><a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">La Table</a></p>
+    </div>
+  </div>
+</div></section>
+
+<div class="g-mono__wrap">{{ monogram() }}</div>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">If You Are Not Ready</p>
+  <h2 class="g-place">The Long Version</h2>
+  <p class="g-p g-lede-first">The account posts what comes off the wall. The site holds fifteen years of it — rooms as they were found, and the same rooms now.</p>
+  <p class="g-p">
+    <a href="{{ url_for('gallery_page') }}#archive" class="g-btn">Before and after</a>
+    <a href="{{ url_for('restoration_page') }}" class="g-btn">The restoration</a>
+  </p>
+  <p class="g-limit"><span class="g-limit__k">Worth knowing</span>Rooms are usually spoken for before they reach the booking page. The journal goes out first.</p>
+</div></section>
+{% endblock %}

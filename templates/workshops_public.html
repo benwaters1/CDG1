@@ -1,6 +1,8 @@
 {% extends "public_base.html" %}
 {% set sticky_bar = 'atelier' %}
 {% set crumbs = [('Workshops', None)] %}
+{% block title_fr %}Les Ateliers{% endblock %}
+{% block description_fr %}Ateliers de restauration au château : enduits à la chaux, dorure, conservation de fresques du XVIIIe siècle. Quinze places, un atelier à la fois.{% endblock %}
 {% block title %}Château Workshops{% endblock %}
 {% block description %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
 {% block og_desc %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
@@ -63,6 +65,10 @@
     Never more than fifteen guests, and the château takes no others while an atelier runs. Full board, château beverages, every activity and the transfers from Toulouse are included in one price.
   </p>
 </div></section>
+
+
+
+<div class="g-wrap g-mark__wrap">{{ mark('lime') }}</div>
 
 <!-- ============ CHOOSE — the three, side by side ============ -->
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
@@ -305,6 +311,8 @@
   </div>
 </div></section>
 
+<div class="g-wrap g-mark__wrap">{{ mark('market') }}</div>
+
 <!-- ============ CHÂTEAU ESTATE ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
@@ -493,6 +501,8 @@
   </div>
 </div></section>
 
+<div class="g-wrap g-mark__wrap">{{ mark('brushgild') }}</div>
+
 <!-- ============ THE WORK ITSELF ============ -->
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">The Work</p>
@@ -548,10 +558,6 @@
   </div>
 </div></section>
 
-<div class="g-wrap g-mark__wrap">{{ mark('brush') }}</div>
-
-
-<div class="g-wrap g-mark__wrap">{{ mark('market') }}</div>
 
 <!-- ============ HOW FEW SEATS ============ -->
 {# Computed from the sessions actually published, so it can never drift from
@@ -610,12 +616,131 @@
   </div>
 </div></section>
 
+
+
+<div class="g-wrap g-mark__wrap">{{ mark('fresco') }}</div>
+
+<!-- ============ WHAT A DAY LOOKS LIKE ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Une journée d'atelier<span class="g-fr__en">A day in the atelier</span></p>
+  <p class="g-eyebrow">Hour by Hour</p>
+  <h2 class="g-place">What a Day Actually Looks Like</h2>
+  <div class="g-timeline">
+    <ol class="g-timeline__l">
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">8.00</span>
+        <span class="g-timeline__v">Breakfast in the dining salon. Long, and nobody rushes it.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">9.30</span>
+        <span class="g-timeline__v">Into the room you are working on. Overalls provided; wear what you would not mind ruining underneath.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">13.00</span>
+        <span class="g-timeline__v">Lunch, usually outside. Wine if you want it, though the afternoon is fiddly.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">14.30</span>
+        <span class="g-timeline__v">Back to it until about six. A good afternoon is measured in centimetres.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">20.00</span>
+        <span class="g-timeline__v">Dinner together at one table. This is the part people write about afterwards.</span></li>
+    </ol>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">Physical</span>You are on your feet, often on a platform, often with your arms above your head. Say if that is a problem and we will place you where it is not.</p>
+</div></section>
+
+<!-- ============ WHAT YOU NEED ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Before You Come</p>
+  <h2 class="g-place">What to Bring, and What Not To</h2>
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">Bring</h3>
+      <ul class="g-ticks">
+        <li>Clothes you would not mind ruining — lime does not wash out</li>
+        <li>Shoes with a closed toe and a flat sole</li>
+        <li>Reading glasses if you use them. The work is close</li>
+        <li>A notebook. Most people want one by day two</li>
+      </ul>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Do not</h3>
+      <ul class="g-ticks g-ticks--no">
+        <li>Bring tools. Everything is here, and ours are sharpened</li>
+        <li>Expect to finish something. You are joining work in progress</li>
+        <li>Book if you cannot manage stairs — the ateliers are not on one floor</li>
+        <li>Come for a demonstration. You will be doing it</li>
+      </ul>
+    </div>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">No experience</span>None is needed. Half of every atelier has never held a trowel, and the artisans are used to it.</p>
+</div></section>
+
+<!-- ============ WHOLE SESSIONS ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Une session entière<span class="g-fr__en">A whole session</span></p>
+  <p class="g-eyebrow">For Institutions</p>
+  <h2 class="g-place">Taking a Session Outright</h2>
+
+  <p class="g-p g-lede-first">A session holds fifteen. A school, a conservation course or a heritage body can take all fifteen at once, which is one conversation rather than fifteen.</p>
+  <p class="g-p">The work is real: eighteenth-century frescoes under supervision, lime plaster, gilding, joinery. Students are not shown a demonstration — they lift overpaint from a Class I Historic Monument, and what they do stays on the wall.</p>
+
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">What a cohort gets</h3>
+      <ul class="g-ticks">
+        <li>All fifteen places on one session, dates agreed with you</li>
+        <li>The château to yourselves for the duration — no other guests</li>
+        <li>Artisans who work on the building, not visiting tutors</li>
+        <li>Beds for fifteen; the village takes any overflow</li>
+        <li>All meals, cooked here, including the market morning</li>
+      </ul>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Who it suits</h3>
+      <ul class="g-ticks">
+        <li>Conservation and restoration courses</li>
+        <li>Architecture and fine-art schools</li>
+        <li>Heritage bodies and building-trust members</li>
+        <li>Craft guilds and professional development groups</li>
+        <li>Museum and gallery teams</li>
+      </ul>
+      <p class="g-hint">Documentation for course credit can be arranged; ask early, not late.</p>
+    </div>
+  </div>
+
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Places in a session</dt><dd>Fifteen</dd></div>
+    <div><dt>Lead time</dt><dd>A year is normal for a full session; six months is tight</dd></div>
+    <div><dt>Pricing</dt><dd>Per cohort rather than per person, quoted against dates and length</dd></div>
+    <div><dt>Deposit</dt><dd>Holds the whole session, so no one else can take places from it</dd></div>
+  </dl></div></div>
+
+  <p class="g-p"><a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Enquire about a whole session</a></p>
+  <p class="g-limit"><span class="g-limit__k">Why we mention it</span>One atelier runs at a time and there are one hundred and sixty-five places in a year. A cohort takes fifteen of them at once, which is why those dates go first.</p>
+</div></section>
+
+
+<!-- ============ WHAT PARTICIPANTS SAY ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">From the Ateliers</p>
+  <h2 class="g-place">What People Who Did the Work Say</h2>
+  <p class="g-p">Reviews from guests who stayed the night tell you about the beds. These are from people who spent four days lifting overpaint off a wall, which is a different question.</p>
+
+  {% if atelier_reviews %}
+  <div class="g-grid g-grid--2">
+    {% for r in atelier_reviews %}
+    <blockquote class="g-panel g-say">
+      <p class="g-say__q">{{ r['text'] }}</p>
+      <footer class="g-say__by">
+        {{ r['name'] }}{% if r['workshop'] %} · {{ r['workshop'] }}{% endif %}
+        {% if r['source'] %}<span class="g-say__src">{{ r['source'] }}</span>{% endif %}
+      </footer>
+    </blockquote>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="g-limit"><span class="g-limit__k">Not yet</span>We have not gathered these properly. If you have done an atelier here and would write two sentences, <a href="{{ url_for('contact_page') }}">tell us</a> — it is worth more to the next person than anything we could write.</p>
+  {% endif %}
+
+  <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
+</div></section>
+
 <!-- ============ THE CLOSE ============ -->
 
-{# What people who came actually said. The page has been handed these on every
-   load since the feature was built and rendered none of them, which is the
-   same fault the booking page had: "Feature on booking page" was a button
-   with no effect on either. #}
 {% if featured_reviews %}
 <section class="g-sec g-says"><div class="g-wrap">
   <h2 class="g-place">What People Say</h2>

@@ -1,0 +1,43 @@
+{# ==========================================================================
+   A READ-ONLY LINK FOR THE REST OF THE PARTY  — guest item 3
+   One person books and then forwards confirmation emails to everyone else.
+   This gives the others arrival details, directions and the dinner time
+   without the bill, and without the ability to cancel.
+
+       {% from '_sharelink.html' import share_link %}
+       {{ share_link(booking) }}
+
+   Needs a share token from your side — a second, read-only token against the
+   booking. If `share_token` is not passed the block does not render, so it
+   is safe to include before the route exists.
+   ========================================================================== #}
+{% macro share_link(b) %}
+{% if b['share_token'] %}
+<section class="g-panel g-share">
+  <h2 class="g-panel__h">Send this to the others</h2>
+  <p class="g-p">Arrival details, directions and the dinner time — without your bill, and without the ability to change or cancel anything.</p>
+
+  <div class="g-share__row">
+    <label class="g-vh" for="sh_url">Share link</label>
+    <input class="g-share__url" id="sh_url" type="text" readonly
+           value="{{ url_for('find_booking', _external=True) }}?s={{ b['share_token'] }}"
+           data-share-url>
+    <button type="button" class="g-btn g-btn--solid" data-share-copy>Copy link</button>
+  </div>
+  <p class="g-hint">Anyone with the link can see the practical details. Nobody with it can see money or change the booking.</p>
+</section>
+<script>
+(function(){
+  var btn=document.querySelector('[data-share-copy]'), f=document.querySelector('[data-share-url]');
+  if(!btn||!f) return;
+  btn.addEventListener('click', function(){
+    f.select(); f.setSelectionRange(0, 99999);
+    var done=function(){ var t=btn.textContent; btn.textContent='Copied';
+      setTimeout(function(){ btn.textContent=t; }, 1600); };
+    if(navigator.clipboard) navigator.clipboard.writeText(f.value).then(done, done);
+    else { try{ document.execCommand('copy'); done(); }catch(e){} }
+  });
+})();
+</script>
+{% endif %}
+{% endmacro %}

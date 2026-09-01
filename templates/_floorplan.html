@@ -1,0 +1,159 @@
+{# ==========================================================================
+   THE HOUSE, ROOM BY ROOM
+   Ninety-four rooms and five ready is a claim until you can see it. This is
+   a drawn plan of the principal floor — not a survey, and it says so — with
+   each room in one of three states: finished, in progress, or untouched.
+
+       {% from '_floorplan.html' import floorplan %}
+       {{ floorplan() }}
+
+   Rooms carry data-state and data-room; the script fills the panel beside
+   the plan. Everything is in the markup, so it works without the script and
+   reads correctly to a screen reader.
+   ========================================================================== #}
+{% macro floorplan() %}
+<div class="g-plan2" data-plan2>
+  <div class="g-plan2__key">
+    <span class="g-plan2__kk is-done">Finished</span>
+    <span class="g-plan2__kk is-work">Work under way</span>
+    <span class="g-plan2__kk is-raw">Untouched</span>
+  </div>
+
+  <div class="g-plan2__grid">
+    <svg class="g-plan2__svg" viewBox="0 0 640 420" role="img"
+         aria-label="Plan of the principal floor of the château">
+      <title>The principal floor</title>
+
+      {# outer walls #}
+      <rect x="20" y="20" width="600" height="380" class="g-plan2__wall"/>
+
+      {# ---- west range ---- #}
+      <g class="g-plan2__r is-done" data-room="kitchen" tabindex="0" role="button"
+         aria-label="The Renaissance kitchen, finished">
+        <rect x="20" y="20" width="170" height="130"/>
+        <text x="105" y="80">Kitchen</text>
+        <text x="105" y="98" class="g-plan2__sub">Renaissance</text>
+      </g>
+
+      <g class="g-plan2__r is-done" data-room="dining" tabindex="0" role="button"
+         aria-label="The dining salon, finished">
+        <rect x="20" y="150" width="170" height="120"/>
+        <text x="105" y="205">Dining</text>
+        <text x="105" y="223" class="g-plan2__sub">Seats forty</text>
+      </g>
+
+      <g class="g-plan2__r is-work" data-room="music" tabindex="0" role="button"
+         aria-label="The music room, work under way">
+        <rect x="20" y="270" width="170" height="130"/>
+        <text x="105" y="330">Music room</text>
+        <text x="105" y="348" class="g-plan2__sub">In progress</text>
+      </g>
+
+      {# ---- centre: hall and stair ---- #}
+      <g class="g-plan2__r is-done" data-room="hall" tabindex="0" role="button"
+         aria-label="The entrance hall and staircase, finished">
+        <rect x="190" y="20" width="180" height="380"/>
+        <text x="280" y="200">Hall &amp; stair</text>
+        <text x="280" y="218" class="g-plan2__sub">Original stone</text>
+        {# the stair, drawn #}
+        <path d="M240 250h80M240 265h80M240 280h80M240 295h80M240 310h80"
+              class="g-plan2__stair"/>
+        <path d="M240 240v85M320 240v85" class="g-plan2__stair"/>
+      </g>
+
+      {# ---- east range ---- #}
+      <g class="g-plan2__r is-done" data-room="salon" tabindex="0" role="button"
+         aria-label="The main salon, finished">
+        <rect x="370" y="20" width="250" height="140"/>
+        <text x="495" y="82">Salon</text>
+        <text x="495" y="100" class="g-plan2__sub">Gilded</text>
+      </g>
+
+      <g class="g-plan2__r is-done" data-room="bedrooms" tabindex="0" role="button"
+         aria-label="The five finished bedrooms, on the floor above">
+        <rect x="370" y="160" width="130" height="120"/>
+        <text x="435" y="212">Bedrooms</text>
+        <text x="435" y="230" class="g-plan2__sub">Five ready</text>
+      </g>
+
+      <g class="g-plan2__r is-done" data-room="bathrooms" tabindex="0" role="button"
+         aria-label="The bathrooms, finished">
+        <rect x="500" y="160" width="120" height="120"/>
+        <text x="560" y="212">Bathrooms</text>
+        <text x="560" y="230" class="g-plan2__sub">Private</text>
+      </g>
+
+      <g class="g-plan2__r is-raw" data-room="east" tabindex="0" role="button"
+         aria-label="The east rooms, untouched">
+        <rect x="370" y="280" width="250" height="120"/>
+        <text x="495" y="332">East rooms</text>
+        <text x="495" y="350" class="g-plan2__sub">As found</text>
+      </g>
+    </svg>
+
+    <aside class="g-plan2__panel" aria-live="polite">
+      <p class="g-plan2__state" data-plan2-state></p>
+      <h3 class="g-plan2__name" data-plan2-name></h3>
+      <p class="g-plan2__d" data-plan2-desc></p>
+      <p data-plan2-cta></p>
+    </aside>
+  </div>
+
+  <p class="g-hint">A drawing, not a survey. The principal floor only — the
+    bedrooms are above it, and eighty-nine rooms are not on this plan at all.</p>
+</div>
+<script>
+/* The plan. Every room's copy lives here rather than in the markup, so the
+   SVG stays a drawing and the text stays editable in one place. */
+(function(){
+  var root=document.querySelector('[data-plan2]');
+  if(!root) return;
+  var ROOMS={
+    kitchen:{s:'Finished',n:'The Renaissance kitchen',
+      d:'Where dinner is cooked. The vaulting and the range are original; everything that touches food is not. On some days it is cooked from the château\'s own eighteenth-century recipe book.',
+      cta:['Dine at La Table','/la-table']},
+    dining:{s:'Finished',n:'The dining salon',
+      d:'Forty seated, one sitting a night. Above forty, dinner moves outdoors to the terraces.',
+      cta:['See La Table','/la-table']},
+    music:{s:'Work under way',n:'The music room',
+      d:'Plaster off, panelling exposed, and a conservator working across it at about a centimetre a morning. Not a room you can stay in yet.',
+      cta:['Follow the restoration','/restoration']},
+    hall:{s:'Finished',n:'The hall and staircase',
+      d:'Original stone, and a 1970s concrete stair that is staying — it is part of what happened to the building. There are no handrails in places, which is why the youngest guest is eight.',
+      cta:null},
+    salon:{s:'Finished',n:'The main salon',
+      d:'Gilded panelling that survived a century and a half of emptiness. Aperitifs happen here, and it is the room most guests remember.',
+      cta:null},
+    bedrooms:{s:'Finished',n:'Five bedrooms',
+      d:'Of ninety-four rooms, five are ready. Antique French beds, vintage monogrammed linen, floors relaid by hand — inside walls that are protected and unchanged.',
+      cta:['See the rooms','/stay']},
+    bathrooms:{s:'Finished',n:'The bathrooms',
+      d:'A few steps along the corridor rather than through a bedroom door. Ensuites are not permitted in a monument of this class, so the bathrooms are private but not attached.',
+      cta:['See the rooms','/stay']},
+    east:{s:'Untouched',n:'The east rooms',
+      d:'As found. Bare plaster, weathered stone, and in places the ivy that came through the windows before 2013. Photographed, not restored.',
+      cta:['See the archive','/gallery#archive']}
+  };
+  var S=root.querySelector('[data-plan2-state]'), N=root.querySelector('[data-plan2-name]'),
+      D=root.querySelector('[data-plan2-desc]'), C=root.querySelector('[data-plan2-cta]');
+
+  function show(key){
+    var r=ROOMS[key]; if(!r) return;
+    root.querySelectorAll('.g-plan2__r').forEach(function(x){ x.classList.remove('is-on'); });
+    var el=root.querySelector('[data-room="'+key+'"]'); if(el) el.classList.add('is-on');
+    S.textContent=r.s; N.textContent=r.n; D.textContent=r.d;
+    C.innerHTML = r.cta ? '<a class="g-btn" href="'+r.cta[1]+'">'+r.cta[0]+'</a>' : '';
+  }
+  root.addEventListener('click', function(e){
+    var g=e.target.closest('[data-room]'); if(g) show(g.dataset.room);
+  });
+  root.addEventListener('keydown', function(e){
+    if(e.key!=='Enter' && e.key!==' ') return;
+    var g=e.target.closest('[data-room]');
+    if(g){ e.preventDefault(); show(g.dataset.room); }
+  });
+  show('bedrooms');
+})();
+</script>
+{% endmacro %}
+

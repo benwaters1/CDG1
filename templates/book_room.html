@@ -60,7 +60,7 @@
   <ul class="g-tags">{% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}</ul>
   {% endif %}
 
-  <form method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
+  <form id="book-form" method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem);">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="g-cols">
@@ -105,7 +105,7 @@
             </p>
           </div>
           {# Beneath both fields, not inside one — it describes the party. #}
-          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de séjour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
+          <p class="g-hint g-hint--row">Guests under eighteen. Children are welcome from eight. The staircases are eighteenth-century and there are no handrails in places. Up to {{ room['max_occupancy'] }} in this room, adults and children together. Under-18s are exempt from the taxe de sejour, so the count is what keeps a family from being overcharged and the commune's return right.</p>
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
@@ -171,7 +171,7 @@
           <p class="g-field">
             <label for="special_requests">Dietary needs, occasion, arrival time, questions</label>
             <textarea id="special_requests" name="special_requests" rows="4" placeholder="Dietary needs, occasion, arrival time, questions...">{{ prefill_requests | default('') }}</textarea>
-            <span class="g-hint">Send dietary requirements early and they are designed into the menu rather than worked around on the night.</span>
+              <span class="g-hint">Anything here can be changed after booking — use the link in your confirmation.</span>
           </p>
           <p class="g-field g-field--narrow">
             <label for="promo_code">Promo code <span class="g-opt">optional</span></label>
@@ -231,9 +231,9 @@
 
           {% if stripe_enabled and room['price_per_night'] %}
           <button type="submit" class="g-btn g-submit">Pay &amp; request to book</button>
-          <p class="g-foot-note">You pay the total on the next page, through Stripe. Every request is still read at the château — if it is declined, the refund is automatic. You will get a reference code and a link to manage the booking.</p>
+          <p class="g-foot-note">Your dates are held from the moment you submit. The château confirms within a day, and you get a reference code and a link to change anything — dates, guests, extras, or what the kitchen should know.</p>
           {% else %}
-          <button type="submit" class="g-btn g-submit">Request to book</button>
+          <button type="submit" class="g-btn g-submit">Hold these dates</button>
           <p class="g-foot-note">This is a booking request, not an instant confirmation — the château will review and confirm it. Your dates are held in the meantime. You will get a reference code and a link on the next page — save it, since that is how you will check your booking's status.</p>
           {% endif %}
         </div>
@@ -603,4 +603,15 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   sync();
 })();
 </script>
+
+{# Below two columns the panel sits at the foot of a long page, so the button
+   is unreachable without scrolling back. This bar carries the total and the
+   same submit. #}
+<div class="g-bookbar" role="region" aria-label="Your booking">
+  <span class="g-bookbar__sum">
+    <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '%.0f'|format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
+    <span class="g-bookbar__n" data-bar-note>{{ room['name'] }}</span>
+  </span>
+  <button type="submit" form="{{ book_form_id|default('book-form') }}" class="g-btn g-btn--solid">Hold these dates</button>
+</div>
 {% endblock %}

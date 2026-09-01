@@ -1,0 +1,77 @@
+{# ==========================================================================
+   COMPARE TWO ROOMS SIDE BY SIDE  — 3
+   Five rooms and a guest deciding between two of them currently scrolls
+   between cards. This puts any two next to each other.
+
+       {% from '_compare_rooms.html' import compare_rooms %}
+       {{ compare_rooms(rooms) }}
+   ========================================================================== #}
+{% from '_room_copy.html' import room_copy %}
+{% macro compare_rooms(rooms) %}
+{% if rooms and rooms|length > 1 %}
+<div class="g-cmp" data-cmp>
+  <div class="g-cmp__pick">
+    <p class="g-field g-field--narrow">
+      <label for="cmp_a">First room</label>
+      <select id="cmp_a" data-cmp-a>
+        {% for r in rooms %}<option value="{{ loop.index0 }}"{% if loop.first %} selected{% endif %}>{{ r['name'] }}</option>{% endfor %}
+      </select>
+    </p>
+    <p class="g-field g-field--narrow">
+      <label for="cmp_b">Second room</label>
+      <select id="cmp_b" data-cmp-b>
+        {% for r in rooms %}<option value="{{ loop.index0 }}"{% if loop.index0 == 1 %} selected{% endif %}>{{ r['name'] }}</option>{% endfor %}
+      </select>
+    </p>
+  </div>
+
+  <div class="g-cmp__out">
+    <table class="g-cmp__t">
+      <caption class="g-vh">The two rooms compared</caption>
+      <thead>
+        <tr><th scope="col">&nbsp;</th>
+            <th scope="col" data-cmp-name-a></th>
+            <th scope="col" data-cmp-name-b></th></tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">A night</th><td data-cmp-price-a></td><td data-cmp-price-b></td></tr>
+        <tr><th scope="row">Sleeps</th><td data-cmp-sleeps-a></td><td data-cmp-sleeps-b></td></tr>
+        <tr><th scope="row">Bathroom</th><td data-cmp-bath-a></td><td data-cmp-bath-b></td></tr>
+        <tr><th scope="row">In short</th><td data-cmp-desc-a></td><td data-cmp-desc-b></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script id="cmp-data" type="application/json">
+{{ rooms | map(attribute='name') | list | tojson }}
+</script>
+<script>
+/* Two rooms side by side. The data comes from the page rather than a fetch,
+   so this works on the room list as rendered. */
+(function(){
+  var root=document.querySelector('[data-cmp]'); if(!root) return;
+  var ROOMS=[
+    {% for r in rooms %}
+    {name:{{ r['name']|tojson }},
+     price:{{ (r['price_per_night'] or 0)|int }},
+     sleeps:{{ (r['max_occupancy'] or 2)|int }},
+     bath:{{ ('Shared with one other room' if 'Shared' in r['name'] else 'Private, along the corridor')|tojson }},
+     desc:{{ (room_copy(r['name'], r['description'] or '')|truncate(110))|tojson }}}{{ ',' if not loop.last }}
+    {% endfor %}
+  ];
+  var A=root.querySelector('[data-cmp-a]'), B=root.querySelector('[data-cmp-b]');
+  function put(side, r){
+    root.querySelector('[data-cmp-name-'+side+']').textContent=r.name;
+    root.querySelector('[data-cmp-price-'+side+']').textContent='€'+r.price;
+    root.querySelector('[data-cmp-sleeps-'+side+']').textContent=r.sleeps;
+    root.querySelector('[data-cmp-bath-'+side+']').textContent=r.bath;
+    root.querySelector('[data-cmp-desc-'+side+']').textContent=r.desc;
+  }
+  function paint(){ put('a', ROOMS[+A.value]); put('b', ROOMS[+B.value]); }
+  A.addEventListener('change', paint); B.addEventListener('change', paint);
+  paint();
+})();
+</script>
+{% endif %}
+{% endmacro %}
