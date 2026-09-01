@@ -67,7 +67,7 @@ def _employee(name, rate="12.00", pay_type="hourly", status="active"):
 def _wage(user_id, basis, gross):
     """A typed wage record in force from the start of last month."""
     conn = db()
-    first = datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=1)
+    first = m.house_today().replace(day=1) - timedelta(days=1)
     conn.execute(
         """INSERT INTO wage_records (user_id, effective_from, basis, gross_amount,
            created_at) VALUES (?, ?, ?, ?, ?)""",
@@ -249,7 +249,7 @@ def run():
         "SELECT id FROM time_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1",
         (stale["id"],)).fetchone()["id"]
     conn.close()
-    recent = (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat()
+    recent = (m.house_today() - timedelta(days=6)).isoformat()
     html = oc.get(f"/admin/timesheets?start={recent}").get_data(as_text=True)
     s.check("the ninety-day-old open shift is on the page",
             f"/{stale_id}/repair" in html,

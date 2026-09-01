@@ -93,8 +93,11 @@ def run():
                    (TAG + " no date on the receipt",))
     s.check("a claim with no date is still accepted", undated is not None,
             detail=str(flashes(r)))
+    # The day it was handed in HERE. Handed over at 00:30 in the Ariege, the
+    # stamp reads yesterday in UTC, and the claim would be dated the day before
+    # the person walked in with it.
     s.check("and falls back to when it was handed in, rather than to nothing",
-            undated and m.expense_document_date(undated) == (undated["submitted_at"] or "")[:10],
+            undated and m.expense_document_date(undated) == m.house_date_iso(undated["submitted_at"]),
             detail=str(m.expense_document_date(undated)) if undated else "")
 
     s.section("Approving it is on the record")

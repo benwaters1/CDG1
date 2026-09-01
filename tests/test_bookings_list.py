@@ -52,7 +52,7 @@ def _stay(ref, *, room, status="confirmed", arrival_offset=10, nights=2, name=No
     for that argument.
     """
     conn = db()
-    arrival = datetime.now(timezone.utc).date() + timedelta(days=arrival_offset)
+    arrival = m.house_today() + timedelta(days=arrival_offset)
     conn.execute(
         """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
            guest_email, guest_phone, arrival_date, departure_date, party_size,

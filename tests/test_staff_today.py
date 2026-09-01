@@ -22,7 +22,7 @@ TAG = "ZZTODAY"
 def run():
     s = Suite("Staff Today")
     oc, ec, owner, emp = clients()
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
     now = datetime.now(timezone.utc).isoformat()
 
     room = ensure_room()["id"]

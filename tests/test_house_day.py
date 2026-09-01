@@ -50,6 +50,21 @@ class _FrozenDatetime(m.datetime):
         return cls._at.astimezone(tz) if tz else cls._at.replace(tzinfo=None)
 
 
+def _at(instant, fn):
+    """Run fn() as if it were `instant`, then put the real clock back.
+
+    The same swap the breakfast section does inline, named so the sections
+    below can ask the app a question at an hour that is otherwise unreachable.
+    """
+    real = m.datetime
+    _FrozenDatetime._at = instant
+    m.datetime = _FrozenDatetime
+    try:
+        return fn()
+    finally:
+        m.datetime = real
+
+
 def _cleanup(conn):
     conn.execute(
         "DELETE FROM breakfast_checklist_log WHERE item_id IN "
@@ -148,9 +163,100 @@ def run():
             ("today_sheet", "prints who is in the house today")):
         src = inspect.getsource(m.app.view_functions[fn_name])
         s.check(f"{fn_name} ({why}) uses the local day",
-                "datetime.now(LOCAL_TZ).date()" in src
-                and "today = datetime.now(timezone.utc).date()" not in src,
+                "house_today" in src
+                and "datetime.now(timezone.utc).date()" not in src,
                 detail="a UTC calendar date where a local one belongs")
+
+    s.section("Three answers, and the return type picks")
+    # The breakfast sections above prove one page. These prove the rule the
+    # rest of the app now follows, because 125 other call sites had the same
+    # fault and no page of their own to catch it.
+    late = m.datetime(2026, 8, 30, 22, 30, tzinfo=m.timezone.utc)   # 00:30 local
+    s.check("the two clocks disagree at this instant too",
+            late.date().isoformat() == "2026-08-30",
+            detail="if this ever matches, the section below proves nothing")
+    s.check("house_today answers with the house's day",
+            _at(late, m.house_today) == m.date(2026, 8, 31),
+            detail=str(_at(late, m.house_today)))
+    s.check("and the iso form agrees with it",
+            _at(late, m.house_today_iso) == "2026-08-31",
+            detail=str(_at(late, m.house_today_iso)))
+
+    s.section("A stored moment is read here too, not sliced")
+    # The other half of the same fault, and the one that reads as harmless.
+    # Truncating an ISO stamp reads UTC by definition, so anything recorded
+    # after midnight carries yesterday's date all of the next day -- filed
+    # under the wrong heading, aged a day out, invoiced on the wrong date.
+    stamp = "2026-08-30T22:30:00+00:00"
+    s.check("slicing the stamp gives the wrong day", stamp[:10] == "2026-08-30")
+    s.check("reading it in local time gives the right one",
+            m.house_date_iso(stamp) == "2026-08-31", detail=m.house_date_iso(stamp))
+    s.check("a stamp with no zone is assumed UTC, as everything stored is",
+            m.house_date_iso("2026-08-30T22:30:00") == "2026-08-31",
+            detail=m.house_date_iso("2026-08-30T22:30:00"))
+    s.check("midday is the same day either way, which is why this hid so long",
+            m.house_date_iso("2026-08-30T11:00:00+00:00") == "2026-08-30")
+    # Callers do `if not stamp: return None` on the result, so an unreadable
+    # one has to come back falsy rather than raising or returning "None".
+    s.check("nothing in, nothing out",
+            m.house_date(None) is None and m.house_date("") is None
+            and m.house_date("not a date") is None)
+    s.check("and the iso form gives an empty string, not the word None",
+            m.house_date_iso(None) == "" and m.house_date_iso("rubbish") == "",
+            detail=repr(m.house_date_iso(None)))
+
+    s.section("The restaurant has a third answer again")
+    # 01:30 is a new day to the house and last night's service to the till.
+    small_hours = m.datetime(2026, 8, 30, 23, 30, tzinfo=m.timezone.utc)
+    s.check("after midnight the house has turned over",
+            _at(small_hours, m.house_today) == m.date(2026, 8, 31))
+    s.check("but the till is still serving last night",
+            _at(small_hours, m.service_day) == m.date(2026, 8, 30),
+            detail=str(_at(small_hours, m.service_day)))
+    after_five = m.datetime(2026, 8, 31, 8, 0, tzinfo=m.timezone.utc)
+    s.check("and past the rollover the two agree again",
+            _at(after_five, m.service_day) == m.date(2026, 8, 31)
+            and _at(after_five, m.house_today) == m.date(2026, 8, 31))
+
+    s.section("Cashing up at 03:00 still says today")
+    # What the fault cost the till. pos_day's `on` defaults to service_day(),
+    # and pos_close_day independently refuses to close the current service day
+    # without a confirmation tick. The page decided whether to DRAW that tick
+    # box from a UTC date, so at 03:00 the two disagreed: the route demanded
+    # the box and the page had not drawn one. An unclosable till, at the hour
+    # a restaurant closes, and the only symptom is a flash telling you to tick
+    # something that is not on the screen.
+    three_am = m.datetime(2026, 9, 1, 1, 0, tzinfo=m.timezone.utc)
+    s.check("the service day at 03:00 is the night before",
+            _at(three_am, m.service_day) == m.date(2026, 8, 31),
+            detail=str(_at(three_am, m.service_day)))
+    s.check("while a UTC date would have called it the 1st",
+            three_am.date() == m.date(2026, 9, 1),
+            detail="the two disagreed exactly when the till needed them not to")
+    page = _at(three_am, lambda: oc.get("/pos/day").get_data(as_text=True))
+    s.check("at 03:00 the page offers the box the close route insists on",
+            'name="confirm"' in page,
+            detail="the till cannot be closed: refused for a missing tick box "
+                   "that was never rendered")
+
+    s.section("Nowhere left asks Greenwich what day it is")
+    # The ratchet. Everything above is true today; this is what stops the
+    # 126th call site being written next week, the way all 125 were.
+    import os as _os
+    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    app_src = io.open(_os.path.join(root, "app.py"), encoding="utf-8").read()
+    stragglers = app_src.count("datetime.now(timezone.utc).date()")
+    s.check("app.py has no UTC calendar dates left", stragglers == 0,
+            detail="%d call site(s) -- a day is a date and belongs to the "
+                   "house: house_today(), or service_day() if it is the till"
+                   % stragglers)
+    # And the RIGHT answer spelled longhand, which is how this became two
+    # conventions instead of one: 95 sites were already correct, so nothing
+    # ever looked wrong, and the other 125 were just as easy to copy.
+    longhand = app_src.count("datetime.now(LOCAL_TZ).date()")
+    s.check("and only one place decides what today is", longhand == 1,
+            detail="%d site(s) spell it out; house_today() is the definition, "
+                   "everything else calls it" % longhand)
 
     _cleanup(conn)
     conn.close()

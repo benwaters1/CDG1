@@ -2,13 +2,15 @@
 from datetime import datetime, timezone
 
 from _harness import Suite, clients, db, flashes
+import _harness
 
+m = _harness.m
 TAG = "ZZHR"
 
 
 def run():
     s = Suite("HR compliance")
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
     oc, ec, owner, emp = clients()
 
     s.section("Incidents: log, close, and keep staff out")

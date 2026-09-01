@@ -12,7 +12,7 @@ import _harness
 
 m = _harness.m
 TAG = "ZZOPS"
-TODAY = datetime.now(timezone.utc).date()
+TODAY = m.house_today()
 FAR = (TODAY + timedelta(days=340)).isoformat()
 FAR2 = (TODAY + timedelta(days=342)).isoformat()
 

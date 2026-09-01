@@ -43,7 +43,7 @@ def run():
     s = Suite("Owner home")
     _cleanup()
     oc, ec, owner, emp = clients()
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
     now = datetime.now(timezone.utc).isoformat()
 
     s.section("It loads, and only for the owner")

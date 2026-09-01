@@ -445,9 +445,53 @@ def _load_dotenv():
 
 _load_dotenv()
 
-# Everything is stored in UTC; this is only for displaying clock in/out times
-# in the château's own local time (handles the CET/CEST switch automatically).
+# Everything is stored in UTC. This is the château's own clock, and it settles
+# two different questions: what a stored moment reads as in local time, and
+# what day it is here right now (CET/CEST switch handled automatically).
 LOCAL_TZ = ZoneInfo(os.environ.get("LOCAL_TZ", "Europe/Paris"))
+
+
+def house_today():
+    """What day it is at the château.
+
+    A UTC calendar date is not this. Between midnight and 02:00 in the Ariège
+    the two disagree, and every comparison against a date COLUMN — arrival,
+    expiry, due, the shift roster, the breakfast list — is asking about the
+    house's day, not Greenwich's. That fault has been fixed three separate
+    times in single places; this is the single place.
+
+    Timestamps stay UTC. The rule is the return type: a moment is a datetime
+    and belongs in UTC, a day is a date and belongs to the house. The restaurant
+    has a third answer again — see service_day(), whose day ends at 05:00.
+    """
+    return datetime.now(LOCAL_TZ).date()
+
+
+def house_today_iso():
+    return house_today().isoformat()
+
+
+def house_date(stamp):
+    """The house's calendar date for a stored UTC timestamp.
+
+    Slicing an ISO stamp with [:10] reads UTC, so anything recorded between
+    midnight and 02:00 local carries yesterday's date all day. Anywhere that
+    date is shown to a person, or bucketed as "Today", it has to be converted
+    first rather than truncated.
+    """
+    if not stamp:
+        return None
+    when = parse_datetime_iso(stamp)
+    if not when:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(LOCAL_TZ).date()
+
+
+def house_date_iso(stamp):
+    day = house_date(stamp)
+    return day.isoformat() if day else ""
 
 DEFAULT_TERMS = """DRAFT — NOT YET REVIEWED BY A LAWYER. This is a starting point written
 to match how the château actually operates, not legal advice. Have it reviewed
@@ -4859,7 +4903,7 @@ def init_db():
     conn.commit()
 
     if not conn.execute("SELECT 1 FROM restaurant_settings WHERE id = 1").fetchone():
-        default_opening = (datetime.now(timezone.utc).date() + timedelta(days=42)).isoformat()
+        default_opening = (house_today() + timedelta(days=42)).isoformat()
         conn.execute(
             """INSERT INTO restaurant_settings (id, opening_date, dinner_time, capacity, enabled, updated_at)
                VALUES (1, ?, '19:30', 20, 0, ?)""",
@@ -5403,7 +5447,7 @@ def wage_reviews_due(conn, today=None):
     the question this answers is how long somebody has actually been on the
     same money.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or house_today()
     months = int(wage_setting(conn, "wage_review_months"))
     if months <= 0:
         return []
@@ -5457,7 +5501,7 @@ def wage_on(conn, user_id, on_date):
 
 def current_wages(conn, on_date=None):
     """The wage in force for every employee today, keyed by user id."""
-    on_date = (on_date or datetime.now(timezone.utc).date()).isoformat()
+    on_date = (on_date or house_today()).isoformat()
     out = {}
     for row in conn.execute(
         """SELECT w.* FROM wage_records w
@@ -5680,7 +5724,7 @@ def cash_outlook(conn, months=6, today=None):
       - enquiries that are not confirmed, because a maybe is not money
       - anything a guest has already paid, which is in the bank, not coming in
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or house_today()
     first = today.replace(day=1)
     rows = []
     for i in range(max(1, months)):
@@ -6261,7 +6305,7 @@ def leave_accrual(conn, person, on_date=None):
     Capped at the annual entitlement when one is set on the person, because an
     agreement saying "25 days" is a ceiling and accrual is how you get there.
     """
-    today = on_date or datetime.now(timezone.utc).date()
+    today = on_date or house_today()
     year_start, year_end = leave_year_window(conn, today)
     rate = leave_setting(conn, "leave_accrual_days_per_month")
 
@@ -6349,7 +6393,7 @@ def financial_trend(conn, months, today=None):
     directly above figures produced the other way, and two different answers to
     "what did June make" is worse than a slow page.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or house_today()
     start = today.replace(day=1)
     for _ in range(months - 1):
         start = date(start.year - 1, 12, 1) if start.month == 1 else date(start.year, start.month - 1, 1)
@@ -6633,7 +6677,7 @@ def expiry_status(expiry_date_iso, soon_days=30):
     d = parse_date(expiry_date_iso)
     if not d:
         return None
-    days_left = (d - datetime.now(timezone.utc).date()).days
+    days_left = (d - house_today()).days
     if days_left < 0:
         return "expired"
     if days_left <= soon_days:
@@ -6698,7 +6742,7 @@ def resolve_period(period=None, anchor=None, today=None):
     off-by-one on the final day. Also hands back the previous/next anchors so
     a page can offer arrows without recomputing the calendar itself.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or house_today()
     period = (period or "month").lower()
     if period not in PERIOD_CHOICES:
         period = "month"
@@ -7040,7 +7084,7 @@ def room_arrivals_soon(conn, room_id, within_days=10):
     A maintenance list sorted by date treats "the lamp in a room nobody is in
     until March" and "no hot water, guests Friday" as the same job.
     """
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     return conn.execute(
         """SELECT id, reference_code, guest_name, arrival_date, party_size, manage_token
            FROM bookings
@@ -7056,7 +7100,7 @@ def arrivals_by_room(conn, room_ids, within_days=10):
     room_ids = [r for r in set(room_ids) if r]
     if not room_ids:
         return {}
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     marks = ",".join("?" * len(room_ids))
     rows = conn.execute(
         f"""SELECT room_id, guest_name, arrival_date, party_size FROM bookings
@@ -7074,7 +7118,7 @@ def arrivals_by_room(conn, room_ids, within_days=10):
 def days_until(iso_date):
     """Whole days from today to an ISO date. Negative if it has passed."""
     try:
-        return (date.fromisoformat(iso_date[:10]) - datetime.now(timezone.utc).date()).days
+        return (date.fromisoformat(iso_date[:10]) - house_today()).days
     except (TypeError, ValueError):
         return None
 
@@ -7099,7 +7143,7 @@ def committed_stock(conn, item_ids, within_days=14):
     item_ids = [i for i in set(item_ids) if i]
     if not item_ids:
         return {}
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     marks = ",".join("?" * len(item_ids))
     rows = conn.execute(
         f"""SELECT extras.stock_item_id AS item_id,
@@ -8468,7 +8512,7 @@ def build_calendar(conn, view, anchor, viewer=None):
         if row["date"]:
             by_date.setdefault(row["date"], []).append(row)
 
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     cells = []
     d = grid_start
     while d < grid_end:
@@ -8706,7 +8750,7 @@ def create_leaver_documents(conn, employee, on_date=None):
     declaration filed through the employer's own channel, not a letter, and a
     plausible-looking draft of one would be worse than none.
     """
-    today = on_date or datetime.now(timezone.utc).date()
+    today = on_date or house_today()
     who = _employer_identity(conn)
     started = employee["start_date"] or "(not recorded)"
     ended = employee["contract_end_date"] or today.isoformat()
@@ -8989,7 +9033,7 @@ def validate_promo_code(conn, code, category, subtotal):
         return None, 0.0, PROMO_REFUSED
     if not promo["active"]:
         return None, 0.0, PROMO_REFUSED
-    today_iso = datetime.now(timezone.utc).date().isoformat()
+    today_iso = house_today_iso()
     if promo["valid_from"] and today_iso < promo["valid_from"]:
         return None, 0.0, PROMO_REFUSED
     if promo["valid_until"] and today_iso > promo["valid_until"]:
@@ -9014,7 +9058,7 @@ def promo_refusal_reason(conn, code, category, subtotal):
         return "No such code."
     if not promo["active"]:
         return "The code is switched off."
-    today_iso = datetime.now(timezone.utc).date().isoformat()
+    today_iso = house_today_iso()
     if promo["valid_from"] and today_iso < promo["valid_from"]:
         return f"Not valid until {promo['valid_from']}."
     if promo["valid_until"] and today_iso > promo["valid_until"]:
@@ -10052,7 +10096,7 @@ def overtime_history(conn, *, weeks=12, today=None, threshold=STANDARD_WEEK_HOUR
     week_overtime already counts, so the two can never disagree about which
     week a Sunday night belongs to.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     this_monday = today - timedelta(days=today.weekday())
     first_monday = this_monday - timedelta(weeks=weeks - 1)
 
@@ -10185,7 +10229,7 @@ def absences_missing_certificate(conn, *, today=None):
 
     Only past or current absences: a future one may well have the note coming.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     rows = conn.execute(
         """SELECT absences.*, users.name AS employee_name
              FROM absences JOIN users ON users.id = absences.user_id
@@ -10215,7 +10259,7 @@ def things_still_out(conn, *, today=None):
     outranks a laptop lent last week however long each has been gone, because
     one is a person who can still open a door.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     out = []
 
     def age(stamp):
@@ -10369,7 +10413,7 @@ def discount_outcomes(conn, *, months=12, today=None):
     evidence available, and the page is explicit that it is evidence and
     not proof.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
 
     rooms = conn.execute(
@@ -10442,7 +10486,7 @@ def night_cost(conn, *, months=3, today=None, start=None, end=None):
     """
     # An explicit window wins over the months shorthand. The page uses the
     # shorthand; anything asking about a particular period says so.
-    today = end or today or datetime.now(LOCAL_TZ).date()
+    today = end or today or house_today()
     start = start or (today - timedelta(days=30 * months))
     start_iso, end_iso = start.isoformat(), today.isoformat()
     # A second bound for the TIMESTAMP columns. `created_at < '2026-09-01'`
@@ -10536,7 +10580,7 @@ def room_economics(conn, *, months=12, today=None):
     it — otherwise a long stay in January would land entirely in whichever
     month the report happened to start.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     start = _add_months(today.replace(day=1), -months + 1)
     end = today
     if end < start:
@@ -10626,7 +10670,7 @@ def repeat_guests(conn, *, today=None, min_stays=2):
     one night and eats here four times is a regular by any reading that
     matters.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
 
     people = {}
 
@@ -10841,7 +10885,7 @@ def rota_vs_clock(conn, start, end, *, today=None):
     wrong about those is already the rota-clash page's job, and saying it
     twice in different words trains people to ignore both.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     if isinstance(start, str):
         start = parse_date(start)
     if isinstance(end, str):
@@ -11182,7 +11226,7 @@ def rooms_sold_with_a_fault(conn, *, today=None, days=30):
     a pending request is not yet a promise, and flagging it would bury the
     ones that are.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     horizon = (today + timedelta(days=days)).isoformat()
     rows = conn.execute(
         """SELECT bookings.id AS booking_id, bookings.reference_code,
@@ -11378,7 +11422,7 @@ def outstanding_balances(conn, *, today=None):
     booking_bill, so a stay refunded in full shows nothing rather than showing
     its original price as a debt.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     if isinstance(today, str):
         today = parse_date(today)
     iso = today.isoformat()
@@ -11499,7 +11543,7 @@ def money_held_not_earned(conn, *, today=None):
     that is exactly right. This is the other question about the same euros,
     and the two must not be added together.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     iso = today.isoformat()
     out = {"rooms": [], "workshops": [], "restaurant": []}
 
@@ -11941,7 +11985,7 @@ def booking_bill(conn, booking_id):
     deposit_amount = booking["deposit_amount"] if "deposit_amount" in booking.keys() else None
     deposit_paid_at = booking["deposit_paid_at"] if "deposit_paid_at" in booking.keys() else None
     overdue = bool(due_date and owed > 0.005
-                   and due_date < datetime.now(timezone.utc).date().isoformat())
+                   and due_date < house_today_iso())
     return {
         "booking": booking,
         "lines": lines,
@@ -14022,14 +14066,14 @@ def collect_hr_actions(conn, today):
            LEFT JOIN users ON users.id = expenses.submitted_by_user_id WHERE expenses.status = 'pending'"""
     ).fetchall():
         add("expense", r["id"], r["submitted_by_user_id"],
-            f"{r['n'] or r['vendor_name'] or 'Unknown'} — €{r['amount']:.2f}", (r["submitted_at"] or "")[:10], "/admin/approvals")
+            f"{r['n'] or r['vendor_name'] or 'Unknown'} — €{r['amount']:.2f}", house_date_iso(r["submitted_at"]), "/admin/approvals")
 
     for r in conn.execute(
         """SELECT timesheet_corrections.*, users.name AS n FROM timesheet_corrections
            JOIN users ON users.id = timesheet_corrections.user_id WHERE timesheet_corrections.status = 'pending'"""
     ).fetchall():
         add("timesheet_correction", r["id"], r["user_id"],
-            f"{r['n']} — {(r['note'] or '')[:50]}", (r["created_at"] or "")[:10], "/admin/timesheet-corrections")
+            f"{r['n']} — {(r['note'] or '')[:50]}", house_date_iso(r["created_at"]), "/admin/timesheet-corrections")
 
     try:
         for r in conn.execute(
@@ -14037,7 +14081,7 @@ def collect_hr_actions(conn, today):
                JOIN users ON users.id = hr_notes.user_id WHERE hr_notes.status = 'open'"""
         ).fetchall():
             add("hr_note", r["id"], r["user_id"], f"{r['n']} — {(r['body'] or '')[:50]}",
-                (r["created_at"] or "")[:10], "/admin/hr-notes")
+                house_date_iso(r["created_at"]), "/admin/hr-notes")
     except sqlite3.OperationalError:
         pass
 
@@ -14125,7 +14169,7 @@ def run_hr_escalation_job(conn):
     than a daily nag, and anything that gets dealt with is closed off
     automatically rather than needing to be dismissed by hand.
     """
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     now_iso = datetime.now(timezone.utc).isoformat()
     rules = hr_escalation_rules(conn)
     owner_row = conn.execute("SELECT id FROM users WHERE role = 'owner' LIMIT 1").fetchone()
@@ -14988,7 +15032,7 @@ def send_campaign_template(template_id):
     months_raw = request.form.get("since_months", "").strip()
     since_iso = None
     if months_raw.isdigit() and int(months_raw) > 0:
-        since_iso = (datetime.now(timezone.utc).date()
+        since_iso = (house_today()
                      - timedelta(days=30 * int(months_raw))).isoformat()
 
     user = current_user()
@@ -16672,7 +16716,7 @@ def next_filing_due(due_on, every, due_day=None):
 
 def filings_due(conn, today=None):
     """Everything owed, worst first, with the ones already filed left out."""
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     rows = conn.execute(
         "SELECT * FROM filing_obligations WHERE active = 1 ORDER BY due_on"
     ).fetchall()
@@ -16742,7 +16786,7 @@ def cancellation_reasons(conn, *, months=12, today=None):
     explained ones would make a handful of answers look like the whole
     picture.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
     rows = conn.execute(
         """SELECT COALESCE(cancel_reason, '') AS reason, COUNT(*) AS n
@@ -16773,7 +16817,7 @@ def enquiry_conversion(conn, *, months=12, today=None):
     Including them as failures would make this month always look terrible,
     because this month's enquiries have not had time to become anything.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
     rows = conn.execute(
         """SELECT status, COUNT(*) AS n FROM event_inquiries
@@ -16800,7 +16844,7 @@ def enquiry_conversion(conn, *, months=12, today=None):
 
 def handover_notes(conn, *, days=7, today=None, user_id=None):
     """Recent handover notes, newest first, with whether this person read them."""
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=days)).isoformat()
     rows = conn.execute(
         """SELECT shift_handovers.*, users.name AS written_by,
@@ -16826,7 +16870,7 @@ def delivery_shortfalls(conn, *, months=6, today=None):
     knowing too, because a supplier who sends more than they billed will
     eventually bill for it.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
     rows = conn.execute(
         """SELECT stock_movements.*, stock_items.name, stock_items.unit,
@@ -16862,7 +16906,7 @@ def price_changes(conn, *, months=12, today=None, threshold=0.05):
     Compared per item AND per supplier: the same crate from two merchants
     at two prices is not a price rise, it is two merchants.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
     rows = conn.execute(
         """SELECT stock_movements.stock_item_id, stock_movements.unit_cost,
@@ -16913,7 +16957,7 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
     both halves. This puts one half in a readable order so a person can
     run a finger down two lists.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
     rows = conn.execute(
         """SELECT * FROM expenses
@@ -17130,7 +17174,7 @@ def covers_ahead(conn, days=21, today=None):
     Confirmed only, and no-shows taken off. Buying for people who never
     came is the mistake this is meant to prevent, not cause.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     end = today + timedelta(days=days)
     rows = conn.execute(
         """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers,
@@ -17160,7 +17204,7 @@ def what_sells(conn, *, days=90, today=None, limit=None):
     Voided lines are left out: a line struck off was not sold, and counting
     it would rank a dish by how often it is keyed in by mistake.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=days)).isoformat()
     query = """SELECT pos_order_lines.name,
                       COALESCE(SUM(pos_order_lines.quantity), 0) AS sold,
@@ -17232,7 +17276,7 @@ def cleaning_rounds_due(conn, today=None):
     A staircase swept four days late does not want sweeping three days
     early next time.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     rows = conn.execute(
         "SELECT * FROM cleaning_rounds WHERE active = 1").fetchall()
     out = []
@@ -17298,7 +17342,7 @@ BREAKAGE_DECISIONS = {
 
 def breakages_list(conn, *, undecided_only=False, months=12, today=None):
     """What has been broken or taken, most recent first."""
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=30 * months)).isoformat()
     query = """SELECT breakages.*, rooms.name AS room_name,
                       bookings.guest_name, bookings.arrival_date,
@@ -17551,7 +17595,7 @@ def owner_home_queue(conn):
             "title": e["vendor_name"] or e["who"] or e["description"] or "Expense",
             "detail": e["description"] or "",
             "amount": f"€{(e['amount'] or 0):,.2f}",
-            "age": (e["submitted_at"] or "")[:10],
+            "age": house_date_iso(e["submitted_at"]),
             "tone": "money", "ok_label": "Approve", "no_label": "Reject",
             "bulk_eligible": (e["amount"] or 0) < 100,
             "endpoint": url_for("decide_expense", expense_id=e["id"]) if "decide_expense" in app.view_functions else None,
@@ -17581,7 +17625,7 @@ def owner_home_queue(conn):
         out.append({
             "kind": "Timesheet", "who": c["who"] or "—", "title": c["who"] or "Timesheet",
             "detail": c["note"] or "needs checking",
-            "amount": "—", "age": (c["created_at"] or "")[:10],
+            "amount": "—", "age": house_date_iso(c["created_at"]),
             # Never bulk: a timesheet edit rewrites a pay record.
             "tone": "people", "ok_label": "Fix", "no_label": "Dismiss",
             "bulk_eligible": False, "endpoint": None,
@@ -17648,7 +17692,7 @@ def unanswered_reviews(conn, *, days=60, today=None):
     furniture; "unanswered" is what lets it close itself, the same way the
     watch tasks do.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     since = (day - timedelta(days=max(1, days))).isoformat()
     rooms = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code, bookings.guest_email,
@@ -18101,7 +18145,7 @@ def dashboard():
                  JOIN workshops ON workshops.id = workshop_sessions.workshop_id
                 WHERE workshops.active = 1 AND workshop_sessions.start_date >= ?
                 ORDER BY workshop_sessions.start_date LIMIT 3""",
-            (datetime.now(timezone.utc).date().isoformat(),)).fetchall()]
+            (house_today_iso(),)).fetchall()]
         conn.close()
         # Both are optional in the template, so an empty house still renders.
         return render_template("home.html", rooms=rooms, upcoming=upcoming)
@@ -18113,7 +18157,7 @@ def staff_dashboard():
     user = current_user()
     conn = get_db()
     stats = {}
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     briefing = None
     my_tasks = []
 
@@ -18518,7 +18562,7 @@ def office_display():
             abort(403)
 
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
 
     on_shift_now = [
         dict(r, initials="".join(w[0] for w in r["user_name"].split()[:2]).upper())
@@ -18662,7 +18706,7 @@ def directory():
     period = period_from_request()
     overview = None
     if user["role"] == "owner":
-        overview = employee_overview(conn, period, datetime.now(timezone.utc).date())
+        overview = employee_overview(conn, period, house_today())
         employees = conn.execute(
             "SELECT * FROM users WHERE role = 'employee' ORDER BY status, name"
         ).fetchall()
@@ -18816,7 +18860,7 @@ def profile(user_id):
            ORDER BY submitted_at DESC""",
         (user_id,),
     ).fetchall()
-    today_for_stats = datetime.now(timezone.utc).date()
+    today_for_stats = house_today()
     week_ago_for_stats = (today_for_stats - timedelta(days=7)).isoformat()
     month_ago_for_stats = (today_for_stats - timedelta(days=30)).isoformat()
     task_stats = {
@@ -18870,7 +18914,7 @@ def profile(user_id):
     shift_hours = net_hours_for_entries(conn, recent_shifts)
     access_holdings = access_held_by(conn, user_id) if user["role"] == "owner" else []
     compliance_gaps = [
-        g for g in role_compliance(conn, datetime.now(timezone.utc).date())
+        g for g in role_compliance(conn, house_today())
         if g["user_id"] == user_id
     ] if user["role"] == "owner" else []
     conn.close()
@@ -19348,7 +19392,7 @@ def delete_check_in_note(user_id, note_id):
 @owner_required
 def admin_hr():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     period = period_from_request()
     employees = conn.execute(
         "SELECT * FROM users WHERE role = 'employee' AND status = 'active' ORDER BY name"
@@ -19764,7 +19808,7 @@ def my_availability():
     rules = {r["weekday"]: r for r in conn.execute(
         "SELECT * FROM availability_rules WHERE user_id = ?", (user["id"],)
     ).fetchall()}
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     exceptions = conn.execute(
         "SELECT * FROM availability_exceptions WHERE user_id = ? AND on_date >= ? ORDER BY on_date",
         (user["id"], today.isoformat()),
@@ -19922,7 +19966,7 @@ def timesheet_query(conn, employee_id, start, end):
 @owner_required
 def admin_timesheets():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     employee_id = request.args.get("employee_id", "").strip()
     start = parse_date(request.args.get("start", "")) or (today - timedelta(days=13))
     end = parse_date(request.args.get("end", "")) or today
@@ -20011,7 +20055,7 @@ def admin_timesheets():
 @owner_required
 def export_timesheets_csv():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     employee_id = request.args.get("employee_id", "").strip()
     start = parse_date(request.args.get("start", "")) or (today - timedelta(days=13))
     end = parse_date(request.args.get("end", "")) or today
@@ -20040,7 +20084,7 @@ def export_timesheets_csv():
 @owner_required
 def export_timesheets_summary_csv():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     employee_id = request.args.get("employee_id", "").strip()
     start = parse_date(request.args.get("start", "")) or (today - timedelta(days=13))
     end = parse_date(request.args.get("end", "")) or today
@@ -20124,7 +20168,7 @@ def admin_timesheet_corrections():
 @owner_required
 def admin_incidents():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     status_filter = request.args.get("status", "open")
     query = """SELECT incidents.*, u.name AS affected_name, r.name AS reporter_name,
                       insurance_policies.provider AS insurer
@@ -20255,7 +20299,7 @@ def update_incident(incident_id):
 @owner_required
 def admin_compliance():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     gaps = role_compliance(conn, today)
     requirements = conn.execute(
         "SELECT * FROM role_requirements ORDER BY job_role, requirement_type, requirement").fetchall()
@@ -20329,7 +20373,7 @@ def stock_basket():
     can act on.
     """
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     basket = shopping_basket(conn, today)
     conn.close()
     overview = [
@@ -20818,12 +20862,13 @@ def pos_order(order_id):
     stock = stock_levels(conn, [i["stock_item_id"] for items in menu.values()
                                 for i in items if i.get("stock_item_id")])
     context = pos_table_context(conn, bill["order"])
+    # The service day, not the calendar day: a tab opened at 01:00 belongs to
+    # the night that is still being served, and so does the guest sitting at it.
+    serving = service_day_iso()
     in_house = conn.execute(
         """SELECT id, guest_name, reference_code, room_id FROM bookings
            WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date >= ?
-           ORDER BY guest_name""",
-        (datetime.now(timezone.utc).date().isoformat(),
-         datetime.now(timezone.utc).date().isoformat())).fetchall()
+           ORDER BY guest_name""", (serving, serving)).fetchall()
     payments = conn.execute(
         """SELECT pos_payments.*, users.name AS taken_by FROM pos_payments
            LEFT JOIN users ON users.id = pos_payments.taken_by_user_id
@@ -21849,7 +21894,7 @@ def pos_day():
     return render_template("pos_day.html", report=report, overview=overview, on=on,
                            closure=closure, chain=chain, events=events,
                            payment_methods=POS_PAYMENT_METHODS,
-                           is_today=on == datetime.now(timezone.utc).date(),
+                           is_today=on == service_day(),
                            prev_day=on - timedelta(days=1), next_day=on + timedelta(days=1))
 
 
@@ -22698,7 +22743,7 @@ def api_palette():
 @owner_required
 def admin_assets():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     category = request.args.get("category", "")
     q = request.args.get("q", "").strip()
     show = request.args.get("status", "current")
@@ -22831,7 +22876,7 @@ def update_asset(asset_id):
     # Disposed items keep their record; only the date is stamped. Deleting them
     # would erase the evidence that the estate ever owned the thing, which is
     # exactly what a historic claim or a probate valuation needs.
-    disposed = (datetime.now(timezone.utc).date().isoformat()
+    disposed = (house_today_iso()
                 if status in ("sold", "lost", "destroyed") and not asset["disposed_on"]
                 else asset["disposed_on"] if status in ("sold", "lost", "destroyed") else None)
     conn.execute(
@@ -23777,7 +23822,7 @@ def current_announcements(conn, today):
 @login_required
 def announcements():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     user = current_user()
     current = current_announcements(conn, today)
     # Recorded on the way in: the owner opening their own board should not
@@ -23991,7 +24036,7 @@ def breakfast():
     # The house's date, not the server's. A morning checklist and who is
     # sleeping here are both French calendar facts, and for the two hours
     # after midnight in Paris the UTC clock still says yesterday.
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     items = conn.execute(
         "SELECT * FROM breakfast_items ORDER BY COALESCE(category, 'zzz'), name"
     ).fetchall()
@@ -24027,7 +24072,7 @@ def toggle_breakfast_item(item_id):
         return jsonify(error="not found"), 404
     # Must be the same day the page above reads back, or a tick made after
     # midnight is written against a date nothing ever looks at.
-    today = datetime.now(LOCAL_TZ).date().isoformat()
+    today = house_today_iso()
     existing = conn.execute(
         "SELECT id FROM breakfast_checklist_log WHERE item_id = ? AND checklist_date = ?",
         (item_id, today),
@@ -24136,7 +24181,7 @@ def notifications_page():
     unread = {n["id"] for n in items if not n["read_at"]}
     conn.close()
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     lv = list_view(
         items, request.args,
         search=["title", "body"],
@@ -24147,8 +24192,10 @@ def notifications_page():
             facet("kind", "About", lambda n: (n["kind"] or "").replace("_", " ") or None,
                   limit=10),
             facet("when", "When",
-                  lambda n: "Today" if (n["created_at"] or "")[:10] == today else (
-                      "This week" if (n["created_at"] or "")[:10]
+                  # house_date_iso, not [:10]: a note left at 00:30 is stamped
+                  # yesterday in UTC and would read "This week" all morning.
+                  lambda n: "Today" if house_date_iso(n["created_at"]) == today else (
+                      "This week" if house_date_iso(n["created_at"])
                       >= _iso_plus_days(today, -7) else "Older"),
                   order=["Today", "This week", "Older"]),
         ],
@@ -25029,8 +25076,8 @@ def send_to_pennylane(expense_id):
     # first, so fixing the date for supplier invoices left every STAFF claim
     # still dated by the day it happened to be handed in -- half a fix, and
     # the helper written for both was sitting there uncalled.
-    issued = expense_document_date(expense) or (
-        expense["submitted_at"] or datetime.now(timezone.utc).isoformat())[:10]
+    issued = (expense_document_date(expense)
+              or house_date_iso(expense["submitted_at"]) or house_today_iso())
     deadline = expense["due_date"] or issued
     total = float(expense["amount"] or 0)
     stated_tax, _why = supplier_invoice_tax(conn, expense)
@@ -25394,7 +25441,7 @@ def guest_account(token):
         conn.commit()
 
     data = guest_account_bookings(conn, session_row["email"])
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     extras = conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            ORDER BY category, sort_order, name""").fetchall()
@@ -25668,7 +25715,7 @@ def admin_tax():
     current = {k: tax_setting(conn, k) for k in TAX_DEFAULTS}
     # What has been collected this year, so the sum owed to the commune is
     # visible now rather than discovered at year end.
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     stays = conn.execute(
         """SELECT party_size, guests_under_18, arrival_date, departure_date, city_tax
            FROM bookings WHERE status = 'confirmed' AND arrival_date >= ?""",
@@ -25727,7 +25774,7 @@ def guests():
     the same list, which is what let a cancelled booking leave a phantom guest."""
     q = request.args.get("q", "").strip()
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     period = period_from_request()
     # Owner only: the band carries revenue and occupancy, which is not a
     # colleague's business. Employees still get the who-is-here lists below.
@@ -26093,7 +26140,7 @@ def guest_detail(guest_id):
                            merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
                            party_of=party_of,
-                           today=datetime.now(LOCAL_TZ).date().isoformat())
+                           today=house_today_iso())
 
 
 @app.route("/guests/<int:guest_id>/statement")
@@ -26111,7 +26158,7 @@ def guest_full_statement(guest_id):
     if not record:
         abort(404)
     return render_template("guest_full_statement.html", record=record,
-                           today=datetime.now(LOCAL_TZ).date().isoformat())
+                           today=house_today_iso())
 
 
 @app.route("/guests/<int:guest_id>/link-bookings", methods=["POST"])
@@ -26271,7 +26318,7 @@ def expenses():
         "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
         status_filter=status_filter, q=q, totals=totals,
         pennylane_ready=pennylane_configured(),
-        today_iso=datetime.now(LOCAL_TZ).date().isoformat(),
+        today_iso=house_today_iso(),
         # What the house owes its own people, which nothing could answer while
         # "paid" was only a word: still-owed and approved-a-while-ago were the
         # same query.
@@ -26326,12 +26373,12 @@ def submit_expense():
         except ValueError:
             amount = None
 
-        if spent_on and spent_on > datetime.now(LOCAL_TZ).date():
+        if spent_on and spent_on > house_today():
             flash("That date is in the future \u2014 please check it.", "error")
             return render_template(
         "expense_form.html", vendors=known_vendor_names(),
         prefill_vendor=request.args.get("vendor", ""), prefill_vehicle_id=vehicle_id,
-        today=datetime.now(LOCAL_TZ).date().isoformat(),
+        today=house_today_iso(),
     )
 
         if not description or amount is None or amount <= 0:
@@ -26339,7 +26386,7 @@ def submit_expense():
             return render_template(
         "expense_form.html", vendors=known_vendor_names(),
         prefill_vendor=request.args.get("vendor", ""), prefill_vehicle_id=vehicle_id,
-        today=datetime.now(LOCAL_TZ).date().isoformat(),
+        today=house_today_iso(),
     )
 
         stored_name = save_expense_file(file)
@@ -26348,7 +26395,7 @@ def submit_expense():
             return render_template(
         "expense_form.html", vendors=known_vendor_names(),
         prefill_vendor=request.args.get("vendor", ""), prefill_vehicle_id=vehicle_id,
-        today=datetime.now(LOCAL_TZ).date().isoformat(),
+        today=house_today_iso(),
     )
 
         conn = get_db()
@@ -26611,7 +26658,7 @@ def supplier_invoice_submit(token):
 
     def form(**kw):
         return render_template("supplier_invoice_form.html", vendor=vendor,
-                               today=datetime.now(LOCAL_TZ).date().isoformat(), **kw)
+                               today=house_today_iso(), **kw)
 
     if request.method == "POST":
         # Rate limited per link. Without this the address is a way for whoever
@@ -26655,7 +26702,7 @@ def supplier_invoice_submit(token):
         # An invoice dated in the future is a typo often enough to be worth
         # refusing: 2027 for 2026 puts it a year down the ageing report where
         # nobody will look for it.
-        if invoice_date > datetime.now(LOCAL_TZ).date() + timedelta(days=1):
+        if invoice_date > house_today() + timedelta(days=1):
             flash("That invoice date is in the future \u2014 please check it.", "error")
             conn.close()
             return form()
@@ -26719,7 +26766,7 @@ def guest_availability_grid(conn, rooms, month_arg):
     same underlying data as /admin/calendar (bookings + iCal blocks + manual
     blocks), collapsed to two states so nothing about a specific guest, an
     external platform, or a block's reason is exposed publicly."""
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     try:
         year, month = map(int, month_arg.split("-"))
         first_day = date(year, month, 1)
@@ -27040,7 +27087,7 @@ def api_availability(room_id):
         conn.close()
         abort(404)
 
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     start = parse_date(request.args.get("from", "")) or today
     start = max(start, today)          # the past is never bookable
     try:
@@ -27219,7 +27266,7 @@ def book_room(room_id):
             error = "Enter a valid email address."
         elif not arrival or not departure:
             error = "Choose valid arrival and departure dates."
-        elif arrival < datetime.now(timezone.utc).date():
+        elif arrival < house_today():
             # The public form had no past-date guard, so anyone could POST an
             # arrival months gone. Those rows then sat in the bookings table
             # skewing occupancy and revenue for a period already closed, and
@@ -28162,7 +28209,7 @@ def manage_booking(manage_token):
                AND guest_bookable = 1""",
             (extra_id,)).fetchone() if extra_id.isdigit() else None
 
-        if departure and departure < datetime.now(timezone.utc).date():
+        if departure and departure < house_today():
             flash("That stay has already finished.", "error")
         elif not extra:
             flash("That isn't something we can add.", "error")
@@ -28173,7 +28220,7 @@ def manage_booking(manage_token):
             # cannot be arranged, and promising it would be worse than refusing.
             arrival = parse_date(booking["arrival_date"])
             lead = extra["lead_time_days"] or 0
-            days_until = (arrival - datetime.now(timezone.utc).date()).days if arrival else 0
+            days_until = (arrival - house_today()).days if arrival else 0
             if lead and days_until < lead:
                 flash(f"{extra['name']} needs {lead} day{'s' if lead != 1 else ''} "
                       f"notice, so it's too late for this stay — call us and we'll "
@@ -28262,7 +28309,7 @@ def manage_booking(manage_token):
     # is left out rather than offered and then refused.
     days_until = 0
     if parse_date(booking["arrival_date"]):
-        days_until = (parse_date(booking["arrival_date"]) - datetime.now(timezone.utc).date()).days
+        days_until = (parse_date(booking["arrival_date"]) - house_today()).days
     addable = [e for e in conn.execute(
         """SELECT * FROM extras WHERE active = 1 AND guest_bookable = 1
            AND category = 'room' ORDER BY sort_order, name""").fetchall()
@@ -28312,7 +28359,7 @@ def guest_feedback(token):
     if not booking:
         conn.close()
         abort(404)
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     departure = parse_date(booking["departure_date"])
     too_early = not departure or departure > today
     existing = conn.execute(
@@ -28375,7 +28422,7 @@ def workshop_feedback(token):
     if not booking:
         conn.close()
         abort(404)
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     end_date = parse_date(booking["end_date"])
     too_early = not end_date or end_date > today
     existing = conn.execute(
@@ -28583,7 +28630,7 @@ def submit_event_inquiry():
         parsed = parse_date(raw)
         if not parsed:
             error = f"Enter a valid {label} date, or leave it blank."
-        elif parsed < datetime.now(timezone.utc).date():
+        elif parsed < house_today():
             error = f"The {label} date has already passed."
     if error:
         conn.commit()  # persist the rate-limit log entry even on a validation error
@@ -28932,7 +28979,7 @@ def admin_events():
     # because it sorted on created_at the oldest history could sit above the
     # work still to do. An enquiry with no date yet is still live work, so it
     # groups with upcoming rather than being treated as past.
-    today_iso = datetime.now(timezone.utc).date().isoformat()
+    today_iso = house_today_iso()
     upcoming, past = [], []
     for r in inquiries:
         # A three-day wedding is still upcoming on day two, so judge by the
@@ -28944,7 +28991,7 @@ def admin_events():
 
     return render_template(
         "admin_events.html", inquiries=inquiries, upcoming=upcoming, past=past,
-        status_filter=status_filter, today=datetime.now(timezone.utc).date(),
+        status_filter=status_filter, today=house_today(),
         new_count=new_count, confirmed_count=confirmed_count, event_types=types,
         bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
     )
@@ -29364,7 +29411,7 @@ def event_payment_terms(conn, quoted, event_date_iso, party_size=None):
         return None, None
 
     percent = resolve_deposit_percent(
-        conn, "event", event_date_iso or datetime.now(timezone.utc).date().isoformat(),
+        conn, "event", event_date_iso or house_today_iso(),
         party_size or 0, event_payment_setting(conn, "event_deposit_percent"))
     deposit = round(quoted * percent / 100.0, 2) if percent else None
     if deposit is not None and deposit > quoted:
@@ -29379,7 +29426,7 @@ def event_payment_terms(conn, quoted, event_date_iso, party_size=None):
             event_date = None
         if event_date:
             candidate = event_date - timedelta(days=days_before)
-            if candidate > datetime.now(timezone.utc).date():
+            if candidate > house_today():
                 due = candidate.isoformat()
             else:
                 # Held inside the window, so there is no balance stage: all of
@@ -29426,7 +29473,7 @@ def room_payment_schedule(conn, arrival, total_price, party_size=None):
     # yesterday -- so this floor let a balance fall due before the booking
     # was taken. The house rule about never stamping a UTC calendar date
     # where a local one belongs, in a new place.
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     if due < today:
         due = today
     return deposit, balance, due.isoformat()
@@ -29622,7 +29669,7 @@ def restaurant_info():
     for item in items:
         items_by_category.setdefault(item["category"], []).append(item)
     opening_date = parse_date(settings["opening_date"]) if settings and settings["opening_date"] else None
-    not_yet_open = bool(opening_date and opening_date > datetime.now(timezone.utc).date())
+    not_yet_open = bool(opening_date and opening_date > house_today())
     return render_template(
         "restaurant_info.html", settings=settings,
         items_by_category=items_by_category, menu_categories=MENU_CATEGORIES,
@@ -29636,7 +29683,7 @@ def restaurant_book():
     if not settings or not settings["enabled"]:
         conn.close()
         abort(404)
-    min_date = parse_date(settings["opening_date"]) if settings["opening_date"] else datetime.now(timezone.utc).date()
+    min_date = parse_date(settings["opening_date"]) if settings["opening_date"] else house_today()
 
     if request.method == "POST":
         if rate_limited(conn, "book_restaurant", BOOKING_RATE_LIMIT_PER_HOUR):
@@ -29891,7 +29938,7 @@ def restaurant_manage(manage_token):
             conn.close()
             flash("This reservation is no longer open to changes.", "error")
             return redirect(url_for("restaurant_manage", manage_token=manage_token))
-        if booking["dinner_date"] < datetime.now(timezone.utc).date().isoformat():
+        if booking["dinner_date"] < house_today_iso():
             conn.close()
             flash("That dinner has already passed — do get in touch if something "
                   "needs correcting.", "error")
@@ -30011,7 +30058,7 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     balance_due_date_iso_or_None)."""
     if not total_price:
         return None, None, None
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     if (start_date - today).days < 30:
         return round(total_price, 2), 0.0, None
     deposit_amount = round(total_price * deposit_percent / 100, 2)
@@ -30279,7 +30326,7 @@ def run_guest_text_job(conn, kind="checkin", days_before=None):
     """
     spec = GUEST_TEXTS[kind]          # KeyError rather than a silent no-op
     days = spec["days_before"] if days_before is None else days_before
-    when = (datetime.now(LOCAL_TZ).date() + timedelta(days=days)).isoformat()
+    when = (house_today() + timedelta(days=days)).isoformat()
     # The two column names come from GUEST_TEXTS above and nowhere else, so
     # they are the app's own words rather than anything a request carried.
     arriving = conn.execute(
@@ -30361,7 +30408,7 @@ def morning_digest(conn, today=None):
     Two lists of what needs attention would eventually disagree, and the one in
     the email would be the one nobody corrected.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     iso = day.isoformat()
 
     arriving = conn.execute(
@@ -30447,7 +30494,7 @@ def run_workshop_decision_job(conn, today=None):
     is still short" deserves to interrupt. Sending the first one again
     every morning until the date passes would turn both into wallpaper.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     at_risk = [w for w in sessions_at_risk(conn, day) if w["urgent"]]
     if not at_risk:
         return "no workshop needs deciding"
@@ -30498,7 +30545,7 @@ def run_morning_digest_job(conn, today=None):
     it twice costs nothing but a second copy — whereas a stamp would mean a
     job that ran at 6am and failed could not be run again at 7.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     subject, body, has_anything = morning_digest(conn, day)
     if not has_anything:
         return "nothing happening today, so nothing sent"
@@ -30522,7 +30569,7 @@ def run_room_feedback_job(conn, days_after=None):
     a failure every morning.
     """
     days = ROOM_FEEDBACK_DAYS_AFTER if days_after is None else days_after
-    when = (datetime.now(LOCAL_TZ).date() - timedelta(days=days)).isoformat()
+    when = (house_today() - timedelta(days=days)).isoformat()
     departed = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
            JOIN rooms ON rooms.id = bookings.room_id
@@ -31362,7 +31409,7 @@ def run_campaign_triggers_job(conn):
     """Send any template set to fire relative to a guest's arrival, departure
     or workshop start. Idempotent via the dedupe key, so a guest gets each
     automated message exactly once no matter how often this runs."""
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     templates = conn.execute(
         """SELECT * FROM campaign_templates
            WHERE trigger_active = 1 AND trigger_event IS NOT NULL"""
@@ -31673,7 +31720,7 @@ def workshop_pay_balance(manage_token):
 @app.route("/workshops")
 def workshops_public():
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     # Workshops are not a fixed catalogue — they are added in the admin, run,
     # and finish. A finished one must come off the public page rather than sit
     # there forever saying "dates to be announced", which is what happens if
@@ -31727,7 +31774,7 @@ def workshop_detail(workshop_id):
     if not workshop:
         conn.close()
         abort(404)
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     sessions = conn.execute(
         "SELECT * FROM workshop_sessions WHERE workshop_id = ? AND start_date >= ? ORDER BY start_date",
         (workshop_id, today.isoformat()),
@@ -31762,7 +31809,7 @@ def workshop_register(session_id):
     if not session_row or not session_row["active"]:
         conn.close()
         abort(404)
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     start_date = parse_date(session_row["start_date"])
     if not start_date or start_date < today:
         conn.close()
@@ -32102,7 +32149,7 @@ def workshop_manage(manage_token):
 
     other_sessions = []
     if booking["status"] in ("pending", "confirmed"):
-        today = datetime.now(timezone.utc).date()
+        today = house_today()
         current_workshop_id = conn.execute(
             "SELECT workshop_id FROM workshop_sessions WHERE id = ?", (booking["session_id"],)
         ).fetchone()["workshop_id"]
@@ -32215,7 +32262,7 @@ def room_issues():
     arrivals = arrivals_by_room(conn, [i["room_id"] for i in issues if i["status"] == "open"])
     conn.close()
 
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
 
     def age(i):
         """How long it has been sitting there. A tap that has dripped for six
@@ -32223,7 +32270,7 @@ def room_issues():
         on a list sorted by date they read the same."""
         if i["status"] != "open":
             return None
-        raised = (i["created_at"] or "")[:10]
+        raised = house_date_iso(i["created_at"])
         if not raised:
             return None
         if raised >= _iso_plus_days(today, -2):
@@ -32333,13 +32380,13 @@ def new_room_issue():
              urgency.strip() or None,
              "high" if arrival else "normal",
              # Due before they walk in, not "today" regardless.
-             arrival["arrival_date"] if arrival else datetime.now(timezone.utc).date().isoformat(),
+             arrival["arrival_date"] if arrival else house_today_iso(),
              now),
         )
         task_note = " Task assigned."
         if arrival:
             task_note = f" Task assigned as high priority — {arrival['guest_name']} arrives {when}."
-        away = away_on(conn, int(assigned_to), datetime.now(timezone.utc).date().isoformat())
+        away = away_on(conn, int(assigned_to), house_today_iso())
         if away:
             person = conn.execute("SELECT name FROM users WHERE id = ?",
                                   (int(assigned_to),)).fetchone()
@@ -32464,7 +32511,7 @@ def build_owner_digest(conn):
     """Plain-text 'what needs your attention' summary — same facts as the
     Approvals queue and dashboard, just delivered by email for someone who
     isn't logging in every day."""
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     leave_pending = conn.execute("SELECT COUNT(*) AS c FROM leave_requests WHERE status = 'pending'").fetchone()["c"]
     expenses_pending = conn.execute("SELECT COUNT(*) AS c FROM expenses WHERE status = 'pending'").fetchone()["c"]
     room_issues_open = conn.execute("SELECT COUNT(*) AS c FROM room_issues WHERE status = 'open'").fetchone()["c"]
@@ -32632,7 +32679,7 @@ def api_owner_digest():
 @app.route("/admin/calendar")
 @owner_required
 def admin_calendar():
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     try:
         year, month = map(int, request.args.get("month", "").split("-"))
         first_day = date(year, month, 1)
@@ -32735,7 +32782,7 @@ def admin_calendar():
 @app.route("/admin/team-calendar")
 @login_required
 def team_calendar():
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     try:
         year, month = map(int, request.args.get("month", "").split("-"))
         first_day = date(year, month, 1)
@@ -33618,7 +33665,7 @@ def admin_bookings():
 
     # Needed by the facets below, which run before the block that used to
     # compute it.
-    today_iso_pre = datetime.now(timezone.utc).date().isoformat()
+    today_iso_pre = house_today_iso()
 
     all_bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name,
@@ -33678,7 +33725,7 @@ def admin_bookings():
     )
     bookings = lv["rows"]
 
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     today_iso = today.isoformat()
     week_ahead_iso = (today + timedelta(days=7)).isoformat()
     active = [b for b in all_bookings if b["status"] in ("pending", "confirmed")]
@@ -33987,7 +34034,7 @@ def guest_portal(token):
     return render_template(
         "guest_portal.html", profile=profile, stays=stays, dinners=dinners,
         ateliers=ateliers, bills=bills,
-        today=datetime.now(timezone.utc).date().isoformat(),
+        today=house_today_iso(),
     )
 
 
@@ -34367,7 +34414,7 @@ def add_police_fiche(booking_id):
         conn.close()
         flash("That date of birth could not be read.", "error")
         return redirect(url_for("police_register_page"))
-    if born_on and born_on > datetime.now(LOCAL_TZ).date():
+    if born_on and born_on > house_today():
         conn.close()
         flash("That date of birth is in the future.", "error")
         return redirect(url_for("police_register_page"))
@@ -34612,7 +34659,7 @@ def police_register_page():
     staying here in the week of such and such.
     """
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     start = parse_date(request.args.get("from", "")) or (today - timedelta(days=30))
     end = parse_date(request.args.get("to", "")) or today
     rows = conn.execute(
@@ -35190,7 +35237,7 @@ def restaurant_profit_share(conn, year, month):
 def admin_restaurant():
     conn = get_db()
     period = period_from_request()
-    overview = restaurant_overview(conn, period, datetime.now(timezone.utc).date())
+    overview = restaurant_overview(conn, period, house_today())
     status_filter = request.args.get("status", "")
     query = "SELECT * FROM restaurant_bookings"
     params = []
@@ -35205,7 +35252,7 @@ def admin_restaurant():
 
     pending_count = conn.execute("SELECT COUNT(*) AS c FROM restaurant_bookings WHERE status = 'pending'").fetchone()["c"]
 
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     no_show_count = conn.execute(
         "SELECT COUNT(*) AS c FROM restaurant_bookings WHERE no_show_at IS NOT NULL AND dinner_date >= ?",
         ((today - timedelta(days=30)).isoformat(),),
@@ -36102,7 +36149,7 @@ def menu_day():
 @app.route("/admin/restaurant/menu/day/new", methods=["POST"])
 @owner_required
 def new_menu_day():
-    on = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
+    on = parse_date(request.form.get("date", "")) or house_today()
     service = request.form.get("service", "dinner")
     if service not in ("lunch", "dinner"):
         service = "dinner"
@@ -36291,7 +36338,7 @@ def publish_menu_day(menu_id):
 @app.route("/admin/restaurant/menu/day/<int:menu_id>/copy", methods=["POST"])
 @owner_required
 def copy_menu_day(menu_id):
-    to = parse_date(request.form.get("to", "")) or (datetime.now(timezone.utc).date()
+    to = parse_date(request.form.get("to", "")) or (house_today()
                                                     + timedelta(days=1))
     conn = get_db()
     new_id = copy_menu(conn, menu_id, to.isoformat(), user_id=session.get("user_id"))
@@ -36314,7 +36361,7 @@ def read_menu_upload():
     Every path lands on the same review screen, because a second parser with
     its own edge cases would drift from this one within a week.
     """
-    on = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
+    on = parse_date(request.form.get("date", "")) or house_today()
     service = request.form.get("service", "dinner")
     if service not in ("lunch", "dinner"):
         service = "dinner"
@@ -36572,7 +36619,7 @@ def admin_promo_codes():
     status = {c["code"]: promo_refusal_reason(conn, c["code"], c["applies_to"], float("inf"))
               for c in codes}
     conn.close()
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
 
     def usable(c):
         """Whether a guest could actually use this code right now.
@@ -36794,7 +36841,7 @@ def workshops_with_alumni(conn, today=None):
     that offers a workshop the audience query then returns nobody for is a
     picker the owner stops trusting.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     return conn.execute(
         """SELECT workshops.id, workshops.title,
                   COUNT(DISTINCT LOWER(workshop_bookings.guest_email)) AS people
@@ -36823,7 +36870,7 @@ def workshop_alumni(conn, workshop_id, *, exclude_session_id=None,
     through paying does not need chasing with an advertisement for the
     thing they are in the middle of buying.
     """
-    today = datetime.now(LOCAL_TZ).date().isoformat()
+    today = house_today_iso()
     query = """SELECT workshop_bookings.guest_email, workshop_bookings.guest_name,
                       COUNT(*) AS times,
                       MAX(workshop_sessions.start_date) AS last_attended
@@ -36969,7 +37016,7 @@ def promo_code_blast(code_id):
     since_months_raw = request.args.get("since_months", "").strip()
     since_date_iso = None
     if since_months_raw.isdigit():
-        since_date_iso = (datetime.now(timezone.utc).date() - timedelta(days=int(since_months_raw) * 30)).isoformat()
+        since_date_iso = (house_today() - timedelta(days=int(since_months_raw) * 30)).isoformat()
     recipients = promo_blast_recipients(conn, segments, since_date_iso)
     # Only workshops that have actually run: "the people who did this
     # before" is empty for one that has not happened yet, and offering it
@@ -36996,7 +37043,7 @@ def send_promo_code_blast(code_id):
     since_months_raw = request.form.get("since_months", "").strip()
     since_date_iso = None
     if since_months_raw.isdigit():
-        since_date_iso = (datetime.now(timezone.utc).date() - timedelta(days=int(since_months_raw) * 30)).isoformat()
+        since_date_iso = (house_today() - timedelta(days=int(since_months_raw) * 30)).isoformat()
     subject = request.form.get("subject", "").strip()
     body_template = request.form.get("body", "").strip()
     if not subject or not body_template:
@@ -37280,7 +37327,7 @@ def shopping_basket(conn, today=None, days=None):
     two parts of the app asked separately is the exact failure this
     replaces.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     days = WORKSHOP_MATERIALS_WARN_DAYS if days is None else days
 
     items = {i["id"]: i for i in conn.execute(
@@ -37359,7 +37406,7 @@ def sessions_short_of_materials(conn, today=None, days=None):
     Only the ones close enough to matter and far enough away to fix: a
     shortfall found the evening before is not a warning, it is an apology.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     days = WORKSHOP_MATERIALS_WARN_DAYS if days is None else days
     rows = conn.execute(
         """SELECT workshop_sessions.id FROM workshop_sessions
@@ -37399,7 +37446,7 @@ def sessions_at_risk(conn, today=None):
     Three short with four waiting is a telephone call, not a cancellation,
     and the row says which.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     rows = conn.execute(
         """SELECT workshop_sessions.*, workshops.title, workshops.price_per_person,
                   workshops.instructor_name,
@@ -37480,7 +37527,7 @@ def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
 def admin_workshops():
     conn = get_db()
     workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     period = period_from_request()
     overview = workshops_overview(conn, period, today)
     total_rooms = conn.execute("SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"]
@@ -38768,7 +38815,7 @@ def management():
     insurance_count = conn.execute("SELECT COUNT(*) AS c FROM insurance_policies").fetchone()["c"]
     vendor_count = conn.execute("SELECT COUNT(*) AS c FROM vendors").fetchone()["c"]
     company_info_set = conn.execute("SELECT 1 FROM company_info WHERE id = 1").fetchone() is not None
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     period = period_from_request()
     overview = management_overview(conn, period, today)
     current_financials = financial_month_summary(
@@ -38943,7 +38990,7 @@ def money_ahead(conn, *, days=90, today=None):
     guess dressed as a figure is worse than a gap, because it gets budgeted
     against.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     if isinstance(today, str):
         today = parse_date(today)
     last = today + timedelta(days=max(1, min(730, days)))
@@ -39235,7 +39282,7 @@ def send_booking_to_pennylane(conn, booking, user_id=None):
         return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
     existing = pennylane_already_sent(conn, "booking", booking["id"])
     if existing:
-        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+        return False, (f"Already sent on {house_date_iso(existing['sent_at'])}"
                        + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
                        + ".")
     if booking["status"] in ("cancelled", "declined"):
@@ -39322,7 +39369,7 @@ def send_workshop_to_pennylane(conn, booking, user_id=None):
         return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
     existing = pennylane_already_sent(conn, "workshop", booking["id"])
     if existing:
-        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+        return False, (f"Already sent on {house_date_iso(existing['sent_at'])}"
                        + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
                        + ".")
     if booking["status"] in ("cancelled", "declined"):
@@ -39400,7 +39447,7 @@ def send_event_to_pennylane(conn, event, user_id=None):
         return False, "Pennylane is not connected yet — add PENNYLANE_API_TOKEN."
     existing = pennylane_already_sent(conn, "event", event["id"])
     if existing:
-        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+        return False, (f"Already sent on {house_date_iso(existing['sent_at'])}"
                        + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
                        + ".")
     if event["status"] != "confirmed":
@@ -39426,7 +39473,7 @@ def send_event_to_pennylane(conn, event, user_id=None):
     if not ok or not customer:
         return False, f"Could not file a customer for {event['contact_name']}: {customer}"
 
-    when = event["preferred_date"] or (event["created_at"] or "")[:10]
+    when = event["preferred_date"] or house_date_iso(event["created_at"])
     ok, payload = pennylane_import_customer_invoice(
         customer_id=customer, date=when,
         deadline=event["balance_due_date"] or when,
@@ -39476,7 +39523,7 @@ def send_pos_day_to_pennylane(conn, closure, user_id=None):
         return False, "Only a closed day goes as takings."
     existing = pennylane_already_sent(conn, "pos_day", closure["id"])
     if existing:
-        return False, (f"Already sent on {(existing['sent_at'] or '')[:10]}"
+        return False, (f"Already sent on {house_date_iso(existing['sent_at'])}"
                        + (f" as {existing['pennylane_id']}" if existing["pennylane_id"] else "")
                        + ".")
     lines = pos_day_pennylane_lines(conn, closure)
@@ -39540,7 +39587,7 @@ def revenue_to_send():
     is halfway through can still change.
     """
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date().isoformat()
+    today = house_today_iso()
     rows = []
     for booking in conn.execute(
             """SELECT bookings.*, rooms.name AS room_name FROM bookings
@@ -39659,7 +39706,7 @@ def walk_in_booking():
     conn = get_db()
     rooms = conn.execute(
         "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
 
     # Dates first, rooms second. Tonight and tomorrow by default, because that
     # is what somebody at the desk is nearly always asking about; changing them
@@ -40143,7 +40190,7 @@ def new_gift_voucher():
         if not parsed:
             flash("Choose a valid expiry date, or leave it blank.", "error")
             return redirect(url_for("management_vouchers"))
-        if parsed <= datetime.now(timezone.utc).date():
+        if parsed <= house_today():
             flash("An expiry date in the past would make the voucher worthless "
                   "the moment it is sold.", "error")
             return redirect(url_for("management_vouchers"))
@@ -40385,7 +40432,7 @@ def chase_outstanding_balance(booking_id):
         conn.close()
         flash("That booking has no email address on it.", "error")
         return redirect(url_for("management_outstanding"))
-    departed = (booking["departure_date"] or "") < datetime.now(LOCAL_TZ).date().isoformat()
+    departed = (booking["departure_date"] or "") < house_today_iso()
     subject, body = balance_request_email(booking, bill, departed=departed)
     conn.close()
     if send_email(booking["guest_email"], subject, body):
@@ -40399,7 +40446,7 @@ def chase_outstanding_balance(booking_id):
 @app.route("/management/financials")
 @owner_required
 def management_financials():
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     conn = get_db()
     months = []
     cursor = today.replace(day=1)
@@ -40498,7 +40545,7 @@ def annual_summary():
 @app.route("/management/financials/export.csv")
 @owner_required
 def export_financials_csv():
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     conn = get_db()
     months = []
     cursor = today.replace(day=1)
@@ -40561,7 +40608,7 @@ def export_vendors_csv():
 def management_cancellations():
     """Why stays were cancelled, and how many event enquiries came to anything."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     reasons = cancellation_reasons(conn, today=today)
     enquiries = enquiry_conversion(conn, today=today)
     recent = conn.execute(
@@ -40683,7 +40730,7 @@ def shift_handover():
     if request.method == "POST":
         body = (request.form.get("body", "") or "").strip()[:2000]
         for_date = parse_date(request.form.get("for_date", "")) \
-            or datetime.now(LOCAL_TZ).date()
+            or house_today()
         if not body:
             conn.close()
             flash("Write something.", "error")
@@ -40708,7 +40755,7 @@ def shift_handover():
     ]
     return render_template("shift_handover.html", notes=notes,
                            overview=overview,
-                           today=datetime.now(LOCAL_TZ).date())
+                           today=house_today())
 
 
 @app.route("/handover/<int:note_id>/read", methods=["POST"])
@@ -40740,7 +40787,7 @@ def mileage():
     if request.method == "POST":
         km = parse_quantity(request.form.get("kilometres", ""))
         when = parse_date(request.form.get("travelled_on", "")) \
-            or datetime.now(LOCAL_TZ).date()
+            or house_today()
         if not km or km <= 0:
             conn.close()
             flash("How many kilometres?", "error")
@@ -40781,7 +40828,7 @@ def mileage():
     ]
     return render_template("mileage.html", claims=claims, overview=overview,
                            rate=rate, is_owner=is_owner,
-                           today=datetime.now(LOCAL_TZ).date())
+                           today=house_today())
 
 
 @app.route("/mileage/<int:claim_id>/decide", methods=["POST"])
@@ -40827,7 +40874,7 @@ def exit_interviews():
         who_raw = (request.form.get("user_id", "") or "").strip()
         name = (request.form.get("person_name", "") or "").strip()[:120]
         when = parse_date(request.form.get("held_on", "")) \
-            or datetime.now(LOCAL_TZ).date()
+            or house_today()
         if who_raw.isdigit() and not name:
             row = conn.execute("SELECT name FROM users WHERE id = ?",
                                (int(who_raw),)).fetchone()
@@ -40879,7 +40926,7 @@ def exit_interviews():
     ]
     return render_template("exit_interviews.html", rows=rows, leavers=leavers,
                            overview=overview,
-                           today=datetime.now(LOCAL_TZ).date())
+                           today=house_today())
 
 
 @app.route("/management/buying")
@@ -40890,7 +40937,7 @@ def management_buying():
     One page rather than three, because they are one telephone call.
     """
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     shortfalls = delivery_shortfalls(conn, today=today)
     rises = price_changes(conn, today=today)
     vendor = (request.args.get("vendor", "") or "").strip()
@@ -41238,7 +41285,7 @@ def restaurant_tables():
         flash(f"{name} added.", "success")
         return redirect(url_for("restaurant_tables"))
 
-    on = parse_date(request.args.get("date", "")) or datetime.now(LOCAL_TZ).date()
+    on = parse_date(request.args.get("date", "")) or house_today()
     tables = conn.execute(
         "SELECT * FROM dining_tables WHERE active = 1 ORDER BY sort_order, name"
     ).fetchall()
@@ -41428,7 +41475,7 @@ def management_cleaning():
               "been done.", "success")
         return redirect(url_for("management_cleaning"))
 
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     rounds = cleaning_rounds_due(conn, today)
     conn.close()
     late = [r for r in rounds if r["overdue"]]
@@ -41454,7 +41501,7 @@ def cleaning_round_done(round_id):
         abort(404)
     user = current_user()
     when = parse_date(request.form.get("done_on", "")) \
-        or datetime.now(LOCAL_TZ).date()
+        or house_today()
     conn.execute(
         """UPDATE cleaning_rounds SET last_done_on = ?, last_done_by_user_id = ?
             WHERE id = ?""", (when.isoformat(), user["id"], round_id))
@@ -41487,7 +41534,7 @@ def management_meters():
         meter = (request.form.get("meter", "") or "").strip()[:60]
         reading = parse_quantity(request.form.get("reading", ""))
         when = parse_date(request.form.get("read_on", "")) \
-            or datetime.now(LOCAL_TZ).date()
+            or house_today()
         note = (request.form.get("note", "") or "").strip()[:200]
 
         if not meter or reading is None:
@@ -41539,7 +41586,7 @@ def management_meters():
     ]
     return render_template("management_meters.html", history=history,
                            meters=meters, overview=overview,
-                           today=datetime.now(LOCAL_TZ).date())
+                           today=house_today())
 
 
 @app.route("/management/lost-property", methods=["GET", "POST"])
@@ -41556,7 +41603,7 @@ def management_lost_property():
         contact = (request.form.get("guest_contact", "") or "").strip()[:200]
         booking_raw = (request.form.get("booking_id", "") or "").strip()
         when = parse_date(request.form.get("found_on", "")) \
-            or datetime.now(LOCAL_TZ).date()
+            or house_today()
         if not what:
             conn.close()
             flash("Say what was found.", "error")
@@ -41575,7 +41622,7 @@ def management_lost_property():
         flash("In the drawer, and now written down.", "success")
         return redirect(url_for("management_lost_property"))
 
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     rows = conn.execute(
         """SELECT lost_property.*, users.name AS found_by,
                   bookings.guest_name AS booking_guest
@@ -41628,7 +41675,7 @@ def resolve_lost_property(item_id):
     conn.execute(
         """UPDATE lost_property SET status = ?, resolved_on = ?,
                   resolved_note = ? WHERE id = ?""",
-        (state, datetime.now(LOCAL_TZ).date().isoformat(), note or None,
+        (state, house_today_iso(), note or None,
          item_id))
     conn.commit()
     conn.close()
@@ -41657,7 +41704,7 @@ def management_breakages():
         cost = parse_money(request.form.get("replacement_cost", ""))
         note = (request.form.get("note", "") or "").strip()[:400]
         found = parse_date(request.form.get("found_on", "")) \
-            or datetime.now(LOCAL_TZ).date()
+            or house_today()
 
         if not what:
             conn.close()
@@ -41679,7 +41726,7 @@ def management_breakages():
               "decision.", "success")
         return redirect(url_for("management_breakages"))
 
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     summary = breakage_summary(conn, today=today)
     rooms = conn.execute(
         "SELECT id, name FROM rooms ORDER BY sort_order, name").fetchall()
@@ -41798,7 +41845,7 @@ def management_filings():
         flash(f"{name} added.", "success")
         return redirect(url_for("management_filings"))
 
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     rows = conn.execute(
         "SELECT * FROM filing_obligations WHERE active = 1 ORDER BY due_on"
     ).fetchall()
@@ -41837,7 +41884,7 @@ def record_filing(filing_id):
 
     due = parse_date(row["due_on"])
     filed_on = parse_date(request.form.get("filed_on", "")) \
-        or datetime.now(LOCAL_TZ).date()
+        or house_today()
     amount = parse_money(request.form.get("amount", ""))
     reference = (request.form.get("reference", "") or "").strip()[:120]
 
@@ -41957,7 +42004,7 @@ def management_budget():
         flash(f"{changed} month{'' if changed == 1 else 's'} set.", "success")
         return redirect(url_for("management_budget"))
 
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     rows = budget_table(conn)
 
     # The last twelve months against their targets. Actuals per month are
@@ -42021,7 +42068,7 @@ def management_recurring_costs():
         c["amount"] if c["frequency"] == "monthly" else c["amount"] / 12
         for c in costs if c["active"]
     ), 2)
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
 
     def due(c):
         if not c["active"]:
@@ -42175,7 +42222,7 @@ def mark_recurring_cost_paid(cost_id):
     if not cost:
         conn.close()
         abort(404)
-    current_due = parse_date(cost["next_due_date"]) or datetime.now(timezone.utc).date()
+    current_due = parse_date(cost["next_due_date"]) or house_today()
     new_due = add_months(current_due, 12 if cost["frequency"] == "annual" else 1)
     # Compare-and-swap on the due date we actually read — a double-click
     # racing this same handler would otherwise advance the date twice
@@ -42295,7 +42342,7 @@ def renew_insurance_policy(policy_id):
     if not policy:
         conn.close()
         abort(404)
-    current_expiry = parse_date(policy["expiry_date"]) or datetime.now(timezone.utc).date()
+    current_expiry = parse_date(policy["expiry_date"]) or house_today()
     new_expiry = add_months(current_expiry, 12 if policy["premium_frequency"] != "monthly" else 1)
     old_expiry = policy["expiry_date"]
     cur = conn.execute(
@@ -42362,7 +42409,7 @@ def vendors():
         ]
     return render_template("vendors.html", vendors=rows, q=q,
                            spend_by_vendor=spend_by_vendor, owed=owed,
-                           today=datetime.now(LOCAL_TZ).date().isoformat())
+                           today=house_today_iso())
 
 
 @app.route("/management/vendors/new", methods=["POST"])
@@ -42560,7 +42607,7 @@ def generate_social_posts(conn, *, horizon_days=None, today=None, user_id=None):
         except (TypeError, ValueError):
             horizon_days = 28
     horizon_days = max(1, min(365, horizon_days))
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     if isinstance(today, str):
         today = parse_date(today)
     last = today + timedelta(days=horizon_days)
@@ -42638,7 +42685,7 @@ def close_social_task(conn, post_id):
 def social_plan_next_dates(plan, count=3, today=None):
     """The next few dates this plan would post on. Shown beside the plan so a
     weekday number and a cadence word turn into actual days."""
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     out, day = [], today
     for _ in range(400):
         if len(out) >= count:
@@ -42681,7 +42728,7 @@ def management_social():
     employees = conn.execute(
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name"
     ).fetchall()
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     conn.close()
     return render_template(
         "management_social.html", posts=posts, platforms=platforms, employees=employees,
@@ -43045,7 +43092,7 @@ def maintenance_next_due(schedule):
 
 def maintenance_status(schedule, today=None):
     """overdue / due soon / scheduled / never done, with the days involved."""
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     due = maintenance_next_due(schedule)
     if not due:
         return {"state": "unknown", "due": None, "days": None,
@@ -43073,7 +43120,7 @@ def generate_maintenance_tasks(conn, *, today=None, user_id=None):
     sweep, not that the list fills with the same line every morning. A
     schedule already carrying an open task is left alone.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     if isinstance(today, str):
         today = parse_date(today)
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -43236,7 +43283,7 @@ def stays_missing_fiches(conn, today=None, days_back=30):
     completed on arrival — a stay three weeks out with no fiches is not late,
     it has not happened.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     since = (day - timedelta(days=max(1, days_back))).isoformat()
     out = []
     for b in conn.execute(
@@ -43259,7 +43306,7 @@ def purge_police_register(conn, today=None):
     months runs from the end of the stay, and a fiche filled in on arrival for
     a fortnight's stay would otherwise go a fortnight early.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     cutoff = (day - timedelta(days=POLICE_REGISTER_KEEP_MONTHS * 31)).isoformat()
     cur = conn.execute(
         """DELETE FROM police_register WHERE booking_id IN (
@@ -43335,7 +43382,7 @@ def booking_source_for(conn, email, fallback):
                 WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'
                   AND departure_date <= ?
                 LIMIT 1""",
-            (email, datetime.now(timezone.utc).date().isoformat())).fetchone()
+            (email, house_today_iso())).fetchone()
         if seen:
             return "returning"
     return fallback
@@ -43898,7 +43945,7 @@ def empty_nights(conn, *, days=90, today=None):
     for it and the calendar is already holding it — showing it as free is how
     the same night gets offered twice.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     last = day + timedelta(days=max(1, min(730, days)))
 
     rooms = conn.execute(
@@ -43998,7 +44045,7 @@ def room_board(conn, today=None):
       arriving      empty, work done, and somebody is coming today
       ready         empty, work done, nobody due
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     iso = day.isoformat()
     out = []
     for room in conn.execute(
@@ -44208,7 +44255,7 @@ def insurance_cover(conn, today=None):
     not lapsed — it is a record nobody finished, and treating it as either
     would be inventing a fact about the house's insurance.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     soon = day + timedelta(days=INSURANCE_WARN_DAYS)
     out = []
     for p in conn.execute(
@@ -44256,7 +44303,7 @@ def vehicle_papers(conn, today=None):
     Returns a row per vehicle with the worst state it is in, so a page can
     show one line rather than making somebody join it up in their head.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     soon = day + timedelta(days=VEHICLE_PAPERS_WARN_DAYS)
     out = []
     for v in conn.execute("SELECT * FROM vehicles ORDER BY name").fetchall():
@@ -44311,7 +44358,7 @@ def watch_task_findings(conn, today=None):
 
     The kind is who it goes to: see WATCH_TASK_KINDS.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     horizon = today + timedelta(days=14)
     found, dropped = [], {}
 
@@ -44554,7 +44601,7 @@ def generate_watch_tasks(conn, today=None):
     true and raises it again. Which is the honest answer — the shift is still
     uncovered whatever the list says about it.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     now_iso = datetime.now(timezone.utc).isoformat()
     found, dropped = watch_task_findings(conn, today)
     wanted = {title: (kind, note, due, prio) for kind, title, note, due, prio in found}
@@ -44726,7 +44773,7 @@ def maintenance_page():
         "maintenance.html", schedules=rows, overview=overview, exposed=exposed,
         employees=employees, vendors=vendor_list, policies=policies,
         categories=MAINTENANCE_CATEGORIES, required_by=MAINTENANCE_REQUIRED_BY,
-        suggestions=MAINTENANCE_SUGGESTIONS, today=datetime.now(LOCAL_TZ).date())
+        suggestions=MAINTENANCE_SUGGESTIONS, today=house_today())
 
 
 @app.route("/admin/rota-clashes")
@@ -44739,7 +44786,7 @@ def rota_clashes_page():
     time to move somebody.
     """
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         days = max(1, min(180, int(request.args.get("days", 28))))
     except (TypeError, ValueError):
@@ -44780,7 +44827,7 @@ def rota_clashes_page():
 def cover_gaps_page():
     """Days with work happening and nobody on to do it."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         days = max(1, min(180, int(request.args.get("days", 28))))
     except (TypeError, ValueError):
@@ -44817,7 +44864,7 @@ def cover_gaps_page():
 def overtime_page():
     """Long weeks over time, and what the house was doing in them."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         weeks = max(4, min(52, int(request.args.get("weeks", 12))))
     except (TypeError, ValueError):
@@ -44844,7 +44891,7 @@ def overtime_page():
 def still_out_page():
     """Keys, fobs and kit the house has lent and not had back."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     data = things_still_out(conn, today=today)
     contradictions = offboarding_contradictions(conn)
     conn.close()
@@ -44868,7 +44915,7 @@ def still_out_page():
 def room_economics_page():
     """What each room earns, and how often it is empty."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         months = max(1, min(60, int(request.args.get("months", 12))))
     except (TypeError, ValueError):
@@ -44897,7 +44944,7 @@ def room_economics_page():
 def repeat_guests_page():
     """Who comes back, and who has stopped."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     data = repeat_guests(conn, today=today)
     conn.close()
     top = data["guests"][0] if data["guests"] else None
@@ -44920,7 +44967,7 @@ def repeat_guests_page():
 def skills_page():
     """Who can do what, and what only one person can do."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     matrix = skill_matrix(conn)
     wanted = (request.args.get("skill", "") or "").strip()
     day = parse_date(request.args.get("day", "")) or today
@@ -44947,7 +44994,7 @@ def skills_page():
 def rota_vs_clock_page():
     """Where the rota and the clock disagree."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         days = max(7, min(365, int(request.args.get("days", 30))))
     except (TypeError, ValueError):
@@ -44974,7 +45021,7 @@ def rota_vs_clock_page():
 def room_faults_page():
     """Guests confirmed into rooms with an unresolved fault."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     rows = rooms_sold_with_a_fault(conn, today=today, days=60)
     open_issues = conn.execute(
         "SELECT COUNT(*) AS c FROM room_issues WHERE status = 'open'").fetchone()["c"]
@@ -44998,7 +45045,7 @@ def room_faults_page():
 def spend_by_vendor_page():
     """What each supplier has been paid, and which ones aren't on file."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         months = max(1, min(120, int(request.args.get("months", 12))))
     except (TypeError, ValueError):
@@ -45025,7 +45072,7 @@ def spend_by_vendor_page():
 def discount_cost_page():
     """What the discounting actually cost, by code."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     try:
         months = max(1, min(120, int(request.args.get("months", 12))))
     except (TypeError, ValueError):
@@ -45058,7 +45105,7 @@ def discount_cost_page():
 def held_not_earned_page():
     """Cash taken for something that has not happened yet."""
     conn = get_db()
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     data = money_held_not_earned(conn, today=today)
     conn.close()
     this_year = sum(v for k, v in data["by_month"] if k[:4] == str(today.year))
@@ -45490,7 +45537,7 @@ def log_vehicle_service(vehicle_id):
     if not vehicle:
         conn.close()
         abort(404)
-    new_due = add_months(datetime.now(timezone.utc).date(), 6)
+    new_due = add_months(house_today(), 6)
     conn.execute("UPDATE vehicles SET next_service_due = ? WHERE id = ?", (new_due.isoformat(), vehicle_id))
     conn.execute(
         """INSERT INTO vehicle_maintenance (vehicle_id, title, status, reported_by_user_id, created_at, resolved_at)
@@ -45652,7 +45699,7 @@ def all_transfers():
     employee needs to see the run they've been assigned. Creating and deleting
     transfers stays owner-only on the per-vehicle page.
     """
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     conn = get_db()
     rows = conn.execute(
         """SELECT vehicle_transfers.*, vehicles.name AS vehicle_name,
@@ -46328,10 +46375,10 @@ def audit_list_view(conn, args):
            ORDER BY audit_log.created_at DESC"""
     ).fetchall()
 
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
 
     def when(row):
-        stamp = (row["created_at"] or "")[:10]
+        stamp = house_date_iso(row["created_at"])
         if not stamp:
             return None
         if stamp == today.isoformat():
@@ -46534,8 +46581,8 @@ def readiness_checks(conn):
         "ORDER BY id DESC LIMIT 1").fetchone()
     days = None
     if last_backup:
-        d = parse_date((last_backup["created_at"] or "")[:10])
-        days = (datetime.now(timezone.utc).date() - d).days if d else None
+        d = house_date(last_backup["created_at"])
+        days = (house_today() - d).days if d else None
     add("warn", "Data", "Recent backup", days is not None and days <= 30,
         f"Last taken {days} day{'s' if days != 1 else ''} ago." if days is not None else
         "Never downloaded.")
@@ -46859,7 +46906,7 @@ def purge_health_notes(conn, today=None):
     Returns a count per table. What was deleted is never logged — an audit
     line quoting the allergy it just removed would defeat the point.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     iso = today.isoformat()
     cleared = {}
 
@@ -46917,7 +46964,7 @@ def purge_dead_enquiries(conn, today=None):
     cancelled long ago. Both are judged from the date the guest cared about,
     not the date we happened to file it.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     cutoff = _add_months(today, -ENQUIRY_RETENTION_MONTHS).isoformat()
     cleared = {}
 
@@ -47021,13 +47068,13 @@ def ops_calendar():
     filterable. Employees get it too (it's the "what's on" view), but the
     server only ever hands them rows build_overview already scopes."""
     view = request.args.get("view", "week")
-    anchor = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    anchor = parse_date(request.args.get("date", "")) or house_today()
     user = current_user()
     conn = get_db()
     cal = build_calendar(conn, view, anchor, viewer=user)
     conn.close()
     return render_template(
-        "ops_calendar.html", cal=cal, today=datetime.now(timezone.utc).date(),
+        "ops_calendar.html", cal=cal, today=house_today(),
     )
 
 
@@ -47035,11 +47082,11 @@ def ops_calendar():
 @owner_required
 def admin_overview():
     view = request.args.get("view", "week")
-    anchor = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
     sheet = build_overview(conn, view, anchor)
     conn.close()
-    return render_template("admin_overview.html", today=datetime.now(timezone.utc).date(), sheet=sheet)
+    return render_template("admin_overview.html", today=house_today(), sheet=sheet)
 
 
 @app.route("/admin/overview/status.json")
@@ -47049,7 +47096,7 @@ def admin_overview_status():
     elsewhere in the app — or that the owner completes right here — shows
     up as done without a full reload or losing the active filters."""
     view = request.args.get("view", "week")
-    anchor = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
     sheet = build_overview(conn, view, anchor)
     conn.close()
@@ -47068,11 +47115,11 @@ def admin_overview_status():
 @owner_required
 def admin_tasks():
     view = request.args.get("view", "week")
-    anchor = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
+    anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
     sheet = build_task_sheet(conn, view, anchor)
     conn.close()
-    return render_template("admin_tasks.html", today=datetime.now(timezone.utc).date(), sheet=sheet)
+    return render_template("admin_tasks.html", today=house_today(), sheet=sheet)
 
 
 BULK_TASK_ACTIONS = ("complete", "reassign", "reschedule", "delete")
@@ -47252,7 +47299,7 @@ def new_task():
     # done, and finding that out when it is overdue is finding out too late.
     # Said, not blocked: sometimes you assign it knowing they're back by then.
     away = away_on(conn, int(assigned_to),
-                   due_date or datetime.now(timezone.utc).date().isoformat())
+                   due_date or house_today_iso())
     person = conn.execute("SELECT name FROM users WHERE id = ?", (int(assigned_to),)).fetchone()
     conn.commit()
     conn.close()
@@ -47472,7 +47519,7 @@ def staff_today():
     whose name do I need to know before I walk round the corner.
     """
     user = current_user()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     conn = get_db()
 
     guests_here = guest_recognition_cards(conn, today, viewer_role=user["role"])
@@ -47865,7 +47912,7 @@ def build_shift_week(conn, anchor):
     range_start = anchor - timedelta(days=anchor.weekday())
     days = [range_start + timedelta(days=i) for i in range(7)]
     range_end = range_start + timedelta(days=7)
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
 
     employees = conn.execute("SELECT * FROM users WHERE role = 'employee' ORDER BY name").fetchall()
     shifts = conn.execute(
@@ -47913,8 +47960,8 @@ def build_shift_week(conn, anchor):
 @app.route("/admin/shifts")
 @owner_required
 def admin_shifts():
-    anchor = parse_date(request.args.get("date", "")) or datetime.now(timezone.utc).date()
-    today = datetime.now(timezone.utc).date()
+    anchor = parse_date(request.args.get("date", "")) or house_today()
+    today = house_today()
     conn = get_db()
     week = build_shift_week(conn, anchor)
     pending_swaps = conn.execute(
@@ -47937,7 +47984,7 @@ def admin_shifts():
 @app.route("/admin/shifts/copy-previous", methods=["POST"])
 @owner_required
 def copy_previous_week_shifts():
-    anchor = parse_date(request.form.get("date", "")) or datetime.now(timezone.utc).date()
+    anchor = parse_date(request.form.get("date", "")) or house_today()
     this_week_start = anchor - timedelta(days=anchor.weekday())
     prev_week_start = this_week_start - timedelta(days=7)
     prev_week_end = this_week_start
@@ -48054,7 +48101,7 @@ def my_hours():
 def my_shifts():
     user = current_user()
     conn = get_db()
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
 
     if request.method == "POST":
         shift_id = request.form.get("shift_id", "")
@@ -48328,7 +48375,7 @@ def cancel_leave_request(request_id):
 def admin_approvals():
     conn = get_db()
     period = period_from_request()
-    overview = financial_overview(conn, period, datetime.now(timezone.utc).date())
+    overview = financial_overview(conn, period, house_today())
     leave = conn.execute(
         """SELECT leave_requests.*, users.name AS employee_name FROM leave_requests
            JOIN users ON users.id = leave_requests.user_id
@@ -48590,7 +48637,7 @@ def decide_leave(request_id):
 @owner_required
 def today_sheet():
     # Named for the day it is at the house, so that is the day it asks about.
-    today = datetime.now(LOCAL_TZ).date()
+    today = house_today()
     conn = get_db()
     open_tasks = conn.execute(
         """SELECT tasks.*, users.name AS employee_name FROM tasks
@@ -48780,7 +48827,7 @@ def resolve_inbox_owner(conn, mb):
     Also skips anyone who is on approved leave or recorded absent today, so
     mail doesn't get assigned into a void while they're away.
     """
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     away = {
         r["user_id"] for r in conn.execute(
             """SELECT user_id FROM leave_requests
@@ -48819,7 +48866,7 @@ def guest_context_for_emails(conn, addresses):
     wanted = {(a or "").strip().lower() for a in addresses if a and a.strip()}
     if not wanted:
         return {}
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     placeholders = ",".join("?" * len(wanted))
     args = list(wanted)
 
@@ -49028,7 +49075,7 @@ def extract_dates(text, received_at_iso):
     otherwise land more than a month in the past (an email about 'March 3rd'
     received in November almost certainly means next March)."""
     text = text or ""
-    received_date = parse_date((received_at_iso or "")[:10]) or datetime.now(timezone.utc).date()
+    received_date = parse_date((received_at_iso or "")[:10]) or house_today()
     found = []
     for m in _DATE_ISO_RE.finditer(text):
         d = parse_date(m.group(0))
@@ -49173,7 +49220,7 @@ def claim_job_run(conn, job_name, cooldown_seconds):
 
 
 def run_housekeeping_job(conn):
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     expired = expire_stale_pending_bookings(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
     return f"expired {expired} stale booking(s), prepped {prepped} arrival(s)"
@@ -49213,8 +49260,8 @@ def run_room_balance_reminder_job(conn, days_before):
     booking un-stamped and tries again once one exists — rather than marking
     everybody reminded and telling nobody.
     """
-    horizon = (datetime.now(timezone.utc).date() + timedelta(days=days_before)).isoformat()
-    today = datetime.now(timezone.utc).date().isoformat()
+    horizon = (house_today() + timedelta(days=days_before)).isoformat()
+    today = house_today_iso()
     candidates = conn.execute(
         """SELECT bookings.id, bookings.reference_code, bookings.manage_token,
                   bookings.guest_name, bookings.guest_email, bookings.arrival_date,
@@ -49258,7 +49305,7 @@ def run_room_balance_reminder_job(conn, days_before):
 
 
 def run_workshop_balance_reminder_job(conn, days_before):
-    cutoff = (datetime.now(timezone.utc).date() + timedelta(days=days_before)).isoformat()
+    cutoff = (house_today() + timedelta(days=days_before)).isoformat()
     due = conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.start_date, workshop_sessions.end_date, workshops.title
            FROM workshop_bookings
@@ -49298,7 +49345,7 @@ def run_event_balance_reminder_job(conn, days_before):
     nobody. Committed inside the loop, because a write held open across the next
     contact's send is what stops queue_undelivered keeping their copy.
     """
-    cutoff = (datetime.now(timezone.utc).date() + timedelta(days=days_before)).isoformat()
+    cutoff = (house_today() + timedelta(days=days_before)).isoformat()
     due = conn.execute(
         """SELECT * FROM event_inquiries
             WHERE status = 'confirmed'
@@ -49362,7 +49409,7 @@ def run_workshop_autocharge_job(conn):
     """
     if not stripe_enabled():
         return {"charged": 0, "failed": 0, "skipped": "stripe not configured"}
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     rows = conn.execute(
         """SELECT workshop_bookings.*, workshops.title
              FROM workshop_bookings
@@ -49462,7 +49509,7 @@ def run_workshop_feedback_request_job(conn):
     'How was your stay?' email, but workshops have no checkout step to
     hang the trigger off, so this runs on a delay from the session's
     end_date instead."""
-    cutoff = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    cutoff = (house_today() - timedelta(days=1)).isoformat()
     due = conn.execute(
         """SELECT workshop_bookings.*, workshop_sessions.end_date, workshops.title
            FROM workshop_bookings
@@ -50425,7 +50472,7 @@ def current_offerings_snapshot(conn):
     just not tied to matching one specific category. Deliberately narrow to
     guest-facing pricing/availability and policy text -- nothing from HR,
     financials, or the vault belongs in a prompt like this."""
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     rooms = conn.execute(
         "SELECT name, price_per_night, max_occupancy FROM rooms WHERE active = 1 ORDER BY name"
     ).fetchall()
@@ -50929,7 +50976,7 @@ def voucher_ledger(conn, voucher_id):
     original = round(float(voucher["original_amount"] or 0), 2)
     spent = round(sum(float(r["amount"] or 0) for r in spent_rows), 2)
     balance = round(max(original - spent, 0.0), 2)
-    today = datetime.now(timezone.utc).date().isoformat()
+    today = house_today_iso()
     expired = bool(voucher["expires_on"]) and voucher["expires_on"] < today
     if voucher["status"] == "void":
         state = "void"
@@ -51260,7 +51307,7 @@ def city_tax_arrears(conn):
     balance on a finished stay, which the chase will then ask a guest about
     months after they went home. Both are offered; only one is quiet.
     """
-    today = datetime.now(timezone.utc).date()
+    today = house_today()
     rate = tax_rate(conn, "city_tax_per_adult_per_night")
     upcoming, departed = [], []
     for booking in conn.execute(
@@ -51788,7 +51835,7 @@ def expense_document_date(row):
     for key in ("invoice_date", "spent_on"):
         if key in row.keys() and row[key]:
             return row[key]
-    return (row["submitted_at"] or "")[:10] or None
+    return house_date_iso(row["submitted_at"]) or None
 
 
 def staff_reimbursements_owed(conn, today=None):
@@ -51799,7 +51846,7 @@ def staff_reimbursements_owed(conn, today=None):
     same query. Somebody who spent their own money on the house is the last
     person who should have to ask twice.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     rows = conn.execute(
         """SELECT expenses.*, users.name AS person, users.email AS person_email
              FROM expenses LEFT JOIN users ON users.id = expenses.submitted_by_user_id
@@ -51814,7 +51861,7 @@ def staff_reimbursements_owed(conn, today=None):
                                            "total": 0.0, "items": [], "oldest": None})
         entry["total"] = round(entry["total"] + float(r["amount"] or 0), 2)
         entry["items"].append(r)
-        approved = parse_date((r["decided_at"] or "")[:10])
+        approved = house_date(r["decided_at"])
         if approved and (entry["oldest"] is None or approved < entry["oldest"]):
             entry["oldest"] = approved
     for entry in by_person.values():
@@ -51830,7 +51877,7 @@ def payables_ageing(conn, today=None):
     an ageing report would have said everything was overdue and nobody would
     have opened it twice.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     buckets = {"not_yet_due": [], "due_soon": [], "overdue": [], "no_date": []}
     rows = conn.execute(
         """SELECT expenses.*, vendors.name AS vendor_display
@@ -51951,7 +51998,7 @@ def break_even_month(conn, month=None):
     The rate is what rooms ACTUALLY achieved, not the rack rate. Break-even
     computed on a price nobody paid is a comforting number and a false one.
     """
-    day = month or datetime.now(LOCAL_TZ).date()
+    day = month or house_today()
     if isinstance(day, str):
         day = parse_date(day)
     first = day.replace(day=1)
@@ -51973,7 +52020,7 @@ def break_even_month(conn, month=None):
     # 1st leaves them out of a figure the month is judged against — which
     # understates break-even in exactly the month a new salary makes it harder
     # to reach.
-    as_at = min(last - timedelta(days=1), datetime.now(LOCAL_TZ).date())
+    as_at = min(last - timedelta(days=1), house_today())
     if as_at < first:
         as_at = first
     for w in current_wages(conn, as_at).values():
@@ -52030,7 +52077,7 @@ def revenue_on_the_books(conn, today=None, months=12):
     booking is not revenue and a page that says otherwise is a page that
     flatters itself.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     if isinstance(day, str):
         day = parse_date(day)
     first = day.replace(day=1)
@@ -52196,7 +52243,7 @@ def debtor_ageing(conn, today=None):
     settled at the table and an enquiry is a quote, not a debt — so there is
     nothing of theirs to age.
     """
-    day = today or datetime.now(LOCAL_TZ).date()
+    day = today or house_today()
     if isinstance(day, str):
         day = parse_date(day)
     items = []

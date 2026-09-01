@@ -52,7 +52,7 @@ def run():
     room = ensure_room()
     pub = m.app.test_client()
     oc, ec, owner, emp = clients()
-    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=2)).isoformat()
+    yesterday = (m.house_today() - timedelta(days=2)).isoformat()
 
     conn = db()
     _mk(conn, f"{TAG}EXPIRED", valid_until=yesterday)
@@ -62,8 +62,8 @@ def run():
     _mk(conn, f"{TAG}MINSPEND", min_spend=999999.0)
     conn.close()
 
-    arrival = (datetime.now(timezone.utc).date() + timedelta(days=540)).isoformat()
-    departure = (datetime.now(timezone.utc).date() + timedelta(days=542)).isoformat()
+    arrival = (m.house_today() + timedelta(days=540)).isoformat()
+    departure = (m.house_today() + timedelta(days=542)).isoformat()
 
     def ask(code):
         r = pub.post("/api/validate-promo-code", data={

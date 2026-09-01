@@ -41,7 +41,7 @@ def run():
     conn = db()
     _cleanup(conn)
     now = datetime.now(timezone.utc).isoformat()
-    soon = (datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat()
+    soon = (m.house_today() + timedelta(days=30)).isoformat()
 
     conn.execute(
         """INSERT INTO restaurant_bookings (reference_code, manage_token, guest_name,

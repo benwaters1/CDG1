@@ -20,8 +20,8 @@ import _harness
 
 m = _harness.m
 TAG = "ZZDRIFT"
-SOON = (datetime.now(timezone.utc).date() + timedelta(days=520)).isoformat()
-SOON_END = (datetime.now(timezone.utc).date() + timedelta(days=522)).isoformat()
+SOON = (m.house_today() + timedelta(days=520)).isoformat()
+SOON_END = (m.house_today() + timedelta(days=522)).isoformat()
 
 
 def _session(room_id, quoted_total, discount="0.00"):

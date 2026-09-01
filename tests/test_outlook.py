@@ -45,7 +45,7 @@ def _cleanup():
 
 def _next_month_window():
     """A month far enough ahead to be inside the outlook and easy to reason about."""
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
     first = today.replace(day=1)
     y, mth = divmod(first.month - 1 + 2, 12)      # two months out
     return date(first.year + y, mth + 1, 15)      # the 15th, safely mid-month
