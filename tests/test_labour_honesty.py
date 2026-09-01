@@ -144,7 +144,7 @@ def run():
     # A page that shows net without this reads as a bank figure. It is
     # revenue minus a labour cost that cannot price somebody with no wage,
     # so it is overstated by exactly their wages.
-    r = oc.get("/admin/reports/labour")
+    r = oc.get(f"/admin/reports/labour?period=month&date={start.isoformat()}")
     body = r.get_data(as_text=True)
     s.check("the labour report opens", r.status_code == 200,
             detail=f"HTTP {r.status_code}")

@@ -6,7 +6,21 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{# Shown only when the view passes a known returning guest. Silent otherwise,
+   so a stranger never sees an empty personalisation slot. #}
+{% if returning_guest %}
+<div class="g-wrap">
+  <p class="g-welcome">
+    <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
+    {% if returning_guest['last_room'] %}You stayed in {{ returning_guest['last_room'] }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}
+    <a href="{{ url_for('find_booking') }}">Your past stays</a>
+  </p>
+</div>
+{% endif %}
+
+
 {% from '_marks.html' import mark %}
+{% from '_devices.html' import monogram %}
 {# Nights for the whole page, from the dates already in scope. Computed here
    so no route change is needed; if the view later passes stay_nights it wins. #}
 {% if stay_nights is not defined %}
@@ -132,18 +146,7 @@
 } %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
-{% set RM_DESC = {
-  'Suite with Mountain View':
-    'The largest room in the house, on the first floor, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
-  'King Room with Mountain View':
-    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is a few steps along the corridor and yours alone — ensuites are not permitted in a monument of this class.',
-  'Family Suite with Mountain View':
-    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits a few steps away.',
-  'Double with Shared Bathroom':
-    'A quiet double on the ground floor, floral papers and a marble chimneypiece, sharing a bathroom with one other room. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
-  'Twin/Double with Shared Bathroom':
-    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Double next door. The most straightforward room in the house, and the least expensive way into it.'
-} %}
+{% from '_room_copy.html' import room_copy %}
       <img class="g-card__img"
            src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
            alt="{{ room['name'] }}" loading="lazy">
@@ -158,15 +161,19 @@
           {% if _n > 0 %}
             <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '%.0f'|format(room['price_per_night'] * _n) }}</b>
             <span>total · {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
-            <span class="g-card__per">€{{ '%.0f'|format(room['price_per_night']) }} a night</span>
+            {# On a single night the total and the nightly rate are the same
+               figure, so printing both says nothing twice. #}
+            {% if _n > 1 %}<span class="g-card__per">€{{ '%.0f'|format(room['price_per_night']) }} a night</span>{% endif %}
           {% else %}
             <b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b>
             <span>/ night</span>
           {% endif %}
         </p>
         {% endif %}
-        {% set _d = room['description'] if room['description'] and room['description']|length > 60
-                    else RM_DESC.get(room['name'], room['description']) %}
+        {# Prefer the written description. The database column holds imported
+           listing copy — generic, and in one case factually wrong — so it is
+           only used when there is no written version for that room. #}
+        {% set _d = room_copy(room['name'], room['description'] or '') %}
         {% if _d %}<p class="g-card__desc">{{ _d }}</p>{% endif %}
         {# amenities is empty on every room, so this list never rendered.
            Derive the features from facts the row does carry; a filled-in
@@ -193,9 +200,6 @@
           {% if availability.get(room['id']) %}
             <a class="g-btn g-btn--solid g-card__cta" href="{{ url_for('book_room', room_id=room['id'], arrival=arrival, departure=departure, name=prefill_name, email=prefill_email, phone=prefill_phone, party_size=prefill_party_size) }}">Book in</a>
           {% else %}
-            {# The REASON, which was already worked out and thrown away.
-               "Requires a 3-night minimum" is a booking a guest can still
-               make; "not available" reads as sold out and loses it. #}
             <span class="g-btn g-btn--off g-card__cta">
               {{ unavailable_reason.get(room['id'], 'Not available these dates') }}
             </span>
@@ -225,7 +229,26 @@
       <button type="submit" class="g-btn g-submit">Join the waitlist</button>
     </form>
   </div>
-  {% endif %}
+  
+    {# A guest who finds nothing available currently leaves with nothing.
+       These are the people most likely to book — they arrived with dates. #}
+    <div class="g-waitlist">
+      <p class="g-fr">Cinq chambres, quatre-vingt-neuf à venir<span class="g-fr__en">Five rooms ready, eighty-nine to come</span></p>
+    <p class="g-eyebrow">If Those Dates Are Taken</p>
+      <h3 class="g-h3">Tell us and we will write when they open</h3>
+      <p class="g-p">Rooms come back. People move dates, and rooms open as the restoration reaches them. If you leave your dates we will write to you before they go public.</p>
+      <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-waitlist__form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="source" value="waitlist">
+        <input type="hidden" name="wanted_arrival" value="{{ arrival }}">
+        <input type="hidden" name="wanted_departure" value="{{ departure }}">
+        <label class="g-vh" for="wl_email">Your email</label>
+        <input type="email" id="wl_email" name="email" placeholder="Your email" required>
+        <button type="submit" class="g-btn g-btn--solid">Tell me when they open</button>
+      </form>
+      <p class="g-hint">Only about these dates. No newsletter unless you ask for one.</p>
+    </div>
+{% endif %}
 </div></section>
 
 
@@ -264,7 +287,7 @@
     <p class="g-p">The King Room, the Suite with Mountain View and the Family Suite each have a private bathroom a few steps away. The Double and the Twin/Double share a bathroom set between them.</p>
     <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit off the corridor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not.</p>
     <p style="margin-top:var(--s6)">
-      <a href="#book" class="g-btn g-btn--solid">See what is free</a>
+      <a href="#book" class="g-btn g-btn--solid">Check dates</a>
     </p>
   </div>
 </div></section>
@@ -323,7 +346,61 @@
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
   <div class="g-extras" style="margin-top:var(--s7)">
 
+    <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">The Kitchen</p>
+      <h3 class="g-extra__t">A Private Dinner</h3>
+      <p class="g-extra__d">The dining salon given over to your party alone, cooked by the cheffe de pâtisserie in the Renaissance kitchen. Menus are built around what the gardens and the Sunday market give that week, and on some days from the château's own eighteenth-century recipe book. Up to forty seated; smaller numbers eat better.</p>
+      <p class="g-extra__p">Priced per person on the menu agreed · book at least a week ahead</p>
+    </div>
+  </article>
+
   <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">The Valley Floor</p>
+      <h3 class="g-extra__t">Riding</h3>
+      <p class="g-extra__d">Horses from a stable in the valley, ridden out along the Ariège and up through the forest tracks above the village. Hacks of an hour or a half-day, with a guide who knows which paths are passable after rain. Suitable for beginners; the mountain routes are not.</p>
+      <p class="g-extra__p">By the hour or the half-day · weight and experience asked in advance</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Summer</p>
+      <h3 class="g-extra__t">Kayaking the Ariège</h3>
+      <p class="g-extra__d">The river runs cold and fast off the Pyrénées. Guided descents from twenty minutes above the château, graded gentle to lively depending on the month and the snowmelt. Boats, buoyancy aids and a guide who will read the water for you.</p>
+      <p class="g-extra__p">Half-day, May to September · minimum age applies and is set by the river, not by us</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Take It With You</p>
+      <h3 class="g-extra__t">A Picnic Basket</h3>
+      <p class="g-extra__d">Packed by the kitchen the night before: bread from the village, cheese and charcuterie from the Sunday market, something cooked, something sweet, and a bottle if you want one. Basket, cloth and glasses included, to take up the mountain or no further than the parkland.</p>
+      <p class="g-extra__p">Per basket, serving two or four · ordered the day before</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Late</p>
+      <h3 class="g-extra__t">Dinner by Candlelight in the Salons</h3>
+      <p class="g-extra__d">The unrestored salons lit by candle alone, after dark, with the plaster and the panelling as they are. No electric light is fitted in those rooms, which is the reason it works. Drinks and a short menu rather than a full dinner.</p>
+      <p class="g-extra__p">Weather and wind permitting · not available when work is underway in those rooms</p>
+    </div>
+  </article>
+
+  <article class="g-extra">
+    <div class="g-extra__b">
+      <p class="g-extra__k">Cellar</p>
+      <h3 class="g-extra__t">A Tasting of Ariège Wine</h3>
+      <p class="g-extra__d">The Ariège lost almost all its vines to phylloxera and never fully replanted, so what survives is small, local and rarely leaves the department. A tasting of six, poured and explained, with an account of why there is so little of it.</p>
+      <p class="g-extra__p">Per person, in the salon or the cellar · arranged with a day's notice</p>
+    </div>
+  </article>
+
+<article class="g-extra">
     <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/ad2839d0-7d37-4b37-914d-46ccbe96cc09/Chateau+de+Gudanes+-+Winter.jpeg?format=1000w" alt="The château in winter" loading="lazy">
     <div class="g-extra__b">
       <p class="g-extra__k">Winter</p>
@@ -395,7 +472,7 @@
   </div>
 
   <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">See what is free</a>
+    <a href="#book" class="g-btn g-btn--solid">Check dates</a>
   </p>
 </div></section>
 
@@ -445,7 +522,7 @@
             {%- else %}Private{% endif -%}
           </td>
           <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
-          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">See what is free</a></td>
+          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -512,15 +589,6 @@
 </svg>
   <h2 class="g-place">What Guests Say</h2>
 
-  {# The house's OWN reviews, from guests who stayed and were asked. The
-     booking page has been querying these on every load since the feature was
-     built and rendering none of them, so "Feature on booking page" was a
-     button that did nothing at all — which is also why the only moderation
-     control the house had appeared to work.
-
-     The reply is shown with the review on purpose. A complaint answered well
-     reads better to the next guest than no complaint at all, and a page of
-     nothing but five-star quotes is the one nobody believes. #}
   {% if featured_reviews %}
   <div class="g-says__grid">
     {% for r in featured_reviews %}
@@ -669,6 +737,50 @@
     <p class="g-scarce__note">Rooms open one at a time, as the restoration reaches them.</p>
   </div>
 </div></section>
+
+
+<!-- ============ KEY INFORMATION ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Practical</p>
+  <h2 class="g-place">Key Information</h2>
+  <div class="g-key">
+    <div class="g-key__i">
+      <p class="g-key__k">Address</p>
+      <p class="g-key__v">2 Route de Beille<br>Château-Verdun, Ariège 09310<br>France</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Arrival</p>
+      <p class="g-key__v">From 4pm. Departure by 11am.<br>Someone will meet you at the gates.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Getting here</p>
+      <p class="g-key__v">Toulouse-Blagnac, 1h45 by road<br>Les Cabannes station, three minutes</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Contact</p>
+      <p class="g-key__v"><a href="tel:+33628069776">+33 6 28 06 97 76</a><br>
+      <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a></p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Youngest guest</p>
+      <p class="g-key__v">Eight. The staircases are eighteenth-century and there are no handrails in places.</p>
+    </div>
+    <div class="g-key__i">
+      <p class="g-key__k">Payment</p>
+      <p class="g-key__v">Charged in euro, handled by Stripe.<br>A deposit holds the room; the balance is taken nearer the date.</p>
+    </div>
+  </div>
+</div></section>
+
+<div class="g-mono__wrap">{{ monogram() }}</div>
+
+
+<div class="g-wrap">
+  <p class="g-devise">
+    <span class="g-devise__fr">« Cinq chambres prêtes. Quatre-vingt-neuf attendent. »</span>
+    <span class="g-devise__en">Five rooms ready. Eighty-nine waiting</span>
+  </p>
+</div>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

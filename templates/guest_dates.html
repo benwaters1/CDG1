@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Dates that matter{% endblock %}
+{% block content %}
+
+{#
+  On the employee side, because acting on one of these is a job rather than a
+  decision — a card, a word at check-in, a note to the kitchen.
+
+  Only the day and month are held. The house wants to know that the 3rd of June
+  matters to somebody and has no use for the year they were born; a date of
+  birth is something it would then have to justify keeping.
+#}
+<div class="page-head">
+  <h1>Dates that matter</h1>
+  <div>
+    {% for d in [7, 30, 90] %}
+    <a href="{{ url_for('guest_dates', days=d) }}"
+       class="btn-mini{{ ' btn-primary' if within == d }}">Next {{ d }} days</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if not rows %}
+  <p class="upload-hint">Nothing in the next {{ within }} days. Birthdays and
+  anniversaries are recorded on a guest's own page.</p>
+{% else %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>When</th><th>Who</th><th>What</th><th>Notice</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.when.isoformat()|date_short }}</td>
+        <td>
+          <a href="{{ url_for('guest_detail', guest_id=r.guest['id']) }}">{{ r.guest['name'] }}</a>
+          {%- if r.guest['vip'] %} <span class="mini-status status-approved">VIP</span>{% endif %}
+        </td>
+        <td>{{ 'Birthday' if r.kind == 'birthday' else 'Anniversary' }}</td>
+        <td>
+          {% if r.days == 0 %}<span class="mini-status status-confirmed">today</span>
+          {% elif r.days == 1 %}tomorrow
+          {% else %}in {{ r.days }} days{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">Sorted by how close it is, wrapping round the year — on
+the 20th of December, the 3rd of January is a fortnight away and not three
+hundred and fifty days.</p>
+{% endif %}
+
+{% endblock %}

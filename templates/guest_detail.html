@@ -222,4 +222,139 @@
 {% endif %}
 {% endif %}
 
+{# ---- the running note -------------------------------------------------
+   APPEND-ONLY, and that is the point. The profile has one free-text notes box,
+   so whoever types last silently replaces what the last person wrote — and what
+   gets lost is always the older observation nobody thought to repeat. #}
+<h2 style="margin-top:28px;">What we know</h2>
+<form method="post" action="{{ url_for('add_guest_note_route', guest_id=record.guest['id']) }}"
+      style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field-label" for="gn_body">Add to the note</label>
+  <input id="gn_body" type="text" name="body" maxlength="2000"
+         placeholder="Prefers the quiet side of the house">
+  <button type="submit" class="btn-mini">Add</button>
+  <span class="upload-hint">Kept with your name and the date. Nothing here
+  replaces what anybody else wrote.</span>
+</form>
+
+{% if notes %}
+<div class="table-wrap" style="margin-top:12px;">
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for n in notes %}
+      <tr>
+        <td>{{ n['created_at'][:10]|date_short }}</td>
+        <td>{{ n['author'] or '—' }}</td>
+        <td>{{ n['body'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="upload-hint">Nothing written down yet.</p>
+{% endif %}
+
+{# ---- dates that matter ------------------------------------------------ #}
+<h2 style="margin-top:28px;">Dates that matter</h2>
+<form method="post" action="{{ url_for('set_guest_dates', guest_id=record.guest['id']) }}"
+      style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="gd_b">Birthday</label>
+      <input id="gd_b" type="text" name="birthday" placeholder="3/6"
+             value="{{ record.guest['birthday'] or '' }}">
+    </div>
+    <div>
+      <label class="field-label" for="gd_a">Anniversary</label>
+      <input id="gd_a" type="text" name="anniversary" placeholder="14/9"
+             value="{{ record.guest['anniversary'] or '' }}">
+    </div>
+  </div>
+  <p class="upload-hint">
+    {%- if record.guest['birthday'] %}Birthday: {{ record.guest['birthday']|day_month }}. {% endif %}
+    {%- if record.guest['anniversary'] %}Anniversary: {{ record.guest['anniversary']|day_month }}. {% endif %}
+    Day and month only — the year is not kept. They appear on
+    <a href="{{ url_for('guest_dates') }}">Dates that matter</a> as they come up.</p>
+  <button type="submit" class="btn-mini">Save dates</button>
+</form>
+
+{% if is_owner %}
+{# ---- the caution ------------------------------------------------------
+   Owner only. "Do not accept a booking from this person" is a decision about
+   who the house lets in. An employee who thinks it warranted writes a note. #}
+<h2 style="margin-top:28px;">Caution</h2>
+{% if record.guest['caution_level'] %}
+<p>
+  <span class="mini-status status-declined">{{ caution_levels[record.guest['caution_level']] }}</span>
+  {{ record.guest['caution'] }}
+  {% if record.guest['caution_set_at'] %}
+  <span class="upload-hint">set {{ record.guest['caution_set_at'][:10]|date_short }}</span>
+  {% endif %}
+</p>
+{% endif %}
+<form method="post" action="{{ url_for('set_guest_caution', guest_id=record.guest['id']) }}"
+      style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="gc_level">How strongly</label>
+      <select id="gc_level" name="caution_level">
+        <option value="">No caution</option>
+        {% for key, label in caution_levels.items() %}
+        <option value="{{ key }}"{{ ' selected' if key == record.guest['caution_level'] }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="flex:2 1 260px;">
+      <label class="field-label" for="gc_body">What happened</label>
+      <input id="gc_body" type="text" name="caution" maxlength="1000"
+             value="{{ record.guest['caution'] or '' }}">
+    </div>
+  </div>
+  <p class="upload-hint">Shown against their bookings so it is read before a
+  room is given, not after. Choosing "No caution" lifts it, and either way the
+  change is recorded in the note above.</p>
+  <button type="submit" class="btn-mini">Save caution</button>
+</form>
+
+{# ---- duplicates and merging ------------------------------------------- #}
+{% if duplicates %}
+<h2 style="margin-top:28px;">Might be the same person</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Profile</th><th>Why</th><th></th></tr></thead>
+    <tbody>
+      {% for d in duplicates %}
+      <tr>
+        <td><a href="{{ url_for('guest_detail', guest_id=d.guest['id']) }}">{{ d.guest['name'] }}</a>
+          <span class="upload-hint">{{ d.guest['email'] or 'no email' }}</span></td>
+        <td class="upload-hint">{{ d.why|join(', ') }}</td>
+        <td>
+          <form method="post" action="{{ url_for('merge_guest', guest_id=record.guest['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="merge_id" value="{{ d.guest['id'] }}">
+            <button type="submit" class="btn-mini">Fold into this one</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">Folding keeps everything already on this profile and
+fills its blanks from the other. Nothing is deleted — the other profile stays,
+pointing here, because a booking or an invoice may still reference it.</p>
+{% endif %}
+
+{% if merged_from %}
+<p class="upload-hint" style="margin-top:12px;">
+  Folded in: {% for g in merged_from %}{{ g['name'] }}{{ ', ' if not loop.last }}{% endfor %}.
+</p>
+{% endif %}
+{% endif %}
+
 {% endblock %}

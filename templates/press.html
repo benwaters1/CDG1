@@ -1,0 +1,48 @@
+{% extends "public_base.html" %}
+{% block title %}Press{% endblock %}
+{% block description %}Château de Gudanes in the press — Vogue, AD Italia, House &amp; Garden, the Australian Financial Review, and the Medal of Honour of the Fondation Prince Louis de Polignac.{% endblock %}
+{% set crumbs = [('Press', None)] %}
+{% block content %}
+{% from '_marks.html' import mark %}
+
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-fr">Suivi depuis 2013<span class="g-fr__en">Followed since 2013</span></p>
+    <p class="g-eyebrow">The Record · Since 2013</p>
+  <h1 class="g-pagehead">Written about, filmed in</h1>
+  <p class="g-lede">A restoration followed from the year it began, by people who could have gone anywhere.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Published</p>
+  <h2 class="g-place">Where It Has Appeared</h2>
+  <ul class="g-press">
+    <li><strong>Vogue</strong><span>Netherlands, November issue</span></li>
+    <li><strong>AD Italia</strong><span>The restoration, in full</span></li>
+    <li><strong>House &amp; Garden</strong><span>Interiors</span></li>
+    <li><strong>Australian Financial Review</strong><span>The house and the work</span></li>
+    <li><strong>FIN! Magazine</strong><span>Cover and centrefold</span></li>
+    <li><strong>Zara Home</strong><span>Winter interiors campaign</span></li>
+  </ul>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('facade') }}</div>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Recognised</p>
+  <h2 class="g-place">The Polignac Medal</h2>
+  <p class="g-p g-lede-first">In 2016 the restoration was awarded the Medal of Honour of the Fondation Prince Louis de Polignac, given for work on French heritage.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Classified</dt><dd>Class I Historic Monument, 14 June 1994</dd></div>
+    <div><dt>Architect</dt><dd>Ange-Jacques Gabriel, principal architect to Louis&nbsp;XV</dd></div>
+    <div><dt>Begun</dt><dd>2013, with ninety of the ninety-four rooms unreachable</dd></div>
+    <div><dt>Honoured</dt><dd>Medal of the Fondation Prince Louis de Polignac, 2016</dd></div>
+  </dl></div></div>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">For Editors</p>
+  <h2 class="g-place">Enquiries and Images</h2>
+  <p class="g-p">For interviews, location visits or image requests, write to <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a>. Photographs of the château belong to whoever took them, so usage is agreed in writing rather than assumed.</p>
+  <p class="g-p"><a href="{{ url_for('events_photoshoots') if 'events_photoshoots' in url_map else url_for('events_info') }}" class="g-btn g-btn--solid">Location hire</a></p>
+</div></section>
+{% endblock %}

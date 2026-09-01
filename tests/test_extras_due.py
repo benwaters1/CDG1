@@ -15,6 +15,7 @@ Two things are load-bearing and are checked hardest:
   - IT TAKES NOTHING MORE OUT OF STOCK. The sale depleted the cellar when the
     line was created; a second movement on delivery takes the same bottle twice.
 """
+import io
 from datetime import date, datetime, timedelta, timezone
 
 from _harness import Suite, clients, db, flashes
@@ -248,11 +249,21 @@ def run():
             body.count("<table") == body.count('class="table-wrap"'))
 
     s.section("It can be empty")
-    _cleanup()
-    body = ec.get("/extras/due").get_data(as_text=True)
-    s.check("and says so rather than rendering blank",
-            "Nothing outstanding" in body,
+    # Enforced on the SOURCE, like test_table_overflow. Rendering and hoping the
+    # database is quiet made this pass or fail on which suites had run first --
+    # other suites leave undelivered extras behind, so on a full run the page was
+    # never empty and the check was reporting on them rather than on this page.
+    src = io.open("templates/extras_due.html", encoding="utf-8").read()
+    s.check("the page has an empty branch", "{% if not due.rows %}" in src,
             detail="a panel that can never be empty becomes furniture")
+    s.check("and says something rather than rendering blank",
+            "Nothing outstanding" in src,
+            detail="an empty page with no words on it reads as broken")
+    conn = db()
+    due = m.extras_due(conn)
+    conn.close()
+    s.check("and the count is a real count, not a constant",
+            due["count"] == len(due["rows"]), detail=f"{due['count']}")
 
     s.section("Guards")
     stay2 = _stay("G")

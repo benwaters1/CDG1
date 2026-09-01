@@ -4193,3 +4193,316 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 @media (max-width: 68rem){
   .g-nav__has-sub{ display: none; }
 }
+
+/* ==========================================================================
+   ROOM CARDS — ALIGNED ROWS
+   Descriptions differ in length, so price, tags and button each started at a
+   different height across a row. The card is a column: the description takes
+   the slack, and everything below it lines up with its neighbours.
+   ========================================================================== */
+.g-cards .g-card{ display: flex; flex-direction: column; }
+.g-cards .g-card__b{ display: flex; flex-direction: column; flex: 1; }
+/* The description absorbs the difference in length. */
+.g-cards .g-card__desc{ flex: 1 0 auto; margin-bottom: var(--s5); }
+/* Everything below it sits on the same line across the row. */
+.g-cards .g-card__rate{ margin-top: 0; }
+.g-cards .g-tags{ margin-top: var(--s4); }
+.g-cards .g-card__b > .g-btn,
+.g-cards .g-card__b > p:last-child{ margin-top: var(--s5); }
+/* When one card's tags wrap to an extra line the row loses its alignment.
+   Reserve the taller of the two so the buttons and tags stay level. */
+.g-cards .g-tags{ align-content: flex-start; }
+.g-cards .g-card__b > *:last-child{ margin-top: auto; }
+
+/* The homepage room blocks measured 39 characters — one short of readable.
+   Widen the block rather than shrink the type. */
+.g-homeroom__b{ padding-inline: var(--s5); }
+.g-homerooms{ grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr)); }
+
+/* ==========================================================================
+   WAITING LIST — the no-availability state
+   A guest who finds nothing available was leaving with nothing, having
+   arrived with dates. These are the most qualified people on the site.
+   ========================================================================== */
+.g-waitlist{
+  margin-top: var(--s7); padding: var(--s6);
+  border: 2px solid var(--gilt); background: var(--white);
+}
+.g-waitlist__form{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3);
+  margin-top: var(--s5);
+}
+.g-waitlist__form input[type="email"]{
+  flex: 1 1 18rem; max-width: 24rem;
+  height: 52px; min-height: 52px; max-height: 52px;
+  padding: 0 var(--s4); border: 1px solid var(--gilt);
+  background: var(--white); font-family: var(--ui); font-size: 16px;
+  color: var(--blue-deep);
+}
+.g-waitlist__form .g-btn{ height: 52px; flex: 0 0 auto; }
+.g-waitlist__form > input[type="hidden"], .g-waitlist__form > .g-vh{ position: absolute; }
+
+/* ==========================================================================
+   RETURNING GUEST
+   Quiet recognition, not a banner. Silent when the guest is unknown.
+   ========================================================================== */
+.g-welcome{
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3);
+  margin: var(--s5) 0 0; padding: var(--s4) var(--s5);
+  border-left: 2px solid var(--gilt); background: var(--sand-2);
+  font-size: 16px; color: var(--ink);
+}
+.g-welcome__k{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.g .g-welcome a{ color: var(--blue-deep); }
+
+/* The figures block already exists; this keeps it legible on the dark ground
+   used by the atelier scarcity section. */
+.g-sec--dark .g-figs__n{ color: #fff; }
+.g-sec--dark .g-figs__l{ color: #C9D4DF; }
+/* The children hint carries the minimum age, so it must read. Inside a narrow
+   field column it measured 37 characters. Let the row wrap and give the hint
+   the full width beneath both fields — never wider than the row itself. */
+.g-row{ flex-wrap: wrap; }
+.g-row .g-field--narrow{ flex: 1 1 9rem; min-width: 0; }
+.g-row .g-field--narrow .g-hint{
+  flex: 1 0 100%; width: 100%; max-width: 100%; margin-top: 4px;
+}
+/* A hint that describes the whole row, not one field. */
+.g-hint--row{ max-width: 46rem; margin-top: var(--s2); }
+
+/* ==========================================================================
+   THE FRENCH LINE
+   The house is in the Ariège and the site already names its rooms in French.
+   This sets a French phrase above its English, in the display face and in
+   gilt, so the two read as one thing rather than a translation bolted on.
+   ========================================================================== */
+.g-fr{
+  display: block; margin: 0 0 var(--s2);
+  font-family: var(--display); font-style: italic; font-weight: 300;
+  font-size: clamp(17px, 1.6vw, 21px); line-height: 1.25;
+  color: var(--gilt); letter-spacing: .01em;
+}
+.g-fr__en{
+  display: block;
+  font-family: var(--ui); font-style: normal;
+  font-size: 12px; font-weight: 600; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--ink-soft);
+  margin-top: 4px;
+}
+/* On a dark ground the gilt still carries, but the English needs lifting. */
+.g-sec--dark .g-fr__en, .g-panel--dark .g-fr__en{ color: #C9D4DF; }
+
+/* A French motto used as a closing line, centred under a rule. */
+.g-devise{
+  margin: var(--s7) auto 0; padding-top: var(--s5);
+  max-width: 40rem; text-align: center;
+  border-top: 1px solid var(--gilt);
+}
+.g-devise__fr{
+  display: block; font-family: var(--display); font-style: italic;
+  font-weight: 300; font-size: clamp(19px, 2vw, 25px); line-height: 1.35;
+  color: var(--blue-deep);
+}
+.g-devise__en{
+  display: block; margin-top: var(--s3);
+  font-family: var(--ui); font-size: 13px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gilt);
+}
+
+/* ==========================================================================
+   SECTION TAB ROW
+   A property's sections listed under its title, so a reader comparing one
+   against another does not have to go back through the nav.
+   ========================================================================== */
+.g-tabs{
+  display: flex; flex-wrap: wrap; gap: 0;
+  margin: var(--s5) 0 0;
+  border-bottom: 1px solid var(--gilt);
+}
+.g .g-tabs a{
+  display: flex; align-items: center; min-height: 48px;
+  padding: 0 var(--s5); position: relative;
+  font-family: var(--ui); font-size: 14px; letter-spacing: .06em;
+  color: var(--ink-soft); text-decoration: none; white-space: nowrap;
+}
+.g .g-tabs a:hover{ color: var(--blue-deep); }
+.g .g-tabs a[aria-current="page"]{ color: var(--blue-deep); font-weight: 600; }
+.g .g-tabs a[aria-current="page"]::after{
+  content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--blue-deep);
+}
+.g .g-tabs a:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -3px; }
+@media (max-width: 40rem){
+  .g-tabs{ overflow-x: auto; scrollbar-width: none; }
+  .g-tabs::-webkit-scrollbar{ display: none; }
+  .g .g-tabs a{ padding: 0 var(--s4); }
+}
+
+/* ==========================================================================
+   FACT STRIP
+   Hard figures under a hero, each with its drawn mark. Soho House states 36
+   bedrooms and a pool; ours are stranger, so they are worth stating plainly.
+   ========================================================================== */
+.g-strip{
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  margin: var(--s6) 0 0; padding: var(--s6) 0;
+  border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
+  text-align: center;
+}
+.g-strip__m{ display: block; color: var(--gilt); }
+.g-strip__m .g-mark{ width: 84px; height: 26px; }
+.g-strip__n{
+  display: block; margin-top: var(--s3);
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(28px, 3vw, 38px); line-height: 1;
+  color: var(--blue-deep); font-variant-numeric: lining-nums;
+}
+.g-strip__l{
+  display: block; margin-top: var(--s2);
+  font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   KEY INFORMATION
+   Address, arrival, travel, contact and payment in one block rather than
+   scattered across the site.
+   ========================================================================== */
+.g-key{
+  display: grid; gap: var(--s6) var(--s7); margin-top: var(--s6);
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr));
+}
+.g-key__k{
+  margin: 0 0 var(--s2); font-family: var(--ui);
+  font-size: 12px; font-weight: 600; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--gilt);
+}
+.g-key__v{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink); max-width: 30rem; }
+.g .g-key__v a{ color: var(--blue-deep); }
+
+/* ==========================================================================
+   EXTRAS WITH AND WITHOUT A PHOTOGRAPH
+   Not every experience has an image yet. A card without one should not sit
+   half the height of its neighbour — it takes a drawn rule in place of the
+   picture so the row still reads as a set.
+   ========================================================================== */
+.g-extra{ display: flex; flex-direction: column; }
+.g-extra__b{ display: flex; flex-direction: column; flex: 1; }
+.g-extra__d{ flex: 1 0 auto; }
+/* A card with no photograph gets a gilt rule where the image would be. */
+.g-extra:not(:has(img)) .g-extra__b{ padding-top: var(--s6); position: relative; }
+.g-extra:not(:has(img)) .g-extra__b::before{
+  content: ""; position: absolute; top: 0; left: var(--s6); right: var(--s6);
+  height: 2px; background: var(--gilt);
+}
+.g-extra__p{ margin-top: var(--s4); }
+
+/* ==========================================================================
+   THE FLOWER CALENDAR
+   What is in flower decides more wedding dates than anything except price.
+   Set on the page ground with a gilt frame, months as a row of buttons.
+   ========================================================================== */
+.g-bloom{
+  margin-top: var(--s7);
+  border-top: 2px solid var(--gilt); border-bottom: 2px solid var(--gilt);
+  padding: var(--s6) 0;
+}
+.g-bloom__months{ display: flex; flex-wrap: wrap; gap: var(--s2); }
+.g-bloom__m{
+  min-height: 44px; padding: 0 var(--s4); cursor: pointer;
+  border: 1px solid var(--gilt); background: transparent;
+  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+}
+.g-bloom__m:hover{ background: var(--white); }
+.g-bloom__m:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-bloom__m.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+
+.g-bloom__out{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.3); }
+.g-bloom__lede{
+  margin: 0 0 var(--s5); max-width: 40rem;
+  font-family: var(--display); font-weight: 300;
+  font-size: clamp(20px, 2.2vw, 27px); line-height: 1.3; color: var(--blue-deep);
+}
+.g-bloom__list{
+  display: grid; gap: var(--s2) var(--s5); margin: 0 0 var(--s5); padding: 0;
+  list-style: none;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+}
+.g-bloom__list li{
+  position: relative; padding-left: var(--s5);
+  font-size: 16px; line-height: 1.6; color: var(--ink);
+}
+.g-bloom__list li::before{
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 7px; height: 7px; border: 1px solid var(--gilt); border-radius: 50%;
+}
+.g-bloom__note{
+  /* In characters, not rem: 46rem measured 102 characters at this size. */
+  margin: 0; max-width: 62ch; padding-left: var(--s5);
+  border-left: 2px solid var(--gilt);
+  font-size: 16px; line-height: 1.6; color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   THE DRAWN HOUSE MARK
+   The logo is a hosted PNG, so it cannot take the ink colour or scale as an
+   ornament. This is the same mark drawn: the G under a coronet in laurel,
+   in currentColor, for use as a device rather than a masthead.
+   ========================================================================== */
+.g-monogram{ width: 56px; height: 63px; color: var(--gilt); }
+.g-monogram--lg{ width: 88px; height: 99px; }
+.g-monogram--sm{ width: 40px; height: 45px; }
+.g-sec--dark .g-monogram, .g-panel--dark .g-monogram{ color: #D9C79B; }
+.g-mono__wrap{ display: flex; justify-content: center; padding: var(--s6) 0 0; }
+
+/* A section opened by the mark rather than a rule. */
+.g-crested{ text-align: center; }
+.g-crested .g-monogram{ margin: 0 auto var(--s4); }
+
+/* ==========================================================================
+   DEFENCE AGAINST style.css
+   style.css line 357 is a bare element selector —
+       form { display: flex; flex-direction: column }
+   — and it loads before this file, so it applies to EVERY form on the public
+   site, not the staff one it was written for. Any form of ours that relies
+   on the default row direction inherits a column instead, and `flex: 1 1 Xrem`
+   then sets a HEIGHT rather than a width. That is what made the journal
+   email field 288px tall.
+
+   Rather than patch each form as it breaks, every form component here states
+   its own direction. A bare element selector cannot then reach past it.
+   ========================================================================== */
+.g-journal__form,
+.g-waitlist__form,
+.g-navwrap__news,
+.g-rp__f,
+.g-row{ flex-direction: row; }
+
+/* Forms that are genuinely grids must keep their display too. */
+.g-search,
+.g-herosearch{ display: grid; }
+
+/* Any other form of ours: row by default, wrapping rather than stacking. */
+.g form:not(.g-stack){ flex-direction: row; flex-wrap: wrap; }
+.g form.g-stack{ flex-direction: column; }
+/* A field inside a form that style.css has flipped to column still gets a
+   column-sized width. State the field's own behaviour so it fills the row
+   whatever direction the parent ends up in. */
+.g form .g-field, .g form .g-field--narrow{ min-width: 0; }
+/* Only fields inside a row share a line. A field on its own keeps the
+   measure it already had, whatever direction style.css forces on the form. */
+.g form .g-row > .g-field{ flex: 1 1 14rem; }
+.g form .g-field > label,
+.g form .g-field > .g-hint{ max-width: 62ch; }
+/* A panel that style.css has turned into a flex container sizes its children
+   by content, so a field inside one gets a fraction of the width. A form
+   panel stacks its fields and lets each fill the panel. */
+.g .g-panel > form,
+.g form.g-panel{ display: flex; flex-direction: column; }
+.g .g-panel .g-field{ width: 100%; flex: 0 0 auto; }
+.g .g-panel .g-row{ display: flex; flex-direction: row; flex-wrap: wrap; width: 100%; }
+.g .g-panel .g-row > .g-field{ flex: 1 1 12rem; width: auto; }

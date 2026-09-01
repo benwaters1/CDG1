@@ -54,6 +54,7 @@
 
 <section class="g-sec g-sec--tight">
   <div class="g-wrap">
+    <p class="g-fr">Le château, tel qu'il est<span class="g-fr__en">The château, as it is</span></p>
     <p class="g-eyebrow">The Record · Fifteen Years</p>
     <h1 class="g-pagehead">The château, as it is</h1>
   <p class="g-p g-lede-first">Photographs taken across the seasons, mostly by guests and by the family, over a decade of work.</p>
@@ -262,6 +263,24 @@
 </div></section>
 
 <div class="g-wrap g-mark__wrap">{{ mark('vine') }}</div>
+
+
+<!-- ============ THE JOURNAL, PROPERLY ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">Not Ready To Book</p>
+    <h2 class="g-place">Watch It Come Off The Wall</h2>
+    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
+    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
+    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="jr_email_gal">Your email</label>
+      <input type="email" id="jr_email_gal" name="email" placeholder="Your email" required>
+      <button type="submit" class="g-btn g-btn--solid">Read along</button>
+    </form>
+    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
+  </div>
+</div></section>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

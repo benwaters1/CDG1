@@ -16,7 +16,7 @@
   the one nobody could answer.
 </p>
 
-{% include "_period_picker.html" ignore missing %}
+{% with endpoint = 'management_cash_banking' %}{% include "_period_selector.html" %}{% endwith %}
 
 <div class="stat-tiles">
   <div class="stat-tile">

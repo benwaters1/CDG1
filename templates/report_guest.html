@@ -43,4 +43,38 @@
 {% endif %}
 <p class="upload-hint">"Returning" means they had an earlier confirmed stay before this one — counted per booking, so one guest visiting twice in a period shows once as new and once as returning.</p>
 
+{# WHERE THE BUSINESS COMES FROM. Nights and money rather than a count of
+   bookings: a platform sending four one-night stays and a direct guest taking
+   the house for a fortnight are not four to one in any sense worth acting on.
+
+   Stays with nothing recorded are their own row, last, whatever their size.
+   Every booking taken before this was written has no source, and folding those
+   into "direct" would report a number the house never measured as though it
+   had. #}
+{% if data.source_mix and data.source_mix.rows %}
+<h2 class="section-heading">Where they came from</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Source</th><th class="num">Nights</th><th class="num">Share</th>
+      <th class="num">Stays</th><th class="num">Money</th></tr></thead>
+    <tbody>
+      {% for r in data.source_mix.rows %}
+      <tr{{ ' style="opacity:.7;"'|safe if r.key == 'unrecorded' }}>
+        <td>{{ r.label }}</td>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ '%.0f'|format(r.nights_pct) ~ '%' if r.nights_pct is not none else '—' }}</td>
+        <td class="num">{{ r.stays }}</td>
+        <td class="num">€{{ '{:,.0f}'.format(r.revenue) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if data.source_mix.unrecorded %}
+<p class="upload-hint">{{ data.source_mix.unrecorded }} of those nights were
+booked before the house started recording where a booking came from. They are
+shown apart rather than counted as direct.</p>
+{% endif %}
+{% endif %}
+
 {% endblock %}

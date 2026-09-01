@@ -17,6 +17,7 @@ machine for no reason.
 import atexit
 import os
 import re
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -45,6 +46,22 @@ def _scratch_db():
 
 SCRATCH_DB = _scratch_db()
 os.environ["GUDANES_DB_PATH"] = SCRATCH_DB
+
+# UPLOADS GET THE SAME TREATMENT AS THE DATABASE, and for the same reason.
+#
+# app.py falls back to DATA_DIR/uploads when GUDANES_UPLOAD_DIR is unset, and
+# nothing here was setting it -- so every run wrote its test documents into one
+# shared directory and never cleared it. Seven thousand files later, suites
+# started tripping over each other: the backup drill would find a file on disk
+# that no row referenced, or a row whose file another suite had removed, and
+# WHICH of those you got depended on the order the suites happened to run in.
+# Two runs of the same code disagreed, which makes the whole suite worth less
+# than it looks.
+#
+# A fresh directory per run, torn down at exit like the database copy. It also
+# stops the tests littering a directory the app itself uses.
+SCRATCH_UPLOADS = tempfile.mkdtemp(prefix="gudanes_test_uploads_")
+os.environ["GUDANES_UPLOAD_DIR"] = SCRATCH_UPLOADS
 # Never let a test reach the payment provider, whatever is in .env.
 for _k in ("STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"):
     os.environ.pop(_k, None)
@@ -57,6 +74,10 @@ def _cleanup():
             os.remove(SCRATCH_DB + suffix)
         except OSError:
             pass
+    # The run's uploads go with it. Best-effort: a file the app still has open
+    # on Windows is not worth failing a finished run over, and the directory is
+    # under the system temp folder either way.
+    shutil.rmtree(SCRATCH_UPLOADS, ignore_errors=True)
 
 
 import app as m  # noqa: E402  — must follow the env setup above
@@ -189,6 +210,11 @@ m.init_db()
 assert m.DB_PATH == SCRATCH_DB, (
     f"tests would have run against {m.DB_PATH} — refusing. "
     "The GUDANES_DB_PATH override in app.py is missing or was overwritten."
+)
+
+assert m.UPLOAD_DIR == SCRATCH_UPLOADS, (
+    f"tests would have written uploads into {m.UPLOAD_DIR} — refusing. "
+    "The GUDANES_UPLOAD_DIR override in app.py is missing or was overwritten."
 )
 
 

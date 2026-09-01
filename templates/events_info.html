@@ -26,6 +26,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/8d003a05-1829-44b5-ac00-2ed7e8d24395/_DSC8827.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 {# CONTRACT: POST url_for('submit_event_inquiry') — csrf_token, event_type,
    contact_name, contact_email, contact_phone, preferred_date,
@@ -41,6 +42,9 @@
     <p class="g-hero__cta"><a href="#enquire" class="g-btn g-btn--solid">Make an enquiry</a></p>
   </div>
 </section>
+
+<div class="g-wrap">{{ event_tabs('overview') }}</div>
+
 
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
@@ -133,17 +137,6 @@
         <p class="g-field">
           <label for="message">Tell us about your event</label>
           <textarea id="message" name="message" rows="4" placeholder="Vision, timeline, anything that helps us plan">{{ prefill_message | default('') }}</textarea>
-        </p>
-        {# Captured, not validated. There is no price on an enquiry yet to take a
-           discount off, and refusing an enquiry because a code was mistyped
-           would lose a wedding over a typo. The house sees what was claimed and
-           applies it when it quotes. #}
-        <p class="g-field">
-          <label for="promo_code">Promo code (optional)</label>
-          <input type="text" id="promo_code" name="promo_code" autocomplete="off"
-                 value="{{ prefill_promo_code | default('') }}">
-          <span class="g-hint">If you have been given one, we will apply it to
-          your quote.</span>
         </p>
         <button type="submit" class="g-btn g-submit">Send enquiry</button>
         <p class="g-foot-note">This is an enquiry, not a booking — we will follow up to discuss availability, pricing and details. You will get a reference code and a link to check its status.</p>

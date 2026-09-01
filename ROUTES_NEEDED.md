@@ -41,3 +41,49 @@ description, so they will not compete with events_info for the same terms:
   /events/weddings      "Weddings"
   /events/private       "Private Events"
   /events/photoshoots   "Photoshoots & Film"
+
+---
+
+# Data change, not code
+
+**Workshop capacity is 8 in the database; it should be 15.**
+Nothing in the templates hardcodes it — every figure on the site reads from
+the session record. Change `capacity` on the workshop sessions and the
+"places left" flags, the atelier totals and the registration cap all follow.
+
+# New form fields
+
+`book_room.html` now posts **`adults`** and **`children`** alongside the
+existing `party_size` (which is still sent, kept in step by script, so the
+route needs no change to keep working). To store them, read the two new
+fields; to ignore them, do nothing and `party_size` behaves exactly as before.
+
+# Waiting list
+
+The no-availability state now posts to `subscribe` with
+`source=waitlist`, `wanted_arrival` and `wanted_departure`. If the route
+ignores unknown fields this already works as a plain signup; storing the two
+dates is what makes it a waiting list.
+
+# Returning guest
+
+`book_rooms.html` shows a recognition line only when the view passes
+`returning_guest` as `{name, last_room, last_year}`. Pass nothing and the
+block does not render.
+
+---
+
+# One more route: the press page
+
+    @app.route("/press")
+    def press():
+        return render_template("press.html")
+
+Everything on it already appears on the restoration page. Giving it an address
+makes it linkable and citable — it is the highest-authority proof on the site
+and currently exists only as passing mentions.
+
+The footer link is guarded the same way as the event pages, so it falls back
+to the restoration page until the route exists.
+
+Add /press to the sitemap.

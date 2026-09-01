@@ -1,0 +1,19 @@
+{# Written room descriptions, shared by every page that describes a room.
+   The database column holds imported listing copy — generic, and in one case
+   factually wrong — so this takes precedence. A macro rather than a set,
+   because {% raw %}{% include %}{% endraw %} does not share scope with the including page. #}
+{% macro room_copy(name, fallback='') -%}
+{%- set RM_DESC = {
+  'Suite with Mountain View':
+    'The largest room in the house, on the first floor, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
+  'King Room with Mountain View':
+    'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is a few steps along the corridor and yours alone — ensuites are not permitted in a monument of this class.',
+  'Family Suite with Mountain View':
+    'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits a few steps away.',
+  'Double with Shared Bathroom':
+    'A quiet double on the ground floor, floral papers and a marble chimneypiece, sharing a bathroom with one other room. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
+  'Twin/Double with Shared Bathroom':
+    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Double next door. The most straightforward room in the house, and the least expensive way into it.'
+} -%}
+{{- RM_DESC.get(name) or fallback -}}
+{%- endmacro %}

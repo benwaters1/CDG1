@@ -1,0 +1,51 @@
+{#
+  Included from base.html rather than from the list toolbar, because 13 of
+  the 16 lists hide that toolbar when they have no rows — and an empty list
+  is precisely when somebody wants to switch to a different view. Renders
+  nothing at all when there is neither a saved view nor a filter to save,
+  so it costs nothing on the pages that are not lists.
+#}
+{#
+  SAVED VIEWS. Every filtered list here is already a URL — that was the design
+  from the start — so keeping one is only a matter of keeping the query string
+  under a name. Written once, and every list that includes this toolbar has it.
+
+  Per person and per page: "mine" on the rota is not "mine" on expenses, and one
+  shared set would have two people overwriting each other's.
+
+  The save form only carries the parameters a filter can be made of. Letting it
+  keep an arbitrary query string would turn this into a way to store any URL —
+  including one with somebody's address in it, which would then sit in a table
+  under a name like "Tuesdays".
+#}
+{% if saved_views and saved_views|length or saved_view_current %}
+<div class="list-toolbar" style="margin-top:-6px;">
+  {% for v in saved_views %}
+  <a href="{{ url_for(request.endpoint, **(request.view_args or {})) }}{{ '?' ~ v['query'] if v['query'] }}"
+     class="chip {{ 'is-on' if v['query'] == saved_view_current }}">{{ v['name'] }}</a>
+  {% endfor %}
+
+  {% if saved_view_current %}
+  {% set already = saved_views | selectattr('query', 'equalto', saved_view_current) | list %}
+  {% if already %}
+    <form method="post" action="{{ url_for('delete_list_view', view_id=already[0]['id']) }}"
+          style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="small-link">Forget "{{ already[0]['name'] }}"</button>
+    </form>
+  {% else %}
+    <form method="post" action="{{ url_for('save_list_view') }}" style="display:inline;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="endpoint" value="{{ request.endpoint }}">
+      {# Only the filter parameters, taken from what the page is showing. #}
+      {% for k, v in request.args.items() %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}">
+      {% endfor %}
+      <input type="text" name="name" maxlength="40" placeholder="Name this view"
+             aria-label="Name this view" style="width:150px;">
+      <button type="submit" class="btn-mini">Save view</button>
+    </form>
+  {% endif %}
+  {% endif %}
+</div>
+{% endif %}

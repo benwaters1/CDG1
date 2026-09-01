@@ -313,14 +313,6 @@ AUTOMATION_SETTING_DEFAULTS = {
 # default rather than on a number this app guessed — a French chart puts
 # accommodation, food and tourist tax in different places and that is the
 # accountant's call, not ours.
-PENNYLANE_REVENUE_DEFAULTS = {
-    "pennylane_account_accommodation": "",
-    "pennylane_account_extras": "",
-    "pennylane_account_city_tax": "",
-    "pennylane_account_restaurant": "",
-    "pennylane_account_workshops": "",
-    "pennylane_account_events": "",
-}
 
 MANUAL_PAYMENT_METHODS = {
     "cash": "Cash",
@@ -1907,7 +1899,7 @@ def init_db():
             instructor_name TEXT,
             instructor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
             price_per_person REAL NOT NULL DEFAULT 0,
-            default_capacity INTEGER NOT NULL DEFAULT 10,
+            default_capacity INTEGER NOT NULL DEFAULT 15,
             active INTEGER NOT NULL DEFAULT 1,
             sort_order INTEGER NOT NULL DEFAULT 0,
             photo_filename TEXT,
@@ -1919,7 +1911,7 @@ def init_db():
             workshop_id INTEGER NOT NULL REFERENCES workshops(id) ON DELETE CASCADE,
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
-            capacity INTEGER NOT NULL DEFAULT 10,
+            capacity INTEGER NOT NULL DEFAULT 15,
             notes TEXT,
             created_at TEXT NOT NULL
         );
@@ -3273,6 +3265,69 @@ def init_db():
         # Who handed it over and when. Without them "delivered" is a flag with
         # nobody behind it, and the guest who says the hamper never arrived
         # cannot be answered.
+        # A caution on a profile: what happened, and how strongly it should be
+        # read. Deliberately NOT folded into `notes` -- a warning nobody sees
+        # until they scroll is a warning that arrives after the booking.
+        # Where the booking came from. Nothing recorded this, so the house could
+        # not tell a guest who found it themselves from one an agent sent, and
+        # "how much of this is direct" -- the question a small hotel lives on --
+        # had no answer at all.
+        ("bookings_source", "ALTER TABLE bookings ADD COLUMN source TEXT"),
+        # A list somebody filters the same way every morning. Stored per person
+        # and per page: "mine" on the rota means something different from
+        # "mine" on expenses, and one shared set would have two people fighting
+        # over the same three slots.
+        ("saved_views_table",
+         """CREATE TABLE IF NOT EXISTS saved_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                endpoint TEXT NOT NULL,
+                name TEXT NOT NULL,
+                query TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, endpoint, name)
+            )"""),
+        ("idx_saved_views_user",
+         "CREATE INDEX IF NOT EXISTS idx_saved_views_user "
+         "ON saved_views(user_id, endpoint)"),
+        ("guests_caution", "ALTER TABLE guests ADD COLUMN caution TEXT"),
+        ("guests_caution_level", "ALTER TABLE guests ADD COLUMN caution_level TEXT"),
+        ("guests_caution_set_at", "ALTER TABLE guests ADD COLUMN caution_set_at TEXT"),
+        ("guests_caution_set_by", "ALTER TABLE guests ADD COLUMN caution_set_by_user_id INTEGER"),
+        # Dates that matter. Stored as MM-DD, because a birthday has no year the
+        # house needs and asking for one collects a date of birth it would then
+        # have to justify holding.
+        ("guests_birthday", "ALTER TABLE guests ADD COLUMN birthday TEXT"),
+        ("guests_anniversary", "ALTER TABLE guests ADD COLUMN anniversary TEXT"),
+        ("guests_merged_into_id", "ALTER TABLE guests ADD COLUMN merged_into_id INTEGER"),
+        ("guest_notes_table",
+         """CREATE TABLE IF NOT EXISTS guest_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+                body TEXT NOT NULL,
+                written_by_user_id INTEGER,
+                created_at TEXT NOT NULL
+            )"""),
+        ("idx_guest_notes_guest",
+         "CREATE INDEX IF NOT EXISTS idx_guest_notes_guest ON guest_notes(guest_id)"),
+        ("revenue_categories_table",
+         """CREATE TABLE IF NOT EXISTS revenue_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL UNIQUE,
+                label TEXT NOT NULL,
+                ledger_account TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                builtin INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )"""),
+        # Which category an extra's revenue belongs to. A transfer to the
+        # station is transport, not a hamper, and the accountant wants them
+        # apart.
+        ("extras_revenue_category",
+         "ALTER TABLE extras ADD COLUMN revenue_category TEXT"),
+        ("booking_extras_revenue_category",
+         "ALTER TABLE booking_extras ADD COLUMN revenue_category TEXT"),
         ("booking_extras_delivered_at",
          "ALTER TABLE booking_extras ADD COLUMN delivered_at TEXT"),
         ("booking_extras_delivered_by_user_id",
@@ -4339,7 +4394,7 @@ def init_db():
     if not real_workshops:
         for workshop in DEFAULT_WORKSHOPS:
             fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
-            fields.update({"active": 1, "default_capacity": 10,
+            fields.update({"active": 1, "default_capacity": 15,
                            "created_at": datetime.now(timezone.utc).isoformat()})
             if "deposit_percent" in ws_cols:
                 fields["deposit_percent"] = 30
@@ -4394,7 +4449,7 @@ def init_db():
                             (workshop["title"],)).fetchone():
                 continue
             fields = {k: v for k, v in workshop.items() if k in ws_cols and k != "sessions"}
-            fields.update({"active": 1, "default_capacity": 10,
+            fields.update({"active": 1, "default_capacity": 15,
                            "created_at": datetime.now(timezone.utc).isoformat()})
             if "deposit_percent" in ws_cols:
                 fields["deposit_percent"] = 30
@@ -4578,6 +4633,12 @@ def init_db():
         print("   recovery configured yet, so store this somewhere safe)")
         print("=" * 70)
 
+    # The built-in revenue categories, carrying across whatever was already
+    # mapped. Called here rather than inline above because it reads app_settings
+    # written by earlier migrations, and it is idempotent -- a category the owner
+    # has edited is never touched again.
+    seed_revenue_categories(conn)
+
     conn.close()
 
 
@@ -4624,6 +4685,10 @@ def login_required(view):
 NAV_AREAS = {
     "guests": [
         "walk_in_booking", "arrival_card",
+        "add_guest_note_route", "set_guest_caution", "merge_guest",
+        "save_list_view", "delete_list_view",
+        "guest_duplicates",
+        "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
@@ -4713,6 +4778,7 @@ NAV_AREAS = {
         "stop_filing",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
+        "new_revenue_category", "toggle_revenue_category",
         "charge_city_tax", "charge_city_tax_upcoming",
         "record_event_payment_route", "send_event_revenue",
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
@@ -4730,6 +4796,7 @@ NAV_AREAS = {
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
         "admin_terminal", "admin_extras", "admin_restaurant", "admin_restaurant_settings",
+        "dinner_covers_page", "export_dinner_covers_csv",
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
         "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
@@ -6475,6 +6542,40 @@ def _searchable(row, fields):
         if value is not None:
             parts.append(str(value))
     return " ".join(parts).lower()
+
+
+# What a saved view may carry. Anything else in the query string is dropped
+# rather than stored: a saved view is a set of FILTERS, and letting it keep an
+# arbitrary parameter turns it into a way to save any URL — including one with
+# somebody's email address in it, which then sits in a table forever under a
+# name like "Tuesdays".
+SAVED_VIEW_PARAMS = ("q", "sort", "page", "period", "date", "status", "state",
+                     "category", "supplier", "where", "applies", "employee_id",
+                     "room_id", "kind", "area", "level", "days", "month", "year",
+                     "tab", "who", "facet")
+
+
+def saved_view_query(args):
+    """The part of a query string worth keeping, normalised.
+
+    Sorted, so the same filters reached by different routes produce the same
+    stored string and "already saved" means what it says. Empty values dropped:
+    ?q= is not a filter, it is the search box being empty.
+    """
+    kept = []
+    for key in sorted(SAVED_VIEW_PARAMS):
+        value = (args.get(key) or "").strip()
+        if value:
+            kept.append((key, value))
+    return urlencode(kept)
+
+
+def saved_views_for(conn, user_id, endpoint):
+    if not user_id or not endpoint:
+        return []
+    return conn.execute(
+        "SELECT * FROM saved_views WHERE user_id = ? AND endpoint = ? "
+        "ORDER BY name", (user_id, endpoint)).fetchall()
 
 
 def list_view(rows, args, *, search=(), facets=(), sorts=(), default_sort=None,
@@ -10486,6 +10587,132 @@ def rota_vs_clock(conn, start, end, *, today=None):
     return out
 
 
+def dinner_covers_forecast(conn, start=None, days=21):
+    """How many are likely at the table each night, and who they are.
+
+    The kitchen buys for the table it is cooking for — the restaurant page
+    says exactly that — and until now the chef had three screens and a guess.
+    Reservations are on one, arrivals on another, atelier residents on a
+    third, and nobody multiplied them.
+
+    Three sources, kept apart on purpose because they are three different
+    kinds of certainty:
+
+      booked      a confirmed restaurant reservation. A number, not an
+                  estimate. No-shows are excluded once marked.
+      in-house    guests sleeping here that night. They are not booked in for
+                  dinner and most nights most of them eat, but "most" is not
+                  a reservation, so this is shown as its own column rather
+                  than folded into the first.
+      atelier     an atelier running over that night. These DO eat here —
+                  the price covers it — so they are as certain as booked.
+
+    The projection applies a take-up rate to the in-house column only, and
+    the rate is the house's own history rather than a guess: how many
+    in-house guests actually sat down on comparable past nights. With no
+    history it says so and shows the range instead of inventing a number.
+    """
+    start = start or service_day()
+    if isinstance(start, str):
+        start = parse_date(start)
+    end = start + timedelta(days=days)
+
+    booked = {}
+    for r in conn.execute(
+            """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS c
+                 FROM restaurant_bookings
+                WHERE status = 'confirmed' AND no_show_at IS NULL
+                  AND dinner_date >= ? AND dinner_date < ?
+                GROUP BY dinner_date""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        booked[r["dinner_date"]] = r["c"] or 0
+
+    # A stay covers the nights from arrival up to, but not including,
+    # departure — somebody leaving on the 5th does not eat here on the 5th.
+    in_house = {}
+    for b in conn.execute(
+            """SELECT arrival_date, departure_date, party_size FROM bookings
+                WHERE status = 'confirmed' AND departure_date > ? AND arrival_date < ?""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not a or not d:
+            continue
+        night = max(a, start)
+        while night < min(d, end):
+            in_house[night.isoformat()] = in_house.get(night.isoformat(), 0) + (b["party_size"] or 0)
+            night += timedelta(days=1)
+
+    atelier = {}
+    for w in conn.execute(
+            """SELECT workshop_sessions.start_date, workshop_sessions.end_date,
+                      COALESCE(SUM(workshop_bookings.party_size), 0) AS heads
+                 FROM workshop_sessions
+                 JOIN workshop_bookings ON workshop_bookings.session_id = workshop_sessions.id
+                WHERE workshop_bookings.status = 'confirmed'
+                  AND workshop_sessions.end_date >= ? AND workshop_sessions.start_date < ?
+                GROUP BY workshop_sessions.id""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        a, d = parse_date(w["start_date"]), parse_date(w["end_date"])
+        if not a or not d:
+            continue
+        night = max(a, start)
+        while night <= min(d, end - timedelta(days=1)):
+            atelier[night.isoformat()] = atelier.get(night.isoformat(), 0) + (w["heads"] or 0)
+            night += timedelta(days=1)
+
+    rate, basis = _in_house_dining_rate(conn)
+    rows = []
+    d = start
+    while d < end:
+        key = d.isoformat()
+        bk, ih, at = booked.get(key, 0), in_house.get(key, 0), atelier.get(key, 0)
+        likely = bk + at + (round(ih * rate) if rate is not None else 0)
+        rows.append({
+            "date": d, "iso": key, "weekday": d.strftime("%a"),
+            "booked": bk, "in_house": ih, "atelier": at,
+            "certain": bk + at,
+            "likely": likely if rate is not None else None,
+            "most": bk + at + ih,
+        })
+        d += timedelta(days=1)
+    return {"start": start, "end": end - timedelta(days=1), "rows": rows,
+            "rate": rate, "rate_basis": basis,
+            "certain_total": sum(r["certain"] for r in rows),
+            "most_total": sum(r["most"] for r in rows)}
+
+
+def _in_house_dining_rate(conn, lookback_days=120):
+    """What share of in-house guests actually sat down, from past nights.
+
+    Measured rather than assumed. A rate somebody typed once is a rate nobody
+    revisits, and the number it produces gets ordered against.
+    """
+    today = service_day()
+    since = (today - timedelta(days=lookback_days)).isoformat()
+    seated = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM restaurant_bookings
+            WHERE status = 'confirmed' AND no_show_at IS NULL
+              AND booking_id IS NOT NULL
+              AND dinner_date >= ? AND dinner_date < ?""",
+        (since, today.isoformat())).fetchone()["c"] or 0
+    nights = 0
+    for b in conn.execute(
+            """SELECT arrival_date, departure_date, party_size FROM bookings
+                WHERE status = 'confirmed' AND departure_date > ? AND arrival_date < ?""",
+            (since, today.isoformat())).fetchall():
+        a, d = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not a or not d:
+            continue
+        lo, hi = max(a, parse_date(since)), min(d, today)
+        if hi > lo:
+            nights += (hi - lo).days * (b["party_size"] or 0)
+    if nights < 20:
+        # Too little to divide by. Saying so beats a rate built on one week.
+        return None, f"only {nights} guest-night(s) in the last {lookback_days} days"
+    return (round(seated / nights, 2),
+            f"{seated} of {nights} guest-nights sat down, last {lookback_days} days")
+
+
 def cover_gaps(conn, start, end):
     """What is happening each day, and who is actually on to do it.
 
@@ -10982,6 +11209,27 @@ def money_held_not_earned(conn, *, today=None):
             "furthest": max((r["on"] for r in everything), default=None)}
 
 
+# Which revenue category an extra's money belongs to, when nobody has said.
+#
+# The catalogue already had a "Transfers" category, so a transfer posts to
+# transport without anybody being asked -- and everything else to extras. An
+# extra can override it, which is what makes a category added later reachable:
+# point the spa treatment at "Spa" and its money goes there.
+EXTRA_CATEGORY_REVENUE = {"transfer": "transport"}
+
+
+def extra_revenue_category(extra):
+    """The revenue category for a catalogue extra: chosen, mapped, or extras."""
+    if extra is None or isinstance(extra, str):
+        return None
+    keys = extra.keys()
+    chosen = (extra["revenue_category"] if "revenue_category" in keys else None)
+    if chosen:
+        return chosen
+    catalogue = (extra["category"] if "category" in keys else None) or ""
+    return EXTRA_CATEGORY_REVENUE.get(catalogue, "extras")
+
+
 EXTRA_CATEGORIES = {
     "drinks": "Drinks",
     "food": "Food & hampers",
@@ -11074,6 +11322,7 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
     if isinstance(extra, str):
         name, extra_id, stock_item_id, per_unit = extra, None, None, 0
         price = unit_price or 0
+        revenue_category = None
     else:
         name = extra["name"]
         extra_id = extra["id"]
@@ -11081,13 +11330,20 @@ def add_booking_extra(conn, category, booking_id, extra, quantity=1, *,
         per_unit = (extra["stock_qty_per_unit"]
                     if "stock_qty_per_unit" in extra.keys() else 1) or 0
         price = unit_price if unit_price is not None else (extra["price"] or 0)
+        # COPIED ONTO THE LINE, not looked up later. The catalogue entry can be
+        # recategorised or deleted, and a stay sold last March has to keep
+        # posting where it posted then -- the same reason total_price is stamped
+        # on a booking rather than recomputed from the rate card.
+        revenue_category = extra_revenue_category(extra)
 
     conn.execute(
         """INSERT INTO booking_extras (category, booking_id, extra_id, name, unit_price,
-           quantity, notes, status, scheduled_for, added_by_user_id, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+           quantity, notes, status, scheduled_for, added_by_user_id,
+           revenue_category, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
         (category, booking_id, extra_id, name, price, quantity, notes, status,
-         scheduled_for, user_id, datetime.now(timezone.utc).isoformat()),
+         scheduled_for, user_id, revenue_category,
+         datetime.now(timezone.utc).isoformat()),
     )
     line_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
 
@@ -13816,6 +14072,8 @@ REPORT_TYPES = {
     "occupancy": {"label": "Occupancy & bookings", "blurb": "Nights sold, how full the château was, and the average nightly rate."},
     "labour": {"label": "Labour", "blurb": "Hours and estimated cost per person, and labour as a share of revenue."},
     "guest": {"label": "Guests", "blurb": "New versus returning, who spends most, and how they rated the stay."},
+    "pace": {"label": "Pace", "blurb": "What is on the books for the months ahead, "
+                                       "against the same point last year."},
 }
 
 
@@ -13825,6 +14083,135 @@ def _pct_change(current, previous):
     if not previous:
         return None
     return round((current - previous) / abs(previous) * 100, 1)
+
+
+def booking_pace(conn, months=6, today=None):
+    """What is on the books for the months ahead, against the same point a year ago.
+
+    AGAINST THE SAME POINT, not against last year's final. A house that ended
+    last August full will always look behind in March, and a comparison that
+    says so every spring is one nobody reads twice. The question worth asking is
+    whether MORE is sold now than had been sold by this date last year -- which
+    means counting last year's bookings as they stood on the same day, using
+    created_at, and ignoring everything booked after it.
+
+    That is the whole trick, and it is why this cannot be done with the
+    occupancy report: occupancy knows what happened, and pace has to know what
+    was known at a point in time.
+
+    Nights rather than bookings. A booking is one row whether it is two nights
+    or ten, and a month that gained one long stay is not behind a month that
+    gained three short ones.
+
+    Cancelled and declined stays are left out of both sides. A cancellation
+    removes a night from what the house can expect, and counting it on the older
+    side only would flatter this year by exactly the ones that fell through.
+    """
+    today = today or service_day()
+    # The same day last year. The 29th of February has no counterpart, so it
+    # steps back to the 28th rather than throwing -- a report that fails one day
+    # in four years fails on a day nobody is watching.
+    try:
+        last_year_today = today.replace(year=today.year - 1)
+    except ValueError:
+        last_year_today = today.replace(year=today.year - 1, day=28)
+
+    def window(first_of_month):
+        if first_of_month.month == 12:
+            return first_of_month, date(first_of_month.year + 1, 1, 1)
+        return first_of_month, date(first_of_month.year, first_of_month.month + 1, 1)
+
+    def sold(start, end, as_at):
+        """Nights and money on the books for [start, end) as at a given date.
+
+        Nights are clipped to the window, so a stay straddling two months is
+        counted in each for the part that falls in it -- the same rule the taxe
+        de sejour working uses, and for the same reason.
+        """
+        nights, revenue, stays = 0, 0.0, 0
+        for b in conn.execute(
+                """SELECT * FROM bookings
+                    WHERE status IN ('confirmed', 'pending')
+                      AND date(created_at) <= ?
+                      AND arrival_date < ? AND departure_date > ?""",
+                (as_at.isoformat(), end.isoformat(), start.isoformat())).fetchall():
+            arrival = parse_date(b["arrival_date"])
+            departure = parse_date(b["departure_date"])
+            if not arrival or not departure:
+                continue
+            total_nights = (departure - arrival).days
+            if total_nights <= 0:
+                continue
+            inside = (min(departure, end) - max(arrival, start)).days
+            if inside <= 0:
+                continue
+            nights += inside
+            stays += 1
+            revenue += round(float(b["total_price"] or 0) * inside / total_nights, 2)
+        return {"nights": nights, "revenue": round(revenue, 2), "stays": stays}
+
+    rows = []
+    first = date(today.year, today.month, 1)
+    for step in range(months):
+        month_start = first
+        for _ in range(step):
+            month_start = window(month_start)[1]
+        start, end = window(month_start)
+        now = sold(start, end, today)
+        try:
+            then_start = start.replace(year=start.year - 1)
+            then_end = end.replace(year=end.year - 1)
+        except ValueError:
+            then_start = start.replace(year=start.year - 1, day=28)
+            then_end = end.replace(year=end.year - 1, day=28)
+        then = sold(then_start, then_end, last_year_today)
+        rows.append({
+            "month": start,
+            "now": now,
+            "then": then,
+            "nights_delta": now["nights"] - then["nights"],
+            "revenue_delta": round(now["revenue"] - then["revenue"], 2),
+            "nights_pct": _pct_change(now["nights"], then["nights"]),
+            "revenue_pct": _pct_change(now["revenue"], then["revenue"]),
+        })
+
+    totals_now = {k: sum(r["now"][k] for r in rows) for k in ("nights", "stays")}
+    totals_then = {k: sum(r["then"][k] for r in rows) for k in ("nights", "stays")}
+    revenue_now = round(sum(r["now"]["revenue"] for r in rows), 2)
+    revenue_then = round(sum(r["then"]["revenue"] for r in rows), 2)
+    return {
+        "rows": rows,
+        "today": today,
+        "as_at_last_year": last_year_today,
+        "nights": totals_now["nights"],
+        "nights_last_year": totals_then["nights"],
+        "revenue": revenue_now,
+        "revenue_last_year": revenue_then,
+        "nights_pct": _pct_change(totals_now["nights"], totals_then["nights"]),
+        "revenue_pct": _pct_change(revenue_now, revenue_then),
+        # A house in its first year has nothing to compare against, and a report
+        # that shows "up 100%" against nothing is worse than one that says so.
+        "has_baseline": totals_then["nights"] > 0 or revenue_then > 0,
+    }
+
+
+def report_pace(conn, period):
+    """The pace report. The PERIOD IS IGNORED on purpose.
+
+    Every other report answers "how did this window go". This one answers "what
+    is ahead", which is not a window the owner picks -- picking one would let
+    them ask about a month that has already happened, where the answer is just
+    the occupancy report with extra arithmetic.
+    """
+    data = booking_pace(conn, months=6)
+    data["csv"] = [{
+        "month": r["month"].strftime("%Y-%m"),
+        "nights_on_the_books": r["now"]["nights"],
+        "nights_same_point_last_year": r["then"]["nights"],
+        "revenue_on_the_books": r["now"]["revenue"],
+        "revenue_same_point_last_year": r["then"]["revenue"],
+    } for r in data["rows"]]
+    return data
 
 
 def report_financial(conn, period):
@@ -13968,8 +14355,63 @@ def report_labour(conn, period):
     }
 
 
+def booking_source_mix(conn, start_iso, end_iso):
+    """Nights and money by where the booking came from.
+
+    NIGHTS AND MONEY, not a count of bookings. A platform that sends four
+    one-night stays and a direct guest who takes the house for a fortnight are
+    not four to one in any sense the owner cares about.
+
+    Stays with nothing recorded are their own row rather than being folded into
+    "direct". Every booking taken before this was written has no source, and
+    quietly calling those direct would report a number the house never measured
+    as though it had.
+    """
+    rows = {}
+    for b in conn.execute(
+            """SELECT source, arrival_date, departure_date, total_price
+                 FROM bookings
+                WHERE status = 'confirmed'
+                  AND arrival_date < ? AND departure_date > ?""",
+            (end_iso, start_iso)).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure:
+            continue
+        total_nights = (departure - arrival).days
+        if total_nights <= 0:
+            continue
+        start, end = parse_date(start_iso), parse_date(end_iso)
+        inside = (min(departure, end) - max(arrival, start)).days
+        if inside <= 0:
+            continue
+        key = (b["source"] or "").strip() or "unrecorded"
+        bucket = rows.setdefault(key, {"key": key, "nights": 0, "revenue": 0.0,
+                                       "stays": 0})
+        bucket["nights"] += inside
+        bucket["stays"] += 1
+        bucket["revenue"] += round(float(b["total_price"] or 0) * inside / total_nights, 2)
+
+    out = []
+    total_nights = sum(r["nights"] for r in rows.values()) or 0
+    total_revenue = round(sum(r["revenue"] for r in rows.values()), 2)
+    for key, bucket in rows.items():
+        bucket["label"] = (BOOKING_SOURCES.get(key)
+                           or ("Not recorded" if key == "unrecorded" else key))
+        bucket["revenue"] = round(bucket["revenue"], 2)
+        bucket["nights_pct"] = (round(bucket["nights"] / total_nights * 100, 1)
+                                if total_nights else None)
+        out.append(bucket)
+    # Biggest first, with the unrecorded row last whatever its size: it is a gap
+    # in the record rather than a channel, and reading as the top row would
+    # suggest the house has a large source called Not recorded.
+    out.sort(key=lambda r: (r["key"] == "unrecorded", -r["nights"]))
+    return {"rows": out, "nights": total_nights, "revenue": total_revenue,
+            "unrecorded": rows.get("unrecorded", {}).get("nights", 0)}
+
+
 def report_guest(conn, period):
     start_iso, end_iso = period["start_iso"], period["end_iso"]
+    source_mix = booking_source_mix(conn, start_iso, end_iso)
     bookings = conn.execute(
         """SELECT guest_email, guest_name, total_price, arrival_date FROM bookings
            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
@@ -14011,6 +14453,7 @@ def report_guest(conn, period):
         "feedback_count": feedback["c"] or 0,
         "feedback_avg": round(feedback["avg_rating"], 1) if feedback["avg_rating"] is not None else None,
         "top_guests": top,
+        "source_mix": source_mix,
         "csv": [{"guest": g["name"], "email": g["email"], "stays": g["stays"],
                  "total_spend": g["total"]} for g in top],
     }
@@ -14021,6 +14464,7 @@ REPORT_BUILDERS = {
     "occupancy": report_occupancy,
     "labour": report_labour,
     "guest": report_guest,
+    "pace": report_pace,
 }
 
 
@@ -14451,6 +14895,45 @@ def newsletter_subscribe():
         return redirect(request.referrer or url_for("preview_home"))
 
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    # The no-availability state on the booking page posts here with
+    # source=waitlist and the dates the guest actually wanted. Until now those
+    # two fields were read by nothing, so somebody who said "write to me when
+    # that week opens" was added to the newsletter and to nothing else — and
+    # the house already has the machinery to reach them: an entry in
+    # waitlist_entries is what notify_room_waitlist_opening looks for when a
+    # booking is cancelled.
+    #
+    # The dates are parsed, not stored as typed. The restaurant waitlist had
+    # exactly this fault: prose in a date column left the guest on the list and
+    # permanently invisible to the one job that exists to reach them, with the
+    # page thanking them on the way out.
+    if (request.form.get("source") or "").strip() == "waitlist":
+        arrival = parse_date((request.form.get("wanted_arrival") or "").strip())
+        departure = parse_date((request.form.get("wanted_departure") or "").strip())
+        if arrival and departure and departure > arrival:
+            already = conn.execute(
+                """SELECT 1 FROM waitlist_entries
+                    WHERE email = ? AND desired_arrival = ? AND desired_departure = ?
+                      AND status = 'open'""",
+                (email, arrival.isoformat(), departure.isoformat())).fetchone()
+            if not already:
+                conn.execute(
+                    """INSERT INTO waitlist_entries (name, email, desired_arrival,
+                         desired_departure, party_size, notes, status, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, 'open', ?)""",
+                    # name is NOT NULL and the booking page's form does not ask
+                    # for one — it takes an email and the dates. The address is
+                    # what the house has, so the address is what goes in the
+                    # column rather than a blank or an invented first name.
+                    ((request.form.get("name") or "").strip() or email, email,
+                     arrival.isoformat(), departure.isoformat(),
+                     int(request.form["party_size"])
+                     if (request.form.get("party_size") or "").strip().isdigit() else None,
+                     "From the booking page, when those dates showed nothing free.",
+                     now_iso))
+                conn.commit()
+
     opted_out = conn.execute(
         "SELECT 1 FROM email_optouts WHERE email = ?", (email,)).fetchone() is not None
     row = conn.execute(
@@ -14672,6 +15155,7 @@ def admin_reports():
     occ = report_occupancy(conn, period)
     lab = report_labour(conn, period)
     gue = report_guest(conn, period)
+    pace = booking_pace(conn, months=6)
     conn.close()
     headlines = {
         "financial": f"€{fin['summary']['net']:,.0f} net",
@@ -14680,6 +15164,9 @@ def admin_reports():
                    else f"{lab['total_hours']}h"),
         "guest": (f"{gue['returning_pct']}% returning" if gue["returning_pct"] is not None
                   else f"{gue['bookings']} bookings"),
+        "pace": (f"{pace['nights']} nights on the books"
+                 + (f", {pace['nights_pct']:+.0f}% on last year"
+                    if pace["nights_pct"] is not None else "")),
     }
     return render_template("admin_reports.html", period=period,
                            report_types=REPORT_TYPES, headlines=headlines)
@@ -14955,7 +15442,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
-                   guests_under_18=0):
+                   guests_under_18=0, source="direct"):
     nights = (departure - arrival).days
     extras_total = sum(e["price"] for e in chosen_extras)
 
@@ -15014,8 +15501,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id, created_at,
             promo_code_id, discount_amount,
             deposit_amount, deposit_paid_at, balance_amount, balance_due_date,
-            guests_under_18, city_tax)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            guests_under_18, city_tax, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (room["id"], reference_code, manage_token, guest_name, guest_email, guest_phone,
          arrival.isoformat(), departure.isoformat(), party_size, special_requests or None,
          total_price, extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id,
@@ -15023,7 +15510,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
          promo["id"] if promo else None, discount_amount or None,
          deposit_amount if balance_amount else None, deposit_paid_at,
          balance_amount or None, balance_due,
-         int(guests_under_18 or 0), city_tax),
+         int(guests_under_18 or 0), city_tax,
+         booking_source_for(conn, guest_email, source)),
     )
     # Recorded in the SAME transaction as the booking insert, not a
     # separate commit after — otherwise a crash between the two would
@@ -15336,6 +15824,31 @@ def is_viewable(filename):
     if not filename or "." not in filename:
         return False
     return filename.rsplit(".", 1)[-1].lower() in VIEWABLE_EXTENSIONS
+
+
+@app.context_processor
+def _saved_views_for_this_page():
+    """Every list gets its saved views without seventeen routes being edited.
+
+    A context processor rather than a parameter on each render_template call:
+    the toolbar is one include shared by every list, so the data it needs
+    belongs in the same place. Wrapped in its own try -- a context processor
+    that raises takes down every page, including the ones with no list on them.
+    """
+    try:
+        user = current_user()
+        endpoint = request.endpoint
+        if not user or not endpoint:
+            return {"saved_views": [], "saved_view_current": ""}
+        conn = get_db()
+        try:
+            views = saved_views_for(conn, user["id"], endpoint)
+        finally:
+            conn.close()
+        return {"saved_views": views,
+                "saved_view_current": saved_view_query(request.args)}
+    except Exception:
+        return {"saved_views": [], "saved_view_current": ""}
 
 
 @app.context_processor
@@ -21024,6 +21537,10 @@ PALETTE_PAGES = [
     ("Shopping list", "shopping_list", "buy"),
     ("What we owe guests", "extras_due_page",
      "extras hamper transfer flowers deliver outstanding owed jobs"),
+    ("Duplicate profiles", "guest_duplicates",
+     "duplicate merge same guest twice profiles tidy"),
+    ("Dates that matter", "guest_dates",
+     "birthday anniversary guest dates celebrate card"),
     ("Kitchen sheet", "kitchen_day_sheet",
      "dietary allergy allergen chef covers kitchen food notes"),
     ("Approvals", "admin_approvals", "expenses leave pending decide"),
@@ -23242,11 +23759,23 @@ def admin_pennylane():
     """Where the château's categories meet the accountant's codes."""
     conn = get_db()
     if request.method == "POST":
-        for stream in REVENUE_STREAMS:
+        # Saved into revenue_categories, which is what every sender now reads.
+        # It used to write revenue_account_<stream> into app_settings while the
+        # senders read pennylane_account_<something-else> -- two key namespaces,
+        # so the page could report six streams mapped and every invoice still
+        # went out with no ledger account on it.
+        for category in revenue_categories(conn, include_inactive=True):
+            field = f"revenue_{category['key']}"
+            if field not in request.form:
+                continue
             conn.execute(
-                """INSERT INTO app_settings (key, value) VALUES (?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
-                (f"revenue_account_{stream}", (request.form.get(f"revenue_{stream}", "") or "").strip()))
+                "UPDATE revenue_categories SET ledger_account = ? WHERE key = ?",
+                ((request.form.get(field, "") or "").strip() or None,
+                 category["key"]))
+            label = (request.form.get(f"label_{category['key']}", "") or "").strip()
+            if label:
+                conn.execute("UPDATE revenue_categories SET label = ? WHERE key = ?",
+                             (label, category["key"]))
         conn.commit()
         conn.close()
         flash("Account mapping saved.", "success")
@@ -23256,7 +23785,8 @@ def admin_pennylane():
         "SELECT COUNT(*) AS c, MAX(synced_at) AS at FROM pennylane_accounts").fetchone()
     expense_accounts = ledger_account_choices(conn, "6")
     revenue_accounts = ledger_account_choices(conn, "7")
-    mapping = {s: revenue_account_for(conn, s) for s in REVENUE_STREAMS}
+    categories = revenue_categories(conn, include_inactive=True)
+    mapping = {c["key"]: revenue_account_for(conn, c["key"]) for c in categories}
     uncoded = conn.execute(
         """SELECT (SELECT COUNT(*) FROM stock_items WHERE active=1 AND COALESCE(ledger_code,'')='')
                 + (SELECT COUNT(*) FROM recurring_costs WHERE active=1 AND COALESCE(ledger_code,'')='') AS c"""
@@ -23266,15 +23796,83 @@ def admin_pennylane():
         overview_cell("Accounts synced", synced["c"], alert=not synced["c"]),
         overview_cell("Expense codes", len(expense_accounts)),
         overview_cell("Revenue codes", len(revenue_accounts)),
-        overview_cell("Streams mapped", sum(1 for v in mapping.values() if v),
-                      sub=f"/{len(REVENUE_STREAMS)}", alert=any(not v for v in mapping.values())),
+        overview_cell("Categories mapped", sum(1 for v in mapping.values() if v),
+                      sub=f"/{len(categories)}",
+                      alert=any(not v for v in mapping.values())),
         overview_cell("Costs without a code", uncoded, alert=uncoded),
     ]
     return render_template("admin_pennylane.html", overview=overview,
                            expense_accounts=expense_accounts, revenue_accounts=revenue_accounts,
-                           streams=REVENUE_STREAMS, mapping=mapping,
+                           categories=categories, mapping=mapping,
                            synced_count=synced["c"], synced_at=synced["at"],
                            connected=pennylane_configured())
+
+
+@app.route("/admin/pennylane/categories/new", methods=["POST"])
+@owner_required
+def new_revenue_category():
+    """Add a category of the owner's own.
+
+    They said the list would grow and that they might rename things on
+    Pennylane's side, so the list is theirs rather than mine. A new one can be
+    pointed at by an extra straight away; the built-in ones are what the app
+    fills automatically.
+    """
+    label = (request.form.get("label", "") or "").strip()
+    account = (request.form.get("ledger_account", "") or "").strip()
+    if not label:
+        flash("Give the category a name.", "error")
+        return redirect(url_for("admin_pennylane"))
+    # A key derived from the label, so the code has something stable to hold
+    # while the label stays theirs to change.
+    base = re.sub(r"[^a-z0-9]+", "_", label.casefold()).strip("_") or "category"
+    conn = get_db()
+    key, n = base, 1
+    while conn.execute("SELECT 1 FROM revenue_categories WHERE key = ?",
+                       (key,)).fetchone():
+        n += 1
+        key = f"{base}_{n}"
+    top = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) AS s FROM revenue_categories").fetchone()["s"]
+    conn.execute(
+        """INSERT INTO revenue_categories (key, label, ledger_account, sort_order,
+           active, builtin, created_at) VALUES (?, ?, ?, ?, 1, 0, ?)""",
+        (key, label, account or None, top + 10,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"{label} added.", "success")
+    return redirect(url_for("admin_pennylane"))
+
+
+@app.route("/admin/pennylane/categories/<int:category_id>/toggle", methods=["POST"])
+@owner_required
+def toggle_revenue_category(category_id):
+    """Stop offering a category without losing what was already posted to it.
+
+    Never deleted: an account number that has been on invoices is part of the
+    record, and a category that vanishes takes the explanation of those lines
+    with it. A built-in one cannot be turned off at all -- the app posts to it
+    automatically, and hiding it would send those lines out uncoded.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM revenue_categories WHERE id = ?",
+                       (category_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if row["builtin"]:
+        conn.close()
+        flash(f"{row['label']} is filled by the app itself, so it stays on the "
+              "list. Point it at a different account instead.", "error")
+        return redirect(url_for("admin_pennylane"))
+    conn.execute("UPDATE revenue_categories SET active = ? WHERE id = ?",
+                 (0 if row["active"] else 1, category_id))
+    conn.commit()
+    conn.close()
+    flash(f"{row['label']} {'hidden' if row['active'] else 'back on the list'}.",
+          "success")
+    return redirect(url_for("admin_pennylane"))
 
 
 @app.route("/admin/pennylane/sync", methods=["POST"])
@@ -24149,6 +24747,24 @@ def new_guest():
             conn.close()
             flash(f"A guest profile with the email {email} already exists.", "error")
             return render_template("guest_form.html", guest=None)
+
+        # SAME NAME OR SAME NUMBER, DIFFERENT ADDRESS. The unique index stops two
+        # profiles sharing an email and does nothing about this, so the second
+        # profile for a family that booked online last year and walked in this
+        # year gets created without a word -- and their allergy, their history
+        # and the note about the dog stay on the one nobody opens.
+        #
+        # A WARNING, NOT A REFUSAL. Two people really are called Martin, and a
+        # form that will not let reception save a real guest is worse than a
+        # duplicate. Saving again goes through.
+        maybe = possible_duplicate_guests(conn, name, email, phone)
+        if maybe and request.form.get("confirm_duplicate") != "1":
+            conn.close()
+            return render_template(
+                "guest_form.html", guest=None, duplicates=maybe,
+                typed={"name": name, "email": email, "phone": phone,
+                       "dietary_notes": dietary_notes, "preferences": preferences,
+                       "vip": vip, "notes": notes})
         conn.execute(
             """INSERT INTO guests (name, email, phone, dietary_notes, preferences, vip, notes, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -24162,6 +24778,220 @@ def new_guest():
         return redirect(url_for("guests"))
 
     return render_template("guest_form.html", guest=None)
+
+
+@app.route("/guests/<int:guest_id>/note", methods=["POST"])
+@login_required
+def add_guest_note_route(guest_id):
+    """Add to the running note on a guest.
+
+    Employees can write one. A colleague noticing that somebody prefers the
+    quiet side of the house is the whole value of this, and making it
+    owner-only would mean the person who noticed cannot record it.
+    """
+    user = current_user()
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    ok = add_guest_note(conn, guest_id, request.form.get("body", ""),
+                        user["id"] if user else None)
+    conn.commit()
+    conn.close()
+    flash("Note added." if ok else "Write something first.",
+          "success" if ok else "error")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/<int:guest_id>/caution", methods=["POST"])
+@owner_required
+def set_guest_caution(guest_id):
+    """Put a caution on a profile, or take it off.
+
+    OWNER ONLY, unlike the note. "Do not accept a booking from this person" is a
+    decision about who the house lets in, and it belongs to whoever answers for
+    that. An employee who thinks it warranted writes a note and says so.
+    """
+    level = (request.form.get("caution_level", "") or "").strip()
+    body = (request.form.get("caution", "") or "").strip()[:1000]
+    user = current_user()
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    if level and level not in CAUTION_LEVELS:
+        conn.close()
+        flash("Choose how strongly that should be read.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    if level and not body:
+        conn.close()
+        flash("Say what happened. A caution with no reason on it is one nobody "
+              "can act on or lift.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    if level:
+        conn.execute(
+            """UPDATE guests SET caution = ?, caution_level = ?, caution_set_at = ?,
+               caution_set_by_user_id = ? WHERE id = ?""",
+            (body, level, datetime.now(timezone.utc).isoformat(),
+             user["id"] if user else None, guest_id))
+        add_guest_note(conn, guest_id, f"Caution set ({CAUTION_LEVELS[level]}): {body}",
+                       user["id"] if user else None)
+        message = "Caution recorded."
+    else:
+        conn.execute(
+            """UPDATE guests SET caution = NULL, caution_level = NULL,
+               caution_set_at = NULL, caution_set_by_user_id = NULL WHERE id = ?""",
+            (guest_id,))
+        add_guest_note(conn, guest_id, "Caution lifted.",
+                       user["id"] if user else None)
+        message = "Caution lifted."
+    log_audit(conn, "guest_caution", target=guest["name"], details=level or "cleared")
+    conn.commit()
+    conn.close()
+    flash(message, "success")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/guests/<int:guest_id>/merge", methods=["POST"])
+@owner_required
+def merge_guest(guest_id):
+    """Fold another profile into this one.
+
+    Owner only: it moves somebody's history, and doing it to the wrong pair of
+    people is not something an apology fixes.
+    """
+    raw = (request.form.get("merge_id", "") or "").strip()
+    if not raw.isdigit():
+        flash("Choose a profile to merge in.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    user = current_user()
+    conn = get_db()
+    ok, message = merge_guest_profiles(conn, guest_id, int(raw),
+                                       user["id"] if user else None)
+    if ok:
+        log_audit(conn, "guest_merged", target=str(raw), details=f"into {guest_id}")
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
+
+
+@app.route("/views/save", methods=["POST"])
+@login_required
+def save_list_view():
+    """Keep the current filters on this page under a name.
+
+    The endpoint comes from the form rather than the referrer: a referrer can be
+    absent, stale, or another site entirely, and a saved view pinned to the
+    wrong page is worse than none.
+    """
+    user = current_user()
+    endpoint = (request.form.get("endpoint", "") or "").strip()
+    name = (request.form.get("name", "") or "").strip()[:40]
+    query = saved_view_query(request.form)
+    if not user or endpoint not in app.view_functions:
+        abort(404)
+    if not name:
+        flash("Give the view a name.", "error")
+        return redirect(request.referrer or url_for("dashboard"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO saved_views (user_id, endpoint, name, query, created_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, endpoint, name)
+           DO UPDATE SET query = excluded.query""",
+        (user["id"], endpoint, name, query, datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"Saved as {name}.", "success")
+    return redirect(url_for(endpoint) + (f"?{query}" if query else ""))
+
+
+@app.route("/views/<int:view_id>/delete", methods=["POST"])
+@login_required
+def delete_list_view(view_id):
+    user = current_user()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM saved_views WHERE id = ?", (view_id,)).fetchone()
+    # Somebody else's saved view is not theirs to remove, and a 404 rather than
+    # a 403 keeps it from confirming one exists.
+    if not row or not user or row["user_id"] != user["id"]:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM saved_views WHERE id = ?", (view_id,))
+    conn.commit()
+    conn.close()
+    flash(f"{row['name']} removed.", "success")
+    return redirect(request.referrer or url_for(row["endpoint"]))
+
+
+@app.route("/guests/duplicates")
+@owner_required
+def guest_duplicates():
+    """Profiles that might be the same person, across the whole book.
+
+    Owner-only, because the button on each row folds one person's history into
+    another's and doing that to the wrong pair is not something an apology
+    fixes.
+    """
+    conn = get_db()
+    found = duplicate_guest_pairs(conn)
+    conn.close()
+    overview = [
+        overview_cell("Pairs to look at", found["total"], alert=found["total"] > 0),
+        overview_cell("Profiles", found["profiles"]),
+    ]
+    return render_template("guest_duplicates.html", found=found, overview=overview)
+
+
+@app.route("/guests/dates")
+@login_required
+def guest_dates():
+    """Birthdays and anniversaries coming up.
+
+    On the employee side, because doing something about one is a job rather than
+    a decision -- a card, a note to the kitchen, a word at check-in.
+    """
+    try:
+        within = max(1, min(365, int(request.args.get("days", "30"))))
+    except ValueError:
+        within = 30
+    conn = get_db()
+    rows = upcoming_guest_dates(conn, within_days=within)
+    conn.close()
+    return render_template("guest_dates.html", rows=rows, within=within,
+                           today=service_day())
+
+
+@app.route("/guests/<int:guest_id>/dates", methods=["POST"])
+@login_required
+def set_guest_dates(guest_id):
+    """Record a birthday or an anniversary.
+
+    The YEAR IS THROWN AWAY. The house wants to know that the 3rd of June
+    matters to somebody; it has no use for the year they were born, and data
+    with no use is data it would have to justify holding.
+    """
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        conn.close()
+        abort(404)
+    birthday = parse_day_month(request.form.get("birthday", ""))
+    anniversary = parse_day_month(request.form.get("anniversary", ""))
+    typed_b = (request.form.get("birthday", "") or "").strip()
+    typed_a = (request.form.get("anniversary", "") or "").strip()
+    if (typed_b and not birthday) or (typed_a and not anniversary):
+        conn.close()
+        flash("Dates go in as 3/6 or 03-06, or a whole date — the year is not kept.",
+              "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    conn.execute("UPDATE guests SET birthday = ?, anniversary = ? WHERE id = ?",
+                 (birthday, anniversary, guest_id))
+    conn.commit()
+    conn.close()
+    flash("Dates saved.", "success")
+    return redirect(url_for("guest_detail", guest_id=guest_id))
 
 
 @app.route("/guests/<int:guest_id>")
@@ -24186,6 +25016,14 @@ def guest_detail(guest_id):
         abort(404)
     is_owner = (current_user() or {})["role"] == "owner"
     messages = guest_messages(conn, record["guest"]) if is_owner else []
+    notes = guest_notes(conn, guest_id)
+    # Profiles that might be the same person, offered here rather than on a
+    # separate page: the merge is a thing you do while looking at one of them.
+    duplicates = possible_duplicate_guests(
+        conn, record["guest"]["name"], record["guest"]["email"],
+        record["guest"]["phone"], exclude_id=guest_id) if is_owner else []
+    merged_from = conn.execute(
+        "SELECT id, name FROM guests WHERE merged_into_id = ?", (guest_id,)).fetchall()
     party_of = {}
     for b in record["stays"]:
         if b["party_id"]:
@@ -24205,6 +25043,8 @@ def guest_detail(guest_id):
             overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
         ]
     return render_template("guest_detail.html", record=record, overview=overview,
+                           notes=notes, duplicates=duplicates,
+                           merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
                            party_of=party_of,
                            today=datetime.now(LOCAL_TZ).date().isoformat())
@@ -25887,6 +26727,18 @@ def arrival_card(booking_id):
     bill = booking_bill(conn, booking_id)
     company = conn.execute(
         "SELECT legal_name, registered_address FROM company_info WHERE id = 1").fetchone()
+    # What the person handing this over ought to know. The card is printed at
+    # the desk while the guest is standing there, which is the one moment a
+    # preference recorded two visits ago is worth anything.
+    profile = conn.execute(
+        """SELECT * FROM guests
+            WHERE merged_into_id IS NULL
+              AND ((? != '' AND LOWER(TRIM(email)) = ?) OR id = ?)
+            LIMIT 1""",
+        ((booking["guest_email"] or "").strip().casefold(),
+         (booking["guest_email"] or "").strip().casefold(),
+         booking["linked_guest_id"])).fetchone()
+    profile_notes = guest_notes(conn, profile["id"])[:3] if profile else []
     conn.close()
     try:
         find_url = url_for("find_booking", _external=True)
@@ -25894,6 +26746,7 @@ def arrival_card(booking_id):
         find_url = f"{PUBLIC_BASE_URL or ''}/book/manage"
     return render_template("arrival_card.html", booking=booking, bill=bill,
                            company=company, find_url=find_url,
+                           profile=profile, profile_notes=profile_notes,
                            surname=(booking["guest_name"] or "").split()[-1]
                            if (booking["guest_name"] or "").strip() else "")
 
@@ -26595,6 +27448,29 @@ def events_info():
 # meta description so they answer a search for "château wedding venue Ariège"
 # rather than competing with the overview for it. Plain renders — the enquiry
 # they lead to is still submit_event_inquiry.
+@app.context_processor
+def inject_url_map():
+    """The set of endpoint names, for templates that guard an optional link.
+
+    The design side ships links to pages whose routes may not exist yet,
+    guarded as `{% if 'events_weddings' in url_map %}`. Without url_map in the
+    context that guard is an undefined in a Jinja `in` test, which RAISES —
+    so the thing written to stop a BuildError taking down the header was
+    itself taking down every page that included it. Two handovers running,
+    the guards were stripped by hand; supplying the name is what stops it
+    coming back.
+    """
+    return {"url_map": {r.endpoint for r in app.url_map.iter_rules()}}
+
+
+# The press page. Everything on it appears on the restoration page already;
+# what it did not have was an address, and a magazine mention nobody can link
+# to is the one piece of proof on the site that cannot be cited.
+@app.route("/press")
+def press():
+    return render_template("press.html")
+
+
 @app.route("/events/weddings")
 def events_weddings():
     return render_template("events_weddings.html")
@@ -29139,6 +30015,81 @@ def add_workshop_transaction(conn, booking_id, kind, description, amount, method
 PLACEHOLDER_TEXT = re.compile(r"\bTEST\b|\bTODO\b|\bFIXME\b|\bXXX\b|lorem ipsum", re.I)
 
 
+# WHICH MERGE TAGS EACH TEMPLATE MAY USE.
+#
+# These templates are DATA: the owner edits the wording in the app, and
+# render_email_template substitutes a context dict into whatever they typed. A
+# tag the sender does not pass is left in the text UNREPLACED rather than
+# crashing the send -- deliberately, because losing a booking confirmation over
+# a typo is worse -- which means the typo goes to a guest as visible braces.
+#
+# Nothing told the owner which tags were available, so the only way to find out
+# was to send one and look. This is that list, and it is enforced two ways: the
+# edit form refuses a tag that is not here, and a test compares this against
+# what the senders actually pass so the two cannot drift.
+EMAIL_TEMPLATE_TAGS = {
+    "event_balance_reminder": ("balance_amount", "balance_due_date", "contact_name",
+                               "event_date", "event_type", "manage_url", "reference_code"),
+    "event_inquiry_confirmed": ("contact_name", "event_type", "manage_url",
+                                "price_block", "reference_code"),
+    "event_inquiry_declined": ("contact_name", "event_type", "manage_url",
+                               "price_block", "reference_code"),
+    "event_inquiry_received": ("contact_name", "event_type", "manage_url",
+                               "price_block", "reference_code"),
+    "pos_receipt": ("company_block", "guest_name", "items", "receipt_number",
+                    "service_date", "status_line", "table", "totals"),
+    "restaurant_cancelled": ("dietary_line", "dinner_date", "guest_name", "manage_url",
+                             "party_size", "price_block", "reference_code", "refund_note"),
+    "restaurant_confirmed": ("dietary_line", "dinner_date", "guest_name", "manage_url",
+                             "party_size", "price_block", "reference_code", "refund_note"),
+    "restaurant_declined": ("dietary_line", "dinner_date", "guest_name", "manage_url",
+                            "party_size", "price_block", "reference_code", "refund_note"),
+    "restaurant_reservation_received": ("dietary_line", "dinner_date", "guest_name",
+                                        "manage_url", "party_size", "price_block",
+                                        "reference_code", "refund_note"),
+    "restaurant_waitlist_opening": ("book_url", "desired_date", "name", "party_size"),
+    "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
+    "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
+    "workshop_balance_reminder": ("balance_amount", "balance_due_date", "balance_line",
+                                  "dates", "deposit_amount", "guest_name", "manage_url",
+                                  "party_size", "price_block", "reference_code",
+                                  "total_price", "workshop_title"),
+    "workshop_cancelled": ("balance_amount", "balance_due_date", "balance_line", "dates",
+                           "deposit_amount", "guest_name", "manage_url", "party_size",
+                           "price_block", "reference_code", "total_price", "workshop_title"),
+    "workshop_confirmed": ("balance_amount", "balance_due_date", "balance_line", "dates",
+                           "deposit_amount", "guest_name", "manage_url", "party_size",
+                           "price_block", "reference_code", "total_price", "workshop_title"),
+    "workshop_declined": ("balance_amount", "balance_due_date", "balance_line", "dates",
+                          "deposit_amount", "guest_name", "manage_url", "party_size",
+                          "price_block", "reference_code", "total_price", "workshop_title"),
+    "workshop_deposit_receipt": ("balance_amount", "balance_due_date", "balance_line",
+                                 "dates", "deposit_amount", "guest_name", "manage_url",
+                                 "party_size", "price_block", "reference_code",
+                                 "total_price", "workshop_title"),
+    "workshop_feedback_request": ("feedback_url", "guest_name", "workshop_title"),
+    "workshop_registration_received": ("balance_amount", "balance_due_date", "balance_line",
+                                       "dates", "deposit_amount", "guest_name", "manage_url",
+                                       "party_size", "price_block", "reference_code",
+                                       "total_price", "workshop_title"),
+    "workshop_waitlist_opening": ("dates", "name", "register_url", "workshop_title"),
+}
+
+
+def unknown_merge_tags(template_key, subject, body):
+    """Tags in this wording that nothing will fill. Sorted, empty when fine.
+
+    An unlisted template returns nothing rather than everything: a key this map
+    has not been told about must not have its wording refused on the strength of
+    a list that does not cover it.
+    """
+    allowed = EMAIL_TEMPLATE_TAGS.get(template_key)
+    if allowed is None:
+        return []
+    used = set(re.findall(r"\{(\w+)\}", (subject or "") + " " + (body or "")))
+    return sorted(used - set(allowed))
+
+
 def render_email_template(conn, template_key, context):
     """Merge-tag substitution against an admin-editable template. Falls back
     to the raw template text (tags left unreplaced) if the context is
@@ -29155,7 +30106,20 @@ def render_email_template(conn, template_key, context):
     if not row:
         return None, None
     subject_src, body_src = row["subject"] or "", row["body"] or ""
-    if PLACEHOLDER_TEXT.search(subject_src + " " + body_src):
+    # A tag nothing fills is treated exactly like placeholder text: the shipped
+    # wording goes instead. Leaving it in was the older behaviour and it is the
+    # wrong trade -- the guest reads "{balance_amount}" and the house looks like
+    # it cannot send an email, which is worse than sending wording the owner did
+    # not write. The edit form refuses these, so reaching here means the row was
+    # changed some other way.
+    stray = unknown_merge_tags(template_key, subject_src, body_src)
+    if stray:
+        app.logger.error(
+            "Email template %r uses merge tags nothing fills (%s); sending the "
+            "shipped wording instead. Fix it at /management/email-templates.",
+            template_key, ", ".join(stray))
+
+    if stray or PLACEHOLDER_TEXT.search(subject_src + " " + body_src):
         shipped = next((d for d in DEFAULT_EMAIL_TEMPLATES if d[0] == template_key), None)
         if shipped:
             app.logger.error(
@@ -30838,6 +31802,7 @@ def save_room_photos_multi(files):
 def admin_extras():
     conn = get_db()
     extras = conn.execute("SELECT * FROM extras ORDER BY sort_order, name").fetchall()
+    revenue_options = revenue_categories(conn)
     conn.close()
     lv = list_view(
         extras, request.args,
@@ -30874,7 +31839,8 @@ def admin_extras():
         default_sort="order",
     )
     return render_template("admin_extras.html", extras=lv["rows"], lv=lv,
-                           categories=EXTRA_CATEGORIES)
+                           categories=EXTRA_CATEGORIES,
+                           revenue_categories=revenue_options)
 
 
 def extra_fields_from_form():
@@ -30915,6 +31881,10 @@ def extra_fields_from_form():
         "guest_bookable": 1 if request.form.get("guest_bookable") == "on" else 0,
         "lead_time_days": whole("lead_time_days", blank=0),
         "max_qty": whole("max_qty", blank=None),
+        # Blank means "work it out" -- a transfer goes to transport and anything
+        # else to extras. Set it only to send something somewhere of its own,
+        # which is how a category the owner adds later gets fed.
+        "revenue_category": (request.form.get("revenue_category", "") or "").strip() or None,
     }
 
 
@@ -30935,11 +31905,11 @@ def new_extra():
     max_order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) AS m FROM extras").fetchone()["m"]
     conn.execute(
         """INSERT INTO extras (name, price, description, category, guest_bookable,
-           lead_time_days, max_qty, sort_order)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           lead_time_days, max_qty, revenue_category, sort_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
-         fields["max_qty"], max_order + 1),
+         fields["max_qty"], fields["revenue_category"], max_order + 1),
     )
     conn.commit()
     conn.close()
@@ -30960,10 +31930,11 @@ def edit_extra(extra_id):
     conn = get_db()
     conn.execute(
         """UPDATE extras SET name = ?, price = ?, description = ?, category = ?,
-           guest_bookable = ?, lead_time_days = ?, max_qty = ? WHERE id = ?""",
+           guest_bookable = ?, lead_time_days = ?, max_qty = ?,
+           revenue_category = ? WHERE id = ?""",
         (fields["name"], fields["price"] or 0, fields["description"],
          fields["category"], fields["guest_bookable"], fields["lead_time_days"],
-         fields["max_qty"], extra_id),
+         fields["max_qty"], fields["revenue_category"], extra_id),
     )
     conn.commit()
     conn.close()
@@ -31504,6 +32475,10 @@ def admin_bookings():
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
 
+    # Needed by the facets below, which run before the block that used to
+    # compute it.
+    today_iso_pre = datetime.now(timezone.utc).date().isoformat()
+
     all_bookings = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name,
                   booking_parties.name AS party_name
@@ -31515,19 +32490,52 @@ def admin_bookings():
                     bookings.arrival_date"""
     ).fetchall()
 
-    bookings = all_bookings
-    if status_filter:
-        bookings = [b for b in bookings if b["status"] == status_filter]
-    if room_filter.isdigit():
-        bookings = [b for b in bookings if b["room_id"] == int(room_filter)]
-    if q:
-        needle = q.lower()
-        bookings = [
-            b for b in bookings
-            if needle in (b["guest_name"] or "").lower()
-            or needle in (b["guest_email"] or "").lower()
-            or needle in (b["reference_code"] or "").lower()
-        ]
+    # THE HOUSE RULE, applied to the one list that never had it: every list
+    # gets list_view -- search, counted chips, sort -- rather than another
+    # one-off search box. This page had its own, so it was the only list in the
+    # app with no counts on its filters, no sort, and no saved views.
+    #
+    # THE OLD PARAMETERS STILL WORK. ?status=pending and ?room_id=3 are in
+    # bookmarks, in links somebody has sent, and on the second screen at the
+    # desk; a conversion that quietly stopped honouring them would look like the
+    # filters had broken. They are mapped onto the facet keys below rather than
+    # kept as a second code path.
+    room_names = {r["id"]: r["name"] for r in rooms}
+    legacy = request.args.to_dict()
+    if status_filter and not legacy.get("state"):
+        legacy["state"] = status_filter.capitalize()
+    if room_filter.isdigit() and not legacy.get("room"):
+        legacy["room"] = room_names.get(int(room_filter), "")
+
+    lv = list_view(
+        all_bookings, legacy,
+        search=["guest_name", "guest_email", "reference_code", "room_name"],
+        search_hint="Search guest, email, reference or room",
+        facets=[
+            # Pending first: a request nobody has answered is the only thing on
+            # this page with a clock running on it.
+            facet("state", "Status", lambda b: (b["status"] or "").capitalize(),
+                  order=["Pending", "Confirmed", "Checked_in", "Departed",
+                         "Cancelled", "Declined"]),
+            facet("room", "Room", lambda b: b["room_name"], limit=12),
+            facet("when", "When", lambda b: (
+                "Here now" if (b["arrival_date"] or "") <= today_iso_pre
+                              < (b["departure_date"] or "")
+                else "Still to come" if (b["arrival_date"] or "") > today_iso_pre
+                else "Been and gone"),
+                  order=["Here now", "Still to come", "Been and gone"]),
+        ],
+        sorts=[
+            sort_option("arrival", "Arriving soonest",
+                        lambda b: b["arrival_date"] or "9999-12-31"),
+            sort_option("recent", "Booked most recently",
+                        lambda b: b["created_at"] or "", reverse=True),
+            sort_option("name", "By guest",
+                        lambda b: (b["guest_name"] or "").casefold()),
+        ],
+        default_sort="arrival",
+    )
+    bookings = lv["rows"]
 
     today = datetime.now(timezone.utc).date()
     today_iso = today.isoformat()
@@ -31560,10 +32568,33 @@ def admin_bookings():
             "SELECT booking_id, SUM(amount) AS total FROM refunds WHERE category = 'room' GROUP BY booking_id"
         ).fetchall()
     }
+    # A caution against the rows it applies to. Gathered ONCE for the page and
+    # matched in Python, not looked up per booking: a query per row is the
+    # mistake the timesheet page had to be fixed for, and this list is long.
+    cautioned = {}
+    for row in conn.execute(
+            """SELECT * FROM guests WHERE COALESCE(caution_level, '') != ''
+                 AND merged_into_id IS NULL""").fetchall():
+        if (row["email"] or "").strip():
+            cautioned["e:" + (row["email"] or "").strip().casefold()] = row
+        if (row["name"] or "").strip():
+            cautioned["n:" + " ".join((row["name"] or "").casefold().split())] = row
+    caution_by_booking = {}
+    for b in bookings:
+        hit = (cautioned.get("e:" + (b["guest_email"] or "").strip().casefold())
+               or cautioned.get("n:" + " ".join((b["guest_name"] or "").casefold().split())))
+        if hit:
+            caution_by_booking[b["id"]] = hit
+
     conn.close()
     return render_template(
         "admin_bookings.html", bookings=bookings, counts=counts, rooms=rooms, employees=employees,
-        status_filter=status_filter, room_filter=room_filter, q=q,
+        lv=lv,
+        caution_by_booking=caution_by_booking, caution_levels=CAUTION_LEVELS,
+        # status_filter / room_filter are no longer handed over: the toolbar renders
+        # the filters now, and they survive in the route only to map the old links
+        # onto the facets. q stays because the page heading still uses it.
+        q=q,
         arriving_today=arriving_today, departing_today=departing_today, arriving_this_week=arriving_this_week,
         returning_emails=returning_emails, confirmed_spend_by_email=confirmed_spend_by_email,
         scheduled_by_date=scheduled_by_date, today_iso=today_iso,
@@ -31886,6 +32917,21 @@ def confirm_booking_by_id(conn, booking_id):
     booking = conn.execute("SELECT * FROM bookings WHERE id = ? AND status = 'pending'", (booking_id,)).fetchone()
     if not booking:
         return False, "not found or not pending"
+
+    # A CAUTION STOPS THIS TOO. The walk-in form honoured one and this did not,
+    # so a standing instruction not to accept somebody was enforced at the desk
+    # and ignored the moment they booked online -- and bulk-confirm would wave a
+    # whole morning's requests through without anybody reading a name.
+    #
+    # Refused here rather than warned, for the same reason as at the desk: the
+    # owner recorded an instruction, and the way to overrule it is to lift it on
+    # the guest's page deliberately.
+    caution = guest_caution_for(conn, email=booking["guest_email"],
+                                name=booking["guest_name"])
+    if caution and caution["caution_level"] == "refuse":
+        return False, (f"there is a standing instruction not to accept a booking "
+                       f"from {caution['name']} ({caution['caution']}) — lift it "
+                       "on their profile if that has changed")
     arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
     available, conflict_reason = claim_range(
         conn, booking["room_id"], arrival, departure, exclude_booking_id=booking_id, include_pending=False
@@ -32691,7 +33737,8 @@ def edit_booking(booking_id):
         if error:
             flash(error, "error")
             conn.close()
-            return render_template("edit_booking.html", booking=booking)
+            return render_template("edit_booking.html", booking=booking,
+                               booking_sources=BOOKING_SOURCES)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
@@ -32704,6 +33751,8 @@ def edit_booking(booking_id):
         # guest changes what the commune is owed, and leaving the stamped figure
         # behind would put the declaration out by the difference without anything
         # looking wrong on the page.
+        typed_source = (request.form.get("source", "") or "").strip()
+        source = typed_source if typed_source in BOOKING_SOURCES else booking["source"]
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
         new_city_tax, _a, _r = compute_city_tax(
@@ -32711,9 +33760,11 @@ def edit_booking(booking_id):
 
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
-               special_requests=?, total_price=?, guests_under_18=?, city_tax=? WHERE id=?""",
+               special_requests=?, total_price=?, guests_under_18=?, city_tax=?,
+               source=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
-             special_requests or None, new_total, under_18, new_city_tax, booking_id),
+             special_requests or None, new_total, under_18, new_city_tax, source,
+             booking_id),
         )
         conn.commit()
 
@@ -32736,7 +33787,8 @@ def edit_booking(booking_id):
         return redirect(url_for("admin_bookings"))
 
     conn.close()
-    return render_template("edit_booking.html", booking=booking)
+    return render_template("edit_booking.html", booking=booking,
+                               booking_sources=BOOKING_SOURCES)
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -35322,7 +36374,8 @@ def new_workshop():
             (title, description, instructor_name or None,
              instructor_id,
              float(price_raw) if price_raw else 0,
-             int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0 else 10,
+             int(capacity_raw) if capacity_raw.isdigit() and int(capacity_raw) > 0
+             else DEFAULT_WORKSHOP_CAPACITY,
              max_order + 1,
              int(deposit_percent_raw) if deposit_percent_raw.isdigit() else 30,
              inclusions or None, itinerary or None, supplement,
@@ -35646,6 +36699,68 @@ def new_workshop_session(workshop_id):
         flash(f"Session added — heads up, {' and '.join(parts)} overlap these dates.", "error")
     else:
         flash("Session added.", "success")
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/sessions/<int:session_id>/edit", methods=["POST"])
+@owner_required
+def edit_workshop_session(session_id):
+    """Change a session's capacity, dates or note after it exists.
+
+    Capacity could only be set when the session was created, so the only way
+    to change it was to delete the session and make another — which throws
+    away every registration attached to it. That is not a thing anybody would
+    do on purpose, so in practice the number was fixed forever at whatever the
+    default happened to be on the day.
+
+    The one rule: it cannot go below what is already booked into it. Places
+    are sold against this number, and a capacity under the heads already
+    coming does not un-sell them — it just makes every "spots left" figure on
+    the public site negative and the atelier read as overbooked when it is
+    merely mis-typed.
+    """
+    conn = get_db()
+    session_row = conn.execute(
+        "SELECT * FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone()
+    if not session_row:
+        conn.close()
+        abort(404)
+    taken = conn.execute(
+        """SELECT COALESCE(SUM(party_size), 0) AS c FROM workshop_bookings
+            WHERE session_id = ? AND status IN ('confirmed', 'pending')""",
+        (session_id,)).fetchone()["c"] or 0
+
+    raw = (request.form.get("capacity") or "").strip()
+    if not raw.isdigit() or int(raw) < 1:
+        conn.close()
+        flash("Capacity has to be a whole number of places.", "error")
+        return redirect(url_for("admin_workshops"))
+    capacity = int(raw)
+    if capacity < taken:
+        conn.close()
+        flash(f"{taken} place(s) are already booked on that session, so it "
+              f"cannot be set to {capacity}.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    start = parse_date(request.form.get("start_date", "")) or parse_date(session_row["start_date"])
+    end = parse_date(request.form.get("end_date", "")) or start
+    if end < start:
+        conn.close()
+        flash("End date can't be before the start date.", "error")
+        return redirect(url_for("admin_workshops"))
+
+    conn.execute(
+        """UPDATE workshop_sessions SET capacity = ?, start_date = ?, end_date = ?, notes = ?
+            WHERE id = ?""",
+        (capacity, start.isoformat(), end.isoformat(),
+         (request.form.get("notes") or "").strip() or None, session_id))
+    # Capacity is what places are sold against, so a change to it is a change
+    # to what the house has promised, not a settings tweak.
+    log_audit(conn, "workshop_session_edited", target=str(session_id),
+              details=f"capacity {session_row['capacity']} -> {capacity}")
+    conn.commit()
+    conn.close()
+    flash("Session updated.", "success")
     return redirect(url_for("admin_workshops"))
 
 
@@ -36950,8 +38065,9 @@ def pos_day_pennylane_lines(conn, closure):
     customer records nobody will ever look at.
     """
     bands = json.loads(closure["vat_json"] or "{}")
-    code = app_setting(conn, "pennylane_account_restaurant",
-                       PENNYLANE_REVENUE_DEFAULTS)
+    # F&B covers the restaurant and the till both -- one category, because
+    # that is how the owner reads it and how the accountant asked for it.
+    code = revenue_account_for(conn, "fnb")
     lines = []
     for rate, band in sorted(bands.items(), key=lambda kv: float(kv[0])):
         net = round(float(band.get("net") or 0), 2)
@@ -37002,7 +38118,7 @@ def send_workshop_to_pennylane(conn, booking, user_id=None):
     line = {"currency_amount": f"{net:.2f}", "currency_tax": f"{round(total - net, 2):.2f}",
             "vat_rate": pennylane_vat_code(rate),
             "label": (booking["workshop_title"] or "Atelier")[:200]}
-    code = app_setting(conn, "pennylane_account_workshops", PENNYLANE_REVENUE_DEFAULTS)
+    code = revenue_account_for(conn, "workshops")
     if code:
         line["ledger_account_number"] = code
 
@@ -37081,7 +38197,7 @@ def send_event_to_pennylane(conn, event, user_id=None):
             "vat_rate": pennylane_vat_code(rate),
             "label": (f"{event['event_type']} — "
                       f"{event['preferred_date'] or 'date to confirm'}")[:200]}
-    code = app_setting(conn, "pennylane_account_events", PENNYLANE_REVENUE_DEFAULTS)
+    code = revenue_account_for(conn, "events")
     if code:
         line["ledger_account_number"] = code
 
@@ -37351,6 +38467,21 @@ def walk_in_booking():
             under_18 = max(0, min(party, int(request.form.get("guests_under_18", "0") or 0)))
         except ValueError:
             under_18 = 0
+
+        # A caution, read HERE — somebody is at the desk and a room is about to
+        # be given. "Do not accept a booking" stops it, because that is what the
+        # owner recorded; the way to overrule it is to lift it, on the guest's
+        # own page, deliberately. Anything softer is said and the booking goes on.
+        caution = guest_caution_for(conn, email=email, name=name)
+        if caution and caution["caution_level"] == "refuse":
+            conn.close()
+            flash(f"There is a standing instruction not to accept a booking from "
+                  f"{caution['name']}: {caution['caution']} — lift it on their "
+                  "profile if that has changed.", "error")
+            return redirect(url_for("walk_in_booking"))
+        if caution:
+            flash(f"{CAUTION_LEVELS.get(caution['caution_level'], 'Note')} — "
+                  f"{caution['name']}: {caution['caution']}", "error")
         notes = (request.form.get("special_requests", "") or "").strip()
 
         room = None
@@ -37404,6 +38535,7 @@ def walk_in_booking():
             total_price_override=charge,
             discount_amount_override=discount or None,
             guests_under_18=under_18,
+            source="desk",
         )
         booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
                                (reference_code,)).fetchone()
@@ -37441,6 +38573,40 @@ def walk_in_booking():
     return render_template("walk_in_booking.html", rooms=rooms, today=today,
                            options=options, arrival=arrival, departure=departure,
                            form=request.args)
+
+
+@app.route("/admin/restaurant/covers")
+@owner_required
+def dinner_covers_page():
+    """What the kitchen is likely to cook for, night by night."""
+    conn = get_db()
+    try:
+        days = max(7, min(60, int(request.args.get("days", 21))))
+    except (TypeError, ValueError):
+        days = 21
+    data = dinner_covers_forecast(conn, days=days)
+    conn.close()
+    return render_template("admin_dinner_covers.html", data=data, days=days)
+
+
+@app.route("/admin/restaurant/covers/export.csv")
+@owner_required
+def export_dinner_covers_csv():
+    conn = get_db()
+    try:
+        days = max(7, min(60, int(request.args.get("days", 21))))
+    except (TypeError, ValueError):
+        days = 21
+    data = dinner_covers_forecast(conn, days=days)
+    conn.close()
+    fieldnames = ["date", "weekday", "booked", "atelier", "certain", "in_house",
+                  "likely", "most"]
+    rows = [{"date": r["iso"], "weekday": r["weekday"], "booked": r["booked"],
+             "atelier": r["atelier"], "certain": r["certain"],
+             "in_house": r["in_house"],
+             "likely": "" if r["likely"] is None else r["likely"], "most": r["most"]}
+            for r in data["rows"]]
+    return csv_response(fieldnames, rows, "dinner-covers.csv")
 
 
 @app.route("/management/on-the-books")
@@ -39450,6 +40616,12 @@ def generate_maintenance_tasks(conn, *, today=None, user_id=None):
 # Only the blocking kind become tasks. A warning worth reading is not the same
 # as a job worth putting on somebody's list, and a task list that fills with
 # things nobody is expected to act on is a list people stop opening.
+# Fifteen is what the house takes on an atelier. Ten was the seeded default
+# and was never a decision anybody made. Named here because the column default
+# only reaches a database created after it changed — every existing one keeps
+# handing out the old number until the code stops asking.
+DEFAULT_WORKSHOP_CAPACITY = 15
+
 WATCH_TASK_ORIGIN = "watch"
 
 # Per kind, not overall: one very bad week of rota should not push a fault
@@ -39475,6 +40647,7 @@ WATCH_TASK_KINDS = {
     "workshop": "A workshop short of the number it needs",
     "materials": "A workshop without the materials to run",
     "filing": "A return or payment that is due",
+    "celebration": "A guest with something to celebrate while they are here",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -39623,6 +40796,381 @@ ANONYMISE_RATHER_THAN_DELETE = {
 }
 
 ERASED_MARKER = "[erased at the guest's request]"
+
+
+# How loudly a caution should be read. Three levels rather than a flag,
+# because "they smoke in the room" and "do not accept a booking from this
+# person" are not the same instruction and a single boolean makes them look it.
+# Where a booking came from.
+#
+# Recorded by the path that made it rather than chosen on a form: a field
+# somebody has to remember to set is a field that is mostly wrong, and the app
+# already knows which door each booking came through. The desk can correct it
+# afterwards -- a walk-in who says they came off an agent's listing is the one
+# case the app cannot know.
+#
+# "direct" covers the website and the telephone alike, because both are business
+# the house did not pay a commission on, which is the distinction that matters.
+BOOKING_SOURCES = {
+    "direct": "Direct",
+    "desk": "At the door or by telephone",
+    "returning": "A guest who had stayed before",
+    "agent": "Through an agent or platform",
+    "event": "Part of an event or wedding",
+    "other": "Something else",
+}
+
+
+def booking_source_for(conn, email, fallback):
+    """The source to stamp, promoting a repeat guest ahead of the raw path.
+
+    A returning guest booking through the website is worth knowing about
+    separately from a stranger doing the same: one is the house's own audience
+    and the other is new business, and lumping them together hides whether the
+    place is growing or just retaining.
+    """
+    email = (email or "").strip().casefold()
+    if email:
+        # ALREADY DEPARTED, not merely confirmed. A guest with a confirmed stay
+        # still ahead of them who books a second one is the same person planning
+        # one trip, not somebody the house has won back -- and counting them as
+        # returning would make a good week of forward bookings look like
+        # loyalty.
+        seen = conn.execute(
+            """SELECT 1 FROM bookings
+                WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'
+                  AND departure_date <= ?
+                LIMIT 1""",
+            (email, datetime.now(timezone.utc).date().isoformat())).fetchone()
+        if seen:
+            return "returning"
+    return fallback
+
+
+CAUTION_LEVELS = {
+    "note": "Worth knowing",
+    "care": "Handle with care",
+    "refuse": "Do not accept a booking",
+}
+
+
+def guest_notes(conn, guest_id):
+    """The running note on a guest, newest first.
+
+    APPEND-ONLY, which is the whole point. guests.notes is one free-text box, so
+    whoever types last silently replaces what the last person wrote -- and the
+    thing that gets lost is always the older observation nobody thought to
+    repeat. Each entry here keeps who wrote it and when, because "prefers the
+    quiet side" from the housekeeper and from the guest's own email are worth
+    different amounts.
+    """
+    return conn.execute(
+        """SELECT guest_notes.*, users.name AS author
+             FROM guest_notes LEFT JOIN users ON users.id = guest_notes.written_by_user_id
+            WHERE guest_id = ? ORDER BY guest_notes.created_at DESC, guest_notes.id DESC""",
+        (guest_id,)).fetchall()
+
+
+def add_guest_note(conn, guest_id, body, user_id=None):
+    body = (body or "").strip()
+    if not body:
+        return False
+    conn.execute(
+        """INSERT INTO guest_notes (guest_id, body, written_by_user_id, created_at)
+           VALUES (?, ?, ?, ?)""",
+        (guest_id, body[:2000], user_id, datetime.now(timezone.utc).isoformat()))
+    return True
+
+
+def parse_day_month(raw):
+    """A birthday as MM-DD, from whatever somebody typed. None if unreadable.
+
+    Accepts a full date and throws the year away rather than storing it. The
+    house wants to know that the 3rd of June matters to somebody, and has no use
+    for the year they were born -- and data you have no use for is data you have
+    to justify holding.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    for fmt, take in (("%Y-%m-%d", True), ("%d/%m/%Y", True),
+                      ("%m-%d", False), ("%d/%m", False)):
+        try:
+            parsed = datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+        return f"{parsed.month:02d}-{parsed.day:02d}"
+    return None
+
+
+def day_month_human(value):
+    """MM-DD as "3 June", or "" if there is nothing there."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = datetime.strptime(value, "%m-%d")
+    except ValueError:
+        return value
+    return f"{parsed.day} {parsed.strftime('%B')}"
+
+
+# 06-03 is a storage format, not something to show a person. Registered here
+# rather than beside the other filters: module level runs top to bottom, and a
+# filter registered above its own function is a NameError at import.
+app.jinja_env.filters["day_month"] = day_month_human
+
+
+def upcoming_guest_dates(conn, within_days=30, today=None):
+    """Birthdays and anniversaries coming up, soonest first.
+
+    Wrapped round the year: on the 20th of December, the 3rd of January is
+    fourteen days away and not three hundred and fifty. Getting that wrong is
+    how a list like this quietly stops showing anything in the last fortnight of
+    the year, which is exactly when the house is fullest.
+
+    A date only appears if the person has a profile the house can act on -- an
+    anniversary with no email and no stay coming up is a fact, not a job.
+    """
+    today = today or service_day()
+    rows = []
+    for guest in conn.execute(
+            """SELECT * FROM guests
+                WHERE merged_into_id IS NULL
+                  AND (COALESCE(birthday, '') != '' OR COALESCE(anniversary, '') != '')
+             """).fetchall():
+        for kind, value in (("birthday", guest["birthday"]),
+                            ("anniversary", guest["anniversary"])):
+            if not (value or "").strip():
+                continue
+            try:
+                month, day = (int(x) for x in value.split("-"))
+            except (ValueError, TypeError):
+                continue
+            for year in (today.year, today.year + 1):
+                try:
+                    when = date(year, month, day)
+                except ValueError:
+                    # 29 February in a year that has none. Marked on the 1st of
+                    # March rather than dropped: the guest still has a birthday.
+                    try:
+                        when = date(year, 3, 1)
+                    except ValueError:
+                        continue
+                days = (when - today).days
+                if 0 <= days <= within_days:
+                    rows.append({"guest": guest, "kind": kind, "when": when,
+                                 "days": days})
+                    break
+    rows.sort(key=lambda r: (r["days"], r["guest"]["name"] or ""))
+    return rows
+
+
+def guest_caution_for(conn, email=None, name=None):
+    """Any caution on the person a booking is being taken for, or None.
+
+    Looked up by ADDRESS FIRST and then by name. A caution that only matched on
+    the email address would be lifted by the guest using a different one, which
+    is the first thing somebody does after being turned down.
+
+    Compared with casefold in Python rather than LOWER in SQL: these are French
+    names, and SQLite's LOWER is ASCII-only.
+    """
+    email = (email or "").strip().casefold()
+    name_key = " ".join((name or "").casefold().split())
+    if not email and not name_key:
+        return None
+    for row in conn.execute(
+            """SELECT * FROM guests
+                WHERE COALESCE(caution_level, '') != '' AND merged_into_id IS NULL"""
+    ).fetchall():
+        if email and (row["email"] or "").strip().casefold() == email:
+            return row
+        if name_key and " ".join((row["name"] or "").casefold().split()) == name_key:
+            return row
+    return None
+
+
+def possible_duplicate_guests(conn, name, email=None, phone=None, exclude_id=None):
+    """Profiles that might already be this person.
+
+    Run BEFORE a second profile exists, because merging afterwards is somebody
+    noticing -- and the duplicate that never gets noticed is the one where the
+    guest's history, their allergy and the note about the dog all sit on the
+    profile nobody opened.
+
+    A same-email match is impossible (there is a unique index), so the useful
+    signals are the phone number and the name. Compared with casefold in Python:
+    SQLite's LOWER is ASCII-only and these are French names.
+    """
+    name_key = " ".join((name or "").casefold().split())
+    phone_key = "".join(ch for ch in (phone or "") if ch.isdigit())[-9:]
+    email_key = (email or "").strip().casefold()
+    hits = []
+    for row in conn.execute(
+            "SELECT * FROM guests WHERE merged_into_id IS NULL").fetchall():
+        if exclude_id and row["id"] == exclude_id:
+            continue
+        why = []
+        if email_key and (row["email"] or "").strip().casefold() == email_key:
+            why.append("the same email")
+        row_phone = "".join(ch for ch in (row["phone"] or "") if ch.isdigit())[-9:]
+        if phone_key and len(phone_key) >= 6 and row_phone == phone_key:
+            why.append("the same phone number")
+        if name_key and " ".join((row["name"] or "").casefold().split()) == name_key:
+            why.append("the same name")
+        if why:
+            hits.append({"guest": row, "why": why})
+    return hits
+
+
+def duplicate_guest_pairs(conn, limit=60):
+    """Every pair of profiles that might be one person, across the whole book.
+
+    possible_duplicate_guests answers the question for ONE profile, which only
+    helps somebody who has already opened it. This asks it of the book, so the
+    duplicates nobody has looked at can be found at all.
+
+    ONE ROW PER PAIR, not two. Listing A-matches-B and B-matches-A doubles the
+    length of the list and makes it read as twice the problem; the pair is keyed
+    on the two ids in order.
+
+    The stronger signal is put first -- a shared phone number is a much better
+    reason to think two profiles are one person than a shared name, and a house
+    in France will have several Martins who are not related.
+    """
+    by_phone, by_name, pairs = {}, {}, {}
+    profiles = conn.execute(
+        "SELECT * FROM guests WHERE merged_into_id IS NULL ORDER BY id").fetchall()
+    for row in profiles:
+        phone = "".join(ch for ch in (row["phone"] or "") if ch.isdigit())[-9:]
+        if len(phone) >= 6:
+            by_phone.setdefault(phone, []).append(row)
+        name = " ".join((row["name"] or "").casefold().split())
+        if name:
+            by_name.setdefault(name, []).append(row)
+
+    def add(rows, why, strength):
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                key = (min(a["id"], b["id"]), max(a["id"], b["id"]))
+                entry = pairs.setdefault(
+                    key, {"a": a if a["id"] < b["id"] else b,
+                          "b": b if a["id"] < b["id"] else a,
+                          "why": [], "strength": 0})
+                if why not in entry["why"]:
+                    entry["why"].append(why)
+                entry["strength"] = max(entry["strength"], strength)
+
+    for rows in by_phone.values():
+        if len(rows) > 1:
+            add(rows, "the same phone number", 2)
+    for rows in by_name.values():
+        if len(rows) > 1:
+            add(rows, "the same name", 1)
+
+    ordered = sorted(pairs.values(),
+                     key=lambda e: (-len(e["why"]), -e["strength"],
+                                    e["a"]["name"] or ""))
+    return {"pairs": ordered[:limit], "total": len(ordered),
+            "shown": min(len(ordered), limit), "profiles": len(profiles)}
+
+
+def merge_guest_profiles(conn, keep_id, merge_id, user_id=None):
+    """Fold one profile into another. Returns (ok, message).
+
+    The same person under two addresses, or one profile with none at all -- a
+    walk-in taken at the desk, then the same family booking online next year.
+    The unique index stops two profiles sharing an email, and does nothing about
+    this.
+
+    WHAT MOVES: notes, and any booking linked by id. WHAT IS KEPT: every field on
+    the survivor that is already filled, filling its blanks from the other. A
+    merge that overwrote a good address with an older one would be a data loss
+    dressed as a tidy-up.
+
+    NOTHING IS DELETED. The absorbed profile stays, pointing at its survivor,
+    because a booking, an invoice or a conversation may reference it and a row
+    that vanishes takes the explanation with it.
+    """
+    if keep_id == merge_id:
+        return False, "That is the same profile."
+    keep = conn.execute("SELECT * FROM guests WHERE id = ?", (keep_id,)).fetchone()
+    merge = conn.execute("SELECT * FROM guests WHERE id = ?", (merge_id,)).fetchone()
+    if not keep or not merge:
+        return False, "One of those profiles no longer exists."
+    if merge["merged_into_id"]:
+        return False, f"{merge['name']} has already been merged."
+    if keep["merged_into_id"]:
+        return False, f"{keep['name']} has itself been merged into another profile."
+
+    # Blanks on the survivor are filled from the other; anything already there
+    # is left alone.
+    fills = {}
+    for column in ("email", "phone", "dietary_notes", "preferences",
+                   "name_pronunciation", "birthday", "anniversary",
+                   "caution", "caution_level"):
+        if column not in keep.keys():
+            continue
+        if not (keep[column] or "").strip() and (merge[column] or "").strip():
+            fills[column] = merge[column]
+    # The email is the one field a unique index can refuse. Only take it if the
+    # survivor has none, and the merged profile's has to be released first or
+    # the index refuses the update.
+    if "email" in fills:
+        conn.execute("UPDATE guests SET email = NULL WHERE id = ?", (merge_id,))
+    if fills:
+        sets = ", ".join(f"{c} = ?" for c in fills)
+        conn.execute(f"UPDATE guests SET {sets} WHERE id = ?",
+                     list(fills.values()) + [keep_id])
+
+    conn.execute("UPDATE guest_notes SET guest_id = ? WHERE guest_id = ?",
+                 (keep_id, merge_id))
+    moved = conn.execute("SELECT changes() AS c").fetchone()["c"]
+    # The old profile's free-text note is kept as a dated entry rather than
+    # thrown away or pasted over the survivor's.
+    if (merge["notes"] or "").strip():
+        add_guest_note(conn, keep_id,
+                       f"From the merged profile for {merge['name']}: "
+                       f"{merge['notes'].strip()}", user_id)
+    # linked_guest_id is the CERTAIN link -- guest_record treats a match on the
+    # email address as an inference and says so. Moving these is the point of a
+    # merge: the survivor inherits the stays somebody deliberately attached to
+    # the profile being folded in.
+    conn.execute(
+        "UPDATE bookings SET linked_guest_id = ? WHERE linked_guest_id = ?",
+        (keep_id, merge_id))
+    moved_stays = conn.execute("SELECT changes() AS c").fetchone()["c"]
+
+    # Dinners and ateliers are matched to a profile by EMAIL ADDRESS, not by an
+    # id -- so folding an address onto the survivor is what carries them across,
+    # and an address left behind on the absorbed profile takes that history with
+    # it. Where the survivor already had its own address the other one is kept
+    # as a note, because the guest genuinely used both and somebody looking for
+    # a dinner booked under the old one needs to know it existed.
+    other_email = (merge["email"] or "").strip()
+    if other_email and (keep["email"] or "").strip().casefold() != other_email.casefold():
+        add_guest_note(
+            conn, keep_id,
+            f"Also booked as {other_email} — dinners and ateliers under that "
+            "address are theirs too.", user_id)
+
+    conn.execute(
+        "UPDATE guests SET merged_into_id = ?, caution = NULL, caution_level = NULL "
+        "WHERE id = ?", (keep_id, merge_id))
+    add_guest_note(conn, keep_id,
+                   f"Merged the duplicate profile for {merge['name']} into this one.",
+                   user_id)
+    # The audit entry is written by the ROUTE, not here. log_audit reads the
+    # request to record who and from where, and this has to be callable without
+    # one -- a merge run from a script or a test is still a merge.
+    parts = []
+    if moved:
+        parts.append(f"{moved} note(s)")
+    if moved_stays:
+        parts.append(f"{moved_stays} stay(s)")
+    return True, (f"{merge['name']} folded into {keep['name']}"
+                  + (" — " + " and ".join(parts) + " moved" if parts else "") + ".")
 
 
 def guest_record(conn, guest_id):
@@ -40277,6 +41825,40 @@ def watch_task_findings(conn, today=None):
         if len(items) > WATCH_TASK_CAP:
             dropped[kind] = len(items) - WATCH_TASK_CAP
         return items[:WATCH_TASK_CAP]
+
+    # A birthday or an anniversary belonging to somebody who will be IN THE
+    # HOUSE for it. Not every date in the book: a card for a guest who is not
+    # coming is a nice thought and not a job, and a list of those every morning
+    # is how a list stops being read.
+    #
+    # Titled by the guest and the occasion rather than the date, because the
+    # title is the dedupe key -- "in 3 days" in it would raise a fresh task
+    # every morning until it happened.
+    celebrations = []
+    for row in upcoming_guest_dates(conn, within_days=14, today=today):
+        guest = row["guest"]
+        email = (guest["email"] or "").strip().casefold()
+        here = conn.execute(
+            """SELECT 1 FROM bookings
+                WHERE status = 'confirmed'
+                  AND (linked_guest_id = ?
+                       OR (? != '' AND LOWER(TRIM(guest_email)) = ?))
+                  AND arrival_date <= ? AND departure_date > ?
+                LIMIT 1""",
+            (guest["id"], email, email, row["when"].isoformat(),
+             row["when"].isoformat())).fetchone()
+        if not here:
+            continue
+        occasion = "birthday" if row["kind"] == "birthday" else "anniversary"
+        celebrations.append((
+            "celebration",
+            f"{guest['name']} has a {occasion} while they are here",
+            f"{format_date_human(row['when'].isoformat())}"
+            + (" — VIP" if guest["vip"] else ""),
+            row["when"].isoformat(),
+            2,
+        ))
+    found.extend(take("celebration", celebrations))
 
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting
@@ -41836,6 +43418,11 @@ def management_email_templates():
     # and event templates that cannot use half of them.
     tags = {t["template_key"]: sorted(set(re.findall(
         r"\{(\w+)\}", (t["subject"] or "") + " " + (t["body"] or "")))) for t in templates}
+    # And which ones are AVAILABLE, which is the half that was missing: the page
+    # showed what each template used and never what it could use, so the only
+    # way to find out was to guess a tag, save it, send one and look.
+    available = {t["template_key"]: list(EMAIL_TEMPLATE_TAGS.get(t["template_key"], ()))
+                 for t in templates}
 
     lv = list_view(
         templates, request.args,
@@ -41859,7 +43446,8 @@ def management_email_templates():
         default_sort="area",
     )
     return render_template("management_email_templates.html", templates=lv["rows"], lv=lv,
-                           edited=edited, states=states, tags=tags)
+                           edited=edited, states=states, tags=tags,
+                           available=available)
 
 
 @app.route("/management/email-templates/<template_key>/restore", methods=["POST"])
@@ -41894,6 +43482,18 @@ def edit_email_template(template_key):
     if not subject or not body:
         flash("Subject and body are both required.", "error")
         return redirect(url_for("management_email_templates"))
+
+    # REFUSED HERE, at the moment of the mistake. A tag nothing fills used to be
+    # saved happily and only showed itself in a guest's inbox, and by then the
+    # only person who could see it was the guest.
+    stray = unknown_merge_tags(template_key, subject, body)
+    if stray:
+        allowed = ", ".join("{%s}" % t for t in EMAIL_TEMPLATE_TAGS.get(template_key, ()))
+        flash("Nothing fills " + ", ".join("{%s}" % t for t in stray)
+              + " in this message, so a guest would read it exactly like that. "
+              + (f"This one can use: {allowed}." if allowed else ""), "error")
+        return redirect(url_for("management_email_templates"))
+
     conn = get_db()
     existing = conn.execute("SELECT 1 FROM email_templates WHERE template_key = ?", (template_key,)).fetchone()
     if not existing:
@@ -46176,17 +47776,103 @@ TAX_DEFAULTS = {
     "city_tax_account": "",          # where the collected tax is parked
 }
 
-# Where each kind of income lands. Revenue is class 7 in the plan comptable;
-# held as settings because only the accountant knows which of the 154 revenue
-# accounts is right for a workshop.
-REVENUE_STREAMS = {
-    "rooms": "Room stays",
-    "restaurant": "Restaurant",
-    "workshops": "Workshops",
-    "events": "Events & weddings",
-    "extras": "Extras (champagne, transfers…)",
-    "pos": "Restaurant POS / bar",
+# Where each kind of income lands. Revenue is class 7 in the plan comptable,
+# and only the accountant knows which of the 154 revenue accounts is right for a
+# workshop -- so the account against each of these is set on /admin/pennylane.
+#
+# THESE ARE THE SEED, NOT THE LIST. The live list is the revenue_categories
+# table, because the owner adds to it and renames it as their own chart changes.
+# The KEY is what the app maps a stream to and never changes; the LABEL is
+# theirs to edit. Renaming "F&B" does not silently unhook the till.
+#
+# What each key is fed by, so a reader can check nothing is orphaned:
+#   nightly   room stays
+#   fnb       restaurant reservations and the till
+#   transport transfers -- an extra whose revenue_category says so
+#   extras    every other extra
+#   workshops atelier registrations
+#   events    weddings and hire
+#   city_tax  taxe de sejour, collected for the commune
+#   taxes     nothing automatically; here because the owner asked for it, and
+#             something has to be pointed at it by hand before it fills up
+REVENUE_CATEGORY_SEED = [
+    ("nightly", "Nightly", 10, 1),
+    ("fnb", "F&B", 20, 1),
+    ("transport", "Transport", 30, 1),
+    ("extras", "Extras", 40, 1),
+    ("workshops", "Workshops", 50, 1),
+    ("events", "Events", 60, 1),
+    ("city_tax", "City tax", 70, 1),
+    ("taxes", "Taxes", 80, 1),
+]
+
+# The old key for each new one, so an account already mapped is carried across
+# rather than silently emptied. rooms and restaurant/pos were the previous
+# names; pennylane_account_* was a SECOND set of keys that the senders read and
+# the page never wrote -- which is the bug this replaces.
+REVENUE_CATEGORY_MIGRATION = {
+    "nightly": ("revenue_account_rooms", "pennylane_account_accommodation"),
+    "fnb": ("revenue_account_restaurant", "revenue_account_pos",
+            "pennylane_account_restaurant"),
+    "extras": ("revenue_account_extras", "pennylane_account_extras"),
+    "workshops": ("revenue_account_workshops", "pennylane_account_workshops"),
+    "events": ("revenue_account_events", "pennylane_account_events"),
+    "city_tax": ("pennylane_account_city_tax",),
 }
+
+
+def seed_revenue_categories(conn):
+    """Put the built-in categories in place, once, carrying old mappings over.
+
+    Idempotent: an existing row is left exactly as the owner edited it. Only the
+    ledger account is filled in, and only when it is still blank, so a category
+    they have already pointed somewhere is never repointed by a deploy.
+    """
+    existing = {r["key"] for r in conn.execute(
+        "SELECT key FROM revenue_categories").fetchall()}
+    now = datetime.now(timezone.utc).isoformat()
+    for key, label, order, builtin in REVENUE_CATEGORY_SEED:
+        if key in existing:
+            continue
+        account = ""
+        for old_key in REVENUE_CATEGORY_MIGRATION.get(key, ()):
+            row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                               (old_key,)).fetchone()
+            if row and (row["value"] or "").strip():
+                account = row["value"].strip()
+                break
+        conn.execute(
+            """INSERT INTO revenue_categories (key, label, ledger_account,
+               sort_order, active, builtin, created_at)
+               VALUES (?, ?, ?, ?, 1, ?, ?)""",
+            (key, label, account or None, order, builtin, now))
+    conn.commit()
+
+
+def revenue_categories(conn, include_inactive=False):
+    sql = "SELECT * FROM revenue_categories"
+    if not include_inactive:
+        sql += " WHERE active = 1"
+    return conn.execute(sql + " ORDER BY sort_order, label").fetchall()
+
+
+def revenue_account_for(conn, key):
+    """The ledger account for a category, or "" if nobody has set one.
+
+    Blank is returned rather than a guess. An invoice line with no account is a
+    line the accountant codes; a line with the WRONG account is one nobody
+    notices, and unpicking it later means finding every invoice it went on.
+    """
+    row = conn.execute(
+        "SELECT ledger_account FROM revenue_categories WHERE key = ?",
+        (key,)).fetchone()
+    return ((row["ledger_account"] if row else "") or "").strip()
+
+
+def revenue_category_label(conn, key):
+    row = conn.execute("SELECT label FROM revenue_categories WHERE key = ?",
+                       (key,)).fetchone()
+    return (row["label"] if row else key) or key
 
 # Not every bill is handled the same way. This is the distinction that stops a
 # cost being counted twice.
@@ -46468,12 +48154,6 @@ def tax_rate(conn, key):
         return float(tax_setting(conn, key))
     except (TypeError, ValueError):
         return float(TAX_DEFAULTS.get(key, 0) or 0)
-
-
-def revenue_account_for(conn, stream):
-    row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (f"revenue_account_{stream}",)).fetchone()
-    return (row["value"] if row else "") or ""
 
 
 # What a voucher may be spent on. The kind is recorded on the redemption so a
@@ -47983,16 +49663,27 @@ def booking_pennylane_lines(conn, statement):
     # the extras rate equal to the accommodation rate, both fall into ONE band
     # and no amount of looking at the rate can tell them apart. So the split is
     # by component, and the rate comes along with each.
+    # The stay itself, then ONE LINE PER EXTRAS CATEGORY. A transfer to the
+    # station is transport and a hamper is not, and posting both as "extras"
+    # gives the accountant a figure they then have to split by hand from the
+    # descriptions.
+    extras_rate = tax_rate(conn, "vat_extras")
+    by_category = {}
+    for extra in statement["extras"]:
+        gross = round(float(extra["unit_price"] or 0) * float(extra["quantity"] or 0), 2)
+        if not gross:
+            continue
+        key = (extra["revenue_category"]
+               if "revenue_category" in extra.keys() else None) or "extras"
+        by_category[key] = round(by_category.get(key, 0.0) + gross, 2)
+
+    components = [("nightly", statement["accommodation"],
+                   tax_rate(conn, "vat_accommodation"))]
+    components += [(key, gross, extras_rate)
+                   for key, gross in sorted(by_category.items())]
+
     lines = []
-    components = [
-        ("accommodation", statement["accommodation"],
-         tax_rate(conn, "vat_accommodation"), "pennylane_account_accommodation",
-         "Accommodation"),
-        ("extras", statement["extras_total"],
-         tax_rate(conn, "vat_extras"), "pennylane_account_extras",
-         "Extras"),
-    ]
-    for _key, gross, rate, setting, label in components:
+    for key, gross, rate in components:
         gross = round(float(gross or 0), 2)
         if not gross:
             continue
@@ -48000,29 +49691,25 @@ def booking_pennylane_lines(conn, statement):
         if not band:
             continue
         band = band[0]
+        label = revenue_category_label(conn, key)
         line = {"currency_amount": f"{band['net']:.2f}",
                 "currency_tax": f"{band['vat']:.2f}",
                 "vat_rate": pennylane_vat_code(band["rate"]),
                 "label": f"{label} at {band['rate']}%"[:200]}
-        code = app_setting(conn, setting, PENNYLANE_REVENUE_DEFAULTS)
+        code = revenue_account_for(conn, key)
         if code:
             line["ledger_account_number"] = code
         lines.append(line)
     city = round(float(statement["city_tax"] or 0), 2)
     if city:
         line = {"currency_amount": f"{city:.2f}", "currency_tax": "0.00",
-                "vat_rate": pennylane_vat_code(0), "label": "Taxe de sejour"}
-        code = app_setting(conn, "pennylane_account_city_tax",
-                           PENNYLANE_REVENUE_DEFAULTS)
+                "vat_rate": pennylane_vat_code(0),
+                "label": revenue_category_label(conn, "city_tax")}
+        code = revenue_account_for(conn, "city_tax")
         if code:
             line["ledger_account_number"] = code
         lines.append(line)
     return lines
-
-
-def app_setting(conn, key, defaults):
-    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
-    return (row["value"] if row else defaults.get(key, "")) or ""
 
 
 def pennylane_find_supplier(name):
@@ -48766,7 +50453,7 @@ def sitemap():
         ("dashboard", "1.0"), ("book_rooms", "0.9"), ("workshops_public", "0.9"),
         ("restaurant_info", "0.8"), ("events_info", "0.8"),
         ("events_weddings", "0.7"), ("events_private", "0.6"),
-        ("events_photoshoots", "0.6"), ("facilities_page", "0.7"),
+        ("events_photoshoots", "0.6"), ("press", "0.5"), ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]

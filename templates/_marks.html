@@ -68,10 +68,72 @@
   <path d="M60 9c-2-2-1-5 0-6 1 1 2 4 0 6" stroke-linejoin="round"/>
   <path d="M50 28h20"/>
   <path d="M16 24h30M74 24h30" opacity=".45"/>
+{%- elif kind == 'market' %}
+  {# A market stall: scalloped awning on two posts, produce on the trestle #}
+  <path d="M40 13h40l-5-5H45z" stroke-linejoin="round"/>
+  <path d="M40 13c3 0 3 3 6 3s3-3 6-3 3 3 6 3 3-3 6-3 3 3 6 3 3-3 6-3" stroke-linejoin="round"/>
+  <path d="M43 16v12M77 16v12"/>
+  <path d="M46 24h28"/>
+  <circle cx="53" cy="21" r="2.5"/><circle cx="60" cy="21" r="2.5"/><circle cx="67" cy="21" r="2.5"/>
+  <path d="M14 24h22M84 24h22" opacity=".45"/>
+{%- elif kind == 'peaks' %}
+  {# Beille, above the valley — a summit with a track to it #}
+  <path d="M14 28h92" opacity=".45"/>
+  <path d="M30 28l20-16 12 9 10-13 16 20" stroke-linejoin="round"/>
+  <path d="M56 12l6-4 6 4" stroke-linejoin="round"/>
+  <path d="M44 28c6-4 8-8 14-9" stroke-dasharray="3 3"/>
+{%- elif kind == 'spring' %}
+  {# Thermal water at Ax-les-Thermes — a basin and rising steam #}
+  <path d="M42 22h36c0 6-8 8-18 8s-18-2-18-8z" stroke-linejoin="round"/>
+  <path d="M54 16c-3-3 0-6 0-8M60 16c-3-3 0-6 0-8M66 16c-3-3 0-6 0-8" stroke-linecap="round"/>
+  <path d="M16 26h20M84 26h20" opacity=".45"/>
+{%- elif kind == 'bison' %}
+  {# Niaux — the cave drawings, older than the house by millennia #}
+  <path d="M40 24c0-6 4-10 12-10h10c8 0 14 3 16 8l4 2-4 2c-2 5-8 8-16 8H52c-8 0-12-4-12-10z" stroke-linejoin="round"/>
+  <path d="M44 14c-3-4-2-7 1-8 2 2 2 5 0 8" stroke-linejoin="round"/>
+  <path d="M50 30v4M66 30v4"/>
+  <path d="M16 24h20M92 24h14" opacity=".45"/>
+{%- elif kind == 'plaster' %}
+  {# Plaster coming away from stone — a torn edge, not a straight one #}
+  <path d="M40 8h40v20H40z"/>
+  {# the tear: plaster on the left, coursed stone showing on the right #}
+  <path d="M58 8c-3 4 3 5 0 9s3 5 1 11" stroke-linejoin="round"/>
+  <path d="M62 12h16M62 18h16M62 24h16" opacity=".55"/>
+  <path d="M70 8v4M66 18v6M74 18v6" opacity=".4"/>
+  <path d="M44 14c3-2 6 1 9-1" opacity=".45"/>
+  <path d="M14 18h22M84 18h22" opacity=".45"/>
+{%- elif kind == 'peony' %}
+  {# Peony — blowsy by nature, so drawn open: loose outer petals, full centre #}
+  <path d="M60 4c5 0 8 4 7 8 4-2 8 0 9 4s-2 8-6 8c2 3 1 7-3 8s-6-2-7-5c-1 3-3 6-7 5s-5-5-3-8c-4 0-7-4-6-8s5-6 9-4c-1-4 2-8 7-8z" stroke-linejoin="round"/>
+  <circle cx="60" cy="16" r="4"/>
+  <path d="M57 16c1-2 5-2 6 0" opacity=".6"/>
+  <path d="M60 27v7"/>
+  <path d="M60 30c-4 0-6-2-7-4 3-1 6 1 7 4M60 32c4 0 6-2 7-4-3-1-6 1-7 4"/>
+  <path d="M14 22h30M76 22h30" opacity=".45"/>
+{%- elif kind == 'rose' %}
+  {# A garden rose, in section — the spiral you see looking into one #}
+  <circle cx="60" cy="14" r="9"/>
+  <path d="M60 9c3 0 4 3 2 5s-5 1-5-2 3-4 5-2 3 6 0 8-8 1-8-4" stroke-linejoin="round"/>
+  <path d="M60 23v10"/>
+  <path d="M60 27c-4 0-7-2-8-5 4-1 7 1 8 5M60 30c4 0 7-2 8-5-4-1-7 1-8 5"/>
+  <path d="M14 22h34M72 22h34" opacity=".45"/>
+{%- elif kind == 'lavender' %}
+  {# Lavender — grows the length of the valley #}
+  <path d="M54 30V12M60 32V8M66 30V12"/>
+  <path d="M52 12c2-3 4-3 4 0M52 16c2-3 4-3 4 0M52 20c2-3 4-3 4 0"/>
+  <path d="M58 8c2-3 4-3 4 0M58 12c2-3 4-3 4 0M58 16c2-3 4-3 4 0M58 20c2-3 4-3 4 0"/>
+  <path d="M64 12c2-3 4-3 4 0M64 16c2-3 4-3 4 0M64 20c2-3 4-3 4 0"/>
+  <path d="M14 26h34M72 26h34" opacity=".45"/>
+{%- elif kind == 'branch' %}
+  {# Cherry blossom — the trees below the pool, and the April flower #}
+  <path d="M28 28c14-4 26-8 40-14s22-8 30-8" stroke-linecap="round"/>
+  <path d="M46 20c-2-3 0-6 3-5 1 2 0 4-3 5M62 15c-2-3 0-6 3-5 1 2 0 4-3 5M78 10c-2-3 0-6 3-5 1 2 0 4-3 5" stroke-linejoin="round"/>
+  <circle cx="54" cy="19" r="1.6"/><circle cx="70" cy="13" r="1.6"/>
 {%- else %}
   {# A rule with a centre point, when nothing more specific fits #}
   <path d="M10 17h40M70 17h40" opacity=".55"/>
   <circle cx="60" cy="17" r="3"/>
 {%- endif %}
+
 </svg>
 {% endmacro %}

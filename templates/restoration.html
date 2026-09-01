@@ -22,6 +22,7 @@
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_marks.html' import mark %}
+{% from '_devices.html' import monogram %}
 {# Needs a route, e.g.:
    @app.route('/restoration')
    def restoration_page(): return render_template('restoration.html')  #}
@@ -57,7 +58,8 @@
   <div class="g-wrap">
     <div class="g-two">
       <div>
-        <p class="g-eyebrow">How the work is governed</p>
+        <p class="g-fr">Rien ne se fait vite ici<span class="g-fr__en">Nothing here is done quickly</span></p>
+    <p class="g-eyebrow">How the work is governed</p>
         <h2 class="g-h2">Nothing here begins with a decision. <em>It begins with a dossier.</em></h2>
         <p class="g-p">Because the château is Class I listed, every intervention is applied for and approved by the Monuments Historiques before a tool is lifted. Restorers work alongside artisans from the valley. New work is done so that it could one day be removed without harming what was there.</p>
         <p class="g-p">The aim is not to return the château to a single moment in time. It is to let it go on.</p>
@@ -514,6 +516,8 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('trowel') }}</div>
 
+<div class="g-wrap g-mark__wrap">{{ mark('house') }}</div>
+
 <!-- ============ WHAT SURVIVED ============ -->
 {# Every item here is documented elsewhere on this page or in the château's
    own record. Named, not admired — the reader does the admiring. #}
@@ -659,6 +663,34 @@
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>
+
+
+<!-- ============ THE JOURNAL, PROPERLY ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap g-journal">
+  <div class="g-journal__in">
+    <p class="g-eyebrow">Not Ready To Book</p>
+    <h2 class="g-place">Watch It Come Off The Wall</h2>
+    <p class="g-p">Ninety-four rooms, five finished. When a room opens, when something comes out from under the plaster, when the ateliers are released — that goes out first to the people reading along.</p>
+    <p class="g-p">It is the same record Vogue, AD Italia and the French press have been following since 2013. Rooms are usually spoken for before they reach the booking page.</p>
+    <form method="post" action="{{ url_for('newsletter_subscribe') }}" class="g-journal__form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="g-vh" for="jr_email_rest">Your email</label>
+      <input type="email" id="jr_email_rest" name="email" placeholder="Your email" required>
+      <button type="submit" class="g-btn g-btn--solid">Read along</button>
+    </form>
+    <p class="g-journal__note">A few times a year, when there is something worth sending. Unsubscribe in one click.</p>
+  </div>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('plaster') }}</div>
+
+
+<div class="g-wrap">
+  <p class="g-devise">
+    <span class="g-devise__fr">« Un centimètre, c'est une bonne matinée. »</span>
+    <span class="g-devise__en">A centimetre is a good morning</span>
+  </p>
+</div>
 
 <!-- ============ THE CLOSE ============ -->
 <section class="g-sec g-close"><div class="g-wrap">

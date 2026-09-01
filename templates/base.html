@@ -331,8 +331,8 @@
        custom preset could grant till without restaurant and the item must
        not vanish for them — hence the conditional label target too. #}
     {% if may('restaurant') or may('till') %}
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] or request.endpoint in till_endpoints }}">
-      <a href="{{ url_for('admin_restaurant') if may('restaurant') else url_for('pos_home') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] or request.endpoint in till_endpoints }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','dinner_covers_page','export_dinner_covers_csv','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] or request.endpoint in till_endpoints }}">
+      <a href="{{ url_for('admin_restaurant') if may('restaurant') else url_for('pos_home') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','dinner_covers_page','export_dinner_covers_csv','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras'] or request.endpoint in till_endpoints }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Restaurant submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         {% if may('till') %}
@@ -340,6 +340,7 @@
         {% endif %}
         {% if may('restaurant') %}
         <a href="{{ url_for('admin_restaurant') }}" class="{{ 'active' if request.endpoint=='admin_restaurant' }}">{{ icon('restaurant') }}Reservations{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
+        <a href="{{ url_for('dinner_covers_page') }}" class="{{ 'active' if request.endpoint=='dinner_covers_page' }}">{{ icon('restaurant') }}Covers Forecast</a>
         <a href="{{ url_for('admin_restaurant_waitlist') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_waitlist' }}">{{ icon('leave') }}Waitlist</a>
         <a href="{{ url_for('admin_stock') }}" class="{{ 'active' if request.endpoint=='admin_stock' }}">{{ icon('shopping') }}Stock</a>
         <a href="{{ url_for('admin_extras') }}" class="{{ 'active' if request.endpoint=='admin_extras' }}">{{ icon('receipt') }}Extras &amp; menu</a>
@@ -444,6 +445,7 @@
   </div>
   {% endif %}
 
+  {% include "_saved_views.html" %}
   {% block content %}{% endblock %}
 </main>
 </div>

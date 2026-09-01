@@ -71,6 +71,15 @@
     {% if tags[key] %}
     <p class="field-hint">Keep every tag you want filled in: {% for tag in tags[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
     {% endif %}
+    {# What this message CAN use, which is the half that was missing. The line
+       above says what it uses today; without this the only way to find out what
+       else was available was to guess one, save it, send one and look — and by
+       then the person who could see the mistake was the guest. #}
+    {% if available[key] %}
+    <p class="field-hint">Available here: {% for tag in available[key] %}<code>{{ '{' }}{{ tag }}{{ '}' }}</code>{% endfor %}</p>
+    <p class="field-hint">Anything else is refused when you save: nothing would
+    fill it, and a guest would read it exactly as you typed it.</p>
+    {% endif %}
     <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
       <button type="submit" class="btn-mini">Save</button>
       {% if key in edited %}

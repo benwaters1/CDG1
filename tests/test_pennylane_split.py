@@ -27,8 +27,8 @@ def _cleanup():
     conn = db()
     conn.execute("DELETE FROM booking_extras WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM bookings WHERE guest_name LIKE ?", (TAG + "%",))
-    conn.execute("DELETE FROM app_settings WHERE key LIKE 'pennylane_account_%' "
-                 "AND value LIKE ?", (TAG + "%",))
+    conn.execute("UPDATE revenue_categories SET ledger_account = NULL "
+                 "WHERE ledger_account LIKE ?", (TAG + "%",))
     conn.commit()
     conn.close()
 
@@ -75,8 +75,8 @@ def _lines(booking):
 
 def _set_account(key, value):
     conn = db()
-    conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
-                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    conn.execute("UPDATE revenue_categories SET ledger_account = ? WHERE key = ?",
+                 (value, key))
     conn.commit()
     conn.close()
 
@@ -106,38 +106,47 @@ def run():
             detail=f"{getattr(m._pennylane_request, '__name__', '?')} — the token "
                    "is live and these checks build invoice lines")
 
-    _set_account("pennylane_account_accommodation", f"{TAG}706100")
-    _set_account("pennylane_account_extras", f"{TAG}706300")
-    _set_account("pennylane_account_city_tax", f"{TAG}447100")
+    # Set on the revenue_categories table, which is what the page writes and
+    # every sender reads. The labels are the owner's to rename, so this asks the
+    # table what they are called rather than hardcoding "Accommodation" -- a
+    # suite that hardcodes them goes red the first time somebody renames one on
+    # a settings page, which is not a defect.
+    _set_account("nightly", f"{TAG}706100")
+    _set_account("extras", f"{TAG}706300")
+    _set_account("city_tax", f"{TAG}447100")
+    conn = db()
+    NAME = {k: m.revenue_category_label(conn, k)
+            for k in ("nightly", "extras", "city_tax")}
+    conn.close()
 
     booking = _stay("A", extras=[("hamper", 60.0, 1)], city_tax=4.80)
     statement, lines = _lines(booking)
 
     s.section("Every part is its own line")
     labels = [l["label"] for l in lines]
-    s.check("accommodation has one",
-            any(l.startswith("Accommodation") for l in labels), detail=f"{labels}")
+    s.check("the stay has one",
+            any(l.startswith(NAME["nightly"]) for l in labels), detail=f"{labels}")
     s.check("extras have one of their own",
-            any(l.startswith("Extras") for l in labels),
+            any(l.startswith(NAME["extras"]) for l in labels),
             detail=f"{labels} — a hamper was booked as room revenue")
     s.check("and the taxe de sejour",
-            any("sejour" in l.lower() for l in labels), detail=f"{labels}")
+            any(l.startswith(NAME["city_tax"]) for l in labels), detail=f"{labels}")
     s.check("no line still says 'Accommodation and extras'",
             not any("and extras" in l for l in labels),
             detail=f"{labels} — the old label was at least honest about the merge")
 
     s.section("Each reaches the account the owner set for it")
     by_label = {l["label"].split(" at ")[0]: l for l in lines}
-    s.check("accommodation to the accommodation account",
-            by_label["Accommodation"].get("ledger_account_number") == f"{TAG}706100",
-            detail=f"{by_label['Accommodation'].get('ledger_account_number')}")
+    s.check("the stay to the nightly account",
+            by_label[NAME["nightly"]].get("ledger_account_number") == f"{TAG}706100",
+            detail=f"{by_label[NAME['nightly']].get('ledger_account_number')}")
     s.check("extras to the extras account",
-            by_label["Extras"].get("ledger_account_number") == f"{TAG}706300",
-            detail=f"{by_label['Extras'].get('ledger_account_number')} — the "
+            by_label[NAME["extras"]].get("ledger_account_number") == f"{TAG}706300",
+            detail=f"{by_label[NAME['extras']].get('ledger_account_number')} — the "
                    "setting existed and nothing read it")
     s.check("and the tax to its own",
-            by_label["Taxe de sejour"].get("ledger_account_number") == f"{TAG}447100",
-            detail=f"{by_label['Taxe de sejour'].get('ledger_account_number')}")
+            by_label[NAME["city_tax"]].get("ledger_account_number") == f"{TAG}447100",
+            detail=f"{by_label[NAME['city_tax']].get('ledger_account_number')}")
 
     s.section("The lines still add up to the statement")
     total = round(sum(float(l["currency_amount"]) + float(l["currency_tax"])
@@ -146,26 +155,26 @@ def run():
             detail=f"{total} vs {statement['total']} — an invoice that does not "
                    "match the document the guest was given is worse than none")
     s.check("accommodation net plus its VAT is the room total",
-            abs(float(by_label["Accommodation"]["currency_amount"])
-                + float(by_label["Accommodation"]["currency_tax"])
+            abs(float(by_label[NAME["nightly"]]["currency_amount"])
+                + float(by_label[NAME["nightly"]]["currency_tax"])
                 - statement["accommodation"]) < 0.02,
             detail=f"{statement['accommodation']}")
     s.check("and extras likewise",
-            abs(float(by_label["Extras"]["currency_amount"])
-                + float(by_label["Extras"]["currency_tax"])
+            abs(float(by_label[NAME["extras"]]["currency_amount"])
+                + float(by_label[NAME["extras"]]["currency_tax"])
                 - statement["extras_total"]) < 0.02,
             detail=f"{statement['extras_total']}")
     s.check("the tax carries no VAT",
-            abs(float(by_label["Taxe de sejour"]["currency_tax"])) < 0.005,
+            abs(float(by_label[NAME["city_tax"]]["currency_tax"])) < 0.005,
             detail="collected for the commune, and not the house's income")
 
     s.section("Each carries its own VAT rate")
     s.check("accommodation at the accommodation rate",
-            f"{rate_room}" in by_label["Accommodation"]["label"],
-            detail=f"{by_label['Accommodation']['label']} vs {rate_room}")
+            f"{rate_room}" in by_label[NAME["nightly"]]["label"],
+            detail=f"{by_label[NAME["nightly"]]['label']} vs {rate_room}")
     s.check("extras at the extras rate",
-            f"{rate_extras}" in by_label["Extras"]["label"],
-            detail=f"{by_label['Extras']['label']} vs {rate_extras}")
+            f"{rate_extras}" in by_label[NAME["extras"]]["label"],
+            detail=f"{by_label[NAME["extras"]]['label']} vs {rate_extras}")
 
     s.section("They stay separate even when the two rates are the same")
     # The check the old code could never have passed. Grouped by rate, these
@@ -175,13 +184,14 @@ def run():
     statement, lines = _lines(booking)
     labels = [l["label"] for l in lines]
     s.check("there are still two revenue lines",
-            sum(1 for l in labels if l.startswith(("Accommodation", "Extras"))) == 2,
+            sum(1 for l in labels
+                if l.startswith((NAME["nightly"], NAME["extras"]))) == 2,
             detail=f"{labels} — one band, two kinds of revenue, and the ledger "
                    "cannot tell them apart")
     by_label = {l["label"].split(" at ")[0]: l for l in lines}
     s.check("and they still reach different accounts",
-            by_label["Accommodation"].get("ledger_account_number")
-            != by_label["Extras"].get("ledger_account_number"),
+            by_label[NAME["nightly"]].get("ledger_account_number")
+            != by_label[NAME["extras"]].get("ledger_account_number"),
             detail="both booked to the same account the moment the rates match")
     total = round(sum(float(l["currency_amount"]) + float(l["currency_tax"])
                       for l in lines), 2)
@@ -193,19 +203,19 @@ def run():
     plain = _stay("B", city_tax=3.20)
     _statement, lines = _lines(plain)
     s.check("nothing empty is sent",
-            not any(l["label"].startswith("Extras") for l in lines),
+            not any(l["label"].startswith(NAME["extras"]) for l in lines),
             detail=f"{[l['label'] for l in lines]} — a zero line on an invoice is "
                    "a question the accountant has to ask")
     s.check("and the accommodation line is still there",
-            any(l["label"].startswith("Accommodation") for l in lines))
+            any(l["label"].startswith(NAME["nightly"]) for l in lines))
 
     s.section("An account nobody has filled in is left off, not guessed")
     conn = db()
-    conn.execute("DELETE FROM app_settings WHERE key = 'pennylane_account_extras'")
+    conn.execute("UPDATE revenue_categories SET ledger_account = NULL WHERE key = 'extras'")
     conn.commit()
     conn.close()
     _statement, lines = _lines(booking)
-    extras_line = [l for l in lines if l["label"].startswith("Extras")][0]
+    extras_line = [l for l in lines if l["label"].startswith(NAME["extras"])][0]
     s.check("the line is still sent", extras_line is not None)
     s.check("without a made-up ledger account",
             "ledger_account_number" not in extras_line,

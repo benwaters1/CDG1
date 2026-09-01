@@ -86,6 +86,47 @@ def _write(rel, text):
         f.write(text)
 
 
+TEMPLATE_DIR = os.path.join(ROOT, "templates")
+
+# The public pages, by what they extend. Used to keep the svg sweep off the
+# staff app, whose icons are not a handover's business.
+PUBLIC_ROOTS = {"public_base.html"}
+
+
+def _from_git(rel):
+    """The file as main has it, or None."""
+    try:
+        return subprocess.run(
+            ["git", "show", "HEAD:" + rel], cwd=ROOT, capture_output=True,
+            text=True, encoding="utf-8", check=True).stdout.replace("\r\n", "\n")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _jinja_block(text, opener):
+    """The lines of a {% if %}...{% endif %}, tags balanced, with the comment
+    above it. Counting rather than matching the first endif, because these
+    blocks contain a for-loop and an inner if."""
+    lines = text.split("\n")
+    i = next((k for k, l in enumerate(lines) if opener in l), None)
+    if i is None:
+        return None
+    start = i
+    for k in range(i, -1, -1):
+        if lines[k].lstrip().startswith("{#"):
+            start = k
+            break
+        if lines[k].strip() and not lines[k].lstrip().startswith(("{#", "   ")):
+            break
+    depth = 0
+    for k in range(i, len(lines)):
+        depth += len(re.findall(r"{%-?\s*(?:if|for)\b", lines[k]))
+        depth -= len(re.findall(r"{%-?\s*end(?:if|for)\b", lines[k]))
+        if depth == 0:
+            return lines[start:k + 1]
+    return None
+
+
 def repair_parent_robots_block():
     """Without this the 24 child overrides below are dead markup."""
     rel = "templates/public_base.html"
@@ -343,6 +384,258 @@ def repair_event_date_prefill():
     return fixed
 
 
+# ---------------------------------------------------------------------------
+# Added after four handovers of repairing each of these by hand. The rule this
+# file works to is that a thing goes in once it has been reverted more than
+# once; every one below is on its second to fourth time.
+# ---------------------------------------------------------------------------
+
+# Endpoint names the design side keeps guessing. Each is a BuildError on a
+# public page, which is a 500 rather than a wrong link.
+WRONG_ENDPOINTS = {
+    # The newsletter route has always been newsletter_subscribe. `subscribe`
+    # arrives on the journal form and on the new waiting-list form.
+    "url_for('subscribe')": "url_for('newsletter_subscribe')",
+    # Four handovers running.
+    "url_for('contact')": "url_for('contact_page')",
+    # guest_portal takes a token, and there is none to give at the point in
+    # the page this link sits. find_booking is where somebody holding only an
+    # email address can actually reach their stays.
+    "url_for('guest_portal')": "url_for('find_booking')",
+}
+
+
+def repair_endpoint_names():
+    fixed = 0
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        new = src
+        for wrong, right in WRONG_ENDPOINTS.items():
+            new = new.replace(wrong, right)
+        if new != src:
+            _write(rel, new)
+            fixed += 1
+    return fixed
+
+
+def repair_decorative_svgs():
+    """An svg with no aria-hidden is read out to a screen reader.
+
+    The drawn marks and icons arrive without it every time, because the
+    keyboard pass that added it is newer than the working copy they are cut
+    from. Adding the attribute rather than dropping the mark: the marks are
+    the design work and they are worth keeping.
+    """
+    fixed = 0
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        # Public templates only, by what they extend — the same definition
+        # test_accessibility uses, so the tool and the check that grades it
+        # cannot disagree about which pages these are. base.html mentions
+        # public_base.html without being it, and the staff app's icons are not
+        # a handover's business.
+        if not ('extends "public_base.html"' in src or name in PUBLIC_ROOTS):
+            continue
+        def _hide(mo):
+            tag = mo.group(0)
+            if re.search(r'aria-hidden|aria-label|role\s*=\s*"img"', tag, re.I):
+                return tag
+            return tag[:-1].rstrip() + ' aria-hidden="true" focusable="false">'
+        new = re.sub(r"<svg\b[^>]*>", _hide, src, flags=re.I)
+        if new != src:
+            _write(rel, new)
+            fixed += 1
+    return fixed
+
+
+def repair_plan_col_rule():
+    """.g-plan__col, dropped from the stylesheet while events_info uses it."""
+    rel = "static/gudanes.css"
+    src = _read(rel)
+    if ".g-plan__col{" in src:
+        return 0
+    head = _from_git(rel)
+    if not head:
+        return 0
+    lines = head.split("\n")
+    i = next((k for k, l in enumerate(lines) if l.startswith(".g-plan__col{")), None)
+    if i is None:
+        return 0
+    block = lines[i - 3:i + 1] if lines[i - 3].lstrip().startswith("/*") else [lines[i]]
+    out = src.split("\n")
+    j = next((k for k, l in enumerate(out) if l.startswith(".g-plan__cols{")), None)
+    if j is None:
+        return 0
+    out[j + 1:j + 1] = block
+    _write(rel, "\n".join(out))
+    return 1
+
+
+def repair_panel_heading_rule():
+    """.g-panel__h is used on the manage pages and defined nowhere.
+
+    The promotion from h3 to h2 is a real fix — h1 straight to h3 is a heading
+    skip — so the class is given the rule its h3 already had rather than a new
+    look invented here. The page reads identically; only the outline changes.
+    """
+    rel = "static/gudanes.css"
+    src = _read(rel)
+    if ".g-panel__h" in src:
+        return 0
+    old = (".g-mb-card h3{\n"
+           "  font-family: var(--display); font-weight: 400; font-size: 22px;\n"
+           "  color: var(--blue-deep); margin: 0 0 var(--s4);\n}")
+    if old not in src:
+        return 0
+    _write(rel, src.replace(old, ".g-mb-card h3,\n.g-mb-card .g-panel__h{\n"
+                            "  font-family: var(--display); font-weight: 400; font-size: 22px;\n"
+                            "  color: var(--blue-deep); margin: 0 0 var(--s4);\n}"))
+    return 1
+
+
+def repair_featured_reviews():
+    """The house's own reviews, on both pages that show them.
+
+    The booking and atelier pages are handed these on every load. Without the
+    block they render none of them, so "Feature on booking page" is a button
+    with no effect — which is how it sat for months before anybody noticed.
+    """
+    fixed = 0
+    for rel, anchor in (("templates/book_rooms.html", "What Guests Say"),
+                        ("templates/workshops_public.html", None)):
+        src = _read(rel)
+        if "featured_reviews" in src:
+            continue
+        head = _from_git(rel)
+        if not head or "featured_reviews" not in head:
+            continue
+        block = _jinja_block(head, "{% if featured_reviews %}")
+        if not block:
+            continue
+        lines = src.split("\n")
+        if anchor:
+            i = next((k for k, l in enumerate(lines) if anchor in l), None)
+            at = None if i is None else i + 1
+        else:
+            i = next((k for k, l in enumerate(lines)
+                      if "g-close" in l and "<section" in l), None)
+            at = i
+        if at is None:
+            continue
+        lines[at:at] = [""] + block
+        _write(rel, "\n".join(lines))
+        fixed += 1
+    return fixed
+
+
+def repair_unavailable_reason():
+    """WHY a room cannot be booked, which was worked out and thrown away.
+
+    "Requires a 3-night minimum" is a booking a guest can still make.
+    "Not available" reads as sold out and loses it.
+    """
+    rel = "templates/book_rooms.html"
+    src = _read(rel)
+    flat = '<span class="g-btn g-btn--off g-card__cta">Not available these dates</span>'
+    if flat not in src:
+        return 0
+    _write(rel, src.replace(flat,
+        '<span class="g-btn g-btn--off g-card__cta">\n'
+        "              {{ unavailable_reason.get(room['id'], 'Not available these dates') }}\n"
+        "            </span>"))
+    return 1
+
+
+def repair_under_18_field():
+    """The booking form's second guest count, by the name the return reads.
+
+    Under-18s are exempt from the taxe de sejour and the figure is declared to
+    the commune. The handover calls the field `children`, which nothing on the
+    app side has ever read, so the count silently becomes zero for every
+    booking and the return understates the exemption.
+    """
+    rel = "templates/book_room.html"
+    src = _read(rel)
+    if 'name="children"' not in src and "taxe de s" in src.lower():
+        return 0                          # named right AND the reason is given
+    # Whatever the field is called this round, the value has to come from the
+    # name the route actually passes, or the number is lost on every
+    # validation error without anything erroring.
+    new = (src.replace("{{ prefill_guests_under_18 or prefill_children or 0 }}",
+                       "{{ prefill_under_18 or 0 }}")
+              .replace("{{ prefill_children or 0 }}", "{{ prefill_under_18 or 0 }}")
+              .replace('name="children"', 'name="guests_under_18"')
+              .replace("value=\"{{ prefill_children or 0 }}\">",
+                       "value=\"{{ prefill_under_18 or 0 }}\">")
+              .replace('<label for="br_children">Children</label>',
+                       '<label for="br_children">Children (under 18)</label>'))
+    if "taxe de s" not in new.lower():
+        new = new.replace(
+            "adults and children together.",
+            "adults and children together. Under-18s are exempt from the "
+            "taxe de sejour, so the count is what keeps a family from being "
+            "overcharged and the commune's return right.")
+    _write(rel, new)
+    return 1
+
+
+# The four guest pages the handovers ship an older copy of every single time,
+# because the zip carries their working copy of every file it has ever
+# touched rather than only what changed since the last one. Four rounds, four
+# identical reverts each.
+#
+# NOT generalised to "any template that adds nothing", tempting as that is.
+# A file the design side deliberately trimmed — a duplicate paragraph removed,
+# say — looks exactly like a revert to that rule, and undoing real editing is
+# a worse failure than repeating a repair. check_handover.py reports the
+# general case; this puts back the four that have earned it.
+REVERTED_PAGES = (
+    "templates/guest_account.html",      # the whole bill loop
+    "templates/guest_statement.html",    # row headers, and the print actions
+    "templates/manage_booking.html",     # the bill row with its remove control
+    "templates/workshop_manage.html",    # the labelled session select
+)
+
+
+def repair_reverted_guest_pages():
+    """Report the four pages the handovers keep shipping an older copy of.
+
+    It does NOT edit them, and the reason is worth writing down. What these
+    arrive with is not new markup — it is the older version of a line main has
+    since improved: guest_account's bill figure without the balance beside it,
+    guest_statement's total as a bold cell rather than a row header,
+    manage_booking's bill row without its remove control, workshop_manage's
+    select without the label. To a rule those read as additions, because they
+    are lines main does not have. To a person they read as what they are.
+
+    Every other repair in this file is mechanical: a name is wrong, a rule is
+    missing, an attribute is absent. This one is a judgement about intent, and
+    check_handover.py's docstring says where that belongs. So it names them and
+    stops — four `git checkout` commands with a person deciding, rather than a
+    script quietly discarding design work the day they genuinely edit one.
+    """
+    stale = []
+    for rel in REVERTED_PAGES:
+        head = _from_git(rel)
+        if head is None:
+            continue
+        here = [l.strip() for l in _read(rel).split("\n") if l.strip()]
+        there = [l.strip() for l in head.split("\n") if l.strip()]
+        if here != there:
+            stale.append(rel)
+    if stale:
+        print("  ! these four arrive as an older copy every time. Read them, then:")
+        for rel in stale:
+            print("        git checkout HEAD -- %s" % rel)
+    return 0
+
+
 def main():
     steps = [
         ("the robots block in public_base", repair_parent_robots_block),
@@ -355,6 +648,14 @@ def main():
         ("the privacy footer link", repair_privacy_link),
         ("the ticked extras on the booking form", repair_extra_prefill),
         ("the typed dates on the event enquiry", repair_event_date_prefill),
+        ("endpoint names that do not exist", repair_endpoint_names),
+        ("aria-hidden on decorative svgs", repair_decorative_svgs),
+        ("the .g-plan__col rule", repair_plan_col_rule),
+        ("the .g-panel__h rule", repair_panel_heading_rule),
+        ("the house's own reviews", repair_featured_reviews),
+        ("why a room is unavailable", repair_unavailable_reason),
+        ("the under-18 count the return reads", repair_under_18_field),
+        ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []
     for label, fn in steps:
