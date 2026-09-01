@@ -36,6 +36,16 @@
     <p class="upload-hint">Changing either recalculates the taxe de séjour on
     this stay, and with it what the commune is owed for the period.</p>
 
+    {# The app stamps this from the door the booking came through, which it
+       always knows. The one thing it cannot know is that a walk-in first saw
+       the house on an agent's listing — so a person can say so here. #}
+    <label class="field-label">Where it came from</label>
+    <select name="source">
+      {% for key, label in booking_sources.items() %}
+      <option value="{{ key }}"{{ ' selected' if key == booking['source'] }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+
     <label class="field-label">Phone</label>
     <input type="tel" name="guest_phone" value="{{ booking['guest_phone'] or '' }}">
 

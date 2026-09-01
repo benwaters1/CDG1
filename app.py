@@ -3219,6 +3219,11 @@ def init_db():
         # A caution on a profile: what happened, and how strongly it should be
         # read. Deliberately NOT folded into `notes` -- a warning nobody sees
         # until they scroll is a warning that arrives after the booking.
+        # Where the booking came from. Nothing recorded this, so the house could
+        # not tell a guest who found it themselves from one an agent sent, and
+        # "how much of this is direct" -- the question a small hotel lives on --
+        # had no answer at all.
+        ("bookings_source", "ALTER TABLE bookings ADD COLUMN source TEXT"),
         ("guests_caution", "ALTER TABLE guests ADD COLUMN caution TEXT"),
         ("guests_caution_level", "ALTER TABLE guests ADD COLUMN caution_level TEXT"),
         ("guests_caution_set_at", "ALTER TABLE guests ADD COLUMN caution_set_at TEXT"),
@@ -13888,8 +13893,63 @@ def report_labour(conn, period):
     }
 
 
+def booking_source_mix(conn, start_iso, end_iso):
+    """Nights and money by where the booking came from.
+
+    NIGHTS AND MONEY, not a count of bookings. A platform that sends four
+    one-night stays and a direct guest who takes the house for a fortnight are
+    not four to one in any sense the owner cares about.
+
+    Stays with nothing recorded are their own row rather than being folded into
+    "direct". Every booking taken before this was written has no source, and
+    quietly calling those direct would report a number the house never measured
+    as though it had.
+    """
+    rows = {}
+    for b in conn.execute(
+            """SELECT source, arrival_date, departure_date, total_price
+                 FROM bookings
+                WHERE status = 'confirmed'
+                  AND arrival_date < ? AND departure_date > ?""",
+            (end_iso, start_iso)).fetchall():
+        arrival, departure = parse_date(b["arrival_date"]), parse_date(b["departure_date"])
+        if not arrival or not departure:
+            continue
+        total_nights = (departure - arrival).days
+        if total_nights <= 0:
+            continue
+        start, end = parse_date(start_iso), parse_date(end_iso)
+        inside = (min(departure, end) - max(arrival, start)).days
+        if inside <= 0:
+            continue
+        key = (b["source"] or "").strip() or "unrecorded"
+        bucket = rows.setdefault(key, {"key": key, "nights": 0, "revenue": 0.0,
+                                       "stays": 0})
+        bucket["nights"] += inside
+        bucket["stays"] += 1
+        bucket["revenue"] += round(float(b["total_price"] or 0) * inside / total_nights, 2)
+
+    out = []
+    total_nights = sum(r["nights"] for r in rows.values()) or 0
+    total_revenue = round(sum(r["revenue"] for r in rows.values()), 2)
+    for key, bucket in rows.items():
+        bucket["label"] = (BOOKING_SOURCES.get(key)
+                           or ("Not recorded" if key == "unrecorded" else key))
+        bucket["revenue"] = round(bucket["revenue"], 2)
+        bucket["nights_pct"] = (round(bucket["nights"] / total_nights * 100, 1)
+                                if total_nights else None)
+        out.append(bucket)
+    # Biggest first, with the unrecorded row last whatever its size: it is a gap
+    # in the record rather than a channel, and reading as the top row would
+    # suggest the house has a large source called Not recorded.
+    out.sort(key=lambda r: (r["key"] == "unrecorded", -r["nights"]))
+    return {"rows": out, "nights": total_nights, "revenue": total_revenue,
+            "unrecorded": rows.get("unrecorded", {}).get("nights", 0)}
+
+
 def report_guest(conn, period):
     start_iso, end_iso = period["start_iso"], period["end_iso"]
+    source_mix = booking_source_mix(conn, start_iso, end_iso)
     bookings = conn.execute(
         """SELECT guest_email, guest_name, total_price, arrival_date FROM bookings
            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
@@ -13931,6 +13991,7 @@ def report_guest(conn, period):
         "feedback_count": feedback["c"] or 0,
         "feedback_avg": round(feedback["avg_rating"], 1) if feedback["avg_rating"] is not None else None,
         "top_guests": top,
+        "source_mix": source_mix,
         "csv": [{"guest": g["name"], "email": g["email"], "stays": g["stays"],
                  "total_spend": g["total"]} for g in top],
     }
@@ -14880,7 +14941,7 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
                     party_size, special_requests, chosen_extras, payment_status="unpaid",
                     stripe_session_id=None, stripe_payment_intent_id=None, promo_code=None,
                     total_price_override=None, discount_amount_override=None,
-                   guests_under_18=0):
+                   guests_under_18=0, source="direct"):
     nights = (departure - arrival).days
     extras_total = sum(e["price"] for e in chosen_extras)
 
@@ -14939,8 +15000,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
             extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id, created_at,
             promo_code_id, discount_amount,
             deposit_amount, deposit_paid_at, balance_amount, balance_due_date,
-            guests_under_18, city_tax)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            guests_under_18, city_tax, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (room["id"], reference_code, manage_token, guest_name, guest_email, guest_phone,
          arrival.isoformat(), departure.isoformat(), party_size, special_requests or None,
          total_price, extras_summary, payment_status, stripe_session_id, stripe_payment_intent_id,
@@ -14948,7 +15009,8 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
          promo["id"] if promo else None, discount_amount or None,
          deposit_amount if balance_amount else None, deposit_paid_at,
          balance_amount or None, balance_due,
-         int(guests_under_18 or 0), city_tax),
+         int(guests_under_18 or 0), city_tax,
+         booking_source_for(conn, guest_email, source)),
     )
     # Recorded in the SAME transaction as the booking insert, not a
     # separate commit after — otherwise a crash between the two would
@@ -32834,7 +32896,8 @@ def edit_booking(booking_id):
         if error:
             flash(error, "error")
             conn.close()
-            return render_template("edit_booking.html", booking=booking)
+            return render_template("edit_booking.html", booking=booking,
+                               booking_sources=BOOKING_SOURCES)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
@@ -32847,6 +32910,8 @@ def edit_booking(booking_id):
         # guest changes what the commune is owed, and leaving the stamped figure
         # behind would put the declaration out by the difference without anything
         # looking wrong on the page.
+        typed_source = (request.form.get("source", "") or "").strip()
+        source = typed_source if typed_source in BOOKING_SOURCES else booking["source"]
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
         new_city_tax, _a, _r = compute_city_tax(
@@ -32854,9 +32919,11 @@ def edit_booking(booking_id):
 
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
-               special_requests=?, total_price=?, guests_under_18=?, city_tax=? WHERE id=?""",
+               special_requests=?, total_price=?, guests_under_18=?, city_tax=?,
+               source=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
-             special_requests or None, new_total, under_18, new_city_tax, booking_id),
+             special_requests or None, new_total, under_18, new_city_tax, source,
+             booking_id),
         )
         conn.commit()
 
@@ -32879,7 +32946,8 @@ def edit_booking(booking_id):
         return redirect(url_for("admin_bookings"))
 
     conn.close()
-    return render_template("edit_booking.html", booking=booking)
+    return render_template("edit_booking.html", booking=booking,
+                               booking_sources=BOOKING_SOURCES)
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -37563,6 +37631,7 @@ def walk_in_booking():
             total_price_override=charge,
             discount_amount_override=discount or None,
             guests_under_18=under_18,
+            source="desk",
         )
         booking = conn.execute("SELECT * FROM bookings WHERE reference_code = ?",
                                (reference_code,)).fetchone()
@@ -39549,6 +39618,52 @@ ERASED_MARKER = "[erased at the guest's request]"
 # How loudly a caution should be read. Three levels rather than a flag,
 # because "they smoke in the room" and "do not accept a booking from this
 # person" are not the same instruction and a single boolean makes them look it.
+# Where a booking came from.
+#
+# Recorded by the path that made it rather than chosen on a form: a field
+# somebody has to remember to set is a field that is mostly wrong, and the app
+# already knows which door each booking came through. The desk can correct it
+# afterwards -- a walk-in who says they came off an agent's listing is the one
+# case the app cannot know.
+#
+# "direct" covers the website and the telephone alike, because both are business
+# the house did not pay a commission on, which is the distinction that matters.
+BOOKING_SOURCES = {
+    "direct": "Direct",
+    "desk": "At the door or by telephone",
+    "returning": "A guest who had stayed before",
+    "agent": "Through an agent or platform",
+    "event": "Part of an event or wedding",
+    "other": "Something else",
+}
+
+
+def booking_source_for(conn, email, fallback):
+    """The source to stamp, promoting a repeat guest ahead of the raw path.
+
+    A returning guest booking through the website is worth knowing about
+    separately from a stranger doing the same: one is the house's own audience
+    and the other is new business, and lumping them together hides whether the
+    place is growing or just retaining.
+    """
+    email = (email or "").strip().casefold()
+    if email:
+        # ALREADY DEPARTED, not merely confirmed. A guest with a confirmed stay
+        # still ahead of them who books a second one is the same person planning
+        # one trip, not somebody the house has won back -- and counting them as
+        # returning would make a good week of forward bookings look like
+        # loyalty.
+        seen = conn.execute(
+            """SELECT 1 FROM bookings
+                WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'
+                  AND departure_date <= ?
+                LIMIT 1""",
+            (email, datetime.now(timezone.utc).date().isoformat())).fetchone()
+        if seen:
+            return "returning"
+    return fallback
+
+
 CAUTION_LEVELS = {
     "note": "Worth knowing",
     "care": "Handle with care",
