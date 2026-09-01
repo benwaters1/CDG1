@@ -113,6 +113,23 @@ page rendered perfectly while doing the wrong thing.
   ever had, which nobody reads twice — including the morning it lists a
   real one.
 
+- **A bulk action must be the same action, done many times.** Every one of
+  them started as a loop over the core helper — and the behaviour that lived
+  in the single-item ROUTE therefore never happened in bulk. Declining ten
+  bookings one at a time worked the room waitlist ten times; declining the
+  same ten together worked it not at all, and a refund that failed at Stripe
+  was reported to nobody. Nothing errored. If you add anything after a
+  single-item helper call, put it in a function both paths call
+  (`decline_one_and_follow_up`) rather than in the route.
+
+- **And it must say what it did NOT do.** The shape is `if not row: continue`
+  followed by a cheerful total: ten ticked, six done, "Approved 6", and the
+  four are found weeks later. Worse is guessing — bulk confirm called every
+  refusal a date conflict, so a standing instruction not to accept a guest
+  was announced as a clash with another booking. `bulk_message()` is the one
+  reporter: it names items rather than counting them, groups a shared reason,
+  and is an error the moment anything is skipped. Use it for any new one.
+
 - **The warnings panel must be able to be empty.** If it can never be empty
   it becomes furniture. There is a test for exactly that.
 
