@@ -161,6 +161,7 @@ SUITES = [
     "test_money_reports",
     "test_budget",
     "test_capital_spend",
+    "test_night_cost",
     "test_noindex_meta",
     "test_privacy",
     "test_refunds",

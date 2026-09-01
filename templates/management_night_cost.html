@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}What a night costs{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What a night costs</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('management_budget') }}" class="btn-ghost">Budget</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ cost['from'] }} to {{ cost['to'] }}. Split by how each cost <em>behaves</em>, because they
+  behave completely differently when the house fills up &mdash; and that difference is the whole
+  answer to whether a cheap booking is worth taking.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  {% for n in [1, 3, 6, 12] %}
+  <a href="{{ url_for('management_night_cost', months=n) }}"
+     class="btn-mini{{ '' if n == months else ' btn-ghost' }}">{{ n }}m</a>
+  {% endfor %}
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not cost['nights'] %}
+{# Not zero, not infinity. A cost per night over a window with no nights
+   sold is a question nobody asked. #}
+<div class="empty-state">No nights were sold in this window, so there is nothing to divide by.
+  The costs below still happened.</div>
+{% endif %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Where it goes</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>What</th><th class="num">Over the window</th><th class="num">Per night sold</th><th>Behaves how</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Standing</th>
+          <td class="num">&euro;{{ '{:,.2f}'.format(cost['standing']) }}</td>
+          <td class="num">{% if cost['standing_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['standing_per_night']) }}{% else %}&mdash;{% endif %}</td>
+          <td>Happens whether anybody comes. A quiet month makes this figure frightening, which is
+            true and is why a quiet month <em>is</em> frightening.</td>
+        </tr>
+        <tr>
+          <th scope="row">Labour</th>
+          <td class="num">&euro;{{ '{:,.2f}'.format(cost['labour']) }}</td>
+          <td class="num">{% if cost['labour_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['labour_per_night']) }}{% else %}&mdash;{% endif %}</td>
+          <td>Rostered, so it moves with expected trade rather than with each arrival. Taken as it
+            was really clocked, not modelled.</td>
+        </tr>
+        <tr>
+          <th scope="row">Consumed</th>
+          <td class="num">&euro;{{ '{:,.2f}'.format(cost['consumed']) }}</td>
+          <td class="num">{% if cost['consumed_per_night'] is not none %}&euro;{{ '%.2f'|format(cost['consumed_per_night']) }}{% else %}&mdash;{% endif %}</td>
+          <td>Stock that went out of the door. The only genuinely per-night part.</td>
+        </tr>
+        <tr>
+          <th scope="row"><strong>All of it</strong></th>
+          <td class="num"><strong>&euro;{{ '{:,.2f}'.format(cost['total']) }}</strong></td>
+          <td class="num"><strong>{% if cost['per_night'] is not none %}&euro;{{ '%.2f'|format(cost['per_night']) }}{% else %}&mdash;{% endif %}</strong></td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if cost['labour_unpriced'] or cost['labour_estimated'] %}
+  {# The labour half is only as firm as the wages behind it, and the house
+     rule is that a figure states what it does not include. #}
+  <p class="upload-hint">
+    {% if cost['labour_unpriced'] %}{{ cost['labour_unpriced'] }}
+      {{ 'person has' if cost['labour_unpriced'] == 1 else 'people have' }} no wage on file, so
+      their hours are worked but not costed &mdash; the labour figure is under by their pay.{% endif %}
+    {% if cost['labour_estimated'] %}{{ cost['labour_estimated'] }} of the
+      {{ cost['labour_estimated'] + cost['labour_typed'] }} costed
+      {{ 'was' if cost['labour_estimated'] == 1 else 'were' }} worked out from a pay note rather
+      than a wage.{% endif %}
+  </p>
+  {% endif %}
+</div>
+
+{% if cost['avoidable_per_night'] is not none %}
+<div class="detail-card">
+  <h2 class="section-heading">Should you take it at a discount?</h2>
+  <p class="manual-body">
+    Not selling a room saves <strong>&euro;{{ '%.2f'|format(cost['avoidable_per_night']) }}</strong>
+    a night, not &euro;{{ '%.2f'|format(cost['per_night']) }}. Everything else is spent whether the
+    room goes or not.
+  </p>
+  <p class="manual-body">
+    So a night sold above &euro;{{ '%.2f'|format(cost['avoidable_per_night']) }} leaves the house
+    better off than an empty one, and that is the honest floor &mdash; not a recommendation to sell
+    there. Filling the house at that price means the standing costs are never covered, and the
+    figure above is what they come to.
+  </p>
+</div>
+{% endif %}
+
+<p class="upload-hint">A cost per room is deliberately not shown. Apportioning insurance to a
+  particular bedroom is an accounting choice with several defensible answers, and a number with
+  several defensible answers gets argued with rather than acted on.</p>
+
+{% endblock %}

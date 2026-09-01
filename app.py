@@ -4666,6 +4666,7 @@ NAV_AREAS = {
         "management_debtors", "export_debtors_csv",
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
+        "management_night_cost",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
         "charge_city_tax", "charge_city_tax_upcoming",
@@ -9828,6 +9829,102 @@ def offboarding_contradictions(conn):
         seen.add(r["user_id"])
         unique.append(r)
     return unique
+
+
+def night_cost(conn, *, months=3, today=None, start=None, end=None):
+    """What a night cost to sell over a window, split by how the cost behaves.
+
+    Not a profit figure per room: apportioning insurance to a particular
+    bedroom is an accounting choice with several defensible answers, and a
+    number with several defensible answers gets argued with rather than
+    acted on.
+    """
+    # An explicit window wins over the months shorthand. The page uses the
+    # shorthand; anything asking about a particular period says so.
+    today = end or today or datetime.now(LOCAL_TZ).date()
+    start = start or (today - timedelta(days=30 * months))
+    start_iso, end_iso = start.isoformat(), today.isoformat()
+    # A second bound for the TIMESTAMP columns. `created_at < '2026-09-01'`
+    # is false for '2026-09-01T22:14:...', so a single date bound silently
+    # drops everything recorded today -- every day, and never obviously.
+    end_stamp = (today + timedelta(days=1)).isoformat()
+
+    # Nights actually sold in the window. The same counting room_economics
+    # uses -- by night rather than by stay, so a booking across the edge
+    # contributes only the nights inside it.
+    nights = conn.execute(
+        """SELECT COALESCE(SUM(
+                    julianday(MIN(departure_date, ?)) -
+                    julianday(MAX(arrival_date, ?))), 0) AS n
+             FROM bookings
+            WHERE status = 'confirmed'
+              AND arrival_date < ? AND departure_date > ?""",
+        (end_iso, start_iso, end_iso, start_iso)).fetchone()["n"] or 0
+    nights = int(round(nights))
+
+    # 1. STANDING. Everything that happens whether anybody comes.
+    monthly = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
+            WHERE active = 1 AND frequency = 'monthly'""").fetchone()["out"]
+    annual = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS out FROM recurring_costs
+            WHERE active = 1 AND frequency = 'annual'""").fetchone()["out"]
+    days = max(1, (today - start).days)
+    standing = round(monthly * 12 / 365.0 * days + annual / 365.0 * days, 2)
+
+    # 2. LABOUR, as it was really clocked. Capital is not in here and never
+    # was; wages are wages.
+    labour, _hours, unpriced, estimated, typed = estimated_labour_cost(
+        conn, start_iso, end_iso)
+
+    # 3. CONSUMED. Stock that left the shelf for a reason other than being
+    # bought in or counted. This is the only genuinely per-night part, and
+    # naming it as such is the point of the split.
+    consumed = conn.execute(
+        """SELECT COALESCE(SUM(-stock_movements.delta * COALESCE(
+                    stock_movements.unit_cost, stock_items.unit_cost, 0)), 0) AS out
+             FROM stock_movements
+             JOIN stock_items ON stock_items.id = stock_movements.stock_item_id
+            -- No sign filter, and 'correction' included. A cancelled
+            -- extra puts the stock back as a POSITIVE correction rather
+            -- than by editing the sale, because the ledger is append-only.
+            -- Filtering to negative movements counted the sale and missed
+            -- the reversal, so a cancelled case of wine stayed in the cost
+            -- of a night forever. The signed sum does the work instead.
+            --
+            -- 'stocktake' stays out: it adjusts to a count rather than
+            -- recording a use, and most of what it corrects has already
+            -- been counted as a sale.
+            WHERE stock_movements.reason IN ('sale', 'wastage', 'correction')
+              AND stock_movements.created_at >= ?
+              AND stock_movements.created_at < ?""",
+        (start_iso, end_stamp)).fetchone()["out"]
+
+    total = round(standing + (labour or 0) + consumed, 2)
+
+    def per(x):
+        # None rather than a division by nothing. A cost per night in a
+        # window with no nights sold is not infinity, it is a question
+        # nobody asked.
+        return round(x / nights, 2) if nights else None
+
+    return {
+        "from": start, "to": today, "nights": nights, "months": months,
+        "standing": standing, "labour": round(labour or 0, 2),
+        "consumed": round(consumed, 2), "total": total,
+        "standing_per_night": per(standing),
+        "labour_per_night": per(labour or 0),
+        "consumed_per_night": per(consumed),
+        "per_night": per(total),
+        # The figure that answers "should I take this at 180?". Everything
+        # else is spent whether the room sells or not.
+        "avoidable_per_night": per(consumed),
+        # Carried through so the page can say how firm the labour half is,
+        # for the same reason net has to.
+        "labour_unpriced": unpriced,
+        "labour_estimated": estimated,
+        "labour_typed": typed,
+    }
 
 
 def room_economics(conn, *, months=12, today=None):
@@ -20601,6 +20698,9 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("What a night costs", "management_night_cost",
+     "cost per night room profitability discount worth taking standing "
+     "labour consumed avoidable"),
     ("Budget", "management_budget",
      "target budget monthly revenue cost plan season variance forecast"),
     ("What to buy", "stock_basket",
@@ -37778,6 +37878,38 @@ def export_vendors_csv():
     conn.close()
     fieldnames = ["name", "contact_person", "phone", "email", "payment_terms", "notes"]
     return csv_response(fieldnames, rows, "vendors.csv")
+
+
+@app.route("/management/night-cost")
+@owner_required
+def management_night_cost():
+    """What a night costs, split by how the cost behaves.
+
+    The split is the point. Standing costs happen whether anybody comes;
+    labour moves with expected trade; only what was consumed is genuinely
+    per-night — and that last figure is the one that answers whether a
+    cheap booking is worth taking.
+    """
+    conn = get_db()
+    months_raw = request.args.get("months", "3")
+    months = int(months_raw) if months_raw.isdigit() and 1 <= int(months_raw) <= 24 else 3
+    cost = night_cost(conn, months=months)
+    conn.close()
+
+    overview = [
+        overview_cell("Nights sold", cost["nights"],
+                      hint=f"over {months} month{'' if months == 1 else 's'}"),
+        overview_cell("A night cost",
+                      f"\u20ac{cost['per_night']:.2f}" if cost["per_night"] is not None
+                      else "\u2014",
+                      hint="everything, spread over the nights sold"),
+        overview_cell("Of that, avoidable",
+                      f"\u20ac{cost['avoidable_per_night']:.2f}"
+                      if cost["avoidable_per_night"] is not None else "\u2014",
+                      hint="what not selling the room would actually save"),
+    ]
+    return render_template("management_night_cost.html", cost=cost,
+                           overview=overview, months=months)
 
 
 @app.route("/management/budget", methods=["GET", "POST"])
