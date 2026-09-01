@@ -61,6 +61,16 @@
     <span class="stat-tile-icon {{ 'stat-tile-icon-danger' if financials.net < 0 else 'stat-tile-icon-success' }}">{{ icon('financial', 19) }}</span>
     <span class="stat-tile-body"><span class="stat-tile-value {{ 'stat-tile-value-danger' if financials.net < 0 }}">€{{ '%.0f'|format(financials.net) }}</span><span class="stat-tile-label">Net{% if financials.labour_unpriced %} — excludes {{ financials.labour_unpriced }} unpriced{% else %} (estimate){% endif %}</span></span>
   </div>
+  {% if financials.capital_spend %}
+  {# Kept out of net, because net says how the house TRADED and a new roof
+     is not trading — but shown beside it, because a net figure that
+     silently omits the restoration is as misleading as one that calls it a
+     bad month. The money did leave the account. #}
+  <div class="stat-tile">
+    <span class="stat-tile-icon">{{ icon('building', 19) }}</span>
+    <span class="stat-tile-body"><span class="stat-tile-value">€{{ '%.0f'|format(financials.capital_spend) }}</span><span class="stat-tile-label">Spent on the house, not in Net</span></span>
+  </div>
+  {% endif %}
 </div>
 
 <div class="stat-tiles" style="margin-bottom:22px;">

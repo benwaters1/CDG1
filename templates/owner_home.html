@@ -195,9 +195,11 @@
           {% endif %}
         </div>
         <div class="oh-chart">
-          {% if revenue_budget_pct %}
-          <span class="oh-budget" style="bottom:{{ revenue_budget_pct }}%"></span>
-          {% endif %}
+          {# One line across six months was the visual form of the bug: a
+             single figure drawn through a chart whose whole point is that
+             the months differ. A month with nothing set gets no mark at
+             all, because a mark on the floor reads as a target beaten by
+             turning the lights on. #}
           {# Recency shading is written out rather than built from loop.index, so
              every class on the page is one a stylesheet rule actually exists
              for — a composed name cannot be checked by anything. #}
@@ -206,7 +208,9 @@
                          ('oh-cbar--mid' if loop.revindex <= 3 else
                          ('oh-cbar--early' if loop.revindex == 4 else '')) %}
           <span class="oh-cbar {{ shade }}" style="height:{{ m['height_pct'] }}%"
-                title="{{ m['label'] }} · €{{ '{:,.0f}'.format(m['value']) }}"></span>
+                title="{{ m['label'] }} · €{{ '{:,.0f}'.format(m['value']) }}{% if m['budget'] %} against €{{ '{:,.0f}'.format(m['budget']) }}{% endif %}">
+            {% if m['budget_pct'] %}<i class="oh-budget-mark" style="bottom:{{ m['budget_pct'] }}%"></i>{% endif %}
+          </span>
           {% endfor %}
         </div>
         <div class="oh-clabels">
@@ -215,7 +219,7 @@
         <div class="oh-legend">
           <span><i class="oh-sw oh-sw--gold"></i>Revenue</span>
           {% if revenue_budget %}
-          <span><i class="oh-sw oh-sw--dash"></i>Budget €{{ '{:,.0f}'.format(revenue_budget) }}</span>
+          <span><i class="oh-sw oh-sw--dash"></i>This month's target €{{ '{:,.0f}'.format(revenue_budget) }}</span>
           {% else %}
           <span class="oh-mono oh-muted">No target set</span>
           {% endif %}

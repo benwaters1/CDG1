@@ -195,6 +195,10 @@
       <form method="post" action="{{ url_for('decide_expense', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="paid"><button type="submit" class="btn-mini">Mark paid</button></form>
       {% endif %}
       <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=inv['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if inv['restaurant_related'] else 'Mark' }} restaurant</button></form>
+      {# Spending on the house rather than on running it. Out of the
+         running costs and shown separately — the money still left the
+         account, so cash forecasting is unaffected. #}
+      <form method="post" action="{{ url_for('toggle_expense_capital', expense_id=inv['id']) }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:{{ 'var(--rust)' if inv['is_capital'] else 'var(--steel)' }}; background:none; border:none; cursor:pointer;">{{ 'Not the house' if inv['is_capital'] else 'On the house' }}</button></form>
       <form method="post" action="{{ url_for('delete_expense', expense_id=inv['id']) }}" onsubmit="return confirm('Remove this invoice record?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
   </div>
@@ -242,6 +246,10 @@
       </form>
       {% endif %}
       <form method="post" action="{{ url_for('toggle_expense_restaurant', expense_id=c['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer;">{{ 'Unmark' if c['restaurant_related'] else 'Mark' }} restaurant</button></form>
+      {# Spending on the house rather than on running it. Out of the
+         running costs and shown separately — the money still left the
+         account, so cash forecasting is unaffected. #}
+      <form method="post" action="{{ url_for('toggle_expense_capital', expense_id=c['id']) }}" style="display:inline;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="small-link" style="color:{{ 'var(--rust)' if c['is_capital'] else 'var(--steel)' }}; background:none; border:none; cursor:pointer;">{{ 'Not the house' if c['is_capital'] else 'On the house' }}</button></form>
       <form method="post" action="{{ url_for('delete_expense', expense_id=c['id']) }}" onsubmit="return confirm('Remove this expense record?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Remove</button></form>
     </div>
   </div>

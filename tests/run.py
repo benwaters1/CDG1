@@ -159,6 +159,8 @@ SUITES = [
     "test_my_hours",
     "test_pay_reviews",
     "test_money_reports",
+    "test_budget",
+    "test_capital_spend",
     "test_noindex_meta",
     "test_privacy",
     "test_refunds",

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Budget{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Budget</h1>
+  <a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Set per month of the year, not per calendar month &mdash; February is quiet every February, and a
+  target keyed to one particular February would need retyping every January. A month left blank is
+  <em>not set</em>, never a target of zero: zero is met by doing nothing, which is the worst reading
+  a figure can have.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">The last twelve months against them</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">
+    Revenue and cost are kept apart and never netted into one figure: beating the revenue target
+    while overspending is a different month from both going to plan, and one number cannot say
+    which happened. Cost is expenses plus labour &mdash; the same definition net is built from.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Month</th>
+          <th class="num">Revenue</th><th class="num">Target</th><th class="num">Against</th>
+          <th class="num">Cost</th><th class="num">Target</th><th class="num">Against</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for y in year %}
+        <tr>
+          <th scope="row">{{ y.month.strftime('%b %Y') }}</th>
+          <td class="num">&euro;{{ '{:,.0f}'.format(y.revenue) }}</td>
+          <td class="num">{% if y.revenue_budget %}&euro;{{ '{:,.0f}'.format(y.revenue_budget) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">
+            {% if y.revenue_delta is not none %}
+            <span style="color:{{ 'var(--danger)' if y.revenue_delta < 0 else 'inherit' }};">
+              {{ '+' if y.revenue_delta >= 0 }}{{ '{:,.0f}'.format(y.revenue_delta) }}
+            </span>
+            {% else %}<span class="upload-hint">not set</span>{% endif %}
+          </td>
+          <td class="num">{% if y.spent is not none %}&euro;{{ '{:,.0f}'.format(y.spent) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if y.cost_budget %}&euro;{{ '{:,.0f}'.format(y.cost_budget) }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">
+            {% if y.cost_delta is not none %}
+            {# Over on cost is the bad direction, which is the opposite of revenue. #}
+            <span style="color:{{ 'var(--danger)' if y.cost_delta > 0 else 'inherit' }};">
+              {{ '+' if y.cost_delta >= 0 }}{{ '{:,.0f}'.format(y.cost_delta) }}
+            </span>
+            {% else %}<span class="upload-hint">not set</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Set them</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">
+    Clear both boxes on a month to say nothing is set for it. Blank is a real answer here.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Month</th><th>Revenue</th><th>Cost</th><th>Note</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <th scope="row">{{ r.name }}</th>
+          <td>
+            <input type="text" name="revenue_{{ r.month }}" style="width:110px;"
+                   value="{{ '%.0f'|format(r.revenue) if r.revenue is not none else '' }}"
+                   placeholder="&mdash;">
+            {% if r.revenue_inherited %}
+            {# Said out loud: a figure inherited from the old single setting
+               should not look like something somebody typed for this month. #}
+            <span class="upload-hint">inherited from the old all-year figure</span>
+            {% endif %}
+          </td>
+          <td><input type="text" name="cost_{{ r.month }}" style="width:110px;"
+                     value="{{ '%.0f'|format(r.cost) if r.cost is not none else '' }}"
+                     placeholder="&mdash;"></td>
+          <td><input type="text" name="note_{{ r.month }}" style="width:100%;"
+                     value="{{ r.note or '' }}" placeholder="why, if it needs saying"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <button type="submit" class="btn-mini" style="margin-top:10px;">Save the year</button>
+</form>
+
+{% endblock %}

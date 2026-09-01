@@ -2450,6 +2450,18 @@ def init_db():
         -- open for three weeks does not send twenty-one of them. A reminder
         -- somebody has learned to ignore is worse than none, because the
         -- one that matters is the one they ignore.
+        -- A budget per month OF THE YEAR, not per calendar month. The
+        -- house's shape repeats -- February is quiet every February -- and
+        -- a budget keyed to 2026-02 would have to be retyped every
+        -- January to stay true. Twelve rows, revenue and cost.
+        CREATE TABLE IF NOT EXISTS monthly_budgets (
+            month INTEGER PRIMARY KEY CHECK(month BETWEEN 1 AND 12),
+            revenue REAL,
+            cost REAL,
+            note TEXT,
+            updated_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS workshop_decision_reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id INTEGER NOT NULL REFERENCES workshop_sessions(id) ON DELETE CASCADE,
@@ -3648,6 +3660,15 @@ def init_db():
         # already, because they all filter on active.
         ("rooms_workshop_room", "ALTER TABLE rooms ADD COLUMN "
                                 "workshop_room INTEGER NOT NULL DEFAULT 0"),
+        # Spend that buys something lasting rather than something used up.
+        # Default 0, so nothing already recorded is reclassified by a
+        # migration -- an expense becomes capital because somebody said so.
+        ("expenses_capital", "ALTER TABLE expenses ADD COLUMN "
+                             "is_capital INTEGER NOT NULL DEFAULT 0"),
+        # What it was: a roof, a boiler, a window. Free text on purpose --
+        # a fixed list of asset classes is an accounting decision and this
+        # is not the accounting system.
+        ("expenses_capital_note", "ALTER TABLE expenses ADD COLUMN capital_note TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -4644,7 +4665,7 @@ NAV_AREAS = {
         "spend_gift_voucher", "void_gift_voucher",
         "management_debtors", "export_debtors_csv",
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
-        "management_on_the_books", "management_break_even",
+        "management_on_the_books", "management_break_even", "management_budget",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
         "charge_city_tax", "charge_city_tax_upcoming",
@@ -6040,15 +6061,20 @@ def financial_month_summary(conn, month_start, month_end):
     event_revenue -= event_refunds
 
     revenue = room_revenue + restaurant_revenue + workshop_revenue + event_revenue
+    # AND NOT capital. Leaving it in here while also reporting it
+    # separately would count the same roof twice and still have net read
+    # the month as a disaster -- which is worse than not splitting at all.
     staff_expenses = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
            WHERE status IN ('approved','paid') AND kind = 'staff_expense'
+           AND is_capital = 0
            AND submitted_at >= ? AND submitted_at < ?""",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
     supplier_expenses = conn.execute(
         """SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
            WHERE status IN ('approved','paid') AND kind = 'supplier_invoice'
+           AND is_capital = 0
            AND submitted_at >= ? AND submitted_at < ?""",
         (month_start.isoformat(), month_end.isoformat()),
     ).fetchone()["total"]
@@ -6057,6 +6083,17 @@ def financial_month_summary(conn, month_start, month_end):
      labour_estimated, labour_typed) = estimated_labour_cost(
         conn, month_start.isoformat(), month_end.isoformat())
 
+    # Capital spend, counted separately. It is not subtracted from net,
+    # because net is meant to say how the house TRADED and a new roof is not
+    # trading -- but it is reported beside it, because a net figure that
+    # silently omits fourteen thousand euros of restoration is as misleading
+    # as one that treats it as a bad month.
+    capital = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
+           WHERE status IN ('approved','paid') AND is_capital = 1
+             AND submitted_at >= ? AND submitted_at < ?""",
+        (month_start.isoformat(), month_end.isoformat())).fetchone()["total"]
+
     expenses_total = round(staff_expenses + supplier_expenses, 2)
     net = round(revenue - expenses_total - (labour_cost or 0), 2)
     return {
@@ -6064,6 +6101,9 @@ def financial_month_summary(conn, month_start, month_end):
         # include. Net is revenue minus a labour cost that cannot price
         # somebody with no wage on file, so it is overstated by their wages
         # and the page has to be able to say so.
+        # Spent on the house rather than on running it. Reported, never
+        # netted into the trading figures.
+        "capital_spend": round(capital, 2),
         "labour_unpriced": labour_unpriced,
         "labour_estimated": labour_estimated,
         "labour_typed": labour_typed,
@@ -15490,6 +15530,82 @@ def edit_own_contact_info():
 # shows six real months.
 REVENUE_BUDGET_SETTING = "monthly_revenue_budget"
 
+MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
+               "August", "September", "October", "November", "December"]
+
+
+def budget_for(conn, month_date, fallback=None):
+    """What this month was supposed to take and spend.
+
+    Returns (revenue, cost), either of which may be None. None is not zero
+    and the difference matters: a target of zero is met by doing nothing,
+    so a month nobody has budgeted has to read as "not set" rather than as
+    beaten.
+
+    Falls back to the old single figure for revenue when no month has been
+    set, so an owner who typed one number years ago keeps seeing exactly
+    what they saw before.
+    """
+    row = conn.execute("SELECT revenue, cost FROM monthly_budgets WHERE month = ?",
+                       (month_date.month,)).fetchone()
+    revenue = row["revenue"] if row else None
+    cost = row["cost"] if row else None
+    if revenue is None:
+        if fallback is None:
+            fallback = _legacy_revenue_budget(conn)
+        revenue = fallback
+    return revenue, cost
+
+
+def _legacy_revenue_budget(conn):
+    """The single all-year figure, kept because somebody set it."""
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (REVENUE_BUDGET_SETTING,)).fetchone()
+    try:
+        value = float(row["value"]) if row and row["value"] else 0.0
+    except (TypeError, ValueError):
+        return None
+    return value or None
+
+
+def budget_table(conn):
+    """All twelve, for the page that sets them."""
+    rows = {r["month"]: r for r in conn.execute(
+        "SELECT * FROM monthly_budgets").fetchall()}
+    legacy = _legacy_revenue_budget(conn)
+    out = []
+    for n in range(1, 13):
+        row = rows.get(n)
+        out.append({
+            "month": n, "name": MONTH_NAMES[n - 1],
+            "revenue": row["revenue"] if row else None,
+            "cost": row["cost"] if row else None,
+            "note": (row["note"] if row else None),
+            # Said out loud on the page, because a figure inherited from a
+            # setting the owner has forgotten about should not look typed.
+            "revenue_inherited": (not row or row["revenue"] is None) and legacy,
+        })
+    return out
+
+
+def budget_variance(conn, month_date, revenue, cost):
+    """How the month went against what was expected, or None if nothing was.
+
+    Both halves reported separately and never netted into one number:
+    revenue ahead and costs ahead is a different month from both being on
+    plan, and one figure cannot say which happened.
+    """
+    want_revenue, want_cost = budget_for(conn, month_date)
+    out = {"revenue_budget": want_revenue, "cost_budget": want_cost}
+    out["revenue_delta"] = (round(revenue - want_revenue, 2)
+                            if want_revenue is not None else None)
+    out["cost_delta"] = (round(cost - want_cost, 2)
+                         if want_cost is not None else None)
+    out["revenue_pct"] = (round(revenue / want_revenue * 100)
+                          if want_revenue else None)
+    out["cost_pct"] = (round(cost / want_cost * 100) if want_cost else None)
+    return out
+
 
 def _spark(values):
     """Seven values as percentage bar heights, tallest at 100.
@@ -16018,23 +16134,31 @@ def owner_home_revenue(conn, today):
         cursor = (cursor - timedelta(days=1)).replace(day=1)
     months.reverse()
     out = []
+    legacy = _legacy_revenue_budget(conn)
     for m in months:
         nxt = (m + timedelta(days=31)).replace(day=1)
         summary = financial_month_summary(conn, m, nxt)
-        out.append({"label": m.strftime("%b"), "value": summary["revenue"] or 0})
-    top = max([m["value"] for m in out] + [1])
+        want, _cost = budget_for(conn, m, fallback=legacy)
+        out.append({"label": m.strftime("%b"), "value": summary["revenue"] or 0,
+                    "budget": want})
+
+    # The tallest thing on the chart, targets included: a month that missed
+    # badly should still show its target ABOVE the bar rather than have the
+    # scale hide how far short it fell.
+    top = max([m["value"] for m in out]
+              + [m["budget"] for m in out if m["budget"]] + [1])
     for m in out:
         m["height_pct"] = max(4, round(m["value"] / top * 100))
-    budget_row = conn.execute(
-        "SELECT value FROM app_settings WHERE key = ?", (REVENUE_BUDGET_SETTING,)).fetchone()
-    try:
-        budget = float(budget_row["value"]) if budget_row and budget_row["value"] else 0.0
-    except (TypeError, ValueError):
-        budget = 0.0
-    # Where to draw the dashed line, as a percentage of the tallest bar. Off the
-    # top of the chart is clamped, so an unreachable target still reads as
-    # "above everything" rather than vanishing.
-    budget_pct = min(100, round(budget / top * 100)) if budget else None
+        # Absent, not zero, when nothing is set. A mark on the floor reads
+        # as a target that was beaten by turning the lights on.
+        m["budget_pct"] = (min(100, round(m["budget"] / top * 100))
+                           if m["budget"] else None)
+        m["met"] = (m["value"] >= m["budget"]) if m["budget"] else None
+
+    # Kept for the legend and for anything still reading the old shape: the
+    # figure for the month being looked at, not an average of six.
+    budget = out[-1]["budget"] if out else None
+    budget_pct = out[-1]["budget_pct"] if out else None
     return out, budget, budget_pct
 
 
@@ -16515,8 +16639,11 @@ def staff_dashboard():
             bulk_count=sum(1 for q in queue if q["bulk_eligible"]),
             day=day_rows,
             day_done=sum(1 for r in day_rows if r["done"]),
+            # revenue_budget_pct is gone: one line across six months was
+            # the visual form of the bug this replaced, and each bar now
+            # carries its own mark. The legend still names this month's
+            # target, which is what revenue_budget is for.
             revenue=revenue, revenue_budget=revenue_budget,
-            revenue_budget_pct=revenue_budget_pct,
             revenue_now=(revenue[-1]["value"] if revenue else 0),
             revenue_prev=(revenue[-2]["value"] if len(revenue) > 1 else 0),
             occupancy=occupancy, occupancy_lead=occupancy_lead,
@@ -20474,6 +20601,8 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Budget", "management_budget",
+     "target budget monthly revenue cost plan season variance forecast"),
     ("What to buy", "stock_basket",
      "shopping basket order list buy stock reorder supplier vendor "
      "workshop materials running low"),
@@ -24117,6 +24246,41 @@ def toggle_expense_restaurant(expense_id):
     )
     conn.commit()
     conn.close()
+    return redirect(request.referrer or url_for("expenses"))
+
+
+@app.route("/expenses/<int:expense_id>/capital", methods=["POST"])
+@owner_required
+def toggle_expense_capital(expense_id):
+    """Say this bought something lasting rather than something used up.
+
+    Nothing about the money moves: it still left the account and cash
+    forecasting still counts it. What changes is that the trading figures
+    stop calling a new roof a bad month.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT is_capital, description, amount FROM expenses WHERE id = ?",
+        (expense_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+
+    now_capital = 0 if row["is_capital"] else 1
+    note = (request.form.get("capital_note", "") or "").strip()[:200]
+    conn.execute(
+        "UPDATE expenses SET is_capital = ?, capital_note = ? WHERE id = ?",
+        (now_capital, note or None if now_capital else None, expense_id))
+    log_audit(conn, "expense_capital_set", target=str(expense_id),
+              details=f"{'capital' if now_capital else 'running cost'}: "
+                      f"{note or row['description'] or ''}"[:200])
+    conn.commit()
+    conn.close()
+    flash(
+        f"Marked as spending on the house. It is out of the running costs "
+        f"and shown separately \u2014 the money still left the account."
+        if now_capital else
+        "Back to a running cost.", "success")
     return redirect(request.referrer or url_for("expenses"))
 
 
@@ -37614,6 +37778,86 @@ def export_vendors_csv():
     conn.close()
     fieldnames = ["name", "contact_person", "phone", "email", "payment_terms", "notes"]
     return csv_response(fieldnames, rows, "vendors.csv")
+
+
+@app.route("/management/budget", methods=["GET", "POST"])
+@owner_required
+def management_budget():
+    """Twelve targets, and how the year is going against them.
+
+    Per month OF THE YEAR rather than per calendar month: the house's shape
+    repeats, and a budget keyed to 2026-02 would need retyping every
+    January to stay true.
+    """
+    conn = get_db()
+
+    if request.method == "POST":
+        now_iso = datetime.now(timezone.utc).isoformat()
+        changed = 0
+        for n in range(1, 13):
+            revenue = parse_money(request.form.get(f"revenue_{n}", ""))
+            cost = parse_money(request.form.get(f"cost_{n}", ""))
+            note = (request.form.get(f"note_{n}", "") or "").strip()[:120] or None
+            if revenue is None and cost is None and not note:
+                # Cleared on purpose. A month with nothing against it has to
+                # read as "not set", never as a target of zero, which is met
+                # by doing nothing.
+                conn.execute("DELETE FROM monthly_budgets WHERE month = ?", (n,))
+                continue
+            conn.execute(
+                """INSERT INTO monthly_budgets (month, revenue, cost, note, updated_at)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(month) DO UPDATE SET
+                       revenue = excluded.revenue, cost = excluded.cost,
+                       note = excluded.note, updated_at = excluded.updated_at""",
+                (n, revenue, cost, note, now_iso))
+            changed += 1
+        log_audit(conn, "budget_set", details=f"{changed} month(s)")
+        conn.commit()
+        conn.close()
+        flash(f"{changed} month{'' if changed == 1 else 's'} set.", "success")
+        return redirect(url_for("management_budget"))
+
+    today = datetime.now(LOCAL_TZ).date()
+    rows = budget_table(conn)
+
+    # The last twelve months against their targets. Actuals per month are
+    # what makes the page worth opening rather than a form to fill in.
+    year = []
+    cursor = today.replace(day=1)
+    for _ in range(12):
+        nxt = (cursor + timedelta(days=31)).replace(day=1)
+        summary = financial_month_summary(conn, cursor, nxt)
+        # The same definition of "what it cost" that the month summary
+        # already uses for net: expenses plus labour. A second cost
+        # figure beside the first would leave the owner working out
+        # which one net was built from.
+        spent = round((summary["expenses_total"] or 0)
+                      + (summary["labour_cost"] or 0), 2)
+        year.append({
+            "month": cursor,
+            "revenue": summary["revenue"] or 0,
+            "spent": spent,
+            **budget_variance(conn, cursor, summary["revenue"] or 0, spent or 0),
+        })
+        cursor = (cursor - timedelta(days=1)).replace(day=1)
+    year.reverse()
+
+    set_count = len([r for r in rows if r["revenue"] is not None
+                     or r["cost"] is not None])
+    behind = [y for y in year if y["revenue_delta"] is not None
+              and y["revenue_delta"] < 0]
+    overview = [
+        overview_cell("Months set", f"{set_count}/12",
+                      alert=set_count == 0,
+                      hint="a month with nothing set is not a month that met "
+                           "its target"),
+        overview_cell("Behind on revenue", len(behind),
+                      alert=bool(behind), hint="of the twelve just gone"),
+    ]
+    conn.close()
+    return render_template("management_budget.html", rows=rows, year=year,
+                           overview=overview, months=MONTH_NAMES)
 
 
 @app.route("/management/recurring-costs")

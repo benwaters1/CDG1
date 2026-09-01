@@ -2215,7 +2215,14 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .oh-budget{ position:absolute; left:0; right:0; height:1px; pointer-events:none;
   background:repeating-linear-gradient(90deg,#D8CFB8 0 4px,transparent 4px 8px); }
 .oh-cbar{ flex:1; border-radius:3px 3px 0 0; background:var(--oh-cream-edge);
-  min-height:2px; }
+  min-height:2px; position:relative; }
+/* One mark per bar rather than one line across the chart: the months are
+   different trades, and a single line drawn through all of them was the
+   visual form of a budget that did not know that. Sits above its own bar,
+   so a month that fell short shows the gap. */
+.oh-budget-mark{ position:absolute; left:-1px; right:-1px; height:2px;
+  pointer-events:none; border-radius:1px;
+  background:repeating-linear-gradient(90deg,#8A7B5C 0 3px,transparent 3px 6px); }
 /* Newer months read darker, so recency is visible without a legend. */
 .oh-cbar--early{ background:#D2BC8E; }
 .oh-cbar--mid{ background:#C9A15B; }
