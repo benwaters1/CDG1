@@ -32,6 +32,8 @@ section would have reported four cheerful passes while proving nothing.
 from _harness import Suite, clients, db, house_today
 
 import inspect
+import io
+import os
 
 import _harness
 
@@ -242,9 +244,8 @@ def run():
     s.section("Nowhere left asks Greenwich what day it is")
     # The ratchet. Everything above is true today; this is what stops the
     # 126th call site being written next week, the way all 125 were.
-    import os as _os
-    root = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-    app_src = io.open(_os.path.join(root, "app.py"), encoding="utf-8").read()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    app_src = io.open(os.path.join(root, "app.py"), encoding="utf-8").read()
     stragglers = app_src.count("datetime.now(timezone.utc).date()")
     s.check("app.py has no UTC calendar dates left", stragglers == 0,
             detail="%d call site(s) -- a day is a date and belongs to the "

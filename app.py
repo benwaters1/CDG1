@@ -16984,7 +16984,7 @@ def fridge_log(conn, *, days=14, today=None):
     Silence and approval look identical on a page, and only one of them is
     honest about a fridge nobody has told the app about.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=days)).isoformat()
     units = conn.execute(
         "SELECT * FROM fridge_units WHERE active = 1 ORDER BY name").fetchall()
@@ -17024,7 +17024,7 @@ def waste_log(conn, *, days=90, today=None):
     Read from the movement ledger's 'wastage' reason, which has existed
     since stock was built and has never been added up.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=days)).isoformat()
     rows = conn.execute(
         """SELECT stock_items.name, stock_items.unit,
@@ -17073,7 +17073,7 @@ def service_times(conn, *, days=30, today=None):
     two evenings that were actually bad, which are the only ones worth
     talking about.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     since = (today - timedelta(days=days)).isoformat()
     rows = conn.execute(
         """SELECT DATE(sent_at) AS night,
@@ -41047,7 +41047,7 @@ def kitchen_prep():
     """What has to be ready before service. Resets every day."""
     conn = get_db()
     user = current_user()
-    on = parse_date(request.args.get("date", "")) or datetime.now(LOCAL_TZ).date()
+    on = parse_date(request.args.get("date", "")) or house_today()
 
     if request.method == "POST":
         what = (request.form.get("what", "") or "").strip()[:200]
@@ -41083,7 +41083,7 @@ def kitchen_prep():
                            overview=overview,
                            yesterday=(on - timedelta(days=1)).isoformat(),
                            tomorrow=(on + timedelta(days=1)).isoformat(),
-                           is_today=(on == datetime.now(LOCAL_TZ).date()))
+                           is_today=(on == house_today()))
 
 
 @app.route("/kitchen/prep/<int:item_id>/done", methods=["POST"])
