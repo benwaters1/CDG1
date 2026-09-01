@@ -2565,6 +2565,49 @@ def init_db():
             UNIQUE(user_id)
         );
 
+        -- Cold storage readings. The useful part is not the tick, it is
+        -- seeing that one fridge has drifted up all week before anything
+        -- in it has to be thrown away.
+        CREATE TABLE IF NOT EXISTS fridge_units (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            where_it_is TEXT,
+            -- The band it should sit in. Both nullable: a unit nobody has
+            -- set a range for still gets logged, and reads as unjudged
+            -- rather than as fine.
+            min_c REAL,
+            max_c REAL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS fridge_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            unit_id INTEGER NOT NULL REFERENCES fridge_units(id) ON DELETE CASCADE,
+            read_at TEXT NOT NULL,
+            celsius REAL NOT NULL,
+            read_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            -- What was done about it, where something was. A reading out
+            -- of range with nothing beside it is a record of a problem
+            -- nobody dealt with, which is worse than no record.
+            action_taken TEXT,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        -- What has to be ready before service. The board in the kitchen,
+        -- not the house's task list: it resets every day, and a line that
+        -- was not done yesterday does not follow you around.
+        CREATE TABLE IF NOT EXISTS prep_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            for_date TEXT NOT NULL,
+            done_at TEXT,
+            done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS menu_item_ingredients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             menu_item_id INTEGER NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
@@ -4972,6 +5015,7 @@ NAV_AREAS = {
         "management_visitors", "sign_out_visitor",
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
+        "kitchen_fridges", "kitchen_prep", "prep_item_done",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -16878,6 +16922,129 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
     }
 
 
+def fridge_log(conn, *, days=14, today=None):
+    """Every unit with its recent readings, and whether any sat outside its band.
+
+    A unit with no range set is reported as UNJUDGED rather than as fine.
+    Silence and approval look identical on a page, and only one of them is
+    honest about a fridge nobody has told the app about.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=days)).isoformat()
+    units = conn.execute(
+        "SELECT * FROM fridge_units WHERE active = 1 ORDER BY name").fetchall()
+    out = []
+    for u in units:
+        rows = conn.execute(
+            """SELECT fridge_readings.*, users.name AS who
+                 FROM fridge_readings
+                 LEFT JOIN users ON users.id = fridge_readings.read_by_user_id
+                WHERE fridge_readings.unit_id = ?
+                  AND fridge_readings.read_at >= ?
+                ORDER BY fridge_readings.read_at DESC""",
+            (u["id"], since)).fetchall()
+        judged = u["min_c"] is not None or u["max_c"] is not None
+        out_of_band = []
+        if judged:
+            for r in rows:
+                low = u["min_c"] is not None and r["celsius"] < u["min_c"]
+                high = u["max_c"] is not None and r["celsius"] > u["max_c"]
+                if low or high:
+                    out_of_band.append({"row": r, "high": high})
+        out.append({
+            "unit": u, "readings": rows, "judged": judged,
+            "out_of_band": out_of_band,
+            # Something out of range that nobody wrote an action against is
+            # a record of a problem nobody dealt with.
+            "unanswered": [x for x in out_of_band
+                           if not (x["row"]["action_taken"] or "").strip()],
+            "last": rows[0] if rows else None,
+        })
+    return out
+
+
+def waste_log(conn, *, days=90, today=None):
+    """What has been thrown away, dearest first.
+
+    Read from the movement ledger's 'wastage' reason, which has existed
+    since stock was built and has never been added up.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT stock_items.name, stock_items.unit,
+                  SUM(-stock_movements.delta) AS quantity,
+                  SUM(-stock_movements.delta
+                      * COALESCE(stock_movements.unit_cost,
+                                 stock_items.unit_cost, 0)) AS worth,
+                  COUNT(*) AS times
+             FROM stock_movements
+             JOIN stock_items ON stock_items.id = stock_movements.stock_item_id
+            WHERE stock_movements.reason = 'wastage'
+              -- Every wastage movement, not only the negative ones. A
+              -- write-off keyed wrong and put back is not waste, and
+              -- filtering the reversal out meant the figure could only ever
+              -- go up -- so the only way to correct a fat-fingered write-off
+              -- was to edit the ledger, which is the one thing a ledger is
+              -- for not doing.
+              AND stock_movements.created_at >= ?
+            GROUP BY stock_movements.stock_item_id
+            ORDER BY worth DESC""", (since,)).fetchall()
+    out = []
+    for r in rows:
+        # A row that nets to nothing is dropped rather than shown as a zero.
+        # "0.0kg thrown away, twice" is noise on a page whose whole job is
+        # which one thing to do something about.
+        if round(r["quantity"], 3) <= 0:
+            continue
+        out.append({"name": r["name"], "unit": r["unit"],
+                    "quantity": round(r["quantity"], 3),
+                    "worth": round(r["worth"], 2), "times": r["times"]})
+    return {
+        "rows": out,
+        "worth": round(sum(r["worth"] for r in out), 2),
+        "days": days,
+    }
+
+
+def service_times(conn, *, days=30, today=None):
+    """How long the kitchen took, from the stamps the till already writes.
+
+    sent_at, ready_at and served_at have been on every line since the till
+    was built and nothing has ever read them back, so "the kitchen was slow
+    on Saturday" has only ever been an argument.
+
+    Reported per NIGHT rather than as one average. A month's mean hides the
+    two evenings that were actually bad, which are the only ones worth
+    talking about.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    since = (today - timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT DATE(sent_at) AS night,
+                  COUNT(*) AS lines,
+                  AVG((julianday(ready_at) - julianday(sent_at)) * 1440.0) AS to_ready,
+                  AVG((julianday(served_at) - julianday(ready_at)) * 1440.0) AS to_table,
+                  MAX((julianday(ready_at) - julianday(sent_at)) * 1440.0) AS worst
+             FROM pos_order_lines
+            WHERE sent_at IS NOT NULL AND ready_at IS NOT NULL
+              AND COALESCE(voided, 0) = 0
+              AND sent_at >= ?
+            GROUP BY DATE(sent_at)
+            ORDER BY night DESC""", (since,)).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "night": r["night"], "lines": r["lines"],
+            "to_ready": round(r["to_ready"], 1) if r["to_ready"] is not None else None,
+            # The walk from the pass to the table, which is a different
+            # problem from a slow kitchen and gets blamed on the kitchen.
+            "to_table": round(r["to_table"], 1) if r["to_table"] is not None else None,
+            "worst": round(r["worst"], 1) if r["worst"] is not None else None,
+        })
+    return out
+
+
 def dish_costs(conn):
     """Per menu item: what its ingredients cost, and what that leaves.
 
@@ -22258,6 +22425,14 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("Fridge temperatures", "kitchen_fridges",
+     "fridge freezer temperature cold storage haccp log reading"),
+    ("Prep list", "kitchen_prep",
+     "prep mise en place kitchen board before service"),
+    ("What gets thrown away", "kitchen_waste",
+     "waste wastage thrown away binned spoiled food cost"),
+    ("How long food took", "kitchen_service_times",
+     "service time kitchen slow ticket time pass to table"),
     ("Dish margins", "restaurant_margins",
      "dish cost recipe ingredients margin menu profitable plate food cost"),
     ("Covers coming", "restaurant_covers",
@@ -40569,6 +40744,188 @@ def management_buying():
     return render_template("management_buying.html", shortfalls=shortfalls,
                            rises=rises, statement=statement, vendors=vendors,
                            vendor=vendor, overview=overview)
+
+
+@app.route("/kitchen/fridges", methods=["GET", "POST"])
+@login_required
+def kitchen_fridges():
+    """Cold storage readings, and whether anything sat outside its band."""
+    conn = get_db()
+    user = current_user()
+
+    if request.method == "POST":
+        if request.form.get("what") == "unit":
+            name = (request.form.get("name", "") or "").strip()[:80]
+            if not name:
+                conn.close()
+                flash("A unit needs a name.", "error")
+                return redirect(url_for("kitchen_fridges"))
+            conn.execute(
+                """INSERT INTO fridge_units (name, where_it_is, min_c, max_c,
+                           active, created_at)
+                   VALUES (?, ?, ?, ?, 1, ?)""",
+                (name, (request.form.get("where_it_is", "") or "").strip()[:80] or None,
+                 parse_quantity(request.form.get("min_c", "")),
+                 parse_quantity(request.form.get("max_c", "")),
+                 datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            conn.close()
+            flash(f"{name} added.", "success")
+            return redirect(url_for("kitchen_fridges"))
+
+        unit_raw = (request.form.get("unit_id", "") or "").strip()
+        celsius = request.form.get("celsius", "")
+        try:
+            reading = float((celsius or "").strip().replace(",", "."))
+        except ValueError:
+            reading = None
+        if not unit_raw.isdigit() or reading is None:
+            conn.close()
+            flash("Which unit, and what did it read?", "error")
+            return redirect(url_for("kitchen_fridges"))
+
+        unit = conn.execute("SELECT * FROM fridge_units WHERE id = ?",
+                            (int(unit_raw),)).fetchone()
+        action = (request.form.get("action_taken", "") or "").strip()[:300]
+        out_of_band = unit and (
+            (unit["min_c"] is not None and reading < unit["min_c"])
+            or (unit["max_c"] is not None and reading > unit["max_c"]))
+        if out_of_band and not action:
+            # Recorded anyway. Refusing would mean the reading never gets
+            # written down at all, which is worse than one with no action
+            # against it -- but the page says it is unanswered until
+            # somebody says what was done.
+            flash("That is outside its range and nothing is written against "
+                  "it. Recorded \u2014 say what was done when you know.", "error")
+
+        conn.execute(
+            """INSERT INTO fridge_readings (unit_id, read_at, celsius,
+                       read_by_user_id, action_taken, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (int(unit_raw), datetime.now(timezone.utc).isoformat(), reading,
+             user["id"], action or None,
+             (request.form.get("note", "") or "").strip()[:200] or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        if not out_of_band:
+            flash("Written down.", "success")
+        return redirect(url_for("kitchen_fridges"))
+
+    log = fridge_log(conn)
+    conn.close()
+    unanswered = [u for u in log if u["unanswered"]]
+    never = [u for u in log if not u["last"]]
+    overview = [
+        overview_cell("Units", len(log)),
+        overview_cell("Out of range, nothing said", len(unanswered),
+                      alert=bool(unanswered)),
+        overview_cell("Never read", len(never), alert=bool(never)),
+    ]
+    return render_template("kitchen_fridges.html", log=log, overview=overview)
+
+
+@app.route("/kitchen/prep", methods=["GET", "POST"])
+@login_required
+def kitchen_prep():
+    """What has to be ready before service. Resets every day."""
+    conn = get_db()
+    user = current_user()
+    on = parse_date(request.args.get("date", "")) or datetime.now(LOCAL_TZ).date()
+
+    if request.method == "POST":
+        what = (request.form.get("what", "") or "").strip()[:200]
+        for_date = parse_date(request.form.get("for_date", "")) or on
+        if not what:
+            conn.close()
+            flash("What needs doing?", "error")
+            return redirect(url_for("kitchen_prep", date=on.isoformat()))
+        conn.execute(
+            """INSERT INTO prep_items (what, for_date, note, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (what, for_date.isoformat(),
+             (request.form.get("note", "") or "").strip()[:200] or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        return redirect(url_for("kitchen_prep", date=for_date.isoformat()))
+
+    rows = conn.execute(
+        """SELECT prep_items.*, users.name AS done_by
+             FROM prep_items
+             LEFT JOIN users ON users.id = prep_items.done_by_user_id
+            WHERE prep_items.for_date = ?
+            ORDER BY prep_items.done_at IS NOT NULL, prep_items.id""",
+        (on.isoformat(),)).fetchall()
+    conn.close()
+    left = [r for r in rows if not r["done_at"]]
+    overview = [
+        overview_cell("On the board", len(rows)),
+        overview_cell("Still to do", len(left), alert=bool(left)),
+    ]
+    return render_template("kitchen_prep.html", rows=rows, on=on,
+                           overview=overview,
+                           yesterday=(on - timedelta(days=1)).isoformat(),
+                           tomorrow=(on + timedelta(days=1)).isoformat(),
+                           is_today=(on == datetime.now(LOCAL_TZ).date()))
+
+
+@app.route("/kitchen/prep/<int:item_id>/done", methods=["POST"])
+@login_required
+def prep_item_done(item_id):
+    conn = get_db()
+    row = conn.execute("SELECT for_date, done_at FROM prep_items WHERE id = ?",
+                       (item_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    user = current_user()
+    # Ticking again unticks it, because people mistake rows.
+    if row["done_at"]:
+        conn.execute("UPDATE prep_items SET done_at = NULL, "
+                     "done_by_user_id = NULL WHERE id = ?", (item_id,))
+    else:
+        conn.execute(
+            "UPDATE prep_items SET done_at = ?, done_by_user_id = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), user["id"], item_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("kitchen_prep", date=row["for_date"]))
+
+
+@app.route("/kitchen/waste")
+@owner_required
+def kitchen_waste():
+    """What has been thrown away, dearest first."""
+    conn = get_db()
+    days_raw = request.args.get("days", "90")
+    days = int(days_raw) if days_raw.isdigit() and 1 <= int(days_raw) <= 730 else 90
+    data = waste_log(conn, days=days)
+    conn.close()
+    overview = [
+        overview_cell("Thrown away", f"\u20ac{data['worth']:,.2f}",
+                      hint=f"over {days} days"),
+        overview_cell("Things", len(data["rows"])),
+    ]
+    return render_template("kitchen_waste.html", data=data, overview=overview,
+                           days=days)
+
+
+@app.route("/kitchen/service-times")
+@owner_required
+def kitchen_service_times():
+    """How long food took, from stamps the till has always written."""
+    conn = get_db()
+    days_raw = request.args.get("days", "30")
+    days = int(days_raw) if days_raw.isdigit() and 1 <= int(days_raw) <= 365 else 30
+    nights = service_times(conn, days=days)
+    conn.close()
+    overview = [
+        overview_cell("Nights measured", len(nights)),
+        overview_cell("Lines", sum(n["lines"] for n in nights)),
+    ]
+    return render_template("kitchen_service_times.html", nights=nights,
+                           overview=overview, days=days)
 
 
 @app.route("/restaurant/margins")
