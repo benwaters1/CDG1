@@ -3208,6 +3208,13 @@ def init_db():
          "ON voucher_redemptions(voucher_id)"),
         ("event_inquiries_deposit_amount",
          "ALTER TABLE event_inquiries ADD COLUMN deposit_amount REAL"),
+        # Who handed it over and when. Without them "delivered" is a flag with
+        # nobody behind it, and the guest who says the hamper never arrived
+        # cannot be answered.
+        ("booking_extras_delivered_at",
+         "ALTER TABLE booking_extras ADD COLUMN delivered_at TEXT"),
+        ("booking_extras_delivered_by_user_id",
+         "ALTER TABLE booking_extras ADD COLUMN delivered_by_user_id INTEGER"),
         ("event_inquiries_promo_code", "ALTER TABLE event_inquiries ADD COLUMN promo_code TEXT"),
         ("event_inquiries_promo_code_id",
          "ALTER TABLE event_inquiries ADD COLUMN promo_code_id INTEGER"),
@@ -10813,6 +10820,95 @@ def cancel_booking_extra(conn, line_id, user_id=None):
     return True
 
 
+def mark_booking_extra_delivered(conn, line_id, user_id=None, undo=False):
+    """Tick off something the house owed a guest. Returns (ok, message).
+
+    booking_extras.status has allowed 'delivered' since it was written and
+    nothing has ever set it: a line went in as 'confirmed' and could only ever
+    become 'cancelled'. So a guest ordered a hamper for Tuesday, or a transfer to
+    the station, and there was no list of what was outstanding and no way to say
+    it had been done. On a busy morning that is how somebody gets billed for a
+    car nobody arranged.
+
+    THIS CHANGES NOTHING ABOUT MONEY. booking_bill counts every line that is not
+    cancelled, so a delivered extra is owed exactly as it was before -- which is
+    right: handing over a hamper is a reason to charge for it, not to stop.
+
+    Nor does it touch stock. The sale depleted it when the line was created; a
+    second movement on delivery would take the same bottle out of the cellar
+    twice.
+
+    Employees can do this, unlike cancelling. Cancelling is a money decision and
+    is owner-only for that reason; ticking off a delivery is the person who
+    carried it saying so.
+    """
+    line = conn.execute("SELECT * FROM booking_extras WHERE id = ?",
+                        (line_id,)).fetchone()
+    if not line:
+        return False, "No such line."
+    if (line["status"] or "") == "cancelled":
+        return False, "That was cancelled — nothing to deliver."
+    if undo:
+        if (line["status"] or "") != "delivered":
+            return False, "That is not marked delivered."
+        conn.execute("UPDATE booking_extras SET status = 'confirmed', "
+                     "delivered_at = NULL, delivered_by_user_id = NULL WHERE id = ?",
+                     (line_id,))
+        return True, f"{line['name']} put back on the list."
+    if (line["status"] or "") == "delivered":
+        return False, "Already ticked off."
+    conn.execute(
+        "UPDATE booking_extras SET status = 'delivered', delivered_at = ?, "
+        "delivered_by_user_id = ? WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(), user_id, line_id))
+    return True, f"{line['name']} ticked off."
+
+
+def extras_due(conn, today=None):
+    """What the house still owes its guests, soonest first.
+
+    A line is due when it is confirmed and not yet delivered. Ordered by the day
+    it was scheduled for, with anything unscheduled last: an unscheduled hamper
+    is for the stay rather than for a moment, and a list that put it above a
+    transfer booked for eleven o'clock would be sorted by nothing useful.
+
+    OVERDUE is called out separately, because a transfer that was for yesterday
+    is a different thing from one that is for this afternoon -- and it is the
+    one nobody will notice on a list sorted by date alone.
+    """
+    today = today or service_day()
+    today_iso = today.isoformat()
+    rows = []
+    for line in conn.execute(
+            """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code,
+                      bookings.arrival_date, bookings.departure_date,
+                      rooms.name AS room_name
+                 FROM booking_extras
+                 JOIN bookings ON bookings.id = booking_extras.booking_id
+                 LEFT JOIN rooms ON rooms.id = bookings.room_id
+                WHERE booking_extras.category = 'room'
+                  AND COALESCE(booking_extras.status, '') = 'confirmed'
+                  AND bookings.status = 'confirmed'
+                  AND bookings.departure_date >= ?
+                ORDER BY booking_extras.scheduled_for IS NULL,
+                         booking_extras.scheduled_for""", (today_iso,)).fetchall():
+        when = line["scheduled_for"] or None
+        rows.append({
+            "line": line,
+            "when": when,
+            "overdue": bool(when) and when < today_iso,
+            "today": when == today_iso,
+            "in_house": (line["arrival_date"] or "") <= today_iso
+                        < (line["departure_date"] or ""),
+        })
+    return {
+        "rows": rows,
+        "overdue": [r for r in rows if r["overdue"]],
+        "today": [r for r in rows if r["today"]],
+        "count": len(rows),
+    }
+
+
 def extras_for_booking(conn, category, booking_id):
     return conn.execute(
         """SELECT * FROM booking_extras WHERE category = ? AND booking_id = ?
@@ -17838,6 +17934,35 @@ def admin_timesheets():
     end = parse_date(request.args.get("end", "")) or today
 
     entries = timesheet_query(conn, employee_id, start, end)
+
+    # ANYTHING BLOCKING PAYROLL IS SHOWN, whatever window is being viewed.
+    #
+    # This page defaults to a fortnight and the payroll pack covers a month, so
+    # an entry from the 2nd blocks the export on the 20th and was nowhere on the
+    # page the owner was sent to. They were told "fix these before exporting" and
+    # landed somewhere those entries were not -- which is exactly the gap
+    # repair_time_entry was written to close, reopened by a date filter.
+    #
+    # Appended rather than folded into the window, so the fortnight the owner
+    # asked for is still the fortnight they get, with the blockers after it.
+    seen = {e["id"] for e in entries}
+    outside = [b for b in conn.execute(
+        """SELECT time_entries.*, users.name AS user_name
+             FROM time_entries JOIN users ON users.id = time_entries.user_id
+            WHERE (time_entries.clock_out_at IS NULL
+                   OR time_entries.clock_out_at < time_entries.clock_in_at
+                   OR COALESCE(time_entries.auto_closed, 0) = 1)
+            ORDER BY time_entries.clock_in_at DESC""").fetchall()
+        if b["id"] not in seen
+        and (not employee_id or str(b["user_id"]) == str(employee_id))]
+    # Appended AFTER the totals below are worked out, not before. These entries
+    # are outside the fortnight being viewed, and folding them into
+    # totals_by_user would put people with no shifts in the window onto the
+    # summary at zero hours and add to everyone's shift count -- a labour figure
+    # that moves depending on which blockers happen to be outstanding is worse
+    # than one that is merely narrow.
+    blockers_outside = outside
+
     # One query for all the breaks, not one per row. The template used to call
     # net_hours() per line, which opens its OWN connection when it isn't given
     # one — a fortnight of timesheets cost 260+ queries and a connection per
@@ -17849,6 +17974,11 @@ def admin_timesheets():
         bucket = totals_by_user.setdefault(e["user_id"], {"name": e["user_name"], "hours": 0.0, "shifts": 0})
         bucket["hours"] = round(bucket["hours"] + hrs, 2)
         bucket["shifts"] += 1
+
+    # Now they can be shown: the summary above is the window the owner
+    # asked for, the list below is that window plus whatever blocks the
+    # export from wherever it happens to be.
+    entries = list(entries) + blockers_outside
 
     pay_ref_by_user = {
         r["id"]: r for r in conn.execute("SELECT id, pay_rate, pay_type FROM users").fetchall()
@@ -20370,6 +20500,8 @@ PALETTE_PAGES = [
     ("Manual", "manual", "handbook how to"),
     ("Contacts", "contacts", "phone numbers"),
     ("Shopping list", "shopping_list", "buy"),
+    ("What we owe guests", "extras_due_page",
+     "extras hamper transfer flowers deliver outstanding owed jobs"),
     ("Kitchen sheet", "kitchen_day_sheet",
      "dietary allergy allergen chef covers kitchen food notes"),
     ("Approvals", "admin_approvals", "expenses leave pending decide"),
@@ -31300,6 +31432,37 @@ def checkout_booking(booking_id):
         )
     flash(f"Checked out. {len(CHECKOUT_CHECKLIST)} turnover tasks assigned for {room['name']}.", "success")
     return redirect(url_for("admin_bookings"))
+
+
+@app.route("/extras/due")
+@login_required
+def extras_due_page():
+    """What the house owes its guests, for whoever is on shift.
+
+    On the employee side on purpose: this is a list of jobs, not a page of
+    figures. It shows what was ordered and what is still outstanding, and no
+    prices at all -- somebody carrying a hamper upstairs does not need to know
+    what the guest paid for it, and a printed list of what everyone spent is not
+    something to leave on a table.
+    """
+    conn = get_db()
+    due = extras_due(conn)
+    conn.close()
+    return render_template("extras_due.html", due=due, today=service_day())
+
+
+@app.route("/extras/<int:line_id>/delivered", methods=["POST"])
+@login_required
+def mark_extra_delivered(line_id):
+    user = current_user()
+    undo = request.form.get("undo") == "1"
+    conn = get_db()
+    ok, message = mark_booking_extra_delivered(
+        conn, line_id, user_id=(user["id"] if user else None), undo=undo)
+    conn.commit()
+    conn.close()
+    flash(message, "success" if ok else "error")
+    return redirect(request.referrer or url_for("extras_due_page"))
 
 
 @app.route("/admin/bookings/extras/<int:line_id>/cancel", methods=["POST"])
@@ -46812,17 +46975,41 @@ def booking_pennylane_lines(conn, statement):
     taxe de sejour is its own line at zero, which is what it is: collected on
     the commune's behalf and not the house's income.
     """
+    # SPLIT BY WHAT IT IS, not only by what rate it carries.
+    #
+    # This used to walk statement["vat"] -- the bands, which are grouped by rate
+    # -- and post every one of them to pennylane_account_accommodation under the
+    # label "Accommodation and extras". The VAT was right and the revenue
+    # analysis was not: a hamper, a transfer and a bunch of flowers were all
+    # booked as room revenue, and pennylane_account_extras was a setting the
+    # owner could fill in that nothing ever read.
+    #
+    # Grouping by rate cannot fix it on its own either. If the house ever sets
+    # the extras rate equal to the accommodation rate, both fall into ONE band
+    # and no amount of looking at the rate can tell them apart. So the split is
+    # by component, and the rate comes along with each.
     lines = []
-    for band in statement["vat"]:
-        net = round(float(band["net"] or 0), 2)
-        if not net:
+    components = [
+        ("accommodation", statement["accommodation"],
+         tax_rate(conn, "vat_accommodation"), "pennylane_account_accommodation",
+         "Accommodation"),
+        ("extras", statement["extras_total"],
+         tax_rate(conn, "vat_extras"), "pennylane_account_extras",
+         "Extras"),
+    ]
+    for _key, gross, rate, setting, label in components:
+        gross = round(float(gross or 0), 2)
+        if not gross:
             continue
-        line = {"currency_amount": f"{net:.2f}",
-                "currency_tax": f"{round(float(band['vat'] or 0), 2):.2f}",
+        band = vat_breakdown([(gross, rate)])
+        if not band:
+            continue
+        band = band[0]
+        line = {"currency_amount": f"{band['net']:.2f}",
+                "currency_tax": f"{band['vat']:.2f}",
                 "vat_rate": pennylane_vat_code(band["rate"]),
-                "label": f"Accommodation and extras at {band['rate']}%"[:200]}
-        code = app_setting(conn, "pennylane_account_accommodation",
-                           PENNYLANE_REVENUE_DEFAULTS)
+                "label": f"{label} at {band['rate']}%"[:200]}
+        code = app_setting(conn, setting, PENNYLANE_REVENUE_DEFAULTS)
         if code:
             line["ledger_account_number"] = code
         lines.append(line)

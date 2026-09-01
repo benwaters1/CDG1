@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}What we owe guests{% endblock %}
+{% block content %}
+
+{#
+  A list of jobs, not a page of figures. No prices anywhere: somebody carrying a
+  hamper upstairs does not need to know what the guest paid for it, and a list
+  of what everyone in the house has spent is not something to leave on a table.
+
+  Overdue is its own group rather than a colour on a sorted list. A transfer
+  that was for yesterday is a different problem from one that is for this
+  afternoon, and it is the one nobody notices when the two are mixed together.
+#}
+<div class="page-head">
+  <h1>What we owe guests</h1>
+</div>
+
+{% if not due.rows %}
+  <p class="upload-hint">Nothing outstanding — everything ordered has been
+  handed over.</p>
+{% endif %}
+
+{% if due.overdue %}
+<h2 style="margin-top:0;">Overdue — {{ due.overdue|length }}</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>What</th><th>Who</th><th>Was for</th><th></th></tr></thead>
+    <tbody>
+      {% for r in due.overdue %}
+      <tr>
+        <td><strong>{{ r.line['name'] }}</strong>
+          {%- if r.line['quantity'] and r.line['quantity'] > 1 %} ×{{ r.line['quantity'] }}{% endif %}
+          {% if r.line['notes'] %}<span class="upload-hint">{{ r.line['notes'] }}</span>{% endif %}
+        </td>
+        <td>{{ r.line['guest_name'] }}
+          <span class="upload-hint">{{ r.line['room_name'] or 'room TBC' }}</span></td>
+        <td><span class="mini-status status-unpaid">{{ r.when|date_short }}</span></td>
+        <td>
+          <form method="post" action="{{ url_for('mark_extra_delivered', line_id=r.line['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Done</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% set pending = due.rows | rejectattr('overdue') | list %}
+{% if pending %}
+<h2 style="margin-top:{{ '24px' if due.overdue else '0' }};">
+  Still to hand over — {{ pending|length }}</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>What</th><th>Who</th><th>When</th><th></th></tr></thead>
+    <tbody>
+      {# Overdue rows are in their own table above; repeating them here would
+         have somebody tick the same job off twice and wonder why. #}
+      {% for r in pending %}
+      <tr>
+        <td><strong>{{ r.line['name'] }}</strong>
+          {%- if r.line['quantity'] and r.line['quantity'] > 1 %} ×{{ r.line['quantity'] }}{% endif %}
+          {% if r.line['notes'] %}<span class="upload-hint">{{ r.line['notes'] }}</span>{% endif %}
+        </td>
+        <td>{{ r.line['guest_name'] }}
+          <span class="upload-hint">{{ r.line['room_name'] or 'room TBC' }}</span>
+          {%- if r.in_house %} <span class="mini-status status-current">here now</span>{% endif %}
+        </td>
+        <td>
+          {% if r.today %}<span class="mini-status status-confirmed">today</span>
+          {% elif r.when %}{{ r.when|date_short }}
+          {% else %}<span class="upload-hint">during their stay</span>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('mark_extra_delivered', line_id=r.line['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Done</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">Ticking something off records who handed it over and
+when. It does not change what the guest is charged — handing over a hamper is a
+reason to charge for it, not to stop.</p>
+{% endif %}
+
+{% endblock %}
