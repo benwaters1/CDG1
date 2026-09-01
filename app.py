@@ -13605,6 +13605,8 @@ REPORT_TYPES = {
     "occupancy": {"label": "Occupancy & bookings", "blurb": "Nights sold, how full the château was, and the average nightly rate."},
     "labour": {"label": "Labour", "blurb": "Hours and estimated cost per person, and labour as a share of revenue."},
     "guest": {"label": "Guests", "blurb": "New versus returning, who spends most, and how they rated the stay."},
+    "pace": {"label": "Pace", "blurb": "What is on the books for the months ahead, "
+                                       "against the same point last year."},
 }
 
 
@@ -13614,6 +13616,135 @@ def _pct_change(current, previous):
     if not previous:
         return None
     return round((current - previous) / abs(previous) * 100, 1)
+
+
+def booking_pace(conn, months=6, today=None):
+    """What is on the books for the months ahead, against the same point a year ago.
+
+    AGAINST THE SAME POINT, not against last year's final. A house that ended
+    last August full will always look behind in March, and a comparison that
+    says so every spring is one nobody reads twice. The question worth asking is
+    whether MORE is sold now than had been sold by this date last year -- which
+    means counting last year's bookings as they stood on the same day, using
+    created_at, and ignoring everything booked after it.
+
+    That is the whole trick, and it is why this cannot be done with the
+    occupancy report: occupancy knows what happened, and pace has to know what
+    was known at a point in time.
+
+    Nights rather than bookings. A booking is one row whether it is two nights
+    or ten, and a month that gained one long stay is not behind a month that
+    gained three short ones.
+
+    Cancelled and declined stays are left out of both sides. A cancellation
+    removes a night from what the house can expect, and counting it on the older
+    side only would flatter this year by exactly the ones that fell through.
+    """
+    today = today or service_day()
+    # The same day last year. The 29th of February has no counterpart, so it
+    # steps back to the 28th rather than throwing -- a report that fails one day
+    # in four years fails on a day nobody is watching.
+    try:
+        last_year_today = today.replace(year=today.year - 1)
+    except ValueError:
+        last_year_today = today.replace(year=today.year - 1, day=28)
+
+    def window(first_of_month):
+        if first_of_month.month == 12:
+            return first_of_month, date(first_of_month.year + 1, 1, 1)
+        return first_of_month, date(first_of_month.year, first_of_month.month + 1, 1)
+
+    def sold(start, end, as_at):
+        """Nights and money on the books for [start, end) as at a given date.
+
+        Nights are clipped to the window, so a stay straddling two months is
+        counted in each for the part that falls in it -- the same rule the taxe
+        de sejour working uses, and for the same reason.
+        """
+        nights, revenue, stays = 0, 0.0, 0
+        for b in conn.execute(
+                """SELECT * FROM bookings
+                    WHERE status IN ('confirmed', 'pending')
+                      AND date(created_at) <= ?
+                      AND arrival_date < ? AND departure_date > ?""",
+                (as_at.isoformat(), end.isoformat(), start.isoformat())).fetchall():
+            arrival = parse_date(b["arrival_date"])
+            departure = parse_date(b["departure_date"])
+            if not arrival or not departure:
+                continue
+            total_nights = (departure - arrival).days
+            if total_nights <= 0:
+                continue
+            inside = (min(departure, end) - max(arrival, start)).days
+            if inside <= 0:
+                continue
+            nights += inside
+            stays += 1
+            revenue += round(float(b["total_price"] or 0) * inside / total_nights, 2)
+        return {"nights": nights, "revenue": round(revenue, 2), "stays": stays}
+
+    rows = []
+    first = date(today.year, today.month, 1)
+    for step in range(months):
+        month_start = first
+        for _ in range(step):
+            month_start = window(month_start)[1]
+        start, end = window(month_start)
+        now = sold(start, end, today)
+        try:
+            then_start = start.replace(year=start.year - 1)
+            then_end = end.replace(year=end.year - 1)
+        except ValueError:
+            then_start = start.replace(year=start.year - 1, day=28)
+            then_end = end.replace(year=end.year - 1, day=28)
+        then = sold(then_start, then_end, last_year_today)
+        rows.append({
+            "month": start,
+            "now": now,
+            "then": then,
+            "nights_delta": now["nights"] - then["nights"],
+            "revenue_delta": round(now["revenue"] - then["revenue"], 2),
+            "nights_pct": _pct_change(now["nights"], then["nights"]),
+            "revenue_pct": _pct_change(now["revenue"], then["revenue"]),
+        })
+
+    totals_now = {k: sum(r["now"][k] for r in rows) for k in ("nights", "stays")}
+    totals_then = {k: sum(r["then"][k] for r in rows) for k in ("nights", "stays")}
+    revenue_now = round(sum(r["now"]["revenue"] for r in rows), 2)
+    revenue_then = round(sum(r["then"]["revenue"] for r in rows), 2)
+    return {
+        "rows": rows,
+        "today": today,
+        "as_at_last_year": last_year_today,
+        "nights": totals_now["nights"],
+        "nights_last_year": totals_then["nights"],
+        "revenue": revenue_now,
+        "revenue_last_year": revenue_then,
+        "nights_pct": _pct_change(totals_now["nights"], totals_then["nights"]),
+        "revenue_pct": _pct_change(revenue_now, revenue_then),
+        # A house in its first year has nothing to compare against, and a report
+        # that shows "up 100%" against nothing is worse than one that says so.
+        "has_baseline": totals_then["nights"] > 0 or revenue_then > 0,
+    }
+
+
+def report_pace(conn, period):
+    """The pace report. The PERIOD IS IGNORED on purpose.
+
+    Every other report answers "how did this window go". This one answers "what
+    is ahead", which is not a window the owner picks -- picking one would let
+    them ask about a month that has already happened, where the answer is just
+    the occupancy report with extra arithmetic.
+    """
+    data = booking_pace(conn, months=6)
+    data["csv"] = [{
+        "month": r["month"].strftime("%Y-%m"),
+        "nights_on_the_books": r["now"]["nights"],
+        "nights_same_point_last_year": r["then"]["nights"],
+        "revenue_on_the_books": r["now"]["revenue"],
+        "revenue_same_point_last_year": r["then"]["revenue"],
+    } for r in data["rows"]]
+    return data
 
 
 def report_financial(conn, period):
@@ -13810,6 +13941,7 @@ REPORT_BUILDERS = {
     "occupancy": report_occupancy,
     "labour": report_labour,
     "guest": report_guest,
+    "pace": report_pace,
 }
 
 
@@ -14461,6 +14593,7 @@ def admin_reports():
     occ = report_occupancy(conn, period)
     lab = report_labour(conn, period)
     gue = report_guest(conn, period)
+    pace = booking_pace(conn, months=6)
     conn.close()
     headlines = {
         "financial": f"€{fin['summary']['net']:,.0f} net",
@@ -14469,6 +14602,9 @@ def admin_reports():
                    else f"{lab['total_hours']}h"),
         "guest": (f"{gue['returning_pct']}% returning" if gue["returning_pct"] is not None
                   else f"{gue['bookings']} bookings"),
+        "pace": (f"{pace['nights']} nights on the books"
+                 + (f", {pace['nights_pct']:+.0f}% on last year"
+                    if pace["nights_pct"] is not None else "")),
     }
     return render_template("admin_reports.html", period=period,
                            report_types=REPORT_TYPES, headlines=headlines)

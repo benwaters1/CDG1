@@ -221,6 +221,7 @@ SUITES = [
     "test_guest_record",
     "test_guest_management",
     "test_merge_tags",
+    "test_pace",
     "test_unreachable_code",
     "test_handover_check",
     "test_repair_handover",

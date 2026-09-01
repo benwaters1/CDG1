@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ meta.label }}{% endblock %}
+{% block content %}
+
+{#
+  AGAINST THE SAME POINT LAST YEAR, not against last year's final. A house that
+  ended last August full will always look behind in March, and a report that
+  says so every spring is one nobody reads twice. What is worth knowing is
+  whether more is sold now than had been sold by this date a year ago.
+
+  No period selector, unlike the other reports. This one answers "what is
+  ahead", which is not a window anybody picks — picking one would let you ask
+  about a month that has already happened, where the answer is the occupancy
+  report with extra arithmetic.
+#}
+<div class="page-head">
+  <h1>{{ meta.label }}</h1>
+  <div>
+    <a href="{{ url_for('export_report_csv', slug=slug) }}" class="btn-mini">Export CSV</a>
+    <a href="{{ url_for('admin_reports') }}" class="btn-mini">All reports</a>
+  </div>
+</div>
+
+<p class="upload-hint">On the books today, against what had been sold by
+{{ data.as_at_last_year.isoformat()|date_short }} — the same day a year ago.
+Nights are counted rather than bookings, and a stay across two months counts in
+each for the nights that fall in it.</p>
+
+{% if not data.has_baseline %}
+<p class="upload-hint">Nothing was on the books a year ago to compare against,
+so the columns on the right are empty rather than flattering. They fill in as
+the house builds a second year of history.</p>
+{% endif %}
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ data.nights }}</span>
+      <span class="stat-tile-label">nights on the books{% if data.has_baseline %},
+        against {{ data.nights_last_year }} then{% endif %}</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">€{{ '{:,.0f}'.format(data.revenue) }}</span>
+      {# The absolute figure beside the percentage. "Up 18%" on its own is a
+         number nobody can check; against 118 nights it is one they can. #}
+      <span class="stat-tile-label">at today's prices{% if data.has_baseline %},
+        against €{{ '{:,.0f}'.format(data.revenue_last_year) }} then{% endif %}</span>
+    </span>
+  </div>
+  {% if data.has_baseline %}
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ '%+.0f'|format(data.nights_pct) if data.nights_pct is not none else '—' }}%</span>
+      <span class="stat-tile-label">nights vs the same point last year</span>
+    </span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-body">
+      <span class="stat-tile-value">{{ '%+.0f'|format(data.revenue_pct) if data.revenue_pct is not none else '—' }}%</span>
+      <span class="stat-tile-label">money vs the same point last year</span>
+    </span>
+  </div>
+  {% endif %}
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Month</th>
+        <th class="num">Nights now</th>
+        <th class="num">Nights then</th>
+        <th class="num">Difference</th>
+        <th class="num">Money now</th>
+        <th class="num">Money then</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <td>{{ r.month.strftime('%B %Y') }}</td>
+        <td class="num">{{ r.now.nights }}</td>
+        <td class="num">{{ r.then.nights if data.has_baseline else '—' }}</td>
+        <td class="num">
+          {% if data.has_baseline %}
+            {% if r.nights_delta > 0 %}<span class="mini-status status-confirmed">+{{ r.nights_delta }}</span>
+            {% elif r.nights_delta < 0 %}<span class="mini-status status-unpaid">{{ r.nights_delta }}</span>
+            {% else %}level{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">€{{ '{:,.0f}'.format(r.now.revenue) }}</td>
+        <td class="num">{{ '€{:,.0f}'.format(r.then.revenue) if data.has_baseline else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="upload-hint">Cancelled and declined stays are out of both sides.
+Counting them on the older side only would flatter this year by exactly the
+bookings that fell through.</p>
+
+{% endblock %}
