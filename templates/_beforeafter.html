@@ -1,0 +1,77 @@
+{# ==========================================================================
+   BEFORE AND AFTER
+   Drag across a photograph to move between the room as found and the room
+   now. You have both images for every finished room and nobody else can
+   build this, because nobody else has the before.
+
+       {% from '_beforeafter.html' import before_after %}
+       {{ before_after('chambre-emeraude',
+                       before_src, after_src,
+                       'Chambre Emeraude',
+                       'Found with the ceiling down and ivy through the window.',
+                       'Antique French bed, vintage monogrammed linen, floor relaid by hand.') }}
+
+   Works without the script: both images are in the markup, so it degrades to
+   two photographs side by side rather than to nothing.
+   ========================================================================== #}
+{% macro before_after(id, before, after, title, before_note, after_note) %}
+<figure class="g-ba" data-ba id="ba-{{ id }}">
+  <div class="g-ba__f">
+    <img class="g-ba__img g-ba__img--after" src="{{ after }}"
+         alt="{{ title }} — as it is now. {{ after_note }}" loading="lazy">
+    <div class="g-ba__clip" data-ba-clip>
+      <img class="g-ba__img g-ba__img--before" src="{{ before }}"
+           alt="{{ title }} — as it was found. {{ before_note }}" loading="lazy">
+    </div>
+
+    <span class="g-ba__tag g-ba__tag--b">As found</span>
+    <span class="g-ba__tag g-ba__tag--a">Now</span>
+
+    <input class="g-ba__range" type="range" min="0" max="100" value="50"
+           data-ba-range aria-label="Reveal {{ title }} before or after restoration">
+    <span class="g-ba__handle" data-ba-handle aria-hidden="true"></span>
+  </div>
+
+  <figcaption class="g-ba__cap">
+    <span class="g-ba__t">{{ title }}</span>
+    <span class="g-ba__n"><b>Found</b> {{ before_note }}</span>
+    <span class="g-ba__n"><b>Now</b> {{ after_note }}</span>
+  </figcaption>
+</figure>
+{% endmacro %}
+
+{# The slider script, once per page however many sliders are on it. #}
+{% macro before_after_script() %}
+<script>
+/* Before and after. The range input IS the control — it is a real slider, so
+   it works from the keyboard and reads correctly to a screen reader without
+   anything added. The script only paints. */
+(function(){
+  document.querySelectorAll('[data-ba]').forEach(function(fig){
+    var range=fig.querySelector('[data-ba-range]'),
+        clip=fig.querySelector('[data-ba-clip]'),
+        handle=fig.querySelector('[data-ba-handle]');
+    if(!range||!clip) return;
+    function paint(){
+      var v=Number(range.value);
+      clip.style.clipPath='inset(0 '+(100-v)+'% 0 0)';
+      if(handle) handle.style.left=v+'%';
+    }
+    range.addEventListener('input', paint);
+    /* Dragging anywhere on the image, not only on the thin handle. */
+    var f=fig.querySelector('.g-ba__f');
+    function fromPointer(e){
+      var r=f.getBoundingClientRect();
+      var x=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
+      range.value=Math.max(0, Math.min(100, (x/r.width)*100));
+      paint();
+    }
+    var down=false;
+    f.addEventListener('pointerdown', function(e){ down=true; fromPointer(e); });
+    window.addEventListener('pointerup', function(){ down=false; });
+    f.addEventListener('pointermove', function(e){ if(down) fromPointer(e); });
+    paint();
+  });
+})();
+</script>
+{% endmacro %}

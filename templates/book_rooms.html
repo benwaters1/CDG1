@@ -1,26 +1,18 @@
 {% extends "public_base.html" %}
 {% set crumbs = [('Stay', None)] %}
+{% block title_fr %}Séjourner au château{% endblock %}
+{% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. À partir de 220 € la nuit, petit-déjeuner compris.{% endblock %}
 {% block title %}Stay{% endblock %}
 {% block description %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_desc %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{# Shown only when the view passes a known returning guest. Silent otherwise,
-   so a stranger never sees an empty personalisation slot. #}
-{% if returning_guest %}
-<div class="g-wrap">
-  <p class="g-welcome">
-    <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
-    {% if returning_guest['last_room'] %}You stayed in {{ returning_guest['last_room'] }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}
-    <a href="{{ url_for('find_booking') }}">Your past stays</a>
-  </p>
-</div>
-{% endif %}
+{% from '_compare_rooms.html' import compare_rooms %}
 
 
-{% from '_marks.html' import mark %}
-{% from '_devices.html' import monogram %}
+
+{% from '_marks.html' import mark, monogram %}
 {# Nights for the whole page, from the dates already in scope. Computed here
    so no route change is needed; if the view later passes stay_nights it wins. #}
 {% if stay_nights is not defined %}
@@ -46,6 +38,19 @@
     <p class="g-hero__cta"><a href="#rooms" class="g-btn g-btn--solid">See the rooms</a></p>
 </div>
 </section>
+
+{# Shown only when the view passes a known returning guest. Silent otherwise,
+   so a stranger never sees an empty personalisation slot. #}
+{% if returning_guest %}
+<div class="g-wrap">
+  <p class="g-welcome">
+    <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
+    {% if returning_guest['last_room'] %}You stayed in {{ returning_guest['last_room'] }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}
+    <a href="{{ url_for('find_booking') }}">Your past stays</a>
+  </p>
+</div>
+{% endif %}
+
 
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
@@ -738,6 +743,44 @@
   </div>
 </div></section>
 
+
+
+
+<!-- ============ WHAT A NIGHT INCLUDES ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">In the Rate</p>
+  <h2 class="g-place">What a Night Actually Includes</h2>
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">Included</h3>
+      <ul class="g-ticks">
+        <li>Breakfast, cooked, not a buffet</li>
+        <li>The gardens, the pool and the tennis court</li>
+        <li>Wi-fi in the finished rooms</li>
+        <li>Parking on the gravel</li>
+        <li>Someone to meet you at the gates</li>
+      </ul>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Extra</h3>
+      <ul class="g-ticks g-ticks--no">
+        <li>Dinner at La Table — one sitting a night</li>
+        <li>Anything from the thirteen additions below</li>
+        <li>The taxe de séjour, charged per adult per night</li>
+        <li>Transfers from Toulouse</li>
+      </ul>
+    </div>
+  </div>
+  <p class="g-limit"><span class="g-limit__k">Ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class, and we would rather say so before you arrive.</p>
+</div></section>
+
+<!-- ============ COMPARE ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Deciding Between Two</p>
+  <h2 class="g-place">Side By Side</h2>
+  <p class="g-p">Five rooms, and most people are choosing between two of them. Put any two next to each other.</p>
+  {{ compare_rooms(rooms) }}
+</div></section>
 
 <!-- ============ KEY INFORMATION ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">

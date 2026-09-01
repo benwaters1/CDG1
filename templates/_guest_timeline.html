@@ -1,0 +1,65 @@
+{# ==========================================================================
+   WHAT HAPPENS NEXT — a dated timeline for a booking.
+   After booking a guest knows it is confirmed and nothing else. This puts
+   the deposit, the balance date, the arrival details and the stay itself on
+   one line so the "when do I pay?" email is never written.
+
+   Include it wherever a booking is in scope:
+       {% from '_guest_timeline.html' import timeline %}
+       {{ timeline(booking) }}
+
+   Every field is optional. A step whose date is unknown is shown as pending
+   rather than invented, and a step already past is marked done.
+   ========================================================================== #}
+{% macro timeline(b) %}
+{% set paid = b['payment_status'] == 'paid' %}
+{% set dep  = b['deposit_amount'] %}
+{% set bal  = b['balance_due'] %}
+<div class="g-timeline">
+  <p class="g-eyebrow">What Happens Next</p>
+  <ol class="g-timeline__l">
+
+    <li class="g-timeline__i is-done">
+      <span class="g-timeline__k">Booked</span>
+      <span class="g-timeline__v">
+        {% if b['created_at'] %}{{ b['created_at'][:10] }}{% else %}Confirmed{% endif %}
+        {% if dep %}· deposit of €{{ '%.0f'|format(dep) }} taken{% endif %}
+      </span>
+    </li>
+
+    <li class="g-timeline__i{% if paid or not bal %} is-done{% endif %}">
+      <span class="g-timeline__k">Balance</span>
+      <span class="g-timeline__v">
+        {% if paid or not bal %}
+          Paid in full — nothing further to settle.
+        {% else %}
+          €{{ '%.0f'|format(bal) }}, due
+          {% if b['balance_due_date'] %}{{ b['balance_due_date'][:10] }}{% else %}nearer the date{% endif %}.
+          You will get a link; nobody will ask for card details by email.
+        {% endif %}
+      </span>
+    </li>
+
+    <li class="g-timeline__i">
+      <span class="g-timeline__k">A week before</span>
+      <span class="g-timeline__v">Arrival details, directions and the dinner menu, by email.</span>
+    </li>
+
+    <li class="g-timeline__i">
+      <span class="g-timeline__k">Arrival</span>
+      <span class="g-timeline__v">
+        {% if b['arrival'] %}{{ b['arrival'][:10] }}{% endif %} from 4pm.
+        Someone will meet you at the gates.
+      </span>
+    </li>
+
+    <li class="g-timeline__i">
+      <span class="g-timeline__k">Departure</span>
+      <span class="g-timeline__v">
+        {% if b['departure'] %}{{ b['departure'][:10] }}{% endif %} by 11am.
+      </span>
+    </li>
+  </ol>
+  <p class="g-hint">Anything on this can be changed. Use the link in your confirmation email.</p>
+</div>
+{% endmacro %}

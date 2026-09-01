@@ -1,0 +1,35 @@
+{# ==========================================================================
+   THE NEXT FREE NIGHTS  — 2
+   "Check availability" asks a guest to guess. This shows the next open dates
+   without them having to.
+
+       {% from '_availability_strip.html' import next_free %}
+       {{ next_free(open_dates) }}
+
+   `open_dates` is a list of {date, nights, room_name, price} the route
+   already has the data for. Renders nothing when empty, so it is safe to
+   include before the query exists.
+   ========================================================================== #}
+{% macro next_free(dates) %}
+{% if dates %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Prochaines dates libres<span class="g-fr__en">The next free nights</span></p>
+  <p class="g-eyebrow">Without Guessing</p>
+  <h2 class="g-place">What Is Open Next</h2>
+  <p class="g-p">Rooms open one at a time, as the restoration reaches them. These are the next nights actually free.</p>
+
+  <ul class="g-nextf">
+    {% for d in dates[:6] %}
+    <li class="g-nextf__i">
+      <span class="g-nextf__d">{{ d['date'] }}</span>
+      <span class="g-nextf__r">{{ d['room_name'] }}</span>
+      <span class="g-nextf__n">{{ d['nights'] }} night{{ '' if d['nights'] == 1 else 's' }} free</span>
+      {% if d['price'] %}<span class="g-nextf__p">from €{{ '%.0f'|format(d['price']) }}</span>{% endif %}
+      <a class="g-btn" href="{{ url_for('book_rooms') }}?arrival={{ d['date_iso'] }}">Take these</a>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="g-hint">Summer and the ski weeks go furthest ahead. Spring and autumn are usually available at shorter notice.</p>
+</div></section>
+{% endif %}
+{% endmacro %}

@@ -149,6 +149,9 @@ FR = {
     "Manage a booking": "Gérer une réservation",
     "Stay the Night": "Passez la nuit",
     "Book": "Réserver",
+    # The quick-booking heading in public_base, which arrived with a design
+    # handover. A t() call with no entry renders the English on a French page.
+    "Check dates": "Vérifier les dates",
     "Display currency": "Devise d'affichage",
     "Currency": "Devise",
     "Language": "Langue",

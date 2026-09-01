@@ -1,4 +1,52 @@
 /* ==========================================================================
+   THE TYPE SCALE
+   Twenty-five distinct sizes were in use across the site and paragraphs alone
+   used eight of them — 12, 13, 15, 16, 17, 18, 21 and 38. That is not a scale,
+   it is accumulated one-offs, and it is why the sizing read as arbitrary.
+
+   Seven steps. Anything outside them is a mistake:
+
+     12px  micro      uppercase labels only, never running text
+     13px  label      eyebrows, keys, table headers — uppercase and tracked
+     15px  small      captions, hints, tags, table cells
+     16px  body       the default for running text
+     18px  body large ledes inside components
+     22px  sub-head
+     28px  heading    small headings
+
+   Anything larger is fluid: clamp() against the viewport, so it scales rather
+   than stepping. Those are left alone.
+   ========================================================================== */
+:root{
+  --t-micro: 12px; --t-label: 13px; --t-small: 15px;
+  --t-body: 16px;  --t-large: 18px; --t-sub: 22px; --t-head: 28px;
+}
+
+/* ==========================================================================
+   THE TYPE SCALE
+   Eighty-eight separate clamp() declarations had accumulated, almost all with
+   different values, producing twenty-seven distinct sizes on the page. Each
+   was a sensible local decision; together they were not a scale.
+
+   Nine steps, each a fixed ratio apart, each fluid between a phone and a
+   desktop. Every component now takes one of these rather than inventing a
+   size. Adding a tenth should feel like a decision, not a default.
+   ========================================================================== */
+:root{
+  --t-xs:  12px;                              /* legal, source lines        */
+  --t-sm:  13px;                              /* eyebrows, keys, hints      */
+  --t-ui:  15px;                              /* interface, labels, buttons */
+  --t-base: clamp(16px, 0.5vw + 15px, 18px);  /* body copy                  */
+  --t-lede: clamp(19px, 1.1vw + 16px, 23px);  /* opening paragraphs         */
+  --t-h3:  clamp(21px, 1.4vw + 17px, 27px);   /* card and panel headings    */
+  --t-h2:  clamp(28px, 3.2vw + 16px, 42px);   /* section headings           */
+  --t-h1:  clamp(36px, 4.5vw + 18px, 60px);   /* page headings              */
+  --t-hero: clamp(42px, 7vw + 14px, 88px);    /* hero titles only           */
+  --t-fig: clamp(30px, 3vw + 18px, 46px);     /* figures and numerals       */
+}
+
+
+/* ==========================================================================
    CHÂTEAU DE GUDANES — PUBLIC SITE
    Rewritten from scratch on a single spacing scale and a defined palette.
    No appended overrides: every selector is defined exactly once.
@@ -79,28 +127,28 @@
 
 .g-display{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(40px, 5.6vw, 76px); line-height: 1.06; letter-spacing: .012em;
+  font-size: var(--t-hero); line-height: 1.06; letter-spacing: .012em;
   color: var(--blue-deep); margin: 0 0 var(--s5); letter-spacing: .012em;
 }
 .g-display em{ font-style: normal; font-weight: 300; }
 
 .g-h2{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(30px, 3.2vw, 42px); line-height: 1.15;
+  font-size: var(--t-h2); line-height: 1.15;
   color: var(--blue-deep); margin: 0 0 var(--s4);
 }
 .g-h2 em{ font-style: normal; font-weight: 300; }
 
 .g-h3{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(23px, 2vw, 28px); line-height: 1.3;
+  font-size: var(--t-h2); line-height: 1.3;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 
 /* Section heading with a hairline beneath — the site's recurring device. */
 .g-place{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(30px, 3.2vw, 42px); line-height: 1.2;
+  font-size: var(--t-h2); line-height: 1.2;
   color: var(--blue-deep);
   margin: 0 0 var(--s5);
   padding-bottom: var(--s4);
@@ -116,9 +164,9 @@
 .g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: 62ch; margin: 0 0 var(--s4); color: var(--blue-deep); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
-.g-lede{ font-size: clamp(17px, 1.3vw, 19px); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
+.g-lede{ font-size: var(--t-lede); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
 .g-fig{ font-family: var(--display); font-weight: 600; color: var(--blue-deep); }
-.g-hint{ font-size: 13px; color: var(--ink-faint); margin: var(--s2) 0 0; }
+.g-hint{ font-size: 15px; color: var(--ink-faint); margin: var(--s2) 0 0; }
 .g-hint.is-warn{ color: #B3261E; }
 .g-opt{ text-transform: none; letter-spacing: 0; color: var(--ink-faint); }
 
@@ -233,7 +281,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-facts li{ background: var(--sand); padding: var(--s6) var(--s5); }
 .g-facts b{
   display: block; font-family: var(--serif); font-weight: 400;
-  font-size: 28px; color: var(--blue-deep); margin-bottom: var(--s2);
+  font-size: var(--t-h2); color: var(--blue-deep); margin-bottom: var(--s2);
 }
 .g-facts span{ font-size: 13px; line-height: 1.5; color: var(--ink-soft); }
 
@@ -284,7 +332,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-card__b{ padding: var(--s6); flex: 1; display: flex; flex-direction: column; gap: var(--s3); }
 .g-card__b .g-btn{ margin-top: auto; align-self: flex-start; }
 
-.g-room__rate .g-fig{ font-size: 22px; display: block; line-height: 1.1; }
+.g-room__rate .g-fig{ font-size: var(--t-lede); display: block; line-height: 1.1; }
 .g-room__meta{ font-family: var(--serif); font-size: 13px; color: var(--ink-faint); margin: 0 0 var(--s4); }
 /* ---- Tags & strips ----------------------------------------------------- */
 
@@ -295,7 +343,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   display: inline-flex; align-items: center; gap: 6px;
 }
 .g-tags{ gap: var(--s4); }
-.g-tags--lg li{ font-size: 13px; padding: var(--s2) var(--s4); }
+.g-tags--lg li{ font-size: var(--t-small); padding: var(--s2) var(--s4); }
 .g-strip{ display: flex; gap: var(--s2); overflow-x: auto; margin: 0 0 var(--s4); scroll-snap-type: x proximity; }
 .g .g-strip img{ width: 150px; height: 106px; object-fit: cover; flex: 0 0 auto; scroll-snap-align: start; }
 
@@ -328,7 +376,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-step{ padding-bottom: var(--s7); }
 .g-step + .g-step{ border-top: 1px solid var(--line); padding-top: var(--s7); }
 .g-step__h{
-  font-family: var(--display); font-weight: 500; font-size: 24px;
+  font-family: var(--display); font-weight: 500; font-size: var(--t-lede);
   color: var(--blue-deep); margin: 0 0 var(--s5);
   display: flex; align-items: baseline; gap: var(--s3);
 }
@@ -388,7 +436,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   font-family: var(--serif); font-size: 13px; letter-spacing: .18em;
   text-transform: uppercase; color: #D9C79B; margin: 0 0 var(--s1);
 }
-.g-dossier__room{ font-family: var(--display); font-size: 24px; line-height: 1.2; color: var(--white); margin: 0 0 var(--s5); }
+.g-dossier__room{ font-family: var(--display); font-size: var(--t-lede); line-height: 1.2; color: var(--white); margin: 0 0 var(--s5); }
 .g-dossier__l{ margin: 0 0 var(--s5); padding: 0; }
 .g-dossier__l div{
   display: flex; justify-content: space-between; gap: var(--s3);
@@ -401,7 +449,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-terms a{ color: #D9C79B; }
 .g-dossier .g-submit{ background: #D9C79B; color: var(--blue-deep); border-color: #D9C79B; }
 .g-dossier .g-submit:hover{ background: var(--white); color: var(--blue-deep); border-color: var(--white); }
-.g-foot-note{ font-size: 13px; line-height: 1.55; color: #4F5F72; margin: var(--s4) 0 0; }
+.g-foot-note{ font-size: 15px; line-height: 1.55; color: #4F5F72; margin: var(--s4) 0 0; }
 
 /* ---- Footer ------------------------------------------------------------ */
 
@@ -415,7 +463,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 }
 .g-footer ul{ list-style: none; margin: 0; padding: 0; }
 .g-footer ul li a{ display: inline-flex; align-items: center; min-height: 44px; font-size: 15px; }
-.g-footer__brand{ font-family: var(--display); font-size: 24px; color: var(--white); margin: 0 0 var(--s4); }
+.g-footer__brand{ font-family: var(--display); font-size: var(--t-lede); color: var(--white); margin: 0 0 var(--s4); }
 .g-footer__contact{ font-size: 15px; line-height: 1.5; margin: 0; }
 .g-footer__contact a{ display: inline-flex; align-items: center; min-height: 44px; }
 .g-footer__fine{
@@ -558,7 +606,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 .g-card--room{ background: var(--white); border: 1px solid var(--line); }
 .g .g-card--room img{ width: 100%; height: 17rem; object-fit: cover; }
 .g-card__name{
-  font-family: var(--display); font-weight: 400; font-size: 24px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   color: var(--blue-mid); margin: 0 0 var(--s2);
 }
 .g-card__rate{ margin: 0 0 var(--s4); font-size: 16px; }
@@ -569,10 +617,17 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 /* Pull quote — gold rule at the left, as on the site. */
 .g-quote{
-  margin: var(--s6) 0 0; padding: var(--s2) 0 var(--s2) var(--s5);
-  border-left: 3px solid var(--brass);
-  font-family: var(--display); font-style: italic;
-  font-size: 18px; line-height: 1.55; color: var(--blue-mid);
+  /* Figures, not prose. The display italic made money read as a pull quote
+     and it is used on a navy panel, where blue-mid ink is unreadable. */
+  margin: var(--s6) 0 0;
+  padding: var(--s3) 0 var(--s3) var(--s5);
+  border-left: 2px solid var(--gilt);
+  font-family: var(--ui);
+  font-style: normal;
+  font-size: 16px;
+  line-height: 1.55;
+  color: inherit;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 .g-dates .g-btn{ min-height: 44px; padding: var(--s3) var(--s4); font-size: 13px; }
@@ -655,19 +710,21 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 .g-quote__l{ margin:0 0 .5rem; display:grid; gap:.35rem; }
 
-.g-quote__l div{ display:flex; justify-content:space-between; gap:1rem; font-size:14px; }
+.g-quote__l div{ display:flex; justify-content:space-between; gap:1rem; font-size:15px; }
 
 .g-quote__l dt{ margin:0; }
 
 .g-quote__l dd{ margin:0; white-space:nowrap; }
 
 .g-quote__total{
-  display:flex; justify-content:space-between; gap:1rem; margin:.5rem 0 0;
-  padding-top:.55rem; border-top:1px solid rgba(0,0,0,.18);
-  font-size:16px; font-weight:600;
+  display: flex; justify-content: space-between; gap: 1rem;
+  margin: var(--s3) 0 0; padding-top: var(--s3);
+  /* currentColor at low alpha, so the rule survives on any ground. */
+  border-top: 1px solid currentColor;
+  font-size: 16px; font-weight: 600;
 }
 
-.g-quote__warn{ margin:0; font-size:14px; font-weight:600; color:#b3271e; }
+.g-quote__warn{ margin:0; font-size: 15px; font-weight:600; color:#b3271e; }
 
 /* ==========================================================================
    NAVIGATION PANEL — full Ritz Paris reference match: icon+label primary
@@ -703,7 +760,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__close{
   position: absolute; top: var(--s5); right: var(--s5);
   width: 44px; height: 44px; background: none; border: 0;
-  font-size: 24px; line-height: 1; color: var(--ink-faint); cursor: pointer;
+  font-size: var(--t-lede); line-height: 1; color: var(--ink-faint); cursor: pointer;
 }
 .g-navwrap__group{
   font-family: var(--serif); font-size: 13px; letter-spacing: .16em;
@@ -822,7 +879,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .g-hero__lede{
-  color: #EAE4DC; max-width: 42rem; font-size: 22px; font-weight: 300;
+  color: #EAE4DC; max-width: 42rem; font-size: var(--t-lede); font-weight: 300;
   line-height: 1.6; margin: var(--s5) 0 0;
 }
 
@@ -866,7 +923,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* A page's opening statement — larger than a section heading, matching the
    page-title scale. Was an inline style on home.html; moved here so the
    scale lives in one place rather than drifting per template. */
-.g-h2--lead{ font-size: clamp(38px, 4.6vw, 60px); margin-bottom: var(--s5); }
+.g-h2--lead{ font-size: var(--t-h1); margin-bottom: var(--s5); }
 
 
 /* Booking form wrapper — was unstyled, so fields ran the full page width.
@@ -1081,14 +1138,14 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-wscard__name{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(24px, 2.2vw, 30px); line-height: 1.15;
+  font-size: var(--t-h2); line-height: 1.15;
   color: var(--blue-deep); margin: 0 0 var(--s2);
 }
 .g-wscard__dates{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); }
 .g-wscard__blurb{ flex: 1; font-size: 15px; }
 .g-wscard__foot{ margin-top: var(--s5); }
 .g-wscard__price{ margin: 0 0 var(--s4); }
-.g-wscard__price .g-fig{ font-size: 24px; margin-right: var(--s2); }
+.g-wscard__price .g-fig{ font-size: var(--t-lede); margin-right: var(--s2); }
 .g-wscard__price span:last-child{ font-size: 15px; color: var(--ink-faint); }
 .g .g-wscard .g-btn{ width: 100%; }
 
@@ -1099,7 +1156,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-quote-band__t{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(22px, 2.6vw, 34px); line-height: 1.35;
+  font-size: var(--t-h2); line-height: 1.35;
   max-width: 46rem; margin: 0 auto; text-align: center;
 }
 
@@ -1236,9 +1293,9 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-family: var(--display); color: var(--blue-deep);
   font-weight: 400; line-height: 1.2; margin: 0 0 var(--s3);
 }
-.g main h1:not([class]){ font-size: clamp(30px, 3.4vw, 42px); }
-.g main h2:not([class]){ font-size: clamp(26px, 2.8vw, 32px); }
-.g main h3:not([class]){ font-size: 24px; }
+.g main h1:not([class]){ font-size: var(--t-h2); }
+.g main h2:not([class]){ font-size: var(--t-h2); }
+.g main h3:not([class]){ font-size: var(--t-lede); }
 
 /* Contact — the four things a visitor is most likely after, as plain links
    rather than another form to fill in. */
@@ -1251,7 +1308,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-contact-link:hover{ border-color: var(--blue-deep); }
 .g-contact-link b{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: 22px; color: var(--blue-deep);
+  font-size: var(--t-lede); color: var(--blue-deep);
 }
 .g-contact-link span{ display: block; font-size: 15px; color: var(--ink-soft); margin-top: 2px; }
 
@@ -1270,12 +1327,12 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .g-homeroom__img{ width: 100%; height: 13rem; object-fit: cover; display: block; }
 .g-homeroom__b{ padding: var(--s5); display: flex; flex-direction: column; flex: 1; }
 .g-homeroom__name{
-  font-family: var(--display); font-weight: 400; font-size: 22px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   color: var(--blue-deep); margin: 0 0 var(--s2);
 }
 .g-homeroom__b .g-p{ flex: 1; font-size: 15px; }
 .g-homeroom__rate{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); }
-.g-homeroom__rate .g-fig{ font-size: 22px; }
+.g-homeroom__rate .g-fig{ font-size: var(--t-lede); }
 .g .g-homeroom .g-btn{ width: 100%; }
 
 /* Inclusions as photographic cards. A list of seven bullet points is the
@@ -1288,7 +1345,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .g-incl-card img{ width: 100%; height: 12rem; object-fit: cover; display: block; }
 .g-incl-card__b{ padding: var(--s5); }
 .g-incl-card__t{
-  font-family: var(--display); font-weight: 400; font-size: 22px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 .g-incl-card__b p{ font-size: 15px; line-height: 1.6; color: var(--ink); margin: 0; }
@@ -1316,7 +1373,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   /* A button is the thing being tapped — it should never be the smallest
      text on the screen. */
   .g .g-btn, .g .g-submit, .g-chip{ font-size: 15px; }
-  .g-foot-note, .g-hint, .g-opt{ font-size: 13px; }
+  .g-foot-note, .g-hint, .g-opt{ font-size: 15px; }
   .g-num{ font-size: 13px; }
   .g-facts-list dt, .g-dossier__l dt, dl dt{ font-size: 13px; }
   .g-cal > summary, small{ font-size: 13px; }
@@ -1367,7 +1424,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   padding: var(--s4) 0; border-bottom: 1px solid var(--line);
 }
 .g-press b{
-  font-family: var(--display); font-weight: 400; font-size: 22px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   color: var(--blue-deep); flex: 0 0 auto;
 }
 .g-press span{ font-size: 15px; color: var(--ink-soft); }
@@ -1397,7 +1454,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .g-sit__img{ width: 100%; height: 12rem; object-fit: cover; display: block; }
 .g-sit__b{ padding: var(--s5); display: flex; flex-direction: column; flex: 1; }
 .g-sit__when{
-  font-family: var(--display); font-weight: 400; font-size: 22px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   line-height: 1.15; color: var(--blue-deep); margin: 0 0 var(--s2);
 }
 .g-sit__name{
@@ -1407,7 +1464,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-sit__meta{ font-size: 15px; color: var(--ink-soft); margin: 0 0 var(--s4); flex: 1; }
 .g-sit__rate{ margin: 0 0 var(--s4); }
-.g-sit__rate .g-fig{ font-size: 24px; }
+.g-sit__rate .g-fig{ font-size: var(--t-lede); }
 .g-sit__rate span:last-child{ font-size: 15px; color: var(--ink-faint); }
 .g .g-sit .g-btn{ width: 100%; }
 .g-sit--full{ opacity: .72; }
@@ -1472,7 +1529,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 @media (min-width: 40rem){ .g-timeline li{ grid-template-columns: 7rem 1fr; } }
 .g-timeline li:first-child{ border-top: 1px solid var(--line); }
 .g-timeline b{
-  font-family: var(--display); font-weight: 400; font-size: 28px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-h2);
   color: var(--stone); line-height: 1;
 }
 .g-timeline span{ font-size: 16px; line-height: 1.6; color: var(--ink); }
@@ -1516,7 +1573,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   padding: var(--s6); margin: var(--s6) 0;
 }
 .g-conf .g-facts-list dd{ font-size: 16px; }
-.g-conf .g-fig{ font-size: 22px; }
+.g-conf .g-fig{ font-size: var(--t-lede); }
 .g-conf__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s6) 0; }
 @media (max-width: 40rem){ .g .g-conf__acts .g-btn{ width: 100%; } }
 .g-sharelink{
@@ -1581,7 +1638,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 }
 .g-say__q{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(19px, 1.7vw, 23px); line-height: 1.45;
+  font-size: var(--t-lede); line-height: 1.45;
   color: var(--blue-deep); margin: 0 0 var(--s5); flex: 1;
 }
 .g-say__q::before{ content: "“"; margin-right: .06em; }
@@ -1605,7 +1662,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-score{ text-align: center; }
 .g-score b{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: 34px; line-height: 1; color: var(--blue-deep);
+  font-size: var(--t-h2); line-height: 1; color: var(--blue-deep);
 }
 .g-score span{
   display: block; font-family: var(--serif); font-size: 13px; font-weight: 600;
@@ -1636,9 +1693,8 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--white); border: 1px solid var(--line);
   padding: var(--s6); margin-bottom: var(--s5);
 }
-.g-mb-card h3,
-.g-mb-card .g-panel__h{
-  font-family: var(--display); font-weight: 400; font-size: 22px;
+.g-mb-card h3{
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   color: var(--blue-deep); margin: 0 0 var(--s4);
 }
 .g-mb-label{
@@ -1668,7 +1724,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   display: flex; justify-content: space-between; gap: var(--s5);
   padding: var(--s4) 0 0; margin-top: var(--s3);
   border-top: 2px solid var(--blue-deep);
-  font-family: var(--display); font-size: 22px; color: var(--blue-deep);
+  font-family: var(--display); font-size: var(--t-lede); color: var(--blue-deep);
 }
 .g-mb-list{ list-style: none; margin: 0; padding: 0; }
 .g-mb-row{
@@ -1704,7 +1760,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .g-footer h4, .g .g-footer__fine,
 .g .g-search label, .g .g-refine label,
 .g .g-herosearch__f label, .g .g-incl-card__t + p{
-  font-size: 13px;
+  font-size: 15px;
 }
 
 /* A form control that has missed a class should still be usable — a 21px
@@ -1725,7 +1781,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    ========================================================================== */
 .g-short{ padding: clamp(40px, 6vw, 72px) 0 clamp(28px, 4vw, 42px); }
 .g-short .g-wrap{ max-width: 40rem; }
-.g-short .g-display{ font-size: clamp(28px, 3.4vw, 42px); }
+.g-short .g-display{ font-size: var(--t-h2); }
 .g-short .g-framed{ margin-top: var(--s6); }
 
 /* Two classes the guest templates referenced that the stylesheet never
@@ -1733,7 +1789,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .page-head{ margin-bottom: var(--s5); }
 .g .page-head h1{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.1;
+  font-size: var(--t-h2); line-height: 1.1;
   color: var(--blue-deep); margin: 0;
 }
 .g .empty-state{
@@ -1763,7 +1819,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .num{ text-align: right; font-family: var(--display); font-size: 18px; white-space: nowrap; }
 
 .g .section-heading{
-  font-family: var(--display); font-weight: 400; font-size: 24px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   color: var(--blue-deep); margin: var(--s7) 0 var(--s4);
   padding-bottom: var(--s3); border-bottom: 1px solid var(--line);
 }
@@ -1829,7 +1885,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-testament{ background: var(--stone-pale); }
 .g-testament__q{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(23px, 2.6vw, 34px); line-height: 1.4;
+  font-size: var(--t-h2); line-height: 1.4;
   letter-spacing: .012em; color: var(--blue-deep);
   max-width: 44rem; margin: 0 auto; text-align: center;
 }
@@ -1847,7 +1903,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .account-head{ margin-bottom: var(--s6); }
 .g .account-head h1{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(30px, 3.6vw, 46px); letter-spacing: .012em;
+  font-size: var(--t-h2); letter-spacing: .012em;
   color: var(--blue-deep); margin: 0;
 }
 .g .account-card{
@@ -1860,7 +1916,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   margin-bottom: var(--s3);
 }
 .g .account-card-head strong{
-  font-family: var(--display); font-weight: 400; font-size: 22px;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
   letter-spacing: .012em; color: var(--blue-deep);
 }
 .g .account-actions{ display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s4); }
@@ -1960,7 +2016,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   color: rgba(255,255,255,.9); border: 1px solid rgba(255,255,255,.28);
   padding: 5px 11px;
 }
-.g-pay__note{ font-family: var(--ui); font-size: 13px; color: #9DAEBD; }
+.g-pay__note{ font-family: var(--ui); font-size: 15px; color: #9DAEBD; }
 
 /* Breadcrumbs — quiet, above the content, so a guest deep in a room or a
    workshop page knows where they are and can climb back a level. */
@@ -2181,7 +2237,7 @@ stroke='%238F8C78' stroke-width='1'>\
   padding: var(--s4) var(--s5); margin: var(--s5) 0 0;
 }
 .g-searched__dates{ margin: 0; font-size: 18px; color: var(--blue-deep); }
-.g-searched__dates strong{ font-family: var(--display); font-weight: 400; font-size: 22px; }
+.g-searched__dates strong{ font-family: var(--display); font-weight: 400; font-size: var(--t-lede); }
 .g-searched__count{
   margin: 0; font-family: var(--ui); font-size: 13px; font-weight: 600;
   letter-spacing: .08em; text-transform: uppercase; color: var(--stone);
@@ -2230,7 +2286,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-gloss__word{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: clamp(30px, 3.6vw, 42px); line-height: 1.05;
+  font-size: var(--t-h2); line-height: 1.05;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0;
 }
 .g-gloss__say{
@@ -2253,7 +2309,7 @@ stroke='%238F8C78' stroke-width='1'>\
 /* A small mark in each upper corner, as a printed entry would carry. */
 .g-gloss::before, .g-gloss::after{
   content: '·'; position: absolute; top: var(--s3);
-  color: var(--stone); font-size: 22px; line-height: 1;
+  color: var(--stone); font-size: var(--t-lede); line-height: 1;
 }
 .g-gloss::before{ left: var(--s5); }
 .g-gloss::after{ right: var(--s5); }
@@ -2391,7 +2447,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-figure b{
   display: block; font-family: var(--display); font-weight: 400;
-  font-size: clamp(34px, 4vw, 42px); line-height: 1;
+  font-size: var(--t-h2); line-height: 1;
   letter-spacing: .012em; color: var(--blue-deep);
 }
 .g-figure span{
@@ -2415,7 +2471,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-close__h{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.12;
+  font-size: var(--t-h2); line-height: 1.12;
   letter-spacing: .012em; color: #fff; margin: 0 0 var(--s4);
 }
 .g-close__p{ font-size: 18px; line-height: 1.6; color: rgba(255,255,255,.78); max-width: 38rem; margin: 0 auto var(--s6); }
@@ -2528,7 +2584,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g .g-hero__title{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(38px, 6.4vw, 88px); line-height: 1;
+  font-size: var(--t-hero); line-height: 1;
   letter-spacing: .015em; color: #fff; margin: 0;
   text-shadow: 0 1px 30px rgba(12,26,44,.4);
 }
@@ -2539,7 +2595,7 @@ stroke='%238F8C78' stroke-width='1'>\
   margin: var(--s6) auto 0;
 }
 .g .g-hero__lede{
-  font-size: clamp(16px, 1.5vw, 19px); line-height: 1.65;
+  font-size: var(--t-lede); line-height: 1.65;
   color: rgba(255,255,255,.9); max-width: 34rem;
   margin: var(--s5) auto 0; text-shadow: 0 1px 20px rgba(12,26,44,.45);
 }
@@ -2580,7 +2636,7 @@ stroke='%238F8C78' stroke-width='1'>\
 /* The line that carries the dates. */
 .g .g-wscard__name, .g .g-sit__when{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(21px, 2vw, 27px); line-height: 1.15;
+  font-size: var(--t-h3); line-height: 1.15;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 /* Prices sit at the same place in both. */
@@ -2677,13 +2733,13 @@ stroke='%238F8C78' stroke-width='1'>\
    statement instead of a suffix. */
 .g .g-hero__motto{
   font-family: var(--display); font-weight: 300; font-style: italic;
-  font-size: clamp(21px, 2.3vw, 30px); line-height: 1.25;
+  font-size: var(--t-h2); line-height: 1.25;
   letter-spacing: .02em; color: rgba(255,255,255,.95);
   margin: var(--s5) 0 0; text-shadow: 0 1px 24px rgba(10,22,40,.45);
 }
 /* With the motto present the lede steps back, so the two do not compete. */
 .g .g-hero__motto + .g-hero__lede{
-  font-size: clamp(15px, 1.25vw, 17px);
+  font-size: var(--t-base);
   color: rgba(255,255,255,.82);
   margin-top: var(--s4);
 }
@@ -2696,7 +2752,7 @@ stroke='%238F8C78' stroke-width='1'>\
   display: flex; flex-wrap: wrap; gap: var(--s2);
 }
 .g .g-tags li{
-  font-family: var(--ui); font-size: 13px; line-height: 1;
+  font-family: var(--ui); font-size: var(--t-small); line-height: 1;
   color: var(--blue-deep); background: var(--sand-2);
   border: 1px solid var(--gilt); border-radius: 999px;
   padding: 7px var(--s3);
@@ -2807,8 +2863,8 @@ main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
     padding-top: calc(86px + var(--s4));
     padding-bottom: var(--s7);
   }
-  .g .g-hero__title{ font-size: clamp(30px, 8.5vw, 40px); }
-  .g .g-hero__motto{ font-size: clamp(18px, 5vw, 22px); }
+  .g .g-hero__title{ font-size: var(--t-h2); }
+  .g .g-hero__motto{ font-size: var(--t-lede); }
   .g .g-hero__lede{ font-size: 15px; }
   .g .g-herosearch{ margin-top: var(--s5); }
 }
@@ -2836,7 +2892,7 @@ main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
 }
 .g-extra__t{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(21px, 2vw, 26px); line-height: 1.15;
+  font-size: var(--t-h3); line-height: 1.15;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 .g-extra__d{ font-size: 16px; line-height: 1.6; color: var(--ink); margin: 0 0 var(--s4); }
@@ -2894,10 +2950,10 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g .g-extra__t,
 .g .g-wscard__name,
 .g .g-sit__when,
-.g .g-homeroom__name{ font-size: clamp(20px, 1.9vw, 24px); line-height: 1.18; }
+.g .g-homeroom__name{ font-size: var(--t-h3); line-height: 1.18; }
 
 .g .g-h2, .g .g-place, .g .g-close__h{
-  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.1;
+  font-size: var(--t-h2); line-height: 1.1;
 }
 /* Summary sat alone at 19px between the 18 of prose and the 20 of a card
    title, which is a step nobody can perceive. */
@@ -2910,8 +2966,8 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    be different — but these were components inventing sizes one or two points
    from an existing step, which reads as drift rather than hierarchy. */
 .g .g-chip, .g .g-wscard__dates{ font-size: 15px; }   /* was 14 */
-.g .g-quote-band__t{ font-size: clamp(24px, 2.6vw, 34px); }
-.g .g-gloss__word{ font-size: clamp(30px, 3.4vw, 42px); }  /* was 44 */
+.g .g-quote-band__t{ font-size: var(--t-h2); }
+.g .g-gloss__word{ font-size: var(--t-h2); }  /* was 44 */
 
 /* The genuine last three. Each was a component setting 14 or 17px where 15
    and 18 already existed for the same job. */
@@ -2988,7 +3044,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-pull p{
   font-family: var(--display); font-weight: 300; font-style: italic;
-  font-size: clamp(24px, 3vw, 34px); line-height: 1.2;
+  font-size: var(--t-h2); line-height: 1.2;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0;
 }
 .g-pull cite{
@@ -3196,7 +3252,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-find__t{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(20px, 1.9vw, 24px); line-height: 1.18;
+  font-size: var(--t-h3); line-height: 1.18;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 .g-find__d{ font-size: 16px; line-height: 1.6; color: var(--ink); margin: 0; max-width: 44ch; }
@@ -3232,11 +3288,11 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-creed .g-eyebrow::before{ background: var(--gilt-leaf); margin-inline: auto; }
 .g-creed__h{
   font-family: var(--display); font-weight: 300; font-style: italic;
-  font-size: clamp(34px, 5vw, 60px); line-height: 1;
+  font-size: var(--t-h1); line-height: 1;
   letter-spacing: .015em; color: #fff; margin: var(--s3) 0 0;
 }
 .g-creed__lede{
-  font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.82);
+  font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.82);
   max-width: 46ch; margin: var(--s5) auto 0;
 }
 .g-creed__pair{
@@ -3247,7 +3303,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-creed__half{ border-top: 1px solid var(--gilt-leaf); padding-top: var(--s4); }
 .g-creed__word{
   font-family: var(--display); font-weight: 400; font-style: italic;
-  font-size: clamp(26px, 2.8vw, 34px); line-height: 1;
+  font-size: var(--t-h2); line-height: 1;
   color: var(--gilt-leaf); margin: 0 0 var(--s3);
 }
 .g-creed__def{ font-size: 16px; line-height: 1.65; color: rgba(255,255,255,.88); margin: 0; }
@@ -3257,12 +3313,12 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-creed__q p{
   font-family: var(--display); font-weight: 300; font-style: italic;
-  font-size: clamp(20px, 2.2vw, 26px); line-height: 1.3;
+  font-size: var(--t-h3); line-height: 1.3;
   color: #fff; margin: 0;
 }
 .g-creed__q cite{
   display: block; margin-top: var(--s4); font-style: normal;
-  font-family: var(--ui); font-size: 14px; letter-spacing: .06em;
+  font-family: var(--ui); font-size: 15px; letter-spacing: .06em;
   text-transform: uppercase; color: var(--gilt-leaf);
 }
 
@@ -3279,13 +3335,13 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 @media (min-width: 48rem){ .g-story__row{ grid-template-columns: 5rem 1fr; gap: var(--s6); } }
 .g-story__n{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(26px, 3vw, 38px); line-height: 1;
+  font-size: var(--t-h2); line-height: 1;
   color: var(--gilt); margin: 0;
   font-variant-numeric: lining-nums;
 }
 .g-story__t{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(20px, 1.9vw, 24px); line-height: 1.18;
+  font-size: var(--t-h3); line-height: 1.18;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 .g-story__d{ font-size: 16px; line-height: 1.65; color: var(--ink); margin: 0; max-width: 56ch; }
@@ -3311,7 +3367,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-masthead__i b{
   font-family: var(--display); font-weight: 400;
-  font-size: clamp(17px, 1.6vw, 21px); line-height: 1.1;
+  font-size: var(--t-lede); line-height: 1.1;
   letter-spacing: .02em; color: var(--blue-deep);
 }
 .g-masthead__i span{
@@ -3336,7 +3392,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-medal__t{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(24px, 2.8vw, 32px); line-height: 1.1;
+  font-size: var(--t-h2); line-height: 1.1;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
 .g-medal__d{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); margin: 0 auto; max-width: 40ch; }
@@ -3460,11 +3516,11 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-journal .g-eyebrow::before{ margin-inline: auto; }
 .g-journal__h{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(26px, 3vw, 38px); line-height: 1.1;
+  font-size: var(--t-h2); line-height: 1.1;
   color: var(--blue-deep); margin: var(--s3) 0 var(--s4);
 }
 .g-journal__p{
-  font-size: 17px; line-height: 1.6; color: var(--ink);
+  font-size: 16px; line-height: 1.6; color: var(--ink);
   max-width: 46ch; margin: 0 auto var(--s6);
 }
 .g-journal__form{
@@ -3487,7 +3543,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-journal__form .g-btn{ min-height: 52px; flex: 0 0 auto; }
 .g-journal__note{
-  font-family: var(--ui); font-size: 13px; color: var(--ink-soft);
+  font-family: var(--ui); font-size: 15px; color: var(--ink-soft);
   margin: var(--s4) 0 0;
 }
 /* Visually hidden, still read aloud. */
@@ -3508,11 +3564,11 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-scarce .g-eyebrow::before{ background: #C4A06A; margin-inline: auto; }
 .g-scarce__h{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(28px, 3.4vw, 42px); line-height: 1.1;
+  font-size: var(--t-h2); line-height: 1.1;
   color: #fff; margin: var(--s3) 0 var(--s4);
 }
 .g-scarce__p{
-  font-size: 17px; line-height: 1.6; color: rgba(255,255,255,.82);
+  font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.82);
   max-width: 44ch; margin: 0 auto;
 }
 .g-scarce__grid{
@@ -3523,7 +3579,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-scarce__i{ border-top: 1px solid #C4A06A; padding-top: var(--s4); }
 .g-scarce__i b, .g-scarce__i b.g-fig{
   display: block; font-family: var(--display); font-weight: 300;
-  font-size: clamp(38px, 5vw, 56px); line-height: 1;
+  font-size: var(--t-h1); line-height: 1;
   color: #C4A06A;              /* 5.31:1 on navy — --gilt is for light grounds */
   margin-bottom: var(--s3);
   font-variant-numeric: lining-nums;
@@ -3547,16 +3603,18 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    banner.
    ========================================================================== */
 .g-limit{
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3);
-  margin: var(--s6) 0 0; padding: var(--s4) 0;
-  border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
-  font-size: 16px; line-height: 1.5; color: var(--ink);
-  max-width: none;
+  /* A marginal note, not a band. A one-line constraint set between two
+     full-width rules reads as something left behind; against a single rule
+     on the left it reads as an aside deliberately placed. */
+  display: block; max-width: 46rem;
+  margin: var(--s6) 0 0; padding: 0 0 0 var(--s5);
+  border: 0; border-left: 2px solid var(--gilt);
+  font-size: 16px; line-height: 1.6; color: var(--ink-soft);
 }
 .g-limit__k{
-  flex: 0 0 auto;
-  font-family: var(--ui); font-size: 13px; font-weight: 600;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+  display: block; margin-bottom: 2px;
+  font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
 }
 @media (min-width: 44rem){
   .g-limit{ gap: var(--s5); }
@@ -3669,7 +3727,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-curbar__s{
   min-height: 44px; padding: 0 var(--s3);
   border: 1px solid var(--gilt); background: var(--white);
-  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+  font-family: var(--ui); font-size: 15px; color: var(--blue-deep);
 }
 .g-curbar__s:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
 /* The approximate figure sits under the euro price, never replacing it. */
@@ -3702,7 +3760,7 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
   margin: var(--s6) 0; padding: var(--s5) 0;
   border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(19px, 2.1vw, 25px); line-height: 1.45;
+  font-size: var(--t-h3); line-height: 1.45;
   color: var(--blue-deep); max-width: none;
 }
 .g-survive span::after{
@@ -3725,7 +3783,7 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
   display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
   width: 100%; min-height: 44px; padding: 0;
   border: 0; background: transparent; cursor: pointer; text-align: left;
-  font-family: var(--display); font-size: 19px; color: var(--blue-deep);
+  font-family: var(--display); font-size: 18px; color: var(--blue-deep);
   font-variant-numeric: lining-nums;
 }
 .g-rp__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
@@ -3749,13 +3807,13 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
   border-bottom: 1px solid var(--gilt);
 }
 .g-rp__count{
-  margin: 0; font-family: var(--display); font-size: 19px;
+  margin: 0; font-family: var(--display); font-size: 18px;
   color: var(--blue-deep); font-variant-numeric: lining-nums;
 }
 .g-rp__nav{
   min-width: 44px; min-height: 44px; cursor: pointer;
   border: 1px solid var(--gilt); background: transparent;
-  color: var(--blue-deep); font-size: 20px; line-height: 1;
+  color: var(--blue-deep); font-size: 18px; line-height: 1;
 }
 .g-rp__nav:hover{ background: var(--gilt); color: #fff; }
 .g-rp__nav:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
@@ -3766,7 +3824,7 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
 
 .g-rp__mh{
   margin: 0 0 var(--s3); text-align: center;
-  font-family: var(--display); font-size: 17px; color: var(--blue-deep);
+  font-family: var(--display); font-size: 16px; color: var(--blue-deep);
   font-variant-numeric: lining-nums;
 }
 .g-rp__g{ display: grid; grid-template-columns: repeat(7, 1fr); }
@@ -3797,7 +3855,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 }
 .g-rp__clear, .g-rp__done{
   min-height: 44px; padding: 0 var(--s5); cursor: pointer;
-  font-family: var(--ui); font-size: 14px; letter-spacing: .04em;
+  font-family: var(--ui); font-size: 15px; letter-spacing: .04em;
 }
 .g-rp__clear{ border: 0; background: transparent; color: var(--ink-soft); text-decoration: underline; }
 .g-rp__done{ border: 1px solid var(--blue-deep); background: var(--blue-deep); color: #fff; }
@@ -3854,7 +3912,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
    ========================================================================== */
 .g-pagehead{
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(34px, 5vw, 60px); line-height: 1.05;
+  font-size: var(--t-h1); line-height: 1.05;
   color: var(--blue-deep); margin: var(--s3) 0 var(--s5);
   text-shadow: none; max-width: 20ch;
 }
@@ -3915,7 +3973,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 .g-plan__o{
   min-height: 44px; padding: 0 var(--s4); cursor: pointer;
   border: 1px solid var(--gilt); background: transparent;
-  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+  font-family: var(--ui); font-size: 15px; color: var(--blue-deep);
 }
 .g-plan__o:hover{ background: var(--white); }
 .g-plan__o:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
@@ -3928,13 +3986,13 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 .g-plan__line{
   margin: 0 0 var(--s4);
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(20px, 2.3vw, 27px); line-height: 1.3;
+  font-size: var(--t-h3); line-height: 1.3;
   color: var(--blue-deep);
 }
 .g-plan__notes{ margin: 0; padding: 0; list-style: none; }
 .g-plan__notes li{
   position: relative; padding-left: var(--s5); margin-bottom: var(--s3);
-  font-size: 17px; line-height: 1.55; color: var(--ink); max-width: 58ch;
+  font-size: 16px; line-height: 1.55; color: var(--ink); max-width: 58ch;
 }
 .g-plan__notes li::before{
   content: "·"; position: absolute; left: var(--s3);
@@ -4000,7 +4058,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
    sentence. */
 @media (min-width: 60rem){
   .g-pull{ width: 26rem; max-width: 26rem; }
-  .g-pull p{ font-size: clamp(19px, 1.5vw, 23px); }
+  .g-pull p{ font-size: var(--t-lede); }
 }
 
 
@@ -4129,7 +4187,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    29 characters. Ease the size there rather than the padding — the display
    face is what is eating the line. */
 @media (max-width: 26rem){
-  .g-quote-band p, .g-quote-band blockquote{ font-size: clamp(17px, 4.6vw, 21px); }
+  .g-quote-band p, .g-quote-band blockquote{ font-size: var(--t-lede); }
 }
 /* The half-width creed panel measured 39 characters even at 1920. It is
    prose, not a caption — give it the full row at every width. */
@@ -4138,9 +4196,9 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    Large italic type simply does not fit a narrow screen at that size — ease
    the face and reclaim the padding rather than leave a column of fragments. */
 @media (max-width: 30rem){
-  .g-quote-band p, .g-quote-band blockquote{ font-size: clamp(16px, 4.4vw, 19px); }
+  .g-quote-band p, .g-quote-band blockquote{ font-size: var(--t-lede); }
   .g-quote-band{ padding-inline: var(--s3); }
-  .g-creed__q{ font-size: clamp(16px, 4.4vw, 18px); padding-inline: 0; }
+  .g-creed__q{ font-size: var(--t-base); padding-inline: 0; }
   .g-creed__in{ padding-inline: var(--s3); }
 }
 
@@ -4182,7 +4240,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g .g-subnav a{
   display: flex; align-items: center; min-height: 44px;
   padding: 0 var(--s5); white-space: nowrap;
-  font-family: var(--ui); font-size: 14px; letter-spacing: .04em;
+  font-family: var(--ui); font-size: 15px; letter-spacing: .04em;
   color: var(--blue-deep); text-decoration: none;
 }
 .g .g-subnav a:hover{ background: rgba(196,160,106,.2); }
@@ -4282,7 +4340,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-fr{
   display: block; margin: 0 0 var(--s2);
   font-family: var(--display); font-style: italic; font-weight: 300;
-  font-size: clamp(17px, 1.6vw, 21px); line-height: 1.25;
+  font-size: var(--t-lede); line-height: 1.25;
   color: var(--gilt); letter-spacing: .01em;
 }
 .g-fr__en{
@@ -4303,7 +4361,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 .g-devise__fr{
   display: block; font-family: var(--display); font-style: italic;
-  font-weight: 300; font-size: clamp(19px, 2vw, 25px); line-height: 1.35;
+  font-weight: 300; font-size: var(--t-h3); line-height: 1.35;
   color: var(--blue-deep);
 }
 .g-devise__en{
@@ -4325,7 +4383,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g .g-tabs a{
   display: flex; align-items: center; min-height: 48px;
   padding: 0 var(--s5); position: relative;
-  font-family: var(--ui); font-size: 14px; letter-spacing: .06em;
+  font-family: var(--ui); font-size: 15px; letter-spacing: .06em;
   color: var(--ink-soft); text-decoration: none; white-space: nowrap;
 }
 .g .g-tabs a:hover{ color: var(--blue-deep); }
@@ -4358,7 +4416,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-strip__n{
   display: block; margin-top: var(--s3);
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(28px, 3vw, 38px); line-height: 1;
+  font-size: var(--t-h2); line-height: 1;
   color: var(--blue-deep); font-variant-numeric: lining-nums;
 }
 .g-strip__l{
@@ -4415,7 +4473,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-bloom__m{
   min-height: 44px; padding: 0 var(--s4); cursor: pointer;
   border: 1px solid var(--gilt); background: transparent;
-  font-family: var(--ui); font-size: 14px; color: var(--blue-deep);
+  font-family: var(--ui); font-size: 15px; color: var(--blue-deep);
 }
 .g-bloom__m:hover{ background: var(--white); }
 .g-bloom__m:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
@@ -4425,7 +4483,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-bloom__lede{
   margin: 0 0 var(--s5); max-width: 40rem;
   font-family: var(--display); font-weight: 300;
-  font-size: clamp(20px, 2.2vw, 27px); line-height: 1.3; color: var(--blue-deep);
+  font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep);
 }
 .g-bloom__list{
   display: grid; gap: var(--s2) var(--s5); margin: 0 0 var(--s5); padding: 0;
@@ -4506,3 +4564,602 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g .g-panel .g-field{ width: 100%; flex: 0 0 auto; }
 .g .g-panel .g-row{ display: flex; flex-direction: row; flex-wrap: wrap; width: 100%; }
 .g .g-panel .g-row > .g-field{ flex: 1 1 12rem; width: auto; }
+
+/* ==========================================================================
+   THE BOOKING TIMELINE
+   Dated steps down a single gilt rule. A step already past is filled; a step
+   still to come is open, so a guest can see where they are without reading.
+   ========================================================================== */
+.g-timeline{ margin-top: var(--s6); }
+.g-timeline__l{
+  list-style: none; margin: var(--s5) 0 var(--s4); padding: 0 0 0 var(--s6);
+  border-left: 1px solid var(--gilt);
+}
+.g-timeline__i{
+  position: relative; padding: 0 0 var(--s5) 0;
+  display: grid; gap: 2px;
+  grid-template-columns: minmax(8rem, 11rem) 1fr;
+}
+@media (max-width: 40rem){ .g-timeline__i{ grid-template-columns: 1fr; } }
+.g-timeline__i::before{
+  content: ""; position: absolute; left: calc(var(--s6) * -1 - 1px); top: .45em;
+  width: 9px; height: 9px; margin-left: -4px;
+  border: 1px solid var(--gilt); border-radius: 50%; background: var(--parchment);
+}
+.g-timeline__i.is-done::before{ background: var(--gilt); }
+.g-timeline__i:last-child{ padding-bottom: 0; }
+.g-timeline__k{
+  font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+  padding-top: 2px;
+}
+.g-timeline__v{ font-size: 16px; line-height: 1.6; color: var(--ink); max-width: 46ch; }
+
+/* ==========================================================================
+   ADD SOMETHING AFTER BOOKING
+   ========================================================================== */
+.g-addons{ margin-top: var(--s6); }
+.g-addons__l{
+  list-style: none; margin: var(--s5) 0; padding: 0;
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+  align-items: stretch;
+  /* Rows sized to their own content rather than the tallest in the grid. */
+  grid-auto-rows: min-content;
+}
+/* The card fills its cell, so a row of cards is one height rather than
+   each sitting at its own with a gap beneath. */
+.g-addons__i{ display: flex; }
+.g-addons__i label{ flex: 1; }
+.g-addons__i label{
+  display: grid; gap: 2px 10px; align-items: start; cursor: pointer;
+  grid-template-columns: auto 1fr auto;
+  align-content: start;
+  padding: var(--s4); border: 1px solid var(--line); background: var(--white);
+  min-height: 44px;
+}
+.g-addons__i label:hover{ border-color: var(--gilt); }
+.g-addons__i input{ margin-top: 4px; width: 18px; height: 18px; }
+.g-addons__n{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); }
+.g-addons__p{
+  font-family: var(--ui); font-size: 15px; color: var(--gilt);
+  font-variant-numeric: lining-nums; white-space: nowrap;
+}
+.g-addons__d{
+  grid-column: 2 / -1; font-size: 15px; line-height: 1.55; color: var(--ink-soft);
+  max-width: 52ch;
+}
+.g-addons__f > .g-btn{ margin-top: var(--s3); }
+
+/* ==========================================================================
+   THE FLOOR PLAN
+   Drawn, not photographed — a plan in the same line register as the marks.
+   Three states, distinguished by fill weight rather than colour alone, so it
+   survives being printed or read by someone who cannot separate the hues.
+   ========================================================================== */
+.g-plan2{ margin-top: var(--s6); }
+.g-plan2__key{ display: flex; flex-wrap: wrap; gap: var(--s5); margin-bottom: var(--s5); }
+.g-plan2__kk{
+  display: flex; align-items: center; gap: var(--s2);
+  font-family: var(--ui); font-size: 13px; letter-spacing: .04em; color: var(--ink-soft);
+}
+.g-plan2__kk::before{
+  content: ""; width: 16px; height: 16px; border: 1px solid var(--gilt);
+}
+.g-plan2__kk.is-done::before{ background: rgba(196,160,106,.42); }
+.g-plan2__kk.is-work::before{
+  background: repeating-linear-gradient(45deg, rgba(196,160,106,.42) 0 3px, transparent 3px 6px);
+}
+.g-plan2__kk.is-raw::before{ background: transparent; }
+
+.g-plan2__grid{ display: grid; gap: var(--s6); align-items: start; }
+@media (min-width: 62rem){ .g-plan2__grid{ grid-template-columns: 1.6fr 1fr; } }
+
+.g-plan2__svg{ width: 100%; height: auto; display: block; }
+.g-plan2__wall{ fill: none; stroke: var(--blue-deep); stroke-width: 2.5; }
+
+.g-plan2__r rect{ fill: none; stroke: var(--gilt); stroke-width: 1.2; cursor: pointer; }
+.g-plan2__r text{
+  fill: var(--blue-deep); font-family: var(--display); font-size: 16px;
+  text-anchor: middle; pointer-events: none;
+}
+.g-plan2__r .g-plan2__sub{
+  font-family: var(--ui); font-size: 12px; letter-spacing: .08em;
+  text-transform: uppercase; fill: var(--gilt);
+}
+.g-plan2__r.is-done rect{ fill: rgba(196,160,106,.42); }
+.g-plan2__r.is-work rect{
+  fill: rgba(196,160,106,.18);
+  stroke-dasharray: 5 4;
+}
+.g-plan2__r.is-raw rect{ fill: transparent; stroke-dasharray: 2 4; }
+.g-plan2__r:hover rect,
+.g-plan2__r.is-on rect{ stroke: var(--blue-deep); stroke-width: 2.5; }
+.g-plan2__r:focus{ outline: none; }
+.g-plan2__r:focus-visible rect{ stroke: var(--blue-deep); stroke-width: 3; }
+.g-plan2__stair{ fill: none; stroke: var(--gilt); stroke-width: 1; pointer-events: none; }
+
+.g-plan2__panel{
+  padding: var(--s5); border-left: 2px solid var(--gilt); min-height: 12rem;
+}
+.g-plan2__state{
+  margin: 0 0 var(--s2); font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-plan2__name{
+  margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h2); color: var(--blue-deep);
+}
+.g-plan2__d{ margin: 0 0 var(--s4); font-size: 16px; line-height: 1.6; max-width: 44ch; }
+
+/* ==========================================================================
+   BEFORE AND AFTER
+   The range input is the control, so it works from the keyboard and reads
+   correctly without anything added. The handle is decoration over it.
+   ========================================================================== */
+.g-ba{ margin: var(--s6) 0 0; }
+.g-ba__f{
+  position: relative; overflow: hidden; touch-action: none;
+  border: 1px solid var(--gilt); background: var(--sand-2);
+  aspect-ratio: 3 / 2;
+}
+.g-ba__img{
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.g-ba__f{ contain: paint; }
+/* The before image stays exactly the size of the figure; the reveal is done
+   by clipping the wrapper, not by moving or resizing the image. An earlier
+   version sized the image to the viewport, which escaped the container, and
+   then to the clip, which squashed it. */
+.g-ba__clip{
+  position: absolute; inset: 0; width: 100%;
+  clip-path: inset(0 50% 0 0);
+  border-right: 0;
+}
+.g-ba__clip .g-ba__img{ width: 100%; height: 100%; object-fit: cover; }
+
+.g-ba__tag{
+  position: absolute; top: var(--s3); z-index: 3;
+  padding: 4px 10px; background: rgba(14,28,48,.82); color: #fff;
+  font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.g-ba__tag--b{ left: var(--s3); }
+.g-ba__tag--a{ right: var(--s3); }
+
+/* The real control, laid over the image and made invisible but operable. */
+.g-ba__range{
+  position: absolute; inset: 0; z-index: 4;
+  width: 100%; height: 100%; margin: 0;
+  opacity: 0; cursor: ew-resize;
+}
+.g-ba__range:focus-visible{ opacity: .001; outline: 3px solid var(--gilt); outline-offset: -3px; }
+.g-ba__handle{
+  position: absolute; top: 0; bottom: 0; left: 50%; z-index: 3;
+  width: 2px; margin-left: -1px; background: var(--parchment);
+  pointer-events: none;
+}
+.g-ba__handle::after{
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 40px; height: 40px; margin: -20px 0 0 -20px;
+  border: 2px solid var(--parchment); border-radius: 50%;
+  background: rgba(14,28,48,.55);
+}
+
+.g-ba__cap{ display: grid; gap: 4px; margin-top: var(--s4); }
+.g-ba__t{
+  font-family: var(--display); font-size: var(--t-h3);
+  color: var(--blue-deep);
+}
+.g-ba__n{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); max-width: 58ch; }
+.g-ba__n b{
+  font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+  margin-right: 6px;
+}
+
+/* Pre-arrival and share-link blocks. */
+.g-prearr__f{ display: flex; flex-direction: column; gap: var(--s4); }
+.g-prearr__f textarea{
+  width: 100%; padding: var(--s3) var(--s4); min-height: 5rem;
+  border: 1px solid var(--gilt); background: var(--white);
+  font-family: var(--ui); font-size: 16px; color: var(--blue-deep);
+}
+.g-share__row{ display: flex; flex-wrap: wrap; gap: var(--s3); align-items: center; margin-top: var(--s5); }
+.g-share__url{
+  flex: 1 1 20rem; min-width: 0;
+  height: 52px; min-height: 52px; max-height: 52px;
+  padding: 0 var(--s4); border: 1px solid var(--gilt); background: var(--white);
+  font-family: var(--ui); font-size: 15px; color: var(--ink-soft);
+}
+.g-share__row .g-btn{ height: 52px; flex: 0 0 auto; }
+.g-say__src{
+  display: block; margin-top: 2px;
+  font-family: var(--ui); font-size: 12px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--gilt);
+}
+
+/* Guest profile, linked bookings, add-a-room. */
+.g-prof__f, .g-addroom__f{ display: flex; flex-direction: column; gap: var(--s4); }
+.g-prof__f textarea{
+  width: 100%; padding: var(--s3) var(--s4); min-height: 4.5rem;
+  border: 1px solid var(--gilt); background: var(--white);
+  font-family: var(--ui); font-size: 16px; color: var(--blue-deep);
+}
+.g-linked__l{ list-style: none; margin: var(--s5) 0 var(--s4); padding: 0; }
+.g-linked__i{
+  display: grid; gap: 2px var(--s5); align-items: baseline;
+  padding: var(--s3) 0; border-bottom: 1px solid var(--line);
+  grid-template-columns: minmax(10rem, 1fr) minmax(8rem, 1fr) auto;
+}
+@media (max-width: 44rem){ .g-linked__i{ grid-template-columns: 1fr; } }
+.g-linked__i.is-this{ border-left: 2px solid var(--gilt); padding-left: var(--s4); }
+.g-linked__r{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); }
+.g-linked__n{ font-size: 15px; color: var(--ink); }
+.g-linked__c{
+  font-family: var(--ui); font-size: 13px; letter-spacing: .06em;
+  color: var(--gilt); font-variant-numeric: lining-nums;
+}
+
+/* ==========================================================================
+   THE COST CALCULATOR, NEXT FREE NIGHTS, COMPARISON, TAKEAWAY, SEASON
+   ========================================================================== */
+.g-cost{ margin-top: var(--s5); padding: var(--s5) 0; border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt); }
+.g-cost__row{ display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.g-cost__l{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g-cost__b{ width: 44px; height: 44px; cursor: pointer; border: 1px solid var(--gilt); background: transparent; color: var(--blue-deep); font-size: 18px; line-height: 1; }
+.g-cost__b:hover{ background: var(--gilt); color: #fff; }
+.g-cost__n{ width: 5rem; height: 44px; text-align: center; border: 1px solid var(--gilt); background: var(--white); font-family: var(--ui); font-size: 16px; color: var(--blue-deep); }
+.g-cost__out{ display: grid; gap: var(--s4) var(--s6); margin: var(--s5) 0 var(--s3); grid-template-columns: repeat(auto-fit, minmax(min(9rem,100%),1fr)); }
+.g-cost__out dt{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g-cost__out dd{ margin: 2px 0 0; font-family: var(--display); font-size: var(--t-h2); color: var(--blue-deep); font-variant-numeric: lining-nums; }
+
+.g-nextf{ list-style: none; margin: var(--s5) 0 var(--s4); padding: 0; }
+.g-nextf__i{ display: grid; gap: 2px var(--s5); align-items: center; padding: var(--s4) 0; border-bottom: 1px solid var(--line);
+  grid-template-columns: minmax(7rem,auto) minmax(9rem,1fr) auto auto auto; }
+@media (max-width: 52rem){ .g-nextf__i{ grid-template-columns: 1fr; gap: 4px; } }
+.g-nextf__d{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); font-variant-numeric: lining-nums; }
+.g-nextf__r{ font-size: 15px; color: var(--ink); }
+.g-nextf__n, .g-nextf__p{ font-family: var(--ui); font-size: 15px; letter-spacing: .05em; color: var(--gilt); }
+
+.g-cmp{ margin-top: var(--s6); }
+.g-cmp__pick{ display: flex; flex-wrap: wrap; gap: var(--s4); }
+.g-cmp__out{ margin-top: var(--s5); overflow-x: auto; }
+.g-cmp__t{ width: 100%; min-width: 30rem; border-collapse: collapse; }
+.g-cmp__t th, .g-cmp__t td{ padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 15px; }
+.g-cmp__t thead th{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); border-bottom: 2px solid var(--gilt); }
+.g-cmp__t tbody th{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gilt); width: 8rem; }
+
+.g-takeaway__card{ margin: var(--s5) 0; padding: var(--s5); border: 2px solid var(--gilt); background: var(--white); }
+.g-takeaway__k{ margin: var(--s4) 0 0; font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g-takeaway__card > .g-takeaway__k:first-child{ margin-top: 0; }
+.g-takeaway__v{ margin: 2px 0 0; font-size: 16px; line-height: 1.5; color: var(--ink); }
+
+.g-season{ margin-top: var(--s5); }
+.g-season__pick{ display: flex; flex-wrap: wrap; gap: 4px; }
+.g-season__m{ min-height: 44px; min-width: 3.4rem; cursor: pointer; border: 1px solid var(--gilt); background: transparent; font-family: var(--ui); font-size: 13px; color: var(--blue-deep); }
+.g-season__m:hover{ background: var(--white); }
+.g-season__m.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+.g-season__out{ margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid rgba(115,86,45,.3); }
+.g-season__t{ margin: 0 0 var(--s4); max-width: 44ch; font-family: var(--display); font-weight: 300; font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep); }
+.g-season__l{ margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s2); grid-template-columns: repeat(auto-fit, minmax(min(15rem,100%),1fr)); }
+.g-season__l li{ position: relative; padding-left: var(--s5); font-size: 16px; line-height: 1.55; color: var(--ink); }
+.g-season__l li::before{ content: "·"; position: absolute; left: var(--s3); color: var(--gilt); font-weight: 700; }
+
+/* The takeaway card is the only thing that prints. */
+@media print{
+  body * { visibility: hidden; }
+  .g-takeaway__card, .g-takeaway__card * { visibility: visible; }
+  .g-takeaway__card{ position: absolute; inset: 0; border: 0; padding: 0; }
+  .g-takeaway__k{ color: #000; }
+}
+
+/* ==========================================================================
+   LIVE WEATHER
+   ========================================================================== */
+.g-wx{ margin-top: var(--s4); }
+.g-wx__fallback{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); max-width: 52ch; }
+.g-wx__live{ display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); }
+.g-wx__k{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g-wx__t{ font-family: var(--display); font-size: var(--t-h2); color: var(--blue-deep); font-variant-numeric: lining-nums; }
+.g-wx__d{ font-size: 16px; color: var(--ink); }
+.g-wx__n{ flex: 1 0 100%; font-size: 15px; color: var(--ink-soft); }
+
+/* ==========================================================================
+   QUICK BOOK, IN THE SIDE PANEL
+   ========================================================================== */
+.g-qbook{
+  display: block; margin: 0 0 var(--s6); padding: var(--s5);
+  border: 1px solid rgba(196,160,106,.5); background: rgba(196,160,106,.08);
+}
+.g-qbook__h{
+  margin: 0 0 var(--s4); font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: #D9C79B;
+}
+.g-qbook__row{ display: flex; flex-wrap: wrap; gap: var(--s3); }
+.g-qbook__f{ display: flex; flex-direction: column; gap: 4px; flex: 1 1 0; min-width: 0; }
+.g-qbook__f label{ font-family: var(--ui); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #A9BCCD; }
+.g-qbook__f input{
+  height: 46px; min-width: 0; min-height: 46px; max-height: 46px; width: 100%;
+  padding: 0 var(--s3); border: 1px solid rgba(196,160,106,.55);
+  background: rgba(255,255,255,.06); color: #F3EEE4;
+  font-family: var(--ui); font-size: 15px;
+}
+.g-qbook__f input::-webkit-calendar-picker-indicator{ filter: invert(1) opacity(.55); }
+.g-qbook__go{ width: 100%; margin-top: var(--s4); }
+.g-qbook__n{ margin: var(--s3) 0 0; font-size: 15px; line-height: 1.5; color: #A9BCCD; }
+
+/* ==========================================================================
+   THE YEAR SLIDER AND THE SEVEN STEPS
+   ========================================================================== */
+.g-years{ margin-top: var(--s6); }
+.g-years__r{ width: 100%; height: 44px; accent-color: var(--blue-deep); cursor: ew-resize; }
+.g-years__scale{ display: flex; justify-content: space-between; margin-top: -6px;
+  font-family: var(--ui); font-size: 12px; letter-spacing: .08em; color: var(--gilt); }
+.g-years__out{ margin-top: var(--s5); padding-top: var(--s5); border-top: 1px solid var(--gilt); }
+.g-years__y{ margin: 0 0 var(--s3); font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
+.g-years__t{ margin: 0 0 var(--s4); max-width: 52ch; font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); line-height: 1.35; color: var(--blue-deep); }
+.g-years__n{ margin: 0; max-width: 56ch; font-size: 16px; line-height: 1.6; color: var(--ink-soft);
+  padding-left: var(--s5); border-left: 2px solid var(--gilt); }
+
+.g-steps{ list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s6) 0 0; padding: 0; }
+.g-steps__b{ display: flex; align-items: center; gap: var(--s2); min-height: 44px;
+  padding: 0 var(--s4); cursor: pointer; border: 1px solid var(--gilt); background: transparent;
+  font-family: var(--ui); font-size: 15px; color: var(--blue-deep); }
+.g-steps__b:hover{ background: var(--white); }
+.g-steps__b.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+.g-steps__n{ font-variant-numeric: lining-nums; opacity: .6; }
+.g-steps__b.is-on .g-steps__n{ opacity: .8; }
+.g-steps__out{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.3); }
+.g-steps__t{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h2); color: var(--blue-deep); }
+.g-steps__d{ margin: 0 0 var(--s4); max-width: 56ch; font-size: 16px; line-height: 1.6; }
+.g-steps__w{ margin: 0; max-width: 56ch; padding-left: var(--s5); border-left: 2px solid var(--gilt);
+  font-size: 16px; line-height: 1.6; color: var(--ink-soft); }
+
+/* ==========================================================================
+   THE LIGHT PLANNER
+   ========================================================================== */
+.g-light{ margin-top: var(--s6); }
+.g-light__pick{ display: flex; flex-wrap: wrap; gap: var(--s2); }
+.g-light__h{ min-height: 44px; padding: 0 var(--s4); cursor: pointer;
+  border: 1px solid var(--gilt); background: transparent;
+  font-family: var(--ui); font-size: 15px; color: var(--blue-deep); }
+.g-light__h:hover{ background: var(--white); }
+.g-light__h.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+.g-light__out{ margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid rgba(115,86,45,.3); }
+.g-light__t{ margin: 0 0 var(--s4); max-width: 48ch; font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep); }
+.g-light__l{ margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s2);
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem,100%),1fr)); }
+.g-light__l li{ position: relative; padding-left: var(--s5); font-size: 16px; line-height: 1.55; color: var(--ink); }
+.g-light__l li::before{ content: "·"; position: absolute; left: var(--s3); color: var(--gilt); font-weight: 700; }
+
+/* Ticks, and the negative variant. */
+.g-ticks{ list-style: none; margin: var(--s4) 0 0; padding: 0; }
+.g-ticks li{ position: relative; padding: 0 0 var(--s3) var(--s5); font-size: 16px; line-height: 1.55; }
+.g-ticks li::before{ content: ""; position: absolute; left: 0; top: .5em; width: 9px; height: 5px;
+  border-left: 1.5px solid var(--gilt); border-bottom: 1.5px solid var(--gilt); transform: rotate(-45deg); }
+.g-ticks--no li::before{ width: 10px; height: 0; border-left: 0; border-bottom: 1.5px solid var(--ink-soft);
+  transform: none; top: .75em; opacity: .6; }
+
+/* The total rule at full currentColor is heavier than the type; soften it
+   without picking a colour that only works on one ground. */
+.g-quote__total{ border-top-color: color-mix(in srgb, currentColor 35%, transparent); }
+/* On a dark panel the whole block takes the panel's own ink. */
+.g-panel--dark .g-quote, .g-dossier .g-quote{ color: #EDE4D3; border-left-color: var(--gilt); }
+.g-panel--dark .g-quote__warn, .g-dossier .g-quote__warn{ color: #FFB4AC; }
+
+/* ==========================================================================
+   RUNNING TEXT NEVER SITS AT THE LABEL SIZE
+   13px is the label step: uppercase, tracked, a few words. Eighty-seven
+   places were carrying whole sentences at it, which is why so much of the
+   site read as small print. Hints and notes belong at the small step.
+   ========================================================================== */
+.g-hint, .g-foot-note, .g-journal__note, .g-qbook__n, .g-book-bar__note,
+.g-pay__note, .g-nextf__n, .g-plan2__sub, .g-ba__n{
+  font-size: var(--t-small);
+  line-height: 1.55;
+}
+/* Uppercase labels keep the label size — that is what it is for. */
+.g-eyebrow, .g-limit__k, .g-key__k, .g-timeline__k, .g-cost__l,
+.g-strip__l, .g-fr__en, .g-devise__en, .g-say__src, .g-years__y{
+  font-size: var(--t-label);
+}
+/* ==========================================================================
+   THE READING FLOOR
+   Chasing this component by component failed twice. The rule is not that
+   particular blocks should be larger — it is that running text is never set
+   at the label size, anywhere. Stated once, so specificity stops mattering.
+
+   Uppercase is exempt: a tracked uppercase label at 13px is legible and is
+   what the step exists for.
+   ========================================================================== */
+main p, main li, main dd, main dt, main td, main figcaption,
+main blockquote, main label,
+main span:not([class*="__k"]):not([class*="__n"]):not([class*="__l"]):not(.g-fig__n):not(.g-opt){
+  /* An absolute floor, not max(…, 1em): 1em is the inherited size, so the
+     max() resolved to the very value it was meant to lift. */
+  font-size: var(--t-small);
+}
+/* Anything that deliberately sets a larger size keeps it — those rules come
+   later in the file and win on order. */
+/* Uppercase labels keep the label step. Note that .g-tags li is NOT here:
+   an earlier version put it back to 13px seven lines after setting the floor,
+   which defeated the floor entirely. A tag carrying a sentence is not a tag. */
+main [class*="__k"], main .g-eyebrow,
+main th, main dt.g-lbl{ font-size: var(--t-label); }
+/* Short tags — the pill kind — keep the label size. */
+.g-tags--short li{ font-size: var(--t-label); }
+/* Except where an uppercase class is carrying a sentence — then it is not a
+   label, and the floor applies again. */
+main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
+
+/* Two found by the stricter checks:
+   - .g-journal__note dropped below the floor on phones via a media query
+     that predates the scale.
+   - .g-figs__l takes a pale ink meant for the dark section, but the block is
+     also used on cream, where it reads at about 1.4:1. Scope the pale ink to
+     the dark ground and give the default a readable colour. */
+.g-journal__note{ font-size: var(--t-small); }
+@media (max-width: 40rem){ .g-journal__note{ font-size: var(--t-small); } }
+
+.g-figs__l{ color: var(--ink-soft); }
+.g-sec--dark .g-figs__l, .g-panel--dark .g-figs__l{ color: #C9D4DF; }
+.g-figs__n{ color: var(--blue-deep); }
+.g-sec--dark .g-figs__n, .g-panel--dark .g-figs__n{ color: #fff; }
+
+/* ==========================================================================
+   .g-sec--dark HAD NO BACKGROUND
+   I invented this class writing the atelier scarcity section and only ever
+   wrote colour overrides for it — never the dark ground those colours assume.
+   So every "dark" section rendered on cream with pale ink on it, at roughly
+   1.4:1. Define the ground, once.
+   ========================================================================== */
+.g-sec--dark{
+  background: var(--blue-deep);
+  color: #EDE4D3;
+}
+.g-sec--dark .g-place,
+.g-sec--dark h2, .g-sec--dark h3{ color: #fff; }
+.g-sec--dark .g-p, .g-sec--dark p, .g-sec--dark li, .g-sec--dark dd{ color: #EDE4D3; }
+.g-sec--dark .g-eyebrow, .g-sec--dark .g-fr{ color: #D9C79B; }
+.g-sec--dark .g-limit{ border-left-color: #D9C79B; color: #C9D4DF; }
+.g-sec--dark .g-limit__k{ color: #D9C79B; }
+.g .g-sec--dark a{ color: #EDE4D3; }
+.g .g-sec--dark .g-btn{ border-color: #D9C79B; color: #EDE4D3; }
+.g .g-sec--dark .g-btn--solid{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
+
+/* ==========================================================================
+   .g-figs — THE LAYOUT WAS NEVER WRITTEN EITHER
+   Same fault as .g-sec--dark: I wrote colour overrides for this block and
+   never the layout they sit on, so the figures and their labels ran together
+   as one line of inline text.
+   ========================================================================== */
+.g-figs{
+  display: grid; gap: var(--s6) var(--s5); margin: var(--s6) 0 var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
+}
+.g-figs__i{ display: flex; flex-direction: column; gap: 4px; }
+.g-figs__n{
+  font-family: var(--display); font-weight: 300; line-height: 1;
+  font-size: var(--t-h2);
+  font-variant-numeric: lining-nums;
+}
+.g-figs__l{
+  font-family: var(--ui); font-size: var(--t-label); font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+
+/* ==========================================================================
+   THE LAST TWO
+   .g-journal__note had a phone media query later in the file than my earlier
+   fix, so the fix lost on source order. And a bare <p> inside a hero took the
+   page ink — navy — on the hero's navy ground, which is invisible rather than
+   merely low contrast.
+   ========================================================================== */
+.g-journal__note,
+.g-journal__note *{ font-size: var(--t-small) !important; }
+
+.g-hero p, .g-hero li, .g-hero dd, .g-hero span:not([class*="__k"]){
+  color: #EDE4D3;
+}
+.g-hero .g-btn{ color: #EDE4D3; border-color: #D9C79B; }
+.g-hero .g-btn--solid{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
+
+/* A heading inside a panel. I used this class across the new guest partials
+   and never wrote the rule, so it was rendering at the browser's h2 default —
+   24px, which is not a step on the scale and does not match the h3 headings
+   beside it. */
+.g-panel__h{
+  margin: 0 0 var(--s3);
+  font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); line-height: 1.25;
+  color: var(--blue-deep);
+}
+
+/* Display-face passages — pull quotes, ledes, mottos — take the same scale as
+   headings, which is right on a desktop and too large on a phone: at 28px a
+   345px column holds twenty-eight characters. Ease them below 30rem so the
+   measure recovers, without touching the headings themselves. */
+/* Display-face PASSAGES — pull quotes, ledes, mottos, quote bands — take the
+   heading scale, which suits three words and not a sentence. At 40px a 704px
+   column holds thirty-eight characters. Cap them at the lede step from tablet
+   down; true headings are untouched. */
+@media (max-width: 52rem){
+  .g-pull p, .g-pull, .g-lede, .g-hero__lede, .g-quote-band__t,
+  .g-bloom__lede, .g-season__t, .g-light__t, .g-years__t, .g-plan__line{
+    font-size: var(--t-lede);
+  }
+}
+
+
+/* A quote band is a sentence in the display face, not a heading. Sized by
+   measure rather than by breakpoint: chasing it with media queries just moves
+   the problem to the next width. */
+.g-quote-band__t{
+  font-size: min(var(--t-h2), 5.2cqw, 42px);
+  max-width: 22ch;
+}
+.g-quote-band{ container-type: inline-size; }
+@supports not (font-size: 1cqw){
+  .g-quote-band__t{ font-size: var(--t-lede); }
+}
+
+/* ==========================================================================
+   THE BOOKING PANEL MUST STAY REACHABLE
+   Sticky was not enough. Filling the form scrolls past the panel, so by the
+   time a guest has finished typing the button is above the fold and they
+   have to scroll back up to find it. Below tablet the panel was not sticky
+   at all, so it sat at the very bottom of a long page.
+
+   Two fixes: the panel scrolls within itself when it is taller than the
+   screen, and below the two-column breakpoint a compact bar carries the
+   total and the button at the foot of the window.
+   ========================================================================== */
+@media (min-width: 62rem){
+  .g-aside{
+    position: sticky; top: 96px;
+    max-height: calc(100vh - 112px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* A panel that scrolls internally needs to show it does. */
+  .g-aside{ scrollbar-width: thin; }
+}
+
+/* Below two columns, a bar at the foot of the window. */
+.g-bookbar{
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  display: none; align-items: center; gap: var(--s4);
+  padding: var(--s3) var(--s4);
+  background: var(--blue-deep); border-top: 1px solid var(--gilt);
+  padding-bottom: max(var(--s3), env(safe-area-inset-bottom));
+}
+@media (max-width: 61.99rem){
+  .g-bookbar{ display: flex; }
+  /* so the bar never covers the last thing on the page */
+  main{ padding-bottom: 84px; }
+}
+.g-bookbar__sum{ flex: 1 1 auto; min-width: 0; line-height: 1.3; }
+.g-bookbar__t{
+  display: block; font-family: var(--display); font-size: var(--t-lede);
+  color: #fff; font-variant-numeric: lining-nums;
+}
+.g-bookbar__n{
+  display: block; font-family: var(--ui); font-size: var(--t-sm);
+  letter-spacing: .06em; color: #C9D4DF;
+}
+.g-bookbar .g-btn{ flex: 0 0 auto; min-height: 48px; }
+
+/* The date-picker button sat immediately against its own label with no gap,
+   so "ARRIVAL" and "Add dates" read as one broken string. The label belongs
+   above the control, as it does on every other field on the site. */
+.g-rp__f, .g-dates__f{
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+}
+.g-rp__f > label, .g-dates__f > label{ display: block; }
+.g-rp__btn{ width: 100%; text-align: left; }

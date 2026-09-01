@@ -1,0 +1,40 @@
+{# ==========================================================================
+   ADD SOMETHING AFTER BOOKING
+   Thirteen extras exist and all of them can only be chosen at the moment of
+   booking. People decide on a private dinner three weeks later, and that
+   decision currently travels by email.
+
+       {% from '_guest_extras.html' import add_extras %}
+       {{ add_extras(booking, extras) }}
+
+   `extras` is whatever the booking route already loads. If it is empty the
+   block does not render at all, so this is safe to include anywhere.
+   ========================================================================== #}
+{% macro add_extras(b, extras) %}
+{% if extras %}
+<section class="g-panel g-addons">
+  <h2 class="g-panel__h">Add something to your stay</h2>
+  <p class="g-p">These can be added now and settled with the balance. Nothing is charged until you confirm.</p>
+
+  <form method="post" action="{{ url_for('manage_booking', manage_token=b['token']) if b['token'] else '#' }}" class="g-addons__f">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_extra">
+    <ul class="g-addons__l">
+      {% for x in extras %}
+      <li class="g-addons__i">
+        <label>
+          <input type="checkbox" name="extras" value="{{ x['id'] }}">
+          <span class="g-addons__n">{{ x['name'] }}</span>
+          {% if x['price'] %}<span class="g-addons__p">€{{ '%.0f'|format(x['price']) }}{% if x['unit'] %} {{ x['unit'] }}{% endif %}</span>{% endif %}
+          {% if x['description'] %}<span class="g-addons__d">{{ x['description'] }}</span>{% endif %}
+        </label>
+      </li>
+      {% endfor %}
+    </ul>
+    <button type="submit" class="g-btn g-btn--solid">Add to my stay</button>
+  </form>
+
+  <p class="g-hint">Some need notice — a private dinner wants a week, a picnic basket a day.</p>
+</section>
+{% endif %}
+{% endmacro %}

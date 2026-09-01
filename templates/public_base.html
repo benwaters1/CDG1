@@ -12,12 +12,23 @@
    referrer or a forwarded email can be indexed without ever being
    crawled. Each such page overrides this. #}
 {% block robots %}{% endblock %}
-<title>{% block title %}Stay{% endblock %} — Château de Gudanes</title>
-<meta name="description" content="{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Five bedrooms, a table, and ateliers led by artisans.{% endblock %}">
+{# French title and description where a page provides them; English
+   otherwise, so a partial rollout does not leave blanks. #}
+{%- set _t_fr %}{% block title_fr %}{% endblock %}{% endset %}
+{%- set _d_fr %}{% block description_fr %}{% endblock %}{% endset %}
+<title>{% if lang == 'fr' and _t_fr|trim %}{{ _t_fr|trim }}{% else %}{% block title %}Stay{% endblock %}{% endif %} — Château de Gudanes</title>
+<meta name="description" content="{% if lang == 'fr' and _d_fr|trim %}{{ _d_fr|trim }}{% else %}{% block description %}An eighteenth-century Class I Historic Monument in the French Pyrénées, under restoration since 2013. Five bedrooms, a table, and ateliers led by artisans.{% endblock %}{% endif %}">
 
 {# Shared to Instagram, WhatsApp or a message, a link showed a bare URL with
    no image. These give it the château and the page's own title. #}
-{% if request %}<link rel="canonical" href="{{ request.base_url }}">{% endif %}
+{% if request %}<link rel="canonical" href="{{ request.base_url }}">
+{# Alternates, so the French and English versions are understood as the same
+   page in two languages rather than two unrelated pages competing. x-default
+   points at English, which is what an unmatched locale should get. #}
+{% for code in languages %}
+<link rel="alternate" hreflang="{{ code }}" href="{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}">
+{% endfor %}
+<link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
 <meta property="og:type" content="website">
 <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %} — Château de Gudanes">
@@ -127,6 +138,24 @@
     <div class="g-navwrap" id="g-mainnav" role="dialog" aria-label="{{ t('Menu') }}">
       <div class="g-navwrap__inner">
         <button type="button" class="g-navwrap__close" aria-label="{{ t('Close menu') }}">&times;</button>
+
+        {# Dates from anywhere. The panel is reachable at every width, so this
+           is the shortest path to booking on any page of the site. #}
+        <form class="g-qbook" method="get" action="{{ url_for('book_rooms') }}">
+          <p class="g-qbook__h">{{ t('Check dates') }}</p>
+          <div class="g-qbook__row">
+            <span class="g-qbook__f">
+              <label for="qb_in">{{ t('Arrival') }}</label>
+              <input type="date" id="qb_in" name="arrival">
+            </span>
+            <span class="g-qbook__f">
+              <label for="qb_out">{{ t('Departure') }}</label>
+              <input type="date" id="qb_out" name="departure">
+            </span>
+          </div>
+          <button type="submit" class="g-btn g-btn--solid g-qbook__go">{{ t('Check availability') }}</button>
+          <p class="g-qbook__n">{{ t('Five rooms · from €220 a night · breakfast included') }}</p>
+        </form>
 
         <p class="g-navwrap__group">{{ t('Stay') }}</p>
         <a href="{{ url_for('book_rooms') }}" class="g-navwrap__item">

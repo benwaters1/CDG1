@@ -3,7 +3,7 @@
 {% block description %}Château de Gudanes in the press — Vogue, AD Italia, House &amp; Garden, the Australian Financial Review, and the Medal of Honour of the Fondation Prince Louis de Polignac.{% endblock %}
 {% set crumbs = [('Press', None)] %}
 {% block content %}
-{% from '_marks.html' import mark %}
+{% from '_marks.html' import mark, monogram %}
 
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-fr">Suivi depuis 2013<span class="g-fr__en">Followed since 2013</span></p>
@@ -45,4 +45,6 @@
   <p class="g-p">For interviews, location visits or image requests, write to <a href="mailto:ariege@chateaugudanes.com">ariege@chateaugudanes.com</a>. Photographs of the château belong to whoever took them, so usage is agreed in writing rather than assumed.</p>
   <p class="g-p"><a href="{{ url_for('events_photoshoots') if 'events_photoshoots' in url_map else url_for('events_info') }}" class="g-btn g-btn--solid">Location hire</a></p>
 </div></section>
+<div class="g-mono__wrap">{{ monogram() }}</div>
+
 {% endblock %}
