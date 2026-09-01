@@ -145,6 +145,8 @@ SUITES = [
     "test_event_promo",
     "test_city_tax_arrears",
     "test_kitchen_sheet",
+    "test_pennylane_split",
+    "test_extras_due",
     "test_ics_feeds",
     "test_shift_actions",
     "test_guest_account",

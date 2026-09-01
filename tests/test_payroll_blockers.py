@@ -232,6 +232,33 @@ def run():
     s.check("a repair form is offered for more than just the backwards shift",
             forms >= 3, detail=f"{forms} repair form(s) for 3 broken entries")
 
+    s.section("A blocker outside the viewed fortnight is still offered")
+    # Date-independent on purpose. The check above happens to place its entries
+    # outside the default window on some days and inside it on others, so on its
+    # own it guards this only about one day in fourteen. Here the window is named
+    # explicitly and the entry is deliberately outside it: the page defaults to a
+    # fortnight, the payroll pack covers a month, and an entry from the 2nd
+    # blocks the export on the 20th. Being told "fix these before exporting" and
+    # sent to a page the entry is not on is the whole failure.
+    old_day = datetime.now(timezone.utc).replace(
+        hour=9, minute=0, second=0, microsecond=0) - timedelta(days=90)
+    stale = _employee("Perrine")
+    _shift(stale["id"], old_day, None)
+    conn = db()
+    stale_id = conn.execute(
+        "SELECT id FROM time_entries WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (stale["id"],)).fetchone()["id"]
+    conn.close()
+    recent = (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat()
+    html = oc.get(f"/admin/timesheets?start={recent}").get_data(as_text=True)
+    s.check("the ninety-day-old open shift is on the page",
+            f"/{stale_id}/repair" in html,
+            detail="it blocks the export and the page the owner is sent to does "
+                   "not show it, so there is nowhere to fix it")
+    s.check("and the window they asked for is still what they got",
+            html.count("Perrine") >= 1,
+            detail="the blockers replaced the fortnight instead of following it")
+
     s.section("Once repaired, the pack clears")
     conn = db()
     ids = {n: [r["id"] for r in conn.execute(
