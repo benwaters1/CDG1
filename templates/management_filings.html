@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Filings and deadlines{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Filings and deadlines</h1>
+  <a href="{{ url_for('admin_vat') }}" class="btn-ghost">VAT working</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Dates you or your accountant set, not dates this app works out. The regime a house is on varies
+  and changes, and software that confidently asserted the wrong deadline would be worse than
+  software that says nothing. Its job is to not let one be forgotten.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if due %}
+<div class="detail-card">
+  <h2 class="section-heading">Due now</h2>
+  <div class="doc-list">
+    {% for d in due %}
+    <div class="doc-row" style="align-items:flex-start;">
+      <span style="flex:1;">
+        <b style="color:{{ 'var(--danger)' if d.late else 'inherit' }};">{{ d.obligation['name'] }}</b>
+        {%- if d.obligation['authority'] %} · {{ d.obligation['authority'] }}{% endif %}
+        <div class="upload-hint" style="margin-top:2px;">
+          {% if d.late %}
+          {# Late is a different state from due, and reads differently: one
+             is a thing to do this week, the other is already costing money. #}
+          <span style="color:var(--danger);">Was due {{ d.due }} &mdash;
+            {{ -d.days }} day{{ '' if d.days == -1 else 's' }} ago.</span>
+          {% else %}
+          Due {{ d.due }} &mdash; {{ d.days }} day{{ '' if d.days == 1 else 's' }}.
+          {% endif %}
+          {% if d.obligation['note'] %} {{ d.obligation['note'] }}{% endif %}
+        </div>
+      </span>
+      <form method="post" action="{{ url_for('record_filing', filing_id=d.obligation['id']) }}"
+            style="display:flex; gap:6px; align-items:flex-end; flex-wrap:wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="date" name="filed_on" value="{{ today }}" style="width:150px;">
+        <input type="text" name="amount" placeholder="Amount" style="width:100px;">
+        <input type="text" name="reference" placeholder="Reference" style="width:130px;">
+        <button type="submit" class="btn-mini">Filed</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="detail-card">
+  <h2 class="section-heading">On the calendar</h2>
+  {% if not rows %}
+  <p class="empty-note">Nothing yet. Add what you file and when, and it will appear here and on
+    your home page before it is due.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>What</th><th>To whom</th><th>How often</th><th>Next due</th><th>Warns</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <th scope="row">{{ r['name'] }}</th>
+          <td>{{ r['authority'] or '—' }}</td>
+          <td>{{ frequencies.get(r['every'], r['every']) }}</td>
+          <td>{{ r['due_on'] }}</td>
+          <td>{{ r['warn_days'] }} days before</td>
+          <td>
+            <form method="post" action="{{ url_for('stop_filing', filing_id=r['id']) }}"
+                  onsubmit="return confirm('Take this off the calendar? What was filed against it is kept.');"
+                  style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="doc-delete">×</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Add one</h2>
+  <div class="field-row-2">
+    <input type="text" name="name" placeholder="What, e.g. VAT return" required>
+    <input type="text" name="authority" placeholder="To whom, e.g. SIE Foix">
+  </div>
+  <div class="field-row-2">
+    <select name="every">
+      {% for key, label in frequencies.items() %}
+      <option value="{{ key }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <input type="date" name="due_on" required>
+  </div>
+  <div class="field-row-2">
+    <input type="number" name="warn_days" min="0" placeholder="Warn this many days before (14)">
+    <input type="text" name="note" placeholder="Anything worth remembering">
+  </div>
+  <button type="submit" class="btn-mini">Add</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">The date rolls forward when you record a
+    filing, keeping the day of the month you set &mdash; so a deadline on the 31st does not quietly
+    become the 28th after February.</p>
+</form>
+
+{% if recent %}
+<div class="detail-card">
+  <h2 class="section-heading">Filed</h2>
+  <p class="pay-disclaimer" style="margin-top:-6px;">What was filed and when, rather than a tick.
+    A recurring obligation marked done is ambiguous the moment the next one falls due.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>What</th><th>Covering</th><th>Filed</th><th class="num">Amount</th><th>Reference</th></tr></thead>
+      <tbody>
+        {% for f in recent %}
+        <tr>
+          <th scope="row">{{ f['name'] }}</th>
+          <td>{{ f['covered_due_on'] }}</td>
+          <td>{{ f['filed_on'] }}</td>
+          <td class="num">{% if f['amount'] is not none %}&euro;{{ '%.2f'|format(f['amount']) }}{% else %}&mdash;{% endif %}</td>
+          <td>{{ f['reference'] or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -2454,6 +2454,43 @@ def init_db():
         -- house's shape repeats -- February is quiet every February -- and
         -- a budget keyed to 2026-02 would have to be retyped every
         -- January to stay true. Twelve rows, revenue and cost.
+        -- What has to be filed or paid, and how often. Dates the owner or
+        -- their accountant sets: the regime a house is on varies and
+        -- changes, and a calendar that confidently asserts the wrong
+        -- deadline is worse than no calendar.
+        CREATE TABLE IF NOT EXISTS filing_obligations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            authority TEXT,
+            every TEXT NOT NULL DEFAULT 'monthly'
+                CHECK(every IN ('monthly','quarterly','annual')),
+            -- The next one due. Rolled forward when a filing is recorded,
+            -- so the row always names the one that is open.
+            due_on TEXT NOT NULL,
+            -- How long before it the house wants telling.
+            warn_days INTEGER NOT NULL DEFAULT 14,
+            note TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- One row per filing actually made. A recurring obligation ticked
+        -- "done" is ambiguous the moment the next falls due; a row saying
+        -- what was filed and when answers which one, and whether the next
+        -- is open.
+        CREATE TABLE IF NOT EXISTS filings_made (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            obligation_id INTEGER NOT NULL REFERENCES filing_obligations(id) ON DELETE CASCADE,
+            covered_due_on TEXT NOT NULL,
+            filed_on TEXT NOT NULL,
+            amount REAL,
+            reference TEXT,
+            note TEXT,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(obligation_id, covered_due_on)
+        );
+
         CREATE TABLE IF NOT EXISTS monthly_budgets (
             month INTEGER PRIMARY KEY CHECK(month BETWEEN 1 AND 12),
             revenue REAL,
@@ -3669,6 +3706,12 @@ def init_db():
         # a fixed list of asset classes is an accounting decision and this
         # is not the accounting system.
         ("expenses_capital_note", "ALTER TABLE expenses ADD COLUMN capital_note TEXT"),
+        # The day of the month a filing is really due on. Rolling forward
+        # from the last date clamps to a short month and never recovers --
+        # due the 31st becomes due the 28th the first February and stays
+        # there. Three days early every month, always plausible on the
+        # page, and nobody ever notices.
+        ("filing_due_day", "ALTER TABLE filing_obligations ADD COLUMN due_day INTEGER"),
     ):
         try:
             conn.execute(ddl)
@@ -4666,7 +4709,8 @@ NAV_AREAS = {
         "management_debtors", "export_debtors_csv",
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
-        "management_night_cost",
+        "management_night_cost", "management_filings", "record_filing",
+        "stop_filing",
         "management_payment_cost", "save_card_fee_settings",
         "admin_city_tax", "export_city_tax_csv",
         "charge_city_tax", "charge_city_tax_upcoming",
@@ -15631,6 +15675,59 @@ MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
                "August", "September", "October", "November", "December"]
 
 
+FILING_FREQUENCIES = {"monthly": "Every month",
+                      "quarterly": "Every quarter",
+                      "annual": "Once a year"}
+
+
+def next_filing_due(due_on, every, due_day=None):
+    """The date after this one, on the same cycle.
+
+    Month arithmetic rather than adding days: a quarterly return due on the
+    30th is due on the 30th, not ninety-two days later and drifting.
+
+    `due_day` is the day it is REALLY due on, which is not always the day
+    the last one landed. Rolling forward from a clamped date never
+    recovers: due the 31st becomes due the 28th the first February and
+    stays there, three days early every month afterwards, always plausible
+    and never noticed. Clamping against the intention instead fixes that.
+    """
+    step = {"monthly": 1, "quarterly": 3, "annual": 12}.get(every, 1)
+    year, month = due_on.year, due_on.month + step
+    year, month = year + (month - 1) // 12, (month - 1) % 12 + 1
+    wanted = due_day or due_on.day
+    day = min(wanted, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def filings_due(conn, today=None):
+    """Everything owed, worst first, with the ones already filed left out."""
+    today = today or datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        "SELECT * FROM filing_obligations WHERE active = 1 ORDER BY due_on"
+    ).fetchall()
+    filed = {(r["obligation_id"], r["covered_due_on"]) for r in conn.execute(
+        "SELECT obligation_id, covered_due_on FROM filings_made").fetchall()}
+
+    out = []
+    for r in rows:
+        due = parse_date(r["due_on"])
+        if not due or (r["id"], r["due_on"]) in filed:
+            continue
+        days = (due - today).days
+        if days > (r["warn_days"] or 0):
+            continue
+        out.append({
+            "obligation": r, "due": due, "days": days,
+            # Late is a different state from due, and reads differently:
+            # one is a thing to do this week, the other is already costing
+            # money.
+            "late": days < 0,
+        })
+    out.sort(key=lambda x: x["days"])
+    return out
+
+
 def budget_for(conn, month_date, fallback=None):
     """What this month was supposed to take and spend.
 
@@ -16051,6 +16148,25 @@ def owner_home_warnings(conn, today):
     # Not enough on the shelf to run a workshop that is nearly here. Ten
     # days, which is the last point at which anything can be ordered and
     # arrive -- a shortfall found the evening before is not a warning.
+    # A filing that is late is already costing money, so it goes above the
+    # things that are merely coming.
+    filings = filings_due(conn, today)
+    if filings:
+        worst = filings[0]
+        late = [f for f in filings if f["late"]]
+        add("blocker" if late else "warning",
+            f"{len(filings)} filing{'' if len(filings) == 1 else 's'} "
+            + ("overdue" if late else "due"),
+            f"{worst['obligation']['name']} "
+            + (f"was due {format_date_short(worst['due'].isoformat())}, "
+               f"{-worst['days']} day{'' if worst['days'] == -1 else 's'} ago."
+               if worst["late"] else
+               f"is due {format_date_short(worst['due'].isoformat())}, in "
+               f"{worst['days']} day{'' if worst['days'] == 1 else 's'}.")
+            + (" A late return is penalties and interest, not a telling-off."
+               if late else ""),
+            len(filings), "management_filings")
+
     no_materials = sessions_short_of_materials(conn, today)
     if no_materials:
         first = no_materials[0]
@@ -20698,6 +20814,9 @@ PALETTE_PAGES = [
      "pennylane accountant invoices revenue income takings bookkeeping"),
     ("Walk-in booking", "walk_in_booking",
      "desk telephone book a room tonight arrival no reservation walk in"),
+    ("Filings and deadlines", "management_filings",
+     "vat tva taxe de sejour urssaf payroll return deadline due file "
+     "filing penalty accountant"),
     ("What a night costs", "management_night_cost",
      "cost per night room profitability discount worth taking standing "
      "labour consumed avoidable"),
@@ -37880,6 +37999,132 @@ def export_vendors_csv():
     return csv_response(fieldnames, rows, "vendors.csv")
 
 
+@app.route("/management/filings", methods=["GET", "POST"])
+@owner_required
+def management_filings():
+    """What has to be filed or paid, and when.
+
+    Dates the owner or their accountant sets. The regime a house is on
+    varies and changes, and an app that asserted French tax law would be
+    confidently wrong for somebody — which is worse than saying nothing.
+    """
+    conn = get_db()
+
+    if request.method == "POST":
+        name = (request.form.get("name", "") or "").strip()[:120]
+        authority = (request.form.get("authority", "") or "").strip()[:120]
+        every = request.form.get("every", "monthly")
+        due = parse_date(request.form.get("due_on", ""))
+        warn_raw = (request.form.get("warn_days", "") or "").strip()
+        note = (request.form.get("note", "") or "").strip()[:300]
+
+        if not name or not due or every not in FILING_FREQUENCIES:
+            conn.close()
+            flash("A filing needs a name, a date and how often.", "error")
+            return redirect(url_for("management_filings"))
+
+        conn.execute(
+            """INSERT INTO filing_obligations (name, authority, every, due_on,
+                       due_day, warn_days, note, active, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            (name, authority or None, every, due.isoformat(), due.day,
+             int(warn_raw) if warn_raw.isdigit() else 14, note or None,
+             datetime.now(timezone.utc).isoformat()))
+        log_audit(conn, "filing_added", target=name, details=due.isoformat())
+        conn.commit()
+        conn.close()
+        flash(f"{name} added.", "success")
+        return redirect(url_for("management_filings"))
+
+    today = datetime.now(LOCAL_TZ).date()
+    rows = conn.execute(
+        "SELECT * FROM filing_obligations WHERE active = 1 ORDER BY due_on"
+    ).fetchall()
+    due_now = filings_due(conn, today)
+    recent = conn.execute(
+        """SELECT filings_made.*, filing_obligations.name
+             FROM filings_made
+             JOIN filing_obligations
+               ON filing_obligations.id = filings_made.obligation_id
+            ORDER BY filings_made.filed_on DESC LIMIT 20""").fetchall()
+    conn.close()
+
+    late = [d for d in due_now if d["late"]]
+    overview = [
+        overview_cell("On the calendar", len(rows), alert=not rows,
+                      hint="nothing here is asserted by the app"),
+        overview_cell("Due now", len(due_now), alert=bool(due_now)),
+        overview_cell("Late", len(late), alert=bool(late),
+                      hint="penalties, not a telling-off"),
+    ]
+    return render_template("management_filings.html", rows=rows,
+                           due=due_now, recent=recent, overview=overview,
+                           frequencies=FILING_FREQUENCIES, today=today)
+
+
+@app.route("/management/filings/<int:filing_id>/filed", methods=["POST"])
+@owner_required
+def record_filing(filing_id):
+    """Say this one has been filed, and roll the obligation forward."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM filing_obligations WHERE id = ?",
+                       (filing_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+
+    due = parse_date(row["due_on"])
+    filed_on = parse_date(request.form.get("filed_on", "")) \
+        or datetime.now(LOCAL_TZ).date()
+    amount = parse_money(request.form.get("amount", ""))
+    reference = (request.form.get("reference", "") or "").strip()[:120]
+
+    user = current_user()
+    conn.execute(
+        """INSERT OR IGNORE INTO filings_made (obligation_id, covered_due_on,
+                   filed_on, amount, reference, created_by_user_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (filing_id, row["due_on"], filed_on.isoformat(), amount,
+         reference or None, user["id"],
+         datetime.now(timezone.utc).isoformat()))
+
+    # Roll to the next one. Clamped against the day it is REALLY due on
+    # rather than the day this one landed, so a deadline on the 31st does
+    # not quietly become the 28th the first February and stay there.
+    nxt = next_filing_due(due, row["every"], due_day=row["due_day"])
+    conn.execute("UPDATE filing_obligations SET due_on = ? WHERE id = ?",
+                 (nxt.isoformat(), filing_id))
+    log_audit(conn, "filing_recorded", target=row["name"],
+              details=f"covering {row['due_on']}, filed {filed_on.isoformat()}")
+    conn.commit()
+    conn.close()
+    flash(f"{row['name']} filed. The next is due {format_date_short(nxt.isoformat())}.",
+          "success")
+    return redirect(url_for("management_filings"))
+
+
+@app.route("/management/filings/<int:filing_id>/stop", methods=["POST"])
+@owner_required
+def stop_filing(filing_id):
+    """Take it off the calendar without losing what was already filed."""
+    conn = get_db()
+    row = conn.execute("SELECT name FROM filing_obligations WHERE id = ?",
+                       (filing_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE filing_obligations SET active = 0 WHERE id = ?",
+                 (filing_id,))
+    log_audit(conn, "filing_stopped", target=row["name"])
+    conn.commit()
+    conn.close()
+    # Deactivated rather than deleted: the filings already made against it
+    # are a record of what the house did, and they outlive the obligation.
+    flash(f"{row['name']} is off the calendar. What was filed against it is kept.",
+          "success")
+    return redirect(url_for("management_filings"))
+
+
 @app.route("/management/night-cost")
 @owner_required
 def management_night_cost():
@@ -39127,6 +39372,7 @@ WATCH_TASK_KINDS = {
     "policy": "Insurance that has run out",
     "workshop": "A workshop short of the number it needs",
     "materials": "A workshop without the materials to run",
+    "filing": "A return or payment that is due",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -39956,6 +40202,24 @@ def watch_task_findings(conn, today=None):
     # the rest: one more confirmed booking and the next run drops it, which
     # is the honest behaviour -- the session is no longer at risk, whatever
     # a list of past problems might say.
+    # Self-closing: record the filing and the obligation rolls to the next
+    # one, so the finding is gone on the next run without anybody closing
+    # a task by hand.
+    for f in take("filing", filings_due(conn, today)):
+        ob = f["obligation"]
+        found.append((
+            "filing",
+            f"{ob['name']} \u2014 "
+            + ("was due " if f["late"] else "due ") + f["due"].isoformat(),
+            ((f"{-f['days']} day{'' if f['days'] == -1 else 's'} late. "
+              "A late return is penalties and interest, not a telling-off."
+              if f["late"] else
+              f"Due in {f['days']} day{'' if f['days'] == 1 else 's'}.")
+             + (f"\n\nTo: {ob['authority']}." if ob["authority"] else "")
+             + (f"\n\n{ob['note']}" if ob["note"] else "")),
+            f["due"].isoformat(),
+            "high" if f["late"] else "normal"))
+
     # Self-closing like the rest: buy the clay and the next run drops it.
     for plan in take("materials", sessions_short_of_materials(conn, today)):
         missing = ", ".join(
