@@ -282,6 +282,73 @@ def run():
                    " -- nothing in this set has a done action of its own, so "
                    "every run rebuilds the picture")
 
+    s.section("A reminder, once, when the call has to be made")
+    # The warning and the task are both PULL: they sit on a page until
+    # somebody opens it. A decision with a date on it wants a push, because
+    # the cost of missing it is asymmetric and not recoverable a week later.
+    conn.execute("DELETE FROM workshop_decision_reminders")
+    conn.execute("DELETE FROM notifications WHERE kind = 'workshop_decision'")
+    conn.commit()
+
+    def _notes():
+        return conn.execute(
+            "SELECT COUNT(*) AS c FROM notifications WHERE kind = 'workshop_decision'"
+        ).fetchone()["c"]
+
+    with m.app.test_request_context():
+        first = m.run_workshop_decision_job(conn, today)
+    after_first = _notes()
+    s.check("the owner is told", after_first > 0, detail=str(first))
+
+    # The whole argument for stamping it. A decision stays open for weeks;
+    # a daily job would send a reminder every one of those mornings, and
+    # somebody who has learned to ignore this will ignore the one that
+    # matters.
+    with m.app.test_request_context():
+        second = m.run_workshop_decision_job(conn, today)
+    s.check("running it again the next morning sends nothing new",
+            _notes() == after_first,
+            detail=f"{second} \u2014 a reminder arriving every day for three "
+                   "weeks is how somebody learns to ignore it")
+
+    # But the date passing is a different message and deserves to interrupt.
+    late_row = conn.execute(
+        "SELECT id FROM workshop_sessions WHERE workshop_id = ? "
+        "AND start_date = ?", (wid, (today + timedelta(days=10)).isoformat())
+    ).fetchone()
+    stages = [r["stage"] for r in conn.execute(
+        "SELECT stage FROM workshop_decision_reminders WHERE session_id = ?",
+        (late_row["id"],)).fetchall()] if late_row else []
+    s.check("a session past its date is reminded as overdue, not as due",
+            stages == ["overdue"],
+            detail=f"{stages} \u2014 'you have a week to decide' and 'you "
+                   "were supposed to decide on Tuesday' are different "
+                   "messages")
+
+    # A session nine weeks out is short and is not news. Reminding about it
+    # would put the urgent test to work and then undo it: the panel filters
+    # by urgency and a reminder that did not would be the louder channel
+    # carrying the quieter finding.
+    reminded = {r["session_id"] for r in conn.execute(
+        "SELECT session_id FROM workshop_decision_reminders").fetchall()}
+    s.check("a session whose decision is nine weeks off is not reminded about",
+            far not in reminded,
+            detail=f"reminded about {sorted(reminded)}; the distant one is "
+                   f"session {far}")
+
+    s.check("and the note says what to do about it",
+            conn.execute(
+                """SELECT COUNT(*) AS c FROM notifications
+                    WHERE kind = 'workshop_decision'
+                      AND (body LIKE '%waiting list%' OR body LIKE '%Decide by%'
+                           OR body LIKE '%passed on%')""").fetchone()["c"] > 0,
+            detail="a reminder that only says there is a problem is a worse "
+                   "version of the number already on the page")
+
+    conn.execute("DELETE FROM workshop_decision_reminders")
+    conn.execute("DELETE FROM notifications WHERE kind = 'workshop_decision'")
+    conn.commit()
+
     s.section("An employee cannot set what a session needs")
     r = ec.post(f"/admin/workshops/{wid}/sessions/new",
                 data={"start_date": (today + timedelta(days=50)).isoformat(),

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}What to buy{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What to buy</h1>
+  <a href="{{ url_for('admin_stock') }}" class="btn-ghost">Stock</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Two reasons something is here: a workshop needs it, or the shelf is below the level you keep.
+  Anything wanted for both appears once, with both reasons. The quantity covers the workshops
+  <em>and</em> leaves the shelf where it should be afterwards &mdash; buying only the shortfall
+  empties it the moment the workshop runs.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not basket.vendors %}
+{# It has to be able to be empty, or it becomes furniture. #}
+<div class="empty-state">Nothing to buy. The shelf covers what is booked.</div>
+{% else %}
+
+{% for group in basket.vendors %}
+<div class="detail-card">
+  <h2 class="section-heading">
+    {% if group.vendor %}{{ group.vendor['name'] }}{% else %}No supplier on file{% endif %}
+    <span class="upload-hint">&euro;{{ '%.2f'|format(group.total) }}</span>
+  </h2>
+  {% if group.vendor %}
+    {% if group.vendor['phone'] or group.vendor['email'] %}
+    <p class="upload-hint" style="margin-top:-6px;">
+      {% if group.vendor['contact_person'] %}{{ group.vendor['contact_person'] }} &middot; {% endif %}
+      {% if group.vendor['phone'] %}{{ group.vendor['phone'] }}{% endif %}
+      {% if group.vendor['email'] %}{% if group.vendor['phone'] %} &middot; {% endif %}{{ group.vendor['email'] }}{% endif %}
+    </p>
+    {% endif %}
+  {% else %}
+  {# A different job from ringing somebody: this is "find out who sells it",
+     which is why these sort last rather than mixing in with the calls. #}
+  <p class="upload-hint" style="margin-top:-6px;">These have no supplier against them, so this is
+    a different job &mdash; work out who sells them, then put it on the stock item.</p>
+  {% endif %}
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>What</th><th class="num">Buy</th><th class="num">On the shelf</th><th>Why</th><th class="num">Cost</th></tr>
+      </thead>
+      <tbody>
+        {% for r in group.rows %}
+        <tr>
+          <th scope="row">{{ r.item['name'] }}</th>
+          <td class="num"><strong>{{ '%g'|format(r.buy) }}</strong> {{ r.item['unit'] }}</td>
+          <td class="num">{{ '%g'|format(r.have) }}</td>
+          <td>
+            {% for reason in r.why %}{{ reason }}{% if not loop.last %}; {% endif %}{% endfor %}
+            {%- if r.both %} <span class="mini-status status-pending">both</span>{% endif %}
+          </td>
+          <td class="num">{% if r.cost %}&euro;{{ '%.2f'|format(r.cost) }}{% else %}&mdash;{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+
+<p class="upload-hint">Costs are what the stock item says each one costs, so they are an
+  estimate for planning, not a quote. Nothing here has been ordered &mdash; this is a list to
+  work from.</p>
+{% endif %}
+
+{% endblock %}

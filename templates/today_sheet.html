@@ -109,7 +109,12 @@
   {% for s in todays_workshop_sessions %}
   <div class="mini-row">
     <span class="mini-name">{{ s['title'] }}</span>
-    <span class="mini-role">{{ s['covers'] }} confirmed{% if s['instructor_name'] %} · led by {{ s['instructor_name'] }}{% endif %}{% if s['notes'] %} · {{ s['notes'] }}{% endif %}</span>
+    <span class="mini-role">{{ s['covers'] }} confirmed{% if s['instructor_name'] %} · led by {{ s['instructor_name'] }}{% endif %}{% if s['notes'] %} · {{ s['notes'] }}{% endif %}
+      {# The sheet is for everybody working it — the kitchen cooks around
+         the dietary notes and the desk answers the telephone about a guest
+         they have never heard of — so it is linked from where staff look,
+         not only from the instructor's own home page. #}
+      · <a href="{{ url_for('workshop_running_sheet', session_id=s['id']) }}" class="small-link">Running sheet</a></span>
   </div>
   {% endfor %}
 </div>

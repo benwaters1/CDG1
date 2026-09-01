@@ -166,6 +166,42 @@ def run():
                     for rid in caps),
                 detail=str(where))
 
+        s.section("A workshop may use rooms the house does not sell nightly")
+        # The tool read `active = 1` -- the five rooms sold as stays -- and
+        # so capped every workshop at the nightly inventory and reported
+        # people as unplaceable who were not. A residential course takes
+        # over the house; a room can be right for four nights of it and not
+        # be something the chateau lists by the night.
+        conn.execute(
+            """INSERT INTO rooms (name, description, max_occupancy,
+                                  price_per_night, active, workshop_room,
+                                  export_token, sort_order)
+               VALUES (?, '', 2, 0, 0, 1, ?, 9)""",
+            (TAG + " Tower", f"tok-{TAG}-tower"))
+        tower = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.commit()
+
+        pool = [r["id"] for r in m.workshop_rooms(conn)]
+        s.check("a workshop-only room is offered to the rooming tool",
+                tower in pool, detail=str(len(pool)) + " room(s) in the pool")
+
+        # And the safety argument for making the flag additive rather than
+        # subtractive: `active` still means "sold as a stay" and is read at
+        # two dozen sites, none of which had to learn about this.
+        stay_pool = [r["id"] for r in conn.execute(
+            "SELECT id FROM rooms WHERE active = 1").fetchall()]
+        s.check("and is NOT offered as a nightly stay", tower not in stay_pool,
+                detail="active = 0 already hides it from every stay query, "
+                       "so no existing query changed behaviour and none "
+                       "could be missed")
+
+        s.check("the plan counts its beds too",
+                tower in [r["id"] for r in m.rooming_plan(conn, sid)["rooms"]],
+                detail="the point of the whole correction")
+
+        conn.execute("DELETE FROM rooms WHERE id = ?", (tower,))
+        conn.commit()
+
         s.section("A request nobody returned is not treated as agreed")
         # Its own session, and Adele sorts first: in the fixture above,
         # Aline is reached before Chantal and pairs with Bruno, so by the

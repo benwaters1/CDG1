@@ -4,7 +4,10 @@
 
 <div class="page-head">
   <h1>Stock</h1>
-  <a href="{{ url_for('admin_extras') }}" class="btn-ghost">Extras &amp; menu</a>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('stock_basket') }}" class="btn-mini">What to buy</a>
+    <a href="{{ url_for('admin_extras') }}" class="btn-ghost">Extras &amp; menu</a>
+  </div>
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">
   Levels are added up from every movement rather than stored as a number, so what you see is always
