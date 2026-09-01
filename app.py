@@ -1396,6 +1396,16 @@ def init_db():
         -- closure already records what was in the drawer; nothing recorded
         -- what left the building, so "counted" and "banked" were the same
         -- word and the gap between them was invisible.
+        -- A photograph the house has put in a named place on the site. The
+        -- key is the place ("home.hero"), never the filename, so replacing
+        -- the picture is one upload and no template ever changes.
+        CREATE TABLE IF NOT EXISTS site_images (
+            slot TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            uploaded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            updated_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS cash_bankings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             banked_on TEXT NOT NULL,
@@ -5031,6 +5041,7 @@ NAV_AREAS = {
     ],
     "comms": [
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
+        "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
         "delete_campaign_template", "discard_email_outbox", "edit_announcement",
         "edit_campaign_template", "edit_email_template", "management_email_templates",
@@ -28498,6 +28509,16 @@ def inject_url_map():
     return {"url_map": {r.endpoint for r in app.url_map.iter_rules()}}
 
 
+@app.route("/social")
+def social_page():
+    """Instagram and Facebook given a page rather than two footer icons.
+
+    The house's own photographs are the strongest thing it has and they were
+    reachable only by leaving the site.
+    """
+    return render_template("social.html")
+
+
 # The press page. Everything on it appears on the restoration page already;
 # what it did not have was an address, and a magazine mention nobody can link
 # to is the one piece of proof on the site that cannot be cited.
@@ -32801,6 +32822,86 @@ def team_calendar():
         dinner_cells=dinner_cells, has_dinner_covers=any(c["covers"] for c in dinner_cells),
         workshop_cells=workshop_cells, has_workshop_covers=any(c["covers"] for c in workshop_cells),
     )
+
+
+# Every place on the public site that shows a photograph, named in plain
+# language rather than by filename. The key is the PLACE, so swapping the
+# picture is one upload and no template changes — which is the whole point,
+# because until now every one of these was a Squarespace URL typed into the
+# markup and only the design side could change it.
+#
+# `where` is the sentence the owner needs to find it: not "home.hero" but
+# "the first thing on the home page". `ratio` reserves the space so the
+# picture cannot reflow the page as it loads.
+IMAGE_SLOT_GROUPS = [
+    {"title": "The home page", "note": "What somebody arriving at the site sees first.",
+     "slots": [
+         {"key": "home.hero", "label": "The opening photograph", "ratio": "16/9",
+          "where": "Full width, behind the house name"},
+         {"key": "home.restoration", "label": "The restoration section", "ratio": "3/2",
+          "where": "Beside 'a house being brought back'"},
+         {"key": "home.table", "label": "The table", "ratio": "3/2",
+          "where": "Beside the dinner invitation"},
+     ]},
+    {"title": "The table", "note": "The restaurant page.",
+     "slots": [
+         {"key": "restaurant.hero", "label": "The opening photograph", "ratio": "16/9",
+          "where": "Top of /restaurant"},
+         {"key": "restaurant.kitchen", "label": "The kitchen", "ratio": "3/2",
+          "where": "Beside 'the first room brought back'"},
+     ]},
+    {"title": "Weddings and events", "note": "The three event pages.",
+     "slots": [
+         {"key": "events.weddings", "label": "Weddings", "ratio": "16/9",
+          "where": "Top of /events/weddings"},
+         {"key": "events.private", "label": "Private events", "ratio": "16/9",
+          "where": "Top of /events/private"},
+         {"key": "events.photoshoots", "label": "Photoshoots and film", "ratio": "16/9",
+          "where": "Top of /events/photoshoots"},
+     ]},
+    {"title": "The estate", "note": "Facilities, the restoration story and the press page.",
+     "slots": [
+         {"key": "facilities.hero", "label": "The estate", "ratio": "16/9",
+          "where": "Top of /facilities"},
+         {"key": "restoration.hero", "label": "The restoration", "ratio": "16/9",
+          "where": "Top of /restoration"},
+         {"key": "press.hero", "label": "The press page", "ratio": "16/9",
+          "where": "Top of /press"},
+     ]},
+    {"title": "Ateliers", "note": "The workshops pages.",
+     "slots": [
+         {"key": "workshops.hero", "label": "The ateliers", "ratio": "16/9",
+          "where": "Top of /workshops"},
+     ]},
+]
+IMAGE_SLOT_KEYS = {s["key"] for g in IMAGE_SLOT_GROUPS for s in g["slots"]}
+# Two megabytes. A photograph off a phone is bigger and does not need to be:
+# every one of these is displayed at most full-width on a laptop.
+SITE_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+
+
+def site_image(slot, default=None):
+    """The URL of whatever is in a named slot, or `default`.
+
+    Exposed to templates as a global so a hardcoded photograph can be moved
+    into the house's own hands one line at a time:
+        <img src="{{ site_image('home.hero', 'https://…') }}">
+    Until a slot is filled it returns the default, so swapping a template
+    over changes nothing visible on the day it is done.
+    """
+    try:
+        conn = get_db()
+        row = conn.execute(
+            "SELECT filename FROM site_images WHERE slot = ?", (slot,)).fetchone()
+        conn.close()
+    except sqlite3.Error:
+        return default
+    if not row:
+        return default
+    return url_for("room_photo", filename=row["filename"])
+
+
+app.jinja_env.globals["site_image"] = site_image
 
 
 def save_room_photo(file):
@@ -39693,6 +39794,74 @@ def walk_in_booking():
     return render_template("walk_in_booking.html", rooms=rooms, today=today,
                            options=options, arrival=arrival, departure=departure,
                            form=request.args)
+
+
+@app.route("/admin/images")
+@owner_required
+def admin_images():
+    """Every photograph on the public site, in one place, by where it sits."""
+    conn = get_db()
+    stored = {r["slot"]: r for r in conn.execute("SELECT * FROM site_images").fetchall()}
+    conn.close()
+    groups = []
+    for g in IMAGE_SLOT_GROUPS:
+        slots = []
+        for s in g["slots"]:
+            row = stored.get(s["key"])
+            slots.append({**s, "url": (url_for("room_photo", filename=row["filename"])
+                                       if row else None),
+                          "updated_at": row["updated_at"] if row else None})
+        groups.append({**g, "slots": slots})
+    return render_template("admin_images.html", image_slots=groups)
+
+
+@app.route("/admin/images/upload", methods=["POST"])
+@owner_required
+def admin_image_upload():
+    """Replace the photograph in one named slot.
+
+    Answers JSON because the page drops a file onto a tile and swaps the
+    picture in place. Nothing here is optimistic: on any refusal the stored
+    filename is untouched, so the old photograph is still the one on the
+    site and the tile says why rather than showing a blank where a picture
+    used to be.
+    """
+    slot = (request.form.get("slot") or "").strip()
+    if slot not in IMAGE_SLOT_KEYS:
+        return jsonify(ok=False, error="No such place on the site."), 400
+    file = request.files.get("image")
+    if not file or not file.filename:
+        return jsonify(ok=False, error="No picture was sent."), 400
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in IMAGE_EXTENSIONS:
+        return jsonify(ok=False,
+                       error="That is not a picture the site can show — JPG or PNG."), 400
+    # Measured rather than trusted: Content-Length is whatever the client said.
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    if size > SITE_IMAGE_MAX_BYTES:
+        return jsonify(ok=False, error="That picture is over %dMB — please shrink it."
+                       % (SITE_IMAGE_MAX_BYTES // (1024 * 1024))), 400
+
+    stored_name = f"site_{secrets.token_hex(6)}_{secure_filename(file.filename)}"
+    os.makedirs(ROOM_PHOTO_DIR, exist_ok=True)
+    file.save(os.path.join(ROOM_PHOTO_DIR, stored_name))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO site_images (slot, filename, uploaded_by_user_id, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(slot) DO UPDATE SET filename = excluded.filename,
+             uploaded_by_user_id = excluded.uploaded_by_user_id,
+             updated_at = excluded.updated_at""",
+        (slot, stored_name, current_user()["id"],
+         datetime.now(timezone.utc).isoformat()))
+    # A photograph on the public site is a change to what guests see, so it
+    # is recorded like one rather than treated as a file operation.
+    log_audit(conn, "site_image_replaced", target=slot, details=stored_name)
+    conn.commit()
+    conn.close()
+    return jsonify(ok=True, url=url_for("room_photo", filename=stored_name))
 
 
 @app.route("/admin/restaurant/covers")

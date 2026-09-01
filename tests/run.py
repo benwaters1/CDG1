@@ -87,6 +87,7 @@ SUITES = [
     "test_email_templates",
     "test_newsletter",
     "test_gallery",
+    "test_site_images",
     "test_exports",
     "test_destructive",
     "test_money_ahead",

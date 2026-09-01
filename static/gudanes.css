@@ -5163,3 +5163,169 @@ main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
 }
 .g-rp__f > label, .g-dates__f > label{ display: block; }
 .g-rp__btn{ width: 100%; text-align: left; }
+
+/* ==========================================================================
+   IMAGES MUST NOT SHIFT THE LAYOUT
+   No image on the site carried width/height, so every one reflowed the page
+   as it arrived — the worst-feeling thing on a slow connection. The source
+   dimensions are not known here, so the space is reserved by ratio instead,
+   which is reliable regardless of the file.
+   ========================================================================== */
+main img{ height: auto; }
+.g-card__img, .g-homeroom__img, .g-extra img, .g-band img{
+  aspect-ratio: 3 / 2; width: 100%; object-fit: cover; background: var(--sand-2);
+}
+.g-hero img, .g-hero video{ aspect-ratio: 16 / 9; width: 100%; object-fit: cover; }
+.g-ba__img{ aspect-ratio: auto; }   /* the slider sets its own */
+
+/* ==========================================================================
+   FAQ
+   ========================================================================== */
+.g-faq2{ margin-top: var(--s6); max-width: 62ch; }
+.g-faq2__i{ border-bottom: 1px solid var(--line); }
+.g-faq2__i summary{
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
+  min-height: 56px; padding: var(--s3) 0; cursor: pointer; list-style: none;
+  font-family: var(--display); font-size: var(--t-h3); color: var(--blue-deep);
+}
+.g-faq2__i summary::-webkit-details-marker{ display: none; }
+.g-faq2__i summary::after{
+  content: "+"; flex: 0 0 auto; font-family: var(--ui); font-size: var(--t-lede);
+  color: var(--gilt);
+}
+.g-faq2__i[open] summary::after{ content: "–"; }
+.g-faq2__i summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-faq2__i p{ margin: 0 0 var(--s5); max-width: 58ch; font-size: var(--t-base); line-height: 1.65; }
+
+/* ==========================================================================
+   THE 404 LIST
+   ========================================================================== */
+.g-lost{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem,100%),1fr)); }
+.g .g-lost a{
+  display: block; padding: var(--s4) var(--s5); min-height: 44px;
+  border: 1px solid var(--line); background: var(--white); text-decoration: none;
+}
+.g .g-lost a:hover{ border-color: var(--gilt); }
+.g-lost b{ display: block; font-family: var(--display); font-weight: 400;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-lost span{ display: block; margin-top: 2px; font-size: var(--t-ui); color: var(--ink-soft); }
+
+/* ==========================================================================
+   THE PRICE, ON THE HOMEPAGE
+   ========================================================================== */
+.g-pricenote{
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4);
+  margin: var(--s6) 0 0; padding: var(--s4) 0;
+  border-top: 1px solid var(--gilt); border-bottom: 1px solid var(--gilt);
+  font-size: var(--t-lede); color: var(--ink);
+}
+.g-pricenote__k{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-pricenote b{ font-family: var(--display); font-weight: 400; color: var(--blue-deep);
+  font-variant-numeric: lining-nums; }
+.g .g-pricenote a{ color: var(--blue-deep); }
+
+/* ==========================================================================
+   PRINT
+   Confirmations and directions get printed. Everything decorative goes.
+   ========================================================================== */
+@media print{
+  .g-top, .g-navwrap, .g-bookbar, .g-foot, .g-mark__wrap, .g-monogram,
+  .g-hero__wash, video, .g-backtotop, .g-skip, .g-bloom, .g-season,
+  .g-plan2, .g-ba, .g-years, .g-steps{ display: none !important; }
+  body{ background: #fff; color: #000; font-size: 11pt; }
+  main{ padding: 0; }
+  .g-wrap{ max-width: none; padding: 0; }
+  a[href^="http"]::after{ content: " (" attr(href) ")"; font-size: 9pt; color: #555; }
+  a[href^="#"]::after, a[href^="/"]::after{ content: ""; }
+  .g-sec{ padding: 12pt 0; border: 0; }
+  h1,h2,h3{ break-after: avoid; color: #000; }
+  p, li, dd, tr{ break-inside: avoid; }
+  .g-panel, .g-plate{ border: 1px solid #999; }
+}
+
+/* ==========================================================================
+   THE PHOTOGRAPH SLOTS
+   Drag a picture onto a slot. Each shows the ratio it will be cropped to, so
+   a portrait dropped into a landscape slot is not a surprise.
+   ========================================================================== */
+.g-slots{
+  display: grid; gap: var(--s5); margin: var(--s5) 0 var(--s7);
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
+}
+.g-slot__drop{
+  position: relative; display: flex; align-items: center; justify-content: center;
+  aspect-ratio: 3 / 2; overflow: hidden; cursor: pointer;
+  border: 2px dashed var(--gilt); background: var(--sand-2);
+}
+.g-slot__drop:focus-visible{ outline: 3px solid var(--blue-deep); outline-offset: 2px; }
+.g-slot__img{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.g-slot__empty{
+  font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--gilt);
+}
+.g-slot__hint{
+  position: absolute; inset: auto 0 0 0; padding: var(--s2) var(--s3);
+  background: rgba(14,28,48,.78); color: #fff;
+  font-family: var(--ui); font-size: var(--t-sm); text-align: center;
+  opacity: 0; transition: opacity .15s ease;
+}
+.g-slot__drop:hover .g-slot__hint,
+.g-slot__drop:focus-visible .g-slot__hint,
+.g-slot.is-over .g-slot__hint{ opacity: 1; }
+.g-slot.is-over .g-slot__drop{ border-color: var(--blue-deep); border-style: solid; }
+.g-slot.is-busy .g-slot__drop{ opacity: .6; }
+.g-slot.is-done .g-slot__drop{ border-color: #2E6B4F; border-style: solid; }
+.g-slot.is-bad .g-slot__drop{ border-color: #8C2F2F; }
+
+.g-slot__bar{ position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,.2); }
+.g-slot__bar > span{ display: block; height: 100%; width: 0; background: var(--gilt); transition: width .12s linear; }
+
+.g-slot__l{ margin: var(--s3) 0 0; font-family: var(--display); font-size: var(--t-h3);
+  color: var(--blue-deep); line-height: 1.2; }
+.g-slot__w{ margin: 2px 0 0; font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft); }
+.g-slot__err{ margin: var(--s2) 0 0; font-size: var(--t-ui); color: #8C2F2F; }
+
+/* Portrait slots, for the room pictures. */
+.g-slot[data-ratio="2/3"] .g-slot__drop{ aspect-ratio: 2 / 3; }
+.g-slot[data-ratio="16/9"] .g-slot__drop{ aspect-ratio: 16 / 9; }
+
+/* ==========================================================================
+   LIGHTBOX
+   ========================================================================== */
+.g-lb{
+  border: 0; padding: 0; max-width: 96vw; max-height: 96vh; width: auto;
+  background: transparent; overflow: visible;
+}
+.g-lb::backdrop{ background: rgba(14,28,48,.92); }
+.g-lb__img{ display: block; max-width: 92vw; max-height: 82vh; width: auto; height: auto; }
+.g-lb__cap{
+  margin: var(--s3) 0 0; text-align: center; color: #E8E2D6;
+  font-family: var(--ui); font-size: var(--t-ui); max-width: 68ch;
+}
+.g-lb__x, .g-lb__nav{
+  position: absolute; z-index: 2; cursor: pointer;
+  min-width: 48px; min-height: 48px; padding: 0;
+  border: 1px solid rgba(232,226,214,.4); background: rgba(14,28,48,.6);
+  color: #fff; font-size: 26px; line-height: 1;
+}
+.g-lb__x{ top: -56px; right: 0; }
+.g-lb__nav{ top: 50%; transform: translateY(-50%); }
+.g-lb__nav--p{ left: -60px; }
+.g-lb__nav--n{ right: -60px; }
+@media (max-width: 52rem){
+  .g-lb__nav--p{ left: 4px; }
+  .g-lb__nav--n{ right: 4px; }
+  .g-lb__x{ top: 4px; right: 4px; }
+}
+.g-lb__x:focus-visible, .g-lb__nav:focus-visible{ outline: 3px solid var(--gilt); }
+
+/* A night already taken. Distinguished from a past date, which is greyed,
+   by a rule through it — so the reason differs visibly, not just the state. */
+.g-rp__d.is-taken{
+  color: var(--ink-soft); opacity: .55; cursor: not-allowed;
+  text-decoration: line-through; text-decoration-thickness: 1px;
+}

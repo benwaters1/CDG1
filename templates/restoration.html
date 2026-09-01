@@ -30,7 +30,7 @@
    def restoration_page(): return render_template('restoration.html')  #}
 
 <section class="g-hero">
-  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="Restoration work in progress">
+  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="Restoration work in progress">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Class I Historic Monument · Since 2013</p>
@@ -746,6 +746,20 @@
   <h2 class="g-place">Ninety-Four Rooms, Five Ready</h2>
   <p class="g-p">That is easy to write and hard to picture. This is the principal floor, drawn — what is finished, what is being worked on, and what is still as it was found.</p>
   {{ floorplan() }}
+</div></section>
+
+
+<!-- ============ WHERE IT IS POSTED FIRST ============ -->
+<section class="g-sec"><div class="g-wrap g-insta">
+  <p class="g-fr">Au jour le jour<span class="g-fr__en">Day by day</span></p>
+  <p class="g-eyebrow">Before It Reaches Here</p>
+  <h2 class="g-place">The Work, As It Happens</h2>
+  <p class="g-p g-lede-first">What comes off a wall goes out the same week. This page is the edited version; the account is the unedited one, and rooms are usually spoken for before they reach the booking page.</p>
+  <p class="g-p">
+    <a href="https://www.instagram.com/chateaugudanes/" class="g-btn g-btn--solid" rel="me noopener">Instagram</a>
+    <a href="https://www.facebook.com/chateaugudanes/" class="g-btn" rel="me noopener">Facebook</a>
+  </p>
+  <p class="g-limit"><span class="g-limit__k">If you would rather not</span>The journal goes out a few times a year by email, and carries the same things without an account.</p>
 </div></section>
 
 <!-- ============ THE CLOSE ============ -->

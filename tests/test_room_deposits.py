@@ -127,6 +127,13 @@ def run():
             detail=f"got {b['balance_due_date']}, arrival {arrival}")
 
     s.section("A due date is never in the past")
+    # The château's own date, not this machine's. The app floors the due date
+    # in the house's timezone, which is the right one — a due date is a
+    # calendar day somebody reads off a bill in the Ariège. Comparing it to
+    # date.today() measured whoever is running the suite: from Perth, eight
+    # hours ahead, this went red for the eight hours a day the two disagreed,
+    # and nothing was wrong with the app on any of them.
+    house_today = datetime.now(m.LOCAL_TZ).date()
     conn = db()
     deposit, balance, due = m.room_payment_schedule(
         conn, _house_today() + timedelta(days=3), 900.0, 2)

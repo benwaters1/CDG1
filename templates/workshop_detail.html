@@ -23,7 +23,7 @@
 ] %}
 
 <section class="g-hero">
-  <img class="g-hero__img" src="{{ WS_IMAGES[workshop['id'] % 3] }}" alt="{{ workshop['title'] }}">
+  <img loading="lazy" decoding="async" class="g-hero__img" src="{{ WS_IMAGES[workshop['id'] % 3] }}" alt="{{ workshop['title'] }}">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">An Atelier at the Château</p>

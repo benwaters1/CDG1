@@ -11,7 +11,7 @@
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
 
 <section class="g-hero">
-  <img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château grounds">
+  <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1785430040227-II7R17Q9KKPD2Q39TWUP/IMG_3493.jpg?format=1500w" alt="The château grounds">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
     <p class="g-hero__eyebrow">Le Domaine · Six Acres</p>
@@ -82,7 +82,7 @@
 <section class="g-sec" style="background:var(--blue-deep);color:var(--sand)"><div class="g-wrap">
   <p class="g-eyebrow" style="color:rgba(255,255,255,.7)">Winter · December to March</p>
   <h2 class="g-h2" style="color:var(--sand)">Skiing at Ax 3 Domaines</h2>
-  <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1500w" alt="The château under snow"
+  <img loading="lazy" decoding="async" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/03ca0108-8c1e-423f-a790-84ed2b154fac/Chateau+de+Gudanes+In+Winter+2.png?format=1500w" alt="The château under snow"
        style="width:100%;height:clamp(14rem,32vh,22rem);object-fit:cover;display:block;margin:var(--s5) 0 var(--s6)">
   <div class="g-split">
     <div>
@@ -326,6 +326,31 @@
 <div class="g-wrap"></div>
 
 
+
+<!-- ============ ARRIVING WITHOUT A CAR ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Sans voiture<span class="g-fr__en">Without a car</span></p>
+  <p class="g-eyebrow">Three Minutes From the Gates</p>
+  <h2 class="g-place">You Can Come By Train</h2>
+  <p class="g-p g-lede-first">Les Cabannes is on the Toulouse–Latour-de-Carol line, three minutes below the château. Most people assume a valley in the Pyrénées means hiring a car. It does not.</p>
+
+  <div class="g-timeline">
+    <ol class="g-timeline__l">
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">From Paris</span>
+        <span class="g-timeline__v">Gare de Lyon or Montparnasse to Toulouse by TGV, then the regional line south. A long day, and all of it seated.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">From Toulouse</span>
+        <span class="g-timeline__v">Matabiau to Les Cabannes, direct. The last hour runs up the Ariège with the mountains closing in on both sides.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">From Barcelona</span>
+        <span class="g-timeline__v">Over the border to Latour-de-Carol, then north down the same line. Slower than driving and considerably better.</span></li>
+      <li class="g-timeline__i is-done"><span class="g-timeline__k">Last three minutes</span>
+        <span class="g-timeline__v">Tell us your train and someone will be at the station. There is no taxi rank.</span></li>
+    </ol>
+  </div>
+
+  <p class="g-p">Once you are here, the village, the market and the restaurants are walkable. For Beille, Ax-les-Thermes or the caves you will want wheels — we can arrange a car for a day rather than a week.</p>
+  <p class="g-limit"><span class="g-limit__k">Worth knowing</span>The line is scenic rather than fast, and the last connection of the day is early. Send us your booking and we will tell you if it works.</p>
+</div></section>
+
 <!-- ============ THE VALLEY ============ -->
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">Beyond the Gates</p>
@@ -354,6 +379,44 @@
   <p class="g-limit"><span class="g-limit__k">Getting about</span>A car is worth having. The train reaches Les Cabannes, but the valley rewards wandering.</p>
 </div></section>
 
+
+
+<!-- ============ THE NEIGHBOURS ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Le voisinage<span class="g-fr__en">The neighbourhood</span></p>
+  <p class="g-eyebrow">Not Ours, But Close</p>
+  <h2 class="g-place">Who Else Is In the Valley</h2>
+  <p class="g-p g-lede-first">The château is not a resort and does not pretend to be one. Most of what makes a week here belongs to other people, and they are worth naming.</p>
+
+  <div class="g-grid g-grid--2">
+    <div class="g-panel">
+      <h3 class="g-h3">Les Cabannes</h3>
+      <p class="g-p">Three minutes down the hill. The Sunday market, a boulangerie worth the walk, and the station. This is where the kitchen shops.</p>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Tarascon-sur-Ariège</h3>
+      <p class="g-p">Fifteen minutes north, and much bigger. Wednesday and Saturday markets, and the town most guests end up in for an afternoon.</p>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Ax-les-Thermes</h3>
+      <p class="g-p">A spa town since the thirteenth century. The hot springs still run through the middle of it and the basins in the square are free.</p>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Plateau de Beille</h3>
+      <p class="g-p">Twenty minutes up. Cross-country skiing and sledging in winter, walking and mountain biking once the snow goes.</p>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">The painted caves</h3>
+      <p class="g-p">Niaux is half an hour away. Its bison were drawn roughly thirteen thousand years before Gabriel drew the façade — book ahead, numbers are limited by law.</p>
+    </div>
+    <div class="g-panel">
+      <h3 class="g-h3">Mirepoix</h3>
+      <p class="g-p">An hour, and the one to plan a day around. A medieval arcaded square, and the fair where anything large is worth buying.</p>
+    </div>
+  </div>
+
+  <p class="g-limit"><span class="g-limit__k">Ask us</span>We eat in these places ourselves. Tell us what you are after and we will say where to go rather than list everything.</p>
+</div></section>
 
 <!-- ============ THE SEASON ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">

@@ -8,6 +8,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
 
@@ -30,7 +31,7 @@
 
 
 <section class="g-hero">
-<img class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
+<img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
 <div class="g-hero__wash"></div>
 <div class="g-hero__in">
   <p class="g-hero__eyebrow">Cinq Chambres · Ariège</p>
@@ -840,4 +841,55 @@
 </div></section>
 
 
+
+{# Room-level structured data. The organisation markup already exists in the
+   base; this is what actually puts rooms and prices into rich results. Built
+   from the same values the page renders, so it cannot drift. #}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Hotel",
+  "name": "Château de Gudanes",
+  "url": "{{ url_for('book_rooms', _external=True) }}",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "2 Route de Beille",
+    "addressLocality": "Château-Verdun",
+    "postalCode": "09310",
+    "addressRegion": "Ariège",
+    "addressCountry": "FR"
+  },
+  "telephone": "+33628069776",
+  "petsAllowed": false,
+  "numberOfRooms": {{ rooms|length }},
+  "amenityFeature": [
+    {"@type":"LocationFeatureSpecification","name":"Breakfast included","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Free parking","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Swimming pool","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Tennis court","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Wi-fi","value":true},
+    {"@type":"LocationFeatureSpecification","name":"Lift","value":false}
+  ],
+  "containsPlace": [
+    {% for r in rooms %}{
+      "@type": "HotelRoom",
+      "name": {{ r['name']|tojson }},
+      "occupancy": {"@type":"QuantitativeValue","maxValue": {{ (r['max_occupancy'] or 2)|int }}},
+      "bed": {"@type":"BedDetails","numberOfBeds": 1},
+      "potentialAction": {
+        "@type": "ReserveAction",
+        "target": "{{ url_for('book_room', room_id=r['id'], _external=True) }}"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "{{ '%.2f'|format(r['price_per_night']) }}",
+        "priceCurrency": "EUR",
+        "availability": "https://schema.org/InStock",
+        "url": "{{ url_for('book_room', room_id=r['id'], _external=True) }}"
+      }
+    }{{ ',' if not loop.last }}{% endfor %}
+  ]
+}
+</script>
+{{ lightbox() }}
 {% endblock %}

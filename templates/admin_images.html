@@ -1,0 +1,125 @@
+{% extends "public_base.html" %}
+{% block title %}Photographs{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+{# ==========================================================================
+   THE PHOTOGRAPH PAGE
+   Drag an image onto a slot and it replaces what is there. Every place on the
+   site that shows a photograph appears here once, named in plain language
+   rather than by filename.
+
+   Needs one endpoint. See ROUTES_NEEDED.md — it takes a slot key and a file,
+   and returns {ok: true, url: "..."}.
+   ========================================================================== #}
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-eyebrow">Admin</p>
+  <h1 class="g-pagehead">Photographs</h1>
+  <p class="g-lede">Drag a picture onto a slot to replace it. Changes are live as soon as the upload finishes — there is no save button.</p>
+  <p class="g-limit"><span class="g-limit__k">Sizes</span>Anything above 2000px wide is fine; it is resized on upload. Landscape works best everywhere except the room portraits.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  {% for group in image_slots %}
+  <h2 class="g-place">{{ group.title }}</h2>
+  {% if group.note %}<p class="g-p">{{ group.note }}</p>{% endif %}
+
+  <div class="g-slots">
+    {% for slot in group.slots %}
+    <div class="g-slot" data-slot="{{ slot.key }}" data-ratio="{{ slot.ratio|default('3/2') }}">
+      <div class="g-slot__drop" tabindex="0" role="button"
+           aria-label="Replace {{ slot.label }}">
+        {% if slot.url %}
+          <img class="g-slot__img" src="{{ slot.url }}" alt="{{ slot.label }}" loading="lazy" decoding="async">
+        {% else %}
+          <span class="g-slot__empty">No photograph yet</span>
+        {% endif %}
+        <span class="g-slot__hint">Drop, or click to choose</span>
+        <span class="g-slot__bar" data-slot-bar hidden><span></span></span>
+      </div>
+      <p class="g-slot__l">{{ slot.label }}</p>
+      {% if slot.where %}<p class="g-slot__w">{{ slot.where }}</p>{% endif %}
+      <input type="file" accept="image/*" hidden data-slot-input
+             aria-label="Choose a picture for {{ slot.label }}">
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div></section>
+
+<script>
+/* Drag and drop, one slot at a time. Each slot uploads on drop and swaps its
+   own picture when the server confirms — nothing is optimistic, so a failed
+   upload leaves the old photograph in place rather than a broken one. */
+(function(){
+  var ENDPOINT = "{{ url_for('admin_image_upload') if 'admin_image_upload' in url_map else '/admin/images/upload' }}";
+  var TOKEN = "{{ csrf_token() }}";
+
+  document.querySelectorAll('.g-slot').forEach(function(slot){
+    var drop=slot.querySelector('.g-slot__drop'),
+        input=slot.querySelector('[data-slot-input]'),
+        bar=slot.querySelector('[data-slot-bar]');
+
+    function send(file){
+      if(!file || !/^image\//.test(file.type)){ fail('That is not an image'); return; }
+      var fd=new FormData();
+      fd.append('slot', slot.dataset.slot);
+      fd.append('image', file);
+      fd.append('csrf_token', TOKEN);
+      slot.classList.remove('is-bad'); slot.classList.add('is-busy');
+      bar.hidden=false;
+      var xhr=new XMLHttpRequest();
+      xhr.open('POST', ENDPOINT);
+      xhr.upload.onprogress=function(e){
+        if(e.lengthComputable) bar.firstElementChild.style.width=(e.loaded/e.total*100)+'%';
+      };
+      xhr.onload=function(){
+        slot.classList.remove('is-busy'); bar.hidden=true;
+        bar.firstElementChild.style.width='0%';
+        var d={}; try{ d=JSON.parse(xhr.responseText); }catch(e){}
+        if(xhr.status>=200 && xhr.status<300 && d.ok && d.url){
+          var img=slot.querySelector('.g-slot__img');
+          if(!img){
+            img=document.createElement('img');
+            img.className='g-slot__img'; img.loading='lazy'; img.decoding='async';
+            var empty=slot.querySelector('.g-slot__empty');
+            if(empty) empty.remove();
+            drop.insertBefore(img, drop.firstChild);
+          }
+          img.src=d.url + (d.url.indexOf('?')>-1?'&':'?') + 'v=' + Date.now();
+          img.alt=slot.querySelector('.g-slot__l').textContent;
+          slot.classList.add('is-done');
+          setTimeout(function(){ slot.classList.remove('is-done'); }, 1400);
+        } else {
+          fail(d.error || 'Upload failed — the old picture is still there');
+        }
+      };
+      xhr.onerror=function(){ slot.classList.remove('is-busy'); bar.hidden=true;
+        fail('Upload failed — the old picture is still there'); };
+      xhr.send(fd);
+    }
+    function fail(msg){
+      slot.classList.add('is-bad');
+      var m=slot.querySelector('.g-slot__err');
+      if(!m){ m=document.createElement('p'); m.className='g-slot__err'; slot.appendChild(m); }
+      m.textContent=msg;
+    }
+
+    ['dragenter','dragover'].forEach(function(ev){
+      drop.addEventListener(ev, function(e){ e.preventDefault(); slot.classList.add('is-over'); });
+    });
+    ['dragleave','drop'].forEach(function(ev){
+      drop.addEventListener(ev, function(e){ e.preventDefault(); slot.classList.remove('is-over'); });
+    });
+    drop.addEventListener('drop', function(e){
+      var f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      send(f);
+    });
+    drop.addEventListener('click', function(){ input.click(); });
+    drop.addEventListener('keydown', function(e){
+      if(e.key==='Enter'||e.key===' '){ e.preventDefault(); input.click(); }
+    });
+    input.addEventListener('change', function(){ send(input.files[0]); });
+  });
+})();
+</script>
+{% endblock %}
