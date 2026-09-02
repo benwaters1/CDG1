@@ -257,6 +257,7 @@ LEAVE_SETTING_DEFAULTS = {
 }
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
+    "automation_weather_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
@@ -27665,11 +27666,16 @@ def book_rooms():
     # second list of dates that are not theirs, they want to change one of
     # their own.
     next_free = next_free_nights(conn) if not searched else []
+    # A cached reading or None. Never a network call from a page render: a
+    # render that can block on somebody else's network is one that eventually
+    # does, and this is the booking page.
+    weather = weather_now(conn)
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         nothing_available=nothing_available, next_free=next_free,
+        weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
         featured_reviews=featured_reviews,
@@ -30284,6 +30290,88 @@ def leave_booking_group(conn, booking_id):
     if len(left) == 1:
         conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?",
                      (left[0]["id"],))
+
+
+# The chateau's own coordinates.
+WEATHER_LAT, WEATHER_LON = 42.7669, 1.6647
+# Older than this and it is not "right now" any more, so the page says
+# nothing rather than something out of date.
+WEATHER_MAX_AGE_MINUTES = 180
+WEATHER_SETTING = "weather_snapshot"
+
+# Open-Meteo's numeric codes, in the words somebody would actually use.
+WEATHER_WORDS = {
+    0: "clear", 1: "mostly clear", 2: "some cloud", 3: "overcast",
+    45: "fog", 48: "freezing fog",
+    51: "light drizzle", 53: "drizzle", 55: "heavy drizzle",
+    61: "light rain", 63: "rain", 65: "heavy rain",
+    66: "freezing rain", 67: "freezing rain",
+    71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains",
+    80: "showers", 81: "showers", 82: "heavy showers",
+    85: "snow showers", 86: "heavy snow showers",
+    95: "a thunderstorm", 96: "a thunderstorm", 99: "a thunderstorm",
+}
+
+
+def fetch_weather(timeout=8):
+    """Ask Open-Meteo what it is doing. Raises on anything unusable.
+
+    urllib rather than requests, like every other outbound call here. No key
+    and no account, which is the whole reason this service and not another.
+    """
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={WEATHER_LAT}"
+           f"&longitude={WEATHER_LON}&current=temperature_2m,weather_code"
+           f"&timezone=Europe%2FParis")
+    # Request/urlopen by name: this module imports the names, not the
+    # package, so urllib.request.X is an AttributeError here.
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    current = payload.get("current") or {}
+    temp = current.get("temperature_2m")
+    code = current.get("weather_code")
+    if temp is None or code is None:
+        raise ValueError("no current reading in the response")
+    return {"c": round(float(temp)), "code": int(code),
+            "at": datetime.now(timezone.utc).isoformat()}
+
+
+def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
+    """The cached reading, or None. NEVER fetches.
+
+    A page that can block on somebody else's network is a page that
+    eventually does, and this one is the booking page.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (WEATHER_SETTING,)).fetchone()
+    if not row or not row["value"]:
+        return None
+    try:
+        snap = json.loads(row["value"])
+        at = datetime.fromisoformat(snap["at"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    age = (now or datetime.now(timezone.utc)) - at
+    if age > timedelta(minutes=max_age_minutes):
+        # Stale is not "right now". Saying nothing beats telling somebody it
+        # is fifteen degrees when that was yesterday afternoon.
+        return None
+    return {"c": snap.get("c"),
+            "words": WEATHER_WORDS.get(snap.get("code"), "hard to say"),
+            "minutes_old": int(age.total_seconds() // 60)}
+
+
+def run_weather_job(conn):
+    """Refresh the cached reading. Fetched by the house, not by the guest."""
+    snap = fetch_weather()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (WEATHER_SETTING, json.dumps(snap)))
+    conn.commit()
+    return f"{snap['c']}\u00b0C, {WEATHER_WORDS.get(snap['code'], snap['code'])}"
 
 
 def next_free_nights(conn, *, limit=6, today=None):
@@ -51565,6 +51653,9 @@ def record_job_run(conn, job_name, ok, message):
 
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
+    # Hourly. The page reads a cache and never the network, so a slow morning
+    # at Open-Meteo is a page with no weather on it rather than a slow page.
+    ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
     ("daily_digest", "automation_daily_digest_enabled", None, 24 * 3600, run_daily_digest_job),
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
@@ -51736,6 +51827,7 @@ AUTOMATION_EXPLAINED_ON_PAGE = {
 
 
 AUTOMATION_JOB_LABELS = {
+    "weather": "What it is doing at the château",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",

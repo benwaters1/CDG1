@@ -79,11 +79,11 @@ DYNAMIC = {
 # The class each one hangs on is here too, so "not built yet" is proved
 # rather than asserted. Write the CSS, wire it into a page, and the check
 # below will tell you to take it off this list.
-# Five have come off this list as they were landed, and one was deleted:
+# Six have come off this list as they were landed, and one was deleted:
 # _guest_extras.html described adding an extra after booking, which
 # manage_booking.html already does with a real handler behind it. The
 # same story as the pre-arrival form -- a design that lost and stayed.
-# Five have come off this list as they were landed: _guest_timeline.html and
+# Six have come off this list as they were landed: _guest_timeline.html and
 # _print_stay.html on the guest's own booking page, _nights_calc.html on the
 # room page. Every one of them needed real work first -- two were written
 # against column names that do not exist, and the third would have quoted a
@@ -94,7 +94,6 @@ DYNAMIC = {
 # styled and left on here, and the suite went red on "still unbuilt -- no
 # .g-fr rule exists" before the commit.
 AWAITING_WIRING = {
-    "_weather_live.html": ("g-wx", "what it is doing at the chateau now"),
     "_guest_profile.html": ("g-prof", "the guest's own record of their stays"),
 }
 

@@ -589,6 +589,12 @@
 {# The next nights actually free, so nobody has to guess two dates and be
    told they were wrong. Renders nothing when there is nothing open, and is
    left off entirely once somebody HAS searched. #}
+{# What it is doing at the chateau. Read from a cache the house refreshes
+   hourly -- not fetched by the guest's own browser, which would hand their
+   address to a third party on a page that promises otherwise. #}
+{% from '_weather_live.html' import weather_now %}
+{{ weather_now(weather) }}
+
 {% from '_availability_strip.html' import next_free as next_free_strip %}
 {{ next_free_strip(next_free) }}
 
