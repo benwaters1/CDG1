@@ -19,7 +19,7 @@ TAG = "ztest-pw-"
 
 
 def _iso(days):
-    return (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
+    return (m.house_today() + timedelta(days=days)).isoformat()
 
 
 def _cleanup(conn):

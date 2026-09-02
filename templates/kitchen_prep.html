@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Prep list{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Prep list</h1>
+  <a href="{{ url_for('kitchen_fridges') }}" class="btn-ghost">Fridge temperatures</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  What has to be ready before service. This is the board in the kitchen, not the house's task
+  list: it resets every day, and a line that was not done yesterday does not follow you around.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  <a href="{{ url_for('kitchen_prep', date=yesterday) }}" class="btn-mini btn-ghost">&larr; day before</a>
+  <a href="{{ url_for('kitchen_prep') }}" class="btn-mini{{ ' btn-ghost' if not is_today }}">Today</a>
+  <a href="{{ url_for('kitchen_prep', date=tomorrow) }}" class="btn-mini btn-ghost">day after &rarr;</a>
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">{{ on.strftime('%A %d %B') }}</h2>
+  {% if not rows %}
+  <div class="empty-state">Nothing on the board for this day.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>What</th><th>Done by</th><th></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <th scope="row">
+            {% if r['done_at'] %}<s>{{ r['what'] }}</s>{% else %}{{ r['what'] }}{% endif %}
+            {% if r['note'] %}<div class="upload-hint">{{ r['note'] }}</div>{% endif %}
+          </th>
+          <td class="upload-hint">
+            {% if r['done_at'] %}{{ r['done_by'] or 'someone' }}, {{ local_time_str(r['done_at']) }}{% else %}&mdash;{% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('prep_item_done', item_id=r['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini{{ ' btn-ghost' if r['done_at'] }}">{{ 'Undo' if r['done_at'] else 'Done' }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Ticking a line again unticks it. People mistake rows, and a board you
+    cannot correct is a board people stop using.</p>
+  {% endif %}
+</div>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="for_date" value="{{ on.isoformat() }}">
+  <h2 class="section-heading">Put something on the board</h2>
+  <div class="field-row-2">
+    <input type="text" name="what" maxlength="200" placeholder="What needs doing" required>
+    <input type="text" name="note" maxlength="200" placeholder="Anything worth saying">
+  </div>
+  <button type="submit" class="btn-mini">Add</button>
+</form>
+
+{% endblock %}

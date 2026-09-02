@@ -171,7 +171,7 @@ def run():
 
     oc.post(f"/management/vehicles/{v['id']}/log-service", follow_redirects=True)
     serviced = _row("vehicles", "id", v["id"])
-    expected = m.add_months(datetime.now(timezone.utc).date(), 6).isoformat()
+    expected = m.add_months(m.house_today(), 6).isoformat()
     s.check("logging a service moves the next date six months on",
             serviced["next_service_due"] == expected,
             detail=f"{serviced['next_service_due']} (expected {expected})")

@@ -180,7 +180,7 @@ def run():
             """INSERT INTO pos_orders (table_label, covers, status, opened_at, service_date)
                VALUES (?, 2, 'open', ?, ?)""",
             (TAG + " T1", datetime.now(timezone.utc).isoformat(),
-             datetime.now(timezone.utc).date().isoformat()))
+             m.house_today().isoformat()))
         conn.commit()
         order = conn.execute("SELECT * FROM pos_orders WHERE table_label = ?",
                              (TAG + " T1",)).fetchone()

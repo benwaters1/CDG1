@@ -19,7 +19,7 @@ TAG = "conseq-"
 
 
 def _iso(days):
-    return (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
+    return (m.house_today() + timedelta(days=days)).isoformat()
 
 
 def _cleanup(conn):
@@ -237,7 +237,7 @@ def run():
     conn.commit()
 
     certs = {c["name"]: c for c in
-             m.expiring_certifications(conn, datetime.now(timezone.utc).date())}
+             m.expiring_certifications(conn, m.house_today())}
     first_aid = certs.get(TAG + "first aid")
     s.check("shifts booked after the expiry are counted",
             bool(first_aid) and first_aid["shifts_after"] >= 1,

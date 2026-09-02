@@ -53,11 +53,27 @@ and invoices via zips the owner downloads and applies here.
 - **Stdlib only for HTTP.** No `requests`. Everything uses `urllib.request`.
 - **Raw `sqlite3`, no ORM.** Migrations are `(key, ddl)` tuples wrapped in
   `try/except sqlite3.OperationalError: pass` so they're safe to re-run.
-- **Service day.** `service_day()` winds local time back past
-  `POS_SERVICE_ROLLOVER_HOUR` (05:00) — 01:30 Wednesday is still Tuesday's
-  service. Never stamp a UTC calendar date where a service day belongs;
-  that bug has been fixed twice. `service_day_window(day)` gives the UTC
+- **What day it is. Three right answers, and the return type picks.**
+  A *moment* is a datetime and is stored in UTC. A *day* is a date and
+  belongs to the house: `house_today()` / `house_today_iso()`. The
+  restaurant's day ends at 05:00, so the till asks `service_day()`, which
+  winds local time back past `POS_SERVICE_ROLLOVER_HOUR` — 01:30 Wednesday
+  is still Tuesday's service. `service_day_window(day)` gives the UTC
   instant pair (23h/25h on clock-change nights).
+  - `datetime.now(timezone.utc).date()` is never right. Between midnight
+    and 02:00 in the Ariège it is yesterday. It was written 125 times, and
+    95 other sites spelled the correct answer out longhand — which is why
+    it kept coming back: both spellings were common, so neither looked
+    wrong. There is now one definition and `test_house_day` fails on a
+    second, in either spelling.
+  - **Never `stamp[:10]` to get a day.** That reads UTC too, so anything
+    recorded after midnight local carries yesterday's date all of the next
+    day — filed under the wrong heading, aged a day out, invoiced on the
+    wrong date. Use `house_date()` / `house_date_iso()`.
+  - The cost of getting it wrong is not cosmetic. It cashed the till out on
+    the wrong day, ticked breakfast onto yesterday's list, and made the
+    3am cash-up impossible: the close route demanded a confirmation box the
+    page had already decided not to draw.
 - **Hours.** A clock-out before its clock-in poisons any bare `SUM` of
   hours. Always guard it. Never loop `net_hours` — batch it.
 - **Money.** Gross vs net is stated on every figure, there is one definition

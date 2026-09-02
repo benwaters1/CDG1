@@ -61,7 +61,7 @@ def run():
 
     # Far enough out to miss the seeded ateliers, which move as they are
     # rebooked — the same trap that has already bitten two suites here.
-    base = datetime.now(timezone.utc).date() + timedelta(days=700)
+    base = m.house_today() + timedelta(days=700)
     two_nights = (base, base + timedelta(days=2))
 
     with m.app.test_request_context():

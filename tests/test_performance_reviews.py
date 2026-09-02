@@ -86,7 +86,7 @@ def run():
 
     person = _employee("Camille")
     theirs = _as(person["id"])
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
 
     s.section("Writing one")
     r = oc.post("/admin/hr/reviews/new", data={

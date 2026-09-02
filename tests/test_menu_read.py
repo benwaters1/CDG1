@@ -15,7 +15,7 @@ TAG = "menuread-"
 
 
 def _iso(days=0):
-    return (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
+    return (m.house_today() + timedelta(days=days)).isoformat()
 
 
 def _cleanup(conn):

@@ -55,7 +55,7 @@ def run():
     s = Suite("Insurance")
     _cleanup()
     oc, ec, owner, emp = clients()
-    expiry = (datetime.now(timezone.utc).date() + timedelta(days=40)).isoformat()
+    expiry = (m.house_today() + timedelta(days=40)).isoformat()
 
     s.section("Adding a policy")
     r = oc.post("/management/insurance/new", data={
@@ -123,7 +123,7 @@ def run():
 
     s.section("An expiring policy reaches the owner")
     # Already past its date, so it must show up wherever expiry is surfaced.
-    lapsed = _policy((datetime.now(timezone.utc).date() - timedelta(days=3)).isoformat())
+    lapsed = _policy((m.house_today() - timedelta(days=3)).isoformat())
     page = oc.get("/management/company-info")
     s.check("the register lists it", page.status_code == 200 and TAG in page.get_data(as_text=True),
             detail=f"HTTP {page.status_code}")

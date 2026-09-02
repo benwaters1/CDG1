@@ -13,7 +13,7 @@ import _harness
 
 m = _harness.m
 TAG = "ZZWF"
-TODAY = datetime.now(timezone.utc).date()
+TODAY = m.house_today()
 
 
 def _free_window(room_id, nights=2):

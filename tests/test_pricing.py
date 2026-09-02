@@ -89,7 +89,7 @@ def run():
     s = Suite("What the guest is charged")
     _cleanup()
     oc, ec, owner, emp = clients()
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
 
     s.section("The discount itself")
     pct = _promo("PCT", discount_type="percent", discount_value=20)

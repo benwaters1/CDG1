@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Fridge temperatures{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Fridge temperatures</h1>
+  <a href="{{ url_for('kitchen_prep') }}" class="btn-ghost">Prep list</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every reading for the last fortnight. The useful part is not the tick &mdash; it is seeing
+  that one unit has been drifting up all week, before anything in it has to be thrown away.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if log %}
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Write down a reading</h2>
+  <div class="field-row-2">
+    <select name="unit_id" required>
+      {% for u in log %}
+      <option value="{{ u.unit['id'] }}">{{ u.unit['name'] }}{% if u.unit['where_it_is'] %} &mdash; {{ u.unit['where_it_is'] }}{% endif %}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="celsius" inputmode="decimal" placeholder="What it reads, e.g. 4.5" required>
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="action_taken" maxlength="300"
+           placeholder="If it was out of range, what was done about it">
+    <input type="text" name="note" maxlength="200" placeholder="Anything else worth saying">
+  </div>
+  <button type="submit" class="btn-mini">Write it down</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">A reading outside the range is recorded even
+    with nothing written against it &mdash; refusing would mean it never gets written down at all.
+    It shows below as unanswered until somebody says what was done.</p>
+</form>
+{% endif %}
+
+{% for u in log %}
+<div class="detail-card">
+  <h2 class="section-heading">
+    {{ u.unit['name'] }}{% if u.unit['where_it_is'] %} &mdash; {{ u.unit['where_it_is'] }}{% endif %}
+  </h2>
+  <p class="upload-hint">
+    {% if u.judged %}
+      Should sit
+      {% if u.unit['min_c'] is not none and u.unit['max_c'] is not none %}
+        between {{ '%g'|format(u.unit['min_c']) }}&deg;C and {{ '%g'|format(u.unit['max_c']) }}&deg;C.
+      {% elif u.unit['max_c'] is not none %}
+        below {{ '%g'|format(u.unit['max_c']) }}&deg;C.
+      {% else %}
+        above {{ '%g'|format(u.unit['min_c']) }}&deg;C.
+      {% endif %}
+    {% else %}
+      No range has been set for this unit, so nothing here is being judged. The readings are
+      written down and nobody is being told whether they are all right.
+    {% endif %}
+  </p>
+
+  {% if u.unanswered %}
+  <p class="pay-disclaimer">
+    {{ u.unanswered|length }} reading{{ '' if u.unanswered|length == 1 else 's' }} outside the
+    range with nothing written against {{ 'it' if u.unanswered|length == 1 else 'them' }}. A
+    reading out of range that nobody answered is a record of a problem nobody dealt with.
+  </p>
+  {% endif %}
+
+  {% if not u.readings %}
+  <div class="empty-state">Nothing read in the last fortnight.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>When</th><th class="num">&deg;C</th><th>Who</th><th>What was done</th></tr></thead>
+      <tbody>
+        {% for r in u.readings %}
+        {% set bad = u.judged and ((u.unit['min_c'] is not none and r['celsius'] < u.unit['min_c']) or (u.unit['max_c'] is not none and r['celsius'] > u.unit['max_c'])) %}
+        <tr class="{{ 'row-alert' if bad }}">
+          <th scope="row">{{ local_datetime_str(r['read_at']) }}</th>
+          <td class="num">{{ '%g'|format(r['celsius']) }}</td>
+          <td>{{ r['who'] or '&mdash;'|safe }}</td>
+          <td>
+            {% if bad and not r['action_taken'] %}nothing said
+            {% else %}{{ r['action_taken'] or '&mdash;'|safe }}{% endif %}
+            {% if r['note'] %}<div class="upload-hint">{{ r['note'] }}</div>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="unit">
+  <h2 class="section-heading">Add a unit</h2>
+  <div class="field-row-2">
+    <input type="text" name="name" maxlength="80" placeholder="What it is called, e.g. Walk-in" required>
+    <input type="text" name="where_it_is" maxlength="80" placeholder="Where it is">
+  </div>
+  <div class="field-row-2">
+    <input type="text" name="min_c" inputmode="decimal" placeholder="No colder than, in C">
+    <input type="text" name="max_c" inputmode="decimal" placeholder="No warmer than, in C">
+  </div>
+  <button type="submit" class="btn-mini">Add it</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">Leave the range blank if you do not know it.
+    Readings will still be recorded; they read as <em>unjudged</em> rather than as fine, because
+    silence and approval look identical on a page and only one of them is honest.</p>
+</form>
+
+{% endblock %}

@@ -50,7 +50,7 @@ def _pending_expense(amount=250.0):
 
 
 def _pending_leave(emp_id):
-    start = datetime.now(timezone.utc).date() + timedelta(days=400)
+    start = m.house_today() + timedelta(days=400)
     conn = db()
     cols = {c["name"] for c in conn.execute("PRAGMA table_info(leave_requests)").fetchall()}
     fields = {"user_id": emp_id, "start_date": start.isoformat(),
@@ -150,7 +150,7 @@ def run():
     s.section("Recurring costs")
     r3 = oc.post("/management/recurring-costs/new", data={
         "label": f"{TAG} Broadband", "amount": "45.50", "frequency": "monthly",
-        "category": "utilities", "next_due_date": (datetime.now(timezone.utc).date()
+        "category": "utilities", "next_due_date": (m.house_today()
                                                    + timedelta(days=20)).isoformat(),
     }, follow_redirects=True)
     conn = db()

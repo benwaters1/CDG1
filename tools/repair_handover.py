@@ -659,19 +659,18 @@ def repair_event_promo_field():
 
 
 def repair_admin_images_page():
-    """The two things the image manager arrives with, both times so far.
+    """The two things the image manager arrives with, both rounds so far.
 
-    It is a designer page with no route yet -- nothing in app.py renders it --
-    so neither fault shows up as a broken page. They show up in the sweeps.
+    THE ENDPOINT. It names url_for('admin_image_upload') inside a guard --
+    `if 'admin_image_upload' in url_map` -- and the guard does not raise. Jinja
+    is content to say a name it has never heard of contains nothing, so it
+    always answers no, url_map not being anything a template is given. The
+    branch naming the endpoint is therefore dead in every single render, and
+    the page posts to the hardcoded path in the else instead.
 
-    THE ENDPOINT. It names url_for('admin_image_upload'), and it came wrapped
-    in a guard: `if 'admin_image_upload' in url_map`. The guard does not raise
-    -- Jinja is content to say a name it has never heard of contains nothing --
-    it just always answers no, because url_map is not in the template context.
-    So the branch naming the endpoint is dead in every render, and what the
-    page actually posts to is the literal path in the else. Which is worse than
-    a crash: the day the route moves, the page keeps posting to the old path
-    and nothing says so.
+    That is worse than a crash. The route exists now, and the day it moves the
+    page would go on posting to the old path with nothing at all to say so. So
+    the repair is to name the endpoint and let Flask resolve it.
 
     THE FILE INPUT. Hidden, clicked by the slot around it, and with no name of
     its own. The slot IS labelled, so nobody using the page is stuck -- but the
@@ -683,21 +682,26 @@ def repair_admin_images_page():
         return 0
     src = _read(rel)
     fixed = 0
-    bad = ("var ENDPOINT = \"{{ url_for('admin_image_upload')")
-    if bad in src:
-        start = src.find(bad)
-        end = src.find(";", start)
-        if end != -1:
-            src = src[:start] + 'var ENDPOINT = "/admin/images/upload"' + src[end:]
-            fixed += 1
+
+    start = src.find("var ENDPOINT =")
+    end = src.find(";", start) if start != -1 else -1
+    # Only where the dead guard actually is. Matching on the endpoint name
+    # alone would keep rewriting the correct line, and a repair that reports
+    # work against a clean tree is one nobody can read.
+    if start != -1 and end != -1 and "url_map" in src[start:end]:
+        good = 'var ENDPOINT = "{{ url_for(' + "'admin_image_upload'" + ') }}"'
+        src = src[:start] + good + src[end:]
+        fixed += 1
+
     marker = '<input type="file" accept="image/*" hidden data-slot-input'
     at = src.find(marker)
     if at != -1 and "aria-label" not in src[at:at + 200]:
         close = src.find(">", at)
         if close != -1:
-            src = (src[:close] + ' aria-label="Choose a photograph for '
+            src = (src[:close] + ' aria-label="Choose a picture for '
                    '{{ slot.label }}"' + src[close:])
             fixed += 1
+
     if fixed:
         _write(rel, src)
     return fixed
@@ -756,7 +760,7 @@ def main():
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),
         ("the promo code box on the event enquiry", repair_event_promo_field),
-        ("the image manager that has no route yet", repair_admin_images_page),
+        ("the image manager posting to a hardcoded path", repair_admin_images_page),
         ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []

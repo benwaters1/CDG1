@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}What gets thrown away{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What gets thrown away</h1>
+  <a href="{{ url_for('restaurant_margins') }}" class="btn-ghost">Dish margins</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Read from the write-offs the store has recorded all along, and never added up. A kitchen
+  throwing away the same thing every week is either over-ordering it or cooking too much of it
+  &mdash; both are fixable, but only once somebody can see which it is.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  {% for n in [30, 90, 365] %}
+  <a href="{{ url_for('kitchen_waste', days=n) }}"
+     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
+  {% endfor %}
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not data.rows %}
+<div class="empty-state">Nothing has been written off in this window.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">Dearest first</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>What</th><th class="num">How much</th><th class="num">Times</th><th class="num">Worth</th></tr></thead>
+      <tbody>
+        {% for r in data.rows %}
+        <tr>
+          <th scope="row">{{ r.name }}</th>
+          <td class="num">{{ '%g'|format(r.quantity) }} {{ r.unit or '' }}</td>
+          <td class="num">{{ r.times }}</td>
+          <td class="num">&euro;{{ '{:,.2f}'.format(r.worth) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Worth is what the stock was carried at, not what it would have sold for.
+    Throwing away a bottle costs the house what the bottle cost; the sale it would have made is a
+    different loss, and one nobody can count honestly.</p>
+</div>
+{% endif %}
+
+{% endblock %}

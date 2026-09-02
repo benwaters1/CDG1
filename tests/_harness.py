@@ -377,8 +377,13 @@ def house_today():
 
     Every date this app cares about is a French calendar date. A suite
     built on the local clock is testing where the developer is sitting.
+
+    Delegates rather than repeating the expression: app.py now has one
+    definition of what day it is here, and a suite that spelled it out again
+    could drift from the thing it is meant to be checking. It still answers
+    to a frozen clock, because house_today() reads m.datetime too.
     """
-    return m.datetime.now(m.LOCAL_TZ).date()
+    return m.house_today()
 
 
 def clients():

@@ -29,7 +29,7 @@ def _session_with_space():
            FROM workshop_sessions ws JOIN workshops w ON w.id = ws.workshop_id
            WHERE ws.start_date > ? AND COALESCE(w.price_per_person, 0) > 0
            ORDER BY ws.start_date LIMIT 1""",
-        (datetime.now(timezone.utc).date().isoformat(),)).fetchone()
+        (m.house_today().isoformat(),)).fetchone()
     conn.close()
     return row
 

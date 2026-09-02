@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}How long food took{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>How long food took</h1>
+  <a href="{{ url_for('restaurant_covers') }}" class="btn-ghost">Covers ahead</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The till has stamped when a line was sent, when it was ready and when it went out since the day
+  it was built, and nothing has ever read them back. So &ldquo;the kitchen was slow on
+  Saturday&rdquo; has only ever been an argument.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  {% for n in [7, 30, 90] %}
+  <a href="{{ url_for('kitchen_service_times', days=n) }}"
+     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ n }}d</a>
+  {% endfor %}
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not nights %}
+<div class="empty-state">No lines with both stamps on them in this window.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">A night at a time</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Night</th><th class="num">Lines</th><th class="num">To ready</th>
+                 <th class="num">Pass to table</th><th class="num">Worst</th></tr></thead>
+      <tbody>
+        {% for n in nights %}
+        <tr>
+          <th scope="row">{{ n.night }}</th>
+          <td class="num">{{ n.lines }}</td>
+          <td class="num">{% if n.to_ready is not none %}{{ n.to_ready }} min{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if n.to_table is not none %}{{ n.to_table }} min{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if n.worst is not none %}{{ n.worst }} min{% else %}&mdash;{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">A night at a time, not one average over the month &mdash; a mean hides
+    the two evenings that were actually bad, which are the only ones worth talking about. The walk
+    from the pass to the table sits in its own column because it is a different problem from a
+    slow kitchen, and it is the kitchen that gets blamed for it.</p>
+</div>
+<p class="pay-disclaimer">None of this judges anything. A slow night might be one table of twelve,
+  and a long ticket might be a steak somebody sent back. The figures are here; the reading belongs
+  to whoever was in the room.</p>
+{% endif %}
+
+{% endblock %}

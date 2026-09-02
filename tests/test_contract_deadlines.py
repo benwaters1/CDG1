@@ -55,7 +55,7 @@ def _employee(name, contract_type=None, trial_end=None, contract_end=None,
 def _deadlines():
     conn = db()
     try:
-        today = datetime.now(timezone.utc).date()
+        today = m.house_today()
         return [d for d in m.contract_deadlines(conn, today)
                 if (d["name"] or "").startswith(TAG)]
     finally:
@@ -66,7 +66,7 @@ def run():
     s = Suite("Contract deadlines")
     _cleanup()
     oc, ec, owner, emp = clients()
-    today = datetime.now(timezone.utc).date()
+    today = m.house_today()
 
     s.section("A trial period coming up is flagged")
     soon = (today + timedelta(days=7)).isoformat()
