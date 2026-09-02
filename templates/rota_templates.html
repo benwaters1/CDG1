@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Standard weeks{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Standard weeks</h1>
+  <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">The rota</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Not the same thing as copying last week. Last week had somebody off sick, a wedding on the
+  Saturday and two people doubled up for it &mdash; copy that forward and by August the rota is
+  a photocopy of one odd week in May. A standard week is the week you <em>meant</em>: high
+  season, low season, the weeks the house is shut and the builders are in.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">The weeks you keep</h2>
+  {% if not templates %}
+  <div class="empty-state">None yet. Make one below.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Name</th><th class="num">Lines</th><th>Note</th><th></th></tr></thead>
+      <tbody>
+        {% for t in templates %}
+        <tr class="{{ 'row-alert' if t.gone }}">
+          <th scope="row">
+            <a href="{{ url_for('rota_templates_page', template=t.row['id']) }}">{{ t.row['name'] }}</a>
+          </th>
+          <td class="num">{{ t.lines }}</td>
+          <td>
+            {{ t.row['note'] or '' }}
+            {% if t.gone %}
+            <div class="upload-hint">{{ t.gone }} line{{ '' if t.gone == 1 else 's' }} name
+              somebody who no longer works here. Stamping it will skip them and say so.</div>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('delete_rota_template', template_id=t.row['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini btn-ghost">Put away</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% if chosen %}
+<div class="detail-card">
+  <h2 class="section-heading">{{ chosen['name'] }}</h2>
+  {% if not lines %}
+  <div class="empty-state">Nothing on it yet.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Day</th><th>Who</th><th>Hours</th><th>Doing what</th><th></th></tr></thead>
+      <tbody>
+        {% for l in lines %}
+        <tr class="{{ 'row-alert' if l['employee_status'] != 'active' }}">
+          <th scope="row">{{ weekday_names[l['weekday']] }}</th>
+          <td>
+            {{ l['employee_name'] }}
+            {% if l['employee_status'] != 'active' %}<div class="upload-hint">no longer works here</div>{% endif %}
+          </td>
+          <td>{% if l['start_time'] %}{{ l['start_time'] }}&ndash;{{ l['end_time'] or '' }}{% else %}&mdash;{% endif %}</td>
+          <td>{{ l['role_note'] or '' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('delete_rota_template_line', line_id=l['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini btn-ghost">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="line">
+  <input type="hidden" name="template_id" value="{{ chosen['id'] }}">
+  <h2 class="section-heading">Put somebody on it</h2>
+  <label class="field-label" for="tpl-people">Who</label>
+  <select id="tpl-people" name="user_ids" multiple size="6" required>
+    {% for u in staff %}<option value="{{ u['id'] }}">{{ u['name'] }}</option>{% endfor %}
+  </select>
+  <p class="field-hint">Hold Ctrl (or Cmd) to pick more than one. Everybody chosen gets every
+    day chosen &mdash; two people on the same three days is one go, not six.</p>
+  <fieldset style="border:0; padding:0; margin:10px 0;">
+    <legend class="field-label" style="padding:0;">Which days</legend>
+    {% for name in weekday_names %}
+    <label class="checkbox-row" style="display:inline-flex; align-items:center; gap:6px; margin-right:14px;">
+      <input type="checkbox" name="weekdays" value="{{ loop.index0 }}">
+      <span>{{ name }}</span>
+    </label>
+    {% endfor %}
+  </fieldset>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="tpl-start">From</label>
+      <input type="time" id="tpl-start" name="start_time">
+    </div>
+    <div>
+      <label class="field-label" for="tpl-end">Until</label>
+      <input type="time" id="tpl-end" name="end_time">
+    </div>
+  </div>
+  <label class="field-label" for="tpl-note">Doing what</label>
+  <input type="text" id="tpl-note" name="role_note" maxlength="120" placeholder="Breakfast and rooms">
+  <button type="submit" class="btn-mini">Add to the week</button>
+</form>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="apply">
+  <input type="hidden" name="template_id" value="{{ chosen['id'] }}">
+  <h2 class="section-heading">Stamp it onto a week</h2>
+  <label class="field-label" for="tpl-week">Which week</label>
+  <select id="tpl-week" name="week_start">
+    {% for w in weeks %}
+    <option value="{{ w.isoformat() }}">week of {{ w.strftime('%d %B') }}{{ ' — this week' if loop.first }}</option>
+    {% endfor %}
+  </select>
+  <p class="field-hint">
+    Anybody on approved leave that day is left off and named in the message, rather than put on
+    a rota that then looks complete. The day reads as uncovered, which it is, and
+    <a href="{{ url_for('cover_gaps_page') }}">Nobody On</a> asks for somebody to fill it.
+    Shifts already on the rota are left alone.
+  </p>
+  <button type="submit" class="btn-mini">Stamp it</button>
+</form>
+{% endif %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="template">
+  <h2 class="section-heading">A new standard week</h2>
+  <div class="field-row-2">
+    <input type="text" name="name" maxlength="80" required placeholder="High season">
+    <input type="text" name="note" maxlength="200" placeholder="What it is for">
+  </div>
+  <button type="submit" class="btn-mini">Create it</button>
+</form>
+
+{% endblock %}

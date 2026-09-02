@@ -2622,6 +2622,33 @@ def init_db():
         -- Cold storage readings. The useful part is not the tick, it is
         -- seeing that one fridge has drifted up all week before anything
         -- in it has to be thrown away.
+        -- The week you MEANT, as opposed to the week you had. "Copy last
+        -- week" carries last week's accidents forward -- somebody off sick,
+        -- a wedding, two people doubled up for it -- and by August the rota
+        -- is a photocopy of one odd week in May.
+        CREATE TABLE IF NOT EXISTS rota_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            note TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS rota_template_shifts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER NOT NULL
+                REFERENCES rota_templates(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            -- 0 = Monday, matching date.weekday(). A template is a SHAPE, so
+            -- it holds a day of the week and never a date; storing a date
+            -- here is how a template becomes another copy of one week.
+            weekday INTEGER NOT NULL,
+            start_time TEXT,
+            end_time TEXT,
+            role_note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS fridge_units (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -5070,7 +5097,8 @@ NAV_AREAS = {
         "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
         "export_timesheets_csv", "export_timesheets_summary_csv", "flag_timesheet_entry",
         "my_shifts", "new_shift", "new_task", "repair_time_entry", "reschedule_task",
-        "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task"
+        "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task",
+        "rota_templates_page", "delete_rota_template", "delete_rota_template_line"
     ],
     "estate": [
         "admin_access", "admin_assets", "asset_photo", "checkin_vehicle", "checkout_vehicle",
@@ -16990,6 +17018,108 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
     }
 
 
+WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+
+
+def rota_template_rows(conn, template_id):
+    """One template's lines, in the order a week runs."""
+    return conn.execute(
+        """SELECT rota_template_shifts.*, users.name AS employee_name,
+                  users.status AS employee_status
+             FROM rota_template_shifts
+             JOIN users ON users.id = rota_template_shifts.user_id
+            WHERE rota_template_shifts.template_id = ?
+            ORDER BY rota_template_shifts.weekday,
+                     COALESCE(rota_template_shifts.start_time, ''),
+                     users.name""",
+        (template_id,)).fetchall()
+
+
+def rota_templates(conn):
+    """Every template with how many lines it carries."""
+    rows = conn.execute(
+        """SELECT rota_templates.*,
+                  (SELECT COUNT(*) FROM rota_template_shifts
+                    WHERE template_id = rota_templates.id) AS lines,
+                  (SELECT COUNT(*) FROM rota_template_shifts
+                     JOIN users ON users.id = rota_template_shifts.user_id
+                    WHERE template_id = rota_templates.id
+                      AND users.status != 'active') AS gone
+             FROM rota_templates
+            WHERE active = 1
+            ORDER BY rota_templates.name""").fetchall()
+    return [{
+        "row": r, "lines": r["lines"],
+        # Somebody who has left is still in the template, and stamping it
+        # would put a name on the rota that nobody can ring. Said here
+        # rather than discovered on the Monday.
+        "gone": r["gone"],
+    } for r in rows]
+
+
+def apply_rota_template(conn, template_id, week_start):
+    """Stamp a template onto a week. Returns (placed, skipped).
+
+    `skipped` is the (label, reason) list bulk_message wants. Two reasons,
+    and both matter more than the count of what worked:
+
+      - ON APPROVED LEAVE. Rostering somebody on the Tuesday they are in
+        Spain gives you a rota that looks complete and is not, and the hole
+        only shows up when nobody arrives. Skipped, the day reads as
+        uncovered -- which it is -- and cover_gaps calls for somebody.
+      - ALREADY ON THE ROTA. Stamping over a week somebody has hand-built
+        must not double every line or overwrite the fixes.
+    """
+    rows = rota_template_rows(conn, template_id)
+    now = datetime.now(timezone.utc).isoformat()
+    placed, skipped = 0, []
+
+    for r in rows:
+        day = week_start + timedelta(days=r["weekday"])
+        label = f"{r['employee_name']}, {WEEKDAY_NAMES[r['weekday']]}"
+
+        if r["employee_status"] != "active":
+            skipped.append((label, "no longer works here"))
+            continue
+
+        on_leave = conn.execute(
+            """SELECT 1 FROM leave_requests
+                WHERE user_id = ? AND status = 'approved'
+                  AND start_date <= ? AND end_date >= ?
+                LIMIT 1""",
+            (r["user_id"], day.isoformat(), day.isoformat())).fetchone()
+        if on_leave:
+            skipped.append((label, "on approved leave"))
+            continue
+
+        exists = conn.execute(
+            """SELECT 1 FROM shifts
+                WHERE user_id = ? AND shift_date = ?
+                  AND COALESCE(start_time, '') = COALESCE(?, '')
+                  AND COALESCE(end_time, '') = COALESCE(?, '')
+                LIMIT 1""",
+            (r["user_id"], day.isoformat(), r["start_time"],
+             r["end_time"])).fetchone()
+        if exists:
+            skipped.append((label, "already on the rota"))
+            continue
+
+        conn.execute(
+            """INSERT INTO shifts (user_id, shift_date, start_time, end_time,
+                       role_note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (r["user_id"], day.isoformat(), r["start_time"], r["end_time"],
+             r["role_note"], now))
+        placed += 1
+
+    # The audit line is the ROUTE's job, not this function's: log_audit reads
+    # the current user out of the request, so putting it here would make this
+    # callable only from inside one, and the whole point of the work living
+    # out here is that it can be exercised on its own.
+    return placed, skipped
+
+
 def room_access(conn):
     """Every room with what it asks of somebody, easiest first.
 
@@ -22630,6 +22760,8 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("Standard weeks", "rota_templates_page",
+     "rota template standard week pattern stamp shifts repeat roster"),
     ("What the house can manage", "room_access_page",
      "access accessible mobility steps stairs wheelchair lift disabled "
      "step free walking guest needs"),
@@ -41131,6 +41263,154 @@ def management_buying():
     return render_template("management_buying.html", shortfalls=shortfalls,
                            rises=rises, statement=statement, vendors=vendors,
                            vendor=vendor, overview=overview)
+
+
+@app.route("/admin/rota-templates", methods=["GET", "POST"])
+@owner_required
+def rota_templates_page():
+    """Standard weeks: build one, and stamp it onto whichever week you like."""
+    conn = get_db()
+
+    if request.method == "POST":
+        what = request.form.get("what")
+
+        if what == "template":
+            name = (request.form.get("name", "") or "").strip()[:80]
+            if not name:
+                conn.close()
+                flash("A standard week needs a name.", "error")
+                return redirect(url_for("rota_templates_page"))
+            conn.execute(
+                "INSERT INTO rota_templates (name, note, active, created_at) "
+                "VALUES (?, ?, 1, ?)",
+                (name, (request.form.get("note", "") or "").strip()[:200] or None,
+                 datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            new_id = conn.execute(
+                "SELECT id FROM rota_templates ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            conn.close()
+            flash(f"{name} created. Put some shifts on it.", "success")
+            return redirect(url_for("rota_templates_page", template=new_id))
+
+        if what == "line":
+            tid = (request.form.get("template_id", "") or "").strip()
+            uids = [u for u in request.form.getlist("user_ids") if u.isdigit()]
+            weekdays = [w for w in request.form.getlist("weekdays")
+                        if w.isdigit() and 0 <= int(w) <= 6]
+            if not tid.isdigit() or not uids or not weekdays:
+                conn.close()
+                flash("Choose at least one person and at least one day.", "error")
+                return redirect(url_for("rota_templates_page", template=tid))
+            now = datetime.now(timezone.utc).isoformat()
+            start = (request.form.get("start_time", "") or "").strip() or None
+            end = (request.form.get("end_time", "") or "").strip() or None
+            note = (request.form.get("role_note", "") or "").strip()[:120] or None
+            added = 0
+            for uid in uids:
+                for wd in weekdays:
+                    # A template line repeated is a template line, not two.
+                    # Somebody adding Tuesday twice means Tuesday.
+                    if conn.execute(
+                            """SELECT 1 FROM rota_template_shifts
+                                WHERE template_id = ? AND user_id = ? AND weekday = ?
+                                  AND COALESCE(start_time, '') = COALESCE(?, '')
+                                  AND COALESCE(end_time, '') = COALESCE(?, '')""",
+                            (int(tid), int(uid), int(wd), start, end)).fetchone():
+                        continue
+                    conn.execute(
+                        """INSERT INTO rota_template_shifts (template_id, user_id,
+                                   weekday, start_time, end_time, role_note,
+                                   created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (int(tid), int(uid), int(wd), start, end, note, now))
+                    added += 1
+            conn.commit()
+            conn.close()
+            flash(f"{added} line{'' if added == 1 else 's'} added.", "success")
+            return redirect(url_for("rota_templates_page", template=tid))
+
+        if what == "apply":
+            tid = (request.form.get("template_id", "") or "").strip()
+            week = parse_date(request.form.get("week_start", ""))
+            if not tid.isdigit() or not week:
+                conn.close()
+                flash("Which standard week, and onto which week?", "error")
+                return redirect(url_for("rota_templates_page"))
+            # Whatever day was picked, the week it belongs to. Stamping a
+            # Wednesday-to-Tuesday week because somebody clicked Wednesday
+            # would put the Saturday cover on the wrong Saturday.
+            week -= timedelta(days=week.weekday())
+            placed, skipped = apply_rota_template(conn, int(tid), week)
+            if placed or skipped:
+                log_audit(conn, "rota_template_applied", f"template {tid}",
+                          f"week of {week.isoformat()}: {placed} placed, "
+                          f"{len(skipped)} skipped")
+            conn.commit()
+            conn.close()
+            msg, cat = bulk_message("Placed", "shift", placed, skipped)
+            flash(msg, cat)
+            return redirect(url_for("admin_shifts", date=week.isoformat()))
+
+        conn.close()
+        abort(400)
+
+    templates = rota_templates(conn)
+    chosen_raw = (request.args.get("template", "") or "").strip()
+    chosen = None
+    lines = []
+    if chosen_raw.isdigit():
+        chosen = conn.execute("SELECT * FROM rota_templates WHERE id = ?",
+                              (int(chosen_raw),)).fetchone()
+        if chosen:
+            lines = rota_template_rows(conn, chosen["id"])
+    staff = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    conn.close()
+
+    monday = house_today() - timedelta(days=house_today().weekday())
+    weeks = [(monday + timedelta(days=7 * n)) for n in range(0, 8)]
+    stale = [t for t in templates if t["gone"]]
+    overview = [
+        overview_cell("Standard weeks", len(templates)),
+        overview_cell("Lines in all of them", sum(t["lines"] for t in templates)),
+        overview_cell("Naming somebody who has left", len(stale),
+                      alert=bool(stale),
+                      hint="stamping it puts a name nobody can ring on the rota"),
+    ]
+    return render_template("rota_templates.html", templates=templates,
+                           chosen=chosen, lines=lines, staff=staff,
+                           weeks=weeks, weekday_names=WEEKDAY_NAMES,
+                           overview=overview)
+
+
+@app.route("/admin/rota-templates/line/<int:line_id>/delete", methods=["POST"])
+@owner_required
+def delete_rota_template_line(line_id):
+    conn = get_db()
+    row = conn.execute("SELECT template_id FROM rota_template_shifts WHERE id = ?",
+                       (line_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM rota_template_shifts WHERE id = ?", (line_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("rota_templates_page", template=row["template_id"]))
+
+
+@app.route("/admin/rota-templates/<int:template_id>/delete", methods=["POST"])
+@owner_required
+def delete_rota_template(template_id):
+    conn = get_db()
+    # Marked inactive rather than deleted. A shift already stamped from it is
+    # a real shift and stands on its own; what goes is the offer to stamp it
+    # again.
+    conn.execute("UPDATE rota_templates SET active = 0 WHERE id = ?",
+                 (template_id,))
+    conn.commit()
+    conn.close()
+    flash("Put away. Shifts already stamped from it are untouched.", "success")
+    return redirect(url_for("rota_templates_page"))
 
 
 @app.route("/admin/room-access", methods=["GET", "POST"])

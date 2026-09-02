@@ -129,7 +129,7 @@
        'export_timesheets_csv','export_timesheets_summary_csv',
        'admin_leave','decide_leave','export_leave_csv',
        'rota_clashes_page','cover_gaps_page','rota_vs_clock_page','skills_page',
-       'overtime_page'] %}
+       'overtime_page','rota_templates_page','delete_rota_template','delete_rota_template_line'] %}
     {# The house and its upkeep — physical things, not people and not guests. #}
     {% set estate_endpoints = ['room_issues','new_room_issue','resolve_room_issue','reopen_room_issue','delete_room_issue','export_room_issues_csv','room_faults_page',
        'management_vehicles','new_vehicle','edit_vehicle','delete_vehicle','toggle_vehicle_cleanliness','toggle_vehicle_fuel',
@@ -263,6 +263,7 @@
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('admin_tasks') }}" class="{{ 'active' if request.endpoint=='admin_tasks' }}">{{ icon('tasks') }}Tasks</a>
         <a href="{{ url_for('admin_shifts') }}" class="{{ 'active' if request.endpoint=='admin_shifts' }}">{{ icon('shifts') }}Shifts</a>
+        <a href="{{ url_for('rota_templates_page') }}" class="{{ 'active' if request.endpoint=='rota_templates_page' }}">{{ icon('calendar') }}Standard Weeks</a>
         <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
         <a href="{{ url_for('admin_timesheets') }}" class="{{ 'active' if request.endpoint=='admin_timesheets' }}">{{ icon('shifts') }}Timesheets</a>
         <a href="{{ url_for('admin_leave') }}" class="{{ 'active' if request.endpoint=='admin_leave' }}">{{ icon('leave') }}Time Off</a>
