@@ -235,6 +235,7 @@ SUITES = [
     "test_kitchen",
     "test_access",
     "test_rota_templates",
+    "test_agreements",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",

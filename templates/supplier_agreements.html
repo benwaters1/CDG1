@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}What we are tied into{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What we are tied into</h1>
+  <a href="{{ url_for('management_recurring_costs') }}" class="btn-ghost">Recurring costs</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Sorted by the last day notice can be given, not by the renewal date. An agreement that rolls
+  over on the first of January with three months&rsquo; notice has to be cancelled by the first
+  of October &mdash; by the time the renewal is close enough to notice, the decision was taken
+  three months ago by nobody. That is the whole reason a diary does not catch this.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if not rows %}
+<div class="empty-state">Nothing recorded yet. Add the first below.</div>
+{% else %}
+<div class="detail-card">
+  <h2 class="section-heading">Soonest deadline first</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>What</th><th>Notice by</th><th>Rolls over</th>
+                 <th class="num">A year</th><th>Where it stands</th><th></th></tr></thead>
+      <tbody>
+        {% for a in rows %}
+        <tr class="{{ 'row-alert' if a.state in ['too_late', 'rolled_on', 'undated'] }}">
+          <th scope="row">
+            {{ a.row['what'] }}
+            {% if a.row['vendor_name'] %}<div class="upload-hint">{{ a.row['vendor_name'] }}</div>{% endif %}
+            {% if a.row['reference'] %}<div class="upload-hint">{{ a.row['reference'] }}</div>{% endif %}
+          </th>
+          <td>
+            {% if a.deadline %}{{ a.deadline.isoformat() }}
+              {% if a.state == 'open' %}<div class="upload-hint">{{ a.days_left }} day{{ '' if a.days_left == 1 else 's' }} left</div>{% endif %}
+            {% else %}&mdash;{% endif %}
+          </td>
+          <td>{{ a.renews.isoformat() if a.renews else '&mdash;'|safe }}</td>
+          <td class="num">{% if a.row['annual_value'] %}&euro;{{ '{:,.0f}'.format(a.row['annual_value']) }}{% else %}&mdash;{% endif %}</td>
+          <td>
+            {% if a.state == 'open' %}
+              Notice can still be given.
+            {% elif a.state == 'too_late' %}
+              <strong>Too late.</strong> It has rolled on for another term; the next chance is
+              {{ a.deadline.isoformat() }} next time round.
+            {% elif a.state == 'running_out' %}
+              Ends on {{ a.renews.isoformat() }} and does not roll on.
+            {% elif a.state == 'rolled_on' %}
+              The renewal date has passed. It is running on and these dates need rewriting.
+            {% elif a.state == 'ended' %}
+              Ended. Take it off the list, or give it its new dates.
+            {% elif a.state == 'decided' %}
+              {{ decisions.get(a.row['decision'], 'Decided') }}.
+            {% else %}
+              Nobody has dated this, so nothing can be said about it.
+            {% endif %}
+            {% if a.row['note'] %}<div class="upload-hint">{{ a.row['note'] }}</div>{% endif %}
+          </td>
+          <td>
+            {% if a.state == 'decided' %}
+            <form method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="what" value="reopen">
+              <input type="hidden" name="agreement_id" value="{{ a.row['id'] }}">
+              <button type="submit" class="btn-mini btn-ghost">Undecide</button>
+            </form>
+            {% else %}
+            <form method="post" style="display:flex; gap:4px; align-items:center;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="what" value="decide">
+              <input type="hidden" name="agreement_id" value="{{ a.row['id'] }}">
+              <select name="decision" aria-label="What was decided about {{ a.row['what'] }}">
+                {% for key, label in decisions.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+              </select>
+              <button type="submit" class="btn-mini">Save</button>
+            </form>
+            {% endif %}
+            <form method="post" style="margin-top:4px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="what" value="retire">
+              <input type="hidden" name="agreement_id" value="{{ a.row['id'] }}">
+              <button type="submit" class="btn-mini btn-ghost">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">
+    &ldquo;Keeping it&rdquo; is a decision and stops the asking, the same as giving notice. What
+    the list must not do is go on asking for a cancellation nobody can make any more &mdash; so
+    anything past its notice date says <em>too late</em> and drops off the warnings entirely.
+  </p>
+</div>
+{% endif %}
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">Add an agreement</h2>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="ag-what">What it is</label>
+      <input type="text" id="ag-what" name="what_it_is" maxlength="120" required
+             placeholder="Linen hire">
+    </div>
+    <div>
+      <label class="field-label" for="ag-vendor">Who with</label>
+      <select id="ag-vendor" name="vendor_id">
+        <option value="">&mdash;</option>
+        {% for v in vendors %}<option value="{{ v['id'] }}">{{ v['name'] }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="ag-renews">Rolls over on</label>
+      <input type="date" id="ag-renews" name="renews_on" required value="{{ today.isoformat() }}">
+    </div>
+    <div>
+      <label class="field-label" for="ag-notice">Notice needed (days)</label>
+      <input type="number" id="ag-notice" name="notice_days" min="0" step="1" value="0"
+             placeholder="90">
+    </div>
+  </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="ag-value">Roughly a year</label>
+      <input type="text" id="ag-value" name="annual_value" placeholder="2400">
+    </div>
+    <div>
+      <label class="field-label" for="ag-ref">Reference</label>
+      <input type="text" id="ag-ref" name="reference" maxlength="80" placeholder="Contract no.">
+    </div>
+  </div>
+  <label class="checkbox-row" style="display:flex; align-items:center; gap:8px; margin:8px 0;">
+    <input type="checkbox" name="auto_renews" value="1" checked>
+    <span>It rolls on by itself unless somebody says otherwise</span>
+  </label>
+  <label class="field-label" for="ag-note">Anything worth knowing</label>
+  <input type="text" id="ag-note" name="note" maxlength="300"
+         placeholder="Notice by registered letter to the Toulouse office">
+  <button type="submit" class="btn-mini">Add it</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">
+    The notice period is the number that matters. Put 0 if there is none and the deadline is the
+    renewal date itself.
+  </p>
+</form>
+
+{% endblock %}

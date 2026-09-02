@@ -162,7 +162,7 @@
        'management_payment_cost','save_card_fee_settings',
        'admin_reports','admin_report','export_report_csv',
        'money_ahead_page','set_opening_balance',
-       'admin_tax','management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv',
+       'admin_tax','management_recurring_costs','new_recurring_cost','edit_recurring_cost','toggle_recurring_cost','delete_recurring_cost','export_recurring_costs_csv','supplier_agreements_page',
        'spend_by_vendor_page','discount_cost_page','held_not_earned_page'] %}
     {# Settings and permanent records. Deliberately last: it is the group you
        need least often, and it used to sit fourth while holding the fleet, the
@@ -334,6 +334,7 @@
         <a href="{{ url_for('management_bank_details') }}" class="{{ 'active' if request.endpoint=='management_bank_details' }}">{{ icon('financial') }}Bank Details</a>
         {% if can('admin_tax') %}<a href="{{ url_for('admin_tax') }}" class="{{ 'active' if request.endpoint=='admin_tax' }}">{{ icon('financial') }}Tax</a>{% endif %}
         <a href="{{ url_for('management_recurring_costs') }}" class="{{ 'active' if request.endpoint=='management_recurring_costs' }}">{{ icon('repeat') }}Recurring Costs</a>
+        <a href="{{ url_for('supplier_agreements_page') }}" class="{{ 'active' if request.endpoint=='supplier_agreements_page' }}">{{ icon('receipt') }}What We Are Tied Into</a>
         {% if can('spend_by_vendor_page') %}<a href="{{ url_for('spend_by_vendor_page') }}" class="{{ 'active' if request.endpoint=='spend_by_vendor_page' }}">{{ icon('receipt') }}Spend by Supplier</a>{% endif %}
         {% if can('discount_cost_page') %}<a href="{{ url_for('discount_cost_page') }}" class="{{ 'active' if request.endpoint=='discount_cost_page' }}">{{ icon('financial') }}What Discounts Cost</a>{% endif %}
         {% if can('held_not_earned_page') %}<a href="{{ url_for('held_not_earned_page') }}" class="{{ 'active' if request.endpoint=='held_not_earned_page' }}">{{ icon('financial') }}Held, Not Earned</a>{% endif %}

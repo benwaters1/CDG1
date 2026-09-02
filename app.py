@@ -2626,6 +2626,34 @@ def init_db():
         -- week" carries last week's accidents forward -- somebody off sick,
         -- a wedding, two people doubled up for it -- and by August the rota
         -- is a photocopy of one odd week in May.
+        -- What the house is tied into. Not the same as a recurring cost,
+        -- which says when money leaves and nothing about whether the house
+        -- is still free to stop it.
+        CREATE TABLE IF NOT EXISTS supplier_agreements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+            started_on TEXT,
+            -- The day it rolls over or ends.
+            renews_on TEXT NOT NULL,
+            -- 1 = rolls on by itself unless somebody says otherwise, which
+            -- is the case worth warning about; 0 = it simply ends.
+            auto_renews INTEGER NOT NULL DEFAULT 1,
+            -- How long before renews_on notice has to be given. THIS is the
+            -- number that decides the deadline, and it is the one nobody
+            -- writes in a diary.
+            notice_days INTEGER NOT NULL DEFAULT 0,
+            annual_value REAL,
+            reference TEXT,
+            note TEXT,
+            -- Set when somebody has decided, so it stops asking. The
+            -- decision, not the outcome: "keeping it" is an answer.
+            decided_at TEXT,
+            decision TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS rota_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -5208,6 +5236,7 @@ NAV_AREAS = {
         # non-owner preset grants.
         "admin_hr_notes", "handle_hr_note",
         "admin_vat", "export_vat_csv",
+        "supplier_agreements_page",
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
@@ -17018,6 +17047,83 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
     }
 
 
+AGREEMENT_DECISIONS = {
+    "keep": "Keeping it",
+    "renegotiate": "Renegotiating",
+    "leave": "Giving notice",
+}
+
+
+def agreement_state(row, today):
+    """Where one agreement stands, from its dates alone.
+
+    Five states, and the two that matter are the ones a renewal date alone
+    cannot tell apart: notice is still possible, and notice is no longer
+    possible. An agreement in the second has already renewed. Saying "due
+    soon" about it is worse than saying nothing, because it reads as a job
+    somebody can still do.
+    """
+    renews = parse_date(row["renews_on"])
+    if not renews:
+        return {"state": "undated", "deadline": None, "renews": None,
+                "days_left": None}
+    deadline = renews - timedelta(days=max(row["notice_days"] or 0, 0))
+
+    if row["decided_at"]:
+        state = "decided"
+    elif renews < today:
+        # The renewal itself has been and gone. For an auto-renewing
+        # agreement that means it is running on and its dates need
+        # rewriting; for a fixed one it has simply ended.
+        state = "rolled_on" if row["auto_renews"] else "ended"
+    elif deadline < today:
+        # Past the last day, before the renewal. Locked in.
+        state = "too_late" if row["auto_renews"] else "running_out"
+    else:
+        state = "open"
+    return {
+        "state": state,
+        "deadline": deadline,
+        "renews": renews,
+        "days_left": (deadline - today).days,
+    }
+
+
+def supplier_agreements(conn, today=None):
+    """Every live agreement, soonest DEADLINE first.
+
+    Ordered by the last day notice can be given rather than by the renewal
+    date, because that is the day a decision has to exist by. The two are
+    months apart on exactly the agreements that cost the most to get wrong.
+    Undated last: an agreement nobody has dated is not urgent, and is not
+    fine either -- it sits at the bottom saying so.
+    """
+    today = today or house_today()
+    rows = conn.execute(
+        """SELECT supplier_agreements.*, vendors.name AS vendor_name
+             FROM supplier_agreements
+             LEFT JOIN vendors ON vendors.id = supplier_agreements.vendor_id
+            WHERE supplier_agreements.active = 1""").fetchall()
+    out = [dict(agreement_state(r, today), row=r) for r in rows]
+    out.sort(key=lambda x: (x["deadline"] is None,
+                            x["deadline"] or today, x["row"]["what"]))
+    return out
+
+
+def agreements_to_decide(conn, *, within_days=120, today=None):
+    """The ones somebody has to make a decision about, and can still act on.
+
+    Deliberately excludes the ones it is too late for. Those are a fact
+    about the year ahead rather than a job, and a list that keeps asking
+    for a cancellation nobody can make any more is a list people stop
+    opening.
+    """
+    today = today or house_today()
+    return [a for a in supplier_agreements(conn, today)
+            if a["state"] == "open" and a["days_left"] is not None
+            and a["days_left"] <= within_days]
+
+
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
                  "Saturday", "Sunday"]
 
@@ -22760,6 +22866,9 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("What we are tied into", "supplier_agreements_page",
+     "agreement contract renewal notice period supplier subscription "
+     "auto renew cancel lock in term"),
     ("Standard weeks", "rota_templates_page",
      "rota template standard week pattern stamp shifts repeat roster"),
     ("What the house can manage", "room_access_page",
@@ -31011,6 +31120,15 @@ def parse_money(raw):
     but only the first should read as unset on the form.
     """
     text = (raw or "").strip().replace("€", "").replace(",", ".")
+    # 1 200,50 is how the owner writes a price. The comma was handled; the
+    # thousands separator was not, and in French it is a SPACE -- so every
+    # amount over a thousand came back None, which here means "the box was
+    # left empty", so the form saved with the field silently blank.
+    #
+    # Only BETWEEN DIGITS, and only a normal space, a no-break space or the
+    # narrow no-break space French typography actually uses. A bare
+    # "45 euros" still fails, which is right: it is not a number.
+    text = re.sub(r"(?<=\d)[ \u00a0\u202f]+(?=\d)", "", text)
     if not text:
         return None
     try:
@@ -41265,6 +41383,107 @@ def management_buying():
                            vendor=vendor, overview=overview)
 
 
+@app.route("/management/agreements", methods=["GET", "POST"])
+@owner_required
+def supplier_agreements_page():
+    """What the house is tied into, and the last day it can get out."""
+    conn = get_db()
+
+    if request.method == "POST":
+        what = request.form.get("what")
+
+        if what == "decide":
+            aid = (request.form.get("agreement_id", "") or "").strip()
+            decision = (request.form.get("decision", "") or "").strip()
+            if not aid.isdigit() or decision not in AGREEMENT_DECISIONS:
+                conn.close()
+                abort(400)
+            conn.execute(
+                "UPDATE supplier_agreements SET decided_at = ?, decision = ? "
+                "WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), decision, int(aid)))
+            conn.commit()
+            conn.close()
+            flash(f"{AGREEMENT_DECISIONS[decision]}. It will stop asking.",
+                  "success")
+            return redirect(url_for("supplier_agreements_page"))
+
+        if what == "reopen":
+            aid = (request.form.get("agreement_id", "") or "").strip()
+            if not aid.isdigit():
+                conn.close()
+                abort(400)
+            conn.execute(
+                "UPDATE supplier_agreements SET decided_at = NULL, "
+                "decision = NULL WHERE id = ?", (int(aid),))
+            conn.commit()
+            conn.close()
+            return redirect(url_for("supplier_agreements_page"))
+
+        if what == "retire":
+            aid = (request.form.get("agreement_id", "") or "").strip()
+            if not aid.isdigit():
+                conn.close()
+                abort(400)
+            conn.execute("UPDATE supplier_agreements SET active = 0 WHERE id = ?",
+                         (int(aid),))
+            conn.commit()
+            conn.close()
+            flash("Off the list.", "success")
+            return redirect(url_for("supplier_agreements_page"))
+
+        label = (request.form.get("what_it_is", "") or "").strip()[:120]
+        renews = parse_date(request.form.get("renews_on", ""))
+        if not label or not renews:
+            conn.close()
+            flash("An agreement needs a name and the date it rolls over.", "error")
+            return redirect(url_for("supplier_agreements_page"))
+        vendor_raw = (request.form.get("vendor_id", "") or "").strip()
+        notice_raw = (request.form.get("notice_days", "") or "").strip()
+        conn.execute(
+            """INSERT INTO supplier_agreements (what, vendor_id, started_on,
+                       renews_on, auto_renews, notice_days, annual_value,
+                       reference, note, active, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            (label, int(vendor_raw) if vendor_raw.isdigit() else None,
+             (parse_date(request.form.get("started_on", "")) or renews).isoformat()
+             if request.form.get("started_on") else None,
+             renews.isoformat(),
+             1 if request.form.get("auto_renews") else 0,
+             int(notice_raw) if notice_raw.isdigit() else 0,
+             parse_money(request.form.get("annual_value", "")),
+             (request.form.get("reference", "") or "").strip()[:80] or None,
+             (request.form.get("note", "") or "").strip()[:300] or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{label} added.", "success")
+        return redirect(url_for("supplier_agreements_page"))
+
+    today = house_today()
+    rows = supplier_agreements(conn, today)
+    vendors = conn.execute(
+        "SELECT id, name FROM vendors WHERE active = 1 ORDER BY name").fetchall()
+    conn.close()
+
+    open_now = [a for a in rows if a["state"] == "open"]
+    late = [a for a in rows if a["state"] == "too_late"]
+    stale = [a for a in rows if a["state"] in ("rolled_on", "ended", "undated")]
+    tied = sum((a["row"]["annual_value"] or 0) for a in rows
+               if a["state"] in ("open", "too_late", "decided"))
+    overview = [
+        overview_cell("Agreements", len(rows)),
+        overview_cell("Tied up a year", f"\u20ac{tied:,.0f}"),
+        overview_cell("Notice still possible", len(open_now)),
+        overview_cell("Too late this time", len(late), alert=bool(late),
+                      hint="already rolled on for another term"),
+        overview_cell("Dates need rewriting", len(stale), alert=bool(stale)),
+    ]
+    return render_template("supplier_agreements.html", rows=rows,
+                           vendors=vendors, overview=overview, today=today,
+                           decisions=AGREEMENT_DECISIONS)
+
+
 @app.route("/admin/rota-templates", methods=["GET", "POST"])
 @owner_required
 def rota_templates_page():
@@ -43686,6 +43905,7 @@ WATCH_TASK_KINDS = {
     "filing": "A return or payment that is due",
     "celebration": "A guest with something to celebrate while they are here",
     "access": "A guest who told us something, in a room that asks something",
+    "agreement": "An agreement about to roll over while nobody decided",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -44922,6 +45142,31 @@ def watch_task_findings(conn, today=None):
             2,
         ))
     found.extend(access)
+
+    # An agreement whose notice window is closing. Raised against the LAST
+    # DAY NOTICE CAN BE GIVEN, not the renewal date -- by the time a renewal
+    # is close enough to notice, the decision was taken months ago by nobody.
+    #
+    # Only the ones somebody can still act on. An agreement past its notice
+    # date has renewed; that is a fact about the year ahead, not a job, and
+    # asking every morning for a cancellation nobody can make any more is
+    # how a list stops being read.
+    agreements = []
+    for a in take("agreement", agreements_to_decide(conn, within_days=60,
+                                                    today=today)):
+        r = a["row"]
+        agreements.append((
+            "agreement",
+            f"Decide about {r['what']} before notice closes",
+            f"Rolls over on {format_date_human(a['renews'].isoformat())}"
+            + (f" at around \u20ac{r['annual_value']:,.0f} a year" if r["annual_value"] else "")
+            + f". Notice has to be given by "
+              f"{format_date_human(a['deadline'].isoformat())}"
+            + (f" \u2014 {r['vendor_name']}." if r["vendor_name"] else "."),
+            a["deadline"].isoformat(),
+            2,
+        ))
+    found.extend(agreements)
 
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting
