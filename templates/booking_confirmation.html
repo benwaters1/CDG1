@@ -3,6 +3,7 @@
 {% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block content %}
+{% from '_room_copy.html' import room_name %}
 
 {# CONTRACT — read-only. Uses booking.* and the same url_for endpoints as
    before; nothing renamed. Previously this used admin classes and printed raw
@@ -20,9 +21,9 @@
     {{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}
   </h1>
   <p class="g-p g-lede-first">
-    {% if booking['payment_status'] == 'paid' %}Your stay in <strong>{{ booking['room_name'] }}</strong> is booked
+    {% if booking['payment_status'] == 'paid' %}Your stay in <strong>{{ room_name(booking['room_name']) }}</strong> is booked
     and paid in full. There is nothing further to do — we will write again a few days before
-    you travel, with directions and arrival times.{% else %}Your request for <strong>{{ booking['room_name'] }}</strong> has been received.
+    you travel, with directions and arrival times.{% else %}Your request for <strong>{{ room_name(booking['room_name']) }}</strong> has been received.
     We confirm every booking by hand, usually the same day.{% endif %}
   </p>
 

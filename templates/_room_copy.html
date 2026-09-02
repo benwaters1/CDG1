@@ -17,3 +17,47 @@
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
+
+{# Display names. The database keeps its own names — bookings, references and
+   the admin all still key on those — and this maps them for the site only.
+   Anything not listed falls through unchanged. #}
+{# The house's French room names, NOT LANDED, and deliberately so.
+
+   The map below is the designer's: Suite with Mountain View becomes Chambre
+   Emeraude, and so on for all five. It is careful work and it may well be
+   what the house wants. But a room's name is DATA, not presentation, and
+   renaming it in a template renames it in only some of the places a guest
+   sees it.
+
+   Concretely: confirm_booking_by_id builds the confirmation email from
+   room['name'] straight out of the database. Land this map on its own and a
+   guest books Chambre Emeraude, then gets an email about a King Room with
+   Mountain View, and their bill, their statement and the arrival card all
+   say the second thing too.
+
+   So this passes the database name through untouched for now. Renaming the
+   rooms properly is one UPDATE on the rooms table, after which every page,
+   every email and every export agrees without a map anywhere. Left in place
+   rather than deleted so the intent and the names are not lost. #}
+{% macro room_name(db_name) -%}
+{#- The intended names, for whoever lands them:
+    Suite with Mountain View        -> Chambre Emeraude
+    King Room with Mountain View    -> Chambre du Levant
+    Family Suite with Mountain View -> Les Deux Chambres
+    Double with Shared Bathroom     -> Chambre Cerise
+    Twin/Double with Shared Bathroom-> Chambre Tilleul  -#}
+{{- db_name -}}
+{%- endmacro %}
+
+{# The English gloss, for the first mention on a page and for anywhere a
+   guest needs to know what they are choosing. #}
+{% macro room_note(db_name) -%}
+{%- set MAP = {
+  'Suite with Mountain View':        'the largest room, first floor, two windows onto the valley',
+  'King Room with Mountain View':    'a king bed against hand-painted panelling, east-facing',
+  'Family Suite with Mountain View': 'two bedrooms opening into one another, sleeping five',
+  'Double with Shared Bathroom':     'a quiet double on the ground floor, shared bathroom',
+  'Twin/Double with Shared Bathroom':'twin or double, shared bathroom, the simplest room'
+} -%}
+{{- MAP.get(db_name, '') -}}
+{%- endmacro %}

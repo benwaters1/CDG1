@@ -707,6 +707,117 @@ def repair_admin_images_page():
     return fixed
 
 
+def repair_url_map_guards():
+    """The guard that never fires, and the four pages nobody could reach.
+
+    The sketches wrap a link in `{% if 'X' in url_map %}` to mean "only if that
+    page is built yet". It cannot work. url_map is not in the template context,
+    so Jinja reports that a name it has never heard of contains nothing, the
+    test is false in every render, and the link takes its fallback FOREVER.
+
+    Nothing errors and every page looks fine, which is why it survived nine
+    rounds. Weddings, Private, Photoshoots and Press are all real, dedicated
+    pages, and not one link in the public nav or footer pointed at any of them
+    -- they all went to events_info or the restoration page instead.
+
+    Repaired by naming the endpoint directly wherever the endpoint EXISTS. A
+    guard on a page that genuinely is not built is left alone, because there
+    the fallback is the right answer; it is just written as a guard rather than
+    as the plain link it is.
+    """
+    import re as _re
+    app_src = _read("app.py")
+    real = set(_re.findall(r"^def (\w+)\(", app_src, _re.M))
+    fixed = 0
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        if "in url_map" not in src:
+            continue
+        before = src
+
+        def block(mo):
+            return ("{{ url_for('%s') }}" % mo.group(1)) if mo.group(1) in real else mo.group(0)
+        src = _re.sub(
+            r"\{%\s*if\s*'(\w+)'\s*in url_map\s*%\}\{\{\s*url_for\('\1'\)\s*\}\}"
+            r"\{%\s*else\s*%\}.*?\{%\s*endif\s*%\}", block, src)
+        src = _re.sub(
+            r"\{\{\s*url_for\('(\w+)'\)\s*if\s*'\1'\s*in url_map\s*else\s*[^}]*\}\}",
+            block, src)
+
+        if src != before:
+            _write(rel, src)
+            fixed += 1
+    return fixed
+
+
+def _rename_cols(text, renames):
+    """Subscript renames, only where the variable is a booking or guest row."""
+    for wrong, right in renames:
+        for var in ("b", "g", "booking", "stay"):
+            text = text.replace(var + wrong, var + right)
+    return text
+
+
+def repair_invented_columns():
+    """Column names the sketches use that the database does not have.
+
+    b['reference'], b['arrival'], b['departure'] and g['reference'] appear
+    across the guest partials. None exists. A missing key on a sqlite3.Row
+    RAISES rather than returning empty, so each one is a 500 on the page a
+    guest reads after paying -- not a blank line.
+
+    Renames only. b['balance_due'] is the same class of fault and is NOT here,
+    because the right answer is an expression rather than another column name,
+    and a repair script guessing at arithmetic is worse than a red test.
+
+    NAMED FILES, not every template, and this is the whole care of it. The
+    first version of this swept templates/ and renamed b['reference'] on
+    management_cash_banking.html -- where b is a cash_bankings row, which HAS a
+    reference column and has no reference_code. That is the same 500 this
+    function exists to prevent, introduced by the function. The suite stayed
+    green because the fixture banks nothing, so the row markup never rendered.
+
+    It also rewrote the comments that document the wrong names, which turned
+    "the sketch used b['arrival']" into a sentence about the correct name and
+    threw away the reason anybody wrote it down.
+    """
+    import re as _re
+    RENAMES = (
+        ("['reference']", "['reference_code']"),
+        ("['arrival']", "['arrival_date']"),
+        ("['departure']", "['departure_date']"),
+    )
+    GUEST_PARTIALS = ("_guest_timeline.html", "_print_stay.html",
+                      "_linked_bookings.html", "_sharelink.html")
+    fixed = 0
+    for name in GUEST_PARTIALS:
+        rel = "templates/" + name
+        if not os.path.exists(os.path.join(ROOT, rel)):
+            continue
+        src = _read(rel)
+        before = src
+        out, i = [], 0
+        while i < len(src):
+            # Leave Jinja comments alone: they are where the wrong names are
+            # written down on purpose.
+            start = src.find("{#", i)
+            if start == -1:
+                out.append(_rename_cols(src[i:], RENAMES)); break
+            close = src.find("#}", start)
+            close = len(src) if close == -1 else close + 2
+            out.append(_rename_cols(src[i:start], RENAMES))
+            out.append(src[start:close])
+            i = close
+        src = "".join(out)
+        if src != before:
+            _write(rel, src)
+            fixed += 1
+    return fixed
+
+
 def repair_reverted_guest_pages():
     """Report the four pages the handovers keep shipping an older copy of.
 
@@ -761,6 +872,8 @@ def main():
         ("the under-18 count the return reads", repair_under_18_field),
         ("the promo code box on the event enquiry", repair_event_promo_field),
         ("the image manager posting to a hardcoded path", repair_admin_images_page),
+        ("the url_map guard that never fires", repair_url_map_guards),
+        ("column names the database does not have", repair_invented_columns),
         ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []

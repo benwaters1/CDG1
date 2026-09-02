@@ -25,8 +25,12 @@
 {# Alternates, so the French and English versions are understood as the same
    page in two languages rather than two unrelated pages competing. x-default
    points at English, which is what an unmatched locale should get. #}
+{# Alternates. If the app exposes `alt_urls` — a {code: url} map built from
+   real translated paths, as /fr/les-chambres rather than ?lang=fr — these use
+   it. Without it they fall back to the query form, which works but ranks
+   less well. Path prefixes with translated slugs are the better shape. #}
 {% for code in languages %}
-<link rel="alternate" hreflang="{{ code }}" href="{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}">
+<link rel="alternate" hreflang="{{ code }}" href="{% if alt_urls and alt_urls.get(code) %}{{ alt_urls[code] }}{% else %}{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}{% endif %}">
 {% endfor %}
 <link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
@@ -120,9 +124,9 @@
         <ul class="g-subnav">
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
-          <li><a href="{% if 'events_weddings' in url_map %}{{ url_for('events_weddings') }}{% else %}{{ url_for('events_info') }}#weddings{% endif %}">{{ t('Weddings') }}</a></li>
-          <li><a href="{% if 'events_private' in url_map %}{{ url_for('events_private') }}{% else %}{{ url_for('events_info') }}#celebrations{% endif %}">{{ t('Private') }}</a></li>
-          <li><a href="{% if 'events_photoshoots' in url_map %}{{ url_for('events_photoshoots') }}{% else %}{{ url_for('events_info') }}#photography{% endif %}">{{ t('Photoshoots') }}</a></li>
+          <li><a href="{{ url_for('events_weddings') }}">{{ t('Weddings') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}">{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_photoshoots') }}">{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>
       <a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a>
@@ -418,7 +422,8 @@
           <li><a href="{{ url_for('events_info') }}">{{ t('Weddings & Celebrations') }}</a></li>
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
-          <li><a href="{% if 'press' in url_map %}{{ url_for('press') }}{% else %}{{ url_for('restoration_page') }}{% endif %}">{{ t('Press') }}</a></li>
+          <li><a href="{{ url_for('press') }}">{{ t('Press') }}</a></li>
+          <li><a href="{{ url_for('story') }}">{{ t('The family') }}</a></li>
         </ul>
       </div>
       <div>

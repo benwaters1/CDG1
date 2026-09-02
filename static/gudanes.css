@@ -5344,3 +5344,142 @@ main img{ height: auto; }
 }
 .g-backtoform .g-btn{ margin-left: auto; }
 @media (max-width: 44rem){ .g-backtoform .g-btn{ margin-left: 0; width: 100%; } }
+
+/* ==========================================================================
+   THE THREE INTENTS
+   Each carries a self-serve path and a way to reach a person. At these prices
+   people often want to speak to someone, and offering both without apology
+   reads as more confident than either alone.
+   ========================================================================== */
+.g-three{ padding: var(--s7) 0; border-top: 1px solid var(--gilt); }
+.g-three--compact{ padding: var(--s6) 0; }
+.g-three__l{ list-style: none; margin: var(--s6) 0 0; padding: 0;
+  display: grid; gap: var(--s6);
+  grid-template-columns: repeat(auto-fit, minmax(min(27rem,100%),1fr)); }
+.g-three__i{ display: flex; gap: var(--s4); align-items: flex-start; }
+.g-three__n{
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border: 1px solid var(--gilt); border-radius: 50%;
+  font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .06em;
+  color: var(--gilt); font-variant-numeric: lining-nums;
+}
+.g-three__b{ flex: 1 1 auto; min-width: 0; }
+.g-three__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-three__d{ margin: 0 0 var(--s4); font-size: var(--t-base); line-height: 1.6;
+  color: var(--ink); max-width: 44ch; }
+.g-three__a{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); margin: 0; }
+.g .g-three__a a:not(.g-btn){ font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep); }
+
+/* ==========================================================================
+   THE PROGRAMME
+   Dated, numbered, with who is leading and how many places are left.
+   ========================================================================== */
+.g-programme{ list-style: none; margin: var(--s6) 0 var(--s5); padding: 0; }
+.g-programme__i{ display: flex; gap: var(--s5); align-items: flex-start;
+  padding: var(--s5) 0; border-bottom: 1px solid var(--line); }
+.g-programme__i.is-full{ opacity: .62; }
+.g-programme__n{ flex: 0 0 auto; font-family: var(--display); font-size: var(--t-h3);
+  color: var(--gilt); font-variant-numeric: lining-nums; min-width: 2.2rem; }
+.g-programme__b{ flex: 1 1 auto; min-width: 0; }
+.g-programme__d{ margin: 0 0 2px; font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g-programme__t{ margin: 0 0 2px; font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-programme__w{ margin: 0 0 var(--s3); font-size: var(--t-ui); color: var(--ink-soft); }
+.g-programme__s{ margin: 0 0 var(--s4); font-size: var(--t-base); line-height: 1.6;
+  color: var(--ink); max-width: 56ch; }
+.g-programme__a{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); margin: 0; }
+.g-programme__left{ font-family: var(--ui); font-size: var(--t-ui); color: var(--gilt); }
+
+/* ==========================================================================
+   ROOM TIERS
+   ========================================================================== */
+.g-tiers{ list-style: none; margin: var(--s6) 0 var(--s5); padding: 0;
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem,100%),1fr)); }
+.g-tier{ display: flex; flex-direction: column;
+  padding: var(--s5); border: 1px solid var(--line); background: var(--white); }
+.g-tier__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); line-height: 1.15; color: var(--blue-deep); }
+.g-tier__p{ margin: 0 0 var(--s4); font-size: var(--t-base); color: var(--ink-soft); }
+.g-tier__p b{ font-family: var(--display); font-weight: 400; font-size: var(--t-lede);
+  color: var(--blue-deep); font-variant-numeric: lining-nums; }
+.g-tier__f{ margin: 0 0 var(--s4); flex: 1 0 auto; }
+.g-tier__f > div{ display: flex; gap: var(--s3); justify-content: space-between;
+  padding: 4px 0; border-bottom: 1px solid rgba(115,86,45,.16); }
+.g-tier__f dt{ font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .06em;
+  text-transform: uppercase; color: var(--gilt); }
+.g-tier__f dd{ margin: 0; font-size: var(--t-ui); color: var(--ink); text-align: right; }
+.g-tier__a{ margin: 0; }
+.g-tier__a .g-btn{ width: 100%; }
+/* The English gloss under a French room name. A named room is only an asset
+   if the reader knows what they are choosing. */
+.g-tier__n{
+  margin: 0 0 var(--s3); font-size: var(--t-ui); line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   THE CHEF
+   A portrait beside the copy. The photograph is the point — a chef carrying
+   two plates down the château steps says more than a paragraph about passion.
+   ========================================================================== */
+.g-chef{ display: grid; gap: var(--s6); align-items: start; margin-top: var(--s6); }
+@media (min-width: 56rem){ .g-chef{ grid-template-columns: minmax(0, 22rem) 1fr; gap: var(--s7); } }
+.g-chef__img{ margin: 0; }
+.g-chef__img img{
+  width: 100%; height: auto; aspect-ratio: 3 / 4; object-fit: cover;
+  background: var(--sand-2); border: 1px solid var(--gilt);
+}
+.g-chef__role{
+  margin: 0 0 var(--s4); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-chef__b > .g-p{ max-width: 58ch; }
+
+/* ==========================================================================
+   THE BOOKING SUMMARY
+   The values were rendering smaller than their own labels — 13px against
+   15px — so "Arrival" read louder than the date beside it. In a summary the
+   figure is the content and the label is the caption, not the other way
+   round.
+   ========================================================================== */
+.g-aside dl > div{
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s4); padding: var(--s3) 0;
+  border-bottom: 1px solid rgba(232,226,214,.18);
+}
+.g-aside dl > div:last-child{ border-bottom: 0; }
+.g-aside dt{
+  flex: 0 0 auto;
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: #A9BCCD;
+}
+.g-aside dd{
+  margin: 0; flex: 1 1 auto; text-align: right; min-width: 0;
+  font-family: var(--display); font-weight: 300;
+  font-size: var(--t-lede); line-height: 1.2;
+  color: #fff; font-variant-numeric: lining-nums;
+}
+/* An empty value should read as waiting, not as a figure. */
+.g-aside dd:empty::after,
+.g-aside dd:has-text("—"){ color: #7C90A6; }
+
+/* The total is the one row that should carry weight. */
+.g-aside .g-sum__total dt{ color: var(--gilt); }
+.g-aside .g-sum__total dd{ font-size: var(--t-h3); color: #fff; }
+/* Required fields were unmarked, so a guest learned a field was required only
+   by being refused. The asterisk is aria-hidden — the `required` attribute
+   already tells a screen reader — and the key explains it once. */
+.g-req{ color: var(--gilt); margin-left: 3px; }
+.g-reqkey{
+  margin: var(--s2) 0 var(--s5); font-family: var(--ui);
+  font-size: var(--t-ui); color: var(--ink-soft);
+}
+.g-opt{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 400;
+  letter-spacing: .04em; text-transform: none; color: var(--ink-soft);
+  margin-left: 4px;
+}

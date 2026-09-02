@@ -38,8 +38,7 @@
       </div>
       <p class="g-slot__l">{{ slot.label }}</p>
       {% if slot.where %}<p class="g-slot__w">{{ slot.where }}</p>{% endif %}
-      <input type="file" accept="image/*" hidden data-slot-input
-             aria-label="Choose a picture for {{ slot.label }}">
+      <input type="file" accept="image/*" hidden data-slot-input aria-label="Choose a picture for {{ slot.label }}">
     </div>
     {% endfor %}
   </div>
@@ -51,11 +50,6 @@
    own picture when the server confirms — nothing is optimistic, so a failed
    upload leaves the old photograph in place rather than a broken one. */
 (function(){
-  /* The endpoint by name. Both sides of this merge had it posting to a
-     hardcoded path -- mine plainly, theirs behind a guard that always
-     took the same fallback, since url_map is not a thing a template is
-     given. The route exists now, so let Flask resolve it and the page
-     follows if it ever moves. */
   var ENDPOINT = "{{ url_for('admin_image_upload') }}";
   var TOKEN = "{{ csrf_token() }}";
 

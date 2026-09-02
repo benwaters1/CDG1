@@ -29421,6 +29421,15 @@ def press():
     return render_template("press.html")
 
 
+# The family behind the house, which the footer has been linking to since the
+# designer wrote it -- at a page that did not exist, so the link quietly went
+# to the restoration page instead. Self-contained, like /press: no route data,
+# so there is nothing to get wrong here except leaving it unbuilt.
+@app.route("/story")
+def story():
+    return render_template("story.html")
+
+
 @app.route("/events/weddings")
 def events_weddings():
     return render_template("events_weddings.html")

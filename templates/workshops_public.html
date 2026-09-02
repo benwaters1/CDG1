@@ -559,6 +559,46 @@
 </div></section>
 
 
+
+<!-- ============ THE PROGRAMME ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Le programme<span class="g-fr__en">The programme</span></p>
+  <p class="g-eyebrow">Dated, Not Continuous</p>
+  <h2 class="g-place">The Year's Programme</h2>
+  <p class="g-p">One atelier runs at a time and there are a fixed number of places in a year. These are the dates, with who is leading each.</p>
+
+  {% if workshops %}
+  <ol class="g-programme">
+    {% for w in workshops %}
+    {% for r in sessions_by_workshop.get(w['id'], []) %}
+    <li class="g-programme__i{% if r.remaining <= 0 %} is-full{% endif %}">
+      <span class="g-programme__n">{{ '%02d'|format(loop.index) }}</span>
+      <div class="g-programme__b">
+        <p class="g-programme__d">
+          {% if r.start_date %}{{ r.start_date }}{% if r.end_date %} — {{ r.end_date }}{% endif %}{% else %}Dates to be confirmed{% endif %}
+        </p>
+        <h3 class="g-programme__t">{{ w['title'] }}</h3>
+        {% if w['lead_name'] %}<p class="g-programme__w">With {{ w['lead_name'] }}{% if w['lead_role'] %}, {{ w['lead_role'] }}{% endif %}</p>{% endif %}
+        {% if w['summary'] %}<p class="g-programme__s">{{ w['summary']|truncate(140) }}</p>{% endif %}
+        <p class="g-programme__a">
+          {% if r.remaining > 0 %}
+            <span class="g-programme__left">{{ r.remaining }} of {{ r.capacity }} place{{ '' if r.capacity == 1 else 's' }} left</span>
+            <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this atelier</a>
+          {% else %}
+            <span class="g-programme__left">Full</span>
+            <a href="{{ url_for('contact_page') }}">Ask about a cancellation</a>
+          {% endif %}
+        </p>
+      </div>
+    </li>
+    {% endfor %}
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="g-limit"><span class="g-limit__k">Next year</span>The programme is being set. <a href="{{ url_for('contact_page') }}">Tell us what you would want to learn</a> and we will write when the dates go up.</p>
+  {% endif %}
+</div></section>
+
 <!-- ============ HOW FEW SEATS ============ -->
 {# Computed from the sessions actually published, so it can never drift from
    what is bookable. #}

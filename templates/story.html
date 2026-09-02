@@ -1,0 +1,59 @@
+{% extends "public_base.html" %}
+{% block title %}The Family{% endblock %}
+{% block description %}Karina Waters bought a château she had barely seen, with ninety of its ninety-four rooms unreachable. What happened next, and why it is still happening.{% endblock %}
+{% block title_fr %}La famille{% endblock %}
+{% block description_fr %}Karina Waters a acheté un château qu'elle avait à peine vu, dont quatre-vingt-dix des quatre-vingt-quatorze pièces étaient inaccessibles.{% endblock %}
+{% set crumbs = [('The family', None)] %}
+{% block content %}
+{% from '_marks.html' import mark, monogram %}
+{% from '_stay_panel.html' import stay_panel %}
+
+<section class="g-sec g-sec--tight"><div class="g-wrap">
+  <p class="g-fr">Une famille, pas une société<span class="g-fr__en">A family, not a company</span></p>
+  <p class="g-eyebrow">Since 2013</p>
+  <h1 class="g-pagehead">Who bought it, and why</h1>
+  <p class="g-lede">A château is not usually bought by someone from Perth. This one was.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">2013</p>
+  <h2 class="g-place">They Had Barely Seen It</h2>
+  <p class="g-p g-lede-first">Karina Waters bought Château de Gudanes having barely set foot in it. Ninety of the ninety-four rooms could not be entered. The roof had gone, taking five storeys with it in places. Trees were growing inside the building.</p>
+  <p class="g-p">It had been empty for most of a century and a half. A developer had planned to divide it into apartments and the permission had been refused, which is the only reason there was anything left to buy.</p>
+</div></section>
+
+<div class="g-wrap g-mark__wrap">{{ mark('ivy') }}</div>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">The First Winter</p>
+  <h2 class="g-place">A Tent, Inside the House</h2>
+  <p class="g-p g-lede-first">There was no electricity, no heating and no water. She stayed anyway, pitching a tent in one of the rooms to keep warm.</p>
+  <p class="g-p">People tell that story back to us more than any other, and it is the one that explains the rest. Nobody does that as an investment. The eight months that followed were spent clearing more than five hundred tonnes of fallen stone, debris and rubble before a single thing could be restored.</p>
+  <p class="g-limit"><span class="g-limit__k">Still here</span>The family lives at the château. When you stay, you are in their house.</p>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Recognised</p>
+  <h2 class="g-place">What Happened Since</h2>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>2013</dt><dd>Bought. Ninety of ninety-four rooms unreachable</dd></div>
+    <div><dt>2014</dt><dd>The first winter, and the tent</dd></div>
+    <div><dt>2015</dt><dd>Eight months clearing five hundred tonnes of rubble</dd></div>
+    <div><dt>2016</dt><dd>Medal of Honour, Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco. First guests</dd></div>
+    <div><dt>2019</dt><dd>The ateliers begin — guests working on the building rather than only staying in it</dd></div>
+    <div><dt>Now</dt><dd>Five rooms ready. Eighty-nine waiting</dd></div>
+  </dl></div></div>
+  <p class="g-p"><a href="{{ url_for('restoration_page') }}" class="g-btn g-btn--solid">The restoration, year by year</a></p>
+</div></section>
+
+<div class="g-mono__wrap">{{ monogram() }}</div>
+
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Why It Is Open</p>
+  <h2 class="g-place">Guests Are the Reason It Continues</h2>
+  <p class="g-p g-lede-first">A building of this size cannot be restored privately. Ninety-four rooms, forty-three thousand square feet, and every intervention applied for and approved before a tool is lifted.</p>
+  <p class="g-p">The five finished rooms pay for the work on the rest. That is not a fundraising line — it is the actual mechanism, and it is why a night here costs what it does and why the walls stay as they are.</p>
+</div></section>
+
+{{ stay_panel() }}
+{% endblock %}
