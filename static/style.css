@@ -2702,3 +2702,33 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 @media (pointer:coarse){
   .g-cost__b{ width:44px; height:44px; }
 }
+
+
+/* ---- The next free nights ----------------------------------------------
+   "Check availability" asks a guest to pick two dates and find out they were
+   wrong. This is the answer without the guess.
+   --------------------------------------------------------------------- */
+.g-fr{
+  font-style:italic; letter-spacing:.02em; margin:0 0 2px;
+  color:var(--steel, #6b6759);
+}
+.g-fr__en{ font-style:normal; display:block; font-size:.86em; letter-spacing:.08em;
+  text-transform:uppercase; }
+.g-nextf{ list-style:none; margin:18px 0 0; padding:0; display:grid; gap:10px; }
+.g-nextf__i{
+  display:grid; align-items:center; gap:4px 18px;
+  grid-template-columns:9rem 1fr auto auto auto;
+  padding:12px 14px;
+  border:1px solid var(--parchment-line, #d9d2c4);
+  background:var(--surface, #fff);
+}
+.g-nextf__d{ font-weight:600; }
+.g-nextf__r{ color:var(--steel, #6b6759); }
+.g-nextf__n, .g-nextf__p{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+/* One column on a phone. Five columns at 360px is five columns of one word
+   each, and the price ends up under the room name reading as its subtitle. */
+@media (max-width:720px){
+  .g-nextf__i{ grid-template-columns:1fr; gap:2px; }
+  .g-nextf__i .g-btn{ margin-top:8px; justify-self:start; }
+}

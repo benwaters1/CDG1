@@ -27496,11 +27496,16 @@ def book_rooms():
              AND guest_feedback.publish_consent = 1
            ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
+    # Computed before the connection closes. Only when nobody has searched:
+    # somebody who has just been told their dates are taken does not want a
+    # second list of dates that are not theirs, they want to change one of
+    # their own.
+    next_free = next_free_nights(conn) if not searched else []
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
-        nothing_available=nothing_available,
+        nothing_available=nothing_available, next_free=next_free,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
         featured_reviews=featured_reviews,
@@ -30034,6 +30039,75 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
         if score > best_score:
             best_score, best = score, rule
     return best["deposit_percent"] if best else (default_percent or 0)
+
+
+# How soon is too soon to advertise. A page leading with tonight reads as an
+# empty house, and for a guest who has to fly it is not a stay they could
+# reach in any case.
+NEXT_FREE_LEAD_DAYS = 3
+NEXT_FREE_HORIZON_DAYS = 120
+
+
+def next_free_nights(conn, *, limit=6, today=None):
+    """The next bookable runs, soonest first, one per room.
+
+    ONE PER ROOM on purpose: six entries for the same room in six
+    consecutive weeks is a list that says nothing, and it is what a naive
+    scan produces first.
+
+    A run has to reach the room's own minimum stay. A room with a three-night
+    minimum and two nights free is not an opening -- offering it produces a
+    guest who picks the dates, is refused, and trusts the page less than if
+    it had never been there.
+
+    Availability comes from is_range_available, which is what the booking
+    flow itself refuses on. A second query of my own would agree with it
+    until the day it did not, and the day it did not would be a guest being
+    turned away from dates the front page offered them.
+    """
+    today = today or house_today()
+    start = today + timedelta(days=NEXT_FREE_LEAD_DAYS)
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    found = []
+    for room in rooms:
+        need = max(int(room["min_nights"] or 1), 1)
+        day = start
+        limit_day = today + timedelta(days=NEXT_FREE_HORIZON_DAYS)
+        while day <= limit_day:
+            ok, _why = is_range_available(conn, room["id"], day,
+                                          day + timedelta(days=need))
+            if not ok:
+                day += timedelta(days=1)
+                continue
+            # Found a run that meets the minimum. Stretch it while it lasts,
+            # so the page can say "five nights free" rather than repeating
+            # the minimum back at somebody.
+            nights = need
+            while nights < 14:
+                ok2, _ = is_range_available(conn, room["id"], day,
+                                            day + timedelta(days=nights + 1))
+                if not ok2:
+                    break
+                nights += 1
+            found.append({
+                # Built rather than strftime'd: "%-d" is not portable and
+                # "%d" pads, so the platform decided whether a guest read
+                # "5 September" or "05 September". Production is Linux and
+                # this is written on Windows, which is exactly the way round
+                # that never shows up until it is live.
+                "date": f"{day.day} {day.strftime('%B')}",
+                "date_iso": day.isoformat(),
+                "room_name": room["name"],
+                "room_id": room["id"],
+                "nights": nights,
+                "price": room["price_per_night"],
+            })
+            break
+        # else: nothing free for this room inside the horizon, which is a
+        # perfectly good answer and not an error.
+    found.sort(key=lambda f: (f["date_iso"], f["room_name"]))
+    return found[:limit]
 
 
 def deposit_percent_to_show(conn):

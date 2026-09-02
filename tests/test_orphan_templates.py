@@ -79,15 +79,17 @@ DYNAMIC = {
 # The class each one hangs on is here too, so "not built yet" is proved
 # rather than asserted. Write the CSS, wire it into a page, and the check
 # below will tell you to take it off this list.
-# Three have come off this list as they were landed: _guest_timeline.html and
+# Four have come off this list as they were landed: _guest_timeline.html and
 # _print_stay.html on the guest's own booking page, _nights_calc.html on the
 # room page. Every one of them needed real work first -- two were written
 # against column names that do not exist, and the third would have quoted a
 # 30% deposit on a house that takes none. "Already written, just include it"
-# was true of none of them, which is what to expect of the six left.
+# was true of any of them, which is what to expect of the five left.
+#
+# The list did its job on the fourth: the availability strip was wired in and
+# styled and left on here, and the suite went red on "still unbuilt -- no
+# .g-fr rule exists" before the commit.
 AWAITING_WIRING = {
-    "_availability_strip.html": ("g-fr", "the next free nights, so a guest "
-                                 "does not have to guess dates"),
     "_sharelink.html": ("g-share", "a read-only link for whoever is paying"),
     "_linked_bookings.html": ("g-linked", "bookings that travel together"),
     "_guest_extras.html": ("g-xtra", "add something after booking"),
