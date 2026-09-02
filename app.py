@@ -2629,6 +2629,46 @@ def init_db():
         -- What the house is tied into. Not the same as a recurring cost,
         -- which says when money leaves and nothing about whether the house
         -- is still free to stop it.
+        -- The list a room is checked against. Named and kept, so it is the
+        -- same check every time -- a check where everybody looks at whatever
+        -- occurs to them finds a different thing each time and misses the
+        -- same thing each time.
+        CREATE TABLE IF NOT EXISTS room_standards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            area TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- One walk of one room, for one arrival. Against the ARRIVAL rather
+        -- than the room, because a pass from three weeks ago says nothing
+        -- about the room somebody opens the door on tonight.
+        CREATE TABLE IF NOT EXISTS room_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            for_date TEXT NOT NULL,
+            checked_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            checked_at TEXT NOT NULL,
+            note TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS room_check_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            check_id INTEGER NOT NULL REFERENCES room_checks(id) ON DELETE CASCADE,
+            standard_id INTEGER REFERENCES room_standards(id) ON DELETE SET NULL,
+            -- The wording AS IT WAS on the day. A standard reworded later
+            -- must not rewrite what somebody signed off in March.
+            what TEXT NOT NULL,
+            passed INTEGER NOT NULL,
+            note TEXT,
+            -- The room issue this fault was raised as, so a fault found is
+            -- a fault REPORTED rather than a line in a log nobody opens.
+            room_issue_id INTEGER REFERENCES room_issues(id) ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS supplier_agreements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             what TEXT NOT NULL,
@@ -4650,6 +4690,15 @@ def init_db():
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
 
+    # The list a room is walked against, so the first person to open the page
+    # has something to walk rather than a blank form and a decision to make.
+    # Runs once and never again -- see seed_room_standards.
+    seeded_standards = seed_room_standards(conn)
+    if seeded_standards:
+        conn.commit()
+        print(f"Seeded {seeded_standards} room standards — edit them under "
+              "Estate, Room Checks.")
+
     # The order the rooms appear in on the front page, set once.
     #
     # Same shape as the atelier correction below: this only moves a room whose
@@ -5155,7 +5204,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
-        "room_access_page",
+        "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -17065,6 +17114,144 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
     }
 
 
+# A starting list, so the first person to open the page has something to walk
+# rather than a blank form and a decision to make. Every line is editable and
+# the house will end up with its own; these are the ones that are the same in
+# every house of this kind.
+DEFAULT_ROOM_STANDARDS = [
+    ("Bed made, linen clean and unmarked", "Bed"),
+    ("No hair anywhere -- bed, bath, floor", "Bathroom"),
+    ("Hot water runs hot, and the shower drains", "Bathroom"),
+    ("Lavatory clean, and it flushes", "Bathroom"),
+    ("Towels, robes and toiletries all there", "Bathroom"),
+    ("Every light works, including the bedsides", "The room"),
+    ("Windows and shutters open and close", "The room"),
+    ("Room smells of nothing", "The room"),
+    ("Heating on and the room is warm", "The room"),
+    ("Nothing of the last guest's left anywhere", "The room"),
+    ("Floor swept and under the bed clear", "The room"),
+    ("Wi-Fi card and the house information out", "The room"),
+]
+
+
+def seed_room_standards(conn):
+    """Put the starting list in, once, and never again.
+
+    Matched on the WORDING rather than on a count, so a house that has
+    deleted a line it does not use never has it put back -- and one that has
+    reworded every line does not get twelve duplicates.
+    """
+    have = {r["what"] for r in conn.execute(
+        "SELECT what FROM room_standards").fetchall()}
+    if have:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    for i, (what, area) in enumerate(DEFAULT_ROOM_STANDARDS):
+        conn.execute(
+            "INSERT INTO room_standards (what, area, sort_order, active, created_at) "
+            "VALUES (?, ?, ?, 1, ?)", (what, area, i, now))
+    return len(DEFAULT_ROOM_STANDARDS)
+
+
+def room_standards(conn):
+    """The list a room is walked against, in the order somebody walks it."""
+    return conn.execute(
+        "SELECT * FROM room_standards WHERE active = 1 "
+        "ORDER BY sort_order, COALESCE(area, ''), id").fetchall()
+
+
+def arrivals_needing_check(conn, *, days=2, today=None):
+    """Rooms with somebody arriving, and whether anybody has walked them.
+
+    Three states, and the middle one is the point: passed, FAILED, and
+    NOBODY HAS LOOKED. A room nobody has checked is not a room that is fine,
+    and a page that leaves it blank says it is.
+    """
+    today = today or house_today()
+    until = (today + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.id AS booking_id, bookings.reference_code,
+                  bookings.guest_name, bookings.arrival_date,
+                  bookings.room_id, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date >= ?
+              AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, rooms.name""",
+        (today.isoformat(), until)).fetchall()
+    out = []
+    for b in rows:
+        chk = conn.execute(
+            """SELECT room_checks.*, users.name AS checked_by
+                 FROM room_checks
+                 LEFT JOIN users ON users.id = room_checks.checked_by_user_id
+                WHERE room_checks.booking_id = ?
+                -- id as the tiebreak, not just the timestamp. Two walks in
+                -- the same second -- somebody fixing a bulb and going
+                -- straight back round -- otherwise leave SQLite to pick, and
+                -- the page can show the older one and report faults that
+                -- were dealt with five minutes ago.
+                ORDER BY room_checks.checked_at DESC, room_checks.id DESC
+                LIMIT 1""",
+            (b["booking_id"],)).fetchone()
+        failed = []
+        if chk:
+            failed = conn.execute(
+                "SELECT * FROM room_check_items WHERE check_id = ? AND passed = 0",
+                (chk["id"],)).fetchall()
+        out.append({
+            "booking": b,
+            "check": chk,
+            "failed": failed,
+            # Not "ok". A room nobody has walked is UNCHECKED, and the word
+            # matters: blank on a page reads as nothing to worry about.
+            "state": ("unchecked" if not chk
+                      else ("failed" if failed else "passed")),
+        })
+    return out
+
+
+def record_room_check(conn, *, room_id, booking_id, for_date, user_id,
+                      results, note=None):
+    """Write one walk of one room. Returns (check_id, issues_raised).
+
+    `results` is a list of (standard_id, what, passed, note). Anything that
+    failed is ALSO raised as a room issue, because the person who can fix a
+    dripping tap does not read a quality log -- and a fault recorded but not
+    reported is the failure every abandoned checklist has in common.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO room_checks (room_id, booking_id, for_date,
+                   checked_by_user_id, checked_at, note)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (room_id, booking_id, for_date.isoformat(), user_id, now, note))
+    check_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    raised = 0
+    for standard_id, what, passed, item_note in results:
+        issue_id = None
+        if not passed:
+            conn.execute(
+                """INSERT INTO room_issues (room_id, reported_by_user_id, title,
+                           description, status, created_at)
+                   VALUES (?, ?, ?, ?, 'open', ?)""",
+                (room_id, user_id, what[:120],
+                 (item_note or "").strip() or "Found on the room check before "
+                 "an arrival.", now))
+            issue_id = conn.execute(
+                "SELECT last_insert_rowid() AS id").fetchone()["id"]
+            raised += 1
+        conn.execute(
+            """INSERT INTO room_check_items (check_id, standard_id, what,
+                       passed, note, room_issue_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (check_id, standard_id, what, 1 if passed else 0,
+             (item_note or "").strip() or None, issue_id))
+    return check_id, raised
+
+
 CONSENT_ROUTES = {
     "form": "Ticked it on the form",
     "email": "Said yes by email",
@@ -22918,6 +23105,9 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("Room checks", "room_checks_page",
+     "room check standard quality walk inspection before arrival turnaround "
+     "housekeeping ready"),
     ("What we are tied into", "supplier_agreements_page",
      "agreement contract renewal notice period supplier subscription "
      "auto renew cancel lock in term"),
@@ -41508,6 +41698,128 @@ def set_publish_consent(kind, feedback_id):
            "no": "Noted \u2014 it will not be published.",
            "unasked": "Back to not asked."}[answer], "success")
     return redirect(request.referrer or url_for("admin_feedback"))
+
+
+@app.route("/admin/room-checks", methods=["GET", "POST"])
+@login_required
+def room_checks_page():
+    """Who is arriving, and whether anybody has walked their room."""
+    conn = get_db()
+
+    if request.method == "POST":
+        if request.form.get("what") == "standard":
+            line = (request.form.get("line", "") or "").strip()[:160]
+            if not line:
+                conn.close()
+                flash("What should somebody look at?", "error")
+                return redirect(url_for("room_checks_page"))
+            top = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) AS m FROM room_standards"
+            ).fetchone()["m"]
+            conn.execute(
+                "INSERT INTO room_standards (what, area, sort_order, active, created_at) "
+                "VALUES (?, ?, ?, 1, ?)",
+                (line, (request.form.get("area", "") or "").strip()[:40] or None,
+                 top + 1, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            conn.close()
+            flash("Added to the list.", "success")
+            return redirect(url_for("room_checks_page"))
+
+        sid = (request.form.get("standard_id", "") or "").strip()
+        if not sid.isdigit():
+            conn.close()
+            abort(400)
+        # Retired rather than deleted. Deleting would leave every past check
+        # that used it pointing at nothing, and those checks are a record of
+        # what somebody actually looked at on the day.
+        conn.execute("UPDATE room_standards SET active = 0 WHERE id = ?",
+                     (int(sid),))
+        conn.commit()
+        conn.close()
+        flash("Off the list. Past checks are untouched.", "success")
+        return redirect(url_for("room_checks_page"))
+
+    days_raw = request.args.get("days", "2")
+    days = int(days_raw) if days_raw.isdigit() and 0 <= int(days_raw) <= 30 else 2
+    arrivals = arrivals_needing_check(conn, days=days)
+    standards = room_standards(conn)
+    conn.close()
+
+    unchecked = [a for a in arrivals if a["state"] == "unchecked"]
+    failed = [a for a in arrivals if a["state"] == "failed"]
+    overview = [
+        overview_cell("Arriving", len(arrivals), hint=f"in the next {days} days"),
+        overview_cell("Nobody has walked", len(unchecked), alert=bool(unchecked),
+                      hint="not the same as nothing wrong"),
+        overview_cell("Something found", len(failed), alert=bool(failed)),
+        overview_cell("On the list", len(standards)),
+    ]
+    return render_template("room_checks.html", arrivals=arrivals,
+                           standards=standards, overview=overview, days=days)
+
+
+@app.route("/admin/room-checks/<int:booking_id>", methods=["GET", "POST"])
+@login_required
+def walk_room(booking_id):
+    """Walk one room against the list, for one arrival."""
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    standards = room_standards(conn)
+
+    if request.method == "POST":
+        if not standards:
+            conn.close()
+            flash("There is nothing on the list to check against yet.", "error")
+            return redirect(url_for("room_checks_page"))
+        user = current_user()
+        results = []
+        for st in standards:
+            key = str(st["id"])
+            # Absent means FAILED, not passed. A half-filled form must not
+            # come out as a clean room -- somebody who stopped halfway
+            # through has not said the rest was fine.
+            passed = request.form.get(f"pass_{key}") == "1"
+            results.append((st["id"], st["what"], passed,
+                            (request.form.get(f"note_{key}", "") or "").strip()[:200]))
+        _check_id, raised = record_room_check(
+            conn, room_id=booking["room_id"], booking_id=booking_id,
+            for_date=parse_date(booking["arrival_date"]) or house_today(),
+            user_id=user["id"], results=results,
+            note=(request.form.get("note", "") or "").strip()[:300] or None)
+        conn.commit()
+        conn.close()
+        if raised:
+            flash(f"Recorded. {raised} fault{'' if raised == 1 else 's'} "
+                  "raised as room issues, so somebody who can fix "
+                  f"{'it' if raised == 1 else 'them'} will see "
+                  f"{'it' if raised == 1 else 'them'}.", "error")
+        else:
+            flash("Recorded. Nothing found.", "success")
+        return redirect(url_for("room_checks_page"))
+
+    previous = conn.execute(
+        """SELECT room_checks.*, users.name AS checked_by
+             FROM room_checks
+             LEFT JOIN users ON users.id = room_checks.checked_by_user_id
+            WHERE room_checks.booking_id = ?
+            ORDER BY room_checks.checked_at DESC, room_checks.id DESC""",
+        (booking_id,)).fetchall()
+    prev_items = {}
+    for p in previous:
+        prev_items[p["id"]] = conn.execute(
+            "SELECT * FROM room_check_items WHERE check_id = ? ORDER BY id",
+            (p["id"],)).fetchall()
+    conn.close()
+    return render_template("walk_room.html", booking=booking,
+                           standards=standards, previous=previous,
+                           prev_items=prev_items)
 
 
 @app.route("/management/agreements", methods=["GET", "POST"])

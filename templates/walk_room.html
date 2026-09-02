@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Walk {{ booking['room_name'] }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ booking['room_name'] }}</h1>
+  <a href="{{ url_for('room_checks_page') }}" class="btn-ghost">All room checks</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  {{ booking['guest_name'] }} arrives {{ booking['arrival_date'] }} &mdash;
+  {{ booking['reference_code'] }}. Tick what is right. Anything left unticked is raised as a
+  room issue, so somebody who can fix it sees it; say what is wrong in the box beside it and
+  that becomes the description.
+</p>
+
+{% if not standards %}
+<div class="empty-state">There is nothing on the list to check against yet.
+  <a href="{{ url_for('room_checks_page') }}">Put something on it</a> first.</div>
+{% else %}
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-heading">The list</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Right</th><th>What</th><th>If not, what is wrong</th></tr></thead>
+      <tbody>
+        {% for st in standards %}
+        <tr>
+          <td>
+            <input type="checkbox" name="pass_{{ st['id'] }}" value="1"
+                   id="pass_{{ st['id'] }}"
+                   aria-label="{{ st['what'] }} is right">
+          </td>
+          <th scope="row">
+            <label for="pass_{{ st['id'] }}">{{ st['what'] }}</label>
+            {% if st['area'] %}<div class="upload-hint">{{ st['area'] }}</div>{% endif %}
+          </th>
+          <td><input type="text" name="note_{{ st['id'] }}" maxlength="200"
+                     aria-label="What is wrong with: {{ st['what'] }}"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <label class="field-label" for="walk-note">Anything else</label>
+  <input type="text" id="walk-note" name="note" maxlength="300">
+  <button type="submit" class="btn-mini">Record the walk</button>
+  <p class="pay-disclaimer" style="margin-top:6px;">
+    Unticked means <em>not right</em>, not <em>not looked at</em>. A half-filled form comes out
+    as a room with faults rather than as a clean one, which is the safer way round: somebody who
+    stopped halfway through has not said the rest was fine.
+  </p>
+</form>
+{% endif %}
+
+{% if previous %}
+<div class="detail-card">
+  <h2 class="section-heading">Walked before</h2>
+  {% for p in previous %}
+  <p class="upload-hint">
+    {{ local_datetime_str(p['checked_at']) }} by {{ p['checked_by'] or 'someone' }}{% if p['note'] %} &mdash; {{ p['note'] }}{% endif %}
+  </p>
+  {% set items = prev_items[p['id']] %}
+  {% set bad = items|rejectattr('passed')|list %}
+  {% if bad %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Found</th><th>Said</th></tr></thead>
+      <tbody>
+        {% for i in bad %}
+        <tr class="row-alert">
+          <th scope="row">{{ i['what'] }}</th>
+          <td>{{ i['note'] or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="upload-hint">Nothing found that time.</p>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

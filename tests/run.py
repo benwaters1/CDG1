@@ -237,6 +237,7 @@ SUITES = [
     "test_rota_templates",
     "test_agreements",
     "test_publish_consent",
+    "test_room_checks",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
