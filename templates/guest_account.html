@@ -281,6 +281,16 @@
 
 <div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
 
+{# One record that follows them, kept by them. Dietary needs were entered
+   per record -- once for a stay, again for an atelier, again for a table --
+   so a coeliac wrote it out four times and got it wrong once. #}
+<section class="g-sec"><div class="g-wrap">
+  {% from '_guest_profile.html' import own_record %}
+  {{ own_record(own, token) }}
+</div></section>
+
+<div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
+
 <section class="g-sec"><div class="g-wrap">
   <h2 class="g-h2">Ask us something</h2>
   <p class="g-hint">

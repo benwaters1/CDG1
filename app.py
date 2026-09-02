@@ -4100,6 +4100,11 @@ def init_db():
         # often one family and are sometimes two families called Martin.
         ("bookings_group_ref", "ALTER TABLE bookings ADD COLUMN group_ref TEXT"),
         ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
+        # What the guest keeps themselves, as against what the house wrote
+        # down. Same retention as access_needs: twelve months after the last
+        # stay, and they can empty it whenever they like.
+        ("guests_own_notes_at", "ALTER TABLE guests ADD COLUMN own_notes_updated_at TEXT"),
+        ("guests_usual_arrival", "ALTER TABLE guests ADD COLUMN usual_arrival_time TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
         # "Nothing is published without asking you first" is on the form
@@ -17736,6 +17741,10 @@ def access_to_check(conn, *, days=90, today=None):
 def purge_stale_access_needs(conn, today=None):
     """Forget what a guest told us once they have stopped being a guest.
 
+    Covers what the HOUSE wrote on a profile and what the GUEST keeps on it,
+    because a guest reading the notice cannot tell the two apart and should
+    not have to.
+
     Health-adjacent data does not get to sit here for ever because it is
     convenient. Cleared when a guest has had no stay and has nothing booked
     for twelve months -- counted from their LAST STAY rather than from when
@@ -17749,8 +17758,19 @@ def purge_stale_access_needs(conn, today=None):
     cutoff = _add_months(today, -ACCESS_NEEDS_RETENTION_MONTHS).isoformat()
     n = conn.execute(
         """UPDATE guests
-              SET access_needs = NULL, access_needs_updated_at = NULL
-            WHERE access_needs IS NOT NULL AND TRIM(access_needs) != ''
+              SET access_needs = NULL, access_needs_updated_at = NULL,
+                  -- What the guest chose to keep goes with it, and on the
+                  -- same window. The notice promises both.
+                  dietary_notes = NULL, usual_arrival_time = NULL,
+                  own_notes_updated_at = NULL
+            -- Any of the three, whoever wrote it. guests.dietary_notes has
+            -- existed since the profile did and NOTHING has ever cleared it:
+            -- purge_health_notes clears the copies on a restaurant booking
+            -- and an atelier booking, and the notice says dietary notes go
+            -- once the stay is over. A profile note is a dietary note.
+            WHERE ((access_needs IS NOT NULL AND TRIM(access_needs) != '')
+                   OR (dietary_notes IS NOT NULL AND TRIM(dietary_notes) != '')
+                   OR own_notes_updated_at IS NOT NULL)
               AND NOT EXISTS (
                     SELECT 1 FROM bookings
                      WHERE (bookings.linked_guest_id = guests.id
@@ -17763,7 +17783,7 @@ def purge_stale_access_needs(conn, today=None):
                        AND COALESCE(bookings.departure_date,
                                     bookings.arrival_date) >= ?)""",
         (cutoff,)).rowcount
-    return {"guest_access_needs": n}
+    return {"guest_profile_notes": n}
 
 
 def fridge_log(conn, *, days=14, today=None):
@@ -26252,13 +26272,44 @@ def guest_account(token):
     # this flow they could not work around, since the link IS the way in.
     restaurant_settings = get_restaurant_settings(conn)
     balance = guest_account_balance(conn, data)
+    # What they keep on their own record. None when this address has no
+    # profile, in which case the form does not render -- there is nothing to
+    # write to, and a form that silently saves nowhere is worse than none.
+    own = guest_own_record(conn, session_row["email"])
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,
         data=data, today=today, extras=extras, balance=balance,
-        can_pay_online=stripe_enabled(),
+        can_pay_online=stripe_enabled(), own=own,
         restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
         expires=session_row["expires_at"])
+
+
+@app.route("/my-account/<token>/details", methods=["POST"])
+def save_guest_details(token):
+    """Let a guest keep their own details, and empty them.
+
+    Emptying is half the feature. A form that can only ever add is data
+    somebody holds about you; one you can clear is a record you keep.
+    """
+    conn = get_db()
+    session_row = _valid_guest_session(conn, token)
+    if not session_row:
+        conn.close()
+        return render_template("guest_account_expired.html"), 404
+    saved = save_guest_own_record(
+        conn, session_row["email"],
+        dietary=request.form.get("dietary_notes"),
+        access=request.form.get("access_needs"),
+        arrival=request.form.get("usual_arrival_time"),
+        phone=request.form.get("phone"))
+    conn.commit()
+    conn.close()
+    flash("Kept. We will offer these back next time." if saved
+          else "There is nothing to save this against yet \u2014 it appears "
+               "once you have stayed.",
+          "success" if saved else "error")
+    return redirect(url_for("guest_account", token=token))
 
 
 @app.route("/booking/<manage_token>/statement/email", methods=["POST"])
@@ -30221,6 +30272,54 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
 # reach in any case.
 NEXT_FREE_LEAD_DAYS = 3
 NEXT_FREE_HORIZON_DAYS = 120
+
+
+def guest_own_record(conn, email):
+    """What this address keeps on file, or None.
+
+    Keyed on the email because that is what a guest has: they do not have a
+    guest id, and asking them to quote one is asking them to be a record.
+    """
+    e = (email or "").strip().lower()
+    if not e:
+        return None
+    return conn.execute(
+        """SELECT id, name, email, phone, dietary_notes, access_needs,
+                  usual_arrival_time, own_notes_updated_at
+             FROM guests WHERE LOWER(TRIM(email)) = ?
+            ORDER BY id LIMIT 1""", (e,)).fetchone()
+
+
+def save_guest_own_record(conn, email, *, dietary=None, access=None,
+                          arrival=None, phone=None):
+    """Write what the guest asked us to keep. Returns True if there was a row.
+
+    Emptying a field empties it. That is the difference between a record you
+    keep and data somebody holds about you, and a form that can only ever add
+    is the second kind.
+    """
+    row = guest_own_record(conn, email)
+    if not row:
+        return False
+    dietary = (dietary or "").strip()[:600] or None
+    access = (access or "").strip()[:600] or None
+    arrival = (arrival or "").strip()[:20] or None
+    phone = (phone or "").strip()[:40] or None
+    anything = any((dietary, access, arrival, phone))
+    conn.execute(
+        """UPDATE guests
+              SET dietary_notes = ?, access_needs = ?, usual_arrival_time = ?,
+                  phone = COALESCE(?, phone),
+                  own_notes_updated_at = ?,
+                  -- Stamped together, so the retention pass treats what the
+                  -- guest keeps exactly as it treats what the house wrote.
+                  access_needs_updated_at = ?
+            WHERE id = ?""",
+        (dietary, access, arrival, phone,
+         datetime.now(timezone.utc).isoformat() if anything else None,
+         datetime.now(timezone.utc).isoformat() if access else None,
+         row["id"]))
+    return True
 
 
 def booking_group(conn, booking_id):

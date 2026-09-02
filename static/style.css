@@ -2776,3 +2776,9 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .g-wx__n{ flex-basis:100%; color:var(--steel, #6b6759); font-style:italic; }
 .g-wx__age{ font-size:.86em; color:var(--steel, #6b6759); }
 .g-wx__fallback{ margin:0; color:var(--steel, #6b6759); }
+
+
+/* ---- The guest's own record -------------------------------------------- */
+.g-prof__f{ margin-top:12px; }
+.g-prof__f textarea{ width:100%; }
+.g-opt{ font-size:.86em; color:var(--steel, #6b6759); font-weight:400; }
