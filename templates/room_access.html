@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}What the house can manage{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the house can manage</h1>
+  <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Rooms</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  There is no rating here and there is not going to be one. This is a thirteenth-century house:
+  a room is not &ldquo;accessible&rdquo; or not, and a particular person either can or cannot
+  manage a particular staircase. What this page does is put the facts about a room next to what
+  a guest has told us in their own words, so somebody can pick up the telephone before the day
+  they arrive rather than at the door.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% if checks %}
+<div class="detail-card">
+  <h2 class="section-heading">Worth a telephone call</h2>
+  <p class="upload-hint">Someone has told us something, and has been put somewhere that asks
+    something of them. Nothing here is wrong yet &mdash; it is two facts that nobody has read
+    side by side.</p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Arriving</th><th>Who</th><th>Room</th><th>Why it is here</th></tr></thead>
+      <tbody>
+        {% for c in checks %}
+        <tr class="row-alert">
+          <th scope="row">{{ c.booking['arrival_date'] }}</th>
+          <td>
+            <a href="{{ url_for('edit_booking', booking_id=c.booking['id']) }}">{{ c.booking['guest_name'] }}</a>
+            <div class="upload-hint">{{ c.booking['reference_code'] }}</div>
+          </td>
+          <td>{{ c.booking['room_name'] or 'not allocated' }}</td>
+          <td>{{ c.why }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">What the guest actually said is under <em>Who has told us</em> below.
+    It is not repeated here, and it is not put on the task that comes off this page either.</p>
+</div>
+{% endif %}
+
+<div class="detail-card">
+  <h2 class="section-heading">The rooms, easiest first</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Room</th><th class="num">Steps</th><th class="num">Car</th>
+                 <th>Bathroom</th><th>In plain English</th></tr></thead>
+      <tbody>
+        {% for r in rooms %}
+        <tr class="{{ 'row-alert' if r.unmeasured }}">
+          <th scope="row">
+            <a href="{{ url_for('edit_room', room_id=r.room['id']) }}">{{ r.room['name'] }}</a>
+            {% if r.room['floor'] %}<div class="upload-hint">{{ r.room['floor'] }}</div>{% endif %}
+          </th>
+          <td class="num">{% if r.known %}{{ r.steps }}{% else %}not measured{% endif %}</td>
+          <td class="num">{% if r.car_metres is not none %}{{ r.car_metres }}m{% else %}&mdash;{% endif %}</td>
+          <td>{{ r.bathroom or '&mdash;'|safe }}</td>
+          <td>
+            {{ r.notes or '' }}
+            {% if r.unmeasured %}
+            <div class="upload-hint">Nobody has looked at {{ r.unmeasured|join(', ') }}.</div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">A room nobody has measured sorts last and says so, rather than sitting
+    among the ground-floor ones reading as easy. Blank is not zero.</p>
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">Who has told us</h2>
+  <p class="upload-hint">Kept on the person, not the stay &mdash; somebody who could not manage
+    stairs in May cannot manage them in September, and not having to explain it twice is the
+    point. Cleared automatically twelve months after their last stay, the same as the notice
+    promises for everything else of this kind.</p>
+  {% if not needs %}
+  <div class="empty-state">Nobody has told us anything yet.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Guest</th><th>In their words</th><th></th></tr></thead>
+      <tbody>
+        {% for g in needs %}
+        <tr>
+          <th scope="row"><a href="{{ url_for('edit_guest', guest_id=g['id']) }}">{{ g['name'] }}</a></th>
+          <td>{{ g['access_needs'] }}</td>
+          <td>
+            <form method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="guest_id" value="{{ g['id'] }}">
+              <input type="hidden" name="access_needs" value="">
+              <button type="submit" class="btn-mini btn-ghost">Forget it</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

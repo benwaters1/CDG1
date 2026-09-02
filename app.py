@@ -3987,6 +3987,17 @@ def init_db():
         ("feedback_ack_at", "ALTER TABLE guest_feedback ADD COLUMN acknowledged_at TEXT"),
         ("feedback_ack_by", "ALTER TABLE guest_feedback ADD COLUMN acknowledged_by_user_id INTEGER "
                             "REFERENCES users(id) ON DELETE SET NULL"),
+        # What a room actually asks of somebody, rather than a tickbox that
+        # says "accessible" and means nothing in a house like this.
+        ("room_access_steps", "ALTER TABLE rooms ADD COLUMN access_steps INTEGER"),
+        ("room_access_car_metres", "ALTER TABLE rooms ADD COLUMN access_car_metres INTEGER"),
+        ("room_access_bathroom", "ALTER TABLE rooms ADD COLUMN access_bathroom TEXT"),
+        ("room_access_notes", "ALTER TABLE rooms ADD COLUMN access_notes TEXT"),
+        # On the GUEST, not the booking. Somebody who could not manage
+        # stairs in May cannot manage them in September, and not having to
+        # explain it twice is the whole point.
+        ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
+        ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
         ("feedback_reply", "ALTER TABLE guest_feedback ADD COLUMN reply TEXT"),
         ("feedback_replied_at", "ALTER TABLE guest_feedback ADD COLUMN replied_at TEXT"),
         # The same for a workshop, because the sibling route has the identical
@@ -5070,6 +5081,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "room_access_page",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -16332,6 +16344,7 @@ def inject_user():
         "room_amenities": ROOM_AMENITIES, "room_amenity_keys": room_amenity_keys,
         "room_amenity_freetext": room_amenity_freetext,
         "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
+        "access_bathrooms": ACCESS_BATHROOMS,
         "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
@@ -16975,6 +16988,142 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
         "outstanding": round(sum(r["amount"] or 0 for r in unpaid), 2),
         "unpaid": len(unpaid),
     }
+
+
+def room_access(conn):
+    """Every room with what it asks of somebody, easiest first.
+
+    No score and no "accessible" flag. A room is not accessible or not; a
+    particular person either can or cannot manage this particular staircase,
+    and the only one who knows is them. What this can do is put the facts in
+    an order and say which are missing.
+    """
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    out = []
+    for r in rooms:
+        steps = r["access_steps"]
+        # UNKNOWN is its own answer and sorts last. A room nobody has
+        # measured must not sort alongside the ground-floor ones and read
+        # as easy, which is the mistake a COALESCE(steps, 0) would make.
+        known = steps is not None
+        out.append({
+            "room": r,
+            "steps": steps,
+            "known": known,
+            "car_metres": r["access_car_metres"],
+            "bathroom": ACCESS_BATHROOMS.get(r["access_bathroom"] or ""),
+            "notes": (r["access_notes"] or "").strip() or None,
+            # What is missing, said plainly, because a blank column reads as
+            # "nothing to worry about" and it means "nobody has looked".
+            "unmeasured": [label for label, value in (
+                ("steps to it", steps),
+                ("how far a car can get", r["access_car_metres"]),
+                ("the bathroom", r["access_bathroom"]),
+            ) if value is None or value == ""],
+        })
+    out.sort(key=lambda x: (not x["known"], x["steps"] if x["known"] else 0,
+                            x["room"]["name"]))
+    return out
+
+
+def guests_with_access_needs(conn):
+    """Guests who have told us what they need, most recently told first."""
+    return conn.execute(
+        """SELECT * FROM guests
+            WHERE access_needs IS NOT NULL AND TRIM(access_needs) != ''
+            ORDER BY COALESCE(access_needs_updated_at, '') DESC, name""").fetchall()
+
+
+def access_to_check(conn, *, days=90, today=None):
+    """Bookings whose guest has told us something and whose room has steps.
+
+    It does not decide. It cannot know whether eleven steps is too many for
+    a particular person -- only they know that. What it knows is that
+    somebody said something about what they need and has been put in a room
+    that asks something of them, and that those two facts have not been read
+    side by side by a person.
+
+    A room nobody has measured counts too, and says so: "we do not know what
+    this room asks" is a reason to check, not a reason to stay quiet.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    horizon = (today + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.id, bookings.reference_code, bookings.arrival_date,
+                  bookings.departure_date, bookings.guest_name,
+                  bookings.room_id, rooms.name AS room_name,
+                  rooms.access_steps, rooms.access_notes,
+                  guests.id AS guest_id, guests.access_needs
+             FROM bookings
+             -- Matched by the profile link where there is one and by email
+             -- where there is not. A booking taken before the profile was
+             -- made carries the same person's needs, and dropping it because
+             -- a foreign key had not caught up yet is the failure this whole
+             -- page exists to prevent.
+             JOIN guests ON guests.id = bookings.linked_guest_id
+                         OR (bookings.linked_guest_id IS NULL
+                             AND guests.email IS NOT NULL
+                             AND TRIM(guests.email) != ''
+                             AND LOWER(TRIM(guests.email))
+                                 = LOWER(TRIM(COALESCE(bookings.guest_email, ''))))
+             -- Not a LEFT JOIN: bookings.room_id is NOT NULL, so there is no
+             -- roomless booking for one to preserve.
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status IN ('confirmed', 'pending')
+              AND bookings.arrival_date >= ?
+              AND bookings.arrival_date <= ?
+              AND guests.access_needs IS NOT NULL
+              AND TRIM(guests.access_needs) != ''
+            ORDER BY bookings.arrival_date""",
+        (today.isoformat(), horizon)).fetchall()
+    out = []
+    for b in rows:
+        steps = b["access_steps"]
+        # No "not allocated yet" branch: bookings.room_id is NOT NULL, so
+        # every booking has a room from the moment it exists. I wrote one
+        # anyway, and the fixture meant to exercise it would not insert.
+        if steps is None:
+            why = "nobody has measured what this room asks"
+        elif steps > 0:
+            why = f"{steps} step{'' if steps == 1 else 's'} to the room"
+        else:
+            continue                     # step-free, and measured. Nothing to raise.
+        out.append({"booking": b, "why": why, "steps": steps})
+    return out
+
+
+def purge_stale_access_needs(conn, today=None):
+    """Forget what a guest told us once they have stopped being a guest.
+
+    Health-adjacent data does not get to sit here for ever because it is
+    convenient. Cleared when a guest has had no stay and has nothing booked
+    for twelve months -- counted from their LAST STAY rather than from when
+    they told us, because somebody who came back in March has not stopped
+    needing it.
+
+    What was deleted is never logged. An audit line naming the thing it just
+    removed would defeat the point, exactly as it would for a dietary note.
+    """
+    today = today or datetime.now(LOCAL_TZ).date()
+    cutoff = _add_months(today, -ACCESS_NEEDS_RETENTION_MONTHS).isoformat()
+    n = conn.execute(
+        """UPDATE guests
+              SET access_needs = NULL, access_needs_updated_at = NULL
+            WHERE access_needs IS NOT NULL AND TRIM(access_needs) != ''
+              AND NOT EXISTS (
+                    SELECT 1 FROM bookings
+                     WHERE (bookings.linked_guest_id = guests.id
+                            OR (bookings.linked_guest_id IS NULL
+                                AND guests.email IS NOT NULL
+                                AND TRIM(guests.email) != ''
+                                AND LOWER(TRIM(guests.email))
+                                    = LOWER(TRIM(COALESCE(bookings.guest_email, '')))))
+                       AND bookings.status != 'cancelled'
+                       AND COALESCE(bookings.departure_date,
+                                    bookings.arrival_date) >= ?)""",
+        (cutoff,)).rowcount
+    return {"guest_access_needs": n}
 
 
 def fridge_log(conn, *, days=14, today=None):
@@ -22481,6 +22630,9 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("What the house can manage", "room_access_page",
+     "access accessible mobility steps stairs wheelchair lift disabled "
+     "step free walking guest needs"),
     ("Fridge temperatures", "kitchen_fridges",
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
@@ -25828,6 +25980,7 @@ def new_guest():
         preferences = request.form.get("preferences", "").strip()
         vip = 1 if request.form.get("vip") else 0
         notes = request.form.get("notes", "").strip()
+        access_needs = request.form.get("access_needs", "").strip()[:600]
 
         if not name:
             flash("Guest name is required.", "error")
@@ -25857,12 +26010,16 @@ def new_guest():
                 "guest_form.html", guest=None, duplicates=maybe,
                 typed={"name": name, "email": email, "phone": phone,
                        "dietary_notes": dietary_notes, "preferences": preferences,
-                       "vip": vip, "notes": notes})
+                       "vip": vip, "notes": notes,
+                       "access_needs": access_needs})
         conn.execute(
-            """INSERT INTO guests (name, email, phone, dietary_notes, preferences, vip, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO guests (name, email, phone, dietary_notes, preferences,
+                                  vip, notes, access_needs,
+                                  access_needs_updated_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (name, email, phone or None, dietary_notes or None,
-             preferences or None, vip, notes or None,
+             preferences or None, vip, notes or None, access_needs or None,
+             datetime.now(timezone.utc).isoformat() if access_needs else None,
              datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -26211,6 +26368,7 @@ def edit_guest(guest_id):
         preferences = request.form.get("preferences", "").strip()
         vip = 1 if request.form.get("vip") else 0
         notes = request.form.get("notes", "").strip()
+        access_needs = request.form.get("access_needs", "").strip()[:600]
 
         if email and conn.execute(
             "SELECT id FROM guests WHERE email = ? COLLATE NOCASE AND id != ?", (email, guest_id)
@@ -26220,9 +26378,16 @@ def edit_guest(guest_id):
             return redirect(url_for("edit_guest", guest_id=guest_id))
         conn.execute(
             """UPDATE guests SET name=?, email=?, phone=?, dietary_notes=?,
-               preferences=?, vip=?, notes=? WHERE id=?""",
+               preferences=?, vip=?, notes=?, access_needs=?,
+               -- Stamped only when there is something to stamp, and cleared
+               -- with it. A date left behind on an emptied field is a record
+               -- that somebody told us something, which is the fact we said
+               -- we would stop holding.
+               access_needs_updated_at=? WHERE id=?""",
             (name, email, phone or None, dietary_notes or None,
-             preferences or None, vip, notes or None, guest_id),
+             preferences or None, vip, notes or None, access_needs or None,
+             datetime.now(timezone.utc).isoformat() if access_needs else None,
+             guest_id),
         )
         conn.commit()
         conn.close()
@@ -33174,11 +33339,14 @@ def new_room():
         conn.execute(
             """INSERT INTO rooms (name, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
+               access_steps, access_car_metres, access_bathroom, access_notes,
                export_token, sort_order, photo_filename, amenities)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
+             f["access_steps"], f["access_car_metres"], f["access_bathroom"],
+             f["access_notes"],
              # workshop_room defaults to 0. The checkbox is on the edit form
              # only, like Bookable: a new room starts off both lists and
              # putting it on either is a deliberate act afterwards.
@@ -33217,11 +33385,14 @@ def edit_room(room_id):
         conn.execute(
             """UPDATE rooms SET name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
-               floor=?, active=?, photo_filename=?, amenities=?,
+               floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
+               access_notes=?, active=?, photo_filename=?, amenities=?,
                workshop_room=? WHERE id=?""",
             (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
-             f["bathroom"], f["outlook"], f["floor"], active, photo_filename,
+             f["bathroom"], f["outlook"], f["floor"],
+             f["access_steps"], f["access_car_metres"], f["access_bathroom"],
+             f["access_notes"], active, photo_filename,
              f["amenities"], workshop_room, room_id),
         )
 
@@ -40962,6 +41133,51 @@ def management_buying():
                            vendor=vendor, overview=overview)
 
 
+@app.route("/admin/room-access", methods=["GET", "POST"])
+@owner_required
+def room_access_page():
+    """What each room asks of somebody, and who has told us they need less."""
+    conn = get_db()
+
+    if request.method == "POST":
+        guest_raw = (request.form.get("guest_id", "") or "").strip()
+        if not guest_raw.isdigit():
+            conn.close()
+            abort(400)
+        needs = (request.form.get("access_needs", "") or "").strip()[:600]
+        conn.execute(
+            "UPDATE guests SET access_needs = ?, access_needs_updated_at = ? "
+            "WHERE id = ?",
+            (needs or None,
+             datetime.now(timezone.utc).isoformat() if needs else None,
+             int(guest_raw)))
+        conn.commit()
+        conn.close()
+        flash("Noted." if needs else "Cleared.", "success")
+        return redirect(url_for("room_access_page"))
+
+    rooms = room_access(conn)
+    needs = guests_with_access_needs(conn)
+    checks = access_to_check(conn)
+    conn.close()
+
+    unmeasured = [r for r in rooms if r["unmeasured"]]
+    overview = [
+        overview_cell("Rooms", len(rooms)),
+        overview_cell("Nobody has measured", len(unmeasured),
+                      alert=bool(unmeasured),
+                      hint="reads as no trouble, means nobody looked"),
+        overview_cell("Guests who told us", len(needs)),
+        overview_cell("Worth a telephone call", len(checks),
+                      alert=bool(checks)),
+    ]
+    # ACCESS_BATHROOMS is a template global; passing it here as well would
+    # be a second name for the same thing and the dead-context sweep would
+    # rightly call it out.
+    return render_template("room_access.html", rooms=rooms, needs=needs,
+                           checks=checks, overview=overview)
+
+
 @app.route("/kitchen/fridges", methods=["GET", "POST"])
 @login_required
 def kitchen_fridges():
@@ -43189,6 +43405,7 @@ WATCH_TASK_KINDS = {
     "materials": "A workshop without the materials to run",
     "filing": "A return or payment that is due",
     "celebration": "A guest with something to celebrate while they are here",
+    "access": "A guest who told us something, in a room that asks something",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -44400,6 +44617,31 @@ def watch_task_findings(conn, today=None):
             2,
         ))
     found.extend(take("celebration", celebrations))
+
+    # Somebody has told us what they need and has been put somewhere that
+    # asks something of them. Not an error -- eleven steps may be perfectly
+    # fine for them, and only they know -- so the task is to ring and ask.
+    #
+    # WHAT THE GUEST SAID IS NOT IN IT. A task title is the least private
+    # thing in the app: it goes on the calendar, into a notification, and
+    # onto whoever it is assigned to. This names the booking and the room and
+    # stops there. Reading the rest means opening a page that is the owner's.
+    #
+    # Titled by the booking rather than by the date, because the title is the
+    # dedupe key and a date in it would raise a fresh task every morning.
+    access = []
+    for c in take("access", access_to_check(conn, days=45, today=today)):
+        b = c["booking"]
+        access.append((
+            "access",
+            f"Ring {b['reference_code']} before they arrive about the room",
+            f"{b['room_name'] or 'No room allocated'} \u2014 {c['why']}. "
+            "They have told us something about what they need; it is on "
+            "What the house can manage.",
+            b["arrival_date"],
+            2,
+        ))
+    found.extend(access)
 
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting
@@ -47017,6 +47259,7 @@ def run_health_notes_purge_job(conn):
     cleared = purge_health_notes(conn)
     cleared.update(purge_dead_enquiries(conn))
     cleared.update(purge_police_register(conn))
+    cleared.update(purge_stale_access_needs(conn))
     done = {k: v for k, v in cleared.items() if v}
     if not done:
         return "nothing to clear"
@@ -50674,6 +50917,22 @@ ROOM_AMENITIES = {
 }
 AMENITY_LABELS = {k: v for group in ROOM_AMENITIES.values() for k, v in group}
 
+# What the bathroom asks of you. Deliberately not a yes/no: "over-bath
+# shower" is the answer that catches most people out, and a tickbox marked
+# "accessible bathroom" would have said no to it and told them nothing.
+ACCESS_BATHROOMS = {
+    "step_free": "Step-free shower",
+    "low_step": "Shower with a low step",
+    "over_bath": "Shower over the bath",
+    "bath_only": "Bath, no shower",
+}
+
+# How long we keep a guest's own words about what they need. The same twelve
+# months the notice already promises for enquiries that came to nothing,
+# counted from their last stay rather than from when they told us -- a guest
+# who came back in March has not stopped needing it.
+ACCESS_NEEDS_RETENTION_MONTHS = 12
+
 BED_SETUPS = ["Emperor bed", "King bed", "Double bed", "Twin beds",
               "Twin or double", "Two bedrooms", "Bunk room"]
 BATHROOM_TYPES = ["En-suite", "Private, not en-suite", "Shared"]
@@ -50743,6 +51002,15 @@ def room_fields_from_form():
         "bathroom": (request.form.get("bathroom", "") or "").strip() or None,
         "outlook": (request.form.get("outlook", "") or "").strip() or None,
         "floor": (request.form.get("floor", "") or "").strip() or None,
+        # Blank means UNKNOWN, not zero. A room nobody has counted the steps
+        # to must not read as step-free, which is the one wrong answer here
+        # that puts somebody in front of a staircase they cannot manage.
+        "access_steps": _i("access_steps", None),
+        "access_car_metres": _i("access_car_metres", None),
+        "access_bathroom": ((request.form.get("access_bathroom", "") or "").strip()
+                            if (request.form.get("access_bathroom", "") or "").strip()
+                            in ACCESS_BATHROOMS else None),
+        "access_notes": (request.form.get("access_notes", "") or "").strip()[:400] or None,
         "amenities": ", ".join(checked) or None,
     }
 

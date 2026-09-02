@@ -142,7 +142,7 @@
        'manual','edit_manual_section','new_manual_section','delete_manual_section',
        'management_cleaning','cleaning_round_done','management_breakages',
        'management_lost_property','resolve_lost_property','management_meters',
-       'management_visitors','sign_out_visitor'] %}
+       'management_visitors','sign_out_visitor','room_access_page'] %}
     {# Anything that talks to people — staff or guests. #}
     {% set comms_endpoints = ['announcements','new_announcement','edit_announcement','delete_announcement',
        'admin_emails','new_campaign_template','edit_campaign_template','delete_campaign_template',
@@ -287,6 +287,7 @@
         <a href="{{ url_for('management_vehicles') }}" class="{{ 'active' if request.endpoint=='management_vehicles' }}">{{ icon('car') }}Vehicles</a>
         <a href="{{ url_for('admin_assets') }}" class="{{ 'active' if request.endpoint=='admin_assets' }}">{{ icon('building') }}Asset Register</a>
         <a href="{{ url_for('admin_access') }}" class="{{ 'active' if request.endpoint=='admin_access' }}">{{ icon('lock') }}Keys &amp; Access</a>
+        <a href="{{ url_for('room_access_page') }}" class="{{ 'active' if request.endpoint=='room_access_page' }}">{{ icon('rooms') }}What The House Can Manage</a>
         <a href="{{ url_for('management_cleaning') }}" class="{{ 'active' if request.endpoint=='management_cleaning' }}">{{ icon('wrench') }}Cleaning Rounds</a>
         <a href="{{ url_for('management_breakages') }}" class="{{ 'active' if request.endpoint=='management_breakages' }}">{{ icon('wrench') }}Breakages</a>
         <a href="{{ url_for('management_lost_property') }}" class="{{ 'active' if request.endpoint=='management_lost_property' }}">{{ icon('shopping') }}Lost Property</a>
