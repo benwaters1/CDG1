@@ -14358,7 +14358,7 @@ def collect_hr_actions(conn, today):
            JOIN users ON users.id = leave_requests.user_id WHERE leave_requests.status = 'pending'"""
     ).fetchall():
         add("leave_request", r["id"], r["user_id"],
-            f"{r['n']} — {r['start_date']} to {r['end_date']}", (r["requested_at"] or "")[:10], "/admin/approvals")
+            f"{r['n']} — {r['start_date']} to {r['end_date']}", house_date_iso(r["requested_at"]), "/admin/approvals")
 
     for r in conn.execute(
         """SELECT expenses.*, users.name AS n FROM expenses
@@ -14390,7 +14390,7 @@ def collect_hr_actions(conn, today):
            WHERE performance_reviews.status = 'shared'"""
     ).fetchall():
         add("review_unacknowledged", r["id"], r["user_id"], f"{r['n']} — review of {r['review_date']}",
-            (r["shared_at"] or r["review_date"] or "")[:10], "/admin/hr")
+            house_date_iso(r["shared_at"]) or (r["review_date"] or "")[:10], "/admin/hr")
 
     year_ago = (today - timedelta(days=365)).isoformat()
     for r in conn.execute(
@@ -17248,8 +17248,8 @@ def price_changes(conn, *, months=12, today=None, threshold=0.05):
             "name": latest["name"], "unit": latest["unit"], "vendor": vendor,
             "was": round(was, 4), "now": round(now_, 4),
             "pct": round(move * 100, 1),
-            "when": latest["created_at"][:10],
-            "before_when": before["created_at"][:10],
+            "when": house_date_iso(latest["created_at"]),
+            "before_when": house_date_iso(before["created_at"]),
             "up": move > 0,
         })
     out.sort(key=lambda x: -abs(x["pct"]))
@@ -18422,7 +18422,7 @@ def owner_home_queue(conn):
             "kind": "Time off", "who": l["who"], "title": l["who"],
             "detail": f"{l['start_date']} – {l['end_date']}",
             "amount": f"{days} day{'s' if days != 1 else ''}",
-            "age": (l["requested_at"] or "")[:10],
+            "age": house_date_iso(l["requested_at"]),
             "tone": "people", "ok_label": "Approve", "no_label": "Decline",
             "bulk_eligible": False, "endpoint": None,
         })
@@ -19050,7 +19050,8 @@ def staff_dashboard():
             "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_backup_at = last_backup["created_at"] if last_backup else None
-        backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
+        backup_stale = (not last_backup_at) or (
+            parse_date(house_date_iso(last_backup_at)) <= today - timedelta(days=30))
         current_month_financials = financial_month_summary(
             conn, today.replace(day=1),
             date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
@@ -19116,7 +19117,7 @@ def staff_dashboard():
                 "SELECT name, next_service_due FROM vehicles WHERE next_service_due IS NOT NULL AND next_service_due <= ? ORDER BY next_service_due",
                 (soon,),
             ).fetchall()]
-            + [{"title": c["vehicle_name"], "detail": f"out since {c['checked_out_at'][:10]} with {c['user_name'] or 'unknown'}"}
+            + [{"title": c["vehicle_name"], "detail": f"out since {house_date_iso(c['checked_out_at'])} with {c['user_name'] or 'unknown'}"}
                for c in overdue_vehicle_checkouts(conn)]
         )
         breakfast_low_stock = conn.execute(
@@ -22487,7 +22488,10 @@ def pos_receipt_email_context(conn, bill):
 
     return {
         "guest_name": guest_name.strip() or "there",
-        "service_date": order["service_date"] or (order["opened_at"] or "")[:10],
+        # The restaurant's day ends at 05:00, so an order opened at half
+        # past one belongs to the night before. Truncating UTC gets that
+        # wrong in the other direction as well.
+        "service_date": order["service_date"] or house_date_iso(order["opened_at"]),
         "table": order["table_label"] or "",
         "items": items,
         "totals": "\n".join(totals),
@@ -26989,7 +26993,7 @@ def guest_detail(guest_id):
                           hint="gross, everything included"),
             overview_cell("Still owed", euro(record["owed"]),
                           alert=record["owed"] > 0),
-            overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
+            overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
         ]
     return render_template("guest_detail.html", record=record, overview=overview,
                            notes=notes, duplicates=duplicates,
@@ -33753,7 +33757,8 @@ def build_owner_digest(conn):
         "ORDER BY created_at DESC LIMIT 1"
     ).fetchone()
     last_backup_at = last_backup["created_at"] if last_backup else None
-    backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
+    backup_stale = (not last_backup_at) or (
+        parse_date(house_date_iso(last_backup_at)) <= today - timedelta(days=30))
     understaffed_days = [
         s for s in roster_vs_occupancy(conn, [today + timedelta(days=i) for i in range(7)])
         if s["understaffed"]
@@ -33793,7 +33798,7 @@ def build_owner_digest(conn):
             lines.append(f"  - {p['provider']}: expires {p['expiry_date']}")
     if backup_stale:
         lines.append("")
-        lines.append(f"Backup reminder: {'last downloaded ' + last_backup_at[:10] if last_backup_at else 'never downloaded'} — consider grabbing a fresh one.")
+        lines.append(f"Backup reminder: {'last downloaded ' + house_date_iso(last_backup_at) if last_backup_at else 'never downloaded'} — consider grabbing a fresh one.")
     if understaffed_days:
         lines.append("")
         lines.append("Looks short-staffed vs. booking volume (next 7 days):")
@@ -33812,7 +33817,7 @@ def build_owner_digest(conn):
         for v in vehicles_service_due:
             lines.append(f"  - {v['name']}: service due {v['next_service_due']}")
         for c in overdue_checkouts:
-            lines.append(f"  - {c['vehicle_name']}: checked out by {c['user_name'] or 'unknown'} since {c['checked_out_at'][:10]}, not checked in")
+            lines.append(f"  - {c['vehicle_name']}: checked out by {c['user_name'] or 'unknown'} since {house_date_iso(c['checked_out_at'])}, not checked in")
     if low_stock_breakfast:
         lines.append("")
         lines.append("Breakfast items flagged low stock: " + ", ".join(i["name"] for i in low_stock_breakfast))
@@ -46412,7 +46417,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "job", f"Automation stopped working — {j['job_name']}",
             f"{label}.\n\nFailed {j['fails']} runs in a row. Last worked: "
-            + (j["last_ok_at"][:10] if j["last_ok_at"] else "never")
+            + (house_date_iso(j["last_ok_at"]) if j["last_ok_at"] else "never")
             + f".\nIt reports: {j['last_message'] or 'no message'}"
             + "\n\nAdmin → Automation has the switch and a Run now button to "
               "try it while you watch.",
@@ -47547,7 +47552,11 @@ def all_transfers():
     today_iso = today.isoformat()
     upcoming, todays, past = [], [], []
     for r in rows:
-        day = (r["scheduled_at"] or "")[:10]
+        # house_date_iso, not [:10]. scheduled_at is UTC, so a pickup at
+        # half past one in the morning -- a delayed flight -- is stored on the
+        # previous day, and slicing files it under PAST on the very morning it
+        # is due. The run most likely to be missed is the one this hid.
+        day = house_date_iso(r["scheduled_at"])
         if day == today_iso:
             todays.append(r)
         elif day > today_iso:
@@ -47559,7 +47568,7 @@ def all_transfers():
     return render_template(
         "all_transfers.html", todays=todays, upcoming=upcoming, past=past[:20],
         today=today, unassigned=sum(1 for r in rows if not r["driver_user_id"]
-                                    and (r["scheduled_at"] or "")[:10] >= today_iso),
+                                    and house_date_iso(r["scheduled_at"]) >= today_iso),
     )
 
 
@@ -50909,7 +50918,11 @@ def extract_dates(text, received_at_iso):
     otherwise land more than a month in the past (an email about 'March 3rd'
     received in November almost certainly means next March)."""
     text = text or ""
-    received_date = parse_date((received_at_iso or "")[:10]) or house_today()
+    # house_date_iso even here. Only the year and the month are read, so an
+    # hour either way changes nothing -- but two spellings for one idea is
+    # how the UTC-as-a-day fault survived 125 times, and this is the second
+    # spelling.
+    received_date = parse_date(house_date_iso(received_at_iso)) or house_today()
     found = []
     for m in _DATE_ISO_RE.finditer(text):
         d = parse_date(m.group(0))
