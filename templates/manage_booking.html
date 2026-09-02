@@ -2,6 +2,10 @@
 {% set sticky_bar = 'none' %}
 {% block title %}{{ t('Check In') }}{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{# Without this class the print rules below never fire, and the button that
+   says "everything else on this page is left off" prints the whole booking
+   page, payment form included. #}
+{% block bodyclass %} g-print-stay{% endblock %}
 {% block content %}
 
 <div class="g-mb-card">
@@ -79,6 +83,18 @@
     {{ t('If that address is wrong, send us a message below and we will change it.') }}
   </p>
 </div>
+
+{# What happens next: the deposit, the balance date, the week before,
+   arrival and departure on one dated line. Four emails the house writes by
+   hand every time, and the balance one is the email guests write FIRST. #}
+{# One page a guest can hold in the dark. The valley has patchy signal and
+   the drive is unlit; a booking that lives only in an email is nothing at the
+   moment it is most needed. #}
+{% from '_print_stay.html' import print_stay %}
+{{ print_stay(booking, room) }}
+
+{% from '_guest_timeline.html' import timeline %}
+{{ timeline(booking) }}
 
 <div class="g-mb-card" style="margin-top:var(--s4);">
   <h2 class="g-panel__h">{{ t('Estimated arrival time') }}</h2>

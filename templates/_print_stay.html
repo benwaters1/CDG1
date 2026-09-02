@@ -10,7 +10,7 @@
    and the phone number. The print rules are in the stylesheet, so this needs
    no separate print template.
    ========================================================================== #}
-{% macro print_stay(b) %}
+{% macro print_stay(b, room=None) %}
 <section class="g-panel g-takeaway">
   <h2 class="g-panel__h">Take this with you</h2>
   <p class="g-p">The valley has patchy signal and the drive is unlit. One page with everything you need to arrive, whether or not the phone works.</p>
@@ -19,16 +19,18 @@
     <p class="g-takeaway__k">Château de Gudanes</p>
     <p class="g-takeaway__v">2 Route de Beille, Château-Verdun, Ariège 09310</p>
     <p class="g-takeaway__k">Your reference</p>
-    <p class="g-takeaway__v">{{ b['reference'] }}{% if b['room_name'] %} · {{ b['room_name'] }}{% endif %}</p>
+    {# Real column names. The sketch used b['reference'] and b['arrival'],
+       neither of which exists, and a missing key on a sqlite3.Row raises. #}
+    <p class="g-takeaway__v">{{ b['reference_code'] }}{% if room %} · {{ room['name'] }}{% endif %}</p>
     <p class="g-takeaway__k">Dates</p>
-    <p class="g-takeaway__v">{{ b['arrival'] }} to {{ b['departure'] }} · arrival from 4pm</p>
+    <p class="g-takeaway__v">{{ b['arrival_date'] }} to {{ b['departure_date'] }} · arrival from 4pm</p>
     <p class="g-takeaway__k">If anything goes wrong</p>
     <p class="g-takeaway__v">+33 6 28 06 97 76</p>
     <p class="g-takeaway__k">Last stretch</p>
     <p class="g-takeaway__v">N20 south from Toulouse, then the D8 through Château-Verdun. The gates are on the left after the village. Gravel drive; take it slowly.</p>
   </div>
 
-  <p><button type="button" class="g-btn g-btn--solid" onclick="window.print()">Print this page</button></p>
-  <p class="g-hint">Prints to one sheet. Everything else on this page is left off.</p>
+  <p class="no-print"><button type="button" class="g-btn g-btn--solid" onclick="window.print()">Print this page</button></p>
+  <p class="g-hint no-print">Prints to one sheet. Everything else on this page is left off.</p>
 </section>
 {% endmacro %}

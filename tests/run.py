@@ -239,6 +239,7 @@ SUITES = [
     "test_publish_consent",
     "test_room_checks",
     "test_orphan_templates",
+    "test_guest_page",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",

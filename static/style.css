@@ -2595,3 +2595,78 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .till-count input{ width:100%; }
 .till-variance{ font:700 19px/1.2 'Inter Tight',sans-serif; }
 .till-variance.is-off{ color:var(--danger); }
+
+
+/* ---- What happens next -------------------------------------------------
+   A dated line for a booking: deposit, balance, the week before, arrival,
+   departure. Built as a list rather than a graphic so it reads the same in
+   a screen reader and prints without a stylesheet.
+   --------------------------------------------------------------------- */
+.g-timeline{ margin:0 0 var(--s5, 24px); }
+.g-timeline__l{ list-style:none; margin:8px 0 0; padding:0; }
+.g-timeline__i{
+  display:grid; grid-template-columns:9.5rem 1fr; gap:2px 14px;
+  padding:10px 0 10px 20px; position:relative;
+  border-left:1px solid var(--parchment-line, #d9d2c4);
+}
+.g-timeline__i:last-child{ border-left-color:transparent; padding-bottom:0; }
+.g-timeline__i::before{
+  content:""; position:absolute; left:-4.5px; top:15px;
+  width:8px; height:8px; border-radius:50%;
+  background:var(--surface, #fff);
+  border:1px solid var(--parchment-line, #d9d2c4);
+}
+/* Filled, not ticked. A tick reads as "you did this", and the guest did not
+   do most of these. */
+.g-timeline__i.is-done::before{
+  background:var(--gold, #9a7b3f); border-color:var(--gold, #9a7b3f);
+}
+.g-timeline__k{ font-weight:600; }
+.g-timeline__v{ color:var(--steel, #6b6759); }
+
+@media (max-width:560px){
+  .g-timeline__i{ grid-template-columns:1fr; }
+  .g-timeline__k{ font-size:.92em; }
+}
+
+
+/* ---- Take this with you ------------------------------------------------
+   One page a guest can hold in a car with no signal. The print rules are the
+   feature, not decoration: the button promises "everything else on this page
+   is left off", and without them it would print the whole booking page,
+   payment form included, and the promise would be the visible part of a lie.
+   --------------------------------------------------------------------- */
+.g-takeaway__card{
+  border:1px solid var(--parchment-line, #d9d2c4);
+  padding:16px 18px; margin:12px 0;
+  display:grid; grid-template-columns:11rem 1fr; gap:6px 16px;
+}
+.g-takeaway__k{ margin:0; font-weight:600; }
+.g-takeaway__v{ margin:0; }
+
+@media (max-width:560px){
+  .g-takeaway__card{ grid-template-columns:1fr; gap:2px; }
+  .g-takeaway__k{ margin-top:10px; }
+  .g-takeaway__k:first-child{ margin-top:0; }
+}
+
+@media print{
+  /* Hide everything, then bring this one section back. Written as a blanket
+     rule rather than a list of what to hide, because a list is wrong the day
+     somebody adds a tenth section to the booking page -- and the section it
+     would then print is whichever one was added last.
+
+     visibility rather than display: display:none on an ancestor cannot be
+     undone by a descendant, so hiding the page that way would hide this
+     section with it. visibility is inherited and overridable, which is the
+     whole reason this pattern exists. */
+  body.g-print-stay *{ visibility:hidden; }
+  body.g-print-stay .g-takeaway,
+  body.g-print-stay .g-takeaway *{ visibility:visible; }
+  body.g-print-stay .g-takeaway{
+    position:absolute; left:0; top:0; width:100%; margin:0; padding:0;
+  }
+  body.g-print-stay .g-takeaway .no-print,
+  body.g-print-stay .g-takeaway .no-print *{ visibility:hidden; }
+  body.g-print-stay .g-takeaway__card{ border:1px solid #000; }
+}
