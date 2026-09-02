@@ -5077,7 +5077,18 @@ NAV_AREAS = {
         "guests", "new_breakfast_item", "new_guest", "new_ical_source", "new_room",
         "new_room_block", "new_vehicle_transfer", "sync_ical_source_now",
         "toggle_breakfast_item", "toggle_breakfast_stock", "update_waitlist_status",
-        "vehicle_transfers_page"
+        
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
+        "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
+        "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
+        "export_guests_csv", "guest_full_statement", "import_catalogue", "link_guest_bookings",
+        "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
+        "repeat_guests_page", "reply_to_feedback", "sync_all_ical_sources", "toggle_feedback_featured",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "team": [
         # admin_hr_notes / handle_hr_note are deliberately NOT here, for the
@@ -5116,7 +5127,14 @@ NAV_AREAS = {
         "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
         "share_performance_review", "toggle_employee_status", "toggle_equipment_returned",
         "toggle_offboarding_item", "toggle_onboarding_item", "update_candidate_status",
-        "update_incident"
+        "update_incident",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "run_hr_escalation_now", "set_monthly_staff_cost",
+        "update_hr_escalation_rules", "upload_absence_note", "view_absence_note",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "rota": [
         "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
@@ -5126,7 +5144,15 @@ NAV_AREAS = {
         "export_timesheets_csv", "export_timesheets_summary_csv", "flag_timesheet_entry",
         "my_shifts", "new_shift", "new_task", "repair_time_entry", "reschedule_task",
         "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task",
-        "rota_templates_page", "delete_rota_template", "delete_rota_template_line"
+        "rota_templates_page", "delete_rota_template", "delete_rota_template_line",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "bulk_tasks", "cover_gaps_page", "direct_task", "overtime_page",
+        "rota_clashes_page", "rota_vs_clock_page", "save_leave_settings", "skills_page",
+        "today_sheet",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "estate": [
         "admin_access", "admin_assets", "asset_photo", "checkin_vehicle", "checkout_vehicle",
@@ -5149,7 +5175,15 @@ NAV_AREAS = {
         "new_shopping_item", "new_vehicle", "new_vehicle_maintenance", "reopen_room_issue",
         "resolve_room_issue", "resolve_vehicle_maintenance", "return_access_item",
         "room_issues", "shopping_list", "toggle_shopping_item", "toggle_vehicle_cleanliness",
-        "toggle_vehicle_fuel", "update_asset"
+        "toggle_vehicle_fuel", "update_asset",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "decide_mileage", "delete_maintenance_schedule", "edit_maintenance_schedule", "maintenance_certificate",
+        "maintenance_page", "new_maintenance_schedule", "record_maintenance_done", "room_economics_page",
+        "room_faults_page", "stock_basket", "stop_cleaning_round",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "vehicle_transfers_page",
     ],
     "comms": [
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
@@ -5160,7 +5194,17 @@ NAV_AREAS = {
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
         "allow_texting_number", "management_texting", "run_checkin_texts_now",
-        "save_checkin_text", "stop_texting_number"
+        "save_checkin_text", "stop_texting_number",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_gallery_photos", "admin_gallery", "admin_whats_on", "admin_whats_on_delete",
+        "admin_whats_on_save", "assign_email_flag", "delete_gallery_photo", "delete_social_post",
+        "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
+        "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
+        "update_mailbox_routing",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
@@ -5187,7 +5231,14 @@ NAV_AREAS = {
         "export_refunds_csv", "export_report_csv", "management_bank_details",
         "management_financials", "management_recurring_costs", "new_bank_details",
         "management_outlook", "new_recurring_cost",
-        "regenerate_supplier_link", "toggle_recurring_cost"
+        "regenerate_supplier_link", "toggle_recurring_cost",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "mark_recurring_cost_paid", "money_ahead_page", "scan_expense", "set_opening_balance",
+        "toggle_expense_capital", "toggle_expense_restaurant",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "restaurant": [
         "admin_dining_tables", "new_dining_table", "save_dining_table",
@@ -5197,7 +5248,22 @@ NAV_AREAS = {
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
         "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
-        "update_restaurant_waitlist_status"
+        "update_restaurant_waitlist_status",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_dish_ingredient", "add_drink_package_item", "add_menu_dish", "add_menu_pour",
+        "admin_drink_packages", "admin_restaurant_menu", "apply_menu_review", "copy_menu_day",
+        "delete_extra", "delete_menu_dish", "delete_menu_item", "delete_restaurant_rate_override",
+        "delete_restaurant_shift", "edit_extra", "edit_menu_day", "edit_menu_item",
+        "kitchen_day_sheet", "kitchen_service_times", "kitchen_waste", "mark_restaurant_no_show",
+        "menu_day", "menu_history", "menu_template_sheet", "new_drink_package",
+        "new_extra", "new_menu_day", "new_menu_item", "new_restaurant_rate_override",
+        "new_restaurant_shift", "print_menu_day", "publish_menu_day", "read_menu_upload",
+        "remove_dish_ingredient", "restaurant_margins", "restaurant_what_sells", "review_menu_draft",
+        "toggle_drink_package", "toggle_extra", "toggle_menu_item", "undo_restaurant_no_show",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "workshops": [
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
@@ -5206,7 +5272,16 @@ NAV_AREAS = {
         "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
         "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
         "new_workshop_session", "toggle_workshop_feedback_featured",
-        "update_workshop_waitlist_status"
+        "update_workshop_waitlist_status",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_workshop_material", "add_workshop_transaction_route", "apply_workshop_rooming", "assign_workshop_room",
+        "consume_workshop_materials", "delete_workshop_custom_field", "edit_workshop_session", "mark_workshop_balance_paid",
+        "mark_workshop_deposit_paid", "new_workshop_custom_field", "remove_workshop_material", "set_workshop_occupancy",
+        "toggle_workshop_do_not_email", "workshop_rooming",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "till": [
         # Everything a section actually touches during service. pos_day and
@@ -5218,10 +5293,23 @@ NAV_AREAS = {
         "pos_choose_formule_dish_route", "pos_home", "pos_kitchen", "pos_line_state",
         "pos_move_table", "pos_open_formule_route", "pos_open_tab", "pos_order",
         "pos_pay_link", "pos_receipt", "pos_email_receipt", "pos_send", "pos_service_state",
-        "pos_set_package", "pos_take_card", "pos_take_payment_route", "pos_void_item"
+        "pos_set_package", "pos_take_card", "pos_take_payment_route", "pos_void_item",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
+        
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "events": [
-        "admin_events", "export_events_csv", "update_event_inquiry"
+        "admin_events", "export_events_csv", "update_event_inquiry",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "new_event_inquiry", "update_event_types",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "payroll": [
         "admin_payroll", "export_payroll_csv",
@@ -5247,7 +5335,20 @@ NAV_AREAS = {
         "management_insurance", "management_vault", "new_insurance_policy", "new_vault_entry",
         "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
         "update_automation_settings", "upload_company_document", "vendors",
-        "view_company_document"
+        "view_company_document",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "admin_overview", "admin_overview_status", "data_request_export", "data_requests",
+        "delete_deposit_rule", "delete_promo_code", "delete_social_plan", "discount_cost_page",
+        "edit_promo_code", "edit_social_plan", "empty_nights_page", "exit_interviews",
+        "export_social_posts_csv", "generate_social_now", "held_not_earned_page", "issue_vendor_upload_link",
+        "management_buying", "management_cancellations", "new_deposit_rule", "new_promo_code",
+        "new_social_plan", "return_deposit", "revoke_vendor_upload_link", "send_promo_code_blast",
+        "set_cancel_reason", "social_plans", "spend_by_vendor_page", "still_out_page",
+        "toggle_promo_code",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
 }
 
@@ -5274,7 +5375,51 @@ AREA_TITLES = {
 # the wrong guess costs one visit to the access page rather than a migration.
 
 
+# Owner-only ON PURPOSE, which is a different thing from having no area.
+# Money that leaves the house, and anything that grants somebody access.
+#
+# The value is where the page LIVES, not who may open it. Those are two
+# questions and conflating them is what left the cash-up highlighting no
+# menu at all: can_reach refuses every endpoint in here to anybody but a
+# full owner, while the sidebar still knows the till day belongs to the
+# Till. A page missing from BOTH this and NAV_AREAS is a mistake a test
+# can see, which is how 181 of them accumulated unnoticed.
+OWNER_ONLY_AREAS = {
+    "admin_access_levels": "management",
+    "admin_pennylane": "financial",
+    "admin_tax": "financial",
+    "apply_invoice": "financial",
+    "assign_access_preset": "management",
+    "data_request_erase": "management",
+    "delete_check_in_note": "team",
+    "download_backup": "management",
+    "new_check_in_note": "team",
+    "pos_archive": "till",
+    "pos_close_day": "till",
+    "pos_day": "till",
+    "pos_journal_page": "till",
+    "pos_reopen": "till",
+    "read_invoice": "financial",
+    "refund_booking_admin": "guests",
+    "refund_restaurant_booking_admin": "restaurant",
+    "refund_workshop_admin": "workshops",
+    "reveal_bank_details": "financial",
+    "reveal_vault_entry": "management",
+    "save_access_preset": "management",
+    "search": None,
+    "send_to_pennylane": "financial",
+    "sync_pennylane": "financial",
+}
+OWNER_ONLY_ENDPOINTS = frozenset(OWNER_ONLY_AREAS)
+
+
 ENDPOINT_AREA = {ep: area for area, eps in NAV_AREAS.items() for ep in eps}
+
+# What the SIDEBAR asks. ENDPOINT_AREA answers 'who may open this';
+# this answers 'which menu is this under', and an owner-only page has
+# an answer to the second even though the first is 'only you'.
+NAV_AREA_OF = dict(ENDPOINT_AREA)
+NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 
 
 def user_access(user):
@@ -16413,6 +16558,13 @@ def inject_user():
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
         "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
+        # The nav used to answer that question from its own hand-typed
+        # copies of every area's contents, and the two had drifted: 73
+        # pages did not light up their own menu, 25 of them in Financial.
+        # You opened a page and the sidebar could not tell you where you
+        # were.
+        "current_area": NAV_AREA_OF.get(request.endpoint),
         # Translation, available to every template rather than passed in by
         # each route — a page that forgot it would silently render English.
         "t": t, "lang": current_language(), "languages": translations.LANGUAGES,
