@@ -35,6 +35,42 @@
         </datalist>
       </div>
     </div>
+    <fieldset style="border:1px solid var(--parchment-line); padding:12px 14px; margin:14px 0; border-radius:4px;">
+      <legend class="field-label" style="padding:0 6px;">What this room asks of somebody</legend>
+      <p class="field-hint" style="margin-top:0;">
+        Not a rating. This is a thirteenth-century house and a room is not
+        &ldquo;accessible&rdquo; or not &mdash; a particular person either can or cannot manage
+        this particular staircase, and only they know which. Leave a box blank if nobody
+        has measured it: blank reads as <em>unknown</em>, not as nothing to worry about.
+      </p>
+      <div class="field-row-2">
+        <div>
+          <label class="field-label" for="access_steps">Steps to reach it</label>
+          <input type="number" id="access_steps" name="access_steps" min="0" step="1"
+                 value="{{ room['access_steps'] if room and room['access_steps'] is not none else '' }}"
+                 placeholder="0 for step-free">
+        </div>
+        <div>
+          <label class="field-label" for="access_car_metres">How close a car gets (m)</label>
+          <input type="number" id="access_car_metres" name="access_car_metres" min="0" step="1"
+                 value="{{ room['access_car_metres'] if room and room['access_car_metres'] is not none else '' }}"
+                 placeholder="40">
+        </div>
+      </div>
+      <label class="field-label" for="access_bathroom">The bathroom</label>
+      <select id="access_bathroom" name="access_bathroom">
+        <option value="">Nobody has looked</option>
+        {% for key, label in access_bathrooms.items() %}
+        <option value="{{ key }}" {{ 'selected' if room and room['access_bathroom'] == key }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <label class="field-label" for="access_notes">In plain English</label>
+      <textarea id="access_notes" name="access_notes" rows="2" maxlength="400"
+                placeholder="Eleven steps, worn stone, a rope rather than a rail. The last three turn.">{{ room['access_notes'] or '' if room else '' }}</textarea>
+      <p class="field-hint">Whoever answers the telephone reads this out. Say what is actually
+        there rather than what it is called.</p>
+    </fieldset>
+
     <label class="field-label" for="description">Description</label>
     <textarea id="description" name="description" rows="4"
               placeholder="Describe it the way you would to someone standing in the doorway.">{{ room['description'] if room else '' }}</textarea>
