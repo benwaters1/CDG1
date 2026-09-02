@@ -8,6 +8,18 @@
   <a href="{{ url_for('export_feedback_csv') }}" class="btn-mini">Export CSV</a>
 </div>
 
+{# Featured means CHOSEN now, not published. A review nobody has written to
+   the guest about sits here doing nothing, and the only thing standing
+   between it and the website is a letter somebody has to remember. #}
+{% if unasked %}
+<p class="pay-disclaimer">
+  {{ unasked }} review{{ '' if unasked == 1 else 's' }} chosen for the website,
+  and nobody has asked the guest about {{ 'it' if unasked == 1 else 'them' }} yet,
+  so {{ 'it is' if unasked == 1 else 'they are' }} not on it.
+  The form they filled in says nothing is published without asking first.
+</p>
+{% endif %}
+
 {% if avg_rating is not none %}
 <div class="stat-tiles">
   <div class="stat-tile">
@@ -67,6 +79,44 @@
         <button type="submit" class="btn-mini">{% if f['featured'] %}Unfeature{% else %}Feature on booking page{% endif %}</button>
       </form>
     </div>
+    {# "Nothing is published without asking you first" is on the form they
+       filled in. The public page will not show a review without consent
+       whatever this says -- that rule lives in the query -- so what this is
+       for is telling somebody there is a letter to write. #}
+    {% if f['featured'] %}
+    <p class="upload-hint">
+      {% if f['publish_consent'] == 1 %}
+        They said we may use it{% if f['publish_consent_how'] %}
+          &mdash; {{ f['publish_consent_how'] }}{% endif %}.
+      {% elif f['publish_consent'] == 0 %}
+        <strong>They said no.</strong> It will not appear on the booking page,
+        whatever the tick above says.
+      {% else %}
+        <strong>Nobody has asked them yet</strong>, so it is not on the booking page.
+        The form they filled in says nothing is published without asking first.
+      {% endif %}
+    </p>
+    <div class="expense-actions">
+      {% for answer, label in [('yes', 'They said yes'), ('no', 'They said no')] %}
+      <form method="post" action="{{ url_for('set_publish_consent', kind='stay', feedback_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="answer" value="{{ answer }}">
+        <select name="how" aria-label="How they were asked">
+          {% for key, text in consent_routes.items() %}<option value="{{ key }}">{{ text }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-mini{{ ' btn-ghost' if answer == 'no' }}">{{ label }}</button>
+      </form>
+      {% endfor %}
+      {% if f['publish_consent'] is not none %}
+      <form method="post" action="{{ url_for('set_publish_consent', kind='stay', feedback_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="answer" value="unasked">
+        <button type="submit" class="btn-mini btn-ghost">Wrong row</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
 
     {# Marking it read without writing anything is deliberate. Some reviews
        want a telephone call, and forcing a written reply into the app to

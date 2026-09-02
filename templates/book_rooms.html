@@ -586,6 +586,12 @@
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
    across all six categories. Short quotes, attributed, nothing invented. #}
+{# The next nights actually free, so nobody has to guess two dates and be
+   told they were wrong. Renders nothing when there is nothing open, and is
+   left off entirely once somebody HAS searched. #}
+{% from '_availability_strip.html' import next_free as next_free_strip %}
+{{ next_free_strip(next_free) }}
+
 <section class="g-sec g-says"><div class="g-wrap">
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M0 13h38"/><path d="M82 13h38"/>

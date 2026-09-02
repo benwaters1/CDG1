@@ -10,48 +10,83 @@
    Reads the deposit percentage from settings if it is there and says so
    plainly. Everything degrades to the nightly rate with no script.
    ========================================================================== #}
-{% macro stay_cost(room, settings) %}
-{% set pct = (settings['deposit_percent'] if settings and settings['deposit_percent'] else 30) | int %}
+{% macro stay_cost(room, deposit_percent=0, uid='') %}
+{# The percentage comes from the ROUTE, through the same
+   resolve_deposit_percent the booking itself uses, so the figure here is the
+   figure the card will be charged.
+
+   The sketch defaulted to 30 when it could not find one, and this house's
+   room deposit defaults to ZERO -- so it would have told every guest they
+   must pay 30% now on a house that takes nothing up front. A wrong money
+   figure, in front of the person paying it, on the page where they decide. #}
+{# None means the deposit genuinely depends on the dates and the party size,
+   so the page says that instead of picking a number and being wrong for
+   somebody. 0 means the house takes nothing to hold a room. #}
+{% set varies = deposit_percent is none %}
+{% set pct = 0 if varies else (deposit_percent or 0) | round | int %}
+{% set n0 = room['min_nights'] or 2 %}
 <div class="g-cost" data-cost data-rate="{{ room['price_per_night']|int }}" data-pct="{{ pct }}">
   <div class="g-cost__row">
-    <label class="g-cost__l" for="cost_n">Nights</label>
+    {# The id is per-room. A fixed one is two elements with the same id the
+       moment this appears twice on a page, and the label then points at
+       whichever the browser saw first. #}
+    <label class="g-cost__l" for="cost_n_{{ uid or room['id'] }}">Nights</label>
     <button type="button" class="g-cost__b" data-cost-step="-1" aria-label="One night fewer">−</button>
-    <input class="g-cost__n" id="cost_n" type="number" inputmode="numeric"
-           min="{{ room['min_nights'] or 1 }}" max="30" value="{{ room['min_nights'] or 2 }}"
+    <input class="g-cost__n" id="cost_n_{{ uid or room['id'] }}" type="number" inputmode="numeric"
+           min="{{ room['min_nights'] or 1 }}" max="30" value="{{ n0 }}"
            data-cost-input>
     <button type="button" class="g-cost__b" data-cost-step="1" aria-label="One night more">+</button>
   </div>
 
   <dl class="g-cost__out" aria-live="polite">
-    <div><dt>Total</dt><dd data-cost-total>€{{ '%.0f'|format(room['price_per_night'] * (room['min_nights'] or 2)) }}</dd></div>
-    <div><dt>To hold it now</dt><dd data-cost-dep>€{{ '%.0f'|format(room['price_per_night'] * (room['min_nights'] or 2) * pct / 100) }}</dd></div>
-    <div><dt>Later</dt><dd data-cost-bal>€{{ '%.0f'|format(room['price_per_night'] * (room['min_nights'] or 2) * (100 - pct) / 100) }}</dd></div>
+    <div><dt>Total</dt><dd data-cost-total>€{{ '%.0f'|format(room['price_per_night'] * n0) }}</dd></div>
+    {# The split only appears when there IS one. Showing "to hold it now: 0"
+       invites the question of what that means, and the answer is nothing. #}
+    {% if pct %}
+    <div><dt>To hold it now</dt><dd data-cost-dep>€{{ '%.0f'|format(room['price_per_night'] * n0 * pct / 100) }}</dd></div>
+    <div><dt>Later</dt><dd data-cost-bal>€{{ '%.0f'|format(room['price_per_night'] * n0 * (100 - pct) / 100) }}</dd></div>
+    {% endif %}
   </dl>
 
-  <p class="g-hint">€{{ '%.0f'|format(room['price_per_night']) }} a night, breakfast included. A {{ pct }}% deposit holds the room; the balance is taken nearer the date. Charged in euro.</p>
+  <p class="g-hint">€{{ '%.0f'|format(room['price_per_night']) }} a night, breakfast included.
+    {% if varies %}A deposit holds the room; how much depends on the dates and the party, and
+      you will see the figure before anything is charged.
+    {% elif pct %}A {{ pct }}% deposit holds the room; the balance is taken nearer the date.
+    {% else %}Nothing is taken to hold it; the stay is settled before you arrive.{% endif %}
+    Charged in euro.</p>
 </div>
 <script>
 /* The arithmetic a guest would otherwise do in their head, and the deposit
    split they would otherwise not see until the payment step. */
 (function(){
-  var el=document.querySelector('[data-cost]'); if(!el) return;
-  var rate=+el.dataset.rate, pct=+el.dataset.pct,
-      inp=el.querySelector('[data-cost-input]'),
-      T=el.querySelector('[data-cost-total]'), D=el.querySelector('[data-cost-dep]'),
-      B=el.querySelector('[data-cost-bal]');
-  var fmt=function(n){ return '€' + Math.round(n).toLocaleString('en-GB'); };
-  function paint(){
-    var n=Math.max(+inp.min||1, Math.min(+inp.max||30, +inp.value||1));
-    inp.value=n;
-    var t=rate*n;
-    T.textContent=fmt(t); D.textContent=fmt(t*pct/100); B.textContent=fmt(t*(100-pct)/100);
-  }
-  inp.addEventListener('input', paint);
-  el.addEventListener('click', function(e){
-    var b=e.target.closest('[data-cost-step]'); if(!b) return;
-    inp.value=(+inp.value||1)+(+b.dataset.costStep); paint();
+  /* Every one on the page, not the first. querySelector picks one, and a
+     page listing three rooms would then have two calculators whose numbers
+     never move -- which reads as a broken price rather than a broken widget. */
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cost]'), function(el){
+    if (el.dataset.costOn) return;
+    el.dataset.costOn = '1';
+    var rate=+el.dataset.rate, pct=+el.dataset.pct,
+        inp=el.querySelector('[data-cost-input]'),
+        T=el.querySelector('[data-cost-total]'), D=el.querySelector('[data-cost-dep]'),
+        B=el.querySelector('[data-cost-bal]');
+    if(!inp||!T) return;
+    var fmt=function(n){ return '\u20ac' + Math.round(n).toLocaleString('en-GB'); };
+    function paint(){
+      var n=Math.max(+inp.min||1, Math.min(+inp.max||30, +inp.value||1));
+      inp.value=n;
+      var t=rate*n;
+      T.textContent=fmt(t);
+      /* Absent when the house takes no deposit, so this must not assume it. */
+      if(D) D.textContent=fmt(t*pct/100);
+      if(B) B.textContent=fmt(t*(100-pct)/100);
+    }
+    inp.addEventListener('input', paint);
+    el.addEventListener('click', function(e){
+      var b=e.target.closest('[data-cost-step]'); if(!b) return;
+      inp.value=(+inp.value||1)+(+b.dataset.costStep); paint();
+    });
+    paint();
   });
-  paint();
 })();
 </script>
 {% endmacro %}

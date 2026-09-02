@@ -217,6 +217,7 @@
         <a href="{{ url_for('management_vehicles') }}" class="{{ 'active' if request.endpoint=='management_vehicles' }}">{{ icon('car') }}Vehicles</a>
         <a href="{{ url_for('admin_assets') }}" class="{{ 'active' if request.endpoint=='admin_assets' }}">{{ icon('building') }}Asset Register</a>
         <a href="{{ url_for('admin_access') }}" class="{{ 'active' if request.endpoint=='admin_access' }}">{{ icon('lock') }}Keys &amp; Access</a>
+        <a href="{{ url_for('room_checks_page') }}" class="{{ 'active' if request.endpoint in ['room_checks_page','walk_room'] }}">{{ icon('wrench') }}Room Checks</a>
         <a href="{{ url_for('room_access_page') }}" class="{{ 'active' if request.endpoint=='room_access_page' }}">{{ icon('rooms') }}What The House Can Manage</a>
         <a href="{{ url_for('management_cleaning') }}" class="{{ 'active' if request.endpoint=='management_cleaning' }}">{{ icon('wrench') }}Cleaning Rounds</a>
         <a href="{{ url_for('management_breakages') }}" class="{{ 'active' if request.endpoint=='management_breakages' }}">{{ icon('wrench') }}Breakages</a>
@@ -349,6 +350,7 @@
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
     <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_kitchen'] }}">{{ icon('restaurant') }}Restaurant POS</a>
     {% set house_endpoints = ['shift_handover','kitchen_prep','prep_item_done','kitchen_fridges',
+       'room_checks_page','walk_room',
        'management_cleaning','cleaning_round_done','management_breakages',
        'management_lost_property','resolve_lost_property','management_visitors',
        'sign_out_visitor','management_meters','restaurant_covers','restaurant_tables',
@@ -358,6 +360,7 @@
       <button type="button" class="nav-dropdown-toggle" aria-label="Show House submenu" onclick="toggleNavDropdown(event, this)">&#9662;</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('shift_handover') }}" class="{{ 'active' if request.endpoint=='shift_handover' }}">{{ icon('receipt') }}Handover</a>
+        <a href="{{ url_for('room_checks_page') }}" class="{{ 'active' if request.endpoint in ['room_checks_page','walk_room'] }}">{{ icon('wrench') }}Room Checks</a>
         <a href="{{ url_for('management_cleaning') }}" class="{{ 'active' if request.endpoint=='management_cleaning' }}">{{ icon('wrench') }}Cleaning Rounds</a>
         <a href="{{ url_for('kitchen_prep') }}" class="{{ 'active' if request.endpoint=='kitchen_prep' }}">{{ icon('restaurant') }}Prep List</a>
         <a href="{{ url_for('kitchen_fridges') }}" class="{{ 'active' if request.endpoint=='kitchen_fridges' }}">{{ icon('wrench') }}Fridge Temperatures</a>

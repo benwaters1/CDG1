@@ -2629,6 +2629,46 @@ def init_db():
         -- What the house is tied into. Not the same as a recurring cost,
         -- which says when money leaves and nothing about whether the house
         -- is still free to stop it.
+        -- The list a room is checked against. Named and kept, so it is the
+        -- same check every time -- a check where everybody looks at whatever
+        -- occurs to them finds a different thing each time and misses the
+        -- same thing each time.
+        CREATE TABLE IF NOT EXISTS room_standards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            area TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- One walk of one room, for one arrival. Against the ARRIVAL rather
+        -- than the room, because a pass from three weeks ago says nothing
+        -- about the room somebody opens the door on tonight.
+        CREATE TABLE IF NOT EXISTS room_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            for_date TEXT NOT NULL,
+            checked_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            checked_at TEXT NOT NULL,
+            note TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS room_check_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            check_id INTEGER NOT NULL REFERENCES room_checks(id) ON DELETE CASCADE,
+            standard_id INTEGER REFERENCES room_standards(id) ON DELETE SET NULL,
+            -- The wording AS IT WAS on the day. A standard reworded later
+            -- must not rewrite what somebody signed off in March.
+            what TEXT NOT NULL,
+            passed INTEGER NOT NULL,
+            note TEXT,
+            -- The room issue this fault was raised as, so a fault found is
+            -- a fault REPORTED rather than a line in a log nobody opens.
+            room_issue_id INTEGER REFERENCES room_issues(id) ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS supplier_agreements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             what TEXT NOT NULL,
@@ -4051,8 +4091,33 @@ def init_db():
         # On the GUEST, not the booking. Somebody who could not manage
         # stairs in May cannot manage them in September, and not having to
         # explain it twice is the whole point.
+        # Minted only when somebody asks for one, and revocable. A token on
+        # every booking is a live URL for every booking that has ever
+        # existed, wanted or not.
+        # A shared reference for bookings that are one arrival. Never
+        # inferred: two bookings with the same surname on the same dates are
+        # often one family and are sometimes two families called Martin.
+        ("bookings_group_ref", "ALTER TABLE bookings ADD COLUMN group_ref TEXT"),
+        ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
+        # "Nothing is published without asking you first" is on the form
+        # they fill in. NULL means nobody has asked, which is not the same
+        # as no, and the difference is the whole point.
+        ("feedback_publish_consent",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent INTEGER"),
+        ("feedback_publish_consent_at",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent_at TEXT"),
+        # How it was obtained. "She said yes on the telephone" is a real
+        # answer and the software should hold it rather than force a lie.
+        ("feedback_publish_consent_how",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent_how TEXT"),
+        ("wsfeedback_publish_consent",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent INTEGER"),
+        ("wsfeedback_publish_consent_at",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent_at TEXT"),
+        ("wsfeedback_publish_consent_how",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent_how TEXT"),
         ("feedback_reply", "ALTER TABLE guest_feedback ADD COLUMN reply TEXT"),
         ("feedback_replied_at", "ALTER TABLE guest_feedback ADD COLUMN replied_at TEXT"),
         # The same for a workshop, because the sibling route has the identical
@@ -4491,6 +4556,9 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
         "CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_waitlist_entries_status ON waitlist_entries(status)",
+        "CREATE INDEX IF NOT EXISTS idx_bookings_group_ref ON bookings(group_ref)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_share_token "
+        "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_room_issues_status ON room_issues(status)",
@@ -4632,6 +4700,15 @@ def init_db():
                 f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+
+    # The list a room is walked against, so the first person to open the page
+    # has something to walk rather than a blank form and a decision to make.
+    # Runs once and never again -- see seed_room_standards.
+    seeded_standards = seed_room_standards(conn)
+    if seeded_standards:
+        conn.commit()
+        print(f"Seeded {seeded_standards} room standards — edit them under "
+              "Estate, Room Checks.")
 
     # The order the rooms appear in on the front page, set once.
     #
@@ -5070,6 +5147,8 @@ NAV_AREAS = {
         "guest_duplicates",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
+        "set_booking_group",
+        "set_publish_consent",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
         "delete_vehicle_transfer", "edit_booking", "edit_breakfast_item", "edit_guest",
@@ -5163,7 +5242,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
-        "room_access_page",
+        "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -16546,7 +16625,7 @@ def inject_user():
         "room_amenities": ROOM_AMENITIES, "room_amenity_keys": room_amenity_keys,
         "room_amenity_freetext": room_amenity_freetext,
         "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
-        "access_bathrooms": ACCESS_BATHROOMS,
+        "access_bathrooms": ACCESS_BATHROOMS, "consent_routes": CONSENT_ROUTES,
         "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
@@ -17197,6 +17276,178 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
         "outstanding": round(sum(r["amount"] or 0 for r in unpaid), 2),
         "unpaid": len(unpaid),
     }
+
+
+# A starting list, so the first person to open the page has something to walk
+# rather than a blank form and a decision to make. Every line is editable and
+# the house will end up with its own; these are the ones that are the same in
+# every house of this kind.
+DEFAULT_ROOM_STANDARDS = [
+    ("Bed made, linen clean and unmarked", "Bed"),
+    ("No hair anywhere -- bed, bath, floor", "Bathroom"),
+    ("Hot water runs hot, and the shower drains", "Bathroom"),
+    ("Lavatory clean, and it flushes", "Bathroom"),
+    ("Towels, robes and toiletries all there", "Bathroom"),
+    ("Every light works, including the bedsides", "The room"),
+    ("Windows and shutters open and close", "The room"),
+    ("Room smells of nothing", "The room"),
+    ("Heating on and the room is warm", "The room"),
+    ("Nothing of the last guest's left anywhere", "The room"),
+    ("Floor swept and under the bed clear", "The room"),
+    ("Wi-Fi card and the house information out", "The room"),
+]
+
+
+def seed_room_standards(conn):
+    """Put the starting list in, once, and never again.
+
+    Matched on the WORDING rather than on a count, so a house that has
+    deleted a line it does not use never has it put back -- and one that has
+    reworded every line does not get twelve duplicates.
+    """
+    have = {r["what"] for r in conn.execute(
+        "SELECT what FROM room_standards").fetchall()}
+    if have:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    for i, (what, area) in enumerate(DEFAULT_ROOM_STANDARDS):
+        conn.execute(
+            "INSERT INTO room_standards (what, area, sort_order, active, created_at) "
+            "VALUES (?, ?, ?, 1, ?)", (what, area, i, now))
+    return len(DEFAULT_ROOM_STANDARDS)
+
+
+def room_standards(conn):
+    """The list a room is walked against, in the order somebody walks it."""
+    return conn.execute(
+        "SELECT * FROM room_standards WHERE active = 1 "
+        "ORDER BY sort_order, COALESCE(area, ''), id").fetchall()
+
+
+def arrivals_needing_check(conn, *, days=2, today=None):
+    """Rooms with somebody arriving, and whether anybody has walked them.
+
+    Three states, and the middle one is the point: passed, FAILED, and
+    NOBODY HAS LOOKED. A room nobody has checked is not a room that is fine,
+    and a page that leaves it blank says it is.
+    """
+    today = today or house_today()
+    until = (today + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.id AS booking_id, bookings.reference_code,
+                  bookings.guest_name, bookings.arrival_date,
+                  bookings.room_id, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date >= ?
+              AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, rooms.name""",
+        (today.isoformat(), until)).fetchall()
+    out = []
+    for b in rows:
+        chk = conn.execute(
+            """SELECT room_checks.*, users.name AS checked_by
+                 FROM room_checks
+                 LEFT JOIN users ON users.id = room_checks.checked_by_user_id
+                WHERE room_checks.booking_id = ?
+                -- id as the tiebreak, not just the timestamp. Two walks in
+                -- the same second -- somebody fixing a bulb and going
+                -- straight back round -- otherwise leave SQLite to pick, and
+                -- the page can show the older one and report faults that
+                -- were dealt with five minutes ago.
+                ORDER BY room_checks.checked_at DESC, room_checks.id DESC
+                LIMIT 1""",
+            (b["booking_id"],)).fetchone()
+        failed = []
+        if chk:
+            failed = conn.execute(
+                "SELECT * FROM room_check_items WHERE check_id = ? AND passed = 0",
+                (chk["id"],)).fetchall()
+        out.append({
+            "booking": b,
+            "check": chk,
+            "failed": failed,
+            # Not "ok". A room nobody has walked is UNCHECKED, and the word
+            # matters: blank on a page reads as nothing to worry about.
+            "state": ("unchecked" if not chk
+                      else ("failed" if failed else "passed")),
+        })
+    return out
+
+
+def record_room_check(conn, *, room_id, booking_id, for_date, user_id,
+                      results, note=None):
+    """Write one walk of one room. Returns (check_id, issues_raised).
+
+    `results` is a list of (standard_id, what, passed, note). Anything that
+    failed is ALSO raised as a room issue, because the person who can fix a
+    dripping tap does not read a quality log -- and a fault recorded but not
+    reported is the failure every abandoned checklist has in common.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO room_checks (room_id, booking_id, for_date,
+                   checked_by_user_id, checked_at, note)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (room_id, booking_id, for_date.isoformat(), user_id, now, note))
+    check_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    raised = 0
+    for standard_id, what, passed, item_note in results:
+        issue_id = None
+        if not passed:
+            conn.execute(
+                """INSERT INTO room_issues (room_id, reported_by_user_id, title,
+                           description, status, created_at)
+                   VALUES (?, ?, ?, ?, 'open', ?)""",
+                (room_id, user_id, what[:120],
+                 (item_note or "").strip() or "Found on the room check before "
+                 "an arrival.", now))
+            issue_id = conn.execute(
+                "SELECT last_insert_rowid() AS id").fetchone()["id"]
+            raised += 1
+        conn.execute(
+            """INSERT INTO room_check_items (check_id, standard_id, what,
+                       passed, note, room_issue_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (check_id, standard_id, what, 1 if passed else 0,
+             (item_note or "").strip() or None, issue_id))
+    return check_id, raised
+
+
+CONSENT_ROUTES = {
+    "form": "Ticked it on the form",
+    "email": "Said yes by email",
+    "spoken": "Said yes in person or on the telephone",
+}
+
+
+def publishable_reviews(conn):
+    """Featured reviews the house is actually allowed to publish, and the rest.
+
+    Three states, and the middle one is the reason this exists: asked and
+    said yes, asked and said no, and NEVER ASKED. Never-asked is not a no
+    and it is not a yes -- it is a promise on the feedback form that nobody
+    has kept yet, and it has to read differently from both.
+    """
+    out = {"ready": [], "refused": [], "unasked": []}
+    for table, label in (("guest_feedback", "stay"),
+                         ("workshop_feedback", "atelier")):
+        rows = conn.execute(
+            f"""SELECT id, guest_name, comment, rating, publish_consent,
+                       publish_consent_how, featured
+                  FROM {table}
+                 WHERE featured = 1""").fetchall()
+        for r in rows:
+            entry = {"row": r, "kind": label, "table": table}
+            if r["publish_consent"] == 1:
+                out["ready"].append(entry)
+            elif r["publish_consent"] == 0:
+                out["refused"].append(entry)
+            else:
+                out["unasked"].append(entry)
+    return out
 
 
 AGREEMENT_DECISIONS = {
@@ -23018,6 +23269,9 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("Room checks", "room_checks_page",
+     "room check standard quality walk inspection before arrival turnaround "
+     "housekeeping ready"),
     ("What we are tied into", "supplier_agreements_page",
      "agreement contract renewal notice period supplier subscription "
      "auto renew cancel lock in term"),
@@ -27396,14 +27650,26 @@ def book_rooms():
         """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
            LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
            LEFT JOIN rooms ON rooms.id = bookings.room_id
+           -- Consent as well as the flag, and HERE rather than on the
+           -- admin page. A page can be got round and the next person to
+           -- add a review carousel would write this query again; wiring it
+           -- into the query that builds the public page is what makes
+           -- "nothing is published without asking you first" true even when
+           -- somebody ticks the wrong row.
            WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
+             AND guest_feedback.publish_consent = 1
            ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
+    # Computed before the connection closes. Only when nobody has searched:
+    # somebody who has just been told their dates are taken does not want a
+    # second list of dates that are not theirs, they want to change one of
+    # their own.
+    next_free = next_free_nights(conn) if not searched else []
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
-        nothing_available=nothing_available,
+        nothing_available=nothing_available, next_free=next_free,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
         featured_reviews=featured_reviews,
@@ -27785,13 +28051,16 @@ def book_room(room_id):
     gallery_photos = conn.execute(
         "SELECT * FROM room_photos WHERE room_id = ? ORDER BY sort_order, id", (room_id,)
     ).fetchall()
+    # None means the deposit genuinely depends on the booking, and the
+    # page says so rather than quoting a figure that changes at checkout.
+    deposit_shown = deposit_percent_to_show(conn)
 
     if request.method == "POST":
         if rate_limited(conn, "book_room", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -27858,7 +28127,7 @@ def book_room(room_id):
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
 
         nights = (departure - arrival).days
         chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
@@ -27978,7 +28247,7 @@ def book_room(room_id):
                 flash(f"Payment setup failed ({e}). Please try again.", "error")
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
                 conn.close()
-                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
             conn.commit()
             conn.close()
             # Hold what they typed for the walk to Stripe and back.
@@ -28065,6 +28334,7 @@ def book_room(room_id):
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
         prefill_requests=prefill_requests, prefill_promo=prefill_promo,
         prefill_extras=prefill_extras, initial_quote=initial_quote,
+        deposit_shown=deposit_shown,
     )
 
 
@@ -28879,10 +29149,15 @@ def manage_booking(manage_token):
     # is wanted by the template and the connection does not survive it.
     part_payment_allowed = room_payment_setting(
         conn, "room_part_payment_allowed", cast=int) == 1
+    # Empty unless staff have said these bookings are one arrival, so the
+    # panel simply does not render for the ordinary single booking. Read
+    # before the close, like everything else on this page.
+    group = booking_group(conn, booking["id"])
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        group=group,
         portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
@@ -28935,9 +29210,17 @@ def guest_feedback(token):
             flash("Choose a rating from 1 to 5.", "error")
         else:
             try:
+                # Opt-in, and unticked. A pre-ticked box is not consent,
+                # and a form that promises to ask first has to actually ask.
+                may_publish = 1 if request.form.get("publish_consent") else None
                 conn.execute(
-                    "INSERT INTO guest_feedback (booking_id, guest_name, rating, comment, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO guest_feedback (booking_id, guest_name, rating, comment, "
+                    "publish_consent, publish_consent_at, publish_consent_how, submitted_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (booking["id"], booking["guest_name"], rating, comment or None,
+                     may_publish,
+                     datetime.now(timezone.utc).isoformat() if may_publish else None,
+                     "form" if may_publish else None,
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
@@ -28998,9 +29281,15 @@ def workshop_feedback(token):
             flash("Choose a rating from 1 to 5.", "error")
         else:
             try:
+                may_publish = 1 if request.form.get("publish_consent") else None
                 conn.execute(
-                    "INSERT INTO workshop_feedback (workshop_booking_id, guest_name, rating, comment, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO workshop_feedback (workshop_booking_id, guest_name, rating, "
+                    "comment, publish_consent, publish_consent_at, publish_consent_how, "
+                    "submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (booking["id"], booking["guest_name"], rating, comment or None,
+                     may_publish,
+                     datetime.now(timezone.utc).isoformat() if may_publish else None,
+                     "form" if may_publish else None,
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
@@ -29919,6 +30208,169 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
         if score > best_score:
             best_score, best = score, rule
     return best["deposit_percent"] if best else (default_percent or 0)
+
+
+# How soon is too soon to advertise. A page leading with tonight reads as an
+# empty house, and for a guest who has to fly it is not a stay they could
+# reach in any case.
+NEXT_FREE_LEAD_DAYS = 3
+NEXT_FREE_HORIZON_DAYS = 120
+
+
+def booking_group(conn, booking_id):
+    """Every booking travelling with this one, this one included.
+
+    Returns [] when it is not in a group, so a page can ask without first
+    asking whether to ask.
+    """
+    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not row["group_ref"]:
+        return []
+    return conn.execute(
+        """SELECT bookings.id, bookings.reference_code, bookings.guest_name,
+                  bookings.arrival_date, bookings.departure_date,
+                  bookings.party_size, bookings.status, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.group_ref = ?
+              AND bookings.status IN ('pending', 'confirmed')
+            ORDER BY rooms.name""", (row["group_ref"],)).fetchall()
+
+
+def join_booking_group(conn, booking_id, other_id):
+    """Put two bookings in one group. Returns (ok, why not).
+
+    Joins rather than overwrites: linking a third booking to one that is
+    already in a group puts it in THAT group, instead of making a second
+    group of two and quietly orphaning the first.
+    """
+    # BEFORE the fetch. "id IN (?, ?)" with the same id twice returns one
+    # row, so this guard sat behind the row-count check and never ran -- and
+    # linking a booking to itself was refused as "one of those bookings does
+    # not exist", which sends somebody looking for a booking that is on the
+    # screen in front of them.
+    if booking_id == other_id:
+        return False, "a booking cannot travel with itself"
+    rows = conn.execute(
+        "SELECT id, group_ref, arrival_date FROM bookings WHERE id IN (?, ?)",
+        (booking_id, other_id)).fetchall()
+    if len(rows) != 2:
+        return False, "one of those bookings does not exist"
+    a, b = rows[0], rows[1]
+    if a["group_ref"] and b["group_ref"] and a["group_ref"] != b["group_ref"]:
+        # Merging two existing groups would silently move everybody in one of
+        # them. That is a decision, not a side effect of linking two rooms.
+        return False, ("both are already travelling with other bookings; "
+                       "take one out of its group first")
+    ref = a["group_ref"] or b["group_ref"] or ("GRP-" + secrets.token_hex(4).upper())
+    conn.execute("UPDATE bookings SET group_ref = ? WHERE id IN (?, ?)",
+                 (ref, booking_id, other_id))
+    return True, ""
+
+
+def leave_booking_group(conn, booking_id):
+    """Take one booking out. If that leaves one behind, it is not a group."""
+    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not row["group_ref"]:
+        return
+    ref = row["group_ref"]
+    conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?", (booking_id,))
+    # A group of one is not a group, and leaving it as one puts a
+    # "travelling together" panel on a page with nobody else on it.
+    left = conn.execute(
+        "SELECT id FROM bookings WHERE group_ref = ?", (ref,)).fetchall()
+    if len(left) == 1:
+        conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?",
+                     (left[0]["id"],))
+
+
+def next_free_nights(conn, *, limit=6, today=None):
+    """The next bookable runs, soonest first, one per room.
+
+    ONE PER ROOM on purpose: six entries for the same room in six
+    consecutive weeks is a list that says nothing, and it is what a naive
+    scan produces first.
+
+    A run has to reach the room's own minimum stay. A room with a three-night
+    minimum and two nights free is not an opening -- offering it produces a
+    guest who picks the dates, is refused, and trusts the page less than if
+    it had never been there.
+
+    Availability comes from is_range_available, which is what the booking
+    flow itself refuses on. A second query of my own would agree with it
+    until the day it did not, and the day it did not would be a guest being
+    turned away from dates the front page offered them.
+    """
+    today = today or house_today()
+    start = today + timedelta(days=NEXT_FREE_LEAD_DAYS)
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    found = []
+    for room in rooms:
+        need = max(int(room["min_nights"] or 1), 1)
+        day = start
+        limit_day = today + timedelta(days=NEXT_FREE_HORIZON_DAYS)
+        while day <= limit_day:
+            ok, _why = is_range_available(conn, room["id"], day,
+                                          day + timedelta(days=need))
+            if not ok:
+                day += timedelta(days=1)
+                continue
+            # Found a run that meets the minimum. Stretch it while it lasts,
+            # so the page can say "five nights free" rather than repeating
+            # the minimum back at somebody.
+            nights = need
+            while nights < 14:
+                ok2, _ = is_range_available(conn, room["id"], day,
+                                            day + timedelta(days=nights + 1))
+                if not ok2:
+                    break
+                nights += 1
+            found.append({
+                # Built rather than strftime'd: "%-d" is not portable and
+                # "%d" pads, so the platform decided whether a guest read
+                # "5 September" or "05 September". Production is Linux and
+                # this is written on Windows, which is exactly the way round
+                # that never shows up until it is live.
+                "date": f"{day.day} {day.strftime('%B')}",
+                "date_iso": day.isoformat(),
+                "room_name": room["name"],
+                "room_id": room["id"],
+                "nights": nights,
+                "price": room["price_per_night"],
+            })
+            break
+        # else: nothing free for this room inside the horizon, which is a
+        # perfectly good answer and not an error.
+    found.sort(key=lambda f: (f["date_iso"], f["room_name"]))
+    return found[:limit]
+
+
+def deposit_percent_to_show(conn):
+    """The room deposit to quote before any dates are chosen, or None.
+
+    None means "it depends", and the page has to say that rather than pick a
+    number. resolve_deposit_percent can give a different answer per date and
+    per party size, and a guest who sees 30% on the room page and 60% at
+    checkout has been told a wrong figure about their own money on the page
+    where they decided.
+    """
+    varies = conn.execute(
+        """SELECT COUNT(*) AS c FROM deposit_rules
+            WHERE category = 'room'
+              AND (start_date IS NOT NULL OR end_date IS NOT NULL
+                   OR min_party_size IS NOT NULL)""").fetchone()["c"]
+    if varies:
+        return None
+    # No scoped rules, so every booking resolves the same way. Ask the same
+    # function the booking itself asks rather than reading the setting --
+    # a blanket rule beats the setting, and reading past it would show a
+    # figure the card is never charged.
+    return resolve_deposit_percent(
+        conn, "room", house_today().isoformat(), 0,
+        room_payment_setting(conn, "room_deposit_percent"))
 
 
 def room_payment_setting(conn, key, cast=float):
@@ -32324,7 +32776,9 @@ def workshops_public():
            LEFT JOIN workshop_bookings ON workshop_bookings.id = workshop_feedback.workshop_booking_id
            LEFT JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            LEFT JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           -- Same rule as the rooms page, for the same reason.
            WHERE workshop_feedback.featured = 1 AND workshop_feedback.rating IS NOT NULL
+             AND workshop_feedback.publish_consent = 1
            ORDER BY workshop_feedback.rating DESC, workshop_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
     conn.close()
@@ -34052,6 +34506,7 @@ def admin_feedback():
            ORDER BY guest_feedback.submitted_at DESC"""
     ).fetchall()
     avg_rating = conn.execute("SELECT AVG(rating) AS a FROM guest_feedback").fetchone()["a"]
+    permissions = publishable_reviews(conn)
     conn.close()
 
     def verdict(e):
@@ -34072,9 +34527,16 @@ def admin_feedback():
             facet("said", "Wrote something",
                   lambda e: "With a comment" if (e["comment"] or "").strip() else "Rating only",
                   order=["With a comment", "Rating only"]),
+            # Three states, not two. "Featured" used to mean published;
+            # it now means chosen, and the difference between chosen and
+            # published is a letter somebody has to write.
             facet("featured", "On the website",
-                  lambda e: "Featured" if e["featured"] else "Not featured",
-                  order=["Featured", "Not featured"]),
+                  lambda e: ("Not featured" if not e["featured"]
+                             else ("Published" if e["publish_consent"] == 1
+                                   else ("They said no" if e["publish_consent"] == 0
+                                         else "Waiting to be asked"))),
+                  order=["Waiting to be asked", "Published", "They said no",
+                         "Not featured"]),
         ],
         sorts=[
             sort_option("recent", "Most recent first", lambda e: e["submitted_at"] or "",
@@ -34088,6 +34550,7 @@ def admin_feedback():
     return render_template(
         "admin_feedback.html", entries=lv["rows"], lv=lv,
         avg_rating=round(avg_rating, 1) if avg_rating is not None else None,
+        unasked=len(permissions["unasked"]),
     )
 
 
@@ -35577,9 +36040,10 @@ def edit_booking(booking_id):
 
         if error:
             flash(error, "error")
+            group = booking_group(conn, booking["id"])
             conn.close()
             return render_template("edit_booking.html", booking=booking,
-                               booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
@@ -35627,9 +36091,10 @@ def edit_booking(booking_id):
         flash("Booking updated.", "success")
         return redirect(url_for("admin_bookings"))
 
+    group = booking_group(conn, booking["id"])
     conn.close()
     return render_template("edit_booking.html", booking=booking,
-                               booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES)
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -41533,6 +41998,268 @@ def management_buying():
     return render_template("management_buying.html", shortfalls=shortfalls,
                            rises=rises, statement=statement, vendors=vendors,
                            vendor=vendor, overview=overview)
+
+
+@app.route("/admin/feedback/<kind>/<int:feedback_id>/permission", methods=["POST"])
+@owner_required
+def set_publish_consent(kind, feedback_id):
+    """Record that somebody asked, and what the guest said.
+
+    "She said yes on the telephone" is a real answer. Software that cannot
+    hold it makes people either lie to it or keep the real record on a piece
+    of paper, and both are worse than a field with a name against it.
+    """
+    table = {"stay": "guest_feedback", "atelier": "workshop_feedback"}.get(kind)
+    if not table:
+        abort(404)
+    answer = (request.form.get("answer", "") or "").strip()
+    how = (request.form.get("how", "") or "").strip()
+    if answer not in ("yes", "no", "unasked") or (
+            answer != "unasked" and how not in CONSENT_ROUTES):
+        abort(400)
+
+    user = current_user()
+    conn = get_db()
+    if answer == "unasked":
+        # Putting it back to never-asked, which is what somebody who ticked
+        # the wrong row needs. Not the same as recording a refusal.
+        conn.execute(
+            f"UPDATE {table} SET publish_consent = NULL, "
+            f"publish_consent_at = NULL, publish_consent_how = NULL WHERE id = ?",
+            (feedback_id,))
+    else:
+        conn.execute(
+            f"UPDATE {table} SET publish_consent = ?, publish_consent_at = ?, "
+            f"publish_consent_how = ? WHERE id = ?",
+            (1 if answer == "yes" else 0,
+             datetime.now(timezone.utc).isoformat(),
+             f"{how}:{user['name']}", feedback_id))
+    log_audit(conn, "review_publish_consent", f"{table} {feedback_id}", answer)
+    conn.commit()
+    conn.close()
+    flash({"yes": "Noted \u2014 it can go on the website.",
+           "no": "Noted \u2014 it will not be published.",
+           "unasked": "Back to not asked."}[answer], "success")
+    return redirect(request.referrer or url_for("admin_feedback"))
+
+
+@app.route("/admin/bookings/<int:booking_id>/travelling-with", methods=["POST"])
+@owner_required
+def set_booking_group(booking_id):
+    """Say that two bookings are one arrival, or that they are not.
+
+    Said by a person, never inferred. Two bookings with the same surname on
+    the same dates are very often one family and are sometimes two families
+    called Martin, and a page that guesses wrong tells a stranger who else is
+    staying.
+    """
+    conn = get_db()
+    if request.form.get("leave"):
+        leave_booking_group(conn, booking_id)
+        conn.commit()
+        conn.close()
+        flash("Taken out. It is its own arrival again.", "success")
+        return redirect(request.referrer
+                        or url_for("edit_booking", booking_id=booking_id))
+
+    ref = (request.form.get("reference_code", "") or "").strip().upper()
+    other = conn.execute(
+        "SELECT id FROM bookings WHERE UPPER(reference_code) = ?", (ref,)).fetchone()
+    if not other:
+        conn.close()
+        flash(f"No booking with the reference {ref or '(blank)'}.", "error")
+        return redirect(request.referrer
+                        or url_for("edit_booking", booking_id=booking_id))
+
+    ok, why = join_booking_group(conn, booking_id, other["id"])
+    if ok:
+        log_audit(conn, "bookings_linked", f"{booking_id} + {other['id']}", ref)
+        conn.commit()
+        flash("Linked. They are one arrival now.", "success")
+    else:
+        flash(f"Not linked \u2014 {why}.", "error")
+    conn.close()
+    return redirect(request.referrer
+                    or url_for("edit_booking", booking_id=booking_id))
+
+
+@app.route("/stay/<share_token>")
+def shared_stay(share_token):
+    """What the rest of the party needs, and nothing else.
+
+    Its own route and its own template rather than the manage page with the
+    money hidden. A hidden figure is one {% if %} away from being visible
+    again, and whoever adds the next row to that page will not know the rule;
+    this template has no access to a bill to leak. GET only, so there are no
+    POST handlers to guard.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.reference_code, bookings.guest_name,
+                  bookings.arrival_date, bookings.departure_date,
+                  bookings.party_size, bookings.estimated_arrival_time,
+                  bookings.status, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.share_token = ?""", (share_token,)).fetchone()
+    # Deliberately NOT selecting total_price, amount_paid, deposit_amount or
+    # anything else with a figure on it. What is not fetched cannot leak.
+    if not booking or booking["status"] not in ("pending", "confirmed"):
+        conn.close()
+        abort(404)
+    dinners = conn.execute(
+        """SELECT dinner_date, party_size FROM restaurant_bookings
+            WHERE booking_id = (SELECT id FROM bookings WHERE share_token = ?)
+              AND status = 'confirmed'
+            ORDER BY dinner_date""", (share_token,)).fetchall()
+    conn.close()
+    return render_template("shared_stay.html", booking=booking, dinners=dinners)
+
+
+@app.route("/book/manage/<manage_token>/share", methods=["POST"])
+def toggle_share_link(manage_token):
+    """Make a read-only link, or take it away again."""
+    conn = get_db()
+    booking = conn.execute(
+        "SELECT id, share_token FROM bookings WHERE manage_token = ?",
+        (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if request.form.get("off"):
+        conn.execute("UPDATE bookings SET share_token = NULL WHERE id = ?",
+                     (booking["id"],))
+        flash("The link no longer works. Anyone you sent it to will see "
+              "nothing.", "success")
+    elif not booking["share_token"]:
+        conn.execute("UPDATE bookings SET share_token = ? WHERE id = ?",
+                     (secrets.token_urlsafe(24), booking["id"]))
+        flash("Made. Send it to whoever needs the details.", "success")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("manage_booking", manage_token=manage_token))
+
+
+@app.route("/admin/room-checks", methods=["GET", "POST"])
+@login_required
+def room_checks_page():
+    """Who is arriving, and whether anybody has walked their room."""
+    conn = get_db()
+
+    if request.method == "POST":
+        if request.form.get("what") == "standard":
+            line = (request.form.get("line", "") or "").strip()[:160]
+            if not line:
+                conn.close()
+                flash("What should somebody look at?", "error")
+                return redirect(url_for("room_checks_page"))
+            top = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) AS m FROM room_standards"
+            ).fetchone()["m"]
+            conn.execute(
+                "INSERT INTO room_standards (what, area, sort_order, active, created_at) "
+                "VALUES (?, ?, ?, 1, ?)",
+                (line, (request.form.get("area", "") or "").strip()[:40] or None,
+                 top + 1, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            conn.close()
+            flash("Added to the list.", "success")
+            return redirect(url_for("room_checks_page"))
+
+        sid = (request.form.get("standard_id", "") or "").strip()
+        if not sid.isdigit():
+            conn.close()
+            abort(400)
+        # Retired rather than deleted. Deleting would leave every past check
+        # that used it pointing at nothing, and those checks are a record of
+        # what somebody actually looked at on the day.
+        conn.execute("UPDATE room_standards SET active = 0 WHERE id = ?",
+                     (int(sid),))
+        conn.commit()
+        conn.close()
+        flash("Off the list. Past checks are untouched.", "success")
+        return redirect(url_for("room_checks_page"))
+
+    days_raw = request.args.get("days", "2")
+    days = int(days_raw) if days_raw.isdigit() and 0 <= int(days_raw) <= 30 else 2
+    arrivals = arrivals_needing_check(conn, days=days)
+    standards = room_standards(conn)
+    conn.close()
+
+    unchecked = [a for a in arrivals if a["state"] == "unchecked"]
+    failed = [a for a in arrivals if a["state"] == "failed"]
+    overview = [
+        overview_cell("Arriving", len(arrivals), hint=f"in the next {days} days"),
+        overview_cell("Nobody has walked", len(unchecked), alert=bool(unchecked),
+                      hint="not the same as nothing wrong"),
+        overview_cell("Something found", len(failed), alert=bool(failed)),
+        overview_cell("On the list", len(standards)),
+    ]
+    return render_template("room_checks.html", arrivals=arrivals,
+                           standards=standards, overview=overview, days=days)
+
+
+@app.route("/admin/room-checks/<int:booking_id>", methods=["GET", "POST"])
+@login_required
+def walk_room(booking_id):
+    """Walk one room against the list, for one arrival."""
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    standards = room_standards(conn)
+
+    if request.method == "POST":
+        if not standards:
+            conn.close()
+            flash("There is nothing on the list to check against yet.", "error")
+            return redirect(url_for("room_checks_page"))
+        user = current_user()
+        results = []
+        for st in standards:
+            key = str(st["id"])
+            # Absent means FAILED, not passed. A half-filled form must not
+            # come out as a clean room -- somebody who stopped halfway
+            # through has not said the rest was fine.
+            passed = request.form.get(f"pass_{key}") == "1"
+            results.append((st["id"], st["what"], passed,
+                            (request.form.get(f"note_{key}", "") or "").strip()[:200]))
+        _check_id, raised = record_room_check(
+            conn, room_id=booking["room_id"], booking_id=booking_id,
+            for_date=parse_date(booking["arrival_date"]) or house_today(),
+            user_id=user["id"], results=results,
+            note=(request.form.get("note", "") or "").strip()[:300] or None)
+        conn.commit()
+        conn.close()
+        if raised:
+            flash(f"Recorded. {raised} fault{'' if raised == 1 else 's'} "
+                  "raised as room issues, so somebody who can fix "
+                  f"{'it' if raised == 1 else 'them'} will see "
+                  f"{'it' if raised == 1 else 'them'}.", "error")
+        else:
+            flash("Recorded. Nothing found.", "success")
+        return redirect(url_for("room_checks_page"))
+
+    previous = conn.execute(
+        """SELECT room_checks.*, users.name AS checked_by
+             FROM room_checks
+             LEFT JOIN users ON users.id = room_checks.checked_by_user_id
+            WHERE room_checks.booking_id = ?
+            ORDER BY room_checks.checked_at DESC, room_checks.id DESC""",
+        (booking_id,)).fetchall()
+    prev_items = {}
+    for p in previous:
+        prev_items[p["id"]] = conn.execute(
+            "SELECT * FROM room_check_items WHERE check_id = ? ORDER BY id",
+            (p["id"],)).fetchall()
+    conn.close()
+    return render_template("walk_room.html", booking=booking,
+                           standards=standards, previous=previous,
+                           prev_items=prev_items)
 
 
 @app.route("/management/agreements", methods=["GET", "POST"])

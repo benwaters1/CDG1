@@ -20,10 +20,12 @@
 
   <ul class="g-linked__l">
     {% for g in group %}
-    <li class="g-linked__i{% if g['reference'] == b['reference'] %} is-this{% endif %}">
+    <li class="g-linked__i{% if g['reference_code'] == b['reference_code'] %} is-this{% endif %}">
       <span class="g-linked__r">{{ g['room_name'] }}</span>
       <span class="g-linked__n">{{ g['guest_name'] }}</span>
-      <span class="g-linked__c">{{ g['reference'] }}{% if g['reference'] == b['reference'] %} · yours{% endif %}</span>
+      {# Real column names. The sketch used g['reference'], which does not
+         exist, and a missing key on a sqlite3.Row raises. #}
+      <span class="g-linked__c">{{ g['reference_code'] }}{% if g['reference_code'] == b['reference_code'] %} &middot; yours{% endif %}</span>
     </li>
     {% endfor %}
   </ul>
@@ -32,6 +34,17 @@
 {% endif %}
 {% endmacro %}
 
+{# add_room is NOT landed and is not included anywhere.
+
+   It creates a booking, prices it, takes money for it and has to re-check
+   availability at the moment of submission. That is a booking flow, not a
+   panel, and wiring it in an afternoon because the markup already exists is
+   how a payment path gets built by accident. The grouping above is the half
+   that stands on its own: staff say two bookings are one arrival, and
+   everybody involved can see it.
+
+   Kept rather than deleted, and named in test_orphan_templates so it cannot
+   quietly read as live. #}
 {% macro add_room(b, rooms) %}
 {% if rooms %}
 <section class="g-panel g-addroom">

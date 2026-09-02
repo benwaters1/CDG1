@@ -57,6 +57,50 @@
   <p class="upload-hint" style="margin-top:10px;">Saving emails the guest with the updated details.</p>
 </div>
 
+{# One arrival, several rooms. A family taking three rooms makes three
+   bookings with three references, and nothing in the app knew they were one
+   party -- so the arrivals list said three names on the same afternoon and
+   somebody worked out from the surnames that it was one car.
+
+   Said by a person, never inferred: two bookings called Martin on the same
+   dates are very often one family and are sometimes two families. #}
+<div class="detail-card">
+  <h2 class="section-heading">Travelling together</h2>
+  {% if group and group|length > 1 %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Room</th><th>Who</th><th>Reference</th><th>Dates</th></tr></thead>
+      <tbody>
+        {% for g in group %}
+        <tr>
+          <th scope="row">{{ g['room_name'] }}</th>
+          <td>{{ g['guest_name'] }}{% if g['id'] == booking['id'] %} &middot; this one{% endif %}</td>
+          <td>{{ g['reference_code'] }}</td>
+          <td>{{ g['arrival_date'] }} to {{ g['departure_date'] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('set_booking_group', booking_id=booking['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="leave" value="1">
+    <button type="submit" class="btn-mini btn-ghost">Take this one out</button>
+  </form>
+  {% else %}
+  <p class="upload-hint">This booking is its own arrival.</p>
+  <form method="post" action="{{ url_for('set_booking_group', booking_id=booking['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <input type="text" name="reference_code" placeholder="Reference of the other booking" required>
+      <button type="submit" class="btn-mini">They are travelling together</button>
+    </div>
+  </form>
+  <p class="pay-disclaimer" style="margin-top:6px;">Everyone in a group can see that the others
+    are coming. Nobody in it can change anybody else's booking.</p>
+  {% endif %}
+</div>
+
 {% if booking['deposit_amount'] %}
 {# Taking a deposit was built and returning one was not, which left the
    record permanently half a story. This writes down the decision; it moves
