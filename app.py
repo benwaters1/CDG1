@@ -4673,6 +4673,29 @@ def init_db():
             conn.commit()
         except sqlite3.OperationalError:
             conn.rollback()
+    # Facts out of the name and into the columns, then the rename. One block,
+    # because the facts are keyed on the OLD name and would find nothing after
+    # the rename. Skips any room that is not still called what we expect.
+    if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
+                        ("rooms_named_2026_09",)).fetchone():
+        for old, new, bed, bath, outlook, sqm, floor in ROOM_IDENTITY:
+            row = conn.execute("SELECT id FROM rooms WHERE name = ?", (old,)).fetchone()
+            if not row:
+                continue
+            # COALESCE so anything already filled in by hand wins over this.
+            conn.execute(
+                """UPDATE rooms SET name = ?,
+                       bed_setup = COALESCE(NULLIF(bed_setup, ''), ?),
+                       bathroom  = COALESCE(NULLIF(bathroom, ''), ?),
+                       outlook   = COALESCE(NULLIF(outlook, ''), ?),
+                       size_sqm  = COALESCE(size_sqm, ?),
+                       floor     = COALESCE(NULLIF(floor, ''), ?)
+                     WHERE id = ?""",
+                (new, bed, bath, outlook, sqm, floor, row["id"]))
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?)",
+                     ("rooms_named_2026_09", datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+
     if not conn.execute("SELECT 1 FROM app_settings WHERE key = ?",
                         ("rooms_initial_order_set",)).fetchone():
         for position, room_name in enumerate(HOME_ROOM_ORDER):
@@ -7574,11 +7597,46 @@ def guests_in_residence(conn, today):
 # correction to the arbitrary order the rooms were seeded in — after that the
 # Rooms page owns it and this list is only a record of where it started.
 HOME_ROOM_ORDER = [
-    "Suite with Mountain View",
-    "Double with Shared Bathroom",
-    "King Room with Mountain View",
-    "Family Suite with Mountain View",
-    "Twin/Double with Shared Bathroom",
+    "Chambre Émeraude",
+    "Chambre Cerise",
+    "Chambre du Levant",
+    "Les Deux Chambres",
+    "Chambre Tilleul",
+]
+
+# Giving the rooms their own names, and moving what the old names carried into
+# the columns that were always there for it.
+#
+# The five rooms were called things like "Twin/Double with Shared Bathroom" —
+# a description standing in for a name. The public pages read that description
+# back out by SUBSTRING: the booking page decided whether to promise a private
+# bathroom by looking for the word "shared" in the name, and the bed type, the
+# size and the mountain view the same way. So the name was load-bearing, and
+# nothing said so. Renaming a room in the admin — which the owner can do, and
+# had every reason to think was safe — silently changed the booking page from
+# "Shared bathroom" to "Private bathroom" on a room that shares one. That is a
+# guest arriving to find a stranger's toothbrush, and an apology that costs
+# more than the night did.
+#
+# So the facts move into bed_setup / bathroom / outlook / size_sqm / floor,
+# taken from the descriptions and room copy the site already carried, and the
+# templates read those instead of guessing from the name. Then the rooms get
+# names of their own.
+#
+# Keyed on the old name and skipped if it does not match, so a room the owner
+# has already renamed by hand is left exactly alone.
+ROOM_IDENTITY = [
+    # old name, new name, bed, bathroom, outlook, sqm, floor
+    ("Suite with Mountain View", "Chambre Émeraude",
+     "Emperor bed", "private", "mountain", 70, "first"),
+    ("King Room with Mountain View", "Chambre du Levant",
+     "King bed", "private", "mountain", None, None),
+    ("Family Suite with Mountain View", "Les Deux Chambres",
+     "Queen and doubles", "private", "mountain", 140, None),
+    ("Double with Shared Bathroom", "Chambre Cerise",
+     "Double bed", "shared", None, None, "ground"),
+    ("Twin/Double with Shared Bathroom", "Chambre Tilleul",
+     "Twin or double", "shared", None, None, None),
 ]
 
 # The château's rooms. Seeded only when the rooms table is completely empty,

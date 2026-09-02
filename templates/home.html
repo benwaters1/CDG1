@@ -6,7 +6,7 @@
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_stay_panel.html' import stay_panel %}
-{% from '_room_copy.html' import room_copy, room_name, room_note %}
+{% from '_room_copy.html' import room_copy, room_note %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
 
@@ -125,10 +125,10 @@
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w',
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w'
            ][loop.index0 % 4] }}{% endif %}"
-           alt="{{ room_name(r['name']) }}" loading="lazy">
+           alt="{{ r['name'] }}" loading="lazy">
       <div class="g-homeroom__b">
         {{ emblem(r['name']) }}
-        <h3 class="g-homeroom__name">{{ room_name(r['name']) }}</h3>
+        <h3 class="g-homeroom__name">{{ r['name'] }}</h3>
         {% set _rc = room_copy(r['name'], r['description'] or '') %}
         {% if _rc %}<p class="g-p">{{ _rc|truncate(140) }}</p>{% endif %}
         <p class="g-homeroom__rate">
@@ -138,10 +138,9 @@
         {# The homepage showed no facts and no price band — a guest could not
            tell whether this was in their range without clicking through. #}
         <ul class="g-tags g-tags--sm">
-          {%- set nm = (r['name'] or '')|lower -%}
           <li>Sleeps {{ r['max_occupancy'] or 2 }}</li>
-          <li>{% if 'shared' in nm %}Shared bathroom{% else %}Private bathroom{% endif %}</li>
-          {% if 'mountain' in nm %}<li>Mountain view</li>{% endif %}
+          {% if r['bathroom'] %}<li>{{ r['bathroom']|capitalize }} bathroom</li>{% endif %}
+          {% if r['outlook'] %}<li>{{ r['outlook']|capitalize }} view</li>{% endif %}
           <li>Breakfast included</li>
         </ul>
         <a href="{% if r.get('id') %}{{ url_for('book_room', room_id=r['id']) }}{% else %}{{ url_for('book_rooms') }}{% endif %}" class="g-btn g-btn--line">Check dates</a>

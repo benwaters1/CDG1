@@ -8,7 +8,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_room_copy.html' import room_copy, room_name, room_note %}
+{% from '_room_copy.html' import room_copy, room_note %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -145,20 +145,20 @@
    below rotates by position, which meant the Suite could be illustrated with
    a photo of the Classic Double. Rooms not named here still rotate. #}
 {% set RM_FOR = {
-  'Suite with Mountain View': RM_IMG[5],
-  'King Room with Mountain View': RM_IMG[0],
-  'Family Suite with Mountain View': RM_IMG[4],
-  'Double with Shared Bathroom': RM_IMG[3],
-  'Twin/Double with Shared Bathroom': RM_IMG[1]
+  'Chambre Émeraude': RM_IMG[5],
+  'Chambre du Levant': RM_IMG[0],
+  'Les Deux Chambres': RM_IMG[4],
+  'Chambre Cerise': RM_IMG[3],
+  'Chambre Tilleul': RM_IMG[1]
 } %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
       <img class="g-card__img"
            src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
-           alt="{{ room_name(room['name']) }}" loading="lazy">
+           alt="{{ room['name'] }}" loading="lazy">
       <div class="g-card__b">
         {{ emblem(room['name']) }}
-        <h3 class="g-card__name">{{ room_name(room['name']) }}</h3>
+        <h3 class="g-card__name">{{ room['name'] }}</h3>
         {% if room['price_per_night'] %}
         {# When dates are set, lead with the total for the stay — the figure a
            guest is actually deciding on — and keep the nightly rate beneath. #}
@@ -188,16 +188,18 @@
           {% if room['amenities'] %}
             {% for tag in room['amenities'].split(',') %}<li>{{ tag.strip() }}</li>{% endfor %}
           {% else %}
-            {%- set nm = (room['name'] or '')|lower -%}
+            {#- Read from the room's own columns. This used to sniff the
+                NAME for 'shared', 'king', 'mountain' — so renaming a room in
+                the admin quietly turned a shared bathroom into a private one
+                on the page a guest books from. Anything unset says nothing
+                rather than guessing, because the wrong guess here is the one
+                that costs an apology. -#}
             <li>Sleeps {{ room['max_occupancy'] or 2 }}</li>
-            {% if 'suite' in nm and 'family' in nm %}<li>140 m²</li><li>Two bedrooms</li>{% endif %}
-            {% if 'king' in nm %}<li>King bed</li>
-            {% elif 'twin' in nm %}<li>Twin or double</li>
-            {% elif 'family' in nm %}<li>Queen &amp; doubles</li>
-            {% elif 'suite' in nm %}<li>Emperor bed</li>
+            {% if room['size_sqm'] %}<li>{{ room['size_sqm']|int }} m²</li>{% endif %}
+            {% if room['bed_setup'] %}<li>{{ room['bed_setup'] }}</li>
             {% else %}<li>Double bed</li>{% endif %}
-            <li>{% if 'shared' in nm %}Shared bathroom{% else %}Private bathroom{% endif %}</li>
-            {% if 'mountain' in nm %}<li>Mountain view</li>{% endif %}
+            {% if room['bathroom'] %}<li>{{ room['bathroom']|capitalize }} bathroom</li>{% endif %}
+            {% if room['outlook'] %}<li>{{ room['outlook']|capitalize }} view</li>{% endif %}
             <li>Breakfast included</li>
             {% if (room['min_nights'] or 1) > 1 %}<li>{{ room['min_nights'] }}-night minimum</li>{% endif %}
           {% endif %}
@@ -290,7 +292,7 @@
     <h2 class="g-h2">Les Salles de Bains</h2>
     <p class="g-p g-lede-first">Floral papers, a cast-iron freestanding bath, and a dressing room to yourself.</p>
     <p class="g-p">Three bathrooms on the ground floor, each with its own character.</p>
-    <p class="g-p">The King Room, the Suite with Mountain View and the Family Suite each have a private bathroom a few steps away. The Double and the Twin/Double share a bathroom set between them.</p>
+    <p class="g-p">The Chambre du Levant, the Chambre Émeraude and Les Deux Chambres each have a private bathroom a few steps away. The Chambre Cerise and the Chambre Tilleul share a bathroom set between them.</p>
     <p class="g-p">Brass fittings, hexagonal terracotta underfoot, and cast-iron baths deep enough to disappear into. Ensuite bathrooms are not permitted under Class I rules — which is why they sit off the corridor rather than behind your bed, and why they are among the newest rooms in a building that is mostly not.</p>
     <p style="margin-top:var(--s6)">
       <a href="#book" class="g-btn g-btn--solid">Check dates</a>
@@ -517,15 +519,15 @@
       <tbody>
         {% for r in rooms %}
         <tr>
-          <th scope="row">{{ room_name(r['name']) }}</th>
+          <th scope="row">{{ r['name'] }}</th>
           <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
           <td>{{ r['max_occupancy'] or '—' }}</td>
           <td>
-            {%- set nm = (r['name'] or '')|lower -%}
             {%- set am = (r['amenities'] or '')|lower -%}
-            {%- if 'shared' in nm or 'shared' in am %}Shared
-            {%- elif 'suite' in nm or 'king' in nm or 'private' in am %}Private
-            {%- else %}Private{% endif -%}
+            {%- if r['bathroom'] %}{{ r['bathroom']|capitalize }}
+            {%- elif 'shared' in am %}Shared
+            {%- elif 'private' in am %}Private
+            {%- else %}&mdash;{% endif -%}
           </td>
           <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
           <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
@@ -786,7 +788,7 @@
   <ul class="g-tiers">
     {% for r in rooms %}
     <li class="g-tier">
-      <h3 class="g-tier__t">{{ room_name(r['name']) }}</h3>
+      <h3 class="g-tier__t">{{ r['name'] }}</h3>
       {% if room_note(r['name']) %}<p class="g-tier__n">{{ room_note(r['name']) }}</p>{% endif %}
       <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
       <dl class="g-tier__f">

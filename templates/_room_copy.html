@@ -1,46 +1,40 @@
 {# Written room descriptions, shared by every page that describes a room.
    The database column holds imported listing copy — generic, and in one case
    factually wrong — so this takes precedence. A macro rather than a set,
-   because {% raw %}{% include %}{% endraw %} does not share scope with the including page. #}
+   because {% raw %}{% include %}{% endraw %} does not share scope with the including page.
+
+   Keyed on the room's real name. There is no display-name mapping any more:
+   the rooms are called these things in the database, so the confirmation, the
+   manage-booking page, the emails, the staff pages and the police register
+   all say what the booking page said. A guest is confirmed for the room they
+   chose, by the name they chose it under. #}
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
-  'Suite with Mountain View':
+  'Chambre Émeraude':
     'The largest room in the house, on the first floor, with two windows onto the valley and the peaks behind it. A cast-iron bath and a dressing room of your own. The walls are as the eighteenth century left them; everything you sleep in and wash in is new.',
-  'King Room with Mountain View':
+  'Chambre du Levant':
     'A king bed set against hand-painted panelling, with the mountains filling the window from first light. The bathroom is a few steps along the corridor and yours alone — ensuites are not permitted in a monument of this class.',
-  'Family Suite with Mountain View':
+  'Les Deux Chambres':
     'Two bedrooms opening into one another, sleeping five, with the valley on both sides. Children of eight and over are welcome, and the kitchen will cook for them. A private bathroom sits a few steps away.',
-  'Double with Shared Bathroom':
+  'Chambre Cerise':
     'A quiet double on the ground floor, floral papers and a marble chimneypiece, sharing a bathroom with one other room. Brass fittings and hexagonal terracotta underfoot, among the most recently finished work in the building.',
-  'Twin/Double with Shared Bathroom':
-    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Double next door. The most straightforward room in the house, and the least expensive way into it.'
+  'Chambre Tilleul':
+    'Two beds that can be made up as a twin or pushed together as a double, whichever suits. Shares a bathroom with the Chambre Cerise next door. The most straightforward room in the house, and the least expensive way into it.'
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
 
-{# Display names. The database keeps its own names — bookings, references and
-   the admin all still key on those — and this maps them for the site only.
-   Anything not listed falls through unchanged. #}
-{% macro room_name(db_name) -%}
+{# The English gloss. A French name is a better name and a worse description,
+   so every first mention carries one of these beside it — a guest choosing
+   between five rooms needs to know which one has the shared bathroom, and
+   "Chambre Tilleul" does not tell them. #}
+{% macro room_note(name) -%}
 {%- set MAP = {
-  'Suite with Mountain View':        'Chambre Émeraude',
-  'King Room with Mountain View':    'Chambre du Levant',
-  'Family Suite with Mountain View': 'Les Deux Chambres',
-  'Double with Shared Bathroom':     'Chambre Cerise',
-  'Twin/Double with Shared Bathroom':'Chambre Tilleul'
+  'Chambre Émeraude':  'the largest room, first floor, two windows onto the valley',
+  'Chambre du Levant': 'a king bed against hand-painted panelling, east-facing',
+  'Les Deux Chambres': 'two bedrooms opening into one another, sleeping five',
+  'Chambre Cerise':    'a quiet double on the ground floor, shared bathroom',
+  'Chambre Tilleul':   'twin or double, shared bathroom, the simplest room'
 } -%}
-{{- MAP.get(db_name, db_name) -}}
-{%- endmacro %}
-
-{# The English gloss, for the first mention on a page and for anywhere a
-   guest needs to know what they are choosing. #}
-{% macro room_note(db_name) -%}
-{%- set MAP = {
-  'Suite with Mountain View':        'the largest room, first floor, two windows onto the valley',
-  'King Room with Mountain View':    'a king bed against hand-painted panelling, east-facing',
-  'Family Suite with Mountain View': 'two bedrooms opening into one another, sleeping five',
-  'Double with Shared Bathroom':     'a quiet double on the ground floor, shared bathroom',
-  'Twin/Double with Shared Bathroom':'twin or double, shared bathroom, the simplest room'
-} -%}
-{{- MAP.get(db_name, '') -}}
+{{- MAP.get(name, '') -}}
 {%- endmacro %}

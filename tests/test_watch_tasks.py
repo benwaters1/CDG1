@@ -136,7 +136,8 @@ def run():
     s.section("Only blocking things become tasks")
     # A guest arriving in three weeks to a room with a fault is worth seeing on
     # a page. It is not worth a job on somebody's list today.
-    room = conn.execute("SELECT id FROM rooms LIMIT 1").fetchone()["id"]
+    _room = conn.execute("SELECT id, name FROM rooms LIMIT 1").fetchone()
+    room, room_label = _room["id"], _room["name"]
     conn.execute(
         """INSERT INTO room_issues (room_id, title, status, created_at)
            VALUES (?, ?, 'open', ?)""", (room, TAG + "shutter", now))
@@ -160,7 +161,10 @@ def run():
     _run(conn)
     faults = _of_kind(conn, "Open fault")
     s.check("the same fault two days out does", len(faults) == 1, detail=str(faults))
-    s.check("and it names the room", faults and "King Room" in faults[0],
+    # Asked of the room this test actually used. A literal name here passes
+    # until the house renames a room, and then fails for a reason that has
+    # nothing to do with watch tasks.
+    s.check("and it names the room", faults and room_label in faults[0],
             detail=str(faults))
 
     s.section("A finding goes to the person who can end it")

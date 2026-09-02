@@ -119,8 +119,17 @@ def run():
     mail = next((e for e in sent if "owes" in e["to"]), None)
     s.check("there is one", mail is not None)
     if mail:
-        s.check("it names the room", "Mountain View" in mail["subject"]
-                or "Room" in mail["subject"], detail=f"{mail['subject']!r}")
+        # The name the room actually has, not a fragment of what it was
+        # called. A guest reading a chase for money needs to see which room.
+        _r = db()
+        room_label = _r.execute(
+            """SELECT rooms.name AS n FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+                 WHERE bookings.reference_code = ?""", (f"{TAG}-OWES",)).fetchone()
+        _r.close()
+        s.check("it names the room",
+                room_label is not None and room_label["n"] in mail["subject"],
+                detail=f"{mail['subject']!r} — expected "
+                       f"{room_label['n']!r}" if room_label else "no room found")
         s.check("it gives a figure", "€" in mail["body"])
         s.check("and a link to settle it", "/book/manage/" in mail["body"],
                 detail="no way to pay from the reminder")

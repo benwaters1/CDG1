@@ -36,17 +36,6 @@ def _order(active_only=True):
         conn.close()
 
 
-def _shown(db_name):
-    """The name a guest actually reads for this room.
-
-    The public pages put every room name through room_name() in
-    _room_copy.html, which gives the five rooms their French names. Asked of
-    the real macro rather than a copy of its table: a copy would agree with
-    itself for ever and stop tracking the thing it is checking.
-    """
-    return m.app.jinja_env.get_template("_room_copy.html").module.room_name(db_name)
-
-
 def _ids():
     conn = db()
     try:
@@ -66,13 +55,12 @@ def run():
     html = page.get_data(as_text=True)
     s.check("the home page loads", page.status_code == 200, page)
     rooms = _order()
-    missing = [r for r in rooms if _shown(r) not in html]
+    missing = [r for r in rooms if r not in html]
     s.check(f"all {len(rooms)} rooms are on it", not missing,
             detail=f"absent: {missing} — the page is advertising the house "
                    "without one of its rooms")
-    s.check("including the Suite, which is the one LIMIT 4 used to drop",
-            _shown("Suite with Mountain View") in html,
-            detail=f"looked for {_shown('Suite with Mountain View')!r}")
+    s.check("including the dearest room, which is the one LIMIT 4 used to drop",
+            rooms and rooms[0] in html, detail=f"looked for {rooms[0]!r}")
 
     # The rename only helps if it is the same everywhere a guest looks. A
     # front page advertising Chambre Emeraude and a booking page offering
@@ -87,26 +75,70 @@ def run():
     s.check("the room cards are headed by name at all", headings,
             detail="no room headings found — the selector this reads has moved, "
                    "and the two checks below would pass on an empty list")
-    wrong = [h for h in headings if h not in [_shown(r) for r in rooms]]
+    wrong = [h for h in headings if h not in rooms]
     s.check("every room card is headed by the name a guest is shown",
             not wrong, detail=f"{wrong} — the front page is using a name the "
                               "rest of the site does not")
-    # And that the map covers every room. room_name() falls back to the
-    # database name for anything it does not know, so a room left out of it
-    # is not an error -- it is one room named in English among four in
-    # French, on the front page, looking deliberate. This cannot be asked of
-    # the macro alone: _shown() would fall back too and agree with the fault.
-    unnamed = [r for r in rooms if _shown(r) == r]
-    s.check("every room the house lets has a name a guest is given",
-            not unnamed,
-            detail=f"{unnamed} — not in room_name()'s table, so it falls back "
-                   "to the database name and reads as the odd one out")
+    # The facts the old names carried. The rooms used to be called things
+    # like "Twin/Double with Shared Bathroom", and the booking page read that
+    # back by looking for the word "shared" in the name. Now they have names
+    # of their own, those facts have to be in the columns or they are simply
+    # gone -- and the page would go quiet about the bathroom on the room that
+    # shares one.
+    conn = db()
+    try:
+        thin = [r["name"] for r in conn.execute(
+            "SELECT name, bathroom, bed_setup FROM rooms WHERE active = 1")
+            if not (r["bathroom"] or "").strip() or not (r["bed_setup"] or "").strip()]
+    finally:
+        conn.close()
+    # And the English gloss. A French name is a better name and a worse
+    # description: "Chambre Tilleul" does not tell a guest it has the shared
+    # bathroom. A room missing from room_note() loses that line silently and
+    # reads as the one room nobody wrote anything about.
+    gloss = m.app.jinja_env.get_template("_room_copy.html").module.room_note
+    unglossed = [r for r in _order() if not str(gloss(r)).strip()]
+    s.check("and every room has its English gloss", not unglossed,
+            detail=f"{unglossed} — not in room_note(), so the line that says "
+                   "which room shares a bathroom is simply absent")
+
+    s.check("every room says what its bed and bathroom are",
+            not thin,
+            detail=f"{thin} — a room with no bathroom recorded says nothing "
+                   "about it on the booking page, which is the honest failure; "
+                   "the old code guessed 'private' from the name")
 
     listing = anon.get("/book").get_data(as_text=True)
     absent = [h for h in headings if h not in listing]
     s.check("and the booking page calls them the same thing", not absent,
             detail=f"{absent} — named one way on the front page and another "
                    "where the guest goes to book")
+
+    s.section("No page works out what a room is from what it is called")
+    # This is the ratchet, and it is the reason the rooms could not simply be
+    # renamed. The booking page decided whether to promise a private bathroom
+    # by looking for the word "shared" in the room's NAME, and the bed, the
+    # size and the view the same way. So the name was load-bearing and nothing
+    # said so: renaming a room in the admin -- which the owner can do, from a
+    # form, with no warning -- silently changed "Shared bathroom" to "Private
+    # bathroom" on a room that shares one. The facts live in columns now.
+    import glob as _glob
+    import os as _os
+    import re as _re
+    guessers = []
+    for path_ in _glob.glob(_os.path.join(_harness.ROOT, "templates", "*.html")):
+        html = open(path_, encoding="utf-8").read()
+        # A name lowercased into a variable, then that variable tested for a
+        # word. Emblems are exempt: they fall back to a fleuron, so the worst
+        # case is the wrong flourish rather than the wrong bathroom.
+        if _os.path.basename(path_) == "_emblems.html":
+            continue
+        for var in _re.findall(r"set\s+(\w+)\s*=\s*\(\s*\w+\[.name.\]\s*or\s*..\)\|lower", html):
+            for word in _re.findall(r"'(\w+)' in %s(?!\w)" % var, html):
+                guessers.append(f"{_os.path.basename(path_)}: '{word}' in the room name")
+    s.check("no template reads a room's facts out of its name", not guessers,
+            detail="; ".join(guessers[:4]) + " — put it in a column: "
+                   "bathroom, bed_setup, outlook, size_sqm, floor")
 
     s.section("The order is the one the owner asked for")
     # Suite, Double, King, Family Suite, Twin/Double — applied once as a
