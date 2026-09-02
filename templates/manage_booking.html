@@ -90,6 +90,12 @@
 {# One page a guest can hold in the dark. The valley has patchy signal and
    the drive is unlit; a booking that lives only in an email is nothing at the
    moment it is most needed. #}
+{# Bookings that are one arrival. Renders nothing at all unless staff have
+   said so -- it is never inferred from a shared surname, because two
+   bookings called Martin on the same dates are sometimes two families. #}
+{% from '_linked_bookings.html' import linked %}
+{{ linked(booking, group) }}
+
 {# A read-only link for the rest of the party. Forwarding the confirmation
    email hands everybody the manage link, which carries the bill and the
    cancel button -- so telling five people what time to arrive currently

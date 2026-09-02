@@ -4094,6 +4094,10 @@ def init_db():
         # Minted only when somebody asks for one, and revocable. A token on
         # every booking is a live URL for every booking that has ever
         # existed, wanted or not.
+        # A shared reference for bookings that are one arrival. Never
+        # inferred: two bookings with the same surname on the same dates are
+        # often one family and are sometimes two families called Martin.
+        ("bookings_group_ref", "ALTER TABLE bookings ADD COLUMN group_ref TEXT"),
         ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
@@ -4552,6 +4556,7 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
         "CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_waitlist_entries_status ON waitlist_entries(status)",
+        "CREATE INDEX IF NOT EXISTS idx_bookings_group_ref ON bookings(group_ref)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_share_token "
         "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
@@ -5142,6 +5147,7 @@ NAV_AREAS = {
         "guest_duplicates",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
+        "set_booking_group",
         "set_publish_consent",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
@@ -28991,10 +28997,15 @@ def manage_booking(manage_token):
     # is wanted by the template and the connection does not survive it.
     part_payment_allowed = room_payment_setting(
         conn, "room_part_payment_allowed", cast=int) == 1
+    # Empty unless staff have said these bookings are one arrival, so the
+    # panel simply does not render for the ordinary single booking. Read
+    # before the close, like everything else on this page.
+    group = booking_group(conn, booking["id"])
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        group=group,
         portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
@@ -30052,6 +30063,75 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
 # reach in any case.
 NEXT_FREE_LEAD_DAYS = 3
 NEXT_FREE_HORIZON_DAYS = 120
+
+
+def booking_group(conn, booking_id):
+    """Every booking travelling with this one, this one included.
+
+    Returns [] when it is not in a group, so a page can ask without first
+    asking whether to ask.
+    """
+    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not row["group_ref"]:
+        return []
+    return conn.execute(
+        """SELECT bookings.id, bookings.reference_code, bookings.guest_name,
+                  bookings.arrival_date, bookings.departure_date,
+                  bookings.party_size, bookings.status, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.group_ref = ?
+              AND bookings.status IN ('pending', 'confirmed')
+            ORDER BY rooms.name""", (row["group_ref"],)).fetchall()
+
+
+def join_booking_group(conn, booking_id, other_id):
+    """Put two bookings in one group. Returns (ok, why not).
+
+    Joins rather than overwrites: linking a third booking to one that is
+    already in a group puts it in THAT group, instead of making a second
+    group of two and quietly orphaning the first.
+    """
+    # BEFORE the fetch. "id IN (?, ?)" with the same id twice returns one
+    # row, so this guard sat behind the row-count check and never ran -- and
+    # linking a booking to itself was refused as "one of those bookings does
+    # not exist", which sends somebody looking for a booking that is on the
+    # screen in front of them.
+    if booking_id == other_id:
+        return False, "a booking cannot travel with itself"
+    rows = conn.execute(
+        "SELECT id, group_ref, arrival_date FROM bookings WHERE id IN (?, ?)",
+        (booking_id, other_id)).fetchall()
+    if len(rows) != 2:
+        return False, "one of those bookings does not exist"
+    a, b = rows[0], rows[1]
+    if a["group_ref"] and b["group_ref"] and a["group_ref"] != b["group_ref"]:
+        # Merging two existing groups would silently move everybody in one of
+        # them. That is a decision, not a side effect of linking two rooms.
+        return False, ("both are already travelling with other bookings; "
+                       "take one out of its group first")
+    ref = a["group_ref"] or b["group_ref"] or ("GRP-" + secrets.token_hex(4).upper())
+    conn.execute("UPDATE bookings SET group_ref = ? WHERE id IN (?, ?)",
+                 (ref, booking_id, other_id))
+    return True, ""
+
+
+def leave_booking_group(conn, booking_id):
+    """Take one booking out. If that leaves one behind, it is not a group."""
+    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not row["group_ref"]:
+        return
+    ref = row["group_ref"]
+    conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?", (booking_id,))
+    # A group of one is not a group, and leaving it as one puts a
+    # "travelling together" panel on a page with nobody else on it.
+    left = conn.execute(
+        "SELECT id FROM bookings WHERE group_ref = ?", (ref,)).fetchall()
+    if len(left) == 1:
+        conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?",
+                     (left[0]["id"],))
 
 
 def next_free_nights(conn, *, limit=6, today=None):
@@ -35808,9 +35888,10 @@ def edit_booking(booking_id):
 
         if error:
             flash(error, "error")
+            group = booking_group(conn, booking["id"])
             conn.close()
             return render_template("edit_booking.html", booking=booking,
-                               booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
@@ -35858,9 +35939,10 @@ def edit_booking(booking_id):
         flash("Booking updated.", "success")
         return redirect(url_for("admin_bookings"))
 
+    group = booking_group(conn, booking["id"])
     conn.close()
     return render_template("edit_booking.html", booking=booking,
-                               booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES)
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -41807,6 +41889,46 @@ def set_publish_consent(kind, feedback_id):
            "no": "Noted \u2014 it will not be published.",
            "unasked": "Back to not asked."}[answer], "success")
     return redirect(request.referrer or url_for("admin_feedback"))
+
+
+@app.route("/admin/bookings/<int:booking_id>/travelling-with", methods=["POST"])
+@owner_required
+def set_booking_group(booking_id):
+    """Say that two bookings are one arrival, or that they are not.
+
+    Said by a person, never inferred. Two bookings with the same surname on
+    the same dates are very often one family and are sometimes two families
+    called Martin, and a page that guesses wrong tells a stranger who else is
+    staying.
+    """
+    conn = get_db()
+    if request.form.get("leave"):
+        leave_booking_group(conn, booking_id)
+        conn.commit()
+        conn.close()
+        flash("Taken out. It is its own arrival again.", "success")
+        return redirect(request.referrer
+                        or url_for("edit_booking", booking_id=booking_id))
+
+    ref = (request.form.get("reference_code", "") or "").strip().upper()
+    other = conn.execute(
+        "SELECT id FROM bookings WHERE UPPER(reference_code) = ?", (ref,)).fetchone()
+    if not other:
+        conn.close()
+        flash(f"No booking with the reference {ref or '(blank)'}.", "error")
+        return redirect(request.referrer
+                        or url_for("edit_booking", booking_id=booking_id))
+
+    ok, why = join_booking_group(conn, booking_id, other["id"])
+    if ok:
+        log_audit(conn, "bookings_linked", f"{booking_id} + {other['id']}", ref)
+        conn.commit()
+        flash("Linked. They are one arrival now.", "success")
+    else:
+        flash(f"Not linked \u2014 {why}.", "error")
+    conn.close()
+    return redirect(request.referrer
+                    or url_for("edit_booking", booking_id=booking_id))
 
 
 @app.route("/stay/<share_token>")

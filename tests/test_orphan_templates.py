@@ -94,9 +94,25 @@ DYNAMIC = {
 # styled and left on here, and the suite went red on "still unbuilt -- no
 # .g-fr rule exists" before the commit.
 AWAITING_WIRING = {
-    "_linked_bookings.html": ("g-linked", "bookings that travel together"),
     "_weather_live.html": ("g-wx", "what it is doing at the chateau now"),
     "_guest_profile.html": ("g-prof", "the guest's own record of their stays"),
+}
+
+
+# Files with one macro landed and another not. AWAITING_WIRING cannot hold
+# these: it means "referenced by nothing", and these ARE referenced -- which
+# made the suite report the file as wired in and not taken off, true of one
+# half and wrong about the file.
+#
+# Same discipline: the class named is the one the UNLANDED half hangs on, so
+# building it turns this red.
+PARTLY_LANDED = {
+    "_linked_bookings.html": ("g-addroom",
+                              "`linked` is on the guest's page and the admin "
+                              "booking page; `add_room` is not, and will not "
+                              "be by accident -- it creates a booking, prices "
+                              "it and takes money for it, which is a booking "
+                              "flow rather than a panel"),
 }
 
 
@@ -174,8 +190,21 @@ def run():
                 detail="somebody has started building it, so it belongs in a "
                        "page rather than on this list")
 
+    s.section("The ones with one macro landed and another not")
+    for name, (cls, what) in sorted(PARTLY_LANDED.items()):
+        s.check(f"{name} is reached from somewhere ({what[:44]}...)",
+                name in hit,
+                detail="it is on this list because HALF of it is landed; if "
+                       "nothing references it at all it belongs on the other "
+                       "one")
+        s.check(f"and the other half is still unbuilt \u2014 no .{cls} rule",
+                f".{cls}" not in css,
+                detail="somebody has started building it, so it belongs in a "
+                       "page rather than on this list")
+
     s.section("Every other template is reached from somewhere")
-    orphans = sorted(names - hit - set(DYNAMIC) - set(AWAITING_WIRING))
+    orphans = sorted(names - hit - set(DYNAMIC) - set(AWAITING_WIRING)
+                     - set(PARTLY_LANDED))
     s.check("nothing else sits in templates/ unreferenced", not orphans,
             detail="a template nothing renders reads as live code: somebody "
                    "corrects it, changes nothing anybody can see, and goes "

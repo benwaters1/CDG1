@@ -2745,3 +2745,20 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   position:absolute; width:1px; height:1px; overflow:hidden;
   clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;
 }
+
+
+/* ---- Travelling together ----------------------------------------------- */
+.g-linked__l{ list-style:none; margin:12px 0 0; padding:0; display:grid; gap:8px; }
+.g-linked__i{
+  display:grid; grid-template-columns:1fr 1fr auto; gap:4px 16px;
+  padding:10px 12px;
+  border:1px solid var(--parchment-line, #d9d2c4);
+}
+/* The reader's own room, marked so they can find it without reading names. */
+.g-linked__i.is-this{ border-color:var(--gold, #9a7b3f); }
+.g-linked__r{ font-weight:600; }
+.g-linked__n, .g-linked__c{ color:var(--steel, #6b6759); }
+
+@media (max-width:620px){
+  .g-linked__i{ grid-template-columns:1fr; gap:2px; }
+}
