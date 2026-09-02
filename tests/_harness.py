@@ -145,6 +145,15 @@ m.sms_provider_send = _refuse(
 m.send_email_via_resend = _refuse(
     "Resend", "mock send_email, or let it fall through to the held outbox")
 
+# Open-Meteo. It needs no key and costs nothing, which is exactly why it would
+# have been left out -- and a suite that reaches the network is a suite that
+# fails on an aeroplane and passes on a desk, which is worse than one that
+# fails everywhere. The page reads a cached value and never calls this, so
+# nothing but the job should ever reach it.
+m.fetch_weather = _refuse(
+    "Open-Meteo",
+    "the page reads a cached reading; stand in for fetch_weather in the test")
+
 # Anthropic, for the same reason texting is here and one the file already
 # learned the hard way. Three routes build a real client - reading a supplier
 # invoice, reading a menu, drafting a reply - and each is guarded only by
@@ -183,6 +192,9 @@ assert not getattr(m.stripe, "api_key", None), (
     "blanking STRIPE_SECRET_KEY afterwards does not undo that")
 assert not m.PENNYLANE_API_TOKEN, "the live Pennylane token is still set under test"
 assert not m.sms_enabled(), "a texting provider is configured under test"
+assert m.fetch_weather.__name__ == "_blocked", (
+    "the weather fetch is not blocked under test — it needs no key and costs "
+    "nothing, which is why it is the one that gets forgotten")
 assert m.webpush.__name__ == "_blocked", (
     "the browser push send is not blocked under test")
 assert not m.claude_configured(), (

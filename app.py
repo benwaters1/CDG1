@@ -257,6 +257,7 @@ LEAVE_SETTING_DEFAULTS = {
 }
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
+    "automation_weather_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
@@ -4099,6 +4100,11 @@ def init_db():
         # often one family and are sometimes two families called Martin.
         ("bookings_group_ref", "ALTER TABLE bookings ADD COLUMN group_ref TEXT"),
         ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
+        # What the guest keeps themselves, as against what the house wrote
+        # down. Same retention as access_needs: twelve months after the last
+        # stay, and they can empty it whenever they like.
+        ("guests_own_notes_at", "ALTER TABLE guests ADD COLUMN own_notes_updated_at TEXT"),
+        ("guests_usual_arrival", "ALTER TABLE guests ADD COLUMN usual_arrival_time TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
         # "Nothing is published without asking you first" is on the form
@@ -14352,7 +14358,7 @@ def collect_hr_actions(conn, today):
            JOIN users ON users.id = leave_requests.user_id WHERE leave_requests.status = 'pending'"""
     ).fetchall():
         add("leave_request", r["id"], r["user_id"],
-            f"{r['n']} — {r['start_date']} to {r['end_date']}", (r["requested_at"] or "")[:10], "/admin/approvals")
+            f"{r['n']} — {r['start_date']} to {r['end_date']}", house_date_iso(r["requested_at"]), "/admin/approvals")
 
     for r in conn.execute(
         """SELECT expenses.*, users.name AS n FROM expenses
@@ -14384,7 +14390,7 @@ def collect_hr_actions(conn, today):
            WHERE performance_reviews.status = 'shared'"""
     ).fetchall():
         add("review_unacknowledged", r["id"], r["user_id"], f"{r['n']} — review of {r['review_date']}",
-            (r["shared_at"] or r["review_date"] or "")[:10], "/admin/hr")
+            house_date_iso(r["shared_at"]) or (r["review_date"] or "")[:10], "/admin/hr")
 
     year_ago = (today - timedelta(days=365)).isoformat()
     for r in conn.execute(
@@ -17242,8 +17248,8 @@ def price_changes(conn, *, months=12, today=None, threshold=0.05):
             "name": latest["name"], "unit": latest["unit"], "vendor": vendor,
             "was": round(was, 4), "now": round(now_, 4),
             "pct": round(move * 100, 1),
-            "when": latest["created_at"][:10],
-            "before_when": before["created_at"][:10],
+            "when": house_date_iso(latest["created_at"]),
+            "before_when": house_date_iso(before["created_at"]),
             "up": move > 0,
         })
     out.sort(key=lambda x: -abs(x["pct"]))
@@ -17735,6 +17741,10 @@ def access_to_check(conn, *, days=90, today=None):
 def purge_stale_access_needs(conn, today=None):
     """Forget what a guest told us once they have stopped being a guest.
 
+    Covers what the HOUSE wrote on a profile and what the GUEST keeps on it,
+    because a guest reading the notice cannot tell the two apart and should
+    not have to.
+
     Health-adjacent data does not get to sit here for ever because it is
     convenient. Cleared when a guest has had no stay and has nothing booked
     for twelve months -- counted from their LAST STAY rather than from when
@@ -17748,8 +17758,19 @@ def purge_stale_access_needs(conn, today=None):
     cutoff = _add_months(today, -ACCESS_NEEDS_RETENTION_MONTHS).isoformat()
     n = conn.execute(
         """UPDATE guests
-              SET access_needs = NULL, access_needs_updated_at = NULL
-            WHERE access_needs IS NOT NULL AND TRIM(access_needs) != ''
+              SET access_needs = NULL, access_needs_updated_at = NULL,
+                  -- What the guest chose to keep goes with it, and on the
+                  -- same window. The notice promises both.
+                  dietary_notes = NULL, usual_arrival_time = NULL,
+                  own_notes_updated_at = NULL
+            -- Any of the three, whoever wrote it. guests.dietary_notes has
+            -- existed since the profile did and NOTHING has ever cleared it:
+            -- purge_health_notes clears the copies on a restaurant booking
+            -- and an atelier booking, and the notice says dietary notes go
+            -- once the stay is over. A profile note is a dietary note.
+            WHERE ((access_needs IS NOT NULL AND TRIM(access_needs) != '')
+                   OR (dietary_notes IS NOT NULL AND TRIM(dietary_notes) != '')
+                   OR own_notes_updated_at IS NOT NULL)
               AND NOT EXISTS (
                     SELECT 1 FROM bookings
                      WHERE (bookings.linked_guest_id = guests.id
@@ -17762,7 +17783,7 @@ def purge_stale_access_needs(conn, today=None):
                        AND COALESCE(bookings.departure_date,
                                     bookings.arrival_date) >= ?)""",
         (cutoff,)).rowcount
-    return {"guest_access_needs": n}
+    return {"guest_profile_notes": n}
 
 
 def fridge_log(conn, *, days=14, today=None):
@@ -18401,7 +18422,7 @@ def owner_home_queue(conn):
             "kind": "Time off", "who": l["who"], "title": l["who"],
             "detail": f"{l['start_date']} – {l['end_date']}",
             "amount": f"{days} day{'s' if days != 1 else ''}",
-            "age": (l["requested_at"] or "")[:10],
+            "age": house_date_iso(l["requested_at"]),
             "tone": "people", "ok_label": "Approve", "no_label": "Decline",
             "bulk_eligible": False, "endpoint": None,
         })
@@ -19029,7 +19050,8 @@ def staff_dashboard():
             "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_backup_at = last_backup["created_at"] if last_backup else None
-        backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
+        backup_stale = (not last_backup_at) or (
+            parse_date(house_date_iso(last_backup_at)) <= today - timedelta(days=30))
         current_month_financials = financial_month_summary(
             conn, today.replace(day=1),
             date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
@@ -19095,7 +19117,7 @@ def staff_dashboard():
                 "SELECT name, next_service_due FROM vehicles WHERE next_service_due IS NOT NULL AND next_service_due <= ? ORDER BY next_service_due",
                 (soon,),
             ).fetchall()]
-            + [{"title": c["vehicle_name"], "detail": f"out since {c['checked_out_at'][:10]} with {c['user_name'] or 'unknown'}"}
+            + [{"title": c["vehicle_name"], "detail": f"out since {house_date_iso(c['checked_out_at'])} with {c['user_name'] or 'unknown'}"}
                for c in overdue_vehicle_checkouts(conn)]
         )
         breakfast_low_stock = conn.execute(
@@ -22466,7 +22488,10 @@ def pos_receipt_email_context(conn, bill):
 
     return {
         "guest_name": guest_name.strip() or "there",
-        "service_date": order["service_date"] or (order["opened_at"] or "")[:10],
+        # The restaurant's day ends at 05:00, so an order opened at half
+        # past one belongs to the night before. Truncating UTC gets that
+        # wrong in the other direction as well.
+        "service_date": order["service_date"] or house_date_iso(order["opened_at"]),
         "table": order["table_label"] or "",
         "items": items,
         "totals": "\n".join(totals),
@@ -26251,13 +26276,44 @@ def guest_account(token):
     # this flow they could not work around, since the link IS the way in.
     restaurant_settings = get_restaurant_settings(conn)
     balance = guest_account_balance(conn, data)
+    # What they keep on their own record. None when this address has no
+    # profile, in which case the form does not render -- there is nothing to
+    # write to, and a form that silently saves nowhere is worse than none.
+    own = guest_own_record(conn, session_row["email"])
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,
         data=data, today=today, extras=extras, balance=balance,
-        can_pay_online=stripe_enabled(),
+        can_pay_online=stripe_enabled(), own=own,
         restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
         expires=session_row["expires_at"])
+
+
+@app.route("/my-account/<token>/details", methods=["POST"])
+def save_guest_details(token):
+    """Let a guest keep their own details, and empty them.
+
+    Emptying is half the feature. A form that can only ever add is data
+    somebody holds about you; one you can clear is a record you keep.
+    """
+    conn = get_db()
+    session_row = _valid_guest_session(conn, token)
+    if not session_row:
+        conn.close()
+        return render_template("guest_account_expired.html"), 404
+    saved = save_guest_own_record(
+        conn, session_row["email"],
+        dietary=request.form.get("dietary_notes"),
+        access=request.form.get("access_needs"),
+        arrival=request.form.get("usual_arrival_time"),
+        phone=request.form.get("phone"))
+    conn.commit()
+    conn.close()
+    flash("Kept. We will offer these back next time." if saved
+          else "There is nothing to save this against yet \u2014 it appears "
+               "once you have stayed.",
+          "success" if saved else "error")
+    return redirect(url_for("guest_account", token=token))
 
 
 @app.route("/booking/<manage_token>/statement/email", methods=["POST"])
@@ -26937,7 +26993,7 @@ def guest_detail(guest_id):
                           hint="gross, everything included"),
             overview_cell("Still owed", euro(record["owed"]),
                           alert=record["owed"] > 0),
-            overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
+            overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
         ]
     return render_template("guest_detail.html", record=record, overview=overview,
                            notes=notes, duplicates=duplicates,
@@ -27665,11 +27721,16 @@ def book_rooms():
     # second list of dates that are not theirs, they want to change one of
     # their own.
     next_free = next_free_nights(conn) if not searched else []
+    # A cached reading or None. Never a network call from a page render: a
+    # render that can block on somebody else's network is one that eventually
+    # does, and this is the booking page.
+    weather = weather_now(conn)
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         nothing_available=nothing_available, next_free=next_free,
+        weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
         featured_reviews=featured_reviews,
@@ -30226,6 +30287,54 @@ NEXT_FREE_LEAD_DAYS = 3
 NEXT_FREE_HORIZON_DAYS = 120
 
 
+def guest_own_record(conn, email):
+    """What this address keeps on file, or None.
+
+    Keyed on the email because that is what a guest has: they do not have a
+    guest id, and asking them to quote one is asking them to be a record.
+    """
+    e = (email or "").strip().lower()
+    if not e:
+        return None
+    return conn.execute(
+        """SELECT id, name, email, phone, dietary_notes, access_needs,
+                  usual_arrival_time, own_notes_updated_at
+             FROM guests WHERE LOWER(TRIM(email)) = ?
+            ORDER BY id LIMIT 1""", (e,)).fetchone()
+
+
+def save_guest_own_record(conn, email, *, dietary=None, access=None,
+                          arrival=None, phone=None):
+    """Write what the guest asked us to keep. Returns True if there was a row.
+
+    Emptying a field empties it. That is the difference between a record you
+    keep and data somebody holds about you, and a form that can only ever add
+    is the second kind.
+    """
+    row = guest_own_record(conn, email)
+    if not row:
+        return False
+    dietary = (dietary or "").strip()[:600] or None
+    access = (access or "").strip()[:600] or None
+    arrival = (arrival or "").strip()[:20] or None
+    phone = (phone or "").strip()[:40] or None
+    anything = any((dietary, access, arrival, phone))
+    conn.execute(
+        """UPDATE guests
+              SET dietary_notes = ?, access_needs = ?, usual_arrival_time = ?,
+                  phone = COALESCE(?, phone),
+                  own_notes_updated_at = ?,
+                  -- Stamped together, so the retention pass treats what the
+                  -- guest keeps exactly as it treats what the house wrote.
+                  access_needs_updated_at = ?
+            WHERE id = ?""",
+        (dietary, access, arrival, phone,
+         datetime.now(timezone.utc).isoformat() if anything else None,
+         datetime.now(timezone.utc).isoformat() if access else None,
+         row["id"]))
+    return True
+
+
 def booking_group(conn, booking_id):
     """Every booking travelling with this one, this one included.
 
@@ -30293,6 +30402,88 @@ def leave_booking_group(conn, booking_id):
     if len(left) == 1:
         conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?",
                      (left[0]["id"],))
+
+
+# The chateau's own coordinates.
+WEATHER_LAT, WEATHER_LON = 42.7669, 1.6647
+# Older than this and it is not "right now" any more, so the page says
+# nothing rather than something out of date.
+WEATHER_MAX_AGE_MINUTES = 180
+WEATHER_SETTING = "weather_snapshot"
+
+# Open-Meteo's numeric codes, in the words somebody would actually use.
+WEATHER_WORDS = {
+    0: "clear", 1: "mostly clear", 2: "some cloud", 3: "overcast",
+    45: "fog", 48: "freezing fog",
+    51: "light drizzle", 53: "drizzle", 55: "heavy drizzle",
+    61: "light rain", 63: "rain", 65: "heavy rain",
+    66: "freezing rain", 67: "freezing rain",
+    71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains",
+    80: "showers", 81: "showers", 82: "heavy showers",
+    85: "snow showers", 86: "heavy snow showers",
+    95: "a thunderstorm", 96: "a thunderstorm", 99: "a thunderstorm",
+}
+
+
+def fetch_weather(timeout=8):
+    """Ask Open-Meteo what it is doing. Raises on anything unusable.
+
+    urllib rather than requests, like every other outbound call here. No key
+    and no account, which is the whole reason this service and not another.
+    """
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={WEATHER_LAT}"
+           f"&longitude={WEATHER_LON}&current=temperature_2m,weather_code"
+           f"&timezone=Europe%2FParis")
+    # Request/urlopen by name: this module imports the names, not the
+    # package, so urllib.request.X is an AttributeError here.
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    current = payload.get("current") or {}
+    temp = current.get("temperature_2m")
+    code = current.get("weather_code")
+    if temp is None or code is None:
+        raise ValueError("no current reading in the response")
+    return {"c": round(float(temp)), "code": int(code),
+            "at": datetime.now(timezone.utc).isoformat()}
+
+
+def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
+    """The cached reading, or None. NEVER fetches.
+
+    A page that can block on somebody else's network is a page that
+    eventually does, and this one is the booking page.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (WEATHER_SETTING,)).fetchone()
+    if not row or not row["value"]:
+        return None
+    try:
+        snap = json.loads(row["value"])
+        at = datetime.fromisoformat(snap["at"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    age = (now or datetime.now(timezone.utc)) - at
+    if age > timedelta(minutes=max_age_minutes):
+        # Stale is not "right now". Saying nothing beats telling somebody it
+        # is fifteen degrees when that was yesterday afternoon.
+        return None
+    return {"c": snap.get("c"),
+            "words": WEATHER_WORDS.get(snap.get("code"), "hard to say"),
+            "minutes_old": int(age.total_seconds() // 60)}
+
+
+def run_weather_job(conn):
+    """Refresh the cached reading. Fetched by the house, not by the guest."""
+    snap = fetch_weather()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (WEATHER_SETTING, json.dumps(snap)))
+    conn.commit()
+    return f"{snap['c']}\u00b0C, {WEATHER_WORDS.get(snap['code'], snap['code'])}"
 
 
 def next_free_nights(conn, *, limit=6, today=None):
@@ -33575,7 +33766,8 @@ def build_owner_digest(conn):
         "ORDER BY created_at DESC LIMIT 1"
     ).fetchone()
     last_backup_at = last_backup["created_at"] if last_backup else None
-    backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
+    backup_stale = (not last_backup_at) or (
+        parse_date(house_date_iso(last_backup_at)) <= today - timedelta(days=30))
     understaffed_days = [
         s for s in roster_vs_occupancy(conn, [today + timedelta(days=i) for i in range(7)])
         if s["understaffed"]
@@ -33615,7 +33807,7 @@ def build_owner_digest(conn):
             lines.append(f"  - {p['provider']}: expires {p['expiry_date']}")
     if backup_stale:
         lines.append("")
-        lines.append(f"Backup reminder: {'last downloaded ' + last_backup_at[:10] if last_backup_at else 'never downloaded'} — consider grabbing a fresh one.")
+        lines.append(f"Backup reminder: {'last downloaded ' + house_date_iso(last_backup_at) if last_backup_at else 'never downloaded'} — consider grabbing a fresh one.")
     if understaffed_days:
         lines.append("")
         lines.append("Looks short-staffed vs. booking volume (next 7 days):")
@@ -33634,7 +33826,7 @@ def build_owner_digest(conn):
         for v in vehicles_service_due:
             lines.append(f"  - {v['name']}: service due {v['next_service_due']}")
         for c in overdue_checkouts:
-            lines.append(f"  - {c['vehicle_name']}: checked out by {c['user_name'] or 'unknown'} since {c['checked_out_at'][:10]}, not checked in")
+            lines.append(f"  - {c['vehicle_name']}: checked out by {c['user_name'] or 'unknown'} since {house_date_iso(c['checked_out_at'])}, not checked in")
     if low_stock_breakfast:
         lines.append("")
         lines.append("Breakfast items flagged low stock: " + ", ".join(i["name"] for i in low_stock_breakfast))
@@ -46234,7 +46426,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "job", f"Automation stopped working — {j['job_name']}",
             f"{label}.\n\nFailed {j['fails']} runs in a row. Last worked: "
-            + (j["last_ok_at"][:10] if j["last_ok_at"] else "never")
+            + (house_date_iso(j["last_ok_at"]) if j["last_ok_at"] else "never")
             + f".\nIt reports: {j['last_message'] or 'no message'}"
             + "\n\nAdmin → Automation has the switch and a Run now button to "
               "try it while you watch.",
@@ -47369,7 +47561,11 @@ def all_transfers():
     today_iso = today.isoformat()
     upcoming, todays, past = [], [], []
     for r in rows:
-        day = (r["scheduled_at"] or "")[:10]
+        # house_date_iso, not [:10]. scheduled_at is UTC, so a pickup at
+        # half past one in the morning -- a delayed flight -- is stored on the
+        # previous day, and slicing files it under PAST on the very morning it
+        # is due. The run most likely to be missed is the one this hid.
+        day = house_date_iso(r["scheduled_at"])
         if day == today_iso:
             todays.append(r)
         elif day > today_iso:
@@ -47381,7 +47577,7 @@ def all_transfers():
     return render_template(
         "all_transfers.html", todays=todays, upcoming=upcoming, past=past[:20],
         today=today, unassigned=sum(1 for r in rows if not r["driver_user_id"]
-                                    and (r["scheduled_at"] or "")[:10] >= today_iso),
+                                    and house_date_iso(r["scheduled_at"]) >= today_iso),
     )
 
 
@@ -50731,7 +50927,11 @@ def extract_dates(text, received_at_iso):
     otherwise land more than a month in the past (an email about 'March 3rd'
     received in November almost certainly means next March)."""
     text = text or ""
-    received_date = parse_date((received_at_iso or "")[:10]) or house_today()
+    # house_date_iso even here. Only the year and the month are read, so an
+    # hour either way changes nothing -- but two spellings for one idea is
+    # how the UTC-as-a-day fault survived 125 times, and this is the second
+    # spelling.
+    received_date = parse_date(house_date_iso(received_at_iso)) or house_today()
     found = []
     for m in _DATE_ISO_RE.finditer(text):
         d = parse_date(m.group(0))
@@ -51574,6 +51774,9 @@ def record_job_run(conn, job_name, ok, message):
 
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
+    # Hourly. The page reads a cache and never the network, so a slow morning
+    # at Open-Meteo is a page with no weather on it rather than a slow page.
+    ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
     ("daily_digest", "automation_daily_digest_enabled", None, 24 * 3600, run_daily_digest_job),
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
@@ -51745,6 +51948,7 @@ AUTOMATION_EXPLAINED_ON_PAGE = {
 
 
 AUTOMATION_JOB_LABELS = {
+    "weather": "What it is doing at the château",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",

@@ -1,56 +1,48 @@
 {# ==========================================================================
    WHAT IT IS DOING RIGHT NOW
-   Fetched client-side from Open-Meteo, which needs no key and no account.
-   The coordinates are the château's own.
 
        {% from '_weather_live.html' import weather_now %}
-       {{ weather_now() }}
+       {{ weather_now(weather) }}
 
-   It renders a plain fallback line first and only replaces it if the fetch
-   succeeds, so a blocked request, an offline visitor or a dead API leaves a
-   sentence rather than an empty box.
+   `weather` comes from the ROUTE, out of a cache the house refreshes hourly.
+   The sketch fetched it client-side from Open-Meteo, which is the obvious way
+   and the wrong one here: every visitor's browser would contact a third party
+   and hand their address to a company the guest has never heard of, on a page
+   whose privacy notice makes specific promises about who sees what. It also
+   did it once per visitor for a number that changes once an hour.
+
+   Pass None — stale cache, empty cache, a bad morning at Open-Meteo — and the
+   written line stands on its own. That is the whole reason it is a sentence
+   in the markup rather than something injected.
    ========================================================================== #}
-{% macro weather_now() %}
-<div class="g-wx" data-wx
-     data-lat="42.7669" data-lon="1.6647">
-  <p class="g-wx__fallback" data-wx-fallback>
-    Nine hundred metres up in the Ariège — cold winters, hot dry summers, and
+{% macro weather_now(wx) %}
+<div class="g-wx">
+  {% if wx and wx.c is not none %}
+  <p class="g-wx__live">
+    <span class="g-wx__k">At the château</span>
+    <span class="g-wx__t">{{ wx.c }}&deg;C</span>
+    <span class="g-wx__d">{{ wx.words }}</span>
+    {# The cache is refreshed hourly and kept for three, so a reading can be
+       a couple of hours old. Presenting that as "right now" is a small lie,
+       and a small lie about the weather is how a page stops being believed
+       about anything else. #}
+    {%- if wx.minutes_old >= 60 %}
+    <span class="g-wx__age">as of {{ (wx.minutes_old // 60) }} hour{{ '' if wx.minutes_old // 60 == 1 else 's' }} ago</span>
+    {%- endif %}
+    <span class="g-wx__n">
+      {%- if wx.c <= 0 %}Fires lit in the salons.
+      {%- elif wx.c >= 28 %}The thick walls do the work &mdash; it is cooler inside.
+      {%- elif 'snow' in wx.words %}Snow. The drive may want care.
+      {%- elif 'rain' in wx.words or 'shower' in wx.words %}Rain off the mountain. The valley is loud with it.
+      {%- elif wx.c >= 18 %}Dinner will be outdoors.
+      {%- endif %}
+    </span>
+  </p>
+  {% else %}
+  <p class="g-wx__fallback">
+    Nine hundred metres up in the Ariège &mdash; cold winters, hot dry summers, and
     the mountain visible from every south window.
   </p>
-  <div class="g-wx__live" data-wx-live hidden>
-    <span class="g-wx__k">At the château</span>
-    <span class="g-wx__t" data-wx-temp></span>
-    <span class="g-wx__d" data-wx-desc></span>
-    <span class="g-wx__n" data-wx-note></span>
-  </div>
+  {% endif %}
 </div>
-<script>
-/* Open-Meteo: no key, no account, no cookie. If anything fails the written
-   fallback stays, which is why it is in the markup rather than injected. */
-(function(){
-  var el=document.querySelector('[data-wx]'); if(!el||!window.fetch) return;
-  var CODES={0:'Clear',1:'Mostly clear',2:'Partly cloudy',3:'Overcast',
-    45:'Fog',48:'Freezing fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
-    61:'Light rain',63:'Rain',65:'Heavy rain',71:'Light snow',73:'Snow',75:'Heavy snow',
-    77:'Snow grains',80:'Showers',81:'Showers',82:'Heavy showers',
-    85:'Snow showers',86:'Snow showers',95:'Thunderstorms',96:'Thunderstorms',99:'Thunderstorms'};
-  var url='https://api.open-meteo.com/v1/forecast?latitude='+el.dataset.lat+
-          '&longitude='+el.dataset.lon+'&current=temperature_2m,weather_code&timezone=Europe%2FParis';
-  fetch(url).then(function(r){ return r.ok ? r.json() : Promise.reject(); }).then(function(d){
-    var c=d && d.current; if(!c || typeof c.temperature_2m !== 'number') return;
-    var t=Math.round(c.temperature_2m), code=c.weather_code;
-    el.querySelector('[data-wx-temp]').textContent=t+'°C';
-    el.querySelector('[data-wx-desc]').textContent=CODES[code]||'';
-    var note='';
-    if(t<=0) note='Fires lit in the salons.';
-    else if(t>=28) note='The thick walls do the work — it is cooler inside.';
-    else if([71,73,75,77,85,86].indexOf(code)>-1) note='Snow. The drive may want care.';
-    else if([61,63,65,80,81,82].indexOf(code)>-1) note='Rain off the mountain. The valley is loud with it.';
-    else if(t>=18) note='Dinner will be outdoors.';
-    el.querySelector('[data-wx-note]').textContent=note;
-    el.querySelector('[data-wx-fallback]').hidden=true;
-    el.querySelector('[data-wx-live]').hidden=false;
-  }).catch(function(){ /* the written line stays */ });
-})();
-</script>
 {% endmacro %}
