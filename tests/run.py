@@ -242,6 +242,7 @@ SUITES = [
     "test_guest_page",
     "test_stay_cost",
     "test_next_free",
+    "test_share_link",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",

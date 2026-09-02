@@ -2732,3 +2732,16 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   .g-nextf__i{ grid-template-columns:1fr; gap:2px; }
   .g-nextf__i .g-btn{ margin-top:8px; justify-self:start; }
 }
+
+
+/* ---- The read-only link ------------------------------------------------
+   The field is wide and the button must not wrap under it on a phone.
+   --------------------------------------------------------------------- */
+.g-share__row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  margin:10px 0; }
+.g-share__url{ flex:1 1 18rem; min-width:0; font-family:ui-monospace, monospace;
+  font-size:.9em; }
+.g-vh{
+  position:absolute; width:1px; height:1px; overflow:hidden;
+  clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;
+}

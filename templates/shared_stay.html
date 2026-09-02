@@ -1,0 +1,50 @@
+{% extends "public_base.html" %}
+{% block title %}Your stay at Château de Gudanes{% endblock %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+{# The class is a handle, not decoration: the suite slices the page on it so
+   its promises are checked against THIS booking's content and not against
+   the site chrome every public page carries -- a booking search form, the
+   newsletter box, and a footer note about who handles card payments. #}
+<section class="g-sec g-shared-stay"><div class="g-wrap g-wrap--narrow">
+  <p class="g-eyebrow">Ariège · French Pyrénées</p>
+  <h1 class="g-display">Your stay</h1>
+  <p class="g-p">
+    Everything you need to arrive. This page belongs to {{ booking['guest_name'] }}&rsquo;s
+    booking &mdash; it carries no bill and nothing on it can be changed from here.
+  </p>
+
+  <div class="g-takeaway__card">
+    <p class="g-takeaway__k">Château de Gudanes</p>
+    <p class="g-takeaway__v">2 Route de Beille, Château-Verdun, Ariège 09310</p>
+    <p class="g-takeaway__k">Room</p>
+    <p class="g-takeaway__v">{{ booking['room_name'] }}</p>
+    <p class="g-takeaway__k">Dates</p>
+    <p class="g-takeaway__v">
+      {{ booking['arrival_date'] }} to {{ booking['departure_date'] }}
+      &middot; arrival from 4pm{% if booking['estimated_arrival_time'] %}, expected around
+      {{ booking['estimated_arrival_time'] }}{% endif %}
+    </p>
+    <p class="g-takeaway__k">Party</p>
+    <p class="g-takeaway__v">{{ booking['party_size'] }}</p>
+    {% if dinners %}
+    <p class="g-takeaway__k">At the table</p>
+    <p class="g-takeaway__v">
+      {% for d in dinners %}{{ d['dinner_date'] }} &middot; {{ d['party_size'] }} at dinner{% if not loop.last %}<br>{% endif %}{% endfor %}
+    </p>
+    {% endif %}
+    <p class="g-takeaway__k">If anything goes wrong</p>
+    <p class="g-takeaway__v">+33 6 28 06 97 76</p>
+    <p class="g-takeaway__k">Last stretch</p>
+    <p class="g-takeaway__v">N20 south from Toulouse, then the D8 through Château-Verdun.
+      The gates are on the left after the village. Gravel drive; take it slowly.</p>
+  </div>
+
+  <p class="g-hint">
+    Changes to the booking are made by whoever made it. If something is wrong here, tell them,
+    or telephone the château.
+  </p>
+</div></section>
+
+{% endblock %}

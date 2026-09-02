@@ -4091,6 +4091,10 @@ def init_db():
         # On the GUEST, not the booking. Somebody who could not manage
         # stairs in May cannot manage them in September, and not having to
         # explain it twice is the whole point.
+        # Minted only when somebody asks for one, and revocable. A token on
+        # every booking is a live URL for every booking that has ever
+        # existed, wanted or not.
+        ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
         # "Nothing is published without asking you first" is on the form
@@ -4548,6 +4552,8 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
         "CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_waitlist_entries_status ON waitlist_entries(status)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_share_token "
+        "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_room_issues_status ON room_issues(status)",
@@ -41801,6 +41807,63 @@ def set_publish_consent(kind, feedback_id):
            "no": "Noted \u2014 it will not be published.",
            "unasked": "Back to not asked."}[answer], "success")
     return redirect(request.referrer or url_for("admin_feedback"))
+
+
+@app.route("/stay/<share_token>")
+def shared_stay(share_token):
+    """What the rest of the party needs, and nothing else.
+
+    Its own route and its own template rather than the manage page with the
+    money hidden. A hidden figure is one {% if %} away from being visible
+    again, and whoever adds the next row to that page will not know the rule;
+    this template has no access to a bill to leak. GET only, so there are no
+    POST handlers to guard.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.reference_code, bookings.guest_name,
+                  bookings.arrival_date, bookings.departure_date,
+                  bookings.party_size, bookings.estimated_arrival_time,
+                  bookings.status, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.share_token = ?""", (share_token,)).fetchone()
+    # Deliberately NOT selecting total_price, amount_paid, deposit_amount or
+    # anything else with a figure on it. What is not fetched cannot leak.
+    if not booking or booking["status"] not in ("pending", "confirmed"):
+        conn.close()
+        abort(404)
+    dinners = conn.execute(
+        """SELECT dinner_date, party_size FROM restaurant_bookings
+            WHERE booking_id = (SELECT id FROM bookings WHERE share_token = ?)
+              AND status = 'confirmed'
+            ORDER BY dinner_date""", (share_token,)).fetchall()
+    conn.close()
+    return render_template("shared_stay.html", booking=booking, dinners=dinners)
+
+
+@app.route("/book/manage/<manage_token>/share", methods=["POST"])
+def toggle_share_link(manage_token):
+    """Make a read-only link, or take it away again."""
+    conn = get_db()
+    booking = conn.execute(
+        "SELECT id, share_token FROM bookings WHERE manage_token = ?",
+        (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if request.form.get("off"):
+        conn.execute("UPDATE bookings SET share_token = NULL WHERE id = ?",
+                     (booking["id"],))
+        flash("The link no longer works. Anyone you sent it to will see "
+              "nothing.", "success")
+    elif not booking["share_token"]:
+        conn.execute("UPDATE bookings SET share_token = ? WHERE id = ?",
+                     (secrets.token_urlsafe(24), booking["id"]))
+        flash("Made. Send it to whoever needs the details.", "success")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("manage_booking", manage_token=manage_token))
 
 
 @app.route("/admin/room-checks", methods=["GET", "POST"])

@@ -90,6 +90,30 @@
 {# One page a guest can hold in the dark. The valley has patchy signal and
    the drive is unlit; a booking that lives only in an email is nothing at the
    moment it is most needed. #}
+{# A read-only link for the rest of the party. Forwarding the confirmation
+   email hands everybody the manage link, which carries the bill and the
+   cancel button -- so telling five people what time to arrive currently
+   means giving five people the ability to cancel the stay. #}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  <h2 class="g-panel__h">Send this to the others</h2>
+  {% if booking['share_token'] %}
+    {% from '_sharelink.html' import share_link %}
+    {{ share_link(booking) }}
+    <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="off" value="1">
+      <button type="submit" class="g-btn">Stop the link working</button>
+    </form>
+  {% else %}
+    <p class="g-hint">Arrival details, directions and the dinner time &mdash; without your bill,
+      and without the ability to change or cancel anything. Nothing is made until you ask.</p>
+    <form method="post" action="{{ url_for('toggle_share_link', manage_token=booking['manage_token']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="g-btn g-btn--solid">Make a link</button>
+    </form>
+  {% endif %}
+</div>
+
 {% from '_print_stay.html' import print_stay %}
 {{ print_stay(booking, room) }}
 
