@@ -27882,13 +27882,16 @@ def book_room(room_id):
     gallery_photos = conn.execute(
         "SELECT * FROM room_photos WHERE room_id = ? ORDER BY sort_order, id", (room_id,)
     ).fetchall()
+    # None means the deposit genuinely depends on the booking, and the
+    # page says so rather than quoting a figure that changes at checkout.
+    deposit_shown = deposit_percent_to_show(conn)
 
     if request.method == "POST":
         if rate_limited(conn, "book_room", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -27955,7 +27958,7 @@ def book_room(room_id):
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
 
         nights = (departure - arrival).days
         chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
@@ -28075,7 +28078,7 @@ def book_room(room_id):
                 flash(f"Payment setup failed ({e}). Please try again.", "error")
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
                 conn.close()
-                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
             conn.commit()
             conn.close()
             # Hold what they typed for the walk to Stripe and back.
@@ -28162,6 +28165,7 @@ def book_room(room_id):
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
         prefill_requests=prefill_requests, prefill_promo=prefill_promo,
         prefill_extras=prefill_extras, initial_quote=initial_quote,
+        deposit_shown=deposit_shown,
     )
 
 
@@ -30030,6 +30034,31 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
         if score > best_score:
             best_score, best = score, rule
     return best["deposit_percent"] if best else (default_percent or 0)
+
+
+def deposit_percent_to_show(conn):
+    """The room deposit to quote before any dates are chosen, or None.
+
+    None means "it depends", and the page has to say that rather than pick a
+    number. resolve_deposit_percent can give a different answer per date and
+    per party size, and a guest who sees 30% on the room page and 60% at
+    checkout has been told a wrong figure about their own money on the page
+    where they decided.
+    """
+    varies = conn.execute(
+        """SELECT COUNT(*) AS c FROM deposit_rules
+            WHERE category = 'room'
+              AND (start_date IS NOT NULL OR end_date IS NOT NULL
+                   OR min_party_size IS NOT NULL)""").fetchone()["c"]
+    if varies:
+        return None
+    # No scoped rules, so every booking resolves the same way. Ask the same
+    # function the booking itself asks rather than reading the setting --
+    # a blanket rule beats the setting, and reading past it would show a
+    # figure the card is never charged.
+    return resolve_deposit_percent(
+        conn, "room", house_today().isoformat(), 0,
+        room_payment_setting(conn, "room_deposit_percent"))
 
 
 def room_payment_setting(conn, key, cast=float):

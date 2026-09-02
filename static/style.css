@@ -2670,3 +2670,35 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
   body.g-print-stay .g-takeaway .no-print *{ visibility:hidden; }
   body.g-print-stay .g-takeaway__card{ border:1px solid #000; }
 }
+
+
+/* ---- What the stay actually costs --------------------------------------
+   The arithmetic a guest would otherwise do in their head, and the deposit
+   split they would otherwise not meet until the payment step.
+   --------------------------------------------------------------------- */
+.g-cost{
+  border:1px solid var(--parchment-line, #d9d2c4);
+  padding:14px 16px; margin:14px 0;
+}
+.g-cost__row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.g-cost__l{ font-weight:600; margin-right:2px; }
+.g-cost__b{
+  width:34px; height:34px; line-height:1; font-size:18px; cursor:pointer;
+  border:1px solid var(--parchment-line, #d9d2c4);
+  background:var(--surface, #fff); color:inherit;
+}
+.g-cost__b:hover{ border-color:var(--steel, #6b6759); }
+.g-cost__n{ width:5rem; text-align:center; }
+.g-cost__out{ margin:12px 0 0; }
+.g-cost__out > div{
+  display:flex; justify-content:space-between; gap:16px; padding:5px 0;
+  border-bottom:1px solid var(--parchment-line, #d9d2c4);
+}
+.g-cost__out > div:last-child{ border-bottom:0; }
+.g-cost__out dt{ margin:0; }
+.g-cost__out dd{ margin:0; font-variant-numeric:tabular-nums; font-weight:600; }
+
+/* The buttons are the fiddly part on a phone, so they get a real target. */
+@media (pointer:coarse){
+  .g-cost__b{ width:44px; height:44px; }
+}

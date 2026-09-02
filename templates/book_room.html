@@ -36,6 +36,15 @@
     <p class="g-room__meta">
       For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
     </p>
+    {# The arithmetic a guest would otherwise do in their head, and the deposit
+       split they would otherwise meet for the first time at the payment step.
+       deposit_shown is None when the amount genuinely depends on the booking,
+       and the macro says so rather than quoting a figure that changes. #}
+    {% if room['price_per_night'] %}
+      {% from '_nights_calc.html' import stay_cost %}
+      {{ stay_cost(room, deposit_shown) }}
+    {% endif %}
+
     <p class="g-room__note">Continental breakfast included. Walls left as the centuries made them — under Class I protection, they stay that way. Everything within them is new.</p>
   </div>
 
