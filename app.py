@@ -17047,7 +17047,7 @@ def access_to_check(conn, *, days=90, today=None):
     A room nobody has measured counts too, and says so: "we do not know what
     this room asks" is a reason to check, not a reason to stay quiet.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     horizon = (today + timedelta(days=days)).isoformat()
     rows = conn.execute(
         """SELECT bookings.id, bookings.reference_code, bookings.arrival_date,
@@ -17105,7 +17105,7 @@ def purge_stale_access_needs(conn, today=None):
     What was deleted is never logged. An audit line naming the thing it just
     removed would defeat the point, exactly as it would for a dietary note.
     """
-    today = today or datetime.now(LOCAL_TZ).date()
+    today = today or house_today()
     cutoff = _add_months(today, -ACCESS_NEEDS_RETENTION_MONTHS).isoformat()
     n = conn.execute(
         """UPDATE guests
