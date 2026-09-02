@@ -18,6 +18,8 @@ Both halves are checked here, plus the thing that would undo it: a deploy
 re-applying the one-time order correction over an order the owner has since
 set by hand.
 """
+import re
+
 from _harness import Suite, clients, db
 import _harness
 
@@ -32,6 +34,17 @@ def _order(active_only=True):
             f"SELECT name FROM rooms {where} ORDER BY sort_order, price_per_night")]
     finally:
         conn.close()
+
+
+def _shown(db_name):
+    """The name a guest actually reads for this room.
+
+    The public pages put every room name through room_name() in
+    _room_copy.html, which gives the five rooms their French names. Asked of
+    the real macro rather than a copy of its table: a copy would agree with
+    itself for ever and stop tracking the thing it is checking.
+    """
+    return m.app.jinja_env.get_template("_room_copy.html").module.room_name(db_name)
 
 
 def _ids():
@@ -53,12 +66,47 @@ def run():
     html = page.get_data(as_text=True)
     s.check("the home page loads", page.status_code == 200, page)
     rooms = _order()
-    missing = [r for r in rooms if r not in html]
+    missing = [r for r in rooms if _shown(r) not in html]
     s.check(f"all {len(rooms)} rooms are on it", not missing,
             detail=f"absent: {missing} — the page is advertising the house "
                    "without one of its rooms")
     s.check("including the Suite, which is the one LIMIT 4 used to drop",
-            "Suite with Mountain View" in html)
+            _shown("Suite with Mountain View") in html,
+            detail=f"looked for {_shown('Suite with Mountain View')!r}")
+
+    # The rename only helps if it is the same everywhere a guest looks. A
+    # front page advertising Chambre Emeraude and a booking page offering
+    # Suite with Mountain View is two rooms as far as the guest knows.
+    #
+    # Read out of the HEADING, not looked for anywhere on the page. Written
+    # the loose way first, and it did not notice the heading being swapped
+    # back to the database name — because the alt text beside it still
+    # carried the French one, so the string was "on the page" either way.
+    headings = re.findall(r'<h3 class="g-homeroom__name">(.*?)</h3>', html, re.S)
+    headings = [h.strip() for h in headings]
+    s.check("the room cards are headed by name at all", headings,
+            detail="no room headings found — the selector this reads has moved, "
+                   "and the two checks below would pass on an empty list")
+    wrong = [h for h in headings if h not in [_shown(r) for r in rooms]]
+    s.check("every room card is headed by the name a guest is shown",
+            not wrong, detail=f"{wrong} — the front page is using a name the "
+                              "rest of the site does not")
+    # And that the map covers every room. room_name() falls back to the
+    # database name for anything it does not know, so a room left out of it
+    # is not an error -- it is one room named in English among four in
+    # French, on the front page, looking deliberate. This cannot be asked of
+    # the macro alone: _shown() would fall back too and agree with the fault.
+    unnamed = [r for r in rooms if _shown(r) == r]
+    s.check("every room the house lets has a name a guest is given",
+            not unnamed,
+            detail=f"{unnamed} — not in room_name()'s table, so it falls back "
+                   "to the database name and reads as the odd one out")
+
+    listing = anon.get("/book").get_data(as_text=True)
+    absent = [h for h in headings if h not in listing]
+    s.check("and the booking page calls them the same thing", not absent,
+            detail=f"{absent} — named one way on the front page and another "
+                   "where the guest goes to book")
 
     s.section("The order is the one the owner asked for")
     # Suite, Double, King, Family Suite, Twin/Double — applied once as a

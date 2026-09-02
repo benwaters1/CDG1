@@ -158,4 +158,15 @@ def run():
     s.check(f"all {len(used)} strings used in templates are in the tables",
             not unknown, detail=", ".join(unknown[:5]))
 
+    # The check above takes the union, so a string that only ONE table has
+    # still passes -- which is right for finding typos and wrong for finding
+    # a language that has fallen behind. t() falls back silently, so the gap
+    # shows up as one English word in a French sentence and nothing reports
+    # it. Both tables were complete when this was written; it is cheap to
+    # keep them that way and expensive to catch up later.
+    for lang, table in sorted(translations.TABLES.items()):
+        behind = sorted(used - set(table))
+        s.check(f"{lang} has every string the templates ask for", not behind,
+                detail="%d missing: %s" % (len(behind), ", ".join(behind[:5])))
+
     return s

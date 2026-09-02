@@ -25,8 +25,12 @@
 {# Alternates, so the French and English versions are understood as the same
    page in two languages rather than two unrelated pages competing. x-default
    points at English, which is what an unmatched locale should get. #}
+{# Alternates. If the app exposes `alt_urls` — a {code: url} map built from
+   real translated paths, as /fr/les-chambres rather than ?lang=fr — these use
+   it. Without it they fall back to the query form, which works but ranks
+   less well. Path prefixes with translated slugs are the better shape. #}
 {% for code in languages %}
-<link rel="alternate" hreflang="{{ code }}" href="{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}">
+<link rel="alternate" hreflang="{{ code }}" href="{% if alt_urls and alt_urls.get(code) %}{{ alt_urls[code] }}{% else %}{{ request.base_url }}{% if code != 'en' %}?lang={{ code }}{% endif %}{% endif %}">
 {% endfor %}
 <link rel="alternate" hreflang="x-default" href="{{ request.base_url }}">{% endif %}
 <meta property="og:site_name" content="Château de Gudanes">
@@ -419,6 +423,7 @@
           <li><a href="/restoration">{{ t('The restoration') }}</a></li>
           <li><a href="/gallery">{{ t('Gallery') }}</a></li>
           <li><a href="{% if 'press' in url_map %}{{ url_for('press') }}{% else %}{{ url_for('restoration_page') }}{% endif %}">{{ t('Press') }}</a></li>
+          <li><a href="{% if 'story' in url_map %}{{ url_for('story') }}{% else %}{{ url_for('restoration_page') }}{% endif %}">{{ t('The family') }}</a></li>
         </ul>
       </div>
       <div>

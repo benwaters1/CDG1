@@ -1,11 +1,11 @@
 {% extends "public_base.html" %}
+{% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% set crumbs = [('Stay', url_for('book_rooms')), (room['name'], None)] %}
-{% block title %}Book {{ room['name'] }}{% endblock %}
+{% block title %}Book {{ room_name(room['name']) }}{% endblock %}
 {% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% block content %}
-{% from '_room_copy.html' import room_copy %}
 
 
 
@@ -26,12 +26,12 @@
   ] %}
   <img loading="lazy" decoding="async" class="g-roomhero"
        src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ ROOM_FALLBACKS[room['id'] % 3] }}{% endif %}"
-       alt="{{ room['name'] }}">
+       alt="{{ room_name(room['name']) }}">
 
   <div style="padding:clamp(1.25rem,4vw,2rem) 0 0;">
     <p class="g-fr">Votre chambre<span class="g-fr__en">Your room</span></p>
     <p class="g-eyebrow">Ariège · French Pyrénées</p>
-    <h1 class="g-display" >{{ room['name'] }}</h1>
+    <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
     <p class="g-room__meta">
       For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
@@ -42,7 +42,7 @@
   <div class="g-strip">
     {% if gallery_photos %}
       {% for p in gallery_photos %}
-      <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room['name'] }}" loading="lazy">
+      <img src="{{ url_for('room_photo', filename=p['filename']) }}" alt="{{ room_name(room['name']) }}" loading="lazy">
       {% endfor %}
     {% else %}
       {# Until room photography is uploaded, show the château: the bathrooms
@@ -188,7 +188,7 @@
       <aside class="g-aside">
         <div class="g-dossier">
           <p class="g-dossier__k">Your request</p>
-          <p class="g-dossier__room">{{ room['name'] }}</p>
+          <p class="g-dossier__room">{{ room_name(room['name']) }}</p>
           <dl class="g-dossier__l">
             <div><dt>Arrival</dt><dd data-mirror="arrival_date">—</dd></div>
             <div><dt>Departure</dt><dd data-mirror="departure_date">—</dd></div>
@@ -607,10 +607,19 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 {# Below two columns the panel sits at the foot of a long page, so the button
    is unreachable without scrolling back. This bar carries the total and the
    same submit. #}
+
+<div class="g-wrap">
+  <p class="g-backtoform">
+    <span class="g-backtoform__k">Still here?</span>
+    Everything above is worth reading before you book, and none of it changes the price.
+    <a href="#book" class="g-btn g-btn--solid">Back to the dates</a>
+  </p>
+</div>
+
 <div class="g-bookbar" role="region" aria-label="Your booking">
   <span class="g-bookbar__sum">
     <span class="g-bookbar__t" data-bar-total>{% if initial_quote and initial_quote.total %}€{{ '%.0f'|format(initial_quote.total) }}{% else %}Choose dates{% endif %}</span>
-    <span class="g-bookbar__n" data-bar-note>{{ room['name'] }}</span>
+    <span class="g-bookbar__n" data-bar-note>{{ room_name(room['name']) }}</span>
   </span>
   <button type="submit" form="{{ book_form_id|default('book-form') }}" class="g-btn g-btn--solid">Hold these dates</button>
 </div>

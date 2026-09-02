@@ -17,3 +17,30 @@
 } -%}
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
+
+{# Display names. The database keeps its own names — bookings, references and
+   the admin all still key on those — and this maps them for the site only.
+   Anything not listed falls through unchanged. #}
+{% macro room_name(db_name) -%}
+{%- set MAP = {
+  'Suite with Mountain View':        'Chambre Émeraude',
+  'King Room with Mountain View':    'Chambre du Levant',
+  'Family Suite with Mountain View': 'Les Deux Chambres',
+  'Double with Shared Bathroom':     'Chambre Cerise',
+  'Twin/Double with Shared Bathroom':'Chambre Tilleul'
+} -%}
+{{- MAP.get(db_name, db_name) -}}
+{%- endmacro %}
+
+{# The English gloss, for the first mention on a page and for anywhere a
+   guest needs to know what they are choosing. #}
+{% macro room_note(db_name) -%}
+{%- set MAP = {
+  'Suite with Mountain View':        'the largest room, first floor, two windows onto the valley',
+  'King Room with Mountain View':    'a king bed against hand-painted panelling, east-facing',
+  'Family Suite with Mountain View': 'two bedrooms opening into one another, sleeping five',
+  'Double with Shared Bathroom':     'a quiet double on the ground floor, shared bathroom',
+  'Twin/Double with Shared Bathroom':'twin or double, shared bathroom, the simplest room'
+} -%}
+{{- MAP.get(db_name, '') -}}
+{%- endmacro %}

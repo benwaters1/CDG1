@@ -38,8 +38,11 @@
       </div>
       <p class="g-slot__l">{{ slot.label }}</p>
       {% if slot.where %}<p class="g-slot__w">{{ slot.where }}</p>{% endif %}
+      {# The visible control is the drop zone above; this input is what it
+         opens. Named for the place it fills, so a screen reader announces
+         which photograph is about to be replaced rather than "file". #}
       <input type="file" accept="image/*" hidden data-slot-input
-             aria-label="Choose a picture for {{ slot.label }}">
+             aria-label="Replace the photograph for {{ slot.label }}">
     </div>
     {% endfor %}
   </div>

@@ -6,6 +6,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/992c723f-7b5f-474c-a98f-e3de985c6255/home-31.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_stay_panel.html' import stay_panel %}
 {% from '_weather.html' import season_note %}
 {% from '_marks.html' import mark %}
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
@@ -439,5 +440,7 @@
       <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join an atelier</a>
   </div>
 </div></section>
+
+{{ stay_panel() }}
 
 {% endblock %}

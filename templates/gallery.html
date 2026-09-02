@@ -5,6 +5,7 @@
 {% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_stay_panel.html' import stay_panel %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_beforeafter.html' import before_after, before_after_script %}
 {% from '_marks.html' import mark %}
@@ -350,4 +351,6 @@
 
 {{ before_after_script() }}
 {{ lightbox() }}
+{{ stay_panel() }}
+
 {% endblock %}

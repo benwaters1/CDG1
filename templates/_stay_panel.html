@@ -1,0 +1,56 @@
+{# ==========================================================================
+   THE THREE INTENTS
+   A persistent panel offering the three things someone can actually do here —
+   each with a self-serve path AND a way to reach a person. That second path
+   is the point: at these prices people often want to speak to someone, and
+   offering both without apology is more confident than either alone.
+
+       {% from '_stay_panel.html' import stay_panel %}
+       {{ stay_panel() }}
+   ========================================================================== #}
+{% macro stay_panel(compact=false) %}
+<section class="g-three{% if compact %} g-three--compact{% endif %}">
+  <div class="g-wrap">
+    <p class="g-eyebrow">Three Ways In</p>
+    <h2 class="g-place">What You Can Do Here</h2>
+
+    <ol class="g-three__l">
+      <li class="g-three__i">
+        <span class="g-three__n">01</span>
+        <div class="g-three__b">
+          <h3 class="g-three__t">Stay the night</h3>
+          <p class="g-three__d">Five bedrooms of ninety-four rooms, from €220 a night. Breakfast included.</p>
+          <p class="g-three__a">
+            <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
+            <a href="{{ url_for('contact_page') }}">Write to us</a>
+          </p>
+        </div>
+      </li>
+
+      <li class="g-three__i">
+        <span class="g-three__n">02</span>
+        <div class="g-three__b">
+          <h3 class="g-three__t">Work on the building</h3>
+          <p class="g-three__d">Ateliers in plaster, gilding and fresco conservation. Fifteen places, one atelier at a time.</p>
+          <p class="g-three__a">
+            <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
+            <a href="{{ url_for('contact_page') }}">Ask about a group</a>
+          </p>
+        </div>
+      </li>
+
+      <li class="g-three__i">
+        <span class="g-three__n">03</span>
+        <div class="g-three__b">
+          <h3 class="g-three__t">Eat at La Table</h3>
+          <p class="g-three__d">One sitting a night in the dining salon, cooked in the Renaissance kitchen.</p>
+          <p class="g-three__a">
+            <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Reserve a table</a>
+            <a href="{{ url_for('contact_page') }}">Ask about a private dinner</a>
+          </p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+{% endmacro %}

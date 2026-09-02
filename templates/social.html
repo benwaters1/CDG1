@@ -4,6 +4,7 @@
 {% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}
 {% set crumbs = [('What is open', None)] %}
 {% block content %}
+{% from '_stay_panel.html' import stay_panel %}
 {% from '_marks.html' import mark, monogram %}
 
 <section class="g-sec g-sec--tight"><div class="g-wrap">
@@ -45,4 +46,6 @@
   </p>
   <p class="g-limit"><span class="g-limit__k">Worth knowing</span>Rooms are usually spoken for before they reach the booking page. The journal goes out first.</p>
 </div></section>
+{{ stay_panel() }}
+
 {% endblock %}

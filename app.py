@@ -28574,6 +28574,16 @@ def press():
     return render_template("press.html")
 
 
+# The family behind it. The nav has linked here since the last handover,
+# guarded by `'story' in url_map` so it fell back to the restoration page
+# rather than 500 — which is the quiet kind of broken: the link works, it
+# just never goes where it says. The house's own story is the reason most
+# people arrive at the site at all, so it gets an address.
+@app.route("/story")
+def story():
+    return render_template("story.html")
+
+
 @app.route("/events/weddings")
 def events_weddings():
     return render_template("events_weddings.html")
@@ -32896,6 +32906,8 @@ IMAGE_SLOT_GROUPS = [
           "where": "Top of /restaurant"},
          {"key": "restaurant.kitchen", "label": "The kitchen", "ratio": "3/2",
           "where": "Beside 'the first room brought back'"},
+         {"key": "restaurant.chef", "label": "The chef", "ratio": "3/2",
+          "where": "Beside Tom's biography, lower down /restaurant"},
      ]},
     {"title": "Weddings and events", "note": "The three event pages.",
      "slots": [
@@ -53203,7 +53215,8 @@ def sitemap():
         ("dashboard", "1.0"), ("book_rooms", "0.9"), ("workshops_public", "0.9"),
         ("restaurant_info", "0.8"), ("events_info", "0.8"),
         ("events_weddings", "0.7"), ("events_private", "0.6"),
-        ("events_photoshoots", "0.6"), ("press", "0.5"), ("facilities_page", "0.7"),
+        ("events_photoshoots", "0.6"), ("press", "0.5"), ("story", "0.7"),
+        ("facilities_page", "0.7"),
         ("restoration_page", "0.7"), ("gallery_page", "0.6"), ("contact_page", "0.6"),
         ("whats_on", "0.5"), ("terms_page", "0.3"),
     ]

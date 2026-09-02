@@ -45,8 +45,13 @@ def run():
         """SELECT name FROM rooms WHERE active = 1
            ORDER BY sort_order, price_per_night LIMIT 1""").fetchone()
     if first:
-        s.check("the cheapest active room is named on it", first["name"] in body,
-                detail=f"expected {first['name']!r}")
+        # Under the name a guest reads: the public pages put every room
+        # through room_name() in _room_copy.html. Asked of the real macro so
+        # this keeps tracking the template rather than a copy of its table.
+        shown = m.app.jinja_env.get_template(
+            "_room_copy.html").module.room_name(first["name"])
+        s.check("the cheapest active room is named on it", shown in body,
+                detail=f"expected {shown!r} (from {first['name']!r})")
     else:
         s.check("no active rooms, so nothing to show", "g-homerooms" not in body)
     # ROOM_MARK and SIT_MARK are checked for PRESENCE first, deliberately.

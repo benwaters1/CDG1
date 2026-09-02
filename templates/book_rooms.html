@@ -8,6 +8,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
 
@@ -152,13 +153,12 @@
 } %}
 {# Written descriptions per room, used when the database field is thin.
    Anything entered in the admin overrides these. #}
-{% from '_room_copy.html' import room_copy %}
       <img class="g-card__img"
            src="{% if room['photo_filename'] %}{{ url_for('room_photo', filename=room['photo_filename']) }}{% else %}{{ RM_FOR.get(room['name'], RM_IMG[loop.index0 % RM_IMG|length]) }}?format=1000w{% endif %}"
-           alt="{{ room['name'] }}" loading="lazy">
+           alt="{{ room_name(room['name']) }}" loading="lazy">
       <div class="g-card__b">
         {{ emblem(room['name']) }}
-        <h3 class="g-card__name">{{ room['name'] }}</h3>
+        <h3 class="g-card__name">{{ room_name(room['name']) }}</h3>
         {% if room['price_per_night'] %}
         {# When dates are set, lead with the total for the stay — the figure a
            guest is actually deciding on — and keep the nightly rate beneath. #}
@@ -356,7 +356,7 @@
     <div class="g-extra__b">
       <p class="g-extra__k">The Kitchen</p>
       <h3 class="g-extra__t">A Private Dinner</h3>
-      <p class="g-extra__d">The dining salon given over to your party alone, cooked by the cheffe de pâtisserie in the Renaissance kitchen. Menus are built around what the gardens and the Sunday market give that week, and on some days from the château's own eighteenth-century recipe book. Up to forty seated; smaller numbers eat better.</p>
+      <p class="g-extra__d">The dining salon given over to your party alone, cooked by Tom, our chef de cuisine, in the Renaissance kitchen. Menus are built around what the gardens and the Sunday market give that week, and on some days from the château's own eighteenth-century recipe book. Up to forty seated; smaller numbers eat better.</p>
       <p class="g-extra__p">Priced per person on the menu agreed · book at least a week ahead</p>
     </div>
   </article>
@@ -517,7 +517,7 @@
       <tbody>
         {% for r in rooms %}
         <tr>
-          <th scope="row">{{ r['name'] }}</th>
+          <th scope="row">{{ room_name(r['name']) }}</th>
           <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
           <td>{{ r['max_occupancy'] or '—' }}</td>
           <td>
@@ -773,6 +773,33 @@
     </div>
   </div>
   <p class="g-limit"><span class="g-limit__k">Ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class, and we would rather say so before you arrive.</p>
+</div></section>
+
+
+<!-- ============ THE ROOMS, AS FACTS ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Les cinq chambres<span class="g-fr__en">The five rooms</span></p>
+  <p class="g-eyebrow">Side By Side</p>
+  <h2 class="g-place">All Five, In Numbers</h2>
+  <p class="g-p">Five rooms, no two alike, because the restoration kept the original layout rather than imposing a plan on it. Each is named rather than numbered — Émeraude for the green silk found under the later paper, Cerise for the cherry trees below its window.</p>
+
+  <ul class="g-tiers">
+    {% for r in rooms %}
+    <li class="g-tier">
+      <h3 class="g-tier__t">{{ room_name(r['name']) }}</h3>
+      {% if room_note(r['name']) %}<p class="g-tier__n">{{ room_note(r['name']) }}</p>{% endif %}
+      <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
+      <dl class="g-tier__f">
+        <div><dt>Sleeps</dt><dd>{{ r['max_occupancy'] or 2 }}</dd></div>
+        <div><dt>Bathroom</dt><dd>{% if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, along the corridor{% endif %}</dd></div>
+        <div><dt>Breakfast</dt><dd>Included</dd></div>
+        <div><dt>Minimum</dt><dd>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</dd></div>
+      </dl>
+      <p class="g-tier__a"><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn">See this room</a></p>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="g-limit"><span class="g-limit__k">No ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class.</p>
 </div></section>
 
 <!-- ============ COMPARE ============ -->
