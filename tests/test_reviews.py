@@ -221,7 +221,25 @@ def run():
     gid = _one("SELECT id FROM guest_feedback WHERE booking_id = ?", (good["id"],))["id"]
     oc.post(f"/admin/feedback/{gid}/toggle-featured", follow_redirects=True)
     body = anon.get("/book").get_data(as_text=True)
-    s.check("featuring it puts the words on the page",
+    # Featuring is now half the answer. The form the guest filled in says
+    # nothing is published without asking them first, so the public query
+    # wants consent as well -- and the interesting half of that rule is this
+    # one, where somebody has decided to use a review and nobody has written
+    # to the guest yet.
+    s.check("featuring alone does NOT put the words on the page",
+            "Wonderful, thank you." not in body,
+            detail="nobody has asked this guest, and the form they filled in "
+                   "promised they would be asked first")
+
+    conn = db()
+    conn.execute("UPDATE guest_feedback SET publish_consent = 1, "
+                 "publish_consent_at = ?, publish_consent_how = 'spoken:test' "
+                 "WHERE id = ?",
+                 (m.datetime.now(m.timezone.utc).isoformat(), gid))
+    conn.commit()
+    conn.close()
+    body = anon.get("/book").get_data(as_text=True)
+    s.check("featured AND agreed to puts them on it",
             "Wonderful, thank you." in body,
             detail="the flag changing is not the same as anything happening")
 
@@ -234,6 +252,13 @@ def run():
 
     s.section("A featured review shows what the house said back")
     oc.post(f"/admin/feedback/{row['id']}/toggle-featured", follow_redirects=True)
+    conn = db()
+    conn.execute("UPDATE guest_feedback SET publish_consent = 1, "
+                 "publish_consent_at = ?, publish_consent_how = 'spoken:test' "
+                 "WHERE id = ?",
+                 (m.datetime.now(m.timezone.utc).isoformat(), row["id"]))
+    conn.commit()
+    conn.close()
     body = anon.get("/book").get_data(as_text=True)
     s.check("the review is there", "room was cold" in body)
     s.check("and the reply with it", "boiler" in body,

@@ -30,6 +30,12 @@
       </select>
       <label class="g-mb-label" for="gf_comment">Comments (optional)</label>
       <textarea id="gf_comment" name="comment" placeholder="Anything you'd like us to know"></textarea>
+      <label class="checkbox-row" style="display:flex; align-items:flex-start; gap:10px; margin:var(--s4) 0;">
+        <input type="checkbox" id="gf_publish" name="publish_consent" value="1">
+        <span>You may put this on the website, with my first name.</span>
+      </label>
+      <p class="g-hint" style="margin-top:calc(var(--s2) * -1);">Leave it unticked and we will
+        not. If you change your mind either way, write to us and we will do as you ask.</p>
       <button type="submit" class="g-btn g-btn--solid">Send feedback</button>
     </form>
   </div>

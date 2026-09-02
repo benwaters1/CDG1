@@ -4053,6 +4053,23 @@ def init_db():
         # explain it twice is the whole point.
         ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
         ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
+        # "Nothing is published without asking you first" is on the form
+        # they fill in. NULL means nobody has asked, which is not the same
+        # as no, and the difference is the whole point.
+        ("feedback_publish_consent",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent INTEGER"),
+        ("feedback_publish_consent_at",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent_at TEXT"),
+        # How it was obtained. "She said yes on the telephone" is a real
+        # answer and the software should hold it rather than force a lie.
+        ("feedback_publish_consent_how",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent_how TEXT"),
+        ("wsfeedback_publish_consent",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent INTEGER"),
+        ("wsfeedback_publish_consent_at",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent_at TEXT"),
+        ("wsfeedback_publish_consent_how",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent_how TEXT"),
         ("feedback_reply", "ALTER TABLE guest_feedback ADD COLUMN reply TEXT"),
         ("feedback_replied_at", "ALTER TABLE guest_feedback ADD COLUMN replied_at TEXT"),
         # The same for a workshop, because the sibling route has the identical
@@ -5070,6 +5087,7 @@ NAV_AREAS = {
         "guest_duplicates",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
+        "set_publish_consent",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
         "delete_vehicle_transfer", "edit_booking", "edit_breakfast_item", "edit_guest",
@@ -16401,7 +16419,7 @@ def inject_user():
         "room_amenities": ROOM_AMENITIES, "room_amenity_keys": room_amenity_keys,
         "room_amenity_freetext": room_amenity_freetext,
         "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
-        "access_bathrooms": ACCESS_BATHROOMS,
+        "access_bathrooms": ACCESS_BATHROOMS, "consent_routes": CONSENT_ROUTES,
         "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
@@ -17045,6 +17063,40 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
         "outstanding": round(sum(r["amount"] or 0 for r in unpaid), 2),
         "unpaid": len(unpaid),
     }
+
+
+CONSENT_ROUTES = {
+    "form": "Ticked it on the form",
+    "email": "Said yes by email",
+    "spoken": "Said yes in person or on the telephone",
+}
+
+
+def publishable_reviews(conn):
+    """Featured reviews the house is actually allowed to publish, and the rest.
+
+    Three states, and the middle one is the reason this exists: asked and
+    said yes, asked and said no, and NEVER ASKED. Never-asked is not a no
+    and it is not a yes -- it is a promise on the feedback form that nobody
+    has kept yet, and it has to read differently from both.
+    """
+    out = {"ready": [], "refused": [], "unasked": []}
+    for table, label in (("guest_feedback", "stay"),
+                         ("workshop_feedback", "atelier")):
+        rows = conn.execute(
+            f"""SELECT id, guest_name, comment, rating, publish_consent,
+                       publish_consent_how, featured
+                  FROM {table}
+                 WHERE featured = 1""").fetchall()
+        for r in rows:
+            entry = {"row": r, "kind": label, "table": table}
+            if r["publish_consent"] == 1:
+                out["ready"].append(entry)
+            elif r["publish_consent"] == 0:
+                out["refused"].append(entry)
+            else:
+                out["unasked"].append(entry)
+    return out
 
 
 AGREEMENT_DECISIONS = {
@@ -27244,7 +27296,14 @@ def book_rooms():
         """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
            LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
            LEFT JOIN rooms ON rooms.id = bookings.room_id
+           -- Consent as well as the flag, and HERE rather than on the
+           -- admin page. A page can be got round and the next person to
+           -- add a review carousel would write this query again; wiring it
+           -- into the query that builds the public page is what makes
+           -- "nothing is published without asking you first" true even when
+           -- somebody ticks the wrong row.
            WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
+             AND guest_feedback.publish_consent = 1
            ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
     conn.close()
@@ -28783,9 +28842,17 @@ def guest_feedback(token):
             flash("Choose a rating from 1 to 5.", "error")
         else:
             try:
+                # Opt-in, and unticked. A pre-ticked box is not consent,
+                # and a form that promises to ask first has to actually ask.
+                may_publish = 1 if request.form.get("publish_consent") else None
                 conn.execute(
-                    "INSERT INTO guest_feedback (booking_id, guest_name, rating, comment, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO guest_feedback (booking_id, guest_name, rating, comment, "
+                    "publish_consent, publish_consent_at, publish_consent_how, submitted_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (booking["id"], booking["guest_name"], rating, comment or None,
+                     may_publish,
+                     datetime.now(timezone.utc).isoformat() if may_publish else None,
+                     "form" if may_publish else None,
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
@@ -28846,9 +28913,15 @@ def workshop_feedback(token):
             flash("Choose a rating from 1 to 5.", "error")
         else:
             try:
+                may_publish = 1 if request.form.get("publish_consent") else None
                 conn.execute(
-                    "INSERT INTO workshop_feedback (workshop_booking_id, guest_name, rating, comment, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO workshop_feedback (workshop_booking_id, guest_name, rating, "
+                    "comment, publish_consent, publish_consent_at, publish_consent_how, "
+                    "submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (booking["id"], booking["guest_name"], rating, comment or None,
+                     may_publish,
+                     datetime.now(timezone.utc).isoformat() if may_publish else None,
+                     "form" if may_publish else None,
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
@@ -32172,7 +32245,9 @@ def workshops_public():
            LEFT JOIN workshop_bookings ON workshop_bookings.id = workshop_feedback.workshop_booking_id
            LEFT JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            LEFT JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           -- Same rule as the rooms page, for the same reason.
            WHERE workshop_feedback.featured = 1 AND workshop_feedback.rating IS NOT NULL
+             AND workshop_feedback.publish_consent = 1
            ORDER BY workshop_feedback.rating DESC, workshop_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
     conn.close()
@@ -33900,6 +33975,7 @@ def admin_feedback():
            ORDER BY guest_feedback.submitted_at DESC"""
     ).fetchall()
     avg_rating = conn.execute("SELECT AVG(rating) AS a FROM guest_feedback").fetchone()["a"]
+    permissions = publishable_reviews(conn)
     conn.close()
 
     def verdict(e):
@@ -33920,9 +33996,16 @@ def admin_feedback():
             facet("said", "Wrote something",
                   lambda e: "With a comment" if (e["comment"] or "").strip() else "Rating only",
                   order=["With a comment", "Rating only"]),
+            # Three states, not two. "Featured" used to mean published;
+            # it now means chosen, and the difference between chosen and
+            # published is a letter somebody has to write.
             facet("featured", "On the website",
-                  lambda e: "Featured" if e["featured"] else "Not featured",
-                  order=["Featured", "Not featured"]),
+                  lambda e: ("Not featured" if not e["featured"]
+                             else ("Published" if e["publish_consent"] == 1
+                                   else ("They said no" if e["publish_consent"] == 0
+                                         else "Waiting to be asked"))),
+                  order=["Waiting to be asked", "Published", "They said no",
+                         "Not featured"]),
         ],
         sorts=[
             sort_option("recent", "Most recent first", lambda e: e["submitted_at"] or "",
@@ -33936,6 +34019,7 @@ def admin_feedback():
     return render_template(
         "admin_feedback.html", entries=lv["rows"], lv=lv,
         avg_rating=round(avg_rating, 1) if avg_rating is not None else None,
+        unasked=len(permissions["unasked"]),
     )
 
 
@@ -41381,6 +41465,49 @@ def management_buying():
     return render_template("management_buying.html", shortfalls=shortfalls,
                            rises=rises, statement=statement, vendors=vendors,
                            vendor=vendor, overview=overview)
+
+
+@app.route("/admin/feedback/<kind>/<int:feedback_id>/permission", methods=["POST"])
+@owner_required
+def set_publish_consent(kind, feedback_id):
+    """Record that somebody asked, and what the guest said.
+
+    "She said yes on the telephone" is a real answer. Software that cannot
+    hold it makes people either lie to it or keep the real record on a piece
+    of paper, and both are worse than a field with a name against it.
+    """
+    table = {"stay": "guest_feedback", "atelier": "workshop_feedback"}.get(kind)
+    if not table:
+        abort(404)
+    answer = (request.form.get("answer", "") or "").strip()
+    how = (request.form.get("how", "") or "").strip()
+    if answer not in ("yes", "no", "unasked") or (
+            answer != "unasked" and how not in CONSENT_ROUTES):
+        abort(400)
+
+    user = current_user()
+    conn = get_db()
+    if answer == "unasked":
+        # Putting it back to never-asked, which is what somebody who ticked
+        # the wrong row needs. Not the same as recording a refusal.
+        conn.execute(
+            f"UPDATE {table} SET publish_consent = NULL, "
+            f"publish_consent_at = NULL, publish_consent_how = NULL WHERE id = ?",
+            (feedback_id,))
+    else:
+        conn.execute(
+            f"UPDATE {table} SET publish_consent = ?, publish_consent_at = ?, "
+            f"publish_consent_how = ? WHERE id = ?",
+            (1 if answer == "yes" else 0,
+             datetime.now(timezone.utc).isoformat(),
+             f"{how}:{user['name']}", feedback_id))
+    log_audit(conn, "review_publish_consent", f"{table} {feedback_id}", answer)
+    conn.commit()
+    conn.close()
+    flash({"yes": "Noted \u2014 it can go on the website.",
+           "no": "Noted \u2014 it will not be published.",
+           "unasked": "Back to not asked."}[answer], "success")
+    return redirect(request.referrer or url_for("admin_feedback"))
 
 
 @app.route("/management/agreements", methods=["GET", "POST"])
