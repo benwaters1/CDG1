@@ -18930,6 +18930,28 @@ def owner_home_warnings(conn, today):
         add("blocker", "No backup is arriving", backup_gap_detail(age_h),
             1, "admin_readiness")
 
+    # A guest arriving inside three days that the house cannot prepare for.
+    # These all CLOSE THEMSELVES: fill the arrival time in and the line goes,
+    # which is what keeps this panel able to be empty.
+    incomplete = arrivals_missing_detail(conn, days=3, on_day=today)
+    if incomplete["urgent"]:
+        soonest = min(incomplete["urgent"], key=lambda r: r["days_away"])
+        add("warn", "Arriving without the details to prepare",
+            f"{soonest['guest']} in {soonest['days_away']} day"
+            f"{'' if soonest['days_away'] == 1 else 's'} — "
+            f"{', '.join(soonest['missing']).lower()}",
+            len(incomplete["urgent"]), "admin_arrivals_incomplete")
+
+    # A day inside the fortnight where three or more rooms turn over. Knowable
+    # weeks ahead; useless on the morning of.
+    turn = turnaround_report(conn, days=14, on_day=today)
+    if turn["heavy"]:
+        worst = max(turn["heavy"], key=lambda d: d["count"])
+        add("warn", "A day with the whole house to turn round",
+            f"{worst['day'].strftime('%A %d %B')} — {worst['count']} rooms out "
+            "and in again",
+            len(turn["heavy"]), "admin_turnarounds")
+
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
     return out
@@ -44512,6 +44534,8 @@ WATCH_TASK_KINDS = {
     "materials": "A workshop without the materials to run",
     "filing": "A return or payment that is due",
     "celebration": "A guest with something to celebrate while they are here",
+    "changeover": "A day with the whole house to turn round",
+    "detail": "A guest arriving without the details to prepare",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -45907,6 +45931,37 @@ def watch_task_findings(conn, today=None):
             + "\n\nAdmin → Automation has the switch and a Run now button to "
               "try it while you watch.",
             today.isoformat(), "high"))
+
+    # A day inside the fortnight where three or more rooms empty and fill
+    # again. It closes itself: when the day passes, or a booking moves, the
+    # next run does not find it and the task ticks off.
+    turn = turnaround_report(conn, days=14, on_day=today)
+    for day in take("changeover", turn["heavy"]):
+        found.append((
+            "changeover",
+            f"Whole-house changeover on {day['day'].isoformat()}",
+            f"{day['count']} rooms out and in again that day: "
+            + ", ".join(sorted(day["rooms"]))
+            + ".\n\nOne pair of hands does not do three rooms between a "
+              "checkout and a four o'clock arrival. Guests → Same-Day "
+              "Changeovers has the guests either side of each one.",
+            # Due the day BEFORE, because the useful moment is the evening
+            # you can still put somebody else on.
+            (day["day"] - timedelta(days=1)).isoformat(), "high"))
+
+    # An arrival inside three days with no time, no telephone number or no
+    # email. Fill it in and the finding stops being true.
+    incomplete = arrivals_missing_detail(conn, days=3, on_day=today)
+    for r in take("detail", incomplete["urgent"]):
+        found.append((
+            "detail",
+            f"Arriving without details — {r['reference']}",
+            f"{r['guest']} arrives {r['arrival']} into {r['room']}, and the "
+            f"booking has {', '.join(r['missing']).lower()}."
+            "\n\nAn arrival with no time is a dinner that cannot be planned "
+            "and a gate nobody is at; one with no telephone number is a guest "
+            "who cannot be reached on the day they get lost.",
+            r["arrival"], "normal"))
 
     return found, dropped
 

@@ -280,6 +280,50 @@ def run():
     s.check("labour is marked as estimated", bool(cost["labour_estimated"]) in (True, False),
             detail=str(cost["labour_estimated"]))
 
+    s.section("These reach somebody instead of waiting to be opened")
+    # CLAUDE.md's rule: a check nobody opens is worth nothing. Both of these
+    # become a warning on the owner home and a task on the calendar, and both
+    # CLOSE THEMSELVES -- there is no "done" button, so every run rebuilds the
+    # picture and ticks off anything no longer true.
+    with m.app.test_request_context():
+        warnings = m.owner_home_warnings(conn, today)
+    titles = {w["title"] for w in warnings}
+    s.check("an arrival two days out with no time warns the owner",
+            "Arriving without the details to prepare" in titles,
+            detail=str(sorted(titles))[:200])
+    s.check("and a whole-house changeover does too",
+            "A day with the whole house to turn round" in titles,
+            detail=str(sorted(titles))[:200])
+    s.check("each warning links to the page that says more",
+            all(w.get("href") for w in warnings),
+            detail="a warning with nowhere to go is a dead end")
+
+    with m.app.test_request_context():
+        found, _dropped = m.watch_task_findings(conn, today)
+    kinds = {kind for kind, *_rest in found}
+    s.check("both become tasks so they reach the calendar",
+            {"changeover", "detail"} <= kinds, detail=str(sorted(kinds)))
+    changeover = next((f for f in found if f[0] == "changeover"), None)
+    s.check("the changeover task is due the day BEFORE",
+            changeover and changeover[3] < out_day.isoformat(),
+            detail=f"due {changeover[3] if changeover else '?'} for a changeover "
+                   f"on {out_day.isoformat()} — the useful moment is the evening "
+                   "you can still put somebody else on")
+    s.check("and its title carries the date, so it dedupes to one task",
+            changeover and out_day.isoformat() in changeover[1],
+            detail=str(changeover[1] if changeover else None))
+    # The half that matters: fix the booking and the finding stops being true.
+    conn.execute("UPDATE bookings SET estimated_arrival_time = '15:00' "
+                 "WHERE reference_code = ?", (TAG + "NOTIME",))
+    conn.commit()
+    with m.app.test_request_context():
+        found_after, _ = m.watch_task_findings(conn, today)
+    refs = [f[1] for f in found_after if f[0] == "detail"]
+    s.check("filling the arrival time in takes the task away again",
+            not any(TAG + "NOTIME" in t for t in refs),
+            detail=f"{refs[:3]} — nothing in this set has a done button, so a "
+                   "finding that stays true forever is a list nobody reads twice")
+
     s.section("Every one of these pages renders with something on it")
     # The changeover page 500'd the first time it had a row, and rendered
     # perfectly with none: `d.items` in Jinja reaches dict.items before it
