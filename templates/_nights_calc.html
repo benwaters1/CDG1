@@ -21,7 +21,12 @@
    figure, in front of the person paying it, on the page where they decide. #}
 {# None means the deposit genuinely depends on the dates and the party size,
    so the page says that instead of picking a number and being wrong for
-   somebody. 0 means the house takes nothing to hold a room. #}
+   somebody. 0 does NOT mean nothing is taken -- it means there is no
+   DEPOSIT, because a room is paid for in full at the moment it is
+   booked. room_payment_schedule returns (total, 0, None) for it: the
+   whole stay now, nothing later, no balance date. Saying 'nothing is
+   taken to hold it' told a guest the money came later and then charged
+   them the lot. #}
 {% set varies = deposit_percent is none %}
 {% set pct = 0 if varies else (deposit_percent or 0) | round | int %}
 {% set n0 = room['min_nights'] or 2 %}
@@ -52,7 +57,7 @@
     {% if varies %}A deposit holds the room; how much depends on the dates and the party, and
       you will see the figure before anything is charged.
     {% elif pct %}A {{ pct }}% deposit holds the room; the balance is taken nearer the date.
-    {% else %}Nothing is taken to hold it; the stay is settled before you arrive.{% endif %}
+    {% else %}The stay is paid in full when you book, not on arrival.{% endif %}
     Charged in euro.</p>
 </div>
 <script>

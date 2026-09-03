@@ -25,6 +25,7 @@ right on the page nine times out of ten.
 """
 from _harness import Suite, db
 
+from datetime import date, timedelta
 import _harness
 
 m = _harness.m
@@ -83,8 +84,32 @@ def run():
                        "skipped: the branch below is the one the sketch got "
                        "wrong, and it wants exercising.")
     else:
-        s.check("it says nothing is taken to hold it",
-                "Nothing is taken to hold it" in body)
+        # ZERO DOES NOT MEAN NOTHING IS TAKEN. A room is paid for in full
+        # at the moment it is booked -- room_payment_schedule returns
+        # (total, 0, None) for it: the whole stay now, nothing later, no
+        # balance date. The page used to say "nothing is taken to hold it;
+        # the stay is settled before you arrive", which told a guest the
+        # money came later and then charged them the lot at checkout.
+        s.check("it says the stay is paid in full at booking",
+                "paid in full when you book" in body,
+                detail="a room takes no DEPOSIT because it takes the whole "
+                           "amount, which is not the same as taking nothing")
+        s.check("and does not promise the money comes later",
+                "settled before you arrive" not in body
+                and "nearer the date" not in body,
+                detail="the one thing a guest must not read on a page that "
+                       "is about to charge them the whole stay")
+        # The page and the charge, from the same source. This is the check
+        # that would have caught it: the wording was hand-written for the
+        # branch rather than derived from what the schedule actually does.
+        conn2 = db()
+        dep, bal, due = m.room_payment_schedule(
+            conn2, date.today() + timedelta(days=60), 1200.0, 2)
+        conn2.close()
+        s.check("and the schedule agrees: everything now, nothing later",
+                dep == 1200.0 and bal == 0.0 and due is None,
+                detail=f"take now {dep}, later {bal}, due {due} — if this "
+                       "ever changes the sentence above has to change with it")
         s.check("and does not offer a 0 to hold", "To hold it now" not in body,
                 detail="'to hold it now: 0' invites the question of what that "
                        "means, and the answer is nothing")
