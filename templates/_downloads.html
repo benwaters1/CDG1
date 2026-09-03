@@ -1,0 +1,33 @@
+{# ==========================================================================
+   THINGS TO TAKE AWAY  — item 6
+   Nothing on the site could be downloaded, so anyone wanting to forward this
+   to the person they are travelling with had to send a link and hope.
+
+       {% from '_downloads.html' import downloads %}
+       {{ downloads([
+            ('Sample menu',       'A recent week at La Table',        'menus/sample.pdf'),
+            ('Atelier programme', 'Dates, prices and what is covered','ateliers/programme.pdf')
+          ]) }}
+
+   Each entry is (title, note, filename under static/). An entry whose file
+   does not exist is simply not rendered — pass only what you have uploaded.
+   ========================================================================== #}
+{% macro downloads(items, heading='Take It With You') %}
+{% if items %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">To Keep</p>
+  <h2 class="g-place">{{ heading }}</h2>
+  <ul class="g-dl">
+    {% for title, note, path in items %}
+    <li class="g-dl__i">
+      <a href="{{ url_for('static', filename=path) }}" download>
+        <b>{{ title }}</b>
+        <span>{{ note }}</span>
+        <span class="g-dl__t">PDF</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+</div></section>
+{% endif %}
+{% endmacro %}

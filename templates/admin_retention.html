@@ -5,8 +5,8 @@
 <div class="page-head">
   <h1>What the privacy notice promises</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('privacy_page') if 'privacy_page' in url_map else '/privacy' }}" class="btn-ghost">The notice</a>
-    <a href="{{ url_for('admin_automation') if 'admin_automation' in url_map else url_for('admin_readiness') }}" class="btn-ghost">Automation</a>
+    <a href="{{ url_for('privacy_page') }}" class="btn-ghost">The notice</a>
+    <a href="{{ url_for('admin_automation') }}" class="btn-ghost">Automation</a>
   </div>
 </div>
 

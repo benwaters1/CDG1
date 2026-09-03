@@ -1,0 +1,80 @@
+{# ==========================================================================
+   DON'T LOSE THE FORM
+   Someone who has typed dates, names and dietary notes loses all of it to a
+   stray tab close. Two answers, in order of preference:
+
+   · the form is saved to this device as it is typed, and offered back
+   · failing that, the browser asks before the tab closes
+
+   Nothing sensitive is stored — the fields listed in KEEP are the ones a
+   guest would have to retype, and the store is cleared on submit.
+
+       {% from '_formkeep.html' import form_keep %}
+       {{ form_keep('book-form', 'gudanes.book') }}
+   ========================================================================== #}
+{% macro form_keep(form_id, key) %}
+<p class="g-restored" data-fk-note hidden>
+  <span class="g-restored__k">Picked up where you left off</span>
+  <button type="button" class="g-restored__x" data-fk-clear>Start again</button>
+</p>
+<script>
+(function(){
+  var f=document.getElementById({{ form_id|tojson }});
+  if(!f || !window.localStorage) return;
+  var KEY={{ key|tojson }};
+  /* Only fields a guest would have to retype. No card details are ever in
+     this form, and nothing here is sent anywhere. */
+  var KEEP=['arrival_date','departure_date','adults','guests_under_18',
+            'guest_name','guest_email','guest_phone','special_requests',
+            'arrival_time','flight_number','dietary_notes','access_notes','party_names'];
+  var note=document.querySelector('[data-fk-note]');
+  var dirty=false;
+
+  function save(){
+    try{
+      var d={};
+      KEEP.forEach(function(n){
+        var e=f.querySelector('[name="'+n+'"]');
+        if(e && e.value) d[n]=e.value;
+      });
+      if(Object.keys(d).length) localStorage.setItem(KEY, JSON.stringify(d));
+      else localStorage.removeItem(KEY);
+    }catch(e){}
+  }
+  function restore(){
+    var raw; try{ raw=localStorage.getItem(KEY); }catch(e){ return; }
+    if(!raw) return;
+    var d; try{ d=JSON.parse(raw); }catch(e){ return; }
+    var any=false;
+    Object.keys(d).forEach(function(n){
+      var e=f.querySelector('[name="'+n+'"]');
+      if(e && !e.value){ e.value=d[n]; any=true; }
+    });
+    if(any && note){
+      note.hidden=false;
+      f.dispatchEvent(new Event('input', {bubbles:true}));
+    }
+  }
+  f.addEventListener('input', function(){ dirty=true; save(); });
+  f.addEventListener('change', function(){ dirty=true; save(); });
+  f.addEventListener('submit', function(){
+    dirty=false;
+    try{ localStorage.removeItem(KEY); }catch(e){}
+  });
+  /* The fallback, for a browser with no storage or a cleared one. */
+  window.addEventListener('beforeunload', function(e){
+    if(!dirty) return;
+    var stored=false; try{ stored=!!localStorage.getItem(KEY); }catch(e2){}
+    if(stored) return;             /* it is safe — do not nag */
+    e.preventDefault(); e.returnValue='';
+  });
+  var clear=document.querySelector('[data-fk-clear]');
+  if(clear) clear.addEventListener('click', function(){
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    f.reset(); if(note) note.hidden=true;
+    f.dispatchEvent(new Event('input', {bubbles:true}));
+  });
+  restore();
+})();
+</script>
+{% endmacro %}

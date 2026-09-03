@@ -40,7 +40,20 @@
     var s=shots[at];
     img.src=s.currentSrc||s.src;
     img.alt=s.alt||'';
+    /* If the photograph sits inside a room card, say which room and offer
+       the way in — a picture someone stopped to enlarge is the best possible
+       moment to show them the door. */
     cap.textContent=s.alt||'';
+    var card=s.closest('[data-room-url]');
+    var old=dlg.querySelector('[data-lb-go]');
+    if(old) old.remove();
+    if(card){
+      var a=document.createElement('a');
+      a.className='g-lb__go'; a.setAttribute('data-lb-go','');
+      a.href=card.dataset.roomUrl;
+      a.textContent='See ' + (card.dataset.roomName || 'this room');
+      cap.after(a);
+    }
   }
   function open(n){ collect(); show(n); if(!dlg.open) dlg.showModal(); }
 

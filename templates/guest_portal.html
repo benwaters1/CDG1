@@ -48,7 +48,7 @@
   <div class="g-mb-card" style="margin-bottom:var(--s3);">
     <dl class="g-facts-list">
       <div><dt>Atelier</dt><dd>{{ reg['workshop_title'] }}</dd></div>
-      <div><dt>{{ t('Dates') }}</dt><dd>{{ reg['start_date']|date_short }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date']|date_short }}{% endif %}</dd></div>
+      <div><dt>{{ t('Dates') }}</dt><dd>{{ reg['start_date']|date_short }}{% if reg['end_date'] != reg['start_date'] %} → {{ reg['end_date']|date_short }}{%- endif %}</dd></div>
       <div><dt>{{ t('Reference') }}</dt><dd>{{ reg['reference_code'] }}</dd></div>
       <div><dt>{{ t('Status') }}</dt><dd><span class="mini-status status-{{ reg['status'] }}">{{ reg['status'] }}</span></dd></div>
     </dl>

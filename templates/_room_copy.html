@@ -1,13 +1,7 @@
 {# Written room descriptions, shared by every page that describes a room.
    The database column holds imported listing copy — generic, and in one case
    factually wrong — so this takes precedence. A macro rather than a set,
-   because {% raw %}{% include %}{% endraw %} does not share scope with the including page.
-
-   Keyed on the room's real name. There is no display-name mapping any more:
-   the rooms are called these things in the database, so the confirmation, the
-   manage-booking page, the emails, the staff pages and the police register
-   all say what the booking page said. A guest is confirmed for the room they
-   chose, by the name they chose it under. #}
+   because {% raw %}{% include %}{% endraw %} does not share scope with the including page. #}
 {% macro room_copy(name, fallback='') -%}
 {%- set RM_DESC = {
   'Chambre Émeraude':
@@ -24,17 +18,44 @@
 {{- RM_DESC.get(name) or fallback -}}
 {%- endmacro %}
 
-{# The English gloss. A French name is a better name and a worse description,
-   so every first mention carries one of these beside it — a guest choosing
-   between five rooms needs to know which one has the shared bathroom, and
-   "Chambre Tilleul" does not tell them. #}
-{% macro room_note(name) -%}
+{# Display names. The database keeps its own names — bookings, references and
+   the admin all still key on those — and this maps them for the site only.
+   Anything not listed falls through unchanged. #}
+{# The house's French room names, NOT LANDED, and deliberately so.
+
+   A room's name is DATA, not presentation. confirm_booking_by_id builds
+   the confirmation email from room['name'] out of the database, so
+   landing this map alone means a guest books one name and is written to
+   about another -- and so are their bill, statement and arrival card.
+
+   Renaming the rooms properly is one UPDATE on the rooms table, after
+   which every page and every email agrees without a map anywhere. #}
+{# The house's French room names, NOT LANDED, and deliberately so.
+
+   A room's name is DATA, not presentation. confirm_booking_by_id builds
+   the confirmation email from room['name'] out of the database, so
+   landing this map alone means a guest books one name and is written to
+   about another -- and so are their bill, statement and arrival card.
+
+   Renaming the rooms properly is one UPDATE on the rooms table, after
+   which every page and every email agrees without a map anywhere. #}
+{# The rename has happened: the rooms are called these things in the
+   database, so this hands the name straight back. Kept as a macro rather
+   than deleted because four templates call it, and a pass-through is a
+   smaller thing to carry than fourteen edits that could each go wrong. #}
+{% macro room_name(db_name) -%}
+{{- db_name -}}
+{%- endmacro %}
+
+{# The English gloss, for the first mention on a page and for anywhere a
+   guest needs to know what they are choosing. #}
+{% macro room_note(db_name) -%}
 {%- set MAP = {
-  'Chambre Émeraude':  'the largest room, first floor, two windows onto the valley',
-  'Chambre du Levant': 'a king bed against hand-painted panelling, east-facing',
+  'Chambre Émeraude':        'the largest room, first floor, two windows onto the valley',
+  'Chambre du Levant':    'a king bed against hand-painted panelling, east-facing',
   'Les Deux Chambres': 'two bedrooms opening into one another, sleeping five',
-  'Chambre Cerise':    'a quiet double on the ground floor, shared bathroom',
-  'Chambre Tilleul':   'twin or double, shared bathroom, the simplest room'
+  'Chambre Cerise':     'a quiet double on the ground floor, shared bathroom',
+  'Chambre Tilleul':'twin or double, shared bathroom, the simplest room'
 } -%}
-{{- MAP.get(name, '') -}}
+{{- MAP.get(db_name, '') -}}
 {%- endmacro %}

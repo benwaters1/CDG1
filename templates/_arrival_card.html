@@ -1,0 +1,60 @@
+{# ==========================================================================
+   THE ARRIVAL CARD  — one URL to keep on a phone
+   Directions, arrival time, who to ring and what the weather is doing are
+   currently spread across the confirmation, the manage page and The Estate.
+   Someone driving up a valley on the day wants one screen, and probably has
+   one bar of signal.
+
+       {% from '_arrival_card.html' import arrival_card %}
+       {{ arrival_card(booking) }}
+
+   Everything here is static text or already-loaded values — nothing fetches,
+   so it works on a bad connection and prints cleanly.
+   ========================================================================== #}
+{% macro arrival_card(b) %}
+<section class="g-arrive" id="arrival">
+  <p class="g-arrive__k">Arriving</p>
+  <h2 class="g-arrive__h">Everything for the day</h2>
+
+  <dl class="g-arrive__l">
+    <div>
+      <dt>Where</dt>
+      <dd>
+        Château de Gudanes, 2 Route de Beille, 09310 Château-Verdun, Ariège
+        <a class="g-arrive__map" href="https://www.google.com/maps/search/?api=1&query=Ch%C3%A2teau+de+Gudanes+Ch%C3%A2teau-Verdun" rel="noopener">Open in maps</a>
+      </dd>
+    </div>
+    <div>
+      <dt>When</dt>
+      <dd>
+        {% if b and b['arrival'] %}{{ b['arrival'] }} · {% endif %}from 4pm.
+        Earlier is usually fine — tell us and we will have someone there.
+      </dd>
+    </div>
+    <div>
+      <dt>By car</dt>
+      <dd>Ninety minutes from Toulouse, an hour from Andorra. The last stretch climbs; take it slowly. Parking is on the gravel, free, and unlimited.</dd>
+    </div>
+    <div>
+      <dt>By train</dt>
+      <dd>Les Cabannes, three minutes below the gates. Tell us your train and someone will meet it — there is no taxi rank.</dd>
+    </div>
+    <div>
+      <dt>If anything goes wrong</dt>
+      <dd><a href="tel:+33628069776">+33 6 28 06 97 76</a>. Someone at the château answers it. Signal in the valley is patchy, so if it rings out, try again from higher up.</dd>
+    </div>
+    {% if b and b['reference'] %}
+    <div>
+      <dt>Your reference</dt>
+      <dd><strong>{{ b['reference'] }}</strong></dd>
+    </div>
+    {% endif %}
+  </dl>
+
+  <p class="g-arrive__n">Save this page, or print it. Nothing on it needs a connection.</p>
+  <p class="g-arrive__a">
+    <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn--solid">Book a table</a>
+    <a href="{{ url_for('facilities_page') }}">What is in the valley</a>
+  </p>
+</section>
+{% endmacro %}

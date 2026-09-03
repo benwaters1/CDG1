@@ -6,7 +6,7 @@
        {% from '_compare_rooms.html' import compare_rooms %}
        {{ compare_rooms(rooms) }}
    ========================================================================== #}
-{% from '_room_copy.html' import room_copy, room_note %}
+{% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% macro compare_rooms(rooms) %}
 {% if rooms and rooms|length > 1 %}
 <div class="g-cmp" data-cmp>
@@ -14,13 +14,13 @@
     <p class="g-field g-field--narrow">
       <label for="cmp_a">First room</label>
       <select id="cmp_a" data-cmp-a>
-        {% for r in rooms %}<option value="{{ loop.index0 }}"{% if loop.first %} selected{% endif %}>{{ r['name'] }}</option>{% endfor %}
+        {% for r in rooms %}<option value="{{ loop.index0 }}"{% if loop.first %} selected{% endif %}>{{ room_name(r['name']) }}</option>{% endfor %}
       </select>
     </p>
     <p class="g-field g-field--narrow">
       <label for="cmp_b">Second room</label>
       <select id="cmp_b" data-cmp-b>
-        {% for r in rooms %}<option value="{{ loop.index0 }}"{% if loop.index0 == 1 %} selected{% endif %}>{{ r['name'] }}</option>{% endfor %}
+        {% for r in rooms %}<option value="{{ loop.index0 }}"{% if loop.index0 == 1 %} selected{% endif %}>{{ room_name(r['name']) }}</option>{% endfor %}
       </select>
     </p>
   </div>
@@ -53,7 +53,7 @@
   var root=document.querySelector('[data-cmp]'); if(!root) return;
   var ROOMS=[
     {% for r in rooms %}
-    {name:{{ r['name']|tojson }},
+    {name:{{ room_name(r['name'])|trim|tojson }},
      price:{{ (r['price_per_night'] or 0)|int }},
      sleeps:{{ (r['max_occupancy'] or 2)|int }},
      bath:{{ ('Shared with one other room' if 'Shared' in r['name'] else 'Private, along the corridor')|tojson }},

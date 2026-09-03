@@ -3,6 +3,7 @@
 {% set sticky_bar = 'none' %}
 {% block title %}Registration received{% endblock %}
 {% block content %}
+{% from '_paydates.html' import pay_dates, no_reply %}
 
 {# CONTRACT — read-only. Same booking.* fields and the same workshop_manage
    endpoint as before. #}
@@ -36,7 +37,7 @@
       <div><dt>Deposit</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }} · {{ 'paid' if booking['deposit_paid_at'] else 'due' }}</dd></div>
       {% endif %}
       {% if booking['balance_amount'] %}
-      <div><dt>Balance</dt><dd>€{{ '%.2f'|format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} · due {{ booking['balance_due_date']|date_short }}{% endif %}</dd></div>
+      <div><dt>Balance</dt><dd>€{{ '%.2f'|format(booking['balance_amount']) }}{% if booking['balance_due_date'] %} · due {{ booking['balance_due_date']|date_short }}{%- endif %}</dd></div>
       {% endif %}
     </dl>
 
@@ -99,5 +100,7 @@
     <a href="{{ url_for('workshop_find') }}" class="g-btn g-btn--solid">Manage this atelier</a>
   </p>
 </div>
+
+<div class="g-wrap">{{ no_reply() }}</div>
 
 {% endblock %}

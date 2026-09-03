@@ -41,6 +41,44 @@
         <button type="submit" class="btn-mini">{% if f['featured'] %}Unfeature{% else %}Feature on workshops page{% endif %}</button>
       </form>
     </div>
+    {# "Nothing is published without asking you first" is on the form they
+       filled in. The public page will not show a review without consent
+       whatever this says -- that rule lives in the query -- so what this is
+       for is telling somebody there is a letter to write. #}
+    {% if f['featured'] %}
+    <p class="upload-hint">
+      {% if f['publish_consent'] == 1 %}
+        They said we may use it{% if f['publish_consent_how'] %}
+          &mdash; {{ f['publish_consent_how'] }}{% endif %}.
+      {% elif f['publish_consent'] == 0 %}
+        <strong>They said no.</strong> It will not appear on the workshops page,
+        whatever the tick above says.
+      {% else %}
+        <strong>Nobody has asked them yet</strong>, so it is not on the workshops page.
+        The form they filled in says nothing is published without asking first.
+      {% endif %}
+    </p>
+    <div class="expense-actions">
+      {% for answer, label in [('yes', 'They said yes'), ('no', 'They said no')] %}
+      <form method="post" action="{{ url_for('set_publish_consent', kind='atelier', feedback_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="answer" value="{{ answer }}">
+        <select name="how" aria-label="How they were asked">
+          {% for key, text in consent_routes.items() %}<option value="{{ key }}">{{ text }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn-mini{{ ' btn-ghost' if answer == 'no' }}">{{ label }}</button>
+      </form>
+      {% endfor %}
+      {% if f['publish_consent'] is not none %}
+      <form method="post" action="{{ url_for('set_publish_consent', kind='atelier', feedback_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="answer" value="unasked">
+        <button type="submit" class="btn-mini btn-ghost">Wrong row</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
   </div>
   {% endfor %}
 {% endif %}

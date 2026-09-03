@@ -1,0 +1,53 @@
+{# ==========================================================================
+   WHAT YOU PAY, AND WHEN  — guest items 4 and 5
+   "30% deposit" is a term. "€540 now, €1,260 on 27 August" is a plan, and a
+   plan is what someone about to spend £1,600 wants to see.
+
+   Also states what to do if nobody replies, which is where the anxiety in a
+   request-based booking actually lives.
+
+       {% from '_paydates.html' import pay_dates %}
+       {{ pay_dates(booking, settings) }}
+   ========================================================================== #}
+{% macro pay_dates(b, settings) %}
+{% set pct = (settings['deposit_percent'] if settings and settings['deposit_percent'] else 30)|int %}
+<div class="g-pay2">
+  <p class="g-pay2__h">What you pay, and when</p>
+  <ol class="g-pay2__l">
+    <li class="g-pay2__i{% if b['deposit_paid'] %} is-done{% endif %}">
+      <span class="g-pay2__k">Now</span>
+      <span class="g-pay2__v">
+        {% if b['deposit_amount'] %}€{{ '%.0f'|format(b['deposit_amount']) }}{% else %}{{ pct }}% of the total{% endif %}
+        {% if b['deposit_paid'] %} · paid{% endif %}
+      </span>
+    </li>
+    <li class="g-pay2__i{% if b['payment_status'] == 'paid' %} is-done{% endif %}">
+      <span class="g-pay2__k">
+        {% if b['balance_due_date'] %}{{ b['balance_due_date'][:10] }}{% else %}Nearer the date{% endif %}
+      </span>
+      <span class="g-pay2__v">
+        {% if b['balance_due'] %}€{{ '%.0f'|format(b['balance_due']) }}{% else %}The balance{% endif %}
+        {% if b['payment_status'] == 'paid' %} · paid{% else %} · we send a link, and nobody will ask for card details by email{% endif %}
+      </span>
+    </li>
+    <li class="g-pay2__i">
+      <span class="g-pay2__k">On arrival</span>
+      <span class="g-pay2__v">
+        Nothing, unless you add something while you are here.
+        The taxe de séjour is charged per adult per night and settled at the end.
+      </span>
+    </li>
+  </ol>
+</div>
+{% endmacro %}
+
+{# What happens if nobody writes back. A request with no reply and no stated
+   timeframe is where the anxiety lives, and a sentence costs nothing. #}
+{% macro no_reply() %}
+<p class="g-limit">
+  <span class="g-limit__k">If you do not hear</span>
+  We answer within a day, usually the same one. If nothing has arrived by then,
+  check the spam folder first and then ring — <a href="tel:+33628069776">+33 6 28 06 97 76</a>.
+  Someone at the château answers it.
+</p>
+{% endmacro %}

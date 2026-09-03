@@ -10,7 +10,7 @@
   <ul class="g-lost">
     <li><a href="{{ url_for('book_rooms') }}"><b>Stay the night</b><span>Five bedrooms, from €220</span></a></li>
     <li><a href="{{ url_for('workshops_public') }}"><b>The ateliers</b><span>Plaster, gilding, fresco conservation</span></a></li>
-    <li><a href="{{ url_for('restaurant_info') }}"><b>La Table</b><span>One sitting a night</span></a></li>
+    <li><a href="{{ url_for('restaurant_info') }}"><b>La Table</b><span>One table, one sitting</span></a></li>
     <li><a href="{{ url_for('find_booking') }}"><b>Find my booking</b><span>With the email you booked with</span></a></li>
     <li><a href="{{ url_for('restoration_page') }}"><b>The restoration</b><span>Fifteen years, and not finished</span></a></li>
     <li><a href="{{ url_for('contact_page') }}"><b>Write to us</b><span>Someone reads it at the château</span></a></li>
@@ -31,10 +31,8 @@
   <h1 class="g-display" >
     {% if code == 404 %}That page is not here{% else %}Something went wrong{% endif %}
   </h1>
-  <p class="g-p g-lede-first">
-    {% if code == 404 %}The address may have changed, or the link may have expired.
-    {% else %}The fault is ours, not yours. It has been logged.{% endif %}
-  </p>
+  <p class="g-p g-lede-first">{%- if code == 404 %}The address may have changed, or the link may have expired.
+    {% else %}The fault is ours, not yours. It has been logged.{%- endif %}</p>
 
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
     <path d="M0 13h38"/><path d="M82 13h38"/>

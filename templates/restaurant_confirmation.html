@@ -3,6 +3,7 @@
 {% set sticky_bar = 'none' %}
 {% block title %}Reservation request received{% endblock %}
 {% block content %}
+{% from '_paydates.html' import pay_dates, no_reply %}
 
 {# CONTRACT — read-only. Same booking.* fields and restaurant_manage endpoint. #}
 
@@ -28,7 +29,7 @@
       <div><dt>Date</dt><dd>{{ booking['dinner_date']|date_short }}</dd></div>
       <div><dt>Guests</dt><dd>{{ booking['party_size'] }}</dd></div>
       {% if booking['total_price'] %}
-      <div><dt>Total</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span>{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} · {{ booking['payment_status'] }}{% endif %}</dd></div>
+      <div><dt>Total</dt><dd><span class="g-fig">€{{ '%.2f'|format(booking['total_price']) }}</span>{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} · {{ booking['payment_status'] }}{%- endif %}</dd></div>
       {% endif %}
       {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
       <div><dt>Deposit paid</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }}</dd></div>
@@ -71,5 +72,7 @@
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">{{ t('See the rooms') }}</a>
   </p>
 </div></section>
+
+<div class="g-wrap">{{ no_reply() }}</div>
 
 {% endblock %}

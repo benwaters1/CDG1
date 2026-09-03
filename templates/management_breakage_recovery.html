@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>What got broken, and what came back</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('management_breakages') if 'management_breakages' in url_map else url_for('admin_bookings') }}" class="btn-ghost">Breakages</a>
+    <a href="{{ url_for('management_breakages') }}" class="btn-ghost">Breakages</a>
     <a href="{{ url_for('export_breakage_recovery_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>

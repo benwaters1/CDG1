@@ -5,7 +5,7 @@
 <div class="page-head">
   <h1>Energy per night sold</h1>
   <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <a href="{{ url_for('management_meters') if 'management_meters' in url_map else url_for('management_recurring_costs') }}" class="btn-ghost">Meter readings</a>
+    <a href="{{ url_for('management_meters') }}" class="btn-ghost">Meter readings</a>
     <a href="{{ url_for('export_energy_csv') }}" class="btn-ghost">Export CSV</a>
   </div>
 </div>

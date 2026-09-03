@@ -1,7 +1,7 @@
 {% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
 {% block title %}My Reservation{% endblock %}
-{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
@@ -15,7 +15,7 @@
       <div><dt>Reference code</dt><dd>{{ booking['reference_code'] }}</dd></div>
       <div><dt>Date</dt><dd>{{ booking['dinner_date']|date_short }}</dd></div>
       <div><dt>Party size</dt><dd>{{ booking['party_size'] }}</dd></div>
-      {% if booking['total_price'] %}<div><dt>Total</dt><dd>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}</dd></div>{% endif %}
+      {% if booking['total_price'] %}<div><dt>Total</dt><dd>€{{ '%.2f'|format(booking['total_price']) }}{% if booking['payment_status'] and booking['payment_status'] != 'unpaid' %} <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{%- endif %}</dd></div>{% endif %}
       {% if booking['total_price'] and booking['deposit_amount'] and booking['deposit_amount'] < booking['total_price'] %}
       <div><dt>Deposit paid</dt><dd>€{{ '%.2f'|format(booking['deposit_amount']) }}</dd></div>
       <div><dt>Due at the restaurant</dt><dd>€{{ '%.2f'|format(booking['total_price'] - booking['deposit_amount']) }}</dd></div>

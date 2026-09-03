@@ -38,11 +38,7 @@
       </div>
       <p class="g-slot__l">{{ slot.label }}</p>
       {% if slot.where %}<p class="g-slot__w">{{ slot.where }}</p>{% endif %}
-      {# The visible control is the drop zone above; this input is what it
-         opens. Named for the place it fills, so a screen reader announces
-         which photograph is about to be replaced rather than "file". #}
-      <input type="file" accept="image/*" hidden data-slot-input
-             aria-label="Replace the photograph for {{ slot.label }}">
+      <input type="file" accept="image/*" hidden data-slot-input aria-label="Choose a picture for {{ slot.label }}">
     </div>
     {% endfor %}
   </div>
@@ -54,7 +50,7 @@
    own picture when the server confirms — nothing is optimistic, so a failed
    upload leaves the old photograph in place rather than a broken one. */
 (function(){
-  var ENDPOINT = "{{ url_for('admin_image_upload') if 'admin_image_upload' in url_map else '/admin/images/upload' }}";
+  var ENDPOINT = "{{ url_for('admin_image_upload') }}";
   var TOKEN = "{{ csrf_token() }}";
 
   document.querySelectorAll('.g-slot').forEach(function(slot){

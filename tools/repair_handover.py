@@ -409,6 +409,11 @@ WRONG_ENDPOINTS = {
     # the page this link sits. find_booking is where somebody holding only an
     # email address can actually reach their stays.
     "url_for('guest_portal')": "url_for('find_booking')",
+
+    # The valley page is facilities_page; `facilities` is the TEMPLATE's
+    # name, not the route's. Unguarded, so it is a 500 on the arrival card
+    # rather than merely a wrong link.
+    "url_for('facilities')": "url_for('facilities_page')",
 }
 
 
@@ -658,6 +663,239 @@ def repair_event_promo_field():
     return 1
 
 
+def repair_admin_images_page():
+    """The two things the image manager arrives with, both rounds so far.
+
+    THE ENDPOINT. It names url_for('admin_image_upload') inside a guard --
+    `if 'admin_image_upload' in url_map` -- and the guard does not raise. Jinja
+    is content to say a name it has never heard of contains nothing, so it
+    always answers no, url_map not being anything a template is given. The
+    branch naming the endpoint is therefore dead in every single render, and
+    the page posts to the hardcoded path in the else instead.
+
+    That is worse than a crash. The route exists now, and the day it moves the
+    page would go on posting to the old path with nothing at all to say so. So
+    the repair is to name the endpoint and let Flask resolve it.
+
+    THE FILE INPUT. Hidden, clicked by the slot around it, and with no name of
+    its own. The slot IS labelled, so nobody using the page is stuck -- but the
+    accessibility sweep reads the input, not the intent, and it is right to:
+    the day somebody drops the `hidden`, an unlabelled file field goes live.
+    """
+    rel = "templates/admin_images.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    fixed = 0
+
+    start = src.find("var ENDPOINT =")
+    end = src.find(";", start) if start != -1 else -1
+    # Only where the dead guard actually is. Matching on the endpoint name
+    # alone would keep rewriting the correct line, and a repair that reports
+    # work against a clean tree is one nobody can read.
+    if start != -1 and end != -1 and "url_map" in src[start:end]:
+        good = 'var ENDPOINT = "{{ url_for(' + "'admin_image_upload'" + ') }}"'
+        src = src[:start] + good + src[end:]
+        fixed += 1
+
+    marker = '<input type="file" accept="image/*" hidden data-slot-input'
+    at = src.find(marker)
+    if at != -1 and "aria-label" not in src[at:at + 200]:
+        close = src.find(">", at)
+        if close != -1:
+            src = (src[:close] + ' aria-label="Choose a picture for '
+                   '{{ slot.label }}"' + src[close:])
+            fixed += 1
+
+    if fixed:
+        _write(rel, src)
+    return fixed
+
+
+def repair_url_map_guards():
+    """The guard that never fires, and the pages nobody could reach.
+
+    The sketches wrap a link in `{% if 'X' in url_map %}` to mean "only if that
+    page is built yet". It cannot work. url_map is not in the template context,
+    so Jinja reports that a name it has never heard of contains nothing, the
+    test is false in EVERY render, and the link takes its fallback forever.
+
+    Nothing errors and every page looks right, which is why it survived nine
+    rounds. Weddings, Private, Photoshoots and Press are all real, dedicated
+    pages, and not one link in the public nav or footer pointed at any of them.
+
+    BOTH halves are repaired, and the second half is the one that took a second
+    round to learn:
+
+      the page EXISTS  -> name the endpoint, which is what the guard reached for
+      the page does NOT -> collapse to the fallback it has always silently
+                           taken, because a guard that cannot fire is not a
+                           guard, it is a note claiming this might light up one
+                           day when it never will
+    """
+    import re as _re
+    app_src = _read("app.py")
+    real = set(_re.findall(r"^def (\w+)\(", app_src, _re.M))
+    fixed = 0
+    for name in sorted(os.listdir(TEMPLATE_DIR)):
+        if not name.endswith(".html"):
+            continue
+        rel = "templates/" + name
+        src = _read(rel)
+        if "in url_map" not in src:
+            continue
+        before = src
+
+        def pick(mo):
+            ep, fallback = mo.group(1), mo.group(2)
+            return ("{{ url_for('%s') }}" % ep) if ep in real else fallback
+
+        # {% if 'X' in url_map %}{{ url_for('X') }}{% else %}FALLBACK{% endif %}
+        src = _re.sub(
+            r"\{%\s*if\s*'(\w+)'\s*in url_map\s*%\}\{\{\s*url_for\('\1'\)\s*\}\}"
+            r"\{%\s*else\s*%\}(.*?)\{%\s*endif\s*%\}", pick, src)
+        # {{ url_for('X') if 'X' in url_map else FALLBACK }}
+        src = _re.sub(
+            r"\{\{\s*url_for\('(\w+)'\)\s*if\s*'\1'\s*in url_map\s*else\s*([^}]*)\}\}",
+            lambda mo: pick(mo) if mo.group(1) in real
+            else "{{ " + mo.group(2).strip() + " }}", src)
+
+        if src != before:
+            _write(rel, src)
+            fixed += 1
+    return fixed
+
+
+def _rename_cols(text, renames):
+    """Subscript renames, only where the variable is a booking or guest row."""
+    for wrong, right in renames:
+        for var in ("b", "g", "booking", "stay"):
+            text = text.replace(var + wrong, var + right)
+    return text
+
+
+def repair_invented_columns():
+    """Column names the sketches use that the database does not have.
+
+    b['reference'], b['arrival'], b['departure'] and g['reference'] appear
+    across the guest partials. None exists. A missing key on a sqlite3.Row
+    RAISES rather than returning empty, so each one is a 500 on the page a
+    guest reads after paying -- not a blank line.
+
+    Renames only. b['balance_due'] is the same class of fault and is NOT here,
+    because the right answer is an expression rather than another column name,
+    and a repair script guessing at arithmetic is worse than a red test.
+
+    NAMED FILES, not every template, and this is the whole care of it. The
+    first version of this swept templates/ and renamed b['reference'] on
+    management_cash_banking.html -- where b is a cash_bankings row, which HAS a
+    reference column and has no reference_code. That is the same 500 this
+    function exists to prevent, introduced by the function. The suite stayed
+    green because the fixture banks nothing, so the row markup never rendered.
+
+    It also rewrote the comments that document the wrong names, which turned
+    "the sketch used b['arrival']" into a sentence about the correct name and
+    threw away the reason anybody wrote it down.
+    """
+    import re as _re
+    RENAMES = (
+        ("['reference']", "['reference_code']"),
+        ("['arrival']", "['arrival_date']"),
+        ("['departure']", "['departure_date']"),
+    )
+    GUEST_PARTIALS = ("_guest_timeline.html", "_print_stay.html",
+                      "_linked_bookings.html", "_sharelink.html")
+    fixed = 0
+    for name in GUEST_PARTIALS:
+        rel = "templates/" + name
+        if not os.path.exists(os.path.join(ROOT, rel)):
+            continue
+        src = _read(rel)
+        before = src
+        out, i = [], 0
+        while i < len(src):
+            # Leave Jinja comments alone: they are where the wrong names are
+            # written down on purpose.
+            start = src.find("{#", i)
+            if start == -1:
+                out.append(_rename_cols(src[i:], RENAMES)); break
+            close = src.find("#}", start)
+            close = len(src) if close == -1 else close + 2
+            out.append(_rename_cols(src[i:start], RENAMES))
+            out.append(src[start:close])
+            i = close
+        src = "".join(out)
+        if src != before:
+            _write(rel, src)
+            fixed += 1
+    return fixed
+
+
+def repair_room_name_map():
+    """The French room names, which are NOT landed, and arrive every round.
+
+    room_name() maps 'Suite with Mountain View' to 'Chambre Emeraude' and so on
+    for all five. It is careful work and may well be what the house wants. But a
+    room's name is DATA, and renaming it in a template renames it in only some
+    of the places a guest sees it.
+
+    Concretely: confirm_booking_by_id builds the confirmation email from
+    room['name'] straight out of the database. Land the map alone and a guest
+    books Chambre Emeraude, then gets an email about a King Room with Mountain
+    View -- and so do their bill, their statement and their arrival card.
+
+    Renaming the rooms properly is one UPDATE on the rooms table, after which
+    every page and every email agrees without a map anywhere. Until somebody
+    does that, this passes the database name through and keeps the intended
+    names in a comment so the work is not lost.
+    """
+    rel = "templates/_room_copy.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    start = src.find("{% macro room_name(db_name) -%}")
+    if start == -1:
+        return 0
+    end = src.find("{%- endmacro %}", start)
+    if end == -1:
+        return 0
+    end += len("{%- endmacro %}")
+    body = src[start:end]
+    if "Chambre" not in body:
+        return 0                      # already passing the database name through
+
+    keep = []
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if "':" in stripped and "'" in stripped:
+            # 'Suite with Mountain View': 'Chambre Emeraude',
+            left, _, right = stripped.partition("':")
+            frm = left.lstrip("'")
+            to = right.strip().strip(",").strip("'")
+            if frm and to:
+                keep.append("    %-34s -> %s" % (frm, to))
+
+    NEW = [
+        "{# The house's French room names, NOT LANDED, and deliberately so.",
+        "",
+        "   A room's name is DATA, not presentation. confirm_booking_by_id builds",
+        "   the confirmation email from room['name'] out of the database, so",
+        "   landing this map alone means a guest books one name and is written to",
+        "   about another -- and so are their bill, statement and arrival card.",
+        "",
+        "   Renaming the rooms properly is one UPDATE on the rooms table, after",
+        "   which every page and every email agrees without a map anywhere. #}",
+        "{% macro room_name(db_name) -%}",
+        "{#- The intended names, for whoever lands them:",
+    ] + keep + [
+        "  -#}",
+        "{{- db_name -}}",
+        "{%- endmacro %}",
+    ]
+    _write(rel, src[:start] + "\n".join(NEW) + src[end:])
+    return 1
+
+
 def repair_reverted_guest_pages():
     """Report the four pages the handovers keep shipping an older copy of.
 
@@ -711,6 +949,10 @@ def main():
         ("why a room is unavailable", repair_unavailable_reason),
         ("the under-18 count the return reads", repair_under_18_field),
         ("the promo code box on the event enquiry", repair_event_promo_field),
+        ("the image manager posting to a hardcoded path", repair_admin_images_page),
+        ("the url_map guard that never fires", repair_url_map_guards),
+        ("column names the database does not have", repair_invented_columns),
+        ("the French room names, which are not landed", repair_room_name_map),
         ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []

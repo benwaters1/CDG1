@@ -3,6 +3,7 @@
 {% set crumbs = [('La Table', url_for('restaurant_info')), ('Reserve', None)] %}
 {% block title %}Reserve a Table{% endblock %}
 {% block content %}
+{% from '_formkeep.html' import form_keep %}
 
 
 
@@ -18,11 +19,9 @@
 
   <p class="g-eyebrow">La Table · Château de Gudanes</p>
   <h1 class="g-display" >Reserve a table</h1>
-  <p class="g-lede" style="margin-bottom:var(--s2)">
-    {% if settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{% endif %}
-  </p>
+  <p class="g-lede" style="margin-bottom:var(--s2)">{%- if settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings['dinner_time'] %} · seating from {{ settings['dinner_time'] }}{% endif %}{% if settings['capacity'] %} · up to {{ settings['capacity'] }} guests each evening{%- endif %}</p>
 
-  <form method="post" class="g-resform">
+  <form id="restaurant_book-form" method="post" class="g-resform">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="g-cols">
@@ -193,4 +192,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   </div>
 </div></section>
 
+{{ form_keep('restaurant_book-form', 'gudanes.table') }}
 {% endblock %}

@@ -20,7 +20,11 @@
   <div class="g-share__row">
     <label class="g-vh" for="sh_url">Share link</label>
     <input class="g-share__url" id="sh_url" type="text" readonly
-           value="{{ url_for('find_booking', _external=True) }}?s={{ b['share_token'] }}"
+           {# Its own route. The sketch points at find_booking with a query
+              string, which is the MANAGE page reached a different way -- so
+              forwarding the link would hand everybody the cancel button. That
+              is the fault 955d44d fixed and this zip predates it. #}
+           value="{{ url_for('shared_stay', share_token=b['share_token'], _external=True) }}"
            data-share-url>
     <button type="button" class="g-btn g-btn--solid" data-share-copy>Copy link</button>
   </div>

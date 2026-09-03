@@ -47,6 +47,16 @@
     <label class="field-label">Dietary requirements</label>
     <input type="text" name="dietary_notes" value="{{ guest['dietary_notes'] if guest else '' }}" placeholder="Coeliac, no shellfish, vegetarian...">
 
+    <label class="field-label" for="access_needs">Anything they need from the house</label>
+    <textarea id="access_needs" name="access_needs" rows="2" maxlength="600"
+              placeholder="Cannot manage more than a few steps. Uses a stick.">{{ (typed.access_needs if typed else '') or (guest['access_needs'] or '' if guest else '') }}</textarea>
+    <p class="field-hint">
+      In their words, not ours. It stays on the person rather than the stay, so nobody has to
+      explain it twice &mdash; and it is cleared automatically twelve months after their last
+      visit, because this is health information and there is no reason to keep it once they
+      have stopped coming. <a href="{{ url_for('room_access_page') }}">What each room asks</a>.
+    </p>
+
     <label class="field-label">Preferences</label>
     <input type="text" name="preferences" value="{{ guest['preferences'] if guest else '' }}" placeholder="Prefers the Rose Room, early breakfast, quiet side...">
 

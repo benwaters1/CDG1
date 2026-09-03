@@ -1,0 +1,37 @@
+{# ==========================================================================
+   WAITING LIST  — item 1
+   A full session showed "Full" and a link to email about cancellations, which
+   nobody does. One field captures the demand, and the list tells you which
+   atelier to run again — which is worth more than the individual sale.
+
+       {% from '_waitlist.html' import waitlist %}
+       {{ waitlist(session) }}
+
+   Posts action=waitlist to the workshop registration endpoint.
+   ========================================================================== #}
+{% macro waitlist(s) %}
+<details class="g-wait">
+  <summary>Tell me if a place opens</summary>
+  <div class="g-wait__b">
+    <p class="g-p">We hold no deposit and there is no obligation. If someone drops out you get one email, and the first to reply takes the place.</p>
+    <form method="post" action="{{ url_for('workshop_register', session_id=s['id']) if s and s['id'] else '#' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="waitlist">
+      {% if s and s['id'] %}<input type="hidden" name="session_id" value="{{ s['id'] }}">{% endif %}
+      <div class="g-wait__row">
+        <p class="g-field">
+          <label for="wl_email_{{ s['id'] if s else 'x' }}">Email</label>
+          <input type="email" id="wl_email_{{ s['id'] if s else 'x' }}" name="email"
+                 required autocomplete="email" placeholder="you@example.com">
+        </p>
+        <p class="g-field">
+          <label for="wl_alt_{{ s['id'] if s else 'x' }}">Would other dates work? <span class="g-opt">optional</span></label>
+          <input type="text" id="wl_alt_{{ s['id'] if s else 'x' }}" name="alt_dates"
+                 placeholder="Any date in spring, or September only">
+        </p>
+      </div>
+      <button type="submit" class="g-btn">Add me to the list</button>
+    </form>
+  </div>
+</details>
+{% endmacro %}

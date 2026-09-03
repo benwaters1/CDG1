@@ -6,7 +6,7 @@
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_stay_panel.html' import stay_panel %}
-{% from '_room_copy.html' import room_copy, room_note %}
+{% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
 
@@ -57,10 +57,20 @@
   <p class="g-pricenote">
     <span class="g-pricenote__k">Staying</span>
     Five bedrooms, from <b>€220</b> a night, breakfast included.
-    Dinner at one sitting if you want it.
+    Dinner at one sitting on the nights it runs, if you want it.
     <a href="{{ url_for('book_rooms') }}">See the rooms</a>
   </p>
 </div>
+<div class="g-wrap">
+  <p class="g-family">
+    <span class="g-family__k">Whose house it is</span>
+    Karina Waters bought a château she had barely seen, and lives here still.
+    When you stay, you are in someone's home rather than a hotel.
+    <a href="{{ url_for('story') }}">How it happened</a>
+  </p>
+</div>
+
+
 
 
 {{ stay_panel() }}
@@ -125,16 +135,15 @@
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583507444802-ZWPKZA5RWBS7BHZ9LJ0V/IMG_2988.jpg?format=1000w',
              'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1000w'
            ][loop.index0 % 4] }}{% endif %}"
-           alt="{{ r['name'] }}" loading="lazy">
+           alt="{{ room_name(r['name']) }}" loading="lazy">
       <div class="g-homeroom__b">
         {{ emblem(r['name']) }}
-        <h3 class="g-homeroom__name">{{ r['name'] }}</h3>
+        <h3 class="g-homeroom__name">{{ room_name(r['name']) }}</h3>
         {% set _rc = room_copy(r['name'], r['description'] or '') %}
         {% if _rc %}<p class="g-p">{{ _rc|truncate(140) }}</p>{% endif %}
         <p class="g-homeroom__rate">
           {% set rate = r.get('rate') or r['price_per_night'] %}
-          {% if rate %}<span class="g-fig">from €{{ '%.0f'|format(rate) }}</span> a night{% endif %}
-        </p>
+          {% if rate %}<span class="g-fig">from €{{ '%.0f'|format(rate) }}</span> a night{%- endif %}</p>
         {# The homepage showed no facts and no price band — a guest could not
            tell whether this was in their range without clicking through. #}
         <ul class="g-tags g-tags--sm">
@@ -206,6 +215,7 @@
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="A Place To Create" loading="lazy">
   <div class="g-half__text">
     <h2 class="g-place">Château Workshops</h2>
+    <p class="g-scarcity-line">Eleven ateliers a year, fifteen places each. That is every seat there is.</p>
     <p class="g-p"><em>Three to seven nights, a small group, and the château given over to it entirely.</em></p>
     <p class="g-p">Cook in the château kitchens, hunt the brocantes of the Ariège, or work on the eighteenth-century frescoes alongside the restoration team. Full board, château beverages and every excursion included. The work goes on around you, and because of you.</p>
     <p style="margin-top:var(--s6)"><a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--line">See the workshops</a></p>
@@ -359,8 +369,15 @@
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
     </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>

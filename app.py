@@ -257,6 +257,7 @@ LEAVE_SETTING_DEFAULTS = {
 }
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
+    "automation_weather_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
@@ -2622,6 +2623,101 @@ def init_db():
         -- Cold storage readings. The useful part is not the tick, it is
         -- seeing that one fridge has drifted up all week before anything
         -- in it has to be thrown away.
+        -- The week you MEANT, as opposed to the week you had. "Copy last
+        -- week" carries last week's accidents forward -- somebody off sick,
+        -- a wedding, two people doubled up for it -- and by August the rota
+        -- is a photocopy of one odd week in May.
+        -- What the house is tied into. Not the same as a recurring cost,
+        -- which says when money leaves and nothing about whether the house
+        -- is still free to stop it.
+        -- The list a room is checked against. Named and kept, so it is the
+        -- same check every time -- a check where everybody looks at whatever
+        -- occurs to them finds a different thing each time and misses the
+        -- same thing each time.
+        CREATE TABLE IF NOT EXISTS room_standards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            area TEXT,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        -- One walk of one room, for one arrival. Against the ARRIVAL rather
+        -- than the room, because a pass from three weeks ago says nothing
+        -- about the room somebody opens the door on tonight.
+        CREATE TABLE IF NOT EXISTS room_checks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE SET NULL,
+            for_date TEXT NOT NULL,
+            checked_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            checked_at TEXT NOT NULL,
+            note TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS room_check_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            check_id INTEGER NOT NULL REFERENCES room_checks(id) ON DELETE CASCADE,
+            standard_id INTEGER REFERENCES room_standards(id) ON DELETE SET NULL,
+            -- The wording AS IT WAS on the day. A standard reworded later
+            -- must not rewrite what somebody signed off in March.
+            what TEXT NOT NULL,
+            passed INTEGER NOT NULL,
+            note TEXT,
+            -- The room issue this fault was raised as, so a fault found is
+            -- a fault REPORTED rather than a line in a log nobody opens.
+            room_issue_id INTEGER REFERENCES room_issues(id) ON DELETE SET NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS supplier_agreements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            what TEXT NOT NULL,
+            vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+            started_on TEXT,
+            -- The day it rolls over or ends.
+            renews_on TEXT NOT NULL,
+            -- 1 = rolls on by itself unless somebody says otherwise, which
+            -- is the case worth warning about; 0 = it simply ends.
+            auto_renews INTEGER NOT NULL DEFAULT 1,
+            -- How long before renews_on notice has to be given. THIS is the
+            -- number that decides the deadline, and it is the one nobody
+            -- writes in a diary.
+            notice_days INTEGER NOT NULL DEFAULT 0,
+            annual_value REAL,
+            reference TEXT,
+            note TEXT,
+            -- Set when somebody has decided, so it stops asking. The
+            -- decision, not the outcome: "keeping it" is an answer.
+            decided_at TEXT,
+            decision TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS rota_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            note TEXT,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS rota_template_shifts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER NOT NULL
+                REFERENCES rota_templates(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            -- 0 = Monday, matching date.weekday(). A template is a SHAPE, so
+            -- it holds a day of the week and never a date; storing a date
+            -- here is how a template becomes another copy of one week.
+            weekday INTEGER NOT NULL,
+            start_time TEXT,
+            end_time TEXT,
+            role_note TEXT,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS fridge_units (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -3987,6 +4083,47 @@ def init_db():
         ("feedback_ack_at", "ALTER TABLE guest_feedback ADD COLUMN acknowledged_at TEXT"),
         ("feedback_ack_by", "ALTER TABLE guest_feedback ADD COLUMN acknowledged_by_user_id INTEGER "
                             "REFERENCES users(id) ON DELETE SET NULL"),
+        # What a room actually asks of somebody, rather than a tickbox that
+        # says "accessible" and means nothing in a house like this.
+        ("room_access_steps", "ALTER TABLE rooms ADD COLUMN access_steps INTEGER"),
+        ("room_access_car_metres", "ALTER TABLE rooms ADD COLUMN access_car_metres INTEGER"),
+        ("room_access_bathroom", "ALTER TABLE rooms ADD COLUMN access_bathroom TEXT"),
+        ("room_access_notes", "ALTER TABLE rooms ADD COLUMN access_notes TEXT"),
+        # On the GUEST, not the booking. Somebody who could not manage
+        # stairs in May cannot manage them in September, and not having to
+        # explain it twice is the whole point.
+        # Minted only when somebody asks for one, and revocable. A token on
+        # every booking is a live URL for every booking that has ever
+        # existed, wanted or not.
+        # A shared reference for bookings that are one arrival. Never
+        # inferred: two bookings with the same surname on the same dates are
+        # often one family and are sometimes two families called Martin.
+        ("bookings_group_ref", "ALTER TABLE bookings ADD COLUMN group_ref TEXT"),
+        ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
+        # What the guest keeps themselves, as against what the house wrote
+        # down. Same retention as access_needs: twelve months after the last
+        # stay, and they can empty it whenever they like.
+        ("guests_own_notes_at", "ALTER TABLE guests ADD COLUMN own_notes_updated_at TEXT"),
+        ("guests_usual_arrival", "ALTER TABLE guests ADD COLUMN usual_arrival_time TEXT"),
+        ("guest_access_needs", "ALTER TABLE guests ADD COLUMN access_needs TEXT"),
+        ("guest_access_needs_at", "ALTER TABLE guests ADD COLUMN access_needs_updated_at TEXT"),
+        # "Nothing is published without asking you first" is on the form
+        # they fill in. NULL means nobody has asked, which is not the same
+        # as no, and the difference is the whole point.
+        ("feedback_publish_consent",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent INTEGER"),
+        ("feedback_publish_consent_at",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent_at TEXT"),
+        # How it was obtained. "She said yes on the telephone" is a real
+        # answer and the software should hold it rather than force a lie.
+        ("feedback_publish_consent_how",
+         "ALTER TABLE guest_feedback ADD COLUMN publish_consent_how TEXT"),
+        ("wsfeedback_publish_consent",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent INTEGER"),
+        ("wsfeedback_publish_consent_at",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent_at TEXT"),
+        ("wsfeedback_publish_consent_how",
+         "ALTER TABLE workshop_feedback ADD COLUMN publish_consent_how TEXT"),
         ("feedback_reply", "ALTER TABLE guest_feedback ADD COLUMN reply TEXT"),
         ("feedback_replied_at", "ALTER TABLE guest_feedback ADD COLUMN replied_at TEXT"),
         # The same for a workshop, because the sibling route has the identical
@@ -4425,6 +4562,9 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
         "CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_waitlist_entries_status ON waitlist_entries(status)",
+        "CREATE INDEX IF NOT EXISTS idx_bookings_group_ref ON bookings(group_ref)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_share_token "
+        "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_room_issues_status ON room_issues(status)",
@@ -4566,6 +4706,15 @@ def init_db():
                 f"VALUES ({', '.join('?' * len(fields))})", list(fields.values()))
         conn.commit()
         print(f"Seeded {len(DEFAULT_ROOMS)} rooms — edit them under Guests, Rooms.")
+
+    # The list a room is walked against, so the first person to open the page
+    # has something to walk rather than a blank form and a decision to make.
+    # Runs once and never again -- see seed_room_standards.
+    seeded_standards = seed_room_standards(conn)
+    if seeded_standards:
+        conn.commit()
+        print(f"Seeded {seeded_standards} room standards — edit them under "
+              "Estate, Room Checks.")
 
     # The order the rooms appear in on the front page, set once.
     #
@@ -5029,6 +5178,8 @@ NAV_AREAS = {
         "admin_arrivals_incomplete",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
+        "set_booking_group",
+        "set_publish_consent",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
         "delete_breakfast_item", "delete_ical_source", "delete_room_block",
         "delete_vehicle_transfer", "edit_booking", "edit_breakfast_item", "edit_guest",
@@ -5036,7 +5187,18 @@ NAV_AREAS = {
         "guests", "new_breakfast_item", "new_guest", "new_ical_source", "new_room",
         "new_room_block", "new_vehicle_transfer", "sync_ical_source_now",
         "toggle_breakfast_item", "toggle_breakfast_stock", "update_waitlist_status",
-        "vehicle_transfers_page"
+        
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_police_fiche", "bulk_confirm_bookings", "bulk_decline_bookings", "cancel_booking_admin",
+        "cancel_booking_extra_line", "delete_guest", "delete_police_fiche", "delete_room",
+        "delete_room_photo", "delete_room_rate_override", "disband_booking_party", "export_bookings_csv",
+        "export_guests_csv", "guest_full_statement", "import_catalogue", "link_guest_bookings",
+        "new_booking_party", "new_room_rate_override", "police_register_page", "prepare_arrival",
+        "repeat_guests_page", "reply_to_feedback", "sync_all_ical_sources", "toggle_feedback_featured",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "team": [
         # admin_hr_notes / handle_hr_note are deliberately NOT here, for the
@@ -5075,7 +5237,14 @@ NAV_AREAS = {
         "new_performance_review", "new_role_requirement", "profile", "regenerate_invite",
         "share_performance_review", "toggle_employee_status", "toggle_equipment_returned",
         "toggle_offboarding_item", "toggle_onboarding_item", "update_candidate_status",
-        "update_incident"
+        "update_incident",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "run_hr_escalation_now", "set_monthly_staff_cost",
+        "update_hr_escalation_rules", "upload_absence_note", "view_absence_note",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "rota": [
         "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
@@ -5085,7 +5254,16 @@ NAV_AREAS = {
         "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
         "export_timesheets_csv", "export_timesheets_summary_csv", "flag_timesheet_entry",
         "my_shifts", "new_shift", "new_task", "repair_time_entry", "reschedule_task",
-        "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task"
+        "resolve_timesheet_correction", "respond_shift_swap", "team_calendar", "toggle_task",
+        "rota_templates_page", "delete_rota_template", "delete_rota_template_line",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "bulk_tasks", "cover_gaps_page", "direct_task", "overtime_page",
+        "rota_clashes_page", "rota_vs_clock_page", "save_leave_settings", "skills_page",
+        "today_sheet",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "estate": [
         "admin_access", "admin_assets", "asset_photo", "checkin_vehicle", "checkout_vehicle",
@@ -5096,6 +5274,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -5107,7 +5286,15 @@ NAV_AREAS = {
         "new_shopping_item", "new_vehicle", "new_vehicle_maintenance", "reopen_room_issue",
         "resolve_room_issue", "resolve_vehicle_maintenance", "return_access_item",
         "room_issues", "shopping_list", "toggle_shopping_item", "toggle_vehicle_cleanliness",
-        "toggle_vehicle_fuel", "update_asset"
+        "toggle_vehicle_fuel", "update_asset",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "decide_mileage", "delete_maintenance_schedule", "edit_maintenance_schedule", "maintenance_certificate",
+        "maintenance_page", "new_maintenance_schedule", "record_maintenance_done", "room_economics_page",
+        "room_faults_page", "stock_basket", "stop_cleaning_round",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "vehicle_transfers_page",
     ],
     "comms": [
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
@@ -5118,7 +5305,17 @@ NAV_AREAS = {
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
         "allow_texting_number", "management_texting", "run_checkin_texts_now",
-        "save_checkin_text", "stop_texting_number"
+        "save_checkin_text", "stop_texting_number",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_gallery_photos", "admin_gallery", "admin_whats_on", "admin_whats_on_delete",
+        "admin_whats_on_save", "assign_email_flag", "delete_gallery_photo", "delete_social_post",
+        "dismiss_email_flag", "edit_gallery_photo", "edit_gallery_section", "edit_social_post",
+        "mark_social_post_posted", "new_social_post", "record_texting_consent", "resolve_email_flag",
+        "update_mailbox_routing",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "financial": [
         "admin_approvals", "admin_refunds", "admin_report", "admin_reports", "annual_summary",
@@ -5152,13 +5349,19 @@ NAV_AREAS = {
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
         "record_manual_booking_payment",
-        "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
-        "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
+        "bulk_approve_queue", "decide_expense", "delete_expense",
+        "delete_recurring_cost", "edit_recurring_cost", "expenses",
         "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
         "export_refunds_csv", "export_report_csv", "management_bank_details",
-        "management_financials", "management_recurring_costs", "new_bank_details",
-        "management_outlook", "new_recurring_cost",
-        "regenerate_supplier_link", "toggle_recurring_cost"
+        "management_financials", "management_recurring_costs",         "management_outlook", "new_recurring_cost",
+        "regenerate_supplier_link", "toggle_recurring_cost",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "mark_recurring_cost_paid", "money_ahead_page", "scan_expense", "set_opening_balance",
+        "toggle_expense_capital", "toggle_expense_restaurant",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "restaurant": [
         "admin_no_shows", "export_no_shows_csv",
@@ -5172,7 +5375,22 @@ NAV_AREAS = {
         "admin_restaurant_waitlist", "admin_stock", "cancel_restaurant_booking_admin",
         "confirm_restaurant_booking", "decline_restaurant_booking", "export_restaurant_csv",
         "export_restaurant_waitlist_csv", "move_stock", "new_stock_item",
-        "update_restaurant_waitlist_status"
+        "update_restaurant_waitlist_status",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_dish_ingredient", "add_drink_package_item", "add_menu_dish", "add_menu_pour",
+        "admin_drink_packages", "admin_restaurant_menu", "apply_menu_review", "copy_menu_day",
+        "delete_extra", "delete_menu_dish", "delete_menu_item", "delete_restaurant_rate_override",
+        "delete_restaurant_shift", "edit_extra", "edit_menu_day", "edit_menu_item",
+        "kitchen_day_sheet", "kitchen_service_times", "kitchen_waste", "mark_restaurant_no_show",
+        "menu_day", "menu_history", "menu_template_sheet", "new_drink_package",
+        "new_extra", "new_menu_day", "new_menu_item", "new_restaurant_rate_override",
+        "new_restaurant_shift", "print_menu_day", "publish_menu_day", "read_menu_upload",
+        "remove_dish_ingredient", "restaurant_margins", "restaurant_what_sells", "review_menu_draft",
+        "toggle_drink_package", "toggle_extra", "toggle_menu_item", "undo_restaurant_no_show",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "workshops": [
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
@@ -5181,7 +5399,16 @@ NAV_AREAS = {
         "delete_workshop_session", "edit_workshop", "export_workshop_feedback_csv",
         "export_workshop_registrations_csv", "export_workshop_waitlist_csv", "new_workshop",
         "new_workshop_session", "toggle_workshop_feedback_featured",
-        "update_workshop_waitlist_status"
+        "update_workshop_waitlist_status",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "add_workshop_material", "add_workshop_transaction_route", "apply_workshop_rooming", "assign_workshop_room",
+        "consume_workshop_materials", "delete_workshop_custom_field", "edit_workshop_session", "mark_workshop_balance_paid",
+        "mark_workshop_deposit_paid", "new_workshop_custom_field", "remove_workshop_material", "set_workshop_occupancy",
+        "toggle_workshop_do_not_email", "workshop_rooming",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "till": [
         # Everything a section actually touches during service. pos_day and
@@ -5193,10 +5420,23 @@ NAV_AREAS = {
         "pos_choose_formule_dish_route", "pos_home", "pos_kitchen", "pos_line_state",
         "pos_move_table", "pos_open_formule_route", "pos_open_tab", "pos_order",
         "pos_pay_link", "pos_receipt", "pos_email_receipt", "pos_send", "pos_service_state",
-        "pos_set_package", "pos_take_card", "pos_take_payment_route", "pos_void_item"
+        "pos_set_package", "pos_take_card", "pos_take_payment_route", "pos_void_item",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
+        
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "events": [
-        "admin_events", "export_events_csv", "update_event_inquiry"
+        "admin_events", "export_events_csv", "update_event_inquiry",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "new_event_inquiry", "update_event_types",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
     "payroll": [
         "admin_payroll", "export_payroll_csv",
@@ -5212,17 +5452,30 @@ NAV_AREAS = {
         # non-owner preset grants.
         "admin_hr_notes", "handle_hr_note",
         "admin_vat", "export_vat_csv",
+        "supplier_agreements_page",
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
-        "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
+        "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
-        "edit_vault_entry", "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
+        "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
         "export_vendors_csv", "management", "management_company_info", "management_documents",
-        "management_insurance", "management_vault", "new_insurance_policy", "new_vault_entry",
-        "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
+        "management_insurance", "management_vault", "new_insurance_policy",         "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
         "update_automation_settings", "upload_company_document", "vendors",
-        "view_company_document"
+        "view_company_document",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        "admin_overview", "admin_overview_status", "data_request_export", "data_requests",
+        "delete_deposit_rule", "delete_promo_code", "delete_social_plan", "discount_cost_page",
+        "edit_promo_code", "edit_social_plan", "empty_nights_page", "exit_interviews",
+        "export_social_posts_csv", "generate_social_now", "held_not_earned_page", "issue_vendor_upload_link",
+        "management_buying", "management_cancellations", "new_deposit_rule", "new_promo_code",
+        "new_social_plan", "return_deposit", "revoke_vendor_upload_link", "send_promo_code_blast",
+        "set_cancel_reason", "social_plans", "spend_by_vendor_page", "still_out_page",
+        "toggle_promo_code",
+        # Pages that had no area at all until now, so they were
+        # owner-only by omission rather than by choice.
+        
     ],
 }
 
@@ -5249,7 +5502,61 @@ AREA_TITLES = {
 # the wrong guess costs one visit to the access page rather than a migration.
 
 
+# Owner-only ON PURPOSE, which is a different thing from having no area.
+# Money that leaves the house, and anything that grants somebody access.
+#
+# The value is where the page LIVES, not who may open it. Those are two
+# questions and conflating them is what left the cash-up highlighting no
+# menu at all: can_reach refuses every endpoint in here to anybody but a
+# full owner, while the sidebar still knows the till day belongs to the
+# Till. A page missing from BOTH this and NAV_AREAS is a mistake a test
+# can see, which is how 181 of them accumulated unnoticed.
+OWNER_ONLY_AREAS = {
+    "admin_access_levels": "management",
+    # Reading these was already owner-only and writing them was not, which
+    # is the asymmetry the wrong way round: the dangerous act is not seeing
+    # the account the house is paid into, it is replacing it. The vault is
+    # the same pair, safe today only because no preset grants `management`.
+    "new_bank_details": "financial",
+    "edit_bank_details": "financial",
+    "delete_bank_details": "financial",
+    "new_vault_entry": "management",
+    "edit_vault_entry": "management",
+    "delete_vault_entry": "management",
+    "admin_pennylane": "financial",
+    "admin_tax": "financial",
+    "apply_invoice": "financial",
+    "assign_access_preset": "management",
+    "data_request_erase": "management",
+    "delete_check_in_note": "team",
+    "download_backup": "management",
+    "new_check_in_note": "team",
+    "pos_archive": "till",
+    "pos_close_day": "till",
+    "pos_day": "till",
+    "pos_journal_page": "till",
+    "pos_reopen": "till",
+    "read_invoice": "financial",
+    "refund_booking_admin": "guests",
+    "refund_restaurant_booking_admin": "restaurant",
+    "refund_workshop_admin": "workshops",
+    "reveal_bank_details": "financial",
+    "reveal_vault_entry": "management",
+    "save_access_preset": "management",
+    "search": None,
+    "send_to_pennylane": "financial",
+    "sync_pennylane": "financial",
+}
+OWNER_ONLY_ENDPOINTS = frozenset(OWNER_ONLY_AREAS)
+
+
 ENDPOINT_AREA = {ep: area for area, eps in NAV_AREAS.items() for ep in eps}
+
+# What the SIDEBAR asks. ENDPOINT_AREA answers 'who may open this';
+# this answers 'which menu is this under', and an owner-only page has
+# an answer to the second even though the first is 'only you'.
+NAV_AREA_OF = dict(ENDPOINT_AREA)
+NAV_AREA_OF.update({e: a for e, a in OWNER_ONLY_AREAS.items() if a})
 
 
 def user_access(user):
@@ -5302,6 +5609,20 @@ def can_reach(user, endpoint):
     if area is None:
         return False
     return area in areas
+
+
+def access_covers(actor, target):
+    """Whether `actor` has at least everything `target` has.
+
+    Used where an action hands somebody the keys to another account. A full
+    owner covers everybody; nobody covers a full owner but another one.
+    """
+    a, t = user_access(actor), user_access(target)
+    if "*" in a:
+        return True
+    if "*" in t:
+        return False
+    return t.issubset(a)
 
 
 def owner_required(view):
@@ -14142,7 +14463,7 @@ def collect_hr_actions(conn, today):
            JOIN users ON users.id = leave_requests.user_id WHERE leave_requests.status = 'pending'"""
     ).fetchall():
         add("leave_request", r["id"], r["user_id"],
-            f"{r['n']} — {r['start_date']} to {r['end_date']}", (r["requested_at"] or "")[:10], "/admin/approvals")
+            f"{r['n']} — {r['start_date']} to {r['end_date']}", house_date_iso(r["requested_at"]), "/admin/approvals")
 
     for r in conn.execute(
         """SELECT expenses.*, users.name AS n FROM expenses
@@ -14174,7 +14495,7 @@ def collect_hr_actions(conn, today):
            WHERE performance_reviews.status = 'shared'"""
     ).fetchall():
         add("review_unacknowledged", r["id"], r["user_id"], f"{r['n']} — review of {r['review_date']}",
-            (r["shared_at"] or r["review_date"] or "")[:10], "/admin/hr")
+            house_date_iso(r["shared_at"]) or (r["review_date"] or "")[:10], "/admin/hr")
 
     year_ago = (today - timedelta(days=365)).isoformat()
     for r in conn.execute(
@@ -17860,6 +18181,7 @@ def inject_user():
         "room_amenities": ROOM_AMENITIES, "room_amenity_keys": room_amenity_keys,
         "room_amenity_freetext": room_amenity_freetext,
         "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
+        "access_bathrooms": ACCESS_BATHROOMS, "consent_routes": CONSENT_ROUTES,
         "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
@@ -17871,6 +18193,13 @@ def inject_user():
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
         "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
+        # The nav used to answer that question from its own hand-typed
+        # copies of every area's contents, and the two had drifted: 73
+        # pages did not light up their own menu, 25 of them in Financial.
+        # You opened a page and the sidebar could not tell you where you
+        # were.
+        "current_area": NAV_AREA_OF.get(request.endpoint),
         # Translation, available to every template rather than passed in by
         # each route — a page that forgot it would silently render English.
         "t": t, "lang": current_language(), "languages": translations.LANGUAGES,
@@ -18469,8 +18798,8 @@ def price_changes(conn, *, months=12, today=None, threshold=0.05):
             "name": latest["name"], "unit": latest["unit"], "vendor": vendor,
             "was": round(was, 4), "now": round(now_, 4),
             "pct": round(move * 100, 1),
-            "when": latest["created_at"][:10],
-            "before_when": before["created_at"][:10],
+            "when": house_date_iso(latest["created_at"]),
+            "before_when": house_date_iso(before["created_at"]),
             "up": move > 0,
         })
     out.sort(key=lambda x: -abs(x["pct"]))
@@ -18503,6 +18832,508 @@ def supplier_statement(conn, vendor_name, *, months=12, today=None):
         "outstanding": round(sum(r["amount"] or 0 for r in unpaid), 2),
         "unpaid": len(unpaid),
     }
+
+
+# A starting list, so the first person to open the page has something to walk
+# rather than a blank form and a decision to make. Every line is editable and
+# the house will end up with its own; these are the ones that are the same in
+# every house of this kind.
+DEFAULT_ROOM_STANDARDS = [
+    ("Bed made, linen clean and unmarked", "Bed"),
+    ("No hair anywhere -- bed, bath, floor", "Bathroom"),
+    ("Hot water runs hot, and the shower drains", "Bathroom"),
+    ("Lavatory clean, and it flushes", "Bathroom"),
+    ("Towels, robes and toiletries all there", "Bathroom"),
+    ("Every light works, including the bedsides", "The room"),
+    ("Windows and shutters open and close", "The room"),
+    ("Room smells of nothing", "The room"),
+    ("Heating on and the room is warm", "The room"),
+    ("Nothing of the last guest's left anywhere", "The room"),
+    ("Floor swept and under the bed clear", "The room"),
+    ("Wi-Fi card and the house information out", "The room"),
+]
+
+
+def seed_room_standards(conn):
+    """Put the starting list in, once, and never again.
+
+    Matched on the WORDING rather than on a count, so a house that has
+    deleted a line it does not use never has it put back -- and one that has
+    reworded every line does not get twelve duplicates.
+    """
+    have = {r["what"] for r in conn.execute(
+        "SELECT what FROM room_standards").fetchall()}
+    if have:
+        return 0
+    now = datetime.now(timezone.utc).isoformat()
+    for i, (what, area) in enumerate(DEFAULT_ROOM_STANDARDS):
+        conn.execute(
+            "INSERT INTO room_standards (what, area, sort_order, active, created_at) "
+            "VALUES (?, ?, ?, 1, ?)", (what, area, i, now))
+    return len(DEFAULT_ROOM_STANDARDS)
+
+
+def room_standards(conn):
+    """The list a room is walked against, in the order somebody walks it."""
+    return conn.execute(
+        "SELECT * FROM room_standards WHERE active = 1 "
+        "ORDER BY sort_order, COALESCE(area, ''), id").fetchall()
+
+
+def arrivals_needing_check(conn, *, days=2, today=None):
+    """Rooms with somebody arriving, and whether anybody has walked them.
+
+    Three states, and the middle one is the point: passed, FAILED, and
+    NOBODY HAS LOOKED. A room nobody has checked is not a room that is fine,
+    and a page that leaves it blank says it is.
+    """
+    today = today or house_today()
+    until = (today + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.id AS booking_id, bookings.reference_code,
+                  bookings.guest_name, bookings.arrival_date,
+                  bookings.room_id, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date >= ?
+              AND bookings.arrival_date <= ?
+            ORDER BY bookings.arrival_date, rooms.name""",
+        (today.isoformat(), until)).fetchall()
+    out = []
+    for b in rows:
+        chk = conn.execute(
+            """SELECT room_checks.*, users.name AS checked_by
+                 FROM room_checks
+                 LEFT JOIN users ON users.id = room_checks.checked_by_user_id
+                WHERE room_checks.booking_id = ?
+                -- id as the tiebreak, not just the timestamp. Two walks in
+                -- the same second -- somebody fixing a bulb and going
+                -- straight back round -- otherwise leave SQLite to pick, and
+                -- the page can show the older one and report faults that
+                -- were dealt with five minutes ago.
+                ORDER BY room_checks.checked_at DESC, room_checks.id DESC
+                LIMIT 1""",
+            (b["booking_id"],)).fetchone()
+        failed = []
+        if chk:
+            failed = conn.execute(
+                "SELECT * FROM room_check_items WHERE check_id = ? AND passed = 0",
+                (chk["id"],)).fetchall()
+        out.append({
+            "booking": b,
+            "check": chk,
+            "failed": failed,
+            # Not "ok". A room nobody has walked is UNCHECKED, and the word
+            # matters: blank on a page reads as nothing to worry about.
+            "state": ("unchecked" if not chk
+                      else ("failed" if failed else "passed")),
+        })
+    return out
+
+
+def record_room_check(conn, *, room_id, booking_id, for_date, user_id,
+                      results, note=None):
+    """Write one walk of one room. Returns (check_id, issues_raised).
+
+    `results` is a list of (standard_id, what, passed, note). Anything that
+    failed is ALSO raised as a room issue, because the person who can fix a
+    dripping tap does not read a quality log -- and a fault recorded but not
+    reported is the failure every abandoned checklist has in common.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """INSERT INTO room_checks (room_id, booking_id, for_date,
+                   checked_by_user_id, checked_at, note)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (room_id, booking_id, for_date.isoformat(), user_id, now, note))
+    check_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+    raised = 0
+    for standard_id, what, passed, item_note in results:
+        issue_id = None
+        if not passed:
+            conn.execute(
+                """INSERT INTO room_issues (room_id, reported_by_user_id, title,
+                           description, status, created_at)
+                   VALUES (?, ?, ?, ?, 'open', ?)""",
+                (room_id, user_id, what[:120],
+                 (item_note or "").strip() or "Found on the room check before "
+                 "an arrival.", now))
+            issue_id = conn.execute(
+                "SELECT last_insert_rowid() AS id").fetchone()["id"]
+            raised += 1
+        conn.execute(
+            """INSERT INTO room_check_items (check_id, standard_id, what,
+                       passed, note, room_issue_id)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (check_id, standard_id, what, 1 if passed else 0,
+             (item_note or "").strip() or None, issue_id))
+    return check_id, raised
+
+
+CONSENT_ROUTES = {
+    "form": "Ticked it on the form",
+    "email": "Said yes by email",
+    "spoken": "Said yes in person or on the telephone",
+}
+
+
+def publishable_reviews(conn):
+    """Featured reviews the house is actually allowed to publish, and the rest.
+
+    Three states, and the middle one is the reason this exists: asked and
+    said yes, asked and said no, and NEVER ASKED. Never-asked is not a no
+    and it is not a yes -- it is a promise on the feedback form that nobody
+    has kept yet, and it has to read differently from both.
+    """
+    out = {"ready": [], "refused": [], "unasked": []}
+    for table, label in (("guest_feedback", "stay"),
+                         ("workshop_feedback", "atelier")):
+        rows = conn.execute(
+            f"""SELECT id, guest_name, comment, rating, publish_consent,
+                       publish_consent_how, featured
+                  FROM {table}
+                 WHERE featured = 1""").fetchall()
+        for r in rows:
+            entry = {"row": r, "kind": label, "table": table}
+            if r["publish_consent"] == 1:
+                out["ready"].append(entry)
+            elif r["publish_consent"] == 0:
+                out["refused"].append(entry)
+            else:
+                out["unasked"].append(entry)
+    return out
+
+
+AGREEMENT_DECISIONS = {
+    "keep": "Keeping it",
+    "renegotiate": "Renegotiating",
+    "leave": "Giving notice",
+}
+
+
+def agreement_state(row, today):
+    """Where one agreement stands, from its dates alone.
+
+    Five states, and the two that matter are the ones a renewal date alone
+    cannot tell apart: notice is still possible, and notice is no longer
+    possible. An agreement in the second has already renewed. Saying "due
+    soon" about it is worse than saying nothing, because it reads as a job
+    somebody can still do.
+    """
+    renews = parse_date(row["renews_on"])
+    if not renews:
+        return {"state": "undated", "deadline": None, "renews": None,
+                "days_left": None}
+    deadline = renews - timedelta(days=max(row["notice_days"] or 0, 0))
+
+    if row["decided_at"]:
+        state = "decided"
+    elif renews < today:
+        # The renewal itself has been and gone. For an auto-renewing
+        # agreement that means it is running on and its dates need
+        # rewriting; for a fixed one it has simply ended.
+        state = "rolled_on" if row["auto_renews"] else "ended"
+    elif deadline < today:
+        # Past the last day, before the renewal. Locked in.
+        state = "too_late" if row["auto_renews"] else "running_out"
+    else:
+        state = "open"
+    return {
+        "state": state,
+        "deadline": deadline,
+        "renews": renews,
+        "days_left": (deadline - today).days,
+    }
+
+
+def supplier_agreements(conn, today=None):
+    """Every live agreement, soonest DEADLINE first.
+
+    Ordered by the last day notice can be given rather than by the renewal
+    date, because that is the day a decision has to exist by. The two are
+    months apart on exactly the agreements that cost the most to get wrong.
+    Undated last: an agreement nobody has dated is not urgent, and is not
+    fine either -- it sits at the bottom saying so.
+    """
+    today = today or house_today()
+    rows = conn.execute(
+        """SELECT supplier_agreements.*, vendors.name AS vendor_name
+             FROM supplier_agreements
+             LEFT JOIN vendors ON vendors.id = supplier_agreements.vendor_id
+            WHERE supplier_agreements.active = 1""").fetchall()
+    out = [dict(agreement_state(r, today), row=r) for r in rows]
+    out.sort(key=lambda x: (x["deadline"] is None,
+                            x["deadline"] or today, x["row"]["what"]))
+    return out
+
+
+def agreements_to_decide(conn, *, within_days=120, today=None):
+    """The ones somebody has to make a decision about, and can still act on.
+
+    Deliberately excludes the ones it is too late for. Those are a fact
+    about the year ahead rather than a job, and a list that keeps asking
+    for a cancellation nobody can make any more is a list people stop
+    opening.
+    """
+    today = today or house_today()
+    return [a for a in supplier_agreements(conn, today)
+            if a["state"] == "open" and a["days_left"] is not None
+            and a["days_left"] <= within_days]
+
+
+WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+
+
+def rota_template_rows(conn, template_id):
+    """One template's lines, in the order a week runs."""
+    return conn.execute(
+        """SELECT rota_template_shifts.*, users.name AS employee_name,
+                  users.status AS employee_status
+             FROM rota_template_shifts
+             JOIN users ON users.id = rota_template_shifts.user_id
+            WHERE rota_template_shifts.template_id = ?
+            ORDER BY rota_template_shifts.weekday,
+                     COALESCE(rota_template_shifts.start_time, ''),
+                     users.name""",
+        (template_id,)).fetchall()
+
+
+def rota_templates(conn):
+    """Every template with how many lines it carries."""
+    rows = conn.execute(
+        """SELECT rota_templates.*,
+                  (SELECT COUNT(*) FROM rota_template_shifts
+                    WHERE template_id = rota_templates.id) AS lines,
+                  (SELECT COUNT(*) FROM rota_template_shifts
+                     JOIN users ON users.id = rota_template_shifts.user_id
+                    WHERE template_id = rota_templates.id
+                      AND users.status != 'active') AS gone
+             FROM rota_templates
+            WHERE active = 1
+            ORDER BY rota_templates.name""").fetchall()
+    return [{
+        "row": r, "lines": r["lines"],
+        # Somebody who has left is still in the template, and stamping it
+        # would put a name on the rota that nobody can ring. Said here
+        # rather than discovered on the Monday.
+        "gone": r["gone"],
+    } for r in rows]
+
+
+def apply_rota_template(conn, template_id, week_start):
+    """Stamp a template onto a week. Returns (placed, skipped).
+
+    `skipped` is the (label, reason) list bulk_message wants. Two reasons,
+    and both matter more than the count of what worked:
+
+      - ON APPROVED LEAVE. Rostering somebody on the Tuesday they are in
+        Spain gives you a rota that looks complete and is not, and the hole
+        only shows up when nobody arrives. Skipped, the day reads as
+        uncovered -- which it is -- and cover_gaps calls for somebody.
+      - ALREADY ON THE ROTA. Stamping over a week somebody has hand-built
+        must not double every line or overwrite the fixes.
+    """
+    rows = rota_template_rows(conn, template_id)
+    now = datetime.now(timezone.utc).isoformat()
+    placed, skipped = 0, []
+
+    for r in rows:
+        day = week_start + timedelta(days=r["weekday"])
+        label = f"{r['employee_name']}, {WEEKDAY_NAMES[r['weekday']]}"
+
+        if r["employee_status"] != "active":
+            skipped.append((label, "no longer works here"))
+            continue
+
+        on_leave = conn.execute(
+            """SELECT 1 FROM leave_requests
+                WHERE user_id = ? AND status = 'approved'
+                  AND start_date <= ? AND end_date >= ?
+                LIMIT 1""",
+            (r["user_id"], day.isoformat(), day.isoformat())).fetchone()
+        if on_leave:
+            skipped.append((label, "on approved leave"))
+            continue
+
+        exists = conn.execute(
+            """SELECT 1 FROM shifts
+                WHERE user_id = ? AND shift_date = ?
+                  AND COALESCE(start_time, '') = COALESCE(?, '')
+                  AND COALESCE(end_time, '') = COALESCE(?, '')
+                LIMIT 1""",
+            (r["user_id"], day.isoformat(), r["start_time"],
+             r["end_time"])).fetchone()
+        if exists:
+            skipped.append((label, "already on the rota"))
+            continue
+
+        conn.execute(
+            """INSERT INTO shifts (user_id, shift_date, start_time, end_time,
+                       role_note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (r["user_id"], day.isoformat(), r["start_time"], r["end_time"],
+             r["role_note"], now))
+        placed += 1
+
+    # The audit line is the ROUTE's job, not this function's: log_audit reads
+    # the current user out of the request, so putting it here would make this
+    # callable only from inside one, and the whole point of the work living
+    # out here is that it can be exercised on its own.
+    return placed, skipped
+
+
+def room_access(conn):
+    """Every room with what it asks of somebody, easiest first.
+
+    No score and no "accessible" flag. A room is not accessible or not; a
+    particular person either can or cannot manage this particular staircase,
+    and the only one who knows is them. What this can do is put the facts in
+    an order and say which are missing.
+    """
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    out = []
+    for r in rooms:
+        steps = r["access_steps"]
+        # UNKNOWN is its own answer and sorts last. A room nobody has
+        # measured must not sort alongside the ground-floor ones and read
+        # as easy, which is the mistake a COALESCE(steps, 0) would make.
+        known = steps is not None
+        out.append({
+            "room": r,
+            "steps": steps,
+            "known": known,
+            "car_metres": r["access_car_metres"],
+            "bathroom": ACCESS_BATHROOMS.get(r["access_bathroom"] or ""),
+            "notes": (r["access_notes"] or "").strip() or None,
+            # What is missing, said plainly, because a blank column reads as
+            # "nothing to worry about" and it means "nobody has looked".
+            "unmeasured": [label for label, value in (
+                ("steps to it", steps),
+                ("how far a car can get", r["access_car_metres"]),
+                ("the bathroom", r["access_bathroom"]),
+            ) if value is None or value == ""],
+        })
+    out.sort(key=lambda x: (not x["known"], x["steps"] if x["known"] else 0,
+                            x["room"]["name"]))
+    return out
+
+
+def guests_with_access_needs(conn):
+    """Guests who have told us what they need, most recently told first."""
+    return conn.execute(
+        """SELECT * FROM guests
+            WHERE access_needs IS NOT NULL AND TRIM(access_needs) != ''
+            ORDER BY COALESCE(access_needs_updated_at, '') DESC, name""").fetchall()
+
+
+def access_to_check(conn, *, days=90, today=None):
+    """Bookings whose guest has told us something and whose room has steps.
+
+    It does not decide. It cannot know whether eleven steps is too many for
+    a particular person -- only they know that. What it knows is that
+    somebody said something about what they need and has been put in a room
+    that asks something of them, and that those two facts have not been read
+    side by side by a person.
+
+    A room nobody has measured counts too, and says so: "we do not know what
+    this room asks" is a reason to check, not a reason to stay quiet.
+    """
+    today = today or house_today()
+    horizon = (today + timedelta(days=days)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.id, bookings.reference_code, bookings.arrival_date,
+                  bookings.departure_date, bookings.guest_name,
+                  bookings.room_id, rooms.name AS room_name,
+                  rooms.access_steps, rooms.access_notes,
+                  guests.id AS guest_id, guests.access_needs
+             FROM bookings
+             -- Matched by the profile link where there is one and by email
+             -- where there is not. A booking taken before the profile was
+             -- made carries the same person's needs, and dropping it because
+             -- a foreign key had not caught up yet is the failure this whole
+             -- page exists to prevent.
+             JOIN guests ON guests.id = bookings.linked_guest_id
+                         OR (bookings.linked_guest_id IS NULL
+                             AND guests.email IS NOT NULL
+                             AND TRIM(guests.email) != ''
+                             AND LOWER(TRIM(guests.email))
+                                 = LOWER(TRIM(COALESCE(bookings.guest_email, ''))))
+             -- Not a LEFT JOIN: bookings.room_id is NOT NULL, so there is no
+             -- roomless booking for one to preserve.
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status IN ('confirmed', 'pending')
+              AND bookings.arrival_date >= ?
+              AND bookings.arrival_date <= ?
+              AND guests.access_needs IS NOT NULL
+              AND TRIM(guests.access_needs) != ''
+            ORDER BY bookings.arrival_date""",
+        (today.isoformat(), horizon)).fetchall()
+    out = []
+    for b in rows:
+        steps = b["access_steps"]
+        # No "not allocated yet" branch: bookings.room_id is NOT NULL, so
+        # every booking has a room from the moment it exists. I wrote one
+        # anyway, and the fixture meant to exercise it would not insert.
+        if steps is None:
+            why = "nobody has measured what this room asks"
+        elif steps > 0:
+            why = f"{steps} step{'' if steps == 1 else 's'} to the room"
+        else:
+            continue                     # step-free, and measured. Nothing to raise.
+        out.append({"booking": b, "why": why, "steps": steps})
+    return out
+
+
+def purge_stale_access_needs(conn, today=None):
+    """Forget what a guest told us once they have stopped being a guest.
+
+    Covers what the HOUSE wrote on a profile and what the GUEST keeps on it,
+    because a guest reading the notice cannot tell the two apart and should
+    not have to.
+
+    Health-adjacent data does not get to sit here for ever because it is
+    convenient. Cleared when a guest has had no stay and has nothing booked
+    for twelve months -- counted from their LAST STAY rather than from when
+    they told us, because somebody who came back in March has not stopped
+    needing it.
+
+    What was deleted is never logged. An audit line naming the thing it just
+    removed would defeat the point, exactly as it would for a dietary note.
+    """
+    today = today or house_today()
+    cutoff = _add_months(today, -ACCESS_NEEDS_RETENTION_MONTHS).isoformat()
+    n = conn.execute(
+        """UPDATE guests
+              SET access_needs = NULL, access_needs_updated_at = NULL,
+                  -- What the guest chose to keep goes with it, and on the
+                  -- same window. The notice promises both.
+                  dietary_notes = NULL, usual_arrival_time = NULL,
+                  own_notes_updated_at = NULL
+            -- Any of the three, whoever wrote it. guests.dietary_notes has
+            -- existed since the profile did and NOTHING has ever cleared it:
+            -- purge_health_notes clears the copies on a restaurant booking
+            -- and an atelier booking, and the notice says dietary notes go
+            -- once the stay is over. A profile note is a dietary note.
+            WHERE ((access_needs IS NOT NULL AND TRIM(access_needs) != '')
+                   OR (dietary_notes IS NOT NULL AND TRIM(dietary_notes) != '')
+                   OR own_notes_updated_at IS NOT NULL)
+              AND NOT EXISTS (
+                    SELECT 1 FROM bookings
+                     WHERE (bookings.linked_guest_id = guests.id
+                            OR (bookings.linked_guest_id IS NULL
+                                AND guests.email IS NOT NULL
+                                AND TRIM(guests.email) != ''
+                                AND LOWER(TRIM(guests.email))
+                                    = LOWER(TRIM(COALESCE(bookings.guest_email, '')))))
+                       AND bookings.status != 'cancelled'
+                       AND COALESCE(bookings.departure_date,
+                                    bookings.arrival_date) >= ?)""",
+        (cutoff,)).rowcount
+    return {"guest_profile_notes": n}
 
 
 def fridge_log(conn, *, days=14, today=None):
@@ -19141,7 +19972,7 @@ def owner_home_queue(conn):
             "kind": "Time off", "who": l["who"], "title": l["who"],
             "detail": f"{l['start_date']} – {l['end_date']}",
             "amount": f"{days} day{'s' if days != 1 else ''}",
-            "age": (l["requested_at"] or "")[:10],
+            "age": house_date_iso(l["requested_at"]),
             "tone": "people", "ok_label": "Approve", "no_label": "Decline",
             "bulk_eligible": False, "endpoint": None,
         })
@@ -19791,7 +20622,8 @@ def staff_dashboard():
             "ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         last_backup_at = last_backup["created_at"] if last_backup else None
-        backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
+        backup_stale = (not last_backup_at) or (
+            parse_date(house_date_iso(last_backup_at)) <= today - timedelta(days=30))
         current_month_financials = financial_month_summary(
             conn, today.replace(day=1),
             date(today.year + 1, 1, 1) if today.month == 12 else date(today.year, today.month + 1, 1),
@@ -19857,7 +20689,7 @@ def staff_dashboard():
                 "SELECT name, next_service_due FROM vehicles WHERE next_service_due IS NOT NULL AND next_service_due <= ? ORDER BY next_service_due",
                 (soon,),
             ).fetchall()]
-            + [{"title": c["vehicle_name"], "detail": f"out since {c['checked_out_at'][:10]} with {c['user_name'] or 'unknown'}"}
+            + [{"title": c["vehicle_name"], "detail": f"out since {house_date_iso(c['checked_out_at'])} with {c['user_name'] or 'unknown'}"}
                for c in overdue_vehicle_checkouts(conn)]
         )
         breakfast_low_stock = conn.execute(
@@ -20610,6 +21442,23 @@ def regenerate_invite(user_id):
     if not person:
         conn.close()
         abort(404)
+    # This overwrites their password and hands the caller a link that sets a
+    # new one, so it is a way to become that person. The role check above
+    # stops an owner being taken over; it does nothing about an employee with
+    # a WIDER PRESET than the caller's -- somebody with `team` alone could
+    # reset the manager's sign-in and claim the account.
+    #
+    # Not made owner-only, which would stop whoever runs the rota re-inviting
+    # a housekeeper who has lost their link. Refused only upwards.
+    if not access_covers(current_user(), person):
+        conn.close()
+        flash(f"{person['name']} can reach more of the app than you can, so "
+              "resetting their sign-in is the owner's to do.", "error")
+        # Back to the directory, NOT to their profile. A profile is readable
+        # only by the owner or the person themselves, so redirecting there
+        # sends the refused caller to a 403 and the explanation never renders
+        # -- an unexplained refusal, which is the thing the message is for.
+        return redirect(url_for("directory"))
     was_claimed = bool(person["account_claimed"])
     new_token = secrets.token_urlsafe(24)
     conn.execute(
@@ -23228,7 +24077,10 @@ def pos_receipt_email_context(conn, bill):
 
     return {
         "guest_name": guest_name.strip() or "there",
-        "service_date": order["service_date"] or (order["opened_at"] or "")[:10],
+        # The restaurant's day ends at 05:00, so an order opened at half
+        # past one belongs to the night before. Truncating UTC gets that
+        # wrong in the other direction as well.
+        "service_date": order["service_date"] or house_date_iso(order["opened_at"]),
         "table": order["table_label"] or "",
         "items": items,
         "totals": "\n".join(totals),
@@ -24031,10 +24883,65 @@ PALETTE_PAGES = [
     ("Buying", "management_buying",
      "supplier short delivery price rise increase statement reconcile "
      "merchant invoice dearer"),
+    ("Room checks", "room_checks_page",
+     "room check standard quality walk inspection before arrival turnaround "
+     "housekeeping ready"),
+    ("What we are tied into", "supplier_agreements_page",
+     "agreement contract renewal notice period supplier subscription "
+     "auto renew cancel lock in term"),
+    ("Standard weeks", "rota_templates_page",
+     "rota template standard week pattern stamp shifts repeat roster"),
+    ("What the house can manage", "room_access_page",
+     "access accessible mobility steps stairs wheelchair lift disabled "
+     "step free walking guest needs"),
     ("Fridge temperatures", "kitchen_fridges",
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("What they cannot eat", "kitchen_dietary",
+     "dietary allergy allergen intolerance medical notes kitchen sheet "
+     "gluten nut vegetarian vegan service"),
+    ("Year on year", "management_year_on_year",
+     "year on year comparison last year occupancy adr revpar growth "
+     "better worse same period"),
+    ("Booking pace", "management_pace",
+     "pace on the books ahead forecast pickup same point last year"),
+    ("Seasonality", "management_seasonality",
+     "season month weekday busiest quietest when is the season pattern"),
+    ("How far ahead, and how long", "management_booking_shape",
+     "lead time length of stay booking window median nights ahead minimum stay"),
+    ("What a booking costs to get", "management_channels",
+     "channel commission ota agent direct booking.com airbnb expedia cost"),
+    ("What the extras earn", "management_extras_performance",
+     "extras attach rate upsell add ons champagne transfers conversion"),
+    ("What a night costs", "management_night_margin",
+     "cost per night sold labour expenses margin per room night"),
+    ("Which rooms earn", "management_room_league",
+     "room league revpar occupancy adr best worst room performance"),
+    ("Atelier margins", "management_workshop_margins",
+     "workshop atelier margin materials cost profit session"),
+    ("Deposits held", "management_deposits_held",
+     "deposit damage held return refund owed guest money outstanding"),
+    ("Breakage recovery", "management_breakage_recovery",
+     "breakage broken damage charged written off recovered replacement"),
+    ("Supplier prices", "management_supplier_prices",
+     "supplier price rise increase cost inflation stock ingredient"),
+    ("Energy per night", "management_energy",
+     "energy meter electricity gas water consumption per night utility"),
+    ("Same-day changeovers", "admin_turnarounds",
+     "changeover turnaround same day housekeeping cleaning out and in"),
+    ("Arrivals missing detail", "admin_arrivals_incomplete",
+     "arrival time missing phone email incomplete booking prepare"),
+    ("No-shows", "admin_no_shows",
+     "no show did not turn up restaurant table missed cover deposit"),
+    ("Table utilisation", "admin_table_utilisation",
+     "covers seats full restaurant capacity utilisation how busy"),
+    ("Wastage", "admin_wastage_rate",
+     "wastage waste share thrown away stock bin spoilage percentage"),
+    ("Workload", "admin_workload",
+     "workload shifts per person balance fair carrying overloaded rota"),
+    ("Retention", "admin_retention",
+     "retention privacy purge delete gdpr rgpd notice promise data"),
     ("What gets thrown away", "kitchen_waste",
      "waste wastage thrown away binned spoiled food cost"),
     ("How long food took", "kitchen_service_times",
@@ -27002,13 +27909,44 @@ def guest_account(token):
     # this flow they could not work around, since the link IS the way in.
     restaurant_settings = get_restaurant_settings(conn)
     balance = guest_account_balance(conn, data)
+    # What they keep on their own record. None when this address has no
+    # profile, in which case the form does not render -- there is nothing to
+    # write to, and a form that silently saves nowhere is worse than none.
+    own = guest_own_record(conn, session_row["email"])
     conn.close()
     return render_template(
         "guest_account.html", email=session_row["email"], token=token,
         data=data, today=today, extras=extras, balance=balance,
-        can_pay_online=stripe_enabled(),
+        can_pay_online=stripe_enabled(), own=own,
         restaurant_open=bool(restaurant_settings and restaurant_settings["enabled"]),
         expires=session_row["expires_at"])
+
+
+@app.route("/my-account/<token>/details", methods=["POST"])
+def save_guest_details(token):
+    """Let a guest keep their own details, and empty them.
+
+    Emptying is half the feature. A form that can only ever add is data
+    somebody holds about you; one you can clear is a record you keep.
+    """
+    conn = get_db()
+    session_row = _valid_guest_session(conn, token)
+    if not session_row:
+        conn.close()
+        return render_template("guest_account_expired.html"), 404
+    saved = save_guest_own_record(
+        conn, session_row["email"],
+        dietary=request.form.get("dietary_notes"),
+        access=request.form.get("access_needs"),
+        arrival=request.form.get("usual_arrival_time"),
+        phone=request.form.get("phone"))
+    conn.commit()
+    conn.close()
+    flash("Kept. We will offer these back next time." if saved
+          else "There is nothing to save this against yet \u2014 it appears "
+               "once you have stayed.",
+          "success" if saved else "error")
+    return redirect(url_for("guest_account", token=token))
 
 
 @app.route("/booking/<manage_token>/statement/email", methods=["POST"])
@@ -27378,6 +28316,7 @@ def new_guest():
         preferences = request.form.get("preferences", "").strip()
         vip = 1 if request.form.get("vip") else 0
         notes = request.form.get("notes", "").strip()
+        access_needs = request.form.get("access_needs", "").strip()[:600]
 
         if not name:
             flash("Guest name is required.", "error")
@@ -27407,12 +28346,16 @@ def new_guest():
                 "guest_form.html", guest=None, duplicates=maybe,
                 typed={"name": name, "email": email, "phone": phone,
                        "dietary_notes": dietary_notes, "preferences": preferences,
-                       "vip": vip, "notes": notes})
+                       "vip": vip, "notes": notes,
+                       "access_needs": access_needs})
         conn.execute(
-            """INSERT INTO guests (name, email, phone, dietary_notes, preferences, vip, notes, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO guests (name, email, phone, dietary_notes, preferences,
+                                  vip, notes, access_needs,
+                                  access_needs_updated_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (name, email, phone or None, dietary_notes or None,
-             preferences or None, vip, notes or None,
+             preferences or None, vip, notes or None, access_needs or None,
+             datetime.now(timezone.utc).isoformat() if access_needs else None,
              datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -27683,7 +28626,7 @@ def guest_detail(guest_id):
                           hint="gross, everything included"),
             overview_cell("Still owed", euro(record["owed"]),
                           alert=record["owed"] > 0),
-            overview_cell("Known since", (record["first_seen"] or "\u2014")[:10]),
+            overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
         ]
     return render_template("guest_detail.html", record=record, overview=overview,
                            notes=notes, duplicates=duplicates,
@@ -27761,6 +28704,7 @@ def edit_guest(guest_id):
         preferences = request.form.get("preferences", "").strip()
         vip = 1 if request.form.get("vip") else 0
         notes = request.form.get("notes", "").strip()
+        access_needs = request.form.get("access_needs", "").strip()[:600]
 
         if email and conn.execute(
             "SELECT id FROM guests WHERE email = ? COLLATE NOCASE AND id != ?", (email, guest_id)
@@ -27770,9 +28714,16 @@ def edit_guest(guest_id):
             return redirect(url_for("edit_guest", guest_id=guest_id))
         conn.execute(
             """UPDATE guests SET name=?, email=?, phone=?, dietary_notes=?,
-               preferences=?, vip=?, notes=? WHERE id=?""",
+               preferences=?, vip=?, notes=?, access_needs=?,
+               -- Stamped only when there is something to stamp, and cleared
+               -- with it. A date left behind on an emptied field is a record
+               -- that somebody told us something, which is the fact we said
+               -- we would stop holding.
+               access_needs_updated_at=? WHERE id=?""",
             (name, email, phone or None, dietary_notes or None,
-             preferences or None, vip, notes or None, guest_id),
+             preferences or None, vip, notes or None, access_needs or None,
+             datetime.now(timezone.utc).isoformat() if access_needs else None,
+             guest_id),
         )
         conn.commit()
         conn.close()
@@ -28388,14 +29339,31 @@ def book_rooms():
         """SELECT guest_feedback.*, rooms.name AS room_name FROM guest_feedback
            LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
            LEFT JOIN rooms ON rooms.id = bookings.room_id
+           -- Consent as well as the flag, and HERE rather than on the
+           -- admin page. A page can be got round and the next person to
+           -- add a review carousel would write this query again; wiring it
+           -- into the query that builds the public page is what makes
+           -- "nothing is published without asking you first" true even when
+           -- somebody ticks the wrong row.
            WHERE guest_feedback.featured = 1 AND guest_feedback.rating IS NOT NULL
+             AND guest_feedback.publish_consent = 1
            ORDER BY guest_feedback.rating DESC, guest_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
+    # Computed before the connection closes. Only when nobody has searched:
+    # somebody who has just been told their dates are taken does not want a
+    # second list of dates that are not theirs, they want to change one of
+    # their own.
+    next_free = next_free_nights(conn) if not searched else []
+    # A cached reading or None. Never a network call from a page render: a
+    # render that can block on somebody else's network is one that eventually
+    # does, and this is the booking page.
+    weather = weather_now(conn)
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
-        nothing_available=nothing_available,
+        nothing_available=nothing_available, next_free=next_free,
+        weather=weather,
         prefill_name=request.args.get("name", ""), prefill_email=request.args.get("email", ""),
         prefill_phone=request.args.get("phone", ""), prefill_party_size=request.args.get("party_size", ""),
         featured_reviews=featured_reviews,
@@ -28777,13 +29745,16 @@ def book_room(room_id):
     gallery_photos = conn.execute(
         "SELECT * FROM room_photos WHERE room_id = ? ORDER BY sort_order, id", (room_id,)
     ).fetchall()
+    # None means the deposit genuinely depends on the booking, and the
+    # page says so rather than quoting a figure that changes at checkout.
+    deposit_shown = deposit_percent_to_show(conn)
 
     if request.method == "POST":
         if rate_limited(conn, "book_room", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -28850,7 +29821,7 @@ def book_room(room_id):
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
 
         nights = (departure - arrival).days
         chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
@@ -28970,7 +29941,7 @@ def book_room(room_id):
                 flash(f"Payment setup failed ({e}). Please try again.", "error")
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
                 conn.close()
-                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, **book_room_prefill(request.form))
+                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
             conn.commit()
             conn.close()
             # Hold what they typed for the walk to Stripe and back.
@@ -29057,6 +30028,7 @@ def book_room(room_id):
         prefill_phone=prefill_phone, prefill_party_size=prefill_party_size, gallery_photos=gallery_photos,
         prefill_requests=prefill_requests, prefill_promo=prefill_promo,
         prefill_extras=prefill_extras, initial_quote=initial_quote,
+        deposit_shown=deposit_shown,
     )
 
 
@@ -29871,10 +30843,15 @@ def manage_booking(manage_token):
     # is wanted by the template and the connection does not survive it.
     part_payment_allowed = room_payment_setting(
         conn, "room_part_payment_allowed", cast=int) == 1
+    # Empty unless staff have said these bookings are one arrival, so the
+    # panel simply does not render for the ordinary single booking. Read
+    # before the close, like everything else on this page.
+    group = booking_group(conn, booking["id"])
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        group=group,
         portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
         restaurant_settings=restaurant_settings, dinner_min_date=dinner_min_date, dinner_max_date=dinner_max_date,
@@ -29927,9 +30904,17 @@ def guest_feedback(token):
             flash("Choose a rating from 1 to 5.", "error")
         else:
             try:
+                # Opt-in, and unticked. A pre-ticked box is not consent,
+                # and a form that promises to ask first has to actually ask.
+                may_publish = 1 if request.form.get("publish_consent") else None
                 conn.execute(
-                    "INSERT INTO guest_feedback (booking_id, guest_name, rating, comment, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO guest_feedback (booking_id, guest_name, rating, comment, "
+                    "publish_consent, publish_consent_at, publish_consent_how, submitted_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (booking["id"], booking["guest_name"], rating, comment or None,
+                     may_publish,
+                     datetime.now(timezone.utc).isoformat() if may_publish else None,
+                     "form" if may_publish else None,
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
@@ -29990,9 +30975,15 @@ def workshop_feedback(token):
             flash("Choose a rating from 1 to 5.", "error")
         else:
             try:
+                may_publish = 1 if request.form.get("publish_consent") else None
                 conn.execute(
-                    "INSERT INTO workshop_feedback (workshop_booking_id, guest_name, rating, comment, submitted_at) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO workshop_feedback (workshop_booking_id, guest_name, rating, "
+                    "comment, publish_consent, publish_consent_at, publish_consent_how, "
+                    "submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (booking["id"], booking["guest_name"], rating, comment or None,
+                     may_publish,
+                     datetime.now(timezone.utc).isoformat() if may_publish else None,
+                     "form" if may_publish else None,
                      datetime.now(timezone.utc).isoformat()),
                 )
                 conn.commit()
@@ -30124,11 +31115,10 @@ def press():
     return render_template("press.html")
 
 
-# The family behind it. The nav has linked here since the last handover,
-# guarded by `'story' in url_map` so it fell back to the restoration page
-# rather than 500 — which is the quiet kind of broken: the link works, it
-# just never goes where it says. The house's own story is the reason most
-# people arrive at the site at all, so it gets an address.
+# The family behind the house, which the footer has been linking to since the
+# designer wrote it -- at a page that did not exist, so the link quietly went
+# to the restoration page instead. Self-contained, like /press: no route data,
+# so there is nothing to get wrong here except leaving it unbuilt.
 @app.route("/story")
 def story():
     return render_template("story.html")
@@ -30921,6 +31911,299 @@ def resolve_deposit_percent(conn, category, date_iso, party_size, default_percen
         if score > best_score:
             best_score, best = score, rule
     return best["deposit_percent"] if best else (default_percent or 0)
+
+
+# How soon is too soon to advertise. A page leading with tonight reads as an
+# empty house, and for a guest who has to fly it is not a stay they could
+# reach in any case.
+NEXT_FREE_LEAD_DAYS = 3
+NEXT_FREE_HORIZON_DAYS = 120
+
+
+def guest_own_record(conn, email):
+    """What this address keeps on file, or None.
+
+    Keyed on the email because that is what a guest has: they do not have a
+    guest id, and asking them to quote one is asking them to be a record.
+    """
+    e = (email or "").strip().lower()
+    if not e:
+        return None
+    return conn.execute(
+        """SELECT id, name, email, phone, dietary_notes, access_needs,
+                  usual_arrival_time, own_notes_updated_at
+             FROM guests WHERE LOWER(TRIM(email)) = ?
+            ORDER BY id LIMIT 1""", (e,)).fetchone()
+
+
+def save_guest_own_record(conn, email, *, dietary=None, access=None,
+                          arrival=None, phone=None):
+    """Write what the guest asked us to keep. Returns True if there was a row.
+
+    Emptying a field empties it. That is the difference between a record you
+    keep and data somebody holds about you, and a form that can only ever add
+    is the second kind.
+    """
+    row = guest_own_record(conn, email)
+    if not row:
+        return False
+    dietary = (dietary or "").strip()[:600] or None
+    access = (access or "").strip()[:600] or None
+    arrival = (arrival or "").strip()[:20] or None
+    phone = (phone or "").strip()[:40] or None
+    anything = any((dietary, access, arrival, phone))
+    conn.execute(
+        """UPDATE guests
+              SET dietary_notes = ?, access_needs = ?, usual_arrival_time = ?,
+                  phone = COALESCE(?, phone),
+                  own_notes_updated_at = ?,
+                  -- Stamped together, so the retention pass treats what the
+                  -- guest keeps exactly as it treats what the house wrote.
+                  access_needs_updated_at = ?
+            WHERE id = ?""",
+        (dietary, access, arrival, phone,
+         datetime.now(timezone.utc).isoformat() if anything else None,
+         datetime.now(timezone.utc).isoformat() if access else None,
+         row["id"]))
+    return True
+
+
+def booking_group(conn, booking_id):
+    """Every booking travelling with this one, this one included.
+
+    Returns [] when it is not in a group, so a page can ask without first
+    asking whether to ask.
+    """
+    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not row["group_ref"]:
+        return []
+    return conn.execute(
+        """SELECT bookings.id, bookings.reference_code, bookings.guest_name,
+                  bookings.arrival_date, bookings.departure_date,
+                  bookings.party_size, bookings.status, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.group_ref = ?
+              AND bookings.status IN ('pending', 'confirmed')
+            ORDER BY rooms.name""", (row["group_ref"],)).fetchall()
+
+
+def join_booking_group(conn, booking_id, other_id):
+    """Put two bookings in one group. Returns (ok, why not).
+
+    Joins rather than overwrites: linking a third booking to one that is
+    already in a group puts it in THAT group, instead of making a second
+    group of two and quietly orphaning the first.
+    """
+    # BEFORE the fetch. "id IN (?, ?)" with the same id twice returns one
+    # row, so this guard sat behind the row-count check and never ran -- and
+    # linking a booking to itself was refused as "one of those bookings does
+    # not exist", which sends somebody looking for a booking that is on the
+    # screen in front of them.
+    if booking_id == other_id:
+        return False, "a booking cannot travel with itself"
+    rows = conn.execute(
+        "SELECT id, group_ref, arrival_date FROM bookings WHERE id IN (?, ?)",
+        (booking_id, other_id)).fetchall()
+    if len(rows) != 2:
+        return False, "one of those bookings does not exist"
+    a, b = rows[0], rows[1]
+    if a["group_ref"] and b["group_ref"] and a["group_ref"] != b["group_ref"]:
+        # Merging two existing groups would silently move everybody in one of
+        # them. That is a decision, not a side effect of linking two rooms.
+        return False, ("both are already travelling with other bookings; "
+                       "take one out of its group first")
+    ref = a["group_ref"] or b["group_ref"] or ("GRP-" + secrets.token_hex(4).upper())
+    conn.execute("UPDATE bookings SET group_ref = ? WHERE id IN (?, ?)",
+                 (ref, booking_id, other_id))
+    return True, ""
+
+
+def leave_booking_group(conn, booking_id):
+    """Take one booking out. If that leaves one behind, it is not a group."""
+    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+                       (booking_id,)).fetchone()
+    if not row or not row["group_ref"]:
+        return
+    ref = row["group_ref"]
+    conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?", (booking_id,))
+    # A group of one is not a group, and leaving it as one puts a
+    # "travelling together" panel on a page with nobody else on it.
+    left = conn.execute(
+        "SELECT id FROM bookings WHERE group_ref = ?", (ref,)).fetchall()
+    if len(left) == 1:
+        conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?",
+                     (left[0]["id"],))
+
+
+# The chateau's own coordinates.
+WEATHER_LAT, WEATHER_LON = 42.7669, 1.6647
+# Older than this and it is not "right now" any more, so the page says
+# nothing rather than something out of date.
+WEATHER_MAX_AGE_MINUTES = 180
+WEATHER_SETTING = "weather_snapshot"
+
+# Open-Meteo's numeric codes, in the words somebody would actually use.
+WEATHER_WORDS = {
+    0: "clear", 1: "mostly clear", 2: "some cloud", 3: "overcast",
+    45: "fog", 48: "freezing fog",
+    51: "light drizzle", 53: "drizzle", 55: "heavy drizzle",
+    61: "light rain", 63: "rain", 65: "heavy rain",
+    66: "freezing rain", 67: "freezing rain",
+    71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains",
+    80: "showers", 81: "showers", 82: "heavy showers",
+    85: "snow showers", 86: "heavy snow showers",
+    95: "a thunderstorm", 96: "a thunderstorm", 99: "a thunderstorm",
+}
+
+
+def fetch_weather(timeout=8):
+    """Ask Open-Meteo what it is doing. Raises on anything unusable.
+
+    urllib rather than requests, like every other outbound call here. No key
+    and no account, which is the whole reason this service and not another.
+    """
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={WEATHER_LAT}"
+           f"&longitude={WEATHER_LON}&current=temperature_2m,weather_code"
+           f"&timezone=Europe%2FParis")
+    # Request/urlopen by name: this module imports the names, not the
+    # package, so urllib.request.X is an AttributeError here.
+    req = Request(url, headers={"User-Agent": "chateau-gudanes"})
+    with urlopen(req, timeout=timeout) as r:
+        payload = json.loads(r.read().decode("utf-8"))
+    current = payload.get("current") or {}
+    temp = current.get("temperature_2m")
+    code = current.get("weather_code")
+    if temp is None or code is None:
+        raise ValueError("no current reading in the response")
+    return {"c": round(float(temp)), "code": int(code),
+            "at": datetime.now(timezone.utc).isoformat()}
+
+
+def weather_now(conn, *, max_age_minutes=WEATHER_MAX_AGE_MINUTES, now=None):
+    """The cached reading, or None. NEVER fetches.
+
+    A page that can block on somebody else's network is a page that
+    eventually does, and this one is the booking page.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (WEATHER_SETTING,)).fetchone()
+    if not row or not row["value"]:
+        return None
+    try:
+        snap = json.loads(row["value"])
+        at = datetime.fromisoformat(snap["at"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    age = (now or datetime.now(timezone.utc)) - at
+    if age > timedelta(minutes=max_age_minutes):
+        # Stale is not "right now". Saying nothing beats telling somebody it
+        # is fifteen degrees when that was yesterday afternoon.
+        return None
+    return {"c": snap.get("c"),
+            "words": WEATHER_WORDS.get(snap.get("code"), "hard to say"),
+            "minutes_old": int(age.total_seconds() // 60)}
+
+
+def run_weather_job(conn):
+    """Refresh the cached reading. Fetched by the house, not by the guest."""
+    snap = fetch_weather()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (WEATHER_SETTING, json.dumps(snap)))
+    conn.commit()
+    return f"{snap['c']}\u00b0C, {WEATHER_WORDS.get(snap['code'], snap['code'])}"
+
+
+def next_free_nights(conn, *, limit=6, today=None):
+    """The next bookable runs, soonest first, one per room.
+
+    ONE PER ROOM on purpose: six entries for the same room in six
+    consecutive weeks is a list that says nothing, and it is what a naive
+    scan produces first.
+
+    A run has to reach the room's own minimum stay. A room with a three-night
+    minimum and two nights free is not an opening -- offering it produces a
+    guest who picks the dates, is refused, and trusts the page less than if
+    it had never been there.
+
+    Availability comes from is_range_available, which is what the booking
+    flow itself refuses on. A second query of my own would agree with it
+    until the day it did not, and the day it did not would be a guest being
+    turned away from dates the front page offered them.
+    """
+    today = today or house_today()
+    start = today + timedelta(days=NEXT_FREE_LEAD_DAYS)
+    rooms = conn.execute(
+        "SELECT * FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    found = []
+    for room in rooms:
+        need = max(int(room["min_nights"] or 1), 1)
+        day = start
+        limit_day = today + timedelta(days=NEXT_FREE_HORIZON_DAYS)
+        while day <= limit_day:
+            ok, _why = is_range_available(conn, room["id"], day,
+                                          day + timedelta(days=need))
+            if not ok:
+                day += timedelta(days=1)
+                continue
+            # Found a run that meets the minimum. Stretch it while it lasts,
+            # so the page can say "five nights free" rather than repeating
+            # the minimum back at somebody.
+            nights = need
+            while nights < 14:
+                ok2, _ = is_range_available(conn, room["id"], day,
+                                            day + timedelta(days=nights + 1))
+                if not ok2:
+                    break
+                nights += 1
+            found.append({
+                # Built rather than strftime'd: "%-d" is not portable and
+                # "%d" pads, so the platform decided whether a guest read
+                # "5 September" or "05 September". Production is Linux and
+                # this is written on Windows, which is exactly the way round
+                # that never shows up until it is live.
+                "date": f"{day.day} {day.strftime('%B')}",
+                "date_iso": day.isoformat(),
+                "room_name": room["name"],
+                "room_id": room["id"],
+                "nights": nights,
+                "price": room["price_per_night"],
+            })
+            break
+        # else: nothing free for this room inside the horizon, which is a
+        # perfectly good answer and not an error.
+    found.sort(key=lambda f: (f["date_iso"], f["room_name"]))
+    return found[:limit]
+
+
+def deposit_percent_to_show(conn):
+    """The room deposit to quote before any dates are chosen, or None.
+
+    None means "it depends", and the page has to say that rather than pick a
+    number. resolve_deposit_percent can give a different answer per date and
+    per party size, and a guest who sees 30% on the room page and 60% at
+    checkout has been told a wrong figure about their own money on the page
+    where they decided.
+    """
+    varies = conn.execute(
+        """SELECT COUNT(*) AS c FROM deposit_rules
+            WHERE category = 'room'
+              AND (start_date IS NOT NULL OR end_date IS NOT NULL
+                   OR min_party_size IS NOT NULL)""").fetchone()["c"]
+    if varies:
+        return None
+    # No scoped rules, so every booking resolves the same way. Ask the same
+    # function the booking itself asks rather than reading the setting --
+    # a blanket rule beats the setting, and reading past it would show a
+    # figure the card is never charged.
+    return resolve_deposit_percent(
+        conn, "room", house_today().isoformat(), 0,
+        room_payment_setting(conn, "room_deposit_percent"))
 
 
 def room_payment_setting(conn, key, cast=float):
@@ -32274,6 +33557,15 @@ def parse_money(raw):
     but only the first should read as unset on the form.
     """
     text = (raw or "").strip().replace("€", "").replace(",", ".")
+    # 1 200,50 is how the owner writes a price. The comma was handled; the
+    # thousands separator was not, and in French it is a SPACE -- so every
+    # amount over a thousand came back None, which here means "the box was
+    # left empty", so the form saved with the field silently blank.
+    #
+    # Only BETWEEN DIGITS, and only a normal space, a no-break space or the
+    # narrow no-break space French typography actually uses. A bare
+    # "45 euros" still fails, which is right: it is not a number.
+    text = re.sub(r"(?<=\d)[ \u00a0\u202f]+(?=\d)", "", text)
     if not text:
         return None
     try:
@@ -33317,7 +34609,9 @@ def workshops_public():
            LEFT JOIN workshop_bookings ON workshop_bookings.id = workshop_feedback.workshop_booking_id
            LEFT JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
            LEFT JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+           -- Same rule as the rooms page, for the same reason.
            WHERE workshop_feedback.featured = 1 AND workshop_feedback.rating IS NOT NULL
+             AND workshop_feedback.publish_consent = 1
            ORDER BY workshop_feedback.rating DESC, workshop_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
     conn.close()
@@ -33436,7 +34730,10 @@ def workshop_register(session_id):
             error = "Party size is required."
         elif party_size > session_row["capacity"]:
             error = f"This session has {session_row['capacity']} spots total."
-        elif workshop_session_remaining_capacity(conn, session_id) < party_size:
+        elif claim_workshop_places(conn, session_id) < party_size:
+            # claim_, not the bare count: this one is followed by an INSERT,
+            # and without the lock two people taking the last two places both
+            # read "room for you".
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
         else:
@@ -33636,7 +34933,9 @@ def workshop_manage(manage_token):
         ).fetchone()
         if not new_session:
             flash("That date isn't available for this workshop.", "error")
-        elif workshop_session_remaining_capacity(conn, new_session_id) < booking["party_size"]:
+        elif claim_workshop_places(conn, new_session_id) < booking["party_size"]:
+            # Also followed by a write. A guest moving onto the last place at
+            # the same moment as somebody books it is the same collision.
             flash("That date doesn't have enough spots left for your party size.", "error")
         elif booking["status"] == "pending" and not booking["deposit_paid_at"]:
             # Nothing's been charged yet, so it's safe to move immediately
@@ -34105,7 +35404,8 @@ def build_owner_digest(conn):
         "ORDER BY created_at DESC LIMIT 1"
     ).fetchone()
     last_backup_at = last_backup["created_at"] if last_backup else None
-    backup_stale = (not last_backup_at) or (parse_date(last_backup_at[:10]) <= today - timedelta(days=30))
+    backup_stale = (not last_backup_at) or (
+        parse_date(house_date_iso(last_backup_at)) <= today - timedelta(days=30))
     understaffed_days = [
         s for s in roster_vs_occupancy(conn, [today + timedelta(days=i) for i in range(7)])
         if s["understaffed"]
@@ -34145,7 +35445,7 @@ def build_owner_digest(conn):
             lines.append(f"  - {p['provider']}: expires {p['expiry_date']}")
     if backup_stale:
         lines.append("")
-        lines.append(f"Backup reminder: {'last downloaded ' + last_backup_at[:10] if last_backup_at else 'never downloaded'} — consider grabbing a fresh one.")
+        lines.append(f"Backup reminder: {'last downloaded ' + house_date_iso(last_backup_at) if last_backup_at else 'never downloaded'} — consider grabbing a fresh one.")
     if understaffed_days:
         lines.append("")
         lines.append("Looks short-staffed vs. booking volume (next 7 days):")
@@ -34164,7 +35464,7 @@ def build_owner_digest(conn):
         for v in vehicles_service_due:
             lines.append(f"  - {v['name']}: service due {v['next_service_due']}")
         for c in overdue_checkouts:
-            lines.append(f"  - {c['vehicle_name']}: checked out by {c['user_name'] or 'unknown'} since {c['checked_out_at'][:10]}, not checked in")
+            lines.append(f"  - {c['vehicle_name']}: checked out by {c['user_name'] or 'unknown'} since {house_date_iso(c['checked_out_at'])}, not checked in")
     if low_stock_breakfast:
         lines.append("")
         lines.append("Breakfast items flagged low stock: " + ", ".join(i["name"] for i in low_stock_breakfast))
@@ -34736,11 +36036,14 @@ def new_room():
         conn.execute(
             """INSERT INTO rooms (name, description, max_occupancy, max_adults, max_children,
                price_per_night, min_nights, size_sqm, bed_setup, bathroom, outlook, floor,
+               access_steps, access_car_metres, access_bathroom, access_notes,
                export_token, sort_order, photo_filename, amenities)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
              f["bathroom"], f["outlook"], f["floor"],
+             f["access_steps"], f["access_car_metres"], f["access_bathroom"],
+             f["access_notes"],
              # workshop_room defaults to 0. The checkbox is on the edit form
              # only, like Bookable: a new room starts off both lists and
              # putting it on either is a deliberate act afterwards.
@@ -34779,11 +36082,14 @@ def edit_room(room_id):
         conn.execute(
             """UPDATE rooms SET name=?, description=?, max_occupancy=?, max_adults=?, max_children=?,
                price_per_night=?, min_nights=?, size_sqm=?, bed_setup=?, bathroom=?, outlook=?,
-               floor=?, active=?, photo_filename=?, amenities=?,
+               floor=?, access_steps=?, access_car_metres=?, access_bathroom=?,
+               access_notes=?, active=?, photo_filename=?, amenities=?,
                workshop_room=? WHERE id=?""",
             (f["name"], f["description"], f["max_occupancy"], f["max_adults"], f["max_children"],
              f["price_per_night"], f["min_nights"], f["size_sqm"], f["bed_setup"],
-             f["bathroom"], f["outlook"], f["floor"], active, photo_filename,
+             f["bathroom"], f["outlook"], f["floor"],
+             f["access_steps"], f["access_car_metres"], f["access_bathroom"],
+             f["access_notes"], active, photo_filename,
              f["amenities"], workshop_room, room_id),
         )
 
@@ -35041,6 +36347,7 @@ def admin_feedback():
            ORDER BY guest_feedback.submitted_at DESC"""
     ).fetchall()
     avg_rating = conn.execute("SELECT AVG(rating) AS a FROM guest_feedback").fetchone()["a"]
+    permissions = publishable_reviews(conn)
     conn.close()
 
     def verdict(e):
@@ -35061,9 +36368,16 @@ def admin_feedback():
             facet("said", "Wrote something",
                   lambda e: "With a comment" if (e["comment"] or "").strip() else "Rating only",
                   order=["With a comment", "Rating only"]),
+            # Three states, not two. "Featured" used to mean published;
+            # it now means chosen, and the difference between chosen and
+            # published is a letter somebody has to write.
             facet("featured", "On the website",
-                  lambda e: "Featured" if e["featured"] else "Not featured",
-                  order=["Featured", "Not featured"]),
+                  lambda e: ("Not featured" if not e["featured"]
+                             else ("Published" if e["publish_consent"] == 1
+                                   else ("They said no" if e["publish_consent"] == 0
+                                         else "Waiting to be asked"))),
+                  order=["Waiting to be asked", "Published", "They said no",
+                         "Not featured"]),
         ],
         sorts=[
             sort_option("recent", "Most recent first", lambda e: e["submitted_at"] or "",
@@ -35077,6 +36391,7 @@ def admin_feedback():
     return render_template(
         "admin_feedback.html", entries=lv["rows"], lv=lv,
         avg_rating=round(avg_rating, 1) if avg_rating is not None else None,
+        unasked=len(permissions["unasked"]),
     )
 
 
@@ -36566,9 +37881,10 @@ def edit_booking(booking_id):
 
         if error:
             flash(error, "error")
+            group = booking_group(conn, booking["id"])
             conn.close()
             return render_template("edit_booking.html", booking=booking,
-                               booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
         old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
@@ -36616,9 +37932,10 @@ def edit_booking(booking_id):
         flash("Booking updated.", "success")
         return redirect(url_for("admin_bookings"))
 
+    group = booking_group(conn, booking["id"])
     conn.close()
     return render_template("edit_booking.html", booking=booking,
-                               booking_sources=BOOKING_SOURCES)
+                               group=group, booking_sources=BOOKING_SOURCES)
 
 
 @app.route("/admin/bookings/<int:booking_id>/refund", methods=["POST"])
@@ -39070,6 +40387,33 @@ def sessions_at_risk(conn, today=None):
     return out
 
 
+def claim_workshop_places(conn, session_id, exclude_id=None):
+    """Remaining places, with nobody else able to answer at the same time.
+
+    The workshop half of claim_range, and it exists for the same bug. Every
+    guest path asked how many places were left and then wrote, with nothing
+    joining the two: a bare SELECT takes no write lock, so two people taking
+    the last two places at the same instant both read "room for you" and both
+    get one. Nothing errors. The public page says "when a session reads as
+    full, it is full".
+
+    The UPDATE is the mechanism, not bookkeeping -- writing any row takes
+    SQLite's RESERVED lock, so the count that follows and the INSERT that
+    follows that are one write transaction. A second connection blocks on its
+    own UPDATE until the first commits, and then counts a world that includes
+    it. Released by the caller's own conn.commit(), which every caller
+    already does before it sends anything.
+
+    READ-ONLY CALLERS MUST NOT USE THIS. The session lists, the public page
+    and the alternative-dates suggestion all ask the same question without
+    acting on it, and making them take the write lock would put every visitor
+    behind whoever is mid-registration.
+    """
+    conn.execute("UPDATE booking_write_lock SET held_at = ? WHERE id = 1",
+                 (datetime.now(timezone.utc).isoformat(),))
+    return workshop_session_remaining_capacity(conn, session_id, exclude_id)
+
+
 def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
     session = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone()
     if not session:
@@ -39950,6 +41294,12 @@ def confirm_workshop_registration(registration_id):
         "SELECT COALESCE(SUM(party_size), 0) AS t FROM workshop_bookings WHERE session_id = ? AND status = 'confirmed'",
         (booking["session_id"],),
     ).fetchone()["t"]
+    # NOT guarded by claim_workshop_places, on purpose. This writes and then
+    # says "over the cap", which is a staff override with a warning attached
+    # -- the same reasoning as entering a booking by hand, where somebody may
+    # know something the rules do not. What the public promise is about is a
+    # GUEST being told there is room and then finding there was not, and that
+    # is the path that takes the lock.
     capacity_note = ""
     if confirmed_total > booking["capacity"]:
         capacity_note = f" Heads up — confirmed registrations for this session now total {confirmed_total}, over the {booking['capacity']}-spot cap."
@@ -43038,6 +44388,562 @@ def management_buying():
                            vendor=vendor, overview=overview)
 
 
+@app.route("/admin/feedback/<kind>/<int:feedback_id>/permission", methods=["POST"])
+@owner_required
+def set_publish_consent(kind, feedback_id):
+    """Record that somebody asked, and what the guest said.
+
+    "She said yes on the telephone" is a real answer. Software that cannot
+    hold it makes people either lie to it or keep the real record on a piece
+    of paper, and both are worse than a field with a name against it.
+    """
+    table = {"stay": "guest_feedback", "atelier": "workshop_feedback"}.get(kind)
+    if not table:
+        abort(404)
+    answer = (request.form.get("answer", "") or "").strip()
+    how = (request.form.get("how", "") or "").strip()
+    if answer not in ("yes", "no", "unasked") or (
+            answer != "unasked" and how not in CONSENT_ROUTES):
+        abort(400)
+
+    user = current_user()
+    conn = get_db()
+    if answer == "unasked":
+        # Putting it back to never-asked, which is what somebody who ticked
+        # the wrong row needs. Not the same as recording a refusal.
+        conn.execute(
+            f"UPDATE {table} SET publish_consent = NULL, "
+            f"publish_consent_at = NULL, publish_consent_how = NULL WHERE id = ?",
+            (feedback_id,))
+    else:
+        conn.execute(
+            f"UPDATE {table} SET publish_consent = ?, publish_consent_at = ?, "
+            f"publish_consent_how = ? WHERE id = ?",
+            (1 if answer == "yes" else 0,
+             datetime.now(timezone.utc).isoformat(),
+             f"{how}:{user['name']}", feedback_id))
+    log_audit(conn, "review_publish_consent", f"{table} {feedback_id}", answer)
+    conn.commit()
+    conn.close()
+    flash({"yes": "Noted \u2014 it can go on the website.",
+           "no": "Noted \u2014 it will not be published.",
+           "unasked": "Back to not asked."}[answer], "success")
+    return redirect(request.referrer or url_for("admin_feedback"))
+
+
+@app.route("/admin/bookings/<int:booking_id>/travelling-with", methods=["POST"])
+@owner_required
+def set_booking_group(booking_id):
+    """Say that two bookings are one arrival, or that they are not.
+
+    Said by a person, never inferred. Two bookings with the same surname on
+    the same dates are very often one family and are sometimes two families
+    called Martin, and a page that guesses wrong tells a stranger who else is
+    staying.
+    """
+    conn = get_db()
+    if request.form.get("leave"):
+        leave_booking_group(conn, booking_id)
+        conn.commit()
+        conn.close()
+        flash("Taken out. It is its own arrival again.", "success")
+        return redirect(request.referrer
+                        or url_for("edit_booking", booking_id=booking_id))
+
+    ref = (request.form.get("reference_code", "") or "").strip().upper()
+    other = conn.execute(
+        "SELECT id FROM bookings WHERE UPPER(reference_code) = ?", (ref,)).fetchone()
+    if not other:
+        conn.close()
+        flash(f"No booking with the reference {ref or '(blank)'}.", "error")
+        return redirect(request.referrer
+                        or url_for("edit_booking", booking_id=booking_id))
+
+    ok, why = join_booking_group(conn, booking_id, other["id"])
+    if ok:
+        log_audit(conn, "bookings_linked", f"{booking_id} + {other['id']}", ref)
+        conn.commit()
+        flash("Linked. They are one arrival now.", "success")
+    else:
+        flash(f"Not linked \u2014 {why}.", "error")
+    conn.close()
+    return redirect(request.referrer
+                    or url_for("edit_booking", booking_id=booking_id))
+
+
+@app.route("/stay/<share_token>")
+def shared_stay(share_token):
+    """What the rest of the party needs, and nothing else.
+
+    Its own route and its own template rather than the manage page with the
+    money hidden. A hidden figure is one {% if %} away from being visible
+    again, and whoever adds the next row to that page will not know the rule;
+    this template has no access to a bill to leak. GET only, so there are no
+    POST handlers to guard.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.reference_code, bookings.guest_name,
+                  bookings.arrival_date, bookings.departure_date,
+                  bookings.party_size, bookings.estimated_arrival_time,
+                  bookings.status, rooms.name AS room_name
+             FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.share_token = ?""", (share_token,)).fetchone()
+    # Deliberately NOT selecting total_price, amount_paid, deposit_amount or
+    # anything else with a figure on it. What is not fetched cannot leak.
+    if not booking or booking["status"] not in ("pending", "confirmed"):
+        conn.close()
+        abort(404)
+    dinners = conn.execute(
+        """SELECT dinner_date, party_size FROM restaurant_bookings
+            WHERE booking_id = (SELECT id FROM bookings WHERE share_token = ?)
+              AND status = 'confirmed'
+            ORDER BY dinner_date""", (share_token,)).fetchall()
+    conn.close()
+    return render_template("shared_stay.html", booking=booking, dinners=dinners)
+
+
+@app.route("/book/manage/<manage_token>/share", methods=["POST"])
+def toggle_share_link(manage_token):
+    """Make a read-only link, or take it away again."""
+    conn = get_db()
+    booking = conn.execute(
+        "SELECT id, share_token FROM bookings WHERE manage_token = ?",
+        (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if request.form.get("off"):
+        conn.execute("UPDATE bookings SET share_token = NULL WHERE id = ?",
+                     (booking["id"],))
+        flash("The link no longer works. Anyone you sent it to will see "
+              "nothing.", "success")
+    elif not booking["share_token"]:
+        conn.execute("UPDATE bookings SET share_token = ? WHERE id = ?",
+                     (secrets.token_urlsafe(24), booking["id"]))
+        flash("Made. Send it to whoever needs the details.", "success")
+    conn.commit()
+    conn.close()
+    return redirect(url_for("manage_booking", manage_token=manage_token))
+
+
+@app.route("/admin/room-checks", methods=["GET", "POST"])
+@login_required
+def room_checks_page():
+    """Who is arriving, and whether anybody has walked their room."""
+    conn = get_db()
+
+    if request.method == "POST":
+        if request.form.get("what") == "standard":
+            line = (request.form.get("line", "") or "").strip()[:160]
+            if not line:
+                conn.close()
+                flash("What should somebody look at?", "error")
+                return redirect(url_for("room_checks_page"))
+            top = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) AS m FROM room_standards"
+            ).fetchone()["m"]
+            conn.execute(
+                "INSERT INTO room_standards (what, area, sort_order, active, created_at) "
+                "VALUES (?, ?, ?, 1, ?)",
+                (line, (request.form.get("area", "") or "").strip()[:40] or None,
+                 top + 1, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            conn.close()
+            flash("Added to the list.", "success")
+            return redirect(url_for("room_checks_page"))
+
+        sid = (request.form.get("standard_id", "") or "").strip()
+        if not sid.isdigit():
+            conn.close()
+            abort(400)
+        # Retired rather than deleted. Deleting would leave every past check
+        # that used it pointing at nothing, and those checks are a record of
+        # what somebody actually looked at on the day.
+        conn.execute("UPDATE room_standards SET active = 0 WHERE id = ?",
+                     (int(sid),))
+        conn.commit()
+        conn.close()
+        flash("Off the list. Past checks are untouched.", "success")
+        return redirect(url_for("room_checks_page"))
+
+    days_raw = request.args.get("days", "2")
+    days = int(days_raw) if days_raw.isdigit() and 0 <= int(days_raw) <= 30 else 2
+    arrivals = arrivals_needing_check(conn, days=days)
+    standards = room_standards(conn)
+    conn.close()
+
+    unchecked = [a for a in arrivals if a["state"] == "unchecked"]
+    failed = [a for a in arrivals if a["state"] == "failed"]
+    overview = [
+        overview_cell("Arriving", len(arrivals), hint=f"in the next {days} days"),
+        overview_cell("Nobody has walked", len(unchecked), alert=bool(unchecked),
+                      hint="not the same as nothing wrong"),
+        overview_cell("Something found", len(failed), alert=bool(failed)),
+        overview_cell("On the list", len(standards)),
+    ]
+    return render_template("room_checks.html", arrivals=arrivals,
+                           standards=standards, overview=overview, days=days)
+
+
+@app.route("/admin/room-checks/<int:booking_id>", methods=["GET", "POST"])
+@login_required
+def walk_room(booking_id):
+    """Walk one room against the list, for one arrival."""
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.id = ?""", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    standards = room_standards(conn)
+
+    if request.method == "POST":
+        if not standards:
+            conn.close()
+            flash("There is nothing on the list to check against yet.", "error")
+            return redirect(url_for("room_checks_page"))
+        user = current_user()
+        results = []
+        for st in standards:
+            key = str(st["id"])
+            # Absent means FAILED, not passed. A half-filled form must not
+            # come out as a clean room -- somebody who stopped halfway
+            # through has not said the rest was fine.
+            passed = request.form.get(f"pass_{key}") == "1"
+            results.append((st["id"], st["what"], passed,
+                            (request.form.get(f"note_{key}", "") or "").strip()[:200]))
+        _check_id, raised = record_room_check(
+            conn, room_id=booking["room_id"], booking_id=booking_id,
+            for_date=parse_date(booking["arrival_date"]) or house_today(),
+            user_id=user["id"], results=results,
+            note=(request.form.get("note", "") or "").strip()[:300] or None)
+        conn.commit()
+        conn.close()
+        if raised:
+            flash(f"Recorded. {raised} fault{'' if raised == 1 else 's'} "
+                  "raised as room issues, so somebody who can fix "
+                  f"{'it' if raised == 1 else 'them'} will see "
+                  f"{'it' if raised == 1 else 'them'}.", "error")
+        else:
+            flash("Recorded. Nothing found.", "success")
+        return redirect(url_for("room_checks_page"))
+
+    previous = conn.execute(
+        """SELECT room_checks.*, users.name AS checked_by
+             FROM room_checks
+             LEFT JOIN users ON users.id = room_checks.checked_by_user_id
+            WHERE room_checks.booking_id = ?
+            ORDER BY room_checks.checked_at DESC, room_checks.id DESC""",
+        (booking_id,)).fetchall()
+    prev_items = {}
+    for p in previous:
+        prev_items[p["id"]] = conn.execute(
+            "SELECT * FROM room_check_items WHERE check_id = ? ORDER BY id",
+            (p["id"],)).fetchall()
+    conn.close()
+    return render_template("walk_room.html", booking=booking,
+                           standards=standards, previous=previous,
+                           prev_items=prev_items)
+
+
+@app.route("/management/agreements", methods=["GET", "POST"])
+@owner_required
+def supplier_agreements_page():
+    """What the house is tied into, and the last day it can get out."""
+    conn = get_db()
+
+    if request.method == "POST":
+        what = request.form.get("what")
+
+        if what == "decide":
+            aid = (request.form.get("agreement_id", "") or "").strip()
+            decision = (request.form.get("decision", "") or "").strip()
+            if not aid.isdigit() or decision not in AGREEMENT_DECISIONS:
+                conn.close()
+                abort(400)
+            conn.execute(
+                "UPDATE supplier_agreements SET decided_at = ?, decision = ? "
+                "WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), decision, int(aid)))
+            conn.commit()
+            conn.close()
+            flash(f"{AGREEMENT_DECISIONS[decision]}. It will stop asking.",
+                  "success")
+            return redirect(url_for("supplier_agreements_page"))
+
+        if what == "reopen":
+            aid = (request.form.get("agreement_id", "") or "").strip()
+            if not aid.isdigit():
+                conn.close()
+                abort(400)
+            conn.execute(
+                "UPDATE supplier_agreements SET decided_at = NULL, "
+                "decision = NULL WHERE id = ?", (int(aid),))
+            conn.commit()
+            conn.close()
+            return redirect(url_for("supplier_agreements_page"))
+
+        if what == "retire":
+            aid = (request.form.get("agreement_id", "") or "").strip()
+            if not aid.isdigit():
+                conn.close()
+                abort(400)
+            conn.execute("UPDATE supplier_agreements SET active = 0 WHERE id = ?",
+                         (int(aid),))
+            conn.commit()
+            conn.close()
+            flash("Off the list.", "success")
+            return redirect(url_for("supplier_agreements_page"))
+
+        label = (request.form.get("what_it_is", "") or "").strip()[:120]
+        renews = parse_date(request.form.get("renews_on", ""))
+        if not label or not renews:
+            conn.close()
+            flash("An agreement needs a name and the date it rolls over.", "error")
+            return redirect(url_for("supplier_agreements_page"))
+        vendor_raw = (request.form.get("vendor_id", "") or "").strip()
+        notice_raw = (request.form.get("notice_days", "") or "").strip()
+        conn.execute(
+            """INSERT INTO supplier_agreements (what, vendor_id, started_on,
+                       renews_on, auto_renews, notice_days, annual_value,
+                       reference, note, active, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)""",
+            (label, int(vendor_raw) if vendor_raw.isdigit() else None,
+             (parse_date(request.form.get("started_on", "")) or renews).isoformat()
+             if request.form.get("started_on") else None,
+             renews.isoformat(),
+             1 if request.form.get("auto_renews") else 0,
+             int(notice_raw) if notice_raw.isdigit() else 0,
+             parse_money(request.form.get("annual_value", "")),
+             (request.form.get("reference", "") or "").strip()[:80] or None,
+             (request.form.get("note", "") or "").strip()[:300] or None,
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash(f"{label} added.", "success")
+        return redirect(url_for("supplier_agreements_page"))
+
+    today = house_today()
+    rows = supplier_agreements(conn, today)
+    vendors = conn.execute(
+        "SELECT id, name FROM vendors WHERE active = 1 ORDER BY name").fetchall()
+    conn.close()
+
+    open_now = [a for a in rows if a["state"] == "open"]
+    late = [a for a in rows if a["state"] == "too_late"]
+    stale = [a for a in rows if a["state"] in ("rolled_on", "ended", "undated")]
+    tied = sum((a["row"]["annual_value"] or 0) for a in rows
+               if a["state"] in ("open", "too_late", "decided"))
+    overview = [
+        overview_cell("Agreements", len(rows)),
+        overview_cell("Tied up a year", f"\u20ac{tied:,.0f}"),
+        overview_cell("Notice still possible", len(open_now)),
+        overview_cell("Too late this time", len(late), alert=bool(late),
+                      hint="already rolled on for another term"),
+        overview_cell("Dates need rewriting", len(stale), alert=bool(stale)),
+    ]
+    return render_template("supplier_agreements.html", rows=rows,
+                           vendors=vendors, overview=overview, today=today,
+                           decisions=AGREEMENT_DECISIONS)
+
+
+@app.route("/admin/rota-templates", methods=["GET", "POST"])
+@owner_required
+def rota_templates_page():
+    """Standard weeks: build one, and stamp it onto whichever week you like."""
+    conn = get_db()
+
+    if request.method == "POST":
+        what = request.form.get("what")
+
+        if what == "template":
+            name = (request.form.get("name", "") or "").strip()[:80]
+            if not name:
+                conn.close()
+                flash("A standard week needs a name.", "error")
+                return redirect(url_for("rota_templates_page"))
+            conn.execute(
+                "INSERT INTO rota_templates (name, note, active, created_at) "
+                "VALUES (?, ?, 1, ?)",
+                (name, (request.form.get("note", "") or "").strip()[:200] or None,
+                 datetime.now(timezone.utc).isoformat()))
+            conn.commit()
+            new_id = conn.execute(
+                "SELECT id FROM rota_templates ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            conn.close()
+            flash(f"{name} created. Put some shifts on it.", "success")
+            return redirect(url_for("rota_templates_page", template=new_id))
+
+        if what == "line":
+            tid = (request.form.get("template_id", "") or "").strip()
+            uids = [u for u in request.form.getlist("user_ids") if u.isdigit()]
+            weekdays = [w for w in request.form.getlist("weekdays")
+                        if w.isdigit() and 0 <= int(w) <= 6]
+            if not tid.isdigit() or not uids or not weekdays:
+                conn.close()
+                flash("Choose at least one person and at least one day.", "error")
+                return redirect(url_for("rota_templates_page", template=tid))
+            now = datetime.now(timezone.utc).isoformat()
+            start = (request.form.get("start_time", "") or "").strip() or None
+            end = (request.form.get("end_time", "") or "").strip() or None
+            note = (request.form.get("role_note", "") or "").strip()[:120] or None
+            added = 0
+            for uid in uids:
+                for wd in weekdays:
+                    # A template line repeated is a template line, not two.
+                    # Somebody adding Tuesday twice means Tuesday.
+                    if conn.execute(
+                            """SELECT 1 FROM rota_template_shifts
+                                WHERE template_id = ? AND user_id = ? AND weekday = ?
+                                  AND COALESCE(start_time, '') = COALESCE(?, '')
+                                  AND COALESCE(end_time, '') = COALESCE(?, '')""",
+                            (int(tid), int(uid), int(wd), start, end)).fetchone():
+                        continue
+                    conn.execute(
+                        """INSERT INTO rota_template_shifts (template_id, user_id,
+                                   weekday, start_time, end_time, role_note,
+                                   created_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (int(tid), int(uid), int(wd), start, end, note, now))
+                    added += 1
+            conn.commit()
+            conn.close()
+            flash(f"{added} line{'' if added == 1 else 's'} added.", "success")
+            return redirect(url_for("rota_templates_page", template=tid))
+
+        if what == "apply":
+            tid = (request.form.get("template_id", "") or "").strip()
+            week = parse_date(request.form.get("week_start", ""))
+            if not tid.isdigit() or not week:
+                conn.close()
+                flash("Which standard week, and onto which week?", "error")
+                return redirect(url_for("rota_templates_page"))
+            # Whatever day was picked, the week it belongs to. Stamping a
+            # Wednesday-to-Tuesday week because somebody clicked Wednesday
+            # would put the Saturday cover on the wrong Saturday.
+            week -= timedelta(days=week.weekday())
+            placed, skipped = apply_rota_template(conn, int(tid), week)
+            if placed or skipped:
+                log_audit(conn, "rota_template_applied", f"template {tid}",
+                          f"week of {week.isoformat()}: {placed} placed, "
+                          f"{len(skipped)} skipped")
+            conn.commit()
+            conn.close()
+            msg, cat = bulk_message("Placed", "shift", placed, skipped)
+            flash(msg, cat)
+            return redirect(url_for("admin_shifts", date=week.isoformat()))
+
+        conn.close()
+        abort(400)
+
+    templates = rota_templates(conn)
+    chosen_raw = (request.args.get("template", "") or "").strip()
+    chosen = None
+    lines = []
+    if chosen_raw.isdigit():
+        chosen = conn.execute("SELECT * FROM rota_templates WHERE id = ?",
+                              (int(chosen_raw),)).fetchone()
+        if chosen:
+            lines = rota_template_rows(conn, chosen["id"])
+    staff = conn.execute(
+        "SELECT id, name FROM users WHERE status = 'active' ORDER BY name").fetchall()
+    conn.close()
+
+    monday = house_today() - timedelta(days=house_today().weekday())
+    weeks = [(monday + timedelta(days=7 * n)) for n in range(0, 8)]
+    stale = [t for t in templates if t["gone"]]
+    overview = [
+        overview_cell("Standard weeks", len(templates)),
+        overview_cell("Lines in all of them", sum(t["lines"] for t in templates)),
+        overview_cell("Naming somebody who has left", len(stale),
+                      alert=bool(stale),
+                      hint="stamping it puts a name nobody can ring on the rota"),
+    ]
+    return render_template("rota_templates.html", templates=templates,
+                           chosen=chosen, lines=lines, staff=staff,
+                           weeks=weeks, weekday_names=WEEKDAY_NAMES,
+                           overview=overview)
+
+
+@app.route("/admin/rota-templates/line/<int:line_id>/delete", methods=["POST"])
+@owner_required
+def delete_rota_template_line(line_id):
+    conn = get_db()
+    row = conn.execute("SELECT template_id FROM rota_template_shifts WHERE id = ?",
+                       (line_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM rota_template_shifts WHERE id = ?", (line_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("rota_templates_page", template=row["template_id"]))
+
+
+@app.route("/admin/rota-templates/<int:template_id>/delete", methods=["POST"])
+@owner_required
+def delete_rota_template(template_id):
+    conn = get_db()
+    # Marked inactive rather than deleted. A shift already stamped from it is
+    # a real shift and stands on its own; what goes is the offer to stamp it
+    # again.
+    conn.execute("UPDATE rota_templates SET active = 0 WHERE id = ?",
+                 (template_id,))
+    conn.commit()
+    conn.close()
+    flash("Put away. Shifts already stamped from it are untouched.", "success")
+    return redirect(url_for("rota_templates_page"))
+
+
+@app.route("/admin/room-access", methods=["GET", "POST"])
+@owner_required
+def room_access_page():
+    """What each room asks of somebody, and who has told us they need less."""
+    conn = get_db()
+
+    if request.method == "POST":
+        guest_raw = (request.form.get("guest_id", "") or "").strip()
+        if not guest_raw.isdigit():
+            conn.close()
+            abort(400)
+        needs = (request.form.get("access_needs", "") or "").strip()[:600]
+        conn.execute(
+            "UPDATE guests SET access_needs = ?, access_needs_updated_at = ? "
+            "WHERE id = ?",
+            (needs or None,
+             datetime.now(timezone.utc).isoformat() if needs else None,
+             int(guest_raw)))
+        conn.commit()
+        conn.close()
+        flash("Noted." if needs else "Cleared.", "success")
+        return redirect(url_for("room_access_page"))
+
+    rooms = room_access(conn)
+    needs = guests_with_access_needs(conn)
+    checks = access_to_check(conn)
+    conn.close()
+
+    unmeasured = [r for r in rooms if r["unmeasured"]]
+    overview = [
+        overview_cell("Rooms", len(rooms)),
+        overview_cell("Nobody has measured", len(unmeasured),
+                      alert=bool(unmeasured),
+                      hint="reads as no trouble, means nobody looked"),
+        overview_cell("Guests who told us", len(needs)),
+        overview_cell("Worth a telephone call", len(checks),
+                      alert=bool(checks)),
+    ]
+    # ACCESS_BATHROOMS is a template global; passing it here as well would
+    # be a second name for the same thing and the dead-context sweep would
+    # rightly call it out.
+    return render_template("room_access.html", rooms=rooms, needs=needs,
+                           checks=checks, overview=overview)
+
+
 @app.route("/kitchen/fridges", methods=["GET", "POST"])
 @login_required
 def kitchen_fridges():
@@ -45267,6 +47173,8 @@ WATCH_TASK_KINDS = {
     "celebration": "A guest with something to celebrate while they are here",
     "changeover": "A day with the whole house to turn round",
     "detail": "A guest arriving without the details to prepare",
+    "access": "A guest who told us something, in a room that asks something",
+    "agreement": "An agreement about to roll over while nobody decided",
 }
 
 # One failure is a mail server having a bad morning. Two in a row, on jobs that
@@ -46479,6 +48387,56 @@ def watch_task_findings(conn, today=None):
         ))
     found.extend(take("celebration", celebrations))
 
+    # Somebody has told us what they need and has been put somewhere that
+    # asks something of them. Not an error -- eleven steps may be perfectly
+    # fine for them, and only they know -- so the task is to ring and ask.
+    #
+    # WHAT THE GUEST SAID IS NOT IN IT. A task title is the least private
+    # thing in the app: it goes on the calendar, into a notification, and
+    # onto whoever it is assigned to. This names the booking and the room and
+    # stops there. Reading the rest means opening a page that is the owner's.
+    #
+    # Titled by the booking rather than by the date, because the title is the
+    # dedupe key and a date in it would raise a fresh task every morning.
+    access = []
+    for c in take("access", access_to_check(conn, days=45, today=today)):
+        b = c["booking"]
+        access.append((
+            "access",
+            f"Ring {b['reference_code']} before they arrive about the room",
+            f"{b['room_name'] or 'No room allocated'} \u2014 {c['why']}. "
+            "They have told us something about what they need; it is on "
+            "What the house can manage.",
+            b["arrival_date"],
+            2,
+        ))
+    found.extend(access)
+
+    # An agreement whose notice window is closing. Raised against the LAST
+    # DAY NOTICE CAN BE GIVEN, not the renewal date -- by the time a renewal
+    # is close enough to notice, the decision was taken months ago by nobody.
+    #
+    # Only the ones somebody can still act on. An agreement past its notice
+    # date has renewed; that is a fact about the year ahead, not a job, and
+    # asking every morning for a cancellation nobody can make any more is
+    # how a list stops being read.
+    agreements = []
+    for a in take("agreement", agreements_to_decide(conn, within_days=60,
+                                                    today=today)):
+        r = a["row"]
+        agreements.append((
+            "agreement",
+            f"Decide about {r['what']} before notice closes",
+            f"Rolls over on {format_date_human(a['renews'].isoformat())}"
+            + (f" at around \u20ac{r['annual_value']:,.0f} a year" if r["annual_value"] else "")
+            + f". Notice has to be given by "
+              f"{format_date_human(a['deadline'].isoformat())}"
+            + (f" \u2014 {r['vendor_name']}." if r["vendor_name"] else "."),
+            a["deadline"].isoformat(),
+            2,
+        ))
+    found.extend(agreements)
+
     # A vehicle without valid papers. Titled by the vehicle and the document
     # rather than by a date, because the title is the dedupe key: putting
     # "expires in 12 days" in it would raise a fresh task every morning.
@@ -46657,7 +48615,7 @@ def watch_task_findings(conn, today=None):
         found.append((
             "job", f"Automation stopped working — {j['job_name']}",
             f"{label}.\n\nFailed {j['fails']} runs in a row. Last worked: "
-            + (j["last_ok_at"][:10] if j["last_ok_at"] else "never")
+            + (house_date_iso(j["last_ok_at"]) if j["last_ok_at"] else "never")
             + f".\nIt reports: {j['last_message'] or 'no message'}"
             + "\n\nAdmin → Automation has the switch and a Run now button to "
               "try it while you watch.",
@@ -47823,7 +49781,11 @@ def all_transfers():
     today_iso = today.isoformat()
     upcoming, todays, past = [], [], []
     for r in rows:
-        day = (r["scheduled_at"] or "")[:10]
+        # house_date_iso, not [:10]. scheduled_at is UTC, so a pickup at
+        # half past one in the morning -- a delayed flight -- is stored on the
+        # previous day, and slicing files it under PAST on the very morning it
+        # is due. The run most likely to be missed is the one this hid.
+        day = house_date_iso(r["scheduled_at"])
         if day == today_iso:
             todays.append(r)
         elif day > today_iso:
@@ -47835,7 +49797,7 @@ def all_transfers():
     return render_template(
         "all_transfers.html", todays=todays, upcoming=upcoming, past=past[:20],
         today=today, unassigned=sum(1 for r in rows if not r["driver_user_id"]
-                                    and (r["scheduled_at"] or "")[:10] >= today_iso),
+                                    and house_date_iso(r["scheduled_at"]) >= today_iso),
     )
 
 
@@ -49126,6 +51088,7 @@ def run_health_notes_purge_job(conn):
     cleared = purge_health_notes(conn)
     cleared.update(purge_dead_enquiries(conn))
     cleared.update(purge_police_register(conn))
+    cleared.update(purge_stale_access_needs(conn))
     done = {k: v for k, v in cleared.items() if v}
     if not done:
         return "nothing to clear"
@@ -51184,7 +53147,11 @@ def extract_dates(text, received_at_iso):
     otherwise land more than a month in the past (an email about 'March 3rd'
     received in November almost certainly means next March)."""
     text = text or ""
-    received_date = parse_date((received_at_iso or "")[:10]) or house_today()
+    # house_date_iso even here. Only the year and the month are read, so an
+    # hour either way changes nothing -- but two spellings for one idea is
+    # how the UTC-as-a-day fault survived 125 times, and this is the second
+    # spelling.
+    received_date = parse_date(house_date_iso(received_at_iso)) or house_today()
     found = []
     for m in _DATE_ISO_RE.finditer(text):
         d = parse_date(m.group(0))
@@ -52027,6 +53994,9 @@ def record_job_run(conn, job_name, ok, message):
 
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
+    # Hourly. The page reads a cache and never the network, so a slow morning
+    # at Open-Meteo is a page with no weather on it rather than a slow page.
+    ("weather", "automation_weather_enabled", None, 3600, run_weather_job),
     ("daily_digest", "automation_daily_digest_enabled", None, 24 * 3600, run_daily_digest_job),
     ("ical_sync", "automation_ical_sync_enabled", "automation_ical_sync_interval_hours", None, run_ical_sync_job),
     ("workshop_feedback_request", "automation_workshop_feedback_enabled", None, 24 * 3600, run_workshop_feedback_request_job),
@@ -52198,6 +54168,7 @@ AUTOMATION_EXPLAINED_ON_PAGE = {
 
 
 AUTOMATION_JOB_LABELS = {
+    "weather": "What it is doing at the château",
     "housekeeping": "Housekeeping (expire stale bookings, prep arrivals)",
     "daily_digest": "Daily owner digest email",
     "workshop_autocharge": "Workshop: charge the balance on its due date",
@@ -52783,6 +54754,22 @@ ROOM_AMENITIES = {
 }
 AMENITY_LABELS = {k: v for group in ROOM_AMENITIES.values() for k, v in group}
 
+# What the bathroom asks of you. Deliberately not a yes/no: "over-bath
+# shower" is the answer that catches most people out, and a tickbox marked
+# "accessible bathroom" would have said no to it and told them nothing.
+ACCESS_BATHROOMS = {
+    "step_free": "Step-free shower",
+    "low_step": "Shower with a low step",
+    "over_bath": "Shower over the bath",
+    "bath_only": "Bath, no shower",
+}
+
+# How long we keep a guest's own words about what they need. The same twelve
+# months the notice already promises for enquiries that came to nothing,
+# counted from their last stay rather than from when they told us -- a guest
+# who came back in March has not stopped needing it.
+ACCESS_NEEDS_RETENTION_MONTHS = 12
+
 BED_SETUPS = ["Emperor bed", "King bed", "Double bed", "Twin beds",
               "Twin or double", "Two bedrooms", "Bunk room"]
 BATHROOM_TYPES = ["En-suite", "Private, not en-suite", "Shared"]
@@ -52852,6 +54839,15 @@ def room_fields_from_form():
         "bathroom": (request.form.get("bathroom", "") or "").strip() or None,
         "outlook": (request.form.get("outlook", "") or "").strip() or None,
         "floor": (request.form.get("floor", "") or "").strip() or None,
+        # Blank means UNKNOWN, not zero. A room nobody has counted the steps
+        # to must not read as step-free, which is the one wrong answer here
+        # that puts somebody in front of a staircase they cannot manage.
+        "access_steps": _i("access_steps", None),
+        "access_car_metres": _i("access_car_metres", None),
+        "access_bathroom": ((request.form.get("access_bathroom", "") or "").strip()
+                            if (request.form.get("access_bathroom", "") or "").strip()
+                            in ACCESS_BATHROOMS else None),
+        "access_notes": (request.form.get("access_notes", "") or "").strip()[:400] or None,
         "amenities": ", ".join(checked) or None,
     }
 

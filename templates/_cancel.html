@@ -1,0 +1,56 @@
+{# ==========================================================================
+   CANCELLING  — guest item 3
+   A guest can change dates and details but cancelling means writing an email,
+   which is the worst possible moment to force a conversation. This puts it on
+   the page with the terms shown, so nobody cancels without knowing what it
+   costs and nobody has to ask.
+
+       {% from '_cancel.html' import cancel_block %}
+       {{ cancel_block(booking, settings) }}
+
+   Posts action=cancel to manage_booking. The confirm step is a <details>
+   rather than a JavaScript dialog, so it works without script.
+   ========================================================================== #}
+{% macro cancel_block(b, settings) %}
+{% set free_days = (settings['free_cancel_days'] if settings and settings['free_cancel_days'] else 30)|int %}
+<section class="g-panel g-cancel">
+  <h2 class="g-panel__h">If you need to cancel</h2>
+
+  <p class="g-p">We would rather you moved the dates than cancelled, and moving them costs nothing at any point. If you do need to cancel, this is what happens.</p>
+
+  <dl class="g-cancel__terms">
+    <div>
+      <dt>More than {{ free_days }} days before arrival</dt>
+      <dd>The deposit is refunded in full.</dd>
+    </div>
+    <div>
+      <dt>Within {{ free_days }} days</dt>
+      <dd>The deposit is kept. Nothing further is charged.</dd>
+    </div>
+    <div>
+      <dt>Any time</dt>
+      <dd>Moving to other dates costs nothing, subject to what is free.</dd>
+    </div>
+  </dl>
+
+  <p class="g-p">
+    <a href="{{ url_for('manage_booking', manage_token=b['token']) if b['token'] else '#' }}#dates" class="g-btn g-btn--solid">Move the dates instead</a>
+  </p>
+
+  <details class="g-cancel__d">
+    <summary>Cancel this booking</summary>
+    <div class="g-cancel__b">
+      <p class="g-p">{% if b['reference'] %}Reference {{ b['reference'] }}.{% endif %} This cannot be undone — the room goes back on sale immediately.</p>
+      <form method="post" action="{{ url_for('manage_booking', manage_token=b['token']) if b['token'] else '#' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="cancel">
+        <p class="g-field">
+          <label for="cx_why">Why, if you do not mind saying <span class="g-opt">optional</span></label>
+          <input type="text" id="cx_why" name="cancel_reason" placeholder="It helps us, and it is never used against you">
+        </p>
+        <button type="submit" class="g-btn g-btn--warn">Yes, cancel it</button>
+      </form>
+    </div>
+  </details>
+</section>
+{% endmacro %}

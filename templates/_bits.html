@@ -4,9 +4,9 @@
 {% macro event_tabs(current) %}
 <nav class="g-tabs" aria-label="Events sections">
   <a href="{{ url_for('events_info') }}"{% if current == 'overview' %} aria-current="page"{% endif %}>Overview</a>
-  <a href="{% if 'events_weddings' in url_map %}{{ url_for('events_weddings') }}{% else %}{{ url_for('events_info') }}#weddings{% endif %}"{% if current == 'weddings' %} aria-current="page"{% endif %}>Weddings</a>
-  <a href="{% if 'events_private' in url_map %}{{ url_for('events_private') }}{% else %}{{ url_for('events_info') }}#celebrations{% endif %}"{% if current == 'private' %} aria-current="page"{% endif %}>Private</a>
-  <a href="{% if 'events_photoshoots' in url_map %}{{ url_for('events_photoshoots') }}{% else %}{{ url_for('events_info') }}#photography{% endif %}"{% if current == 'photoshoots' %} aria-current="page"{% endif %}>Photoshoots</a>
+  <a href="{{ url_for('events_weddings') }}"{% if current == 'weddings' %} aria-current="page"{% endif %}>Weddings</a>
+  <a href="{{ url_for('events_private') }}"{% if current == 'private' %} aria-current="page"{% endif %}>Private</a>
+  <a href="{{ url_for('events_photoshoots') }}"{% if current == 'photoshoots' %} aria-current="page"{% endif %}>Photoshoots</a>
 </nav>
 {% endmacro %}
 

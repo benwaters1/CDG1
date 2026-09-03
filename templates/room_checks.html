@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Room checks{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Room checks</h1>
+  <a href="{{ url_for('room_issues') }}" class="btn-ghost">Room issues</a>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Somebody walks the room before the guest does, against the same list every time. Anything
+  found is raised as a room issue there and then &mdash; the person who can fix a dripping tap
+  does not read a quality log, and a fault recorded but not reported is how a checklist quietly
+  stops being done.
+</p>
+
+<div style="margin:-4px 0 14px;">
+  {% for n in [0, 2, 7] %}
+  <a href="{{ url_for('room_checks_page', days=n) }}"
+     class="btn-mini{{ '' if n == days else ' btn-ghost' }}">{{ 'Today' if n == 0 else n ~ ' days' }}</a>
+  {% endfor %}
+</div>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+<div class="detail-card">
+  <h2 class="section-heading">Arriving</h2>
+  {% if not arrivals %}
+  <div class="empty-state">Nobody is arriving in this window.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Arriving</th><th>Room</th><th>Who</th><th>Where it stands</th><th></th></tr></thead>
+      <tbody>
+        {% for a in arrivals %}
+        <tr class="{{ 'row-alert' if a.state in ['unchecked', 'failed'] }}">
+          <th scope="row">{{ a.booking['arrival_date'] }}</th>
+          <td>{{ a.booking['room_name'] }}</td>
+          <td>
+            {{ a.booking['guest_name'] }}
+            <div class="upload-hint">{{ a.booking['reference_code'] }}</div>
+          </td>
+          <td>
+            {% if a.state == 'unchecked' %}
+              <strong>Nobody has walked it.</strong> That is not the same as nothing being wrong.
+            {% elif a.state == 'failed' %}
+              {{ a.failed|length }} thing{{ '' if a.failed|length == 1 else 's' }} found, raised as
+              room issue{{ '' if a.failed|length == 1 else 's' }}:
+              {{ a.failed|map(attribute='what')|join('; ') }}
+            {% else %}
+              Walked by {{ a.check['checked_by'] or 'someone' }}, nothing found.
+            {% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('walk_room', booking_id=a.booking['booking_id']) }}"
+               class="btn-mini{{ '' if a.state == 'unchecked' else ' btn-ghost' }}">
+              {{ 'Walk it' if a.state == 'unchecked' else 'Walk it again' }}</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="detail-card">
+  <h2 class="section-heading">What somebody looks at</h2>
+  {% if not standards %}
+  <div class="empty-state">Nothing on the list. Add the first below.</div>
+  {% else %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Where</th><th>What</th><th></th></tr></thead>
+      <tbody>
+        {% for st in standards %}
+        <tr>
+          <th scope="row">{{ st['area'] or '&mdash;'|safe }}</th>
+          <td>{{ st['what'] }}</td>
+          <td>
+            <form method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="standard_id" value="{{ st['id'] }}">
+              <button type="submit" class="btn-mini btn-ghost">Take off</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="upload-hint">Taking a line off leaves every past check exactly as it was. A check is
+    a record of what somebody actually looked at on the day, and rewriting the list must not
+    rewrite that.</p>
+  {% endif %}
+</div>
+
+<form method="post" class="detail-card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="what" value="standard">
+  <h2 class="section-heading">Add something to look at</h2>
+  <div class="field-row-2">
+    <input type="text" name="line" maxlength="160" required
+           placeholder="Every light works, including the bedsides">
+    <input type="text" name="area" maxlength="40" placeholder="Where: Bathroom, Bed, The room">
+  </div>
+  <button type="submit" class="btn-mini">Add it</button>
+</form>
+
+{% endblock %}
