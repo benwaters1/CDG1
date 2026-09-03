@@ -109,7 +109,7 @@
   <h2 class="section-heading">The deposit</h2>
   {% if booking['deposit_returned_at'] %}
   <p class="manual-body">&euro;{{ '%.2f'|format(booking['deposit_returned_amount'] or 0) }}
-    recorded as returned on {{ booking['deposit_returned_at'][:10] }}.
+    recorded as returned on {{ booking['deposit_returned_at']|house_day }}.
     {% if booking['deposit_returned_note'] %}{{ booking['deposit_returned_note'] }}{% endif %}</p>
   {% else %}
   <form method="post" action="{{ url_for('return_deposit', booking_id=booking['id']) }}">

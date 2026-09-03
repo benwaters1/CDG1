@@ -5236,7 +5236,7 @@ def login_required(view):
 # private until somebody decides otherwise, which is the safe direction.
 NAV_AREAS = {
     "guests": [
-        "mark_booking_no_show", "undo_booking_no_show",
+        "mark_booking_no_show", "undo_booking_no_show", "rebook_guest",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
@@ -5370,7 +5370,8 @@ NAV_AREAS = {
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
-        "delete_campaign_template", "discard_email_outbox", "edit_announcement",
+        "delete_campaign_template", "discard_email_outbox",
+        "discard_stale_email_outbox", "edit_announcement",
         "edit_campaign_template", "edit_email_template", "management_email_templates",
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
@@ -5525,6 +5526,7 @@ NAV_AREAS = {
         "admin_wages", "new_wage_record", "save_wage_settings"
     ],
     "management": [
+        "fill_a_gap_page",
         "admin_retention",
         # Private HR notes sit here rather than in `team`: the employee is
         # promised that only the owner sees them, and this is the only area no
@@ -6361,6 +6363,10 @@ def format_date_range(start_iso, end_iso):
 # The guest-facing templates call these directly. format_date_human existed but
 # was never reachable from a template, which is why workshop pages were showing
 # raw ISO dates on a €4,800 product.
+# The house's day from a stored UTC moment. Templates could not reach
+# house_date_iso, so eighty of them sliced the stamp instead and showed
+# yesterday to anyone looking between midnight and 02:00 local.
+app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
 app.jinja_env.globals["date_range"] = format_date_range
@@ -15729,13 +15735,32 @@ def extras_performance(conn, start=None, end=None):
     return {
         "start": start, "end": end, "stays": stays, "rows": out,
         "took_any": took_any,
-        "any_attach": round(took_any / stays * 100, 1) if stays else 0,
+        # None, not 0, with no stays in the window. Zero per cent is what a
+        # month where nobody bought anything looks like; a month where
+        # nobody CAME has no attach rate to report. seasonality and
+        # room_league already draw this line for ADR.
+        "any_attach": round(took_any / stays * 100, 1) if stays else None,
         "revenue": round(revenue, 2),
-        "per_stay": round(revenue / stays, 2) if stays else 0,
+        "per_stay": round(revenue / stays, 2) if stays else None,
         "never_sold": never,
         "csv": [{"extra": r["name"], "stays": r["stays"], "units": r["units"],
                  "revenue": r["revenue"], "attach_pct": r["attach"]} for r in out],
     }
+
+
+def access_needs_for(conn, email):
+    """What this guest has told us they need from the house, or "".
+
+    Kept on the person rather than the stay so nobody explains it twice, and
+    deleted twelve months after their last visit -- which is what
+    templates/privacy.html promises and purge_stale_access_needs enforces.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return ""
+    row = conn.execute(
+        "SELECT access_needs FROM guests WHERE email = ? COLLATE NOCASE", (email,)).fetchone()
+    return ((row["access_needs"] or "").strip() if row else "")
 
 
 def turnaround_report(conn, days=60, on_day=None):
@@ -15750,7 +15775,8 @@ def turnaround_report(conn, days=60, on_day=None):
     end = start + timedelta(days=max(1, days))
     rows = conn.execute(
         """SELECT bookings.arrival_date, bookings.departure_date, bookings.guest_name,
-                  bookings.reference_code, rooms.name AS room_name, rooms.id AS room_id
+                  bookings.reference_code, bookings.guest_email,
+                  rooms.name AS room_name, rooms.id AS room_id
              FROM bookings JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.status = 'confirmed'
               AND bookings.departure_date >= ? AND bookings.arrival_date < ?
@@ -15775,6 +15801,13 @@ def turnaround_report(conn, days=60, on_day=None):
                     "day": out_day, "room": a["room_name"],
                     "out_guest": a["guest_name"], "out_reference": a["reference_code"],
                     "in_guest": b["guest_name"], "in_reference": b["reference_code"],
+                    # WHAT THE INCOMING GUEST NEEDS. A same-day changeover is
+                    # the one turnaround with no slack in it, and it is exactly
+                    # where "they cannot manage the stairs" has to be known
+                    # before the room is made up rather than after. It was on
+                    # the profile and nothing carried it here.
+                    "in_email": b["guest_email"],
+                    "in_access_needs": access_needs_for(conn, b["guest_email"]),
                 })
 
     by_day = {}
@@ -15944,7 +15977,11 @@ def no_show_report(conn, start=None, end=None):
     return {
         "start": start, "end": end,
         "booked": booked, "no_shows": missed,
-        "rate": round(missed / booked * 100, 1) if booked else 0,
+        # None, not 0, when nothing was booked -- the same distinction the
+        # per-weekday rate above already makes. A rate of 0% on a month the
+        # restaurant was shut reads as a perfect record rather than as no
+        # record, and the tile has no way to tell the two apart from a number.
+        "rate": round(missed / booked * 100, 1) if booked else None,
         "covers_booked": covers_booked, "covers_lost": covers_lost,
         "value_lost": round(value_lost, 2),
         # Only nights the house actually takes bookings on, so a Monday it
@@ -18227,9 +18264,18 @@ def admin_email_outbox():
     recovered = conn.execute(
         """SELECT * FROM email_outbox WHERE sent_at IS NOT NULL
            ORDER BY sent_at DESC LIMIT 25""").fetchall()
+    sendable_rows, stale_rows = held_mail_split(conn)
+    stale_total = len(stale_rows)
     conn.close()
+    # The age is worked out once, here, rather than in the template: the page
+    # shows it, the button counts on it, and two spellings of one idea is how
+    # the last figure of this kind drifted.
+    waiting = [dict(r, stale=held_mail_stale(r), age=held_mail_age_days(r))
+               for r in map(dict, waiting)]
     return render_template(
         "admin_email_outbox.html", waiting=waiting, waiting_total=waiting_total,
+        stale_total=stale_total, stale_days=EMAIL_OUTBOX_STALE_DAYS,
+        sendable_total=len(sendable_rows),
         recovered=recovered, can_send=email_enabled() or resend_enabled())
 
 
@@ -18241,6 +18287,17 @@ def send_email_outbox():
     Sends one at a time and marks each as it goes, so a failure part-way
     through leaves the ones already sent marked as sent — a retry that loses
     track would deliver the same confirmation to a guest twice.
+
+    THE OLD ONES ARE LEFT WHERE THEY ARE. "Try sending all" means all of the
+    ones still worth sending: a message held past EMAIL_OUTBOX_STALE_DAYS is
+    about something the recipient has moved on from, and delivering a batch of
+    them the day a provider is connected is how a house sends confirmations
+    for stays that already happened. They are named rather than counted, so
+    the owner can see what was left and decide.
+
+    Asking for ONE by id still sends it, however old. That is somebody
+    looking at a particular message and choosing — the flash says it was
+    stale, so the choice is informed rather than accidental.
     """
     if not (email_enabled() or resend_enabled()):
         flash("No email provider is configured yet, so there is nothing to send with.", "error")
@@ -18248,13 +18305,18 @@ def send_email_outbox():
 
     conn = get_db()
     only = request.form.get("id", "").strip()
-    if only.isdigit():
+    chosen_one = only.isdigit()
+    if chosen_one:
         rows = conn.execute("SELECT * FROM email_outbox WHERE id = ? AND sent_at IS NULL",
                             (int(only),)).fetchall()
+        skipped = []
     else:
-        rows = conn.execute(
-            "SELECT * FROM email_outbox WHERE sent_at IS NULL ORDER BY created_at LIMIT 100"
-        ).fetchall()
+        rows, stale = held_mail_split(conn, limit=100)
+        skipped = [
+            (f"{r['subject'] or 'no subject'} to {r['to_address']}",
+             f"held past the {EMAIL_OUTBOX_STALE_DAYS} days this house sends "
+             "within")
+            for r in stale]
 
     sent = failed = 0
     for row in rows:
@@ -18269,6 +18331,8 @@ def send_email_outbox():
                 (datetime.now(timezone.utc).isoformat(), row["id"]))
         else:
             failed += 1
+            skipped.append((f"{row['subject'] or 'no subject'} to "
+                            f"{row['to_address']}", "the provider refused it"))
             conn.execute(
                 "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
                 ("retry failed", row["id"]))
@@ -18276,9 +18340,56 @@ def send_email_outbox():
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
         conn.commit()
+    was_stale = chosen_one and rows and held_mail_stale(rows[0])
     conn.close()
-    flash(f"{sent} sent" + (f", {failed} still waiting." if failed else "."),
-          "success" if sent and not failed else "error" if failed else "success")
+
+    if chosen_one:
+        if sent and was_stale:
+            flash("Sent, though it had been waiting "
+                  f"{held_mail_age_days(rows[0])} days — the château chose to "
+                  "send it rather than the batch doing it unasked.", "success")
+        elif sent:
+            flash("Sent.", "success")
+        else:
+            flash("That message could not be sent.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    message, category = bulk_message("Sent", "message", sent, skipped)
+    flash(message, category)
+    return redirect(url_for("admin_email_outbox"))
+
+
+@app.route("/admin/email-outbox/discard-stale", methods=["POST"])
+@owner_required
+def discard_stale_email_outbox():
+    """Throw away the held mail that is too old to send.
+
+    The action the pile actually wants. Discarding them one at a time is the
+    same decision taken four hundred times, and a page that only offers that
+    is a page where the pile stays.
+
+    What is discarded is NAMED in the audit line by count and age rather than
+    by recipient: this is mail nobody is going to read, and writing four
+    hundred guest addresses into the audit log to record throwing them away
+    would keep the thing being disposed of.
+    """
+    conn = get_db()
+    _sendable, stale = held_mail_split(conn)
+    if not stale:
+        conn.close()
+        flash("Nothing is old enough to discard.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    oldest = max(held_mail_age_days(r) or 0 for r in stale)
+    conn.executemany("DELETE FROM email_outbox WHERE id = ?",
+                     [(r["id"],) for r in stale])
+    log_audit(conn, "email_outbox_discarded_stale", None,
+              f"{len(stale)} message(s), up to {oldest} days old")
+    conn.commit()
+    conn.close()
+    flash(f"Discarded {len(stale)} message"
+          f"{'' if len(stale) == 1 else 's'} too old to send, "
+          f"the oldest waiting {oldest} days.", "success")
     return redirect(url_for("admin_email_outbox"))
 
 
@@ -18448,6 +18559,62 @@ def send_email_via_resend(to_address, subject, body, ics_content=None, ics_filen
     except Exception as e:
         print(f"[resend email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         return False
+
+
+# How long a held message is still worth sending. Fourteen days covers a
+# provider connected late or an outage fixed slowly; past that the message is
+# about something the recipient has moved on from, and a booking confirmation
+# for a stay that has already happened is not late, it is wrong.
+#
+# The same reasoning send_email already applies with keep=False, which the
+# waitlist notice spells out: a stale one is worse than none. Those messages
+# are never kept at all. These are kept, and until now nothing looked at how
+# old they had got.
+EMAIL_OUTBOX_STALE_DAYS = 14
+
+
+def held_mail_age_days(row, now=None):
+    """How many days ago this message was held, or None if it cannot be told."""
+    keys = row.keys() if hasattr(row, "keys") else row
+    when = parse_datetime_iso(row["created_at"] if "created_at" in keys else None)
+    if not when:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return ((now or datetime.now(timezone.utc)) - when).days
+
+
+def held_mail_stale(row, now=None):
+    """True when this message is too old to send without somebody choosing to.
+
+    A row with no readable date is NOT called stale. Guessing in that
+    direction throws away a message on the strength of a bad timestamp, and
+    the safe answer for "I cannot tell how old this is" is to leave it where
+    the owner can look at it.
+    """
+    age = held_mail_age_days(row, now)
+    return age is not None and age > EMAIL_OUTBOX_STALE_DAYS
+
+
+def held_mail_split(conn, now=None, limit=None):
+    """(sendable, stale) for the mail still waiting, by one definition.
+
+    Partitioned here rather than in SQL on purpose. A string comparison on
+    created_at agrees with held_mail_stale for a well-formed stamp and
+    disagrees for a malformed one, and the page, the owner's home and the
+    send button all have to mean the same thing by "too old". The outbox
+    holds hundreds; it is not a table that needs the database to do this.
+
+    `limit` caps the SENDABLE ones, not the query. Capping the query would
+    take the oldest hundred, which once anything is stale are all stale --
+    the batch would send nothing, and go on sending nothing.
+    """
+    rows = conn.execute(
+        "SELECT * FROM email_outbox WHERE sent_at IS NULL "
+        "ORDER BY created_at").fetchall()
+    sendable = [r for r in rows if not held_mail_stale(r, now)]
+    stale = [r for r in rows if held_mail_stale(r, now)]
+    return (sendable[:limit] if limit else sendable), stale
 
 
 def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
@@ -21100,6 +21267,23 @@ def owner_home_warnings(conn, today):
     # arrive -- a shortfall found the evening before is not a warning.
     # A filing that is late is already costing money, so it goes above the
     # things that are merely coming.
+    # Mail the app kept and can no longer sensibly send. About the STALE ones
+    # rather than the held ones: held mail is a standing condition while no
+    # provider is configured, and a line that is true every morning forever is
+    # furniture. This one goes away when somebody discards them.
+    _current, stale_held = held_mail_split(conn)
+    if stale_held:
+        oldest_day = house_date(stale_held[0]["created_at"])
+        add("warning",
+            f"{len(stale_held)} held message"
+            f"{'' if len(stale_held) == 1 else 's'} too old to send",
+            "They are left out when the rest go, because a confirmation for a "
+            "stay that has already happened is not late, it is wrong"
+            + (f". The oldest has been waiting since "
+               f"{format_date_short(oldest_day.isoformat())}" if oldest_day else "")
+            + ". Send one by hand if it should still go, or discard them.",
+            len(stale_held), "admin_email_outbox")
+
     filings = filings_due(conn, today)
     if filings:
         worst = filings[0]
@@ -26060,6 +26244,9 @@ PALETTE_PAGES = [
     ("Empty nights", "empty_nights_page",
      "occupancy vacancy unsold free rooms gaps availability forecast yield "
      "which nights are empty"),
+    ("Fill a gap", "fill_a_gap_page",
+     "who to offer empty nights to lapsed overdue guests win back offer "
+     "seasonality quiet week fill the diary"),
     ("Data requests", "data_requests",
      "gdpr rgpd subject access erasure right to be forgotten what we hold "
      "copy of my data delete me portable"),
@@ -29588,11 +29775,19 @@ def guest_detail(guest_id):
                           alert=record["owed"] > 0),
             overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
         ]
+    # For the rebook box: the rooms it could be, and how long they usually
+    # stay so the dates come pre-shaped rather than blank.
+    conn2 = get_db()
+    rebook_rooms = conn2.execute(
+        "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    usual_nights = _typical_nights(conn2, (record.get("email") or "") if isinstance(record, dict) else "")
+    conn2.close()
     return render_template("guest_detail.html", record=record, overview=overview,
                            notes=notes, duplicates=duplicates,
                            merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
                            party_of=party_of,
+                           rebook_rooms=rebook_rooms, usual_nights=usual_nights,
                            today=house_today_iso())
 
 
@@ -30333,9 +30528,19 @@ def book_rooms():
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
     weather = weather_now(conn)
+    # book_rooms.html has carried a Welcome back panel since it was designed --
+    # guarded, styled, and reading a name nothing ever passed, so it has never
+    # appeared for anybody. This is the missing half.
+    #
+    # Read BEFORE the close, like everything else here. Reading it in the
+    # render call meant a query on a closed handle, which is a 500 rather than
+    # a missing panel -- and the page still looked fine, because the error page
+    # renders too.
+    welcome = returning_guest_welcome(conn)
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
+        returning_guest=welcome,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         nothing_available=nothing_available, next_free=next_free,
         weather=weather,
@@ -30680,7 +30885,7 @@ def public_form_prefill(form, mapping):
             for name, field in mapping.items()}
 
 
-def book_room_prefill(form=None):
+def book_room_prefill(form=None, conn=None):
     """What the guest typed, ready to hand straight back to book_room.html.
 
     The template has always read these names. The route did not pass them, so
@@ -30695,7 +30900,7 @@ def book_room_prefill(form=None):
     form = form if form is not None else {}
     def field(name):
         return (form.get(name, '') or '').strip()
-    return {
+    out = {
         "prefill_name": field("guest_name"),
         "prefill_email": field("guest_email"),
         "prefill_phone": field("guest_phone"),
@@ -30707,6 +30912,44 @@ def book_room_prefill(form=None):
                            if hasattr(form, "getlist") else [])
                            if str(i).isdigit()},
     }
+    # AND WHAT WE ALREADY KNOW, in the blanks only. A guest who has told us
+    # they are coeliac and that they usually arrive at four should not be asked
+    # either again -- those fields were being collected and nothing read them
+    # at the moment they would have saved somebody typing.
+    #
+    # Only for a guest who arrived on a link addressed to them, so this costs
+    # an anonymous visitor nothing: no session, no query. And anything the form
+    # already carries WINS, because what somebody just typed is more current
+    # than what is on file.
+    # has_request_context first: book_room_prefill is called directly by the
+    # suite as a plain function, and touching session outside a request
+    # raises. It was a pure function before this and stays usable as one.
+    if has_request_context() and session.get("guest_email") and conn is not None:
+        known = _profile_prefill_for_booking(conn)
+        for key, value in known.items():
+            if not out.get(key):
+                out[key] = value
+    return out
+
+
+def _profile_prefill_for_booking(conn):
+    """The profile's answers, keyed the way book_room.html reads them.
+
+    Takes the CALLER'S connection. Opening a second one inside a request that
+    already holds a write lock on the same file is a deadlock waiting for
+    company: it passed alone and timed out the moment anything else ran beside
+    it.
+    """
+    g = conn.execute("SELECT * FROM guests WHERE email = ? COLLATE NOCASE",
+                     (session.get("guest_email"),)).fetchone()
+    if not g:
+        return {}
+    return {k: v for k, v in {
+        "prefill_name": (g["name"] or "").strip(),
+        "prefill_email": (g["email"] or "").strip(),
+        "prefill_phone": (g["phone"] or "").strip(),
+        "prefill_requests": (g["dietary_notes"] or "").strip(),
+    }.items() if v}
 
 
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
@@ -30727,9 +30970,11 @@ def book_room(room_id):
     if request.method == "POST":
         if rate_limited(conn, "book_room", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
+            # Read while the connection is open; it is closed below.
+            prefill = book_room_prefill(request.form, conn)
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -30795,8 +31040,12 @@ def book_room(room_id):
         if error:
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
+            # Read while the connection is open. It is closed on the next
+            # line, and a query on a closed handle is not a blank prefill,
+            # it is a 500 on the one page where giving up costs a booking.
+            prefill = book_room_prefill(request.form, conn)
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
 
         nights = (departure - arrival).days
         chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
@@ -30915,8 +31164,12 @@ def book_room(room_id):
             except Exception as e:
                 flash(f"Payment setup failed ({e}). Please try again.", "error")
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
+                # Read while the connection is open. It is closed on the next
+                # line, and a query on a closed handle is not a blank prefill,
+                # it is a 500 on the one page where giving up costs a booking.
+                prefill = book_room_prefill(request.form, conn)
                 conn.close()
-                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
+                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
             conn.commit()
             conn.close()
             # Hold what they typed for the walk to Stripe and back.
@@ -30996,6 +31249,17 @@ def book_room(room_id):
         initial_quote = build_stay_quote(
             conn, room, arrival_d, departure_d,
             party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None)
+    # AND WHAT THE PROFILE ALREADY KNOWS, in the blanks only. This is the
+    # first render -- the one a guest actually sees -- so filling it here is
+    # the whole point; the error paths below were never the moment that
+    # mattered. Read before the close, and only for somebody who arrived on a
+    # link addressed to them, so an anonymous visitor costs nothing.
+    if has_request_context() and session.get("guest_email"):
+        _known = _profile_prefill_for_booking(conn)
+        prefill_name = prefill_name or _known.get("prefill_name", "")
+        prefill_email = prefill_email or _known.get("prefill_email", "")
+        prefill_phone = prefill_phone or _known.get("prefill_phone", "")
+        prefill_requests = prefill_requests or _known.get("prefill_requests", "")
     conn.close()
     return render_template(
         "book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras,
@@ -31435,7 +31699,7 @@ def manage_booking(manage_token):
     # This is one of the few requests where the app knows WHO is reading before
     # it renders. A guest who told us they read French should not have to find
     # the switcher again on a link we sent them.
-    remember_guest_language(conn, booking["guest_email"])
+    remember_guest(conn, booking["guest_email"])
 
     action = request.form.get("action") if request.method == "POST" else None
 
@@ -37769,6 +38033,54 @@ def admin_bookings():
     )
 
 
+def remember_guest(conn, email):
+    """Note who is reading, because they arrived on a link addressed to them.
+
+    Called from the pages a guest reaches with a token -- their booking, their
+    statement, their portal. It is the only point on the public site where the
+    app knows who is on the other end, and it is knowledge the guest supplied
+    by clicking their own link.
+
+    Two things use it: the language they read in, and the welcome on the rooms
+    page. Kept in the session rather than a cookie so it lasts the visit and no
+    longer.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    session["guest_email"] = email
+    remember_guest_language(conn, email)
+
+
+def returning_guest_welcome(conn, email=None):
+    """Who they are and when they were last here, or None.
+
+    book_rooms.html has had a Welcome back panel since it was designed --
+    guarded, styled, and reading a variable nothing ever passed, so it has
+    never once appeared. This is the half that was missing.
+
+    Only from a stay that DEPARTED. Somebody with a booking still to come is
+    not returning, they are waiting, and telling them "welcome back" before
+    they have arrived reads as a mistake.
+    """
+    email = (email or session.get("guest_email") or "").strip().lower()
+    if not email:
+        return None
+    row = conn.execute(
+        """SELECT bookings.guest_name, bookings.departure_date, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE LOWER(TRIM(bookings.guest_email)) = ?
+              AND bookings.status = 'confirmed'
+              AND bookings.departure_date < ?
+            ORDER BY bookings.departure_date DESC LIMIT 1""",
+        (email, house_today().isoformat())).fetchone()
+    if not row:
+        return None
+    year = (row["departure_date"] or "")[:4]
+    return {"name": row["guest_name"], "last_room": row["room_name"],
+            "last_year": year or None, "email": email}
+
+
 def remember_guest_language(conn, email):
     """Read a guest's saved language onto this session, if they have one.
 
@@ -38613,6 +38925,242 @@ def disband_booking_party(party_id):
     conn.close()
     flash(f"{party['name']} untied. Every booking is on its own again.", "success")
     return redirect(url_for("admin_bookings"))
+
+
+# Which visit numbers are worth saying out loud. Not every one: a guest told
+# "your 7th stay" hears a loyalty scheme, and a guest told nothing on their
+# third hears nothing at all. Three is when somebody has stopped being a
+# visitor, and it is the one worth a word at the door.
+STAY_MILESTONES = (3, 5, 10, 20)
+
+
+def stay_number(conn, email, arrival_iso, *, exclude_booking_id=None):
+    """Which visit this is for them, counting from one.
+
+    Counts CONFIRMED stays that arrive on or before this one, so the answer is
+    stable: it does not change later because they booked something else after.
+    A first-time guest is 1, which is why the caller decides whether that is
+    worth saying.
+    """
+    email = (email or "").strip().lower()
+    if not email or not arrival_iso:
+        return 0
+    params = [email, arrival_iso]
+    extra = ""
+    if exclude_booking_id:
+        extra = " AND id != ?"
+        params.append(exclude_booking_id)
+    row = conn.execute(
+        f"""SELECT COUNT(*) AS c FROM bookings
+             WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'
+               AND arrival_date <= ?{extra}""", params).fetchone()
+    return int(row["c"] or 0)
+
+
+def stay_milestone(conn, email, arrival_iso, *, exclude_booking_id=None):
+    """The visit number if it is one worth mentioning, else None."""
+    n = stay_number(conn, email, arrival_iso, exclude_booking_id=exclude_booking_id)
+    return n if n in STAY_MILESTONES else None
+
+
+@app.route("/guests/<int:guest_id>/rebook", methods=["POST"])
+@owner_required
+def rebook_guest(guest_id):
+    """Book a returning guest in again, from what we already know.
+
+    The repeat-guests page lists them and the profile holds their telephone,
+    what they cannot eat and when they usually arrive. Booking them again still
+    meant the whole public form and retyping all of it, so in practice it was
+    done by asking the guest to do it themselves.
+
+    Creates it PENDING, not confirmed. A stay somebody types on a guest's
+    behalf is still a request until the house has looked at the dates -- and
+    confirm_booking_by_id is the one place that re-checks availability, sends
+    the confirmation and takes the money question seriously.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    email = (guest["email"] or "").strip().lower()
+    if not email:
+        conn.close()
+        flash("This profile has no address, so there is nowhere to send a "
+              "confirmation.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    arrival = parse_date(request.form.get("arrival_date", ""))
+    departure = parse_date(request.form.get("departure_date", ""))
+    room_raw = (request.form.get("room_id", "") or "").strip()
+    if not (arrival and departure and departure > arrival):
+        conn.close()
+        flash("Give an arrival and a departure, with the departure after it.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    if arrival < house_today():
+        conn.close()
+        flash("That arrival is in the past.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    room = conn.execute("SELECT * FROM rooms WHERE id = ? AND active = 1",
+                        (int(room_raw),)).fetchone() if room_raw.isdigit() else None
+    if not room:
+        conn.close()
+        flash("Choose a room.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    # THE SAME AVAILABILITY CHECK the public form makes, and through claim_range
+    # rather than is_range_available. Asking and then writing are two steps, and
+    # a bare SELECT takes no write lock -- so two rebooks arriving together both
+    # read free and both write. Typing a booking on somebody's behalf must not be
+    # a way past the one thing standing between the house and two cars in the
+    # drive.
+    available, reason = claim_range(conn, room["id"], arrival, departure,
+                                    include_pending=True)
+    if not available:
+        conn.close()
+        flash(f"Those nights are not free: {reason}", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    try:
+        party = int(request.form.get("party_size", "") or 0)
+    except ValueError:
+        party = 0
+    party = party or 2
+    # create_booking hands back the reference and the manage token, not an id.
+    reference, _token = create_booking(
+        conn, room, guest["name"], email, (guest["phone"] or ""),
+        arrival, departure, party,
+        # What they have already told us, carried over rather than asked for
+        # again. It is on their record precisely so nobody has to.
+        (guest["dietary_notes"] or ""), [], source="returning")
+    conn.execute(
+        """UPDATE bookings SET linked_guest_id = ?,
+                  estimated_arrival_time = COALESCE(NULLIF(?, ''), estimated_arrival_time)
+            WHERE reference_code = ?""",
+        (guest_id, (guest["usual_arrival_time"] or ""), reference))
+    log_audit(conn, "guest_rebooked", target=guest["name"], details=reference)
+    conn.commit()
+    conn.close()
+    flash(f"{reference} created as a REQUEST for {guest['name']} — "
+          f"{format_date_human(arrival.isoformat())} to "
+          f"{format_date_human(departure.isoformat())}. Confirm it as usual; "
+          "nothing has been sent to them yet.", "success")
+    return redirect(url_for("admin_bookings"))
+
+
+def gap_candidates(conn, start, end, *, today=None, limit=40):
+    """The guests most likely to take a particular run of empty nights.
+
+    The app has known which nights are unsold and who has stayed before for a
+    while, and had no way to put the two facts together -- so an offer went to
+    everybody on the list or to nobody at all. Sending the whole list a note
+    about eleven nights in October is how a list stops being read.
+
+    Ranked, with the REASON on each row, because a name with no reason beside
+    it is one somebody either trusts blindly or ignores. Three reasons, and
+    each is a fact about that guest rather than a guess:
+
+      OVERDUE -- past their own typical gap between visits. Their gap, not an
+        average: somebody who comes every eleven months and somebody who comes
+        every three are not both overdue at six.
+      THIS TIME OF YEAR -- they have stayed in this month before. Seasonality
+        is the strongest signal a small house has, and it is the one a generic
+        list throws away.
+      THE RIGHT LENGTH -- their usual stay fits the gap. Offering four nights
+        to somebody who always takes two is an offer they decline.
+
+    Nothing is sent from here. This answers who, and the sending is the
+    existing campaign machinery with its own opt-out handling.
+    """
+    today = today or house_today()
+    start_d = parse_date(start) if isinstance(start, str) else start
+    end_d = parse_date(end) if isinstance(end, str) else end
+    if not (start_d and end_d) or end_d <= start_d:
+        return {"nights": 0, "month": None, "candidates": []}
+    nights = (end_d - start_d).days
+    month = start_d.month
+
+    people = repeat_guests(conn, today=today, min_stays=1)["guests"]
+    out = []
+    for g in people:
+        email = (g.get("email") or "").strip().lower()
+        if not email:
+            continue
+        reasons = []
+        score = 0
+        if g.get("overdue"):
+            reasons.append("overdue a visit")
+            score += 3
+        # Which months they have come in before. Read from their own stays
+        # rather than from an average of everybody's.
+        months = {int((s or "")[5:7]) for s in _guest_arrival_months(conn, email) if s}
+        if month in months:
+            reasons.append(f"has stayed in {start_d.strftime('%B')} before")
+            score += 4
+        typical = _typical_nights(conn, email)
+        if typical and abs(int(typical) - nights) <= 1:
+            reasons.append(f"usually takes about {int(typical)} nights")
+            score += 2
+        if not reasons:
+            continue
+        out.append({
+            "email": email, "name": g.get("name"), "stays": g.get("stays"),
+            "spend": g.get("spend"), "days_since": g.get("days_since"),
+            "reasons": reasons, "score": score,
+        })
+    out.sort(key=lambda d: (-d["score"], -(d["spend"] or 0)))
+    return {"nights": nights, "month": start_d.strftime("%B"),
+            "from": start_d, "to": end_d, "candidates": out[:limit]}
+
+
+def _typical_nights(conn, email):
+    """How long they usually stay, or None.
+
+    The median rather than the mean: one three-week visit should not make
+    somebody who otherwise takes two nights look like a fortnight guest.
+    """
+    lens = []
+    for r in conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
+            WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'""",
+        ((email or "").strip().lower(),)).fetchall():
+        a, b = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if a and b and b > a:
+            lens.append((b - a).days)
+    if not lens:
+        return None
+    lens.sort()
+    return lens[len(lens) // 2]
+
+
+def _guest_arrival_months(conn, email):
+    """Their arrival dates, for reading seasonality off."""
+    return [r["arrival_date"] for r in conn.execute(
+        """SELECT arrival_date FROM bookings
+            WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'""",
+        ((email or "").strip().lower(),)).fetchall()]
+
+
+@app.route("/management/fill-a-gap")
+@owner_required
+def fill_a_gap_page():
+    """A run of empty nights, and who to offer it to.
+
+    Reached from the empty-nights page, which knows what is unsold. This is
+    the half that says what to do about it.
+    """
+    conn = get_db()
+    days = request.args.get("days", "90")
+    days = int(days) if days.isdigit() else 90
+    gaps = empty_nights(conn, days=max(7, min(365, days)))
+    start = request.args.get("from", "")
+    end = request.args.get("to", "")
+    chosen = None
+    if start and end:
+        chosen = gap_candidates(conn, start, end)
+    conn.close()
+    return render_template("fill_a_gap.html", gaps=gaps, chosen=chosen,
+                           days=days, start=start)
 
 
 @app.route("/management/empty-nights")
@@ -54473,6 +55021,10 @@ def arrivals_sheet(conn, day=None):
             "profile": profile,
             "caution": caution,
             "prior_no_shows": no_shows.get(email, 0),
+            # Which visit this is, when it is one worth saying out loud. The
+            # people most likely to come back were getting the same greeting as
+            # a stranger.
+            "milestone": stay_milestone(conn, b["guest_email"], b["arrival_date"]),
             "codes": codes.get(b["id"], []),
             # The profile answers it when the booking does not: a guest who
             # always arrives at six should not be asked every time.

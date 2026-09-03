@@ -186,7 +186,7 @@
   </p>
   {% if e['message'] %}<p class="upload-hint">Asked for: {{ e['message'] }}</p>{% endif %}
   {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
-  <p class="upload-hint">Added {{ e['created_at'][:10] }}{% if e['decided_at'] %} · Decided {{ e['decided_at'][:10] }}{% endif %}</p>
+  <p class="upload-hint">Added {{ e['created_at']|house_day }}{% if e['decided_at'] %} · Decided {{ e['decided_at']|house_day }}{% endif %}</p>
   <p style="margin:8px 0 0;">
     <a href="{{ url_for('event_run_sheet_page', event_id=e['id']) }}" class="btn-mini">Run sheet</a>
     {%- if e['status'] == 'confirmed' and e['final_numbers'] is none %}

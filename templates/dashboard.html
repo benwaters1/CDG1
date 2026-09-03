@@ -327,7 +327,7 @@ function toggleBreak() {
     {% if backup_stale %}
     <a href="{{ url_for('download_backup') }}" class="mini-row">
       <span class="mini-name">Backup</span>
-      <span class="mini-role">{% if last_backup_at %}last downloaded {{ last_backup_at[:10] }}{% else %}never downloaded{% endif %}</span>
+      <span class="mini-role">{% if last_backup_at %}last downloaded {{ last_backup_at|house_day }}{% else %}never downloaded{% endif %}</span>
       <span class="mini-status status-pending">download now</span>
     </a>
     {% endif %}

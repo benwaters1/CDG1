@@ -44,7 +44,7 @@
       <div>
         <strong>{{ t['label'] }}</strong>
         {% if state == 'Needs fixing' %}<span class="mini-status status-declined">needs fixing</span>
-        {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at'][:10] }}{% endif %}</span>
+        {% elif state == 'Edited' %}<span class="mini-status status-upcoming">edited{% if t['updated_at'] %} {{ t['updated_at']|house_day }}{% endif %}</span>
         {% endif %}
       </div>
       <span class="small-link" style="color:var(--steel); cursor:pointer;"

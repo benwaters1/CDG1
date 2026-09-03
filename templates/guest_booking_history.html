@@ -102,7 +102,7 @@
   {% for p in promo_redemptions %}
   <div class="mini-row">
     <span class="mini-name">{{ p['code'] }}</span>
-    <span class="mini-role">{{ p['category']|capitalize }} · {{ p['redeemed_at'][:10] }}</span>
+    <span class="mini-role">{{ p['category']|capitalize }} · {{ p['redeemed_at']|house_day }}</span>
     <span class="upload-hint">-€{{ '%.2f'|format(p['discount_amount']) }}</span>
   </div>
   {% endfor %}

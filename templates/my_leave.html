@@ -50,7 +50,7 @@
       </div>
     </div>
     {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
-    <p class="upload-hint">Requested {{ r['requested_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Requested {{ r['requested_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
     {% if r['owner_note'] %}<p class="upload-hint">Note: {{ r['owner_note'] }}</p>{% endif %}
     {% if r['status'] in ['pending', 'approved'] %}
     <div class="expense-actions">

@@ -55,8 +55,8 @@
       </div>
     </div>
     {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
-    <p class="upload-hint">{{ f['submitted_at'][:10] }}{% if f['reference_code'] %} · {{ f['reference_code'] }}{% endif %}
-      {%- if f['acknowledged_at'] %} · read {{ f['acknowledged_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">{{ f['submitted_at']|house_day }}{% if f['reference_code'] %} · {{ f['reference_code'] }}{% endif %}
+      {%- if f['acknowledged_at'] %} · read {{ f['acknowledged_at']|house_day }}{% endif %}</p>
 
     {# A poor review nobody has answered is the one thing on this page worth
        interrupting for. It shows on the owner's home page too, and both
@@ -68,7 +68,7 @@
 
     {% if f['reply'] %}
     <div class="g-mb-note" style="margin-top:8px;">
-      <span class="g-mb-dt">What we said back{% if f['replied_at'] %}, {{ f['replied_at'][:10] }}{% endif %}</span>
+      <span class="g-mb-dt">What we said back{% if f['replied_at'] %}, {{ f['replied_at']|house_day }}{% endif %}</span>
       <p>{{ f['reply'] }}</p>
     </div>
     {% endif %}

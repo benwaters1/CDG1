@@ -30,7 +30,7 @@
       {% if e['phone'] %} · <a href="tel:{{ e['phone'] }}" style="color:var(--steel);">{{ e['phone'] }}</a>{% endif %}
     </p>
     {% if e['notes'] %}<p class="manual-body">{{ e['notes'] }}</p>{% endif %}
-    <p class="upload-hint">Joined {{ e['created_at'][:10] }}</p>
+    <p class="upload-hint">Joined {{ e['created_at']|house_day }}</p>
     <div class="expense-actions">
       {% if e['status'] in ('open', 'contacted') %}
       <a href="{{ url_for('workshop_register', session_id=e['session_id'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; register</a>

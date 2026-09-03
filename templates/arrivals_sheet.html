@@ -43,6 +43,12 @@
       {%- if r.arrival_time %}
       <span class="mini-status status-onshift" style="margin-left:4px;">{{ r.arrival_time }}</span>
       {%- endif %}
+      {#- Which visit this is, when it is one worth saying at the door. The
+          people most likely to come back were getting the same greeting as a
+          stranger. #}
+      {%- if r.milestone %}
+      <span class="mini-status status-active" style="margin-left:4px;" title="Say something">{{ r.milestone }}{{ 'rd' if r.milestone == 3 else 'th' }} stay</span>
+      {%- endif %}
       {%- if r.profile and r.profile['vip'] %}
       <span class="mini-status status-active" style="margin-left:4px;">VIP</span>
       {%- endif %}

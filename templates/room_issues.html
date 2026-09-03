@@ -73,7 +73,7 @@
         {{ coming['arrival_date'] }}, {{ coming['party_size'] }} guest{{ '' if coming['party_size'] == 1 else 's' }}
       </span>
       {% endif %}
-      <span class="upload-hint">Reported by {{ issue['reported_by_name'] or 'Former employee' }} · {{ issue['created_at'][:10] }}{% if issue['resolved_at'] %} · Resolved {{ issue['resolved_at'][:10] }}{% endif %}</span>
+      <span class="upload-hint">Reported by {{ issue['reported_by_name'] or 'Former employee' }} · {{ issue['created_at']|house_day }}{% if issue['resolved_at'] %} · Resolved {{ issue['resolved_at']|house_day }}{% endif %}</span>
     </div>
     {% endfor %}
   </div>

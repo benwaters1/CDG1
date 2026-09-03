@@ -62,7 +62,7 @@
       <div style="width:100%; margin-top:6px;">
         {% if v['upload_token'] and not v['token_revoked_at'] %}
           <span class="upload-hint">Their invoice link
-            {%- if v['last_submitted_at'] %} · last used {{ v['last_submitted_at'][:10] }}
+            {%- if v['last_submitted_at'] %} · last used {{ v['last_submitted_at']|house_day }}
             {%- else %} · not used yet{% endif %}</span>
           <p class="share-link-box" style="margin:4px 0;">{{ url_for('supplier_invoice_submit', token=v['upload_token'], _external=True) }}</p>
           <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -78,7 +78,7 @@
             </form>
           </div>
         {% elif v['token_revoked_at'] %}
-          <span class="upload-hint">Link withdrawn {{ v['token_revoked_at'][:10] }}.</span>
+          <span class="upload-hint">Link withdrawn {{ v['token_revoked_at']|house_day }}.</span>
           <form method="post" action="{{ url_for('issue_vendor_upload_link', vendor_id=v['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-mini">Give them a new one</button>

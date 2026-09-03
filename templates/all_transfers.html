@@ -10,7 +10,7 @@
   </span>
   <span class="mini-name">{{ t['guest_name'] or 'No guest named' }}</span>
   <span class="mini-role">
-    {% if show_date %}{{ t['scheduled_at'][:10] }} · {% endif %}{{ t['scheduled_at'][11:16] or '—' }}
+    {% if show_date %}{{ t['scheduled_at']|house_day }} · {% endif %}{{ t['scheduled_at'][11:16] or '—' }}
     · {{ t['vehicle_name'] }}
     {%- if t['notes'] %} · {{ t['notes'] }}{% endif %}
   </span>

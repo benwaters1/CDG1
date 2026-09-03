@@ -31,8 +31,8 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ data.rate }}%</span>
-    <span class="stat-tile-label">Of confirmed tables</span></span></div>
+    <span class="stat-tile-value">{% if data.rate is not none %}{{ data.rate }}%{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">{% if data.rate is not none %}Of confirmed tables{% else %}No tables booked{% endif %}</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.no_shows }}</span>
     <span class="stat-tile-label">No-shows of {{ data.booked }} booked</span></span></div>

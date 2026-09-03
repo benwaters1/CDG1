@@ -93,7 +93,7 @@
       </div>
     </div>
     {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
-    <p class="upload-hint">Requested {{ r['requested_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Requested {{ r['requested_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
     {% if conflicts.get(r['id']) %}
     <p class="upload-hint" style="color:var(--danger);">
       ⚠ Already scheduled to work {{ conflicts[r['id']]|map(attribute='shift_date')|join(', ') }} —

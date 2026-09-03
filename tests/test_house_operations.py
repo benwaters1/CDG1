@@ -203,6 +203,33 @@ def run():
                       "attach rate is stays that took it over stays in the window"):
             s.check(label, True, detail="no extras configured — nothing to measure")
 
+    # A window with nobody in it is not a window where nobody bought
+    # anything. 0% "of stays take anything at all" is what a bad month looks
+    # like; an empty one has no attach rate at all. seasonality and
+    # room_league already draw that line for ADR.
+    with m.app.test_request_context():
+        empty = m.extras_performance(conn, today + timedelta(days=1200),
+                                     today + timedelta(days=1228))
+    s.check("a window with no stays has no attach rate",
+            empty["any_attach"] is None,
+            detail=f"{empty['any_attach']!r} — zero per cent reads as nobody "
+                   "having bought anything")
+    s.check("and no extras-per-stay figure either",
+            empty["per_stay"] is None, detail=f"{empty['per_stay']!r}")
+
+    a = (today + timedelta(days=1200)).isoformat()
+    b = (today + timedelta(days=1228)).isoformat()
+    body = oc.get(f"/management/extras-performance?from={a}&to={b}").get_data(
+        as_text=True)
+    tile = body[body.find("stat-tiles"):][:500]
+    s.check("the page shows a dash rather than a share",
+            "0%" not in tile and ("&mdash;" in tile or "—" in tile),
+            detail=" ".join(tile.split())[:140])
+    s.check("and says why there is nothing rather than blaming the guests",
+            "No stays arriving in this window" in body,
+            detail="the old wording said no extras were TAKEN, which implies "
+                   "there were stays that did not take any")
+
     # ------------------------------------------------ arrivals missing detail
     s.section("Arrivals the house cannot prepare for")
     _book(conn, "NOTIME", rooms[0], today + timedelta(days=2),

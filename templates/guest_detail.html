@@ -48,6 +48,49 @@
 {% if overview %}{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}{% endif %}
 
 <!-- ------------------------------------------------------------------ -->
+{# BOOK THEM AGAIN. The page already knows their telephone, what they cannot
+   eat and when they usually arrive; booking them in still meant the whole
+   public form and retyping all of it, so in practice it was done by asking
+   the guest to do it themselves.
+
+   Created as a REQUEST. A stay somebody types on a guest's behalf is still a
+   request until the house has looked at the dates, and confirm is the one
+   place that re-checks availability and sends the confirmation. #}
+{% if is_owner and record.email %}
+<div class="detail-card">
+  <h2 class="section-heading">Book them again</h2>
+  <form method="post" action="{{ url_for('rebook_guest', guest_id=record.id) }}"
+        style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="g-field" style="margin:0;">
+      <label class="field-label" for="rb_room">Room</label>
+      <select id="rb_room" name="room_id" required>
+        {% for r in rebook_rooms %}<option value="{{ r['id'] }}">{{ r['name'] }}</option>{% endfor %}
+      </select>
+    </p>
+    <p class="g-field" style="margin:0;">
+      <label class="field-label" for="rb_from">Arrival</label>
+      <input type="date" id="rb_from" name="arrival_date" required>
+    </p>
+    <p class="g-field" style="margin:0;">
+      <label class="field-label" for="rb_to">Departure</label>
+      <input type="date" id="rb_to" name="departure_date" required>
+    </p>
+    <p class="g-field" style="margin:0;">
+      <label class="field-label" for="rb_party">Guests</label>
+      <input type="number" id="rb_party" name="party_size" min="1" max="20" value="2">
+    </p>
+    <button type="submit" class="btn-mini">Create the request</button>
+  </form>
+  <p class="field-hint">
+    Their telephone and what they cannot eat come across from this page.
+    {% if usual_nights %}They usually take about {{ usual_nights }} night{{ '' if usual_nights == 1 else 's' }}.{% endif %}
+    It is created as a request, not a confirmed booking &mdash; nothing is sent
+    to them until you confirm it.
+  </p>
+</div>
+{% endif %}
+
 <h2 class="section-heading">Stays ({{ record.stays|length }})</h2>
 {% if not record.stays %}
   <div class="empty-state">Nothing booked under this profile yet.</div>
@@ -174,7 +217,7 @@
   <div class="expense-head">
     <div>
       <span class="mini-status status-{{ 'onshift' if f['rating'] >= 4 else ('pending' if f['rating'] == 3 else 'inactive') }}">{{ f['rating'] }} / 5</span>
-      <span class="upload-hint">{{ f['submitted_at'][:10] }} · {{ f['reference_code'] }}</span>
+      <span class="upload-hint">{{ f['submitted_at']|house_day }} · {{ f['reference_code'] }}</span>
     </div>
   </div>
   {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
@@ -245,7 +288,7 @@
     <tbody>
       {% for n in notes %}
       <tr>
-        <td>{{ n['created_at'][:10]|date_short }}</td>
+        <td>{{ n['created_at']|house_day|date_short }}</td>
         <td>{{ n['author'] or '—' }}</td>
         <td>{{ n['body'] }}</td>
       </tr>
@@ -292,7 +335,7 @@
   <span class="mini-status status-declined">{{ caution_levels[record.guest['caution_level']] }}</span>
   {{ record.guest['caution'] }}
   {% if record.guest['caution_set_at'] %}
-  <span class="upload-hint">set {{ record.guest['caution_set_at'][:10]|date_short }}</span>
+  <span class="upload-hint">set {{ record.guest['caution_set_at']|house_day|date_short }}</span>
   {% endif %}
 </p>
 {% endif %}

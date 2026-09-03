@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Fill a gap{% endblock %}
+{% block content %}
+
+{# The app has known which nights are unsold and who has stayed before for a
+   while, and had no way to put the two together — so an offer went to the whole
+   list or to nobody. This is the join. #}
+
+<div class="page-head">
+  <h1>Fill a gap</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('empty_nights_page') }}" class="btn-ghost">All empty nights</a>
+    <a href="{{ url_for('repeat_guests_page') }}" class="btn-ghost">Repeat guests</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ gaps.free_nights }} unsold room-nights in the next {{ days }} days,
+  worth about &euro;{{ '%.0f'|format(gaps.value_at_rate or 0) }} at the rate card.
+  Pick a run and see who is most likely to take it.
+</p>
+
+<h2 class="section-heading">The runs</h2>
+{% if gaps.runs %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Room</th><th scope="col">From</th><th scope="col">To</th>
+        <th scope="col">Nights</th><th scope="col">Worth</th><th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in gaps.runs %}
+      <tr>
+        <th scope="row">{{ r.room['name'] if r.room else '&mdash;' }}</th>
+        <td>{{ r['from'] }}</td>
+        <td>{{ r['to'] }}</td>
+        <td>{{ r.nights }}</td>
+        <td>&euro;{{ '%.0f'|format(r.value or 0) }}</td>
+        <td>
+          <a class="btn-mini"
+             href="{{ url_for('fill_a_gap_page', days=days, **{'from': r['from'], 'to': r['to']}) }}">Who for?</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty-state">Nothing unsold in this window. Widen it or leave it alone.</p>
+{% endif %}
+
+{% if chosen %}
+<h2 class="section-heading">
+  Who for &mdash; {{ chosen.nights }} night{{ '' if chosen.nights == 1 else 's' }} from {{ start }}
+</h2>
+
+{% if chosen.candidates %}
+<p class="page-intro">
+  Ranked, and each row says WHY. A name with no reason beside it is one somebody
+  either trusts blindly or ignores &mdash; and the reasons are facts about that
+  guest rather than an average of everybody.
+</p>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Guest</th><th scope="col">Why them</th>
+        <th scope="col">Stays</th><th scope="col">Spent</th>
+        <th scope="col">Last here</th><th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in chosen.candidates %}
+      <tr>
+        <th scope="row">{{ c.name or c.email }}</th>
+        <td>
+          {% for why in c.reasons %}
+          <span class="mini-status status-onshift" style="margin-right:4px;">{{ why }}</span>
+          {% endfor %}
+        </td>
+        <td>{{ c.stays }}</td>
+        <td>&euro;{{ '%.0f'|format(c.spend or 0) }}</td>
+        <td>{% if c.days_since is not none %}{{ c.days_since }} days ago{% else %}&mdash;{% endif %}</td>
+        <td><a class="small-link" href="{{ url_for('guest_booking_history', email=c.email) }}">Everything about them</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# Nothing is sent from here. Writing to people is the campaign sender's job,
+   which already handles opt-outs, the unsubscribe footer and a record of what
+   went to whom — and duplicating any of that here is how somebody gets two
+   copies or one they cannot unsubscribe from. #}
+<p class="page-intro" style="margin-top:14px;">
+  <a href="{{ url_for('admin_emails') }}" class="btn-mini">Write to them</a>
+  <span class="upload-hint">The campaign sender handles opt-outs and the
+  unsubscribe line; this page only says who.</span>
+</p>
+{% else %}
+<p class="empty-state">
+  Nobody stands out for these nights. That is a real answer &mdash; it means
+  nobody on the list is overdue, has come at this time of year, or usually takes
+  a stay this long, and a note sent anyway is a note read less carefully next
+  time.
+</p>
+{% endif %}
+{% endif %}
+
+{% endblock %}

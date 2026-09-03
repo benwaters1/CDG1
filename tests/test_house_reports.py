@@ -62,6 +62,32 @@ def run():
     s.check("a marked no-show is counted", ns["no_shows"] >= 1, detail=str(ns["no_shows"]))
     s.check("and the covers it held are counted with it",
             ns["covers_lost"] >= 4, detail=str(ns["covers_lost"]))
+
+    # None and nothing are different answers. A month the restaurant was shut
+    # has no no-show rate; it does not have a rate of zero, which on the tile
+    # reads as a perfect record. The per-weekday rate already knew this and
+    # the headline did not.
+    quiet = m.no_show_report(conn, today + timedelta(days=1200),
+                             today + timedelta(days=1228))
+    s.check("a month with nothing booked has no rate at all",
+            quiet["rate"] is None,
+            detail=f"{quiet['rate']!r} — 0% on a shut month reads as nobody "
+                   "having failed to turn up")
+    # Asked of the page itself, over that same quiet window, because the tile
+    # is what an owner reads. The first version of this check was an `or`
+    # chain whose last clause was true regardless, so it passed without ever
+    # loading the page.
+    a = (today + timedelta(days=1200)).isoformat()
+    b = (today + timedelta(days=1228)).isoformat()
+    body = oc.get(f"/admin/restaurant/no-shows?from={a}&to={b}").get_data(
+        as_text=True)
+    tile = body[body.find("stat-tiles"):][:400]
+    s.check("and the tile shows a dash rather than a figure",
+            "0%" not in tile and ("&mdash;" in tile or "—" in tile),
+            detail=" ".join(tile.split())[:150])
+    s.check("and says there were none rather than naming a share",
+            "No tables booked" in tile,
+            detail=" ".join(tile.split())[:150])
     s.check("what it was worth is counted too", ns["value_lost"] >= 180.0,
             detail=str(ns["value_lost"]))
     days = {d["day"]: d for d in ns["by_day"]}

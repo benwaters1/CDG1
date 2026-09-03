@@ -80,7 +80,7 @@ we send goes by email.</p>
   {% if profile['preferences'] %}<p>Prefers: {{ profile['preferences'] }}</p>{% endif %}
   {% if profile['birthday'] %}<p>Birthday {{ profile['birthday']|day_month }}</p>{% endif %}
   {% for n in profile_notes %}
-  <p class="upload-hint">{{ n['created_at'][:10]|date_short }} — {{ n['body'] }}</p>
+  <p class="upload-hint">{{ n['created_at']|house_day|date_short }} — {{ n['body'] }}</p>
   {% endfor %}
   {% if not (profile['caution_level'] or profile['vip'] or profile['dietary_notes']
              or profile['preferences'] or profile['name_pronunciation']
