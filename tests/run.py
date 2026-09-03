@@ -257,6 +257,11 @@ SUITES = [
     "test_read_write_parity",
     "test_no_overbooking",
     "test_add_room",
+    "test_cancel_and_reject",
+    "test_declines",
+    "test_estate_actions",
+    "test_deletes",
+    "test_payment_returns",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
@@ -316,6 +321,57 @@ def _registry_complete():
     return ok
 
 
+# Pages the suite reaches and never gets an answer out of. Every one was
+# counted as covered until the measure started reading the reply rather than
+# the request, and each is here with what it actually replied.
+#
+# Two shapes, and both mean the same thing -- the working path never runs:
+#
+#   403  the test proves somebody is REFUSED, which is worth proving and is
+#        not a test of what the page does when it is allowed. Eight of the
+#        first thirty-eight were deletes.
+#   404  the test posts an id that does not exist, so the handler takes its
+#        not-found branch and returns. Also worth proving; also not the page.
+#
+# Twenty-three of the original thirty-eight have come off it, each by having
+# the test written: the deletes, the three declines, the three admin
+# cancellations, the estate actions, and three of the four payment returns.
+#
+# Taking one off this list means writing the test that runs it properly. The
+# list is checked in BOTH directions: a fortieth name reds the run, and so
+# does a name that starts answering, because an exception list that outlives
+# its reason is how the next one gets in unnoticed.
+COVERAGE_KNOWN_GAPS = {
+    # Owner actions that reach a third party or a schedule. Running the
+    # working branch means letting a test out to the network, or standing up
+    # a fake for it, which is a bigger decision than a missing check.
+    "apply_invoice", "new_ical_source", "sync_ical_source_now",
+    "api_sync_ical", "sync_pennylane", "run_checkin_texts_now",
+    "send_event_revenue",
+
+    # Refunding needs a card processor, and this house has none configured.
+    "refund_restaurant_booking_admin",
+
+    # Editors reached only with an id that does not exist. Plainly testable:
+    # these are next.
+    "edit_document", "edit_social_plan",
+
+    # JSON the pages call, answered only with 404 so far. api_draft_reply
+    # needs the model provider the harness pins off; the other three are
+    # testable and are next as well.
+    "api_check_send_conflict", "api_draft_reply", "api_guest_lookup",
+    "api_owner_digest",
+
+    # The one payment return that cannot be reached without calling Stripe
+    # for real. Its siblings are covered (tests/test_payment_returns.py):
+    # their branch that matters answers BEFORE any call goes out, so a guest
+    # refreshing the page can be tested with no payment provider at all.
+    # This one retrieves the session first, and arranging that is not a
+    # thing to do in a test.
+    "workshop_stripe_success",
+}
+
+
 def main(argv):
     wanted = argv[1:]
     names = [n for n in SUITES if not wanted or any(w in n for w in wanted)]
@@ -346,12 +402,13 @@ def main(argv):
     # because a green run over half the app is exactly the failure this guards
     # against — "we have tests" and "this page is tested" are different claims,
     # and only one of them is checkable.
+    coverage_ok = True
     if not wanted:
         try:
             hit, miss, by_area = _harness.coverage_report()
             print("\n" + "=" * 64)
             pct = 100 * len(hit) / max(1, len(hit) + len(miss))
-            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages exercised ({pct:.0f}%)")
+            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages answered ({pct:.0f}%)")
             for area in sorted(by_area):
                 got, lost = by_area[area]["hit"], by_area[area]["miss"]
                 line = f"  {area:<14} {len(got):>3}/{len(got) + len(lost):<3}"
@@ -360,6 +417,37 @@ def main(argv):
                     if len(lost) > 3:
                         line += f" +{len(lost) - 3} more"
                 print(line)
+            # Reached but never answered. Every one of these was counted as
+            # covered until now: the request matched the endpoint and was then
+            # turned away at the door, which tests the door and nothing else.
+            # Named rather than counted -- a total is not something anybody
+            # can act on.
+            knocked = _harness.coverage_knocked_only()
+            knocked_names = {ep for ep, _seen in knocked}
+            fresh = [ep for ep, _seen in knocked
+                     if ep not in COVERAGE_KNOWN_GAPS]
+            mended = sorted(COVERAGE_KNOWN_GAPS - knocked_names)
+            if knocked:
+                print(f"\n  REACHED BUT NEVER ANSWERED — {len(knocked)} "
+                      f"page(s), {len(fresh)} of them new:")
+                for ep, seen in knocked:
+                    what = ", ".join(f"{mth} {code}"
+                                     + (f" -> {loc}" if loc else "")
+                                     for mth, code, loc in seen[:3])
+                    mark = "NEW  " if ep not in COVERAGE_KNOWN_GAPS else "     "
+                    print(f"    {mark}{ep:<34} {what}")
+                print("  A login redirect, a 403, or an id that does not "
+                      "exist is not a test of the page.")
+            if fresh:
+                coverage_ok = False
+                print("  ^ the ones marked NEW are not on the known list. "
+                      "Write the test, or add the name and say why.")
+            if mended:
+                coverage_ok = False
+                print("\n  ON THE KNOWN LIST AND ANSWERING NOW — take "
+                      "these off it:")
+                for ep in mended:
+                    print(f"    {ep}")
         except Exception as e:                       # pragma: no cover
             print(f"\n(coverage report unavailable: {e})")
 
@@ -374,10 +462,15 @@ def main(argv):
         print("\nCRASHED:", ", ".join(crashed))
     if not control_ok:
         print("\nThe self-check did not behave — treat the run above as unproven.")
+    if not coverage_ok:
+        print("\nThe list of pages reached but never answered has moved — "
+              "see above. Either a page stopped being tested properly, or one "
+              "started and the list still says otherwise.")
     if not registry_ok:
         print("\nA suite file was written and never registered — the total"
               " above does not cover it.")
-    return 0 if (not all_failed and not crashed and control_ok and registry_ok) else 1
+    return 0 if (not all_failed and not crashed and control_ok
+                 and registry_ok and coverage_ok) else 1
 
 
 if __name__ == "__main__":

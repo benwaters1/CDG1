@@ -66,8 +66,16 @@ def run():
     s.section("Saving does not switch anything off by accident")
     # The live bug. Posting the form with a job's box ticked must leave it
     # on; posting with a box that does not exist must not read as "off".
+    #
+    # And what is put back afterwards is EVERY switch, not every job. The empty POST below turns off everything
+    # the form carries, and five of those are settings with no scheduled job
+    # behind them -- waitlist auto-notify, the three balance reminders, the
+    # stale-shift alert. Restoring only the registry left those five off for
+    # the rest of the run, and the check below could not see it because it
+    # compared the same list it had restored.
     conn = db()
-    before = {k: m.get_automation_settings(conn)[k] for k in sorted(registry)}
+    all_settings = m.get_automation_settings(conn)
+    before = {k: all_settings[k] for k in sorted(all_settings)}
     conn.close()
 
     # Send every switch as ticked, which is what a browser does when the
@@ -106,15 +114,39 @@ def run():
     conn.commit()
     restored = m.get_automation_settings(conn)
     conn.close()
+    left_off = sorted(k for k in before if restored.get(k) != before[k])
     s.check("and the suite puts them back as it found them",
-            all(restored[k] == before[k] for k in before),
-            detail="a suite that leaves every automation switched off is a "
-                   "suite that quietly disables the house")
+            not left_off,
+            detail="left changed: " + ", ".join(left_off) + " — a suite that "
+                   "leaves an automation switched off does not fail, it makes "
+                   "every suite after it test the switched-off path")
+    s.check("including the switches that have no scheduled job behind them",
+            all(k in before for k in
+                ("automation_waitlist_autonotify_enabled",
+                 "automation_stale_shift_enabled",
+                 "automation_room_balance_reminder_enabled")),
+            detail="these are on the form and not in AUTOMATION_JOBS, which "
+                   "is exactly why they were the ones left off")
 
     s.section("An employee cannot change what runs")
+    # Read first, because the status code cannot answer this on its own: a
+    # SUCCESSFUL save on this route redirects with 302, so "302 or 403" is
+    # true whether the employee was turned away or had just switched the
+    # whole house off with an empty form. What settles it is the settings.
+    conn = db()
+    before_emp = m.get_automation_settings(conn)
+    conn.close()
     r = ec.post("/admin/automation/settings", data={}, follow_redirects=False)
+    conn = db()
+    after_emp = m.get_automation_settings(conn)
+    conn.close()
     s.check("the form is refused", r.status_code in (302, 303, 403),
             detail=f"HTTP {r.status_code}")
+    changed = sorted(k for k in before_emp if after_emp.get(k) != before_emp[k])
+    s.check("and nothing they sent took effect", not changed,
+            detail="changed by an employee: " + ", ".join(changed) + " — an "
+                   "empty form is the most destructive shape this page has, "
+                   "and a redirect looks the same either way")
 
     return s
 

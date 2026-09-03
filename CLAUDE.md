@@ -44,6 +44,18 @@ and invoices via zips the owner downloads and applies here.
   unproven, not clean.
 - A green suite over half the app is the failure this guards against, so the
   run prints coverage. Adding a page without a check lowers it on purpose.
+- **Coverage counts the ANSWER, not the request.** It used to be recorded in
+  `before_request`, so a page counted as covered if a test knocked and was
+  turned away — a login redirect, a 403, or a 405 on a POST-only route. It
+  read 100% while 38 routes had never once run their working branch: twelve
+  deletes only ever refused, three declines only ever 403, the Stripe return
+  pages only ever 404. A page now counts only if a view answered, and any
+  page reached without answering is NAMED at the end of the run. The ones
+  outstanding are listed in `COVERAGE_KNOWN_GAPS` in `tests/run.py` with the
+  reason; the list is checked in both directions, so a new one reds the run
+  and so does one that starts answering and is left on it.
+  - `logout` is the single exemption, because its success IS a redirect to
+    the login page. Anything else that sends people to log in is a refusal.
 - **Write the negative control.** After a test passes, break the code
   deliberately and confirm the test catches it. A test that cannot fail is
   worse than no test — it reads as cover.
