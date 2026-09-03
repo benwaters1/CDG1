@@ -235,11 +235,53 @@ assert m.UPLOAD_DIR == SCRATCH_UPLOADS, (
 # only one of them is checkable. run.py prints the gap at the end.
 EXERCISED = set()
 
+# And which of those actually ANSWERED. before_request fires before the view
+# runs, so EXERCISED alone counts the knock rather than the reply: a page a
+# test only ever got a 403 or a login redirect from would be counted as
+# covered. RENDERED is filled after the view has produced something.
+RENDERED = set()
+
+# What each endpoint actually replied, kept so the report can say WHY a page
+# counts as unanswered. A name on its own does not tell a missing test from a
+# mistake in the measure.
+ANSWERS = {}
+
+# Turned away at the door. A plain 302 is not on this list -- post-redirect-get
+# is how most forms here answer, and calling that a refusal would erase real
+# coverage. A redirect to the login page is a refusal, and it is checked by
+# where it points rather than by its code.
+_REFUSAL_CODES = {401, 403, 404, 405, 500, 502, 503}
+
 
 @m.app.before_request
 def _record_endpoint():          # pragma: no cover - bookkeeping, not behaviour
     if request.endpoint:
         EXERCISED.add(request.endpoint)
+
+
+@m.app.after_request
+def _record_answer(response):    # pragma: no cover - bookkeeping, not behaviour
+    if not request.endpoint:
+        return response
+    code = response.status_code
+    where = (response.headers.get("Location") or "").split("?")[0]
+    ANSWERS.setdefault(request.endpoint, set()).add(
+        (request.method, code, where[-40:]))
+
+    refused = code in _REFUSAL_CODES
+    if code in (301, 302, 303, 307, 308):
+        trimmed = where.rstrip("/")
+        refused = trimmed.endswith("/login") or trimmed == "/login"
+    # logout is the one endpoint whose SUCCESS is a redirect to the login
+    # page, so the rule above would call the only thing it does a refusal.
+    # Named rather than handled by loosening the rule, which would excuse
+    # every page that quietly sends people to log in.
+    if request.endpoint == "logout":
+        refused = False
+
+    if not refused:
+        RENDERED.add(request.endpoint)
+    return response
 
 
 def coverage_report():
@@ -248,6 +290,13 @@ def coverage_report():
     Excludes the machinery nobody navigates to — static files, webhooks, the
     JSON polled by the nav badge — because counting those as untested pages
     would make the number less honest, not more.
+
+    EXERCISED IS NOT THE MEASURE. A page counts here only if the view actually
+    answered: a test that got a login redirect, a 403, or a 405 on a POST-only
+    route reached the endpoint without testing anything, and counting that is
+    how a coverage figure starts overstating. Anything reached but never
+    answered is returned separately so run.py can name it rather than quietly
+    fold it into either column.
     """
     skip_exact = {"static", "notifications_unread_count", "stripe_webhook"}
     pages = {}
@@ -263,10 +312,28 @@ def coverage_report():
     by_area = {}
     for ep in sorted(pages):
         area = area_of.get(ep) or ("public/other")
-        hit = ep in EXERCISED
+        hit = ep in RENDERED
         entry = by_area.setdefault(area, {"hit": [], "miss": []})
         entry["hit" if hit else "miss"].append(ep)
-    return set(pages) & EXERCISED, set(pages) - EXERCISED, by_area
+    return set(pages) & RENDERED, set(pages) - RENDERED, by_area
+
+
+def coverage_knocked_only():
+    """Endpoints a test reached but never got an answer out of.
+
+    Every one is a page the old figure counted as covered. Named rather than
+    counted: "three pages are only ever refused" is a number nobody acts on,
+    and the names say which.
+    """
+    skip_exact = {"static", "notifications_unread_count", "stripe_webhook"}
+    pages = set()
+    for rule in m.app.url_map.iter_rules():
+        ep = rule.endpoint
+        if ep in skip_exact or ep.startswith("static") or "webhook" in ep:
+            continue
+        pages.add(ep)
+    return [(ep, sorted(ANSWERS.get(ep, ())))
+            for ep in sorted((pages & EXERCISED) - RENDERED)]
 
 
 def db():
@@ -462,3 +529,18 @@ class Suite:
     @property
     def failed(self):
         return [n for n, ok in self.results if not ok]
+
+    def report(self):
+        """The last line when a suite is run on its own.
+
+        Every suite file ends `print(run().report())` and this did not exist,
+        so running one directly printed its checks and then raised. The checks
+        have already printed themselves by the time this is called; all that
+        is left to say is the count, and which ones failed.
+        """
+        total = len(self.results)
+        head = f"\n{self.passed}/{total} passed in {self.name!r}"
+        if not self.failed:
+            return head
+        return head + "\n  failed:\n" + "\n".join(
+            f"    {n}" for n in self.failed)

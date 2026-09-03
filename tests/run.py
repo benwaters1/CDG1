@@ -44,6 +44,7 @@ SUITES = [
     "test_workflows",
     "test_operations",
     "test_areas",
+    "test_arrivals_sheet",
     "test_approvals_money",
     "test_closing_loops",
     "test_list_view",
@@ -244,6 +245,7 @@ SUITES = [
     "test_agreements",
     "test_publish_consent",
     "test_room_checks",
+    "test_no_show_rooms",
     "test_orphan_templates",
     "test_guest_page",
     "test_stay_cost",
@@ -255,11 +257,20 @@ SUITES = [
     "test_utc_slices",
     "test_read_write_parity",
     "test_no_overbooking",
+    "test_add_room",
+    "test_cancel_and_reject",
+    "test_declines",
+    "test_estate_actions",
+    "test_api_tokens",
+    "test_ical_routes",
+    "test_deletes",
+    "test_payment_returns",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
     "test_booking_parties",
     "test_guest_record",
+    "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
     "test_pace",
@@ -303,14 +314,75 @@ def _registry_complete():
     on_disk = {os.path.basename(f)[:-3] for f in glob.glob(os.path.join(here, "test_*.py"))}
     missing = sorted(on_disk - set(SUITES))
     ghosts = sorted(set(SUITES) - on_disk)
-    ok = not missing and not ghosts
+    # Compared as sets above, which cannot see a name listed TWICE -- and a
+    # duplicate runs that suite twice and counts its checks twice, so the
+    # total quietly overstates. Found by listing one that was already there.
+    seen = set()
+    dupes = sorted({n for n in SUITES if n in seen or seen.add(n)})
+    ok = not missing and not ghosts and not dupes
     print(f"  {'PASS' if ok else 'FAIL'}  every suite file is registered "
           f"({len(on_disk)} on disk)")
     if missing:
         print("        written but never run: " + ", ".join(missing))
     if ghosts:
         print("        registered but the file is gone: " + ", ".join(ghosts))
+    if dupes:
+        print("        listed twice, so run and counted twice: "
+              + ", ".join(dupes))
     return ok
+
+
+# Pages the suite reaches and never gets an answer out of. Every one was
+# counted as covered until the measure started reading the reply rather than
+# the request, and each is here with what it actually replied.
+#
+# Two shapes, and both mean the same thing -- the working path never runs:
+#
+#   403  the test proves somebody is REFUSED, which is worth proving and is
+#        not a test of what the page does when it is allowed. Eight of the
+#        first thirty-eight were deletes.
+#   404  the test posts an id that does not exist, so the handler takes its
+#        not-found branch and returns. Also worth proving; also not the page.
+#
+# Twenty-three of the original thirty-eight have come off it, each by having
+# the test written: the deletes, the three declines, the three admin
+# cancellations, the estate actions, and three of the four payment returns.
+#
+# Taking one off this list means writing the test that runs it properly. The
+# list is checked in BOTH directions: a fortieth name reds the run, and so
+# does a name that starts answering, because an exception list that outlives
+# its reason is how the next one gets in unnoticed.
+COVERAGE_KNOWN_GAPS = {
+    # Owner actions that reach a third party or a schedule. The three iCal
+    # ones are covered now (tests/test_ical_sync.py): app.py imports urlopen
+    # by name, so a stand-in drives both branches without a socket -- which
+    # is how the expensive one gets tested at all, since a real feed will not
+    # fail on demand.
+    "apply_invoice", "sync_pennylane", "run_checkin_texts_now",
+    "send_event_revenue",
+
+    # Refunding needs a card processor, and this house has none configured.
+    "refund_restaurant_booking_admin",
+
+    # Editors reached only with an id that does not exist. Plainly testable:
+    # these are next.
+    "edit_document", "edit_social_plan",
+
+    # api_draft_reply needs the model provider the harness pins off, so the
+    # only branch reachable here is the refusal its siblings already prove.
+    # The other three are covered (tests/test_api_tokens.py), including the
+    # rule that a GET can never carry a valid token -- one word away from
+    # putting a read-any-guest credential into every access log.
+    "api_draft_reply",
+
+    # The one payment return that cannot be reached without calling Stripe
+    # for real. Its siblings are covered (tests/test_payment_returns.py):
+    # their branch that matters answers BEFORE any call goes out, so a guest
+    # refreshing the page can be tested with no payment provider at all.
+    # This one retrieves the session first, and arranging that is not a
+    # thing to do in a test.
+    "workshop_stripe_success",
+}
 
 
 def main(argv):
@@ -343,12 +415,13 @@ def main(argv):
     # because a green run over half the app is exactly the failure this guards
     # against — "we have tests" and "this page is tested" are different claims,
     # and only one of them is checkable.
+    coverage_ok = True
     if not wanted:
         try:
             hit, miss, by_area = _harness.coverage_report()
             print("\n" + "=" * 64)
             pct = 100 * len(hit) / max(1, len(hit) + len(miss))
-            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages exercised ({pct:.0f}%)")
+            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages answered ({pct:.0f}%)")
             for area in sorted(by_area):
                 got, lost = by_area[area]["hit"], by_area[area]["miss"]
                 line = f"  {area:<14} {len(got):>3}/{len(got) + len(lost):<3}"
@@ -357,6 +430,37 @@ def main(argv):
                     if len(lost) > 3:
                         line += f" +{len(lost) - 3} more"
                 print(line)
+            # Reached but never answered. Every one of these was counted as
+            # covered until now: the request matched the endpoint and was then
+            # turned away at the door, which tests the door and nothing else.
+            # Named rather than counted -- a total is not something anybody
+            # can act on.
+            knocked = _harness.coverage_knocked_only()
+            knocked_names = {ep for ep, _seen in knocked}
+            fresh = [ep for ep, _seen in knocked
+                     if ep not in COVERAGE_KNOWN_GAPS]
+            mended = sorted(COVERAGE_KNOWN_GAPS - knocked_names)
+            if knocked:
+                print(f"\n  REACHED BUT NEVER ANSWERED — {len(knocked)} "
+                      f"page(s), {len(fresh)} of them new:")
+                for ep, seen in knocked:
+                    what = ", ".join(f"{mth} {code}"
+                                     + (f" -> {loc}" if loc else "")
+                                     for mth, code, loc in seen[:3])
+                    mark = "NEW  " if ep not in COVERAGE_KNOWN_GAPS else "     "
+                    print(f"    {mark}{ep:<34} {what}")
+                print("  A login redirect, a 403, or an id that does not "
+                      "exist is not a test of the page.")
+            if fresh:
+                coverage_ok = False
+                print("  ^ the ones marked NEW are not on the known list. "
+                      "Write the test, or add the name and say why.")
+            if mended:
+                coverage_ok = False
+                print("\n  ON THE KNOWN LIST AND ANSWERING NOW — take "
+                      "these off it:")
+                for ep in mended:
+                    print(f"    {ep}")
         except Exception as e:                       # pragma: no cover
             print(f"\n(coverage report unavailable: {e})")
 
@@ -371,10 +475,15 @@ def main(argv):
         print("\nCRASHED:", ", ".join(crashed))
     if not control_ok:
         print("\nThe self-check did not behave — treat the run above as unproven.")
+    if not coverage_ok:
+        print("\nThe list of pages reached but never answered has moved — "
+              "see above. Either a page stopped being tested properly, or one "
+              "started and the list still says otherwise.")
     if not registry_ok:
         print("\nA suite file was written and never registered — the total"
               " above does not cover it.")
-    return 0 if (not all_failed and not crashed and control_ok and registry_ok) else 1
+    return 0 if (not all_failed and not crashed and control_ok
+                 and registry_ok and coverage_ok) else 1
 
 
 if __name__ == "__main__":

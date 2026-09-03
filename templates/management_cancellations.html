@@ -68,6 +68,36 @@
   </div>
 </div>
 
+<div class="detail-card">
+  {# WHAT THE HOUSE TURNED AWAY. A different question from what fell away: a
+     cancellation is the guest changing their mind, a decline is the house
+     saying no, and the second is the only record of demand that was there and
+     could not be taken. Nine requests turned away for a two-night stay in one
+     month is a pricing decision waiting to be made. #}
+  <h2 class="section-heading">Requests turned away</h2>
+  {% if declines.total %}
+  <p class="page-intro">{{ declines.total }} in the last year.
+    {% if declines.unrecorded %}
+    <strong>{{ declines.unrecorded }} of them with no reason written down</strong> —
+    the dropdown on the decline button is optional, and this is what that costs.
+    {% endif %}</p>
+  {% if declines.by_reason %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Why</th><th scope="col">How many</th></tr></thead>
+      <tbody>
+        {% for r in declines.by_reason %}
+        <tr><th scope="row">{{ r.label }}</th><td>{{ r.count }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="empty-state">Nothing has been turned away in the last year.</p>
+  {% endif %}
+</div>
+
 {% if recent %}
 <div class="detail-card">
   <h2 class="section-heading">Recent cancellations</h2>

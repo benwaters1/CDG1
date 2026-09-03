@@ -33,22 +33,30 @@
 {% endif %}
 {% endmacro %}
 
+{# The second half, now landed. The sketch's copy said "availability is
+   checked when you submit; if the room has gone since you looked, nothing is
+   charged", which implies a card was otherwise taken. One never is: this
+   sends a REQUEST, priced by the same create_booking every other room goes
+   through, and the house confirms it in the normal queue. Building a card
+   flow into the manage page because a placeholder hinted at one is how a
+   payment path gets built by accident. #}
 {% macro add_room(b, rooms) %}
 {% if rooms %}
-<section class="g-panel g-addroom">
-  <h2 class="g-panel__h">Add another room</h2>
-  <p class="g-p">On the same dates, linked to this booking, so it is one arrival rather than two.</p>
+<div class="g-addroom">
+  <h3 class="g-panel__h">Add another room</h3>
+  <p class="g-p">On the same dates and the same arrival, so it is one party rather than two
+    unconnected bookings. These are the rooms actually free for your nights.</p>
 
-  <form method="post" action="{{ url_for('manage_booking', manage_token=b['token']) if b['token'] else '#' }}" class="g-addroom__f">
+  <form method="post" class="g-addroom__f">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="add_room">
     <div class="g-row">
       <p class="g-field">
         <label for="ar_room">Which room</label>
         <select id="ar_room" name="room_id" required>
-          <option value="">— choose —</option>
+          <option value="">&mdash; choose &mdash;</option>
           {% for r in rooms %}
-          <option value="{{ r['id'] }}">{{ room_name(r['name']) }} — €{{ '%.0f'|format(r['price_per_night']) }} a night</option>
+          <option value="{{ r['id'] }}">{{ r['name'] }}{% if r['price_per_night'] %} &mdash; &euro;{{ '%.0f'|format(r['price_per_night']) }} a night{% endif %}</option>
           {% endfor %}
         </select>
       </p>
@@ -56,10 +64,18 @@
         <label for="ar_name">Who is in it</label>
         <input type="text" id="ar_name" name="guest_name" required placeholder="Their name">
       </p>
+      <p class="g-field g-field--narrow">
+        <label for="ar_party">How many</label>
+        <input type="number" id="ar_party" name="party_size" min="1" max="8" value="2">
+      </p>
     </div>
-    <p class="g-hint g-hint--row">Availability is checked when you submit. If the room has gone since you looked, nothing is charged and we will say what else is free on those dates.</p>
-    <button type="submit" class="g-btn g-btn--solid">Add this room</button>
+    <button type="submit" class="g-btn g-btn--solid">Ask for this room</button>
+    <p class="g-hint">
+      Nothing is charged here. It goes to the ch&acirc;teau as a request, like any other room,
+      and you will hear back. Availability is checked again when you send it: if the room has
+      gone in the meantime we will say what else is free on your dates.
+    </p>
   </form>
-</section>
+</div>
 {% endif %}
 {% endmacro %}

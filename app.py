@@ -2481,6 +2481,19 @@ def init_db():
         -- One group across several rooms. Holds nothing but who they are:
         -- the rooms, dates, prices and bills stay on the bookings, which is
         -- where they already work.
+        CREATE TABLE IF NOT EXISTS booking_access_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL DEFAULT 'code' CHECK(kind IN ('code','key')),
+            value TEXT NOT NULL,
+            issued_to TEXT,
+            issued_at TEXT NOT NULL,
+            good_until TEXT,
+            returned_at TEXT,
+            note TEXT,
+            issued_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS booking_parties (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -4096,6 +4109,29 @@ def init_db():
         # every booking is a live URL for every booking that has ever
         # existed, wanted or not.
         ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
+        # A stay that was confirmed and never arrived. A STAMP rather than a
+        # status, exactly as restaurant_bookings does it -- adding 'no_show' to
+        # the status CHECK would mean rebuilding a table that booking_extras,
+        # booking_payments and booking_parties all point at, which is a large
+        # risk for a word.
+        ("bookings_no_show_at", "ALTER TABLE bookings ADD COLUMN no_show_at TEXT"),
+        # Why a REQUEST was turned away. Cancellations have carried a reason and
+        # a note for a while and there is a report on them; declines carried
+        # nothing, so the pattern in what the house says no to -- too large, too
+        # short, the wrong week -- was never written down and could not be
+        # priced for.
+        ("bookings_decline_reason", "ALTER TABLE bookings ADD COLUMN decline_reason TEXT"),
+        ("bookings_decline_note", "ALTER TABLE bookings ADD COLUMN decline_note TEXT"),
+        # The language they read in. The site speaks three; every confirmation,
+        # reminder and statement went out in English regardless, including to
+        # the French guests the commune sends.
+        ("guests_language", "ALTER TABLE guests ADD COLUMN language TEXT"),
+        # Photograph consent. templates/privacy.html tells guests "if you would
+        # prefer not to appear in anything we publish, tell us and we will
+        # respect that" -- and there was nowhere to record that they had, so a
+        # published promise was being kept by somebody remembering.
+        ("guests_photo_consent", "ALTER TABLE guests ADD COLUMN photo_consent TEXT"),
+        ("guests_photo_consent_at", "ALTER TABLE guests ADD COLUMN photo_consent_at TEXT"),
         # What the guest keeps themselves, as against what the house wrote
         # down. Same retention as access_needs: twelve months after the last
         # stay, and they can empty it whenever they like.
@@ -5165,6 +5201,8 @@ def login_required(view):
 # private until somebody decides otherwise, which is the safe direction.
 NAV_AREAS = {
     "guests": [
+        "mark_booking_no_show", "undo_booking_no_show",
+        "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "save_list_view", "delete_list_view",
@@ -15338,6 +15376,48 @@ def booking_shape(conn, start=None, end=None):
     }
 
 
+def decline_analysis(conn, start=None, end=None):
+    """What the house turns away, and why.
+
+    A cancellation is the guest changing their mind. A decline is the house
+    saying no, and the two do not answer the same question: the second is the
+    only record of demand that was there and could not be taken. Turning away
+    nine requests for a two-night stay in one month is a pricing decision
+    waiting to be made, and it was invisible.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or (house_today() + timedelta(days=365))
+    rows = conn.execute(
+        """SELECT decline_reason, decline_note, guest_name, reference_code,
+                  arrival_date, departure_date, party_size, total_price
+             FROM bookings
+            WHERE status = 'declined' AND created_at >= ? AND created_at <= ?
+            ORDER BY created_at DESC""",
+        (start.isoformat(), end.isoformat() + "T23:59:59")).fetchall()
+    by_reason = {}
+    unrecorded = 0
+    for r in rows:
+        key = (r["decline_reason"] or "").strip()
+        if not key:
+            unrecorded += 1
+            continue
+        by_reason[key] = by_reason.get(key, 0) + 1
+    ranked = sorted(
+        ({"key": k, "label": DECLINE_REASONS.get(k, k), "count": v}
+         for k, v in by_reason.items()),
+        key=lambda d: -d["count"])
+    return {
+        "start": start, "end": end,
+        "total": len(rows),
+        # Said plainly rather than folded into an "other" bar. A report whose
+        # biggest category is "nobody wrote it down" should say so, because the
+        # fix is a habit and not a feature.
+        "unrecorded": unrecorded,
+        "by_reason": ranked,
+        "recent": [dict(r) for r in rows[:20]],
+    }
+
+
 def cancellation_analysis(conn, start=None, end=None):
     """What gets cancelled, when, and what it was worth.
 
@@ -18188,6 +18268,13 @@ def inject_user():
         "open_email_flags_count": open_email_flags_count,
         "chat_unread_count": chat_unread_count,
         "may": may, "can": can, "user_areas": areas, "area_titles": AREA_TITLES,
+        # Shared vocabularies, exposed here rather than passed by each route.
+        # Passing them by hand meant finding every render of a form -- and the
+        # guest form is rendered from four places, so three of them got the
+        # choices and the fourth raised on .items() of an undefined.
+        "languages": translations.LANGUAGES,
+        "photo_consent_choices": PHOTO_CONSENT,
+        "decline_reasons": DECLINE_REASONS,
         # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
         # The nav used to answer that question from its own hand-typed
         # copies of every area's contents, and the two had drifted: 73
@@ -18610,6 +18697,29 @@ CANCEL_REASONS = {
     "house_could_not": "Something the house could not do",
     "duplicate": "Booked twice by mistake",
     "other": "Something else",
+}
+
+# Why a request was turned away. Deliberately NOT the cancellation list: a
+# cancellation is the guest changing their mind, a decline is the house saying
+# no, and the reasons do not overlap. "The dates had gone" and "too large for
+# the room" are the two that should change how the house prices and describes
+# itself, and neither is a cancellation reason.
+DECLINE_REASONS = {
+    "dates_gone": "The dates had already gone",
+    "too_large": "Too large for the room",
+    "too_short": "Too short a stay",
+    "wrong_week": "Not a week the house takes bookings",
+    "cannot_host": "Something the house could not do",
+    "caution": "A standing instruction not to accept them",
+    "other": "Something else",
+}
+
+# What somebody may say about being photographed. Unknown is not the same as
+# no: it means nobody has asked, which is why it is a word rather than a blank.
+PHOTO_CONSENT = {
+    "unknown": "Not asked",
+    "yes": "Happy to appear",
+    "no": "Would rather not appear",
 }
 
 MILEAGE_RATE_SETTING = "mileage_rate_per_km"
@@ -28701,6 +28811,14 @@ def edit_guest(guest_id):
         notes = request.form.get("notes", "").strip()
         access_needs = request.form.get("access_needs", "").strip()[:600]
 
+        # Unknown is not the same as no: it means nobody has asked, which is
+        # why it is stored as a word rather than left blank.
+        photo_consent = (request.form.get("photo_consent", "") or "").strip()
+        if photo_consent not in PHOTO_CONSENT:
+            photo_consent = "unknown"
+        language = (request.form.get("language", "") or "").strip()
+        if language not in translations.LANGUAGES:
+            language = ""
         if email and conn.execute(
             "SELECT id FROM guests WHERE email = ? COLLATE NOCASE AND id != ?", (email, guest_id)
         ).fetchone():
@@ -28714,10 +28832,17 @@ def edit_guest(guest_id):
                -- with it. A date left behind on an emptied field is a record
                -- that somebody told us something, which is the fact we said
                -- we would stop holding.
-               access_needs_updated_at=? WHERE id=?""",
+               access_needs_updated_at=?, language=?, photo_consent=?,
+               -- Same rule for the consent: the DATE is the evidence that
+               -- somebody was asked, so it moves only when the answer does.
+               photo_consent_at=CASE WHEN COALESCE(photo_consent,'unknown') = ?
+                                     THEN photo_consent_at ELSE ? END
+               WHERE id=?""",
             (name, email, phone or None, dietary_notes or None,
              preferences or None, vip, notes or None, access_needs or None,
              datetime.now(timezone.utc).isoformat() if access_needs else None,
+             language or None, photo_consent,
+             photo_consent, datetime.now(timezone.utc).isoformat(),
              guest_id),
         )
         conn.commit()
@@ -30452,8 +30577,66 @@ def manage_booking(manage_token):
     if not booking:
         conn.close()
         abort(404)
+    # This is one of the few requests where the app knows WHO is reading before
+    # it renders. A guest who told us they read French should not have to find
+    # the switcher again on a link we sent them.
+    remember_guest_language(conn, booking["guest_email"])
 
     action = request.form.get("action") if request.method == "POST" else None
+
+    if action == "add_room":
+        room_raw = (request.form.get("room_id", "") or "").strip()
+        who = (request.form.get("guest_name", "") or "").strip()[:120]
+        try:
+            party = int(request.form.get("party_size", "2"))
+        except ValueError:
+            party = 2
+        arrival = parse_date(booking["arrival_date"])
+        departure = parse_date(booking["departure_date"])
+
+        if booking["status"] not in ("pending", "confirmed"):
+            flash("This booking cannot have a room added to it.", "error")
+        elif not room_raw.isdigit() or not who:
+            flash("Choose a room and say who is in it.", "error")
+        else:
+            room = conn.execute(
+                "SELECT * FROM rooms WHERE id = ? AND active = 1",
+                (int(room_raw),)).fetchone()
+            # claim_range, not is_range_available: this is a check followed by
+            # a write, and two people can want the last room at once.
+            ok = bool(room) and arrival and departure and claim_range(
+                conn, room["id"], arrival, departure)[0]
+            if not ok:
+                # Say what IS free rather than only no. Being told no with
+                # nothing to do next is the email this exists to stop.
+                free = rooms_free_for(conn, arrival, departure,
+                                      exclude_room_ids={booking["room_id"]})
+                conn.commit()
+                names = ", ".join(r["name"] for r in free[:4])
+                flash(
+                    ("That room has gone since you looked. Still free on your "
+                     f"dates: {names}." if names else
+                     "That room has gone since you looked, and nothing else is "
+                     "free on those dates. Write to us and we will see what "
+                     "can be done."), "error")
+            else:
+                ref, _tok = create_booking(
+                    conn, room, who, booking["guest_email"],
+                    booking["guest_phone"], arrival, departure, party,
+                    f"Added to {booking['reference_code']} from the guest's "
+                    "own page.", [], source="direct")
+                added = conn.execute(
+                    "SELECT id FROM bookings WHERE reference_code = ?",
+                    (ref,)).fetchone()
+                join_booking_party(conn, booking["id"], added["id"])
+                conn.commit()
+                flash(
+                    f"Asked for {room['name']} on the same dates \u2014 "
+                    f"{ref}. Nothing has been charged: the château will "
+                    "confirm it, and it goes on the same arrival as this one.",
+                    "success")
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
 
     if action == "cancel":
         # Atomic UPDATE...WHERE status IN (...) + rowcount, not a separate
@@ -30842,10 +31025,20 @@ def manage_booking(manage_token):
     # panel simply does not render for the ordinary single booking. Read
     # before the close, like everything else on this page.
     group = booking_group(conn, booking["id"])
+    # Read-only, and only while the booking is live. A list of rooms to add to
+    # a cancelled stay is an invitation to a conversation nobody wants.
+    addable_rooms = (
+        rooms_free_for(conn, parse_date(booking["arrival_date"]),
+                       parse_date(booking["departure_date"]),
+                       exclude_room_ids={booking["room_id"]})
+        if booking["status"] in ("pending", "confirmed")
+        and parse_date(booking["arrival_date"])
+        and parse_date(booking["departure_date"]) else [])
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        addable_rooms=addable_rooms,
         group=group,
         portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
@@ -31961,6 +32154,25 @@ def save_guest_own_record(conn, email, *, dietary=None, access=None,
          datetime.now(timezone.utc).isoformat() if access else None,
          row["id"]))
     return True
+
+
+def rooms_free_for(conn, arrival, departure, exclude_room_ids=()):
+    """Rooms actually free for these dates, cheapest first.
+
+    READ ONLY -- is_range_available, not claim_range. This builds a list to
+    look at; taking the write lock to draw a page would put every reader
+    behind whoever is mid-booking. The lock belongs on the submit.
+    """
+    out = []
+    for room in conn.execute(
+            "SELECT * FROM rooms WHERE active = 1 ORDER BY price_per_night, name"
+    ).fetchall():
+        if room["id"] in exclude_room_ids:
+            continue
+        ok, _why = is_range_available(conn, room["id"], arrival, departure)
+        if ok:
+            out.append(room)
+    return out
 
 
 def booking_group(conn, booking_id):
@@ -35350,7 +35562,16 @@ def sync_all_ical_sources():
 @app.route("/api/sync-ical", methods=["GET", "POST"])
 def api_sync_ical():
     """No-login sync trigger for an external scheduler. 404s (not 401/403,
-    so a prober learns nothing) unless ICAL_SYNC_TOKEN is set and matches."""
+    so a prober learns nothing) unless ICAL_SYNC_TOKEN is set and matches.
+
+    The token comes from the QUERY STRING here, and from the body on
+    /api/guest-lookup, and that difference is on purpose. A scheduler fetches
+    a URL; asking the owner's cron to POST a form is a deployment change for
+    no gain. What a leaked token buys here is an iCal sync somebody could
+    have triggered by waiting an hour. Guest lookup reads any guest's record,
+    which is why that one refuses to see a token it did not find in the body.
+    Do not harmonise these: the posture is shared, the placement is not, and
+    moving this one breaks a cron at 6am."""
     supplied = request.args.get("token", "")
     if not ICAL_SYNC_TOKEN or not hmac.compare_digest(supplied, ICAL_SYNC_TOKEN):
         abort(404)
@@ -35537,7 +35758,12 @@ def build_owner_digest(conn):
 def api_owner_digest():
     """No-login digest trigger for an external scheduler — same 404-not-403
     posture as /api/sync-ical, so an unset/wrong token teaches a prober
-    nothing. See DEPLOY.md."""
+    nothing. See DEPLOY.md.
+
+    Query string, like /api/sync-ical and unlike /api/guest-lookup, and for
+    the reason set out there: a scheduler fetches a URL, and a leaked token
+    here sends the owner their own summary. It does not read anybody's
+    record."""
     supplied = request.args.get("token", "")
     if not DIGEST_TOKEN or not hmac.compare_digest(supplied, DIGEST_TOKEN):
         abort(404)
@@ -36688,6 +36914,28 @@ def admin_bookings():
     )
 
 
+def remember_guest_language(conn, email):
+    """Read a guest's saved language onto this session, if they have one.
+
+    Called from the pages a guest reaches with a token -- their booking, their
+    statement, their portal. Those are the only requests where the app knows
+    WHO is reading before it renders, and a guest who told us once should not
+    have to find the switcher again on a link we sent them.
+
+    Deliberately does not override an explicit choice: somebody who has just
+    clicked English on this visit means it.
+    """
+    if not email or session.get("lang"):
+        return None
+    row = conn.execute(
+        "SELECT language FROM guests WHERE email = ? COLLATE NOCASE AND language IS NOT NULL",
+        ((email or "").strip().lower(),)).fetchone()
+    if row and row["language"] in translations.LANGUAGES:
+        session["lang"] = row["language"]
+        return row["language"]
+    return None
+
+
 def current_language():
     """The language to render in, for whoever is reading.
 
@@ -37145,6 +37393,89 @@ def bulk_confirm_bookings():
     conn.commit()
     conn.close()
     flash(*bulk_message("Confirmed", "booking", confirmed, skipped))
+    return redirect(url_for("admin_bookings"))
+
+
+@app.route("/admin/bookings/<int:booking_id>/no-show", methods=["POST"])
+@owner_required
+def mark_booking_no_show(booking_id):
+    """They were confirmed, the dates have passed, and nobody came.
+
+    Until now this was indistinguishable from a stay that happened: the booking
+    sat there confirmed for ever, occupancy counted it, and the next booking
+    from the same person looked like a first. The one question it raises --
+    whether the money is kept -- was never put in front of anybody.
+
+    Refusing to mark it before the arrival date is deliberate. A guest arriving
+    at eleven at night is not a no-show at six, and a stay written off early is
+    a room somebody stops holding.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if booking["status"] != "confirmed":
+        conn.close()
+        flash("Only a confirmed booking can be marked as not arrived.", "error")
+        return redirect(url_for("admin_bookings"))
+    if booking["no_show_at"]:
+        conn.close()
+        flash("Already marked as not arrived.", "error")
+        return redirect(url_for("admin_bookings"))
+    arrival = parse_date(booking["arrival_date"])
+    if arrival and arrival > house_today():
+        conn.close()
+        flash(f"{booking['reference_code']} is not due until "
+              f"{format_date_human(booking['arrival_date'])}.", "error")
+        return redirect(url_for("admin_bookings"))
+    note = (request.form.get("note", "") or "").strip()[:300]
+    conn.execute(
+        "UPDATE bookings SET no_show_at = ?, owner_note = CASE WHEN ? = '' THEN owner_note "
+        "ELSE COALESCE(owner_note || char(10), '') || ? END WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(), note,
+         f"Did not arrive: {note}" if note else "", booking_id))
+    log_audit(conn, "booking_no_show", target=booking["reference_code"], details=note or None)
+    # What is owed on it does not answer itself. booking_bill is the one
+    # definition of what a stay owes, so the figure quoted here is the figure
+    # every other page would quote.
+    owed = 0.0
+    try:
+        owed = round(float(booking["total_price"] or 0) - float(booking["amount_paid"] or 0), 2)
+    except (TypeError, ValueError):
+        owed = 0.0
+    conn.commit()
+    conn.close()
+    msg = f"{booking['reference_code']} marked as not arrived."
+    if owed > 0:
+        msg += (f" EUR {owed:,.2f} of it is unpaid — decide whether to chase it "
+                "or write it off; nothing has been charged or refunded.")
+    else:
+        msg += (" It was paid in full. Refunds are a judgement call, so nothing "
+                "has been moved.")
+    flash(msg, "success")
+    return redirect(url_for("admin_bookings"))
+
+
+@app.route("/admin/bookings/<int:booking_id>/no-show/undo", methods=["POST"])
+@owner_required
+def undo_booking_no_show(booking_id):
+    """They did turn up after all, or it was the wrong row."""
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE bookings SET no_show_at = NULL WHERE id = ? AND no_show_at IS NOT NULL",
+        (booking_id,))
+    if cur.rowcount == 0:
+        conn.close()
+        flash("That booking is not marked as not arrived.", "error")
+        return redirect(url_for("admin_bookings"))
+    log_audit(conn, "booking_no_show_undone", target=str(booking_id))
+    conn.commit()
+    conn.close()
+    flash("Taken off. The stay counts as normal again.", "success")
     return redirect(url_for("admin_bookings"))
 
 
@@ -37712,6 +38043,25 @@ def decline_one_and_follow_up(conn, booking_id):
 @owner_required
 def decline_booking(booking_id):
     conn = get_db()
+    # WHY, recorded before the decline happens, because afterwards the row
+    # looks the same as every other declined one. Cancellations have carried a
+    # reason for a while and there is a report on them; declines carried
+    # nothing, so the pattern in what the house says no to was never written
+    # down. Optional: refusing a decline over a missing dropdown would mean
+    # somebody picks whatever is first to get past it, which is worse than
+    # blank.
+    reason = (request.form.get("decline_reason", "") or "").strip()
+    if reason not in DECLINE_REASONS:
+        reason = ""
+    note = (request.form.get("decline_note", "") or "").strip()[:300]
+    if reason or note:
+        conn.execute(
+            "UPDATE bookings SET decline_reason = ?, decline_note = ? WHERE id = ?",
+            (reason or None, note or None, booking_id))
+        # Committed BEFORE the decline, which sends the guest their email. A
+        # write that is still in a transaction when a message goes out is a
+        # message that can exist with nothing behind it.
+        conn.commit()
     declined, refunded, refund_error, notified = decline_one_and_follow_up(
         conn, booking_id)
     if not declined:
@@ -38299,12 +38649,20 @@ def prior_no_shows(conn, emails):
     if not emails:
         return {}
     marks = ",".join("?" * len(emails))
+    # BOTH books. Somebody who did not turn up for a room and then asks for a
+    # table is the case this is for, and counting only one of the two made the
+    # second booking look like a first. The emails are bound twice because the
+    # same list is matched in each half of the union.
     return {
         r["guest_email"]: r["c"] for r in conn.execute(
-            f"""SELECT LOWER(guest_email) AS guest_email, COUNT(*) AS c
-                FROM restaurant_bookings
-                WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
-                GROUP BY LOWER(guest_email)""", emails).fetchall()
+            f"""SELECT LOWER(guest_email) AS guest_email, COUNT(*) AS c FROM (
+                    SELECT guest_email FROM restaurant_bookings
+                     WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
+                    UNION ALL
+                    SELECT guest_email FROM bookings
+                     WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
+                )
+                GROUP BY LOWER(guest_email)""", emails + emails).fetchall()
     }
 
 
@@ -44041,6 +44399,10 @@ def management_cancellations():
     conn = get_db()
     today = house_today()
     reasons = cancellation_reasons(conn, today=today)
+    # What the house TURNED AWAY, which is a different question from what fell
+    # away: it is the only record of demand that was there and could not be
+    # taken.
+    declines = decline_analysis(conn)
     enquiries = enquiry_conversion(conn, today=today)
     # Reasons say WHY. This says how often, how much notice, and what it was
     # worth -- a booking that falls away four months out costs a diary entry,
@@ -44079,7 +44441,7 @@ def management_cancellations():
     ]
     return render_template("management_cancellations.html", reasons=reasons,
                            enquiries=enquiries, recent=recent, analysis=analysis,
-                           overview=overview, choices=CANCEL_REASONS)
+                           overview=overview, choices=CANCEL_REASONS, declines=declines)
 
 
 @app.route("/management/cancellations/<int:booking_id>/reason", methods=["POST"])
@@ -51098,6 +51460,30 @@ def purge_dead_enquiries(conn, today=None):
     return cleared
 
 
+def purge_spent_access_codes(conn, today=None):
+    """Blank the door code once the stay it was for is over.
+
+    A code kept after the guest has gone is not a record, it is a way in. The
+    ROW stays -- who was given something, when, and whether a key came back is
+    worth having -- but the value itself is cleared, because there is no
+    question anybody asks later that needs the digits.
+
+    A grace period, because a key can come back a few days after the guest
+    does, and blanking the code the morning they leave loses the thing you look
+    at when it does not.
+    """
+    today = today or house_today()
+    cutoff = (today - timedelta(days=ACCESS_CODE_KEEP_DAYS)).isoformat()
+    cur = conn.execute(
+        """UPDATE booking_access_codes SET value = ''
+            WHERE value != ''
+              AND booking_id IN (SELECT id FROM bookings WHERE departure_date <= ?)""",
+        (cutoff,))
+    if cur.rowcount:
+        conn.commit()
+    return {"door codes blanked": cur.rowcount}
+
+
 def run_health_notes_purge_job(conn):
     """The retention pass, daily. Everything the privacy notice promises to
     delete is deleted here, so the notice can be checked against one function
@@ -51110,6 +51496,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_dead_enquiries(conn))
     cleared.update(purge_police_register(conn))
     cleared.update(purge_stale_access_needs(conn))
+    cleared.update(purge_spent_access_codes(conn))
     done = {k: v for k, v in cleared.items() if v}
     if not done:
         return "nothing to clear"
@@ -52725,6 +53112,179 @@ def decide_leave(request_id):
 # Printable daily ops sheet — today's tasks, shifts, who's off, who's here,
 # in one page meant to be printed and posted, not clicked through.
 # ---------------------------------------------------------------------------
+
+ACCESS_CODE_KEEP_DAYS = 7
+
+
+def arrivals_sheet(conn, day=None):
+    """One day's arrivals and departures, with everything about each on the row.
+
+    The arrival card is per booking and the incomplete list says only what is
+    MISSING. Neither is the thing somebody wants at breakfast: who is coming,
+    when, which room, what they cannot eat, whether anybody is meeting a plane,
+    and what still has no answer. It was assembled by opening six pages.
+
+    Read-only and rebuilt every time. Nothing here is stored, so it cannot go
+    stale and disagree with the bookings it describes.
+    """
+    day = day or house_today()
+    iso = day.isoformat()
+    arriving = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.arrival_date = ? AND bookings.status = 'confirmed'
+            ORDER BY COALESCE(NULLIF(bookings.estimated_arrival_time, ''), '99:99'),
+                     rooms.name""",
+        (iso,)).fetchall()
+    leaving = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.departure_date = ? AND bookings.status = 'confirmed'
+            ORDER BY rooms.name""",
+        (iso,)).fetchall()
+
+    emails = [b["guest_email"] for b in arriving]
+    # Both in one query each rather than per row: a sheet that opens six times
+    # per arrival is a sheet nobody opens.
+    no_shows = prior_no_shows(conn, emails) if emails else {}
+    profiles = {}
+    if emails:
+        marks = ",".join("?" * len(emails))
+        profiles = {
+            (r["email"] or "").lower(): r for r in conn.execute(
+                f"SELECT * FROM guests WHERE LOWER(email) IN ({marks})",
+                [(e or "").strip().lower() for e in emails]).fetchall()}
+    codes = {}
+    if arriving:
+        marks = ",".join("?" * len(arriving))
+        for r in conn.execute(
+                f"""SELECT * FROM booking_access_codes
+                     WHERE booking_id IN ({marks}) AND returned_at IS NULL
+                     ORDER BY issued_at""", [b["id"] for b in arriving]).fetchall():
+            codes.setdefault(r["booking_id"], []).append(r)
+
+    rows = []
+    for b in arriving:
+        email = (b["guest_email"] or "").strip().lower()
+        profile = profiles.get(email)
+        caution = guest_caution_for(conn, email=b["guest_email"], name=b["guest_name"])
+        # WHAT IS STILL UNANSWERED, said on the row rather than on a second
+        # page. These are the questions somebody would otherwise ask at the
+        # door, which is the worst moment to ask any of them.
+        missing = []
+        if not (b["guest_email"] or "").strip():
+            missing.append("no email")
+        if not (b["guest_phone"] or "").strip():
+            missing.append("no telephone")
+        if not (b["estimated_arrival_time"] or "").strip() and not (
+                profile and (profile["usual_arrival_time"] or "").strip()):
+            missing.append("no arrival time")
+        if booking_has_transfer(b) and not (b["transfer_arrival_time"] or "").strip():
+            missing.append("transfer with no time")
+        rows.append({
+            "booking": b,
+            "profile": profile,
+            "caution": caution,
+            "prior_no_shows": no_shows.get(email, 0),
+            "codes": codes.get(b["id"], []),
+            # The profile answers it when the booking does not: a guest who
+            # always arrives at six should not be asked every time.
+            "arrival_time": (b["estimated_arrival_time"] or "").strip()
+                            or ((profile["usual_arrival_time"] or "").strip()
+                                if profile else ""),
+            "dietary": " · ".join(x for x in [
+                (profile["dietary_notes"] or "").strip() if profile else "",
+                (b["special_requests"] or "").strip()] if x),
+            "access_needs": (profile["access_needs"] or "").strip() if profile else "",
+            "missing": missing,
+        })
+    return {
+        "day": day,
+        "arriving": rows,
+        "leaving": leaving,
+        "beds": sum((b["party_size"] or 0) for b in arriving),
+        # Said plainly, because an empty sheet and a sheet nobody built look
+        # identical otherwise.
+        "nothing_doing": not arriving and not leaving,
+    }
+
+
+@app.route("/admin/arrivals")
+@login_required
+def arrivals_sheet_page():
+    """The sheet for a day, defaulting to tomorrow.
+
+    TOMORROW rather than today on purpose: this is the page somebody reads to
+    prepare, and by the time today's arrivals are arriving it is too late to do
+    anything the sheet would have told them.
+    """
+    day = parse_date(request.args.get("date", "")) or (house_today() + timedelta(days=1))
+    conn = get_db()
+    sheet = arrivals_sheet(conn, day)
+    conn.close()
+    return render_template("arrivals_sheet.html", sheet=sheet,
+                           today=house_today(), day=day)
+
+
+@app.route("/admin/bookings/<int:booking_id>/access-code", methods=["POST"])
+@owner_required
+def issue_access_code(booking_id):
+    """What was given to whom, so it is not a text message somebody has to find.
+
+    Late arrivals in the valley are normal and the code was living in whichever
+    phone sent it. Recording it means the next person on can answer the
+    telephone at eleven at night without ringing somebody at home.
+    """
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    value = (request.form.get("value", "") or "").strip()[:60]
+    if not value:
+        conn.close()
+        flash("Nothing to record — put in the code or which key it was.", "error")
+        return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+    kind = (request.form.get("kind", "") or "code").strip()
+    if kind not in ("code", "key"):
+        kind = "code"
+    user = current_user()
+    conn.execute(
+        """INSERT INTO booking_access_codes (booking_id, kind, value, issued_to,
+           issued_at, good_until, note, issued_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (booking_id, kind, value,
+         (request.form.get("issued_to", "") or "").strip()[:120] or booking["guest_name"],
+         datetime.now(timezone.utc).isoformat(),
+         booking["departure_date"],
+         (request.form.get("note", "") or "").strip()[:300] or None,
+         user["id"] if user else None))
+    log_audit(conn, "access_code_issued", target=booking["reference_code"], details=kind)
+    conn.commit()
+    conn.close()
+    flash(f"Recorded. It is cleared automatically {ACCESS_CODE_KEEP_DAYS} days "
+          "after they leave — a code kept afterwards is a way in, not a record.",
+          "success")
+    return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+
+
+@app.route("/admin/access-code/<int:code_id>/back", methods=["POST"])
+@owner_required
+def access_code_returned(code_id):
+    """The key came back."""
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE booking_access_codes SET returned_at = ? WHERE id = ? AND returned_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(), code_id))
+    if cur.rowcount == 0:
+        conn.close()
+        flash("Already marked as back.", "error")
+        return redirect(url_for("arrivals_sheet_page"))
+    conn.commit()
+    conn.close()
+    flash("Marked as back.", "success")
+    return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+
 
 @app.route("/admin/today-sheet")
 @owner_required

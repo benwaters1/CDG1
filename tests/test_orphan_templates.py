@@ -119,14 +119,13 @@ AWAITING_WIRING = {
 }
 
 
-# NOTE, for whoever tightens this next: the proof below reads static/style.css,
-# which is the STAFF stylesheet. Every class above is a public-site class and
-# lives in static/gudanes.css, where all three ARE styled. So for a public
-# partial the 'still unbuilt' check cannot fail, and the guarantee in the
-# comment above it does not hold. Reading both files would restore it -- and
-# would immediately red the PARTLY_LANDED entry too, since .g-addroom is in
-# gudanes.css as well. That is a decision for whoever owns that entry, not one
-# to take while unpacking somebody else's zip.
+# The proof reads BOTH stylesheets. It used to read only static/style.css,
+# the staff one, while every class on these lists is a public-site class in
+# static/gudanes.css -- so "still unbuilt" could not fail for a public
+# partial, which is all of them. The three below are named by a class that
+# is genuinely absent from both files; if that stops being true for one of
+# them, somebody has started building it and it belongs in a page rather
+# than on this list.
 
 
 # Files with one macro landed and another not. AWAITING_WIRING cannot hold
@@ -135,15 +134,11 @@ AWAITING_WIRING = {
 # half and wrong about the file.
 #
 # Same discipline: the class named is the one the UNLANDED half hangs on, so
-# building it turns this red.
-PARTLY_LANDED = {
-    "_linked_bookings.html": ("g-addroom",
-                              "`linked` is on the guest's page and the admin "
-                              "booking page; `add_room` is not, and will not "
-                              "be by accident -- it creates a booking, prices "
-                              "it and takes money for it, which is a booking "
-                              "flow rather than a panel"),
-}
+# building it turns this red. It did. _linked_bookings.html was the only
+# entry and `add_room` is now on the guest's manage page, so the entry is
+# gone rather than amended -- and the machinery stays, because the next
+# half-landed file should not have to reinvent it.
+PARTLY_LANDED = {}
 
 
 def _templates():
@@ -205,20 +200,39 @@ def run():
         s.check(f"and {name} is still on disk", name in names)
 
     s.section("The batch that was designed and never landed")
-    # Proved, not asserted. Each of these is claimed to be unbuilt, and the
-    # claim is checked: no stylesheet rule for the class it hangs on. Wire
-    # one in and write its CSS, and this goes red until it comes off the
-    # list -- so the exception cannot outlive its reason.
-    css = io.open(os.path.join(os.path.dirname(TPL), "static", "style.css"),
-                  encoding="utf-8").read()
+    # Proved, not asserted -- but not by the ABSENCE of a stylesheet rule,
+    # which is what this used to check and which was never evidence here.
+    # These arrive designed: markup and CSS together in a handover, with the
+    # wiring left for later. Reading both stylesheets rather than only the
+    # staff one showed .g-cancel with eight rules, .g-wait eleven, .g-dl six
+    # -- so "still unbuilt" had been passing on a file it never looked in.
+    #
+    # The true claim is the inverse, and it is the one worth holding: the
+    # markup exists, the CSS exists, and NOTHING RENDERS IT. If the styling
+    # goes, this stops being a design awaiting wiring and becomes dead
+    # markup, which is the thing this suite exists to find.
+    #
+    # No signal is lost. The one time this list did its job -- the
+    # availability strip, wired in and styled and left on here -- the
+    # referenced-now check below catches it just as surely, and that is
+    # where "somebody has started wiring it in" actually belongs.
+    css = ""
+    for sheet in ("style.css", "gudanes.css"):
+        css += io.open(os.path.join(os.path.dirname(TPL), "static", sheet),
+                       encoding="utf-8").read()
+    s.check("both stylesheets were found and read", len(css) > 20000,
+            detail=f"{len(css)} characters; reading one of the two is how "
+                   "this check stopped being able to fail")
     for name, (cls, what) in sorted(AWAITING_WIRING.items()):
         s.check(f"{name} is still on disk ({what})", name in names,
                 detail="deleting it throws away the design; if it really is "
                        "not wanted, take it off this list in the same commit")
-        s.check(f"and still unbuilt \u2014 no .{cls} rule exists",
-                f".{cls}" not in css,
-                detail="somebody has started building it, so it belongs in a "
-                       "page rather than on this list")
+        s.check(f"and its design survives \u2014 .{cls} is still styled",
+                f".{cls}" in css,
+                detail="markup with no CSS behind it is not a design "
+                       "waiting to be wired, it is dead markup: wire it "
+                       "up, or delete it, but do not leave it here "
+                       "looking like a plan")
 
     s.section("The ones with one macro landed and another not")
     for name, (cls, what) in sorted(PARTLY_LANDED.items()):
@@ -227,10 +241,14 @@ def run():
                 detail="it is on this list because HALF of it is landed; if "
                        "nothing references it at all it belongs on the other "
                        "one")
-        s.check(f"and the other half is still unbuilt \u2014 no .{cls} rule",
-                f".{cls}" not in css,
-                detail="somebody has started building it, so it belongs in a "
-                       "page rather than on this list")
+        s.check(f"and the other half is still unwired \u2014 nothing "
+                f"renders .{cls}",
+                not any(cls in io.open(os.path.join(TPL, o),
+                                       encoding="utf-8").read()
+                        for o in names if o != name),
+                detail="asked of what renders it, not of whether it has "
+                       "CSS: these arrive styled, so an absent rule "
+                       "proves nothing about whether a page draws it")
 
     s.section("Every other template is reached from somewhere")
     orphans = sorted(names - hit - set(DYNAMIC) - set(AWAITING_WIRING)

@@ -93,8 +93,15 @@
 {# Bookings that are one arrival. Renders nothing at all unless staff have
    said so -- it is never inferred from a shared surname, because two
    bookings called Martin on the same dates are sometimes two families. #}
-{% from '_linked_bookings.html' import linked %}
+{% from '_linked_bookings.html' import linked, add_room %}
 {{ linked(booking, group) }}
+
+{# Asking for a second room on the same dates. A family deciding three weeks
+   later currently sends an email; this makes it one arrival instead of two
+   unconnected bookings. Nothing is charged -- it is a request. #}
+<div class="g-mb-card" style="margin-top:var(--s4);">
+  {{ add_room(booking, addable_rooms) }}
+</div>
 
 {# A read-only link for the rest of the party. Forwarding the confirmation
    email hands everybody the manage link, which carries the bill and the

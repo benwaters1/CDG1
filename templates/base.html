@@ -143,6 +143,7 @@
         {% if may('guests') %}
         <a href="{{ url_for('guests') }}" class="{{ 'active' if request.endpoint in ['guests','new_guest','edit_guest'] }}">{{ icon('guests') }}Guest List</a>
         <a href="{{ url_for('admin_bookings') }}" class="{{ 'active' if request.endpoint in ['admin_bookings','confirm_booking','decline_booking','checkout_booking','edit_booking'] }}">{{ icon('bookings') }}Bookings</a>
+        <a href="{{ url_for('arrivals_sheet_page') }}" class="{{ 'active' if request.endpoint=='arrivals_sheet_page' }}">{{ icon('calendar') }}Arrivals</a>
         <a href="{{ url_for('admin_calendar') }}" class="{{ 'active' if request.endpoint=='admin_calendar' }}">{{ icon('calendar') }}Booking Calendar</a>
         <a href="{{ url_for('admin_rooms') }}" class="{{ 'active' if request.endpoint in ['admin_rooms','new_room','edit_room'] }}">{{ icon('rooms') }}Rooms</a>
         <a href="{{ url_for('all_transfers') }}" class="{{ 'active' if request.endpoint in ['all_transfers','vehicle_transfers_page','new_vehicle_transfer'] }}">{{ icon('truck') }}Transfers</a>
