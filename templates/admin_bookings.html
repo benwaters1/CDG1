@@ -128,7 +128,19 @@
       <span class="mini-status status-upcoming" title="One party across several rooms">{{ b['party_name'] }}</span>
       {%- endif %}
       <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
-      <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" onsubmit="return confirm('Decline this request?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
+      {# Why, asked at the moment somebody knows the answer. Optional on
+         purpose: refusing a decline over a missing dropdown means somebody
+         picks whatever is first to get past it, which is worse than blank. #}
+      <form method="post" action="{{ url_for('decline_booking', booking_id=b['id']) }}" onsubmit="return confirm('Decline this request?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="decline_reason">
+          <option value="">Why? (optional)</option>
+          {% for key, label in decline_reasons.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn-mini btn-mini-danger">Decline</button>
+      </form>
       {% elif b['status'] == 'confirmed' %}
       <form method="post" action="{{ url_for('cancel_booking_admin', booking_id=b['id']) }}" onsubmit="return confirm('Cancel this confirmed booking?');"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-text-danger">Cancel booking</button></form>
       {# A stay that was confirmed and never arrived. Offered only once the

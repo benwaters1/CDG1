@@ -47,6 +47,30 @@
     <label class="field-label">Dietary requirements</label>
     <input type="text" name="dietary_notes" value="{{ guest['dietary_notes'] if guest else '' }}" placeholder="Coeliac, no shellfish, vegetarian...">
 
+    {# The language they read in. Recorded rather than guessed, and used on the
+       pages a guest reaches with a link we sent them. #}
+    <label class="field-label" for="language">Language they read in</label>
+    <select id="language" name="language">
+      <option value="">Not asked</option>
+      {% for code, label in languages.items() %}
+      <option value="{{ code }}"{{ ' selected' if guest and guest['language'] == code }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <p class="field-hint">Set from how they were reading the site when they booked. Every
+      email still goes out in English &mdash; this is what tells whoever writes one that it
+      should not.</p>
+
+    {# The privacy notice promises this and had nowhere to record it. #}
+    <label class="field-label" for="photo_consent">Being photographed</label>
+    <select id="photo_consent" name="photo_consent">
+      {% for key, label in photo_consent_choices.items() %}
+      <option value="{{ key }}"{{ ' selected' if guest and (guest['photo_consent'] or 'unknown') == key }}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <p class="field-hint">The privacy notice tells guests that if they would rather not appear
+      in anything we publish they can say so. This is where that is written down, so the
+      promise does not depend on somebody remembering.</p>
+
     <label class="field-label" for="access_needs">Anything they need from the house</label>
     <textarea id="access_needs" name="access_needs" rows="2" maxlength="600"
               placeholder="Cannot manage more than a few steps. Uses a stick.">{{ (typed.access_needs if typed else '') or (guest['access_needs'] or '' if guest else '') }}</textarea>

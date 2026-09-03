@@ -261,6 +261,7 @@ SUITES = [
     "test_empty_nights",
     "test_booking_parties",
     "test_guest_record",
+    "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
     "test_pace",
