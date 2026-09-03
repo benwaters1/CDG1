@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Atelier margins{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What an atelier leaves</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_workshops') }}" class="btn-ghost">Ateliers</a>
+    <a href="{{ url_for('export_workshop_margins_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Materials only, and deliberately. What an instructor is paid is a private arrangement that
+  varies per person and per session, and a page that guessed at it would be wrong in a way somebody
+  could read as a statement about their fee. Materials are a number the house already records.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.revenue) }}</span>
+    <span class="stat-tile-label">Taken</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.materials) }}</span>
+    <span class="stat-tile-label">Materials</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.margin) }}</span>
+    <span class="stat-tile-label">Left after them</span></span></div>
+</div>
+
+{% if data.uncosted_sessions %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">{{ data.uncosted_sessions }} session{{ '' if data.uncosted_sessions == 1 else 's' }} use a material with no cost recorded</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Those margins are better on this page than they are in life. A material with no unit cost is
+    counted as nothing, which is the one direction that flatters.
+  </p>
+</div>
+{% endif %}
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Session</th><th class="num">Places</th><th class="num">Filled</th>
+      <th class="num">Taken</th><th class="num">Materials</th><th class="num">Left</th><th class="num">Per head</th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.margin < 0 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.title }}<span class="field-hint" style="display:block; font-weight:400;">{{ r.start }}{% if r.uncosted %} &middot; {{ r.uncosted }} uncosted material{{ '' if r.uncosted == 1 else 's' }}{% endif %}</span></th>
+        <td class="num">{{ r.heads }}{% if r.capacity %} / {{ r.capacity }}{% endif %}</td>
+        <td class="num">{% if r.fill is not none %}{{ r.fill }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ euro(r.revenue) }}</td>
+        <td class="num">{{ euro(r.materials) }}</td>
+        <td class="num"><strong>{{ euro(r.margin) }}</strong></td>
+        <td class="num">{% if r.per_head is not none %}{{ euro(r.per_head) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No atelier sessions start in this window.</div>
+{% endif %}
+
+{% endblock %}

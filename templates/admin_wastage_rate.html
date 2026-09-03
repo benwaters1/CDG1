@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Wastage{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What went in the bin</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('kitchen_waste') }}" class="btn-ghost">Waste log</a>
+    <a href="{{ url_for('admin_stock') }}" class="btn-ghost">Stock</a>
+    <a href="{{ url_for('export_wastage_rate_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Wastage in euros is already on the waste log. As a <em>share</em> it is a different fact: fifty
+  euros of herbs thrown out is nothing next to a thousand bought and a great deal next to sixty.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Looking back</label>
+    <input type="number" id="days" name="days" min="7" max="730" step="1" value="{{ days }}">
+    <span class="field-hint">days</span>
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.value) }}</span>
+    <span class="stat-tile-label">Thrown away, at cost</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.worst.name if data.worst else '&mdash;' }}</span>
+    <span class="stat-tile-label">Dearest to bin</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.rows|length }}</span>
+    <span class="stat-tile-label">Items with wastage recorded</span></span></div>
+</div>
+
+{% if data.uncosted %}
+<p class="field-hint" style="max-width:760px;">
+  {{ data.uncosted }} of them have no unit cost recorded, so their share is real and their value
+  reads as nothing. That is the direction that flatters, and it is worth fixing on the stock page.
+</p>
+{% endif %}
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Item</th><th class="num">Wasted</th>
+    <th class="num">Left stock in total</th><th class="num">Share wasted</th><th class="num">At cost</th></tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.share and r.share >= 20 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.name }}{% if r.unit %} <span class="field-hint">{{ r.unit }}</span>{% endif %}</th>
+        <td class="num">{{ r.wasted }}</td>
+        <td class="num">{{ r.used }}</td>
+        <td class="num">{% if r.share is not none %}{{ r.share }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.costed %}{{ euro(r.value) }}{% else %}<span class="field-hint">no cost</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nothing has been recorded as wasted in this window.</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Table utilisation{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>How full the room was</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_restaurant') }}" class="btn-ghost">Reservations</a>
+    <a href="{{ url_for('export_table_utilisation_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Covers on their own do not say whether a night was busy: eighteen is a full house in a room of
+  twenty and half a room of forty. The seats are in the table plan and nothing had ever divided one
+  by the other.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% if data.no_seating %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">No tables are set up, so there is nothing to be full of</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Covers are still counted below. A percentage of nothing is not a small number &mdash; it is not
+    a number, so it is left out rather than shown as zero.
+  </p>
+</div>
+{% endif %}
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.seats or '&mdash;' }}</span>
+    <span class="stat-tile-label">Seats in the room</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.average_fill is not none %}{{ data.average_fill }}%{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Average fill on nights served</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.covers }}</span>
+    <span class="stat-tile-label">Covers over {{ data.nights }} nights</span></span></div>
+</div>
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Night</th><th class="num">Bookings</th>
+    <th class="num">Covers</th><th class="num">Of the room</th></tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.weekday }} {{ r.date }}</th>
+        <td class="num">{{ r.bookings }}</td>
+        <td class="num">{{ r.covers }}</td>
+        <td class="num">{% if r.fill is not none %}{{ r.fill }}%{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No confirmed tables in this window.</div>
+{% endif %}
+
+{% endblock %}

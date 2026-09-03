@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Breakages{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What got broken, and what came back</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_breakages') if 'management_breakages' in url_map else url_for('admin_bookings') }}" class="btn-ghost">Breakages</a>
+    <a href="{{ url_for('export_breakage_recovery_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Breakages are recorded and decided one at a time and nothing totalled them. The figure that
+  matters is not what was broken &mdash; it is how much of it was written off, because that is the
+  number that says whether the deposit is the right size.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.cost) }}</span>
+    <span class="stat-tile-label">Replacement cost</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.charged) }}</span>
+    <span class="stat-tile-label">Recovered</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.written_off) }}</span>
+    <span class="stat-tile-label">Written off</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.recovery is not none %}{{ data.recovery }}%{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Recovered of what it cost</span></span></div>
+</div>
+
+{% if data.undecided %}
+<p class="field-hint" style="max-width:760px;">
+  {{ data.undecided }} breakage{{ '' if data.undecided == 1 else 's' }} have no decision recorded
+  yet, so they sit in the written-off total until somebody makes one.
+</p>
+{% endif %}
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">What</th><th style="text-align:left;">Room</th>
+    <th style="text-align:left;">Guest</th><th style="text-align:left;">Found</th>
+    <th class="num">Cost</th><th class="num">Charged</th><th style="text-align:left;">Decision</th></tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.decision == 'not decided' %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.what }}</th>
+        <td>{{ r.room }}</td>
+        <td>{{ r.guest }}</td>
+        <td>{{ r.found_on }}</td>
+        <td class="num">{{ euro(r.replacement) }}</td>
+        <td class="num">{{ euro(r.charged) }}</td>
+        <td>{{ r.decision }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nothing was recorded broken in this window.</div>
+{% endif %}
+
+{% endblock %}

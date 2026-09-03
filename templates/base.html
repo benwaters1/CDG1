@@ -124,7 +124,7 @@
     {% set rota_endpoints = ['admin_tasks','new_task','toggle_task','complete_task','reschedule_task','delete_task','duplicate_task_next_week',
        'admin_shifts','new_shift','delete_shift','copy_previous_week_shifts','export_shifts_csv',
        'my_shifts','my_hours','respond_shift_swap','decide_shift_swap','team_calendar',
-       'admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections','repair_time_entry',
+       'admin_workload','export_workload_csv','admin_timesheets','flag_timesheet_entry','admin_timesheet_corrections','repair_time_entry',
        'resolve_timesheet_correction','dismiss_timesheet_correction',
        'export_timesheets_csv','export_timesheets_summary_csv',
        'admin_leave','decide_leave','export_leave_csv',
@@ -160,6 +160,11 @@
        'management_cash_banking','record_cash_banking','delete_cash_banking',
        'management_on_the_books','management_break_even',
        'management_year_on_year','export_year_on_year_csv',
+       'management_deposits_held','export_deposits_held_csv',
+       'management_seasonality','export_seasonality_csv',
+       'management_room_league','export_room_league_csv',
+       'management_workshop_margins','export_workshop_margins_csv',
+       'management_breakage_recovery','export_breakage_recovery_csv',
        'management_pace','export_pace_csv',
        'management_supplier_prices','export_supplier_prices_csv',
        'management_energy','export_energy_csv',
@@ -180,7 +185,7 @@
        'management_vault','new_vault_entry','edit_vault_entry','delete_vault_entry','management_company_info',
        'management_insurance','new_insurance_policy','edit_insurance_policy','delete_insurance_policy','export_insurance_csv','renew_insurance_policy',
        'vendors','new_vendor','edit_vendor','delete_vendor','export_vendors_csv','audit_log','export_audit_log_csv',
-       'admin_automation','update_automation_settings','run_automation_job_now','admin_readiness',
+       'admin_automation','update_automation_settings','run_automation_job_now','admin_readiness','admin_retention',
        'maintenance_page','new_maintenance_schedule','edit_maintenance_schedule',
        'record_maintenance_done','delete_maintenance_schedule',
        'admin_outlook_addin','admin_promo_codes','admin_deposit_rules','promo_code_blast','admin_terms',
@@ -275,6 +280,7 @@
         <a href="{{ url_for('admin_shifts') }}" class="{{ 'active' if request.endpoint=='admin_shifts' }}">{{ icon('shifts') }}Shifts</a>
         <a href="{{ url_for('team_calendar') }}" class="{{ 'active' if request.endpoint=='team_calendar' }}">{{ icon('calendar') }}Team Calendar</a>
         <a href="{{ url_for('admin_timesheets') }}" class="{{ 'active' if request.endpoint=='admin_timesheets' }}">{{ icon('shifts') }}Timesheets</a>
+        <a href="{{ url_for('admin_workload') }}" class="{{ 'active' if request.endpoint=='admin_workload' }}">{{ icon('rota') }}Workload</a>
         <a href="{{ url_for('admin_leave') }}" class="{{ 'active' if request.endpoint=='admin_leave' }}">{{ icon('leave') }}Time Off</a>
         {# Built and reachable only by searching for them, or by the warnings
            panel — which fires once it is already too late to move a shift. #}
@@ -337,6 +343,11 @@
         <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
         <a href="{{ url_for('management_break_even') }}" class="{{ 'active' if request.endpoint=='management_break_even' }}">{{ icon('financial') }}Break-even</a>
         <a href="{{ url_for('management_year_on_year') }}" class="{{ 'active' if request.endpoint=='management_year_on_year' }}">{{ icon('financial') }}Year On Year</a>
+        <a href="{{ url_for('management_seasonality') }}" class="{{ 'active' if request.endpoint=='management_seasonality' }}">{{ icon('financial') }}Seasonality</a>
+        <a href="{{ url_for('management_room_league') }}" class="{{ 'active' if request.endpoint=='management_room_league' }}">{{ icon('financial') }}Rooms League</a>
+        <a href="{{ url_for('management_deposits_held') }}" class="{{ 'active' if request.endpoint=='management_deposits_held' }}">{{ icon('financial') }}Deposits Held</a>
+        <a href="{{ url_for('management_breakage_recovery') }}" class="{{ 'active' if request.endpoint=='management_breakage_recovery' }}">{{ icon('financial') }}Breakage Recovery</a>
+        <a href="{{ url_for('management_workshop_margins') }}" class="{{ 'active' if request.endpoint=='management_workshop_margins' }}">{{ icon('financial') }}Atelier Margins</a>
         <a href="{{ url_for('management_pace') }}" class="{{ 'active' if request.endpoint=='management_pace' }}">{{ icon('financial') }}Booking Pace</a>
         <a href="{{ url_for('management_supplier_prices') }}" class="{{ 'active' if request.endpoint=='management_supplier_prices' }}">{{ icon('financial') }}Supplier Prices</a>
         <a href="{{ url_for('management_energy') }}" class="{{ 'active' if request.endpoint=='management_energy' }}">{{ icon('financial') }}Energy Per Night</a>
@@ -361,8 +372,8 @@
        custom preset could grant till without restaurant and the item must
        not vanish for them — hence the conditional label target too. #}
     {% if may('restaurant') or may('till') %}
-    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','dinner_covers_page','export_dinner_covers_csv','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras','restaurant_covers','restaurant_tables','seat_restaurant_booking','kitchen_prep','prep_item_done','kitchen_fridges','kitchen_dietary','export_dietary_csv','admin_no_shows','export_no_shows_csv'] or request.endpoint in till_endpoints }}">
-      <a href="{{ url_for('admin_restaurant') if may('restaurant') else url_for('pos_home') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','dinner_covers_page','export_dinner_covers_csv','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras','restaurant_covers','restaurant_tables','seat_restaurant_booking','kitchen_prep','prep_item_done','kitchen_fridges','kitchen_dietary','export_dietary_csv','admin_no_shows','export_no_shows_csv'] or request.endpoint in till_endpoints }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
+    <div class="nav-dropdown {{ 'open' if request.endpoint in ['admin_restaurant','dinner_covers_page','export_dinner_covers_csv','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras','restaurant_covers','restaurant_tables','seat_restaurant_booking','kitchen_prep','prep_item_done','kitchen_fridges','kitchen_dietary','export_dietary_csv','admin_no_shows','export_no_shows_csv','admin_table_utilisation','export_table_utilisation_csv','admin_wastage_rate','export_wastage_rate_csv'] or request.endpoint in till_endpoints }}">
+      <a href="{{ url_for('admin_restaurant') if may('restaurant') else url_for('pos_home') }}" class="nav-dropdown-label {{ 'active' if request.endpoint in ['admin_restaurant','dinner_covers_page','export_dinner_covers_csv','confirm_restaurant_booking','decline_restaurant_booking','cancel_restaurant_booking_admin','export_restaurant_csv','admin_restaurant_settings','admin_restaurant_waitlist','update_restaurant_waitlist_status','export_restaurant_waitlist_csv','admin_stock','new_stock_item','move_stock','admin_extras','restaurant_covers','restaurant_tables','seat_restaurant_booking','kitchen_prep','prep_item_done','kitchen_fridges','kitchen_dietary','export_dietary_csv','admin_no_shows','export_no_shows_csv','admin_table_utilisation','export_table_utilisation_csv','admin_wastage_rate','export_wastage_rate_csv'] or request.endpoint in till_endpoints }}">{{ icon('restaurant') }}Restaurant{% if pending_restaurant_count %} ({{ pending_restaurant_count }}){% endif %}</a>
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Restaurant submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         {% if may('till') %}
@@ -379,6 +390,8 @@
         <a href="{{ url_for('kitchen_prep') }}" class="{{ 'active' if request.endpoint=='kitchen_prep' }}">{{ icon('restaurant') }}Prep List</a>
         <a href="{{ url_for('kitchen_dietary') }}" class="{{ 'active' if request.endpoint=='kitchen_dietary' }}">{{ icon('restaurant') }}Dietary Sheet</a>
         <a href="{{ url_for('admin_no_shows') }}" class="{{ 'active' if request.endpoint=='admin_no_shows' }}">{{ icon('restaurant') }}No-Shows</a>
+        <a href="{{ url_for('admin_table_utilisation') }}" class="{{ 'active' if request.endpoint=='admin_table_utilisation' }}">{{ icon('restaurant') }}Table Utilisation</a>
+        <a href="{{ url_for('admin_wastage_rate') }}" class="{{ 'active' if request.endpoint=='admin_wastage_rate' }}">{{ icon('restaurant') }}Wastage</a>
         <a href="{{ url_for('kitchen_fridges') }}" class="{{ 'active' if request.endpoint=='kitchen_fridges' }}">{{ icon('wrench') }}Fridge Temperatures</a>
         <a href="{{ url_for('admin_terminal') }}" class="{{ 'active' if request.endpoint=='admin_terminal' }}">{{ icon('receipt') }}Card Reader</a>
         <a href="{{ url_for('admin_restaurant_settings') }}" class="{{ 'active' if request.endpoint=='admin_restaurant_settings' }}">{{ icon('management') }}Settings</a>
@@ -422,6 +435,7 @@
         <a href="{{ url_for('management_vault') }}" class="{{ 'active' if request.endpoint=='management_vault' }}">{{ icon('lock') }}Vault</a>
         <a href="{{ url_for('admin_access_levels') }}" class="{{ 'active' if request.endpoint in ['admin_access_levels','save_access_preset','assign_access_preset'] }}">{{ icon('lock') }}Access Levels</a>
         <a href="{{ url_for('admin_readiness') }}" class="{{ 'active' if request.endpoint=='admin_readiness' }}">{{ icon('shield') }}Go-live Checklist</a>
+        <a href="{{ url_for('admin_retention') }}" class="{{ 'active' if request.endpoint=='admin_retention' }}">{{ icon('shield') }}Retention</a>
         <a href="{{ url_for('import_catalogue') }}" class="{{ 'active' if request.endpoint=='import_catalogue' }}">{{ icon('folder') }}Import Catalogue</a>
         <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint=='audit_log' }}">{{ icon('eye') }}Audit Log</a>
       </div>
@@ -436,7 +450,7 @@
     <a href="{{ url_for('room_issues') }}" class="{{ 'active' if request.endpoint=='room_issues' }}">{{ icon('wrench') }}Room Issues</a>
     <a href="{{ url_for('breakfast') }}" class="{{ 'active' if request.endpoint=='breakfast' }}">{{ icon('coffee') }}Breakfast</a>
     <a href="{{ url_for('pos_home') }}" class="{{ 'active' if request.endpoint in ['pos_home','pos_order','pos_kitchen'] }}">{{ icon('restaurant') }}Restaurant POS</a>
-    {% set house_endpoints = ['shift_handover','kitchen_prep','prep_item_done','kitchen_fridges','kitchen_dietary','export_dietary_csv','admin_no_shows','export_no_shows_csv',
+    {% set house_endpoints = ['shift_handover','kitchen_prep','prep_item_done','kitchen_fridges','kitchen_dietary','export_dietary_csv','admin_no_shows','export_no_shows_csv','admin_table_utilisation','export_table_utilisation_csv','admin_wastage_rate','export_wastage_rate_csv',
        'management_cleaning','cleaning_round_done','management_breakages',
        'management_lost_property','resolve_lost_property','management_visitors',
        'sign_out_visitor','management_meters','restaurant_covers','restaurant_tables',
@@ -450,6 +464,8 @@
         <a href="{{ url_for('kitchen_prep') }}" class="{{ 'active' if request.endpoint=='kitchen_prep' }}">{{ icon('restaurant') }}Prep List</a>
         <a href="{{ url_for('kitchen_dietary') }}" class="{{ 'active' if request.endpoint=='kitchen_dietary' }}">{{ icon('restaurant') }}Dietary Sheet</a>
         <a href="{{ url_for('admin_no_shows') }}" class="{{ 'active' if request.endpoint=='admin_no_shows' }}">{{ icon('restaurant') }}No-Shows</a>
+        <a href="{{ url_for('admin_table_utilisation') }}" class="{{ 'active' if request.endpoint=='admin_table_utilisation' }}">{{ icon('restaurant') }}Table Utilisation</a>
+        <a href="{{ url_for('admin_wastage_rate') }}" class="{{ 'active' if request.endpoint=='admin_wastage_rate' }}">{{ icon('restaurant') }}Wastage</a>
         <a href="{{ url_for('kitchen_fridges') }}" class="{{ 'active' if request.endpoint=='kitchen_fridges' }}">{{ icon('wrench') }}Fridge Temperatures</a>
         <a href="{{ url_for('restaurant_covers') }}" class="{{ 'active' if request.endpoint=='restaurant_covers' }}">{{ icon('restaurant') }}Covers Ahead</a>
         <a href="{{ url_for('restaurant_tables') }}" class="{{ 'active' if request.endpoint=='restaurant_tables' }}">{{ icon('restaurant') }}Tables</a>

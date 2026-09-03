@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Deposits held{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Deposits still held</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+    <a href="{{ url_for('export_deposits_held_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A damage deposit is the guest&rsquo;s money. The way this goes wrong is silent and in the worst
+  direction: nobody complains about a deposit they have forgotten, right up until they remember.
+  Recording a return here does not move any money &mdash; the transfer or refund is made
+  deliberately, the same way a breakage marked charged does not take anything.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.total_held) }}</span>
+    <span class="stat-tile-label">Held after departure</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.overdue|length }}</span>
+    <span class="stat-tile-label">Over a fortnight, worth {{ euro(data.overdue_value) }}</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.total_upcoming) }}</span>
+    <span class="stat-tile-label">Held for stays still to come</span></span></div>
+</div>
+
+{% if data.held %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Guest</th><th style="text-align:left;">Room</th>
+      <th style="text-align:left;">Left</th><th class="num">Days ago</th>
+      <th class="num">Held</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.held %}
+      <tr{% if r.days_since and r.days_since > 14 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.guest }}<span class="field-hint" style="display:block; font-weight:400;">{{ r.reference }}</span></th>
+        <td>{{ r.room }}</td>
+        <td>{{ r.departed }}</td>
+        <td class="num">{% if r.days_since is not none %}{{ r.days_since }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ euro(r.amount) }}</td>
+        <td><a href="{{ url_for('edit_booking', booking_id=r.id) }}" class="btn-mini">Open</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nothing is being held for a guest who has already left.</div>
+{% endif %}
+
+{% if data.returned %}
+<h2 class="section-heading">Recently returned</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Guest</th><th style="text-align:left;">Reference</th>
+    <th class="num">Was held</th><th class="num">Went back</th><th style="text-align:left;">Note</th></tr></thead>
+    <tbody>
+      {% for r in data.returned %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.guest_name }}</th>
+        <td>{{ r.reference_code }}</td>
+        <td class="num">{{ euro(r.deposit_amount) }}</td>
+        <td class="num">{{ euro(r.deposit_returned_amount) }}</td>
+        <td>{{ r.deposit_returned_note or '&mdash;'|safe }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

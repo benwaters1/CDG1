@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Workload{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Who is carrying the house</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_shifts') }}" class="btn-ghost">Rota</a>
+    <a href="{{ url_for('admin_timesheets') }}" class="btn-ghost">Timesheets</a>
+    <a href="{{ url_for('export_workload_csv', period=period.period, date=period.start_iso) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The timesheet page answers &ldquo;what did this person work&rdquo;. It cannot answer &ldquo;is one
+  person doing twice what everybody else is&rdquo;, which is the question that comes before somebody
+  leaves. Rostered shifts, not clocked hours, because the rota is what was <em>asked</em> of people.
+</p>
+
+{% with endpoint = 'admin_workload' %}{% include "_period_selector.html" %}{% endwith %}
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.total_shifts }}</span>
+    <span class="stat-tile-label">Shifts rostered</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.average }}</span>
+    <span class="stat-tile-label">Average each, of {{ data.worked }} people</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.carrying|length }}</span>
+    <span class="stat-tile-label">Doing half again or more</span></span></div>
+</div>
+
+{% if data.carrying %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">{% for p in data.carrying %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Rostered half again as much as the average person who worked at all this period. That is not
+    automatically wrong &mdash; somebody full-time among part-timers will always look like this
+    &mdash; but it is worth having seen rather than discovering in a resignation.
+  </p>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Who</th><th class="num">Shifts</th><th class="num">Days</th>
+    <th class="num">Weekends</th><th class="num">Share</th><th class="num">Against average</th></tr></thead>
+    <tbody>
+      {% for p in data.people %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <td class="num">{{ p.shifts }}</td>
+        <td class="num">{{ p.days }}</td>
+        <td class="num">{{ p.weekends }}</td>
+        <td class="num">{{ p.share }}%</td>
+        <td class="num">{{ '+' if p.vs_average > 0 }}{{ p.vs_average }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

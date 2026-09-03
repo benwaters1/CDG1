@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Retention{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the privacy notice promises</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('privacy_page') if 'privacy_page' in url_map else '/privacy' }}" class="btn-ghost">The notice</a>
+    <a href="{{ url_for('admin_automation') if 'admin_automation' in url_map else url_for('admin_readiness') }}" class="btn-ghost">Automation</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The privacy notice is a set of claims about this code, not marketing copy. These are those
+  claims, measured against the database. A promise nobody can check is the same as a promise nobody
+  keeps, and the difference only becomes visible in the one conversation where it matters.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ 'Yes' if data.all_kept else 'No' }}</span>
+    <span class="stat-tile-label">Everything the notice promises is true today</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.waiting }}</span>
+    <span class="stat-tile-label">Records still holding what should be gone</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.job_ran_at or 'never' }}</span>
+    <span class="stat-tile-label">Purge last ran &mdash; {{ data.job_status }}</span></span></div>
+</div>
+
+{% if data.job_failing %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">The purge job is not finishing</h3>
+  <p class="field-hint" style="margin-top:0;">
+    It reports: {{ data.job_message or 'no message' }}. While it is failing, the notice below is
+    saying something the software has stopped doing.
+  </p>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">The notice says</th><th style="text-align:left;">Measured on</th>
+    <th class="num">Still waiting</th><th style="text-align:left;">True today</th></tr></thead>
+    <tbody>
+      {% for c in data.claims %}
+      <tr{% if not c.kept %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ c.claim }}</th>
+        <td>{{ c.where }}</td>
+        <td class="num">{{ c.waiting }}</td>
+        <td>{{ 'Yes' if c.kept else 'Not yet' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

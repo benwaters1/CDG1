@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Rooms league{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Which rooms earn</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Rooms</a>
+    <a href="{{ url_for('export_room_league_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The occupancy report lists nights per room. It cannot say whether a room is cheap and always
+  full or dear and usually empty, which is the only version of the question that leads anywhere
+  &mdash; and the answer decides where the next restoration budget goes. Sorted by revenue per
+  night available, which is what makes two rooms at different prices comparable at all.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Room</th><th class="num">Nights</th><th class="num">Occupancy</th>
+      <th class="num">Average night</th><th class="num">Per night available</th>
+      <th class="num">Of rack rate</th><th class="num">Share of revenue</th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.name }}{% if not r.active %} <span class="field-hint">(not let)</span>{% endif %}</th>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ r.occupancy }}%</td>
+        <td class="num">{% if r.adr is not none %}{{ euro(r.adr) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num"><strong>{{ euro(r.revpar) }}</strong></td>
+        <td class="num">{% if r.achieved is not none %}{{ r.achieved }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ r.share }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th style="text-align:left;">Total, over {{ data.nights_span }} nights</th><th class="num">{{ data.rows|sum(attribute='nights') }}</th>
+      <th class="num"></th><th class="num"></th><th class="num"></th><th class="num"></th>
+      <th class="num">{{ euro(data.revenue) }}</th></tr>
+    </tfoot>
+  </table>
+</div>
+
+{% endblock %}

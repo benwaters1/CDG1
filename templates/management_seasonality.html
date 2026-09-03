@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Seasonality{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>When the season actually is</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_year_on_year') }}" class="btn-ghost">Year on year</a>
+    <a href="{{ url_for('export_seasonality_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Everyone in a house like this has a story about when the season starts. Nothing had ever counted
+  it. The month decides when to open and when to price up; the night of the week decides whether a
+  two-night minimum would fill a Tuesday or only lose the Saturday. Occupancy is measured against
+  the days that have actually happened, so a year read halfway through does not show as half empty.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="years">Years back</label>
+    <input type="number" id="years" name="years" min="1" max="10" step="1" value="{{ years }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% if data.busiest and data.nights_counted %}
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.busiest.name }}</span>
+    <span class="stat-tile-label">Fullest month, {{ data.busiest.occupancy }}%</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.quietest.name if data.quietest else '&mdash;' }}</span>
+    <span class="stat-tile-label">Quietest, {{ data.quietest.occupancy if data.quietest else 0 }}%</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.nights_counted }}</span>
+    <span class="stat-tile-label">Room-nights counted</span></span></div>
+</div>
+{% endif %}
+
+<h2 class="section-heading">By month</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Month</th><th class="num">Nights</th>
+    <th class="num">Occupancy</th><th class="num">Average night</th><th class="num">Revenue</th></tr></thead>
+    <tbody>
+      {% for r in data.months %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.name }}</th>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ r.occupancy }}%</td>
+        <td class="num">{% if r.adr is not none %}{{ euro(r.adr) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ euro(r.revenue) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">By night of the week</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Night</th><th class="num">Nights sold</th>
+    <th class="num">Occupancy</th><th class="num">Average night</th></tr></thead>
+    <tbody>
+      {% for r in data.weekdays %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.name }}</th>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ r.occupancy }}%</td>
+        <td class="num">{% if r.adr is not none %}{{ euro(r.adr) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

@@ -5079,6 +5079,7 @@ NAV_AREAS = {
     ],
     "rota": [
         "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
+        "admin_workload", "export_workload_csv",
         "admin_timesheets", "complete_task", "copy_previous_week_shifts", "decide_leave",
         "decide_shift_swap", "delete_shift", "delete_task", "dismiss_timesheet_correction",
         "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
@@ -5128,6 +5129,11 @@ NAV_AREAS = {
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
         "management_year_on_year", "export_year_on_year_csv",
+        "management_deposits_held", "export_deposits_held_csv",
+        "management_seasonality", "export_seasonality_csv",
+        "management_room_league", "export_room_league_csv",
+        "management_workshop_margins", "export_workshop_margins_csv",
+        "management_breakage_recovery", "export_breakage_recovery_csv",
         "management_pace", "export_pace_csv",
         "management_supplier_prices", "export_supplier_prices_csv",
         "management_energy", "export_energy_csv",
@@ -5156,6 +5162,8 @@ NAV_AREAS = {
     ],
     "restaurant": [
         "admin_no_shows", "export_no_shows_csv",
+        "admin_table_utilisation", "export_table_utilisation_csv",
+        "admin_wastage_rate", "export_wastage_rate_csv",
         "kitchen_dietary", "export_dietary_csv",
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
@@ -5198,6 +5206,7 @@ NAV_AREAS = {
         "admin_wages", "new_wage_record", "save_wage_settings"
     ],
     "management": [
+        "admin_retention",
         # Private HR notes sit here rather than in `team`: the employee is
         # promised that only the owner sees them, and this is the only area no
         # non-owner preset grants.
@@ -15700,6 +15709,540 @@ def energy_per_night(conn, months=12, today=None):
                  "to": p["to"].isoformat(), "used": p["used"],
                  "nights_sold": p["nights"], "per_night": p["per_night"]}
                 for mt in out for p in mt["periods"]],
+    }
+
+
+def deposits_held(conn, today=None):
+    """Money the house is holding that should have gone back.
+
+    return_deposit() has existed for a while and nothing listed what is
+    waiting for it. A damage deposit is the guest's money, and the failure is
+    silent in the worst direction: nobody complains about a deposit they have
+    forgotten, right up until they remember.
+    """
+    today = today or house_today()
+    rows = conn.execute(
+        """SELECT bookings.id, bookings.guest_name, bookings.guest_email,
+                  bookings.reference_code, bookings.departure_date,
+                  bookings.deposit_amount, bookings.deposit_returned_at,
+                  bookings.deposit_returned_amount, rooms.name AS room_name
+             FROM bookings LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND COALESCE(bookings.deposit_amount, 0) > 0
+              AND bookings.deposit_returned_at IS NULL
+            ORDER BY bookings.departure_date""").fetchall()
+
+    held, upcoming = [], []
+    for r in rows:
+        out = parse_date(r["departure_date"])
+        item = {
+            "id": r["id"], "guest": r["guest_name"], "email": r["guest_email"],
+            "reference": r["reference_code"], "room": r["room_name"] or "\u2014",
+            "departed": r["departure_date"],
+            "amount": round(float(r["deposit_amount"] or 0), 2),
+            "days_since": (today - out).days if out else None,
+        }
+        # A deposit on a stay that has not happened is being held correctly.
+        if out and out <= today:
+            held.append(item)
+        else:
+            upcoming.append(item)
+
+    # Recently returned, so the page can show the work being done rather than
+    # only the backlog -- and so a wrong amount can be spotted.
+    returned = [dict(r) for r in conn.execute(
+        """SELECT bookings.guest_name, bookings.reference_code,
+                  bookings.deposit_amount, bookings.deposit_returned_amount,
+                  bookings.deposit_returned_at, bookings.deposit_returned_note
+             FROM bookings
+            WHERE bookings.deposit_returned_at IS NOT NULL
+            ORDER BY bookings.deposit_returned_at DESC LIMIT 20""").fetchall()]
+
+    overdue = [h for h in held if (h["days_since"] or 0) > 14]
+    return {
+        "today": today, "held": held, "upcoming": upcoming,
+        "returned": returned,
+        "total_held": round(sum(h["amount"] for h in held), 2),
+        "total_upcoming": round(sum(u["amount"] for u in upcoming), 2),
+        "overdue": overdue,
+        "overdue_value": round(sum(h["amount"] for h in overdue), 2),
+        "csv": [{"guest": h["guest"], "reference": h["reference"],
+                 "departed": h["departed"], "amount": h["amount"],
+                 "days_since": h["days_since"]} for h in held],
+    }
+
+
+def seasonality(conn, years=3, today=None):
+    """When the season actually is, and which nights are dead.
+
+    Everyone in a house like this has a story about when the season starts.
+    Nothing had ever counted it. Two views because they answer different
+    questions: the month decides when to open and when to price up, and the
+    night of the week decides whether a two-night minimum would fill a Tuesday
+    or just lose the Saturday.
+    """
+    today = today or house_today()
+    start = date(today.year - max(1, years) + 1, 1, 1)
+    rows = conn.execute(
+        """SELECT arrival_date, departure_date, total_price FROM bookings
+            WHERE status = 'confirmed' AND departure_date >= ?""",
+        (start.isoformat(),)).fetchall()
+
+    rooms_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+    months = {}
+    weekdays = {i: {"nights": 0, "revenue": 0.0, "days": 0} for i in range(7)}
+    seen_days = set()
+
+    for r in rows:
+        a, d = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if not (a and d) or d <= a:
+            continue
+        nights = (d - a).days
+        per_night = float(r["total_price"] or 0) / nights
+        for i in range(nights):
+            night = a + timedelta(days=i)
+            if night < start or night > today:
+                continue
+            key = night.month
+            slot = months.setdefault(key, {"month": key, "nights": 0, "revenue": 0.0})
+            slot["nights"] += 1
+            slot["revenue"] += per_night
+            weekdays[night.weekday()]["nights"] += 1
+            weekdays[night.weekday()]["revenue"] += per_night
+            seen_days.add(night)
+
+    # Capacity per month is rooms x the days of that month that have actually
+    # happened inside the window -- not the whole month, or a January measured
+    # halfway through reads as half empty.
+    cursor = start
+    month_days = {i: 0 for i in range(1, 13)}
+    weekday_days = {i: 0 for i in range(7)}
+    while cursor <= today:
+        month_days[cursor.month] += 1
+        weekday_days[cursor.weekday()] += 1
+        cursor += timedelta(days=1)
+
+    month_names = ["January", "February", "March", "April", "May", "June", "July",
+                   "August", "September", "October", "November", "December"]
+    month_rows = []
+    for i in range(1, 13):
+        slot = months.get(i, {"nights": 0, "revenue": 0.0})
+        capacity = rooms_total * month_days[i]
+        month_rows.append({
+            "month": i, "name": month_names[i - 1],
+            "nights": slot["nights"], "revenue": round(slot["revenue"], 2),
+            "occupancy": round(slot["nights"] / capacity * 100, 1) if capacity else 0,
+            "adr": round(slot["revenue"] / slot["nights"], 2) if slot["nights"] else None,
+            "measured_days": month_days[i],
+        })
+
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+    weekday_rows = []
+    for i in range(7):
+        capacity = rooms_total * weekday_days[i]
+        weekday_rows.append({
+            "name": day_names[i], "nights": weekdays[i]["nights"],
+            "revenue": round(weekdays[i]["revenue"], 2),
+            "occupancy": round(weekdays[i]["nights"] / capacity * 100, 1) if capacity else 0,
+            "adr": round(weekdays[i]["revenue"] / weekdays[i]["nights"], 2)
+            if weekdays[i]["nights"] else None,
+        })
+
+    busiest = max(month_rows, key=lambda r: r["occupancy"]) if month_rows else None
+    quietest = min((r for r in month_rows if r["measured_days"]),
+                   key=lambda r: r["occupancy"], default=None)
+    return {
+        "start": start, "today": today, "years": years,
+        "months": month_rows, "weekdays": weekday_rows,
+        "busiest": busiest, "quietest": quietest,
+        "nights_counted": sum(r["nights"] for r in month_rows),
+        "csv": [{"period": r["name"], "kind": "month", "nights": r["nights"],
+                 "occupancy_pct": r["occupancy"], "adr": r["adr"]} for r in month_rows]
+               + [{"period": r["name"], "kind": "weekday", "nights": r["nights"],
+                   "occupancy_pct": r["occupancy"], "adr": r["adr"]} for r in weekday_rows],
+    }
+
+
+def room_league(conn, start=None, end=None):
+    """Which rooms earn, and which are only ever the last one left.
+
+    The occupancy report lists nights per room. It cannot say whether a room
+    is cheap and always full or dear and usually empty, which is the only
+    version of the question that leads anywhere -- and the answer decides
+    which room the next restoration budget goes to.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or house_today()
+    nights_span = max(1, (end - start).days)
+    rooms = conn.execute(
+        """SELECT id, name, price_per_night, active FROM rooms
+            ORDER BY sort_order, id""").fetchall()
+    rows = conn.execute(
+        """SELECT bookings.room_id, bookings.arrival_date, bookings.departure_date,
+                  bookings.total_price
+             FROM bookings
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date < ? AND bookings.departure_date > ?""",
+        (end.isoformat(), start.isoformat())).fetchall()
+
+    tally = {}
+    for r in rows:
+        a, d = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if not (a and d):
+            continue
+        overlap = (min(d, end) - max(a, start)).days
+        if overlap <= 0:
+            continue
+        total_nights = max(1, (d - a).days)
+        slot = tally.setdefault(r["room_id"], {"nights": 0, "revenue": 0.0})
+        slot["nights"] += overlap
+        slot["revenue"] += float(r["total_price"] or 0) * overlap / total_nights
+
+    total_revenue = sum(v["revenue"] for v in tally.values())
+    out = []
+    for room in rooms:
+        slot = tally.get(room["id"], {"nights": 0, "revenue": 0.0})
+        out.append({
+            "id": room["id"], "name": room["name"],
+            "active": bool(room["active"]),
+            "rack": round(float(room["price_per_night"] or 0), 2),
+            "nights": slot["nights"], "revenue": round(slot["revenue"], 2),
+            "occupancy": round(slot["nights"] / nights_span * 100, 1),
+            "adr": round(slot["revenue"] / slot["nights"], 2) if slot["nights"] else None,
+            # Per night the room was AVAILABLE, which is what makes two rooms
+            # at different prices comparable at all.
+            "revpar": round(slot["revenue"] / nights_span, 2),
+            "share": round(slot["revenue"] / total_revenue * 100, 1) if total_revenue else 0,
+            # What it actually achieved against what it is advertised at.
+            "achieved": round(slot["revenue"] / slot["nights"] / float(room["price_per_night"]) * 100, 1)
+            if slot["nights"] and room["price_per_night"] else None,
+        })
+    out.sort(key=lambda r: -r["revpar"])
+    return {
+        "start": start, "end": end, "rows": out,
+        "revenue": round(total_revenue, 2),
+        "nights_span": nights_span,
+        "csv": [{"room": r["name"], "nights": r["nights"], "revenue": r["revenue"],
+                 "occupancy_pct": r["occupancy"], "adr": r["adr"], "revpar": r["revpar"]}
+                for r in out],
+    }
+
+
+def workshop_margins(conn, start=None, end=None):
+    """What an atelier session left after the materials it used.
+
+    MATERIALS ONLY, and deliberately. What an instructor is paid is a private
+    arrangement that varies per person and per session, and a page that
+    guessed at it would be wrong in a way somebody could read as a statement
+    about their fee. Materials are a number the house already records.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or (house_today() + timedelta(days=365))
+    sessions = conn.execute(
+        """SELECT workshop_sessions.id, workshop_sessions.start_date,
+                  workshop_sessions.end_date, workshop_sessions.capacity,
+                  workshops.id AS workshop_id, workshops.title
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.start_date >= ?
+              AND workshop_sessions.start_date < ?
+            ORDER BY workshop_sessions.start_date""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    out = []
+    for sess in sessions:
+        booked = conn.execute(
+            """SELECT COALESCE(SUM(party_size), 0) AS heads,
+                      COALESCE(SUM(total_price), 0) AS revenue,
+                      COUNT(*) AS bookings
+                 FROM workshop_bookings
+                WHERE session_id = ? AND status = 'confirmed'""",
+            (sess["id"],)).fetchone()
+        heads = booked["heads"] or 0
+        materials = conn.execute(
+            """SELECT COALESCE(SUM(
+                        COALESCE(workshop_materials.qty_per_person, 0) * ?
+                        + COALESCE(workshop_materials.qty_per_session, 0)
+                      ) * COALESCE(stock_items.unit_cost, 0), 0) AS cost,
+                      COUNT(*) AS lines,
+                      SUM(CASE WHEN stock_items.unit_cost IS NULL THEN 1 ELSE 0 END) AS uncosted
+                 FROM workshop_materials
+                 LEFT JOIN stock_items ON stock_items.id = workshop_materials.stock_item_id
+                WHERE workshop_materials.workshop_id = ?""",
+            (heads, sess["workshop_id"])).fetchone()
+        cost = round(float(materials["cost"] or 0), 2)
+        revenue = round(float(booked["revenue"] or 0), 2)
+        out.append({
+            "session_id": sess["id"], "title": sess["title"],
+            "start": sess["start_date"], "end": sess["end_date"],
+            "capacity": sess["capacity"], "heads": heads,
+            "bookings": booked["bookings"],
+            "revenue": revenue, "materials": cost,
+            "margin": round(revenue - cost, 2),
+            "per_head": round((revenue - cost) / heads, 2) if heads else None,
+            # A material with no cost recorded makes the margin look better
+            # than it is, so the page says so rather than quietly rounding it.
+            "uncosted": materials["uncosted"] or 0,
+            "material_lines": materials["lines"] or 0,
+            "fill": round(heads / sess["capacity"] * 100, 1) if sess["capacity"] else None,
+        })
+    return {
+        "start": start, "end": end, "rows": out,
+        "revenue": round(sum(r["revenue"] for r in out), 2),
+        "materials": round(sum(r["materials"] for r in out), 2),
+        "margin": round(sum(r["margin"] for r in out), 2),
+        "uncosted_sessions": sum(1 for r in out if r["uncosted"]),
+        "csv": [{"session": r["title"], "start": r["start"], "heads": r["heads"],
+                 "revenue": r["revenue"], "materials": r["materials"],
+                 "margin": r["margin"]} for r in out],
+    }
+
+
+def retention_status(conn, today=None):
+    """What the privacy notice promises, measured against the database.
+
+    templates/privacy.html says dietary and medical notes are deleted once the
+    event is over, and that dead enquiries go after twelve months. Both are
+    true because run_health_notes_purge_job makes them true -- and nothing
+    ever showed whether it had run, or what was still waiting.
+
+    A promise nobody can check is the same as a promise nobody keeps, and the
+    difference only becomes visible in the one conversation where it matters.
+    """
+    today = today or house_today()
+    cutoff = (today - timedelta(days=365)).isoformat()
+
+    stale_health = conn.execute(
+        """SELECT COUNT(*) AS c FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+            WHERE workshop_sessions.end_date < ?
+              AND (COALESCE(TRIM(workshop_bookings.medical_notes), '') != ''
+                   OR COALESCE(TRIM(workshop_bookings.dietary_notes), '') != '')""",
+        (today.isoformat(),)).fetchone()["c"]
+
+    old_enquiries = conn.execute(
+        """SELECT COUNT(*) AS c FROM event_inquiries
+            WHERE status IN ('declined', 'lost', 'closed')
+              AND DATE(COALESCE(decided_at, created_at)) < ?""",
+        (cutoff,)).fetchone()["c"]
+
+    job = conn.execute(
+        """SELECT last_ran_at, last_status, last_message, consecutive_failures
+             FROM automation_runs WHERE job_name = 'health_notes_purge'""").fetchone()
+
+    claims = [
+        {"claim": "Dietary and medical notes are deleted once the event is over",
+         "waiting": stale_health,
+         "where": "workshop bookings whose session has ended",
+         "kept": stale_health == 0},
+        {"claim": "Enquiries that came to nothing are deleted after twelve months",
+         "waiting": old_enquiries,
+         "where": "declined or closed event enquiries older than a year",
+         "kept": old_enquiries == 0},
+    ]
+    return {
+        "today": today, "claims": claims,
+        "waiting": sum(c["waiting"] for c in claims),
+        "all_kept": all(c["kept"] for c in claims),
+        "job_ran_at": house_date_iso(job["last_ran_at"]) if job else "",
+        "job_status": (job["last_status"] if job else "") or "never run",
+        "job_message": (job["last_message"] if job else "") or "",
+        "job_failing": bool(job and (job["consecutive_failures"] or 0) >= 1),
+        "csv": [{"claim": c["claim"], "records_waiting": c["waiting"]} for c in claims],
+    }
+
+
+def table_utilisation(conn, start=None, end=None):
+    """How full the room was, against how many seats it has.
+
+    Covers on their own do not say whether a night was busy: eighteen is a
+    full house in a room of twenty and half a room of forty. The seats are in
+    the table plan and nothing had ever divided one by the other.
+    """
+    start = start or (house_today() - timedelta(days=90))
+    end = end or house_today()
+    seats = conn.execute(
+        "SELECT COALESCE(SUM(seats), 0) AS s FROM dining_tables WHERE active = 1"
+    ).fetchone()["s"] or 0
+
+    rows = conn.execute(
+        """SELECT dinner_date, COALESCE(SUM(party_size), 0) AS covers,
+                  COUNT(*) AS bookings
+             FROM restaurant_bookings
+            WHERE status = 'confirmed' AND no_show_at IS NULL
+              AND dinner_date >= ? AND dinner_date < ?
+            GROUP BY dinner_date ORDER BY dinner_date DESC""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    out = []
+    for r in rows:
+        day = parse_date(r["dinner_date"])
+        out.append({
+            "date": r["dinner_date"],
+            "weekday": day.strftime("%a") if day else "",
+            "covers": r["covers"], "bookings": r["bookings"],
+            "fill": round(r["covers"] / seats * 100, 1) if seats else None,
+        })
+    served = [r for r in out if r["covers"]]
+    return {
+        "start": start, "end": end, "seats": seats, "rows": out[:90],
+        "nights": len(served),
+        "covers": sum(r["covers"] for r in out),
+        "average_fill": round(sum(r["fill"] for r in served) / len(served), 1)
+        if served and seats else None,
+        "best": max(served, key=lambda r: r["covers"]) if served else None,
+        # No table plan means no denominator, and a percentage of nothing is
+        # not a small number, it is not a number.
+        "no_seating": seats == 0,
+        "csv": [{"date": r["date"], "covers": r["covers"], "fill_pct": r["fill"]}
+                for r in out],
+    }
+
+
+def wastage_rate(conn, days=180):
+    """What went in the bin against what was used.
+
+    Wastage in euros is already on the kitchen page. As a SHARE it is a
+    different fact: fifty euros of herbs thrown out is nothing next to a
+    thousand bought and a great deal next to sixty.
+    """
+    since = (house_today() - timedelta(days=max(1, days))).isoformat()
+    rows = conn.execute(
+        """SELECT stock_items.name, stock_items.unit, stock_items.category,
+                  SUM(CASE WHEN stock_movements.reason = 'wastage'
+                           THEN -stock_movements.delta ELSE 0 END) AS wasted,
+                  SUM(CASE WHEN stock_movements.delta < 0
+                           THEN -stock_movements.delta ELSE 0 END) AS used_out,
+                  COALESCE(stock_items.unit_cost, 0) AS cost
+             FROM stock_movements
+             JOIN stock_items ON stock_items.id = stock_movements.stock_item_id
+            WHERE DATE(stock_movements.created_at) >= ?
+            GROUP BY stock_items.id
+            HAVING wasted > 0
+            ORDER BY wasted * COALESCE(stock_items.unit_cost, 0) DESC""",
+        (since,)).fetchall()
+
+    out = []
+    for r in rows:
+        wasted = float(r["wasted"] or 0)
+        out_total = float(r["used_out"] or 0)
+        out.append({
+            "name": r["name"], "unit": r["unit"] or "", "category": r["category"] or "",
+            "wasted": round(wasted, 2), "used": round(out_total, 2),
+            "share": round(wasted / out_total * 100, 1) if out_total else None,
+            "value": round(wasted * float(r["cost"] or 0), 2),
+            "costed": bool(r["cost"]),
+        })
+    return {
+        "days": days, "rows": out,
+        "value": round(sum(r["value"] for r in out), 2),
+        "uncosted": sum(1 for r in out if not r["costed"]),
+        "worst": out[0] if out else None,
+        "csv": [{"item": r["name"], "wasted": r["wasted"], "used": r["used"],
+                 "share_pct": r["share"], "value": r["value"]} for r in out],
+    }
+
+
+def workload_balance(conn, period):
+    """Who is carrying the house.
+
+    The timesheet page answers "what did this person work". It cannot answer
+    "is one person doing twice what everybody else is", which is the question
+    that precedes somebody leaving. Rostered hours, not clocked ones, because
+    the rota is what was ASKED of people.
+    """
+    start_iso, end_iso = period["start"].isoformat(), period["end"].isoformat()
+    rows = conn.execute(
+        """SELECT users.id, users.name,
+                  COUNT(shifts.id) AS shifts,
+                  COUNT(DISTINCT shifts.shift_date) AS days
+             FROM users
+             LEFT JOIN shifts ON shifts.user_id = users.id
+                  AND shifts.shift_date >= ? AND shifts.shift_date < ?
+            WHERE users.status = 'active'
+            GROUP BY users.id ORDER BY shifts DESC""",
+        (start_iso, end_iso)).fetchall()
+
+    people = [{"id": r["id"], "name": r["name"], "shifts": r["shifts"],
+               "days": r["days"]} for r in rows]
+    worked = [p for p in people if p["shifts"]]
+    total = sum(p["shifts"] for p in people)
+    average = round(total / len(worked), 1) if worked else 0
+
+    for p in people:
+        p["share"] = round(p["shifts"] / total * 100, 1) if total else 0
+        # Against the average of people who worked at all, so a whole team of
+        # part-timers does not make one full-timer look like an outlier.
+        p["vs_average"] = round(p["shifts"] - average, 1) if worked else 0
+
+    weekends = conn.execute(
+        """SELECT users.id, COUNT(shifts.id) AS n
+             FROM users JOIN shifts ON shifts.user_id = users.id
+            WHERE shifts.shift_date >= ? AND shifts.shift_date < ?
+              AND CAST(strftime('%w', shifts.shift_date) AS INTEGER) IN (0, 6)
+            GROUP BY users.id""", (start_iso, end_iso)).fetchall()
+    weekend_by_id = {r["id"]: r["n"] for r in weekends}
+    for p in people:
+        p["weekends"] = weekend_by_id.get(p["id"], 0)
+
+    return {
+        "period": period, "people": people, "worked": len(worked),
+        "total_shifts": total, "average": average,
+        "carrying": [p for p in worked if average and p["shifts"] >= average * 1.5],
+        "csv": [{"name": p["name"], "shifts": p["shifts"], "days": p["days"],
+                 "weekend_shifts": p["weekends"], "share_pct": p["share"]}
+                for p in people],
+    }
+
+
+def breakage_recovery(conn, start=None, end=None):
+    """What got broken, and what the house got back for it.
+
+    Breakages are recorded and decided one at a time and nothing totalled
+    them. The figure that matters is not what was broken -- it is how much of
+    it was written off, because that is the number that tells you whether the
+    deposit is the right size.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or house_today()
+    rows = conn.execute(
+        """SELECT breakages.*, rooms.name AS room_name, bookings.guest_name
+             FROM breakages
+             LEFT JOIN rooms ON rooms.id = breakages.room_id
+             LEFT JOIN bookings ON bookings.id = breakages.booking_id
+            WHERE breakages.found_on >= ? AND breakages.found_on < ?
+            ORDER BY breakages.found_on DESC""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    out, cost, charged = [], 0.0, 0.0
+    undecided = 0
+    for r in rows:
+        replacement = float(r["replacement_cost"] or 0)
+        recovered = float(r["charged_amount"] or 0)
+        cost += replacement
+        charged += recovered
+        decision = (r["charge_decision"] or "undecided")
+        if decision == "undecided":
+            undecided += 1
+        out.append({
+            "id": r["id"], "what": r["what"], "room": r["room_name"] or "\u2014",
+            "guest": r["guest_name"] or "\u2014", "found_on": r["found_on"],
+            "replacement": round(replacement, 2), "charged": round(recovered, 2),
+            "decision": {"charged": "charged", "let_it_go": "let it go"}.get(
+                decision, "not decided"),
+            "written_off": round(replacement - recovered, 2),
+        })
+    return {
+        "start": start, "end": end, "rows": out,
+        "cost": round(cost, 2), "charged": round(charged, 2),
+        "written_off": round(cost - charged, 2),
+        "recovery": round(charged / cost * 100, 1) if cost else None,
+        "undecided": undecided,
+        "csv": [{"what": r["what"], "room": r["room"], "found_on": r["found_on"],
+                 "replacement": r["replacement"], "charged": r["charged"],
+                 "written_off": r["written_off"]} for r in out],
     }
 
 
@@ -41282,6 +41825,194 @@ def export_energy_csv():
     conn.close()
     return csv_response(["meter", "from", "to", "used", "nights_sold", "per_night"],
                         data["csv"], "energy.csv")
+
+
+@app.route("/management/deposits-held")
+@owner_required
+def management_deposits_held():
+    """Money the house is holding that should have gone back."""
+    conn = get_db()
+    data = deposits_held(conn)
+    conn.close()
+    return render_template("management_deposits_held.html", data=data)
+
+
+@app.route("/management/deposits-held.csv")
+@owner_required
+def export_deposits_held_csv():
+    conn = get_db()
+    data = deposits_held(conn)
+    conn.close()
+    return csv_response(["guest", "reference", "departed", "amount", "days_since"],
+                        data["csv"], "deposits-held.csv")
+
+
+@app.route("/management/seasonality")
+@owner_required
+def management_seasonality():
+    """When the season actually is, and which nights are dead."""
+    conn = get_db()
+    try:
+        years = max(1, min(10, int(request.args.get("years", 3))))
+    except ValueError:
+        years = 3
+    data = seasonality(conn, years)
+    conn.close()
+    return render_template("management_seasonality.html", data=data, years=years)
+
+
+@app.route("/management/seasonality.csv")
+@owner_required
+def export_seasonality_csv():
+    conn = get_db()
+    data = seasonality(conn, 5)
+    conn.close()
+    return csv_response(["period", "kind", "nights", "occupancy_pct", "adr"],
+                        data["csv"], "seasonality.csv")
+
+
+@app.route("/management/rooms-league")
+@owner_required
+def management_room_league():
+    """Which rooms earn, and which are only ever the last one left."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = room_league(conn, start, end)
+    conn.close()
+    return render_template("management_room_league.html", data=data)
+
+
+@app.route("/management/rooms-league.csv")
+@owner_required
+def export_room_league_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = room_league(conn, start, end)
+    conn.close()
+    return csv_response(["room", "nights", "revenue", "occupancy_pct", "adr", "revpar"],
+                        data["csv"], f"rooms-league_{start.isoformat()}.csv")
+
+
+@app.route("/management/workshop-margins")
+@owner_required
+def management_workshop_margins():
+    """What an atelier session left after materials."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = workshop_margins(conn, start, end)
+    conn.close()
+    return render_template("management_workshop_margins.html", data=data)
+
+
+@app.route("/management/workshop-margins.csv")
+@owner_required
+def export_workshop_margins_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = workshop_margins(conn, start, end)
+    conn.close()
+    return csv_response(["session", "start", "heads", "revenue", "materials", "margin"],
+                        data["csv"], "workshop-margins.csv")
+
+
+@app.route("/admin/retention")
+@owner_required
+def admin_retention():
+    """What the privacy notice promises, measured against the database."""
+    conn = get_db()
+    data = retention_status(conn)
+    conn.close()
+    return render_template("admin_retention.html", data=data)
+
+
+@app.route("/admin/restaurant/utilisation")
+@owner_required
+def admin_table_utilisation():
+    """How full the room was, against how many seats it has."""
+    conn = get_db()
+    start, end = _window_from_request(90)
+    data = table_utilisation(conn, start, end)
+    conn.close()
+    return render_template("admin_table_utilisation.html", data=data)
+
+
+@app.route("/admin/restaurant/utilisation.csv")
+@owner_required
+def export_table_utilisation_csv():
+    conn = get_db()
+    start, end = _window_from_request(90)
+    data = table_utilisation(conn, start, end)
+    conn.close()
+    return csv_response(["date", "covers", "fill_pct"], data["csv"],
+                        "table-utilisation.csv")
+
+
+@app.route("/admin/wastage")
+@owner_required
+def admin_wastage_rate():
+    """What went in the bin against what was used."""
+    conn = get_db()
+    try:
+        days = max(7, min(730, int(request.args.get("days", 180))))
+    except ValueError:
+        days = 180
+    data = wastage_rate(conn, days)
+    conn.close()
+    return render_template("admin_wastage_rate.html", data=data, days=days)
+
+
+@app.route("/admin/wastage.csv")
+@owner_required
+def export_wastage_rate_csv():
+    conn = get_db()
+    data = wastage_rate(conn, 365)
+    conn.close()
+    return csv_response(["item", "wasted", "used", "share_pct", "value"],
+                        data["csv"], "wastage.csv")
+
+
+@app.route("/admin/workload")
+@owner_required
+def admin_workload():
+    """Who is carrying the house."""
+    conn = get_db()
+    period = period_from_request()
+    data = workload_balance(conn, period)
+    conn.close()
+    return render_template("admin_workload.html", data=data, period=period)
+
+
+@app.route("/admin/workload.csv")
+@owner_required
+def export_workload_csv():
+    conn = get_db()
+    period = period_from_request()
+    data = workload_balance(conn, period)
+    conn.close()
+    return csv_response(["name", "shifts", "days", "weekend_shifts", "share_pct"],
+                        data["csv"], f"workload_{period['start_iso']}.csv")
+
+
+@app.route("/management/breakage-recovery")
+@owner_required
+def management_breakage_recovery():
+    """What got broken, and what the house got back for it."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = breakage_recovery(conn, start, end)
+    conn.close()
+    return render_template("management_breakage_recovery.html", data=data)
+
+
+@app.route("/management/breakage-recovery.csv")
+@owner_required
+def export_breakage_recovery_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = breakage_recovery(conn, start, end)
+    conn.close()
+    return csv_response(["what", "room", "found_on", "replacement", "charged",
+                         "written_off"], data["csv"], "breakage-recovery.csv")
 
 
 @app.route("/management/break-even")
