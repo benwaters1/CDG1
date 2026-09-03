@@ -174,7 +174,7 @@
   <div class="expense-head">
     <div>
       <span class="mini-status status-{{ 'onshift' if f['rating'] >= 4 else ('pending' if f['rating'] == 3 else 'inactive') }}">{{ f['rating'] }} / 5</span>
-      <span class="upload-hint">{{ f['submitted_at'][:10] }} · {{ f['reference_code'] }}</span>
+      <span class="upload-hint">{{ f['submitted_at']|house_day }} · {{ f['reference_code'] }}</span>
     </div>
   </div>
   {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
@@ -245,7 +245,7 @@
     <tbody>
       {% for n in notes %}
       <tr>
-        <td>{{ n['created_at'][:10]|date_short }}</td>
+        <td>{{ n['created_at']|house_day|date_short }}</td>
         <td>{{ n['author'] or '—' }}</td>
         <td>{{ n['body'] }}</td>
       </tr>
@@ -292,7 +292,7 @@
   <span class="mini-status status-declined">{{ caution_levels[record.guest['caution_level']] }}</span>
   {{ record.guest['caution'] }}
   {% if record.guest['caution_set_at'] %}
-  <span class="upload-hint">set {{ record.guest['caution_set_at'][:10]|date_short }}</span>
+  <span class="upload-hint">set {{ record.guest['caution_set_at']|house_day|date_short }}</span>
   {% endif %}
 </p>
 {% endif %}

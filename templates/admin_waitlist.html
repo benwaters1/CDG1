@@ -28,7 +28,7 @@
       {% if e['phone'] %} · <a href="tel:{{ e['phone'] }}" style="color:var(--steel);">{{ e['phone'] }}</a>{% endif %}
     </p>
     {% if e['notes'] %}<p class="manual-body">{{ e['notes'] }}</p>{% endif %}
-    <p class="upload-hint">Joined {{ e['created_at'][:10] }}</p>
+    <p class="upload-hint">Joined {{ e['created_at']|house_day }}</p>
     <div class="expense-actions">
       {% if e['status'] in ('open', 'contacted') and e['desired_arrival'] and e['desired_departure'] %}
       <a href="{{ url_for('book_rooms', arrival=e['desired_arrival'], departure=e['desired_departure'], name=e['name'], email=e['email'], phone=e['phone'], party_size=e['party_size']) }}" class="btn-mini">Check availability &amp; book</a>

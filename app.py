@@ -6315,6 +6315,10 @@ def format_date_range(start_iso, end_iso):
 # The guest-facing templates call these directly. format_date_human existed but
 # was never reachable from a template, which is why workshop pages were showing
 # raw ISO dates on a €4,800 product.
+# The house's day from a stored UTC moment. Templates could not reach
+# house_date_iso, so eighty of them sliced the stamp instead and showed
+# yesterday to anyone looking between midnight and 02:00 local.
+app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
 app.jinja_env.globals["date_range"] = format_date_range

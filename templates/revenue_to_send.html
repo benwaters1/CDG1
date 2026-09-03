@@ -61,7 +61,7 @@
         <td>
           {% if r['sent'] %}
           <span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ r['sent']['sent_at'][:10] }}{% if r['sent']['pennylane_id'] %} · {{ r['sent']['pennylane_id'] }}{% endif %}</span>
+          <span class="g-hint">{{ r['sent']['sent_at']|house_day }}{% if r['sent']['pennylane_id'] %} · {{ r['sent']['pennylane_id'] }}{% endif %}</span>
           {% elif r['total'] <= 0 %}
           <span class="g-hint">Nothing to invoice</span>
           {% else %}
@@ -103,7 +103,7 @@
         <td class="num">€{{ '%.2f'|format(e['total']) }}</td>
         <td>
           {% if e['sent'] %}<span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ e['sent']['sent_at'][:10] }}</span>
+          <span class="g-hint">{{ e['sent']['sent_at']|house_day }}</span>
           {% elif e['total'] <= 0 %}<span class="g-hint">No price on it</span>
           {% else %}<span class="mini-status status-pending">Waiting</span>{% endif %}
         </td>
@@ -151,7 +151,7 @@
         <td>
           {% if w['sent'] %}
           <span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ w['sent']['sent_at'][:10] }}</span>
+          <span class="g-hint">{{ w['sent']['sent_at']|house_day }}</span>
           {% elif w['total'] <= 0 %}
           <span class="g-hint">Nothing to invoice</span>
           {% else %}
@@ -200,7 +200,7 @@
         <td>
           {% if d['sent'] %}
           <span class="mini-status status-active">Sent</span>
-          <span class="g-hint">{{ d['sent']['sent_at'][:10] }}{% if d['sent']['pennylane_id'] %} · {{ d['sent']['pennylane_id'] }}{% endif %}</span>
+          <span class="g-hint">{{ d['sent']['sent_at']|house_day }}{% if d['sent']['pennylane_id'] %} · {{ d['sent']['pennylane_id'] }}{% endif %}</span>
           {% elif d['total'] <= 0 %}
           <span class="g-hint">Nothing taken</span>
           {% else %}

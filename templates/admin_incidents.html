@@ -26,7 +26,7 @@
   <strong>The insurer has not been told about these</strong>
   {% for i in insurer['all'] %}
   <span class="pass-short-row">
-    {{ i.occurred_at[:10]|date_short }} — {{ i.summary|truncate(70) }}
+    {{ i.occurred_at|house_day|date_short }} — {{ i.summary|truncate(70) }}
     {%- if i.overdue %}
       · <strong>{{ i.age_days|round|int }} days ago, window was {{ i.allowed_days }}</strong>
       {%- if i.statutory %} · 48h is statutory for a workplace accident{% endif %}

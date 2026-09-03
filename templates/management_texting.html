@@ -124,7 +124,7 @@
     <tr>
       <td>{{ row.phone }}</td>
       <td><span class="upload-hint">{{ row.reason or '—' }}</span></td>
-      <td><span class="upload-hint">{{ row.created_at[:10] }}</span></td>
+      <td><span class="upload-hint">{{ row.created_at|house_day }}</span></td>
       <td>
         {# One at a time and never in bulk: taking somebody off this list in a
            batch is how a stop gets quietly undone. #}

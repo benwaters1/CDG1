@@ -23,7 +23,7 @@
         {% endif %}
       </div>
       {% if a['body'] %}<p class="manual-body" style="margin:0;">{{ a['body'] }}</p>{% endif %}
-      <span class="upload-hint">{{ a['posted_by_name'] or 'Owner' }} · {{ a['created_at'][:10] }}{% if a['expires_date'] %} · Until {{ a['expires_date'] }}{% endif %}</span>
+      <span class="upload-hint">{{ a['posted_by_name'] or 'Owner' }} · {{ a['created_at']|house_day }}{% if a['expires_date'] %} · Until {{ a['expires_date'] }}{% endif %}</span>
       {# Who has NOT seen it is the half worth having. The list of people who
          have is reassuring and mostly useless. #}
       {% if user['role'] == 'owner' and readership.get(a['id']) %}
@@ -78,7 +78,7 @@
   {% for a in past %}
   <div class="mini-row">
     <span class="mini-name">{{ a['title'] }}</span>
-    <span class="mini-role">{{ a['posted_by_name'] or 'Owner' }} · {{ a['created_at'][:10] }} · expired {{ a['expires_date'] }}</span>
+    <span class="mini-role">{{ a['posted_by_name'] or 'Owner' }} · {{ a['created_at']|house_day }} · expired {{ a['expires_date'] }}</span>
   </div>
   {% endfor %}
 </div>

@@ -49,7 +49,7 @@
     {% if ledger.voucher['message'] %}
     <p class="field-label">Message on the card</p><p style="margin:0 0 8px;">{{ ledger.voucher['message'] }}</p>
     {% endif %}
-    <p class="field-label">Issued</p><p style="margin:0;">{{ ledger.voucher['created_at'][:10]|date_short }}</p>
+    <p class="field-label">Issued</p><p style="margin:0;">{{ ledger.voucher['created_at']|house_day|date_short }}</p>
   </div>
   {% if ledger.voucher['note'] %}
   <p class="upload-hint no-print">Your note: {{ ledger.voucher['note'] }}</p>
@@ -107,7 +107,7 @@
     <tbody>
       {% for r in ledger.redemptions %}
       <tr>
-        <td>{{ r['created_at'][:10]|date_short }}</td>
+        <td>{{ r['created_at']|house_day|date_short }}</td>
         <td>{{ kinds.get(r['kind'], r['kind']) }}</td>
         <td>{{ r['reference'] or '—' }}</td>
         <td class="num">€{{ '%.2f'|format(r['amount']) }}</td>

@@ -156,13 +156,13 @@
       {%- if inv['invoice_number'] %}No. {{ inv['invoice_number'] }} · {% endif -%}
       {%- if inv['invoice_date'] %}Dated {{ inv['invoice_date'] }}{% else %}<em>no invoice date</em>{% endif -%}
       {%- if inv['due_date'] %} ·
-        {% if inv['paid_at'] %}paid {{ inv['paid_at'][:10] }}
+        {% if inv['paid_at'] %}paid {{ inv['paid_at']|house_day }}
         {%- elif inv['due_date'] < today_iso %}<strong class="mini-status status-overdue">due {{ inv['due_date'] }}</strong>
         {%- else %}due {{ inv['due_date'] }}{% endif %}
       {%- endif -%}
       {%- if inv['tax_amount'] is not none %} · VAT €{{ '%.2f'|format(inv['tax_amount']) }} as stated{% endif %}
     </p>
-    <p class="upload-hint">Submitted {{ inv['submitted_at'][:10] }}{% if inv['decided_at'] %} · Decided {{ inv['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ inv['submitted_at']|house_day }}{% if inv['decided_at'] %} · Decided {{ inv['decided_at']|house_day }}{% endif %}</p>
     {% if inv['owner_note'] %}<p class="upload-hint">Note: {{ inv['owner_note'] }}</p>{% endif %}
     <div class="expense-actions">
       {% if inv['filename'] %}
@@ -215,13 +215,13 @@
       <div>
         <strong>{{ c['submitter_name'] or 'Former employee' }}</strong>{% if c['vendor_name'] %} — {{ c['vendor_name'] }}{% endif %} — €{{ '%.2f'|format(c['amount']) }}
         {%- if c['spent_on'] %} <span class="upload-hint">spent {{ c['spent_on'] }}</span>{% endif %}
-        {%- if c['paid_at'] %} <span class="mini-status status-confirmed">paid back {{ c['paid_at'][:10] }}{% if c['paid_reference'] %} · {{ c['paid_reference'] }}{% endif %}</span>{% endif %}
+        {%- if c['paid_at'] %} <span class="mini-status status-confirmed">paid back {{ c['paid_at']|house_day }}{% if c['paid_reference'] %} · {{ c['paid_reference'] }}{% endif %}</span>{% endif %}
         <span class="mini-status status-{{ c['status'] }}" style="margin-left:8px;">{{ c['status'] }}</span>
         {% if c['restaurant_related'] %}<span class="mini-status status-upcoming" style="margin-left:4px;">restaurant</span>{% endif %}
       </div>
     </div>
     <p class="manual-body">{{ c['description'] }}</p>
-    <p class="upload-hint">Submitted {{ c['submitted_at'][:10] }}{% if c['decided_at'] %} · Decided {{ c['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ c['submitted_at']|house_day }}{% if c['decided_at'] %} · Decided {{ c['decided_at']|house_day }}{% endif %}</p>
     {% if c['owner_note'] %}<p class="upload-hint">Note: {{ c['owner_note'] }}</p>{% endif %}
     <div class="expense-actions">
       {% if c['filename'] %}

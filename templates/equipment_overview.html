@@ -16,7 +16,7 @@
     <a href="{{ url_for('profile', user_id=i['user_id']) }}" class="mini-row">
       <span class="mini-name">{{ i['label'] }}</span>
       <span class="mini-role">{{ i['employee_name'] }}{% if i['notes'] %} · {{ i['notes'] }}{% endif %}</span>
-      <span class="upload-hint">issued {{ i['issued_at'][:10] }}</span>
+      <span class="upload-hint">issued {{ i['issued_at']|house_day }}</span>
     </a>
     {% endfor %}
   </div>

@@ -88,7 +88,7 @@
     {% if guests_by_booking.get(r['id']) %}
     <p class="upload-hint">Party: {% for g in guests_by_booking[r['id']] %}{{ g['guest_name'] }}{{ ' (lead)' if g['is_lead'] }}{{ ', ' if not loop.last }}{% endfor %}</p>
     {% endif %}
-    <p class="upload-hint">Submitted {{ r['created_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ r['created_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
 
     {% set balance = balance_by_booking.get(r['id']) %}
     {% if r['total_price'] or (transactions_by_booking.get(r['id'])) %}
@@ -103,7 +103,7 @@
         {% for t in transactions_by_booking[r['id']] %}
         <div class="mini-row">
           <span class="mini-name">{{ t['kind']|capitalize }} — {{ t['description'] }}</span>
-          <span class="mini-role">{{ t['created_at'][:10] }}{% if t['method'] %} · {{ t['method'] }}{% endif %}</span>
+          <span class="mini-role">{{ t['created_at']|house_day }}{% if t['method'] %} · {{ t['method'] }}{% endif %}</span>
           <span class="mini-status status-{{ 'onshift' if t['kind'] in ('payment',) else 'pending' if t['kind'] == 'charge' else 'inactive' }}">€{{ '%.2f'|format(t['amount']) }}</span>
         </div>
         {% endfor %}

@@ -204,7 +204,7 @@
               {% if item['notes'] %}<span class="upload-hint">({{ item['notes'] }})</span>{% endif %}
             </span>
             <span class="mini-status status-{{ 'inactive' if item['returned_at'] else 'onshift' }}">
-              {{ 'returned ' + item['returned_at'][:10] if item['returned_at'] else 'issued ' + item['issued_at'][:10] }}
+              {{ 'returned ' + item['returned_at']|house_day if item['returned_at'] else 'issued ' + item['issued_at']|house_day }}
             </span>
             {% if user['role'] == 'owner' %}
             <form method="post" action="{{ url_for('toggle_equipment_returned', user_id=person['id'], item_id=item['id']) }}">
@@ -239,7 +239,7 @@
         <div><span class="detail-label">{{ t('Phone') }}</span>{{ person['phone'] or '—' }}</div>
         <div><span class="detail-label">{{ t('Email') }}</span>{{ person['email'] }}</div>
         <div><span class="detail-label">{{ t('Start date') }}</span>{{ person['start_date'] or '—' }}</div>
-        <div><span class="detail-label">{{ t('On the team since') }}</span>{{ person['created_at'][:10] }}</div>
+        <div><span class="detail-label">{{ t('On the team since') }}</span>{{ person['created_at']|house_day }}</div>
         <div><span class="detail-label">{{ t('Tasks completed (7d / 30d)') }}</span>{{ task_stats.week }} / {{ task_stats.month }}</div>
         <div><span class="detail-label">{{ t('Open tasks now') }}</span>{{ task_stats.open }}</div>
         {% if leave %}
@@ -297,7 +297,7 @@
           {% for h in pay_rate_history %}
           <div class="mini-row">
             <span class="mini-name">{{ h['old_pay_rate'] or '(unset)' }}{% if h['old_pay_type'] %} ({{ h['old_pay_type'] }}){% endif %} → {{ h['new_pay_rate'] or '(unset)' }}{% if h['new_pay_type'] %} ({{ h['new_pay_type'] }}){% endif %}</span>
-            <span class="upload-hint">{{ h['changed_by_name'] or 'Unknown' }} · {{ h['changed_at'][:10] }}</span>
+            <span class="upload-hint">{{ h['changed_by_name'] or 'Unknown' }} · {{ h['changed_at']|house_day }}</span>
           </div>
           {% endfor %}
         </div>
@@ -323,7 +323,7 @@
                 <button type="submit" class="doc-delete">×</button>
               </form>
             </div>
-            <span class="upload-hint">{{ n['created_at'][:10] }}</span>
+            <span class="upload-hint">{{ n['created_at']|house_day }}</span>
           </div>
           {% endfor %}
         </div>
@@ -430,7 +430,7 @@
               <strong style="flex:1;">{% if c['vendor_name'] %}{{ c['vendor_name'] }} — {% endif %}€{{ '%.2f'|format(c['amount']) }}</strong>
               <span class="mini-status status-{{ c['status'] }}">{{ c['status'] }}</span>
             </div>
-            <span class="upload-hint">{{ c['description'] }} · {{ c['submitted_at'][:10] }}</span>
+            <span class="upload-hint">{{ c['description'] }} · {{ c['submitted_at']|house_day }}</span>
           </div>
           {% endfor %}
         </div>
