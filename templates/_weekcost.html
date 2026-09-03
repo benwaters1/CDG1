@@ -1,0 +1,96 @@
+{# ==========================================================================
+   WHAT A WEEK COSTS  — interactive item 16
+   Someone deciding is adding up nights, dinners, an atelier and transfers in
+   their head and getting it wrong. This does it in front of them.
+
+   Deliberately shows the taxe de séjour separately — it is the commune's,
+   not ours — and states that everything is a guide until we confirm.
+
+       {% from '_weekcost.html' import week_cost %}
+       {{ week_cost(rooms, settings) }}
+   ========================================================================== #}
+{% from '_room_copy.html' import room_name %}
+{% macro week_cost(rooms, settings) %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Before You Ask</p>
+  <h2 class="g-place">What a Week Here Costs</h2>
+  <p class="g-p">Move the numbers and watch the total. Nothing here is a quote — it is the same arithmetic we would do for you, done in front of you.</p>
+
+  <div class="g-wk" data-wk
+       data-tax="{{ (settings['tourist_tax'] if settings and settings['tourist_tax'] else 1.65)|float }}"
+       data-dinner="{{ (settings['price_per_person'] if settings and settings['price_per_person'] else 95)|int }}">
+    <div class="g-wk__in">
+      <p class="g-field">
+        <label for="wk_room">Room</label>
+        <select id="wk_room" data-wk-room>
+          {% for r in rooms %}
+          <option value="{{ r['price_per_night']|int }}" data-max="{{ r['max_occupancy'] or 2 }}">{{ room_name(r['name']) }} — €{{ '%.0f'|format(r['price_per_night']) }}</option>
+          {% endfor %}
+        </select>
+      </p>
+      <p class="g-field">
+        <label for="wk_nights">Nights <output data-wk-no>5</output></label>
+        <input type="range" id="wk_nights" min="1" max="14" value="5" data-wk-nights>
+      </p>
+      <p class="g-field">
+        <label for="wk_adults">Adults <output data-wk-ao>2</output></label>
+        <input type="range" id="wk_adults" min="1" max="6" value="2" data-wk-adults>
+      </p>
+      <p class="g-field">
+        <label for="wk_dinners">Dinners at La Table <output data-wk-do>2</output></label>
+        <input type="range" id="wk_dinners" min="0" max="7" value="2" data-wk-dinners>
+      </p>
+      <p class="g-field g-field--check">
+        <label><input type="checkbox" data-wk-transfer> Transfer from Toulouse, both ways — €700</label>
+      </p>
+    </div>
+
+    <div class="g-wk__out">
+      <dl class="g-wk__l">
+        <div><dt data-wk-rk>The room</dt><dd data-wk-rv>—</dd></div>
+        <div data-wk-drow><dt data-wk-dk>Dinner</dt><dd data-wk-dv>—</dd></div>
+        <div data-wk-trow hidden><dt>Transfers</dt><dd data-wk-tv>—</dd></div>
+        <div><dt>Taxe de séjour</dt><dd data-wk-xv>—</dd></div>
+        <div class="g-wk__tot"><dt>Total</dt><dd data-wk-total>—</dd></div>
+        <div><dt>Per person, per night</dt><dd data-wk-pp>—</dd></div>
+      </dl>
+      <p class="g-wk__n">Breakfast, the grounds, the pool, the tennis court, tea and coffee through the day, wi-fi and parking are in the room rate. The taxe de séjour is set by the commune, not by us.</p>
+      <p class="g-wk__a"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
+    </div>
+  </div>
+</div></section>
+
+<script>
+(function(){
+  var box=document.querySelector('[data-wk]'); if(!box) return;
+  var TAX=Number(box.dataset.tax||1.65), DIN=Number(box.dataset.dinner||95);
+  var eur=function(n){ return '€'+Math.round(n).toLocaleString('en-GB'); };
+  var $=function(k){ return box.querySelector('[data-wk-'+k+']'); };
+
+  function paint(){
+    var rate=Number($('room').value||0),
+        n=Number($('nights').value), ad=Number($('adults').value),
+        dn=Number($('dinners').value), tr=$('transfer').checked;
+
+    $('no').textContent=n; $('ao').textContent=ad; $('do').textContent=dn;
+
+    var room=rate*n, dinner=DIN*ad*dn, transfer=tr?700:0, tax=TAX*ad*n;
+    var total=room+dinner+transfer+tax;
+
+    $('rk').textContent='The room — '+n+(n===1?' night':' nights');
+    $('rv').textContent=eur(room);
+    box.querySelector('[data-wk-drow]').hidden = dn===0;
+    $('dk').textContent='Dinner — '+dn+' × '+ad;
+    $('dv').textContent=eur(dinner);
+    box.querySelector('[data-wk-trow]').hidden = !tr;
+    $('tv').textContent=eur(transfer);
+    $('xv').textContent=eur(tax);
+    $('total').textContent=eur(total);
+    $('pp').textContent=eur(total/(ad*n));
+  }
+  box.addEventListener('input', paint);
+  box.addEventListener('change', paint);
+  paint();
+})();
+</script>
+{% endmacro %}

@@ -5656,10 +5656,23 @@ html, body{ margin: 0; padding: 0; }
 .g-scarcity-line{ margin-top: var(--s3); }
 
 .g-cred{
-  margin: 0; padding: var(--s2) var(--s5);
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
+  /* Was display:flex on a block parent, so it shrank to its content and
+     rendered as a dark 492px stub floating above the hero on every page.
+     It is a full-width band or it is nothing. */
+  /* It is a <p>, so the 62ch prose cap applied and held it at 492px. */
+  margin: 0; width: 100%; max-width: none;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: var(--s2) var(--s4);
+  padding: var(--s2) var(--s5);
   background: var(--blue-deep); color: #C9D4DF;
   font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .04em;
+  text-align: center;
+}
+/* Over a hero it belongs to the hero, not floating between it and the
+   breadcrumb. */
+body.has-hero .g-cred{
+  background: rgba(14,28,48,.55);
+  backdrop-filter: saturate(140%) blur(2px);
 }
 .g-cred__m{
   font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt);
@@ -5776,3 +5789,245 @@ html, body{ margin: 0; padding: 0; }
 .g-interests input{ flex: 0 0 auto; width: 18px; height: 18px; }
 
 .g-presskit .g-h3{ margin-top: var(--s6); }
+
+
+
+/* ==========================================================================
+   FOCUS ON THE FLOOR PLAN
+   The rooms are focusable SVG groups, and `outline` does not paint reliably
+   on an SVG <g> in every browser. Someone tabbing through the plan had no
+   idea where they were. Drawn as a stroke on the shape instead, which is the
+   thing actually rendered.
+   ========================================================================== */
+.g-plan2__r{ outline: none; }
+.g-plan2__r:focus-visible rect,
+.g-plan2__r:focus-visible path,
+.g-plan2__r:focus-visible polygon{
+  stroke: var(--gilt); stroke-width: 3px; paint-order: stroke;
+}
+.g-plan2__r:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+
+/* The same for any other focusable group added later. */
+svg [tabindex]:focus-visible rect,
+svg [tabindex]:focus-visible path{ stroke: var(--gilt); stroke-width: 3px; }
+
+/* ==========================================================================
+   THE VALLEY — WHAT IS NEARBY
+   Drive time first, because that is the question. The honest caveat sits
+   under each one rather than being left for the guest to discover.
+   ========================================================================== */
+.g-near{ list-style: none; margin: var(--s6) 0 var(--s5); padding: 0; }
+.g-near__i{
+  display: grid; gap: var(--s2) var(--s5); align-items: start;
+  grid-template-columns: 5.5rem 1fr;
+  padding: var(--s5) 0; border-bottom: 1px solid var(--line);
+}
+@media (max-width: 34rem){ .g-near__i{ grid-template-columns: 1fr; } }
+.g-near__d{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+  font-variant-numeric: lining-nums; padding-top: 4px;
+}
+.g-near__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-near__p{ margin: 0 0 var(--s2); font-size: var(--t-base); line-height: 1.65;
+  color: var(--ink); max-width: 62ch; }
+.g-near__w{
+  margin: 0; font-family: var(--ui); font-size: var(--t-ui); color: var(--ink-soft);
+  padding-left: var(--s3); border-left: 2px solid var(--gilt);
+}
+
+/* Month by month. Twelve tabs, because "spring" does not help someone
+   choosing a week. */
+.g-months{ margin-top: var(--s6); }
+.g-months__nav{ display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--s5); }
+.g-months__b{
+  min-height: 44px; padding: 0 var(--s4); cursor: pointer;
+  border: 1px solid var(--line); background: var(--white);
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--ink);
+}
+.g-months__b:hover{ border-color: var(--gilt); }
+.g-months__b.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+.g-months__b:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-months__p{ padding: var(--s5) 0 0; border-top: 1px solid var(--gilt); }
+.g-months__t{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h2); color: var(--blue-deep); }
+.g-months__d{ margin: 0 0 var(--s4); font-size: var(--t-lede); line-height: 1.6;
+  color: var(--ink); max-width: 58ch; }
+.g-months__x{
+  margin: 0; max-width: 58ch; padding-left: var(--s4);
+  border-left: 2px solid var(--gilt);
+  font-style: italic; font-size: var(--t-base); color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   6. THE PRICE ON A ROOM CARD
+   Price is the second thing anyone wants after the photograph, and it was
+   set at body size in the middle of a paragraph. Now it sits with the name,
+   in the display face, at a size that reads before the description does.
+   ========================================================================== */
+.g-card__head{
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: var(--s2) var(--s4); margin-bottom: var(--s3);
+}
+.g-card__price, .g-homeroom__price{
+  flex: 0 0 auto;
+  font-family: var(--display); font-weight: 400; font-size: var(--t-h3);
+  color: var(--blue-deep); font-variant-numeric: lining-nums; white-space: nowrap;
+}
+.g-card__price small, .g-homeroom__price small{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 400;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--gilt);
+  margin-left: 4px;
+}
+
+/* ==========================================================================
+   7. HEROES SHOULD NOT ALL BE THE SAME SHAPE
+   Five bedrooms, an atelier and a wedding were getting an identical band, so
+   the pages read as one long page. Height now follows what the page is for:
+   the house sells itself on the image, a form does not.
+   ========================================================================== */
+.g-hero{ min-height: 68vh; }                          /* the default */
+body.hero--full .g-hero{ min-height: 88vh; }          /* home, gallery */
+body.hero--tall .g-hero{ min-height: 74vh; }          /* the estate, restoration */
+body.hero--short .g-hero{ min-height: 46vh; }         /* stay, workshops, la table */
+body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, admin */
+@media (max-width: 44rem){
+  .g-hero{ min-height: 58vh; }
+  body.hero--full .g-hero{ min-height: 72vh; }
+  body.hero--short .g-hero{ min-height: 42vh; }
+  body.hero--band .g-hero{ min-height: 26vh; }
+}
+
+/* ==========================================================================
+   8. A FACT AND A CAVEAT SHOULD NOT LOOK ALIKE
+   The one band carried "breakfast included" and "there is no lift" in
+   identical styling, so a reader could not tell what was being given from
+   what was being warned about.
+   ========================================================================== */
+.g-limit{ border-left: 2px solid var(--gilt); }              /* neutral note */
+.g-limit--good{ border-left-color: #2E6B4F; }                /* what you get */
+.g-limit--good .g-limit__k{ color: #2E6B4F; }
+.g-limit--warn{ border-left-color: #8C6D2F; }                /* what to know */
+.g-limit--warn .g-limit__k{ color: #8C6D2F; }
+.g-limit--warn::before{
+  content: "Please note"; display: block;
+  font-family: var(--ui); font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: #8C6D2F;
+  margin-bottom: 2px;
+}
+.g-limit--warn .g-limit__k{ display: none; }   /* the label above replaces it */
+
+/* ==========================================================================
+   10. THE DARK SECTIONS ALL LOOKED ALIKE
+   Panels, closers and the booking aside shared one treatment, so emphasis
+   had stopped meaning anything. Three weights now, used for three jobs.
+   ========================================================================== */
+.g-sec--dark{ background: var(--blue-deep); color: #F3EFE6; }
+.g-sec--dark .g-place, .g-sec--dark .g-h3{ color: #fff; }
+.g-sec--dark .g-p{ color: #DCD5C8; }
+
+/* the closer: the action at the end of a page. Full bleed, gilt rule above. */
+.g-closer{ border-top: 2px solid var(--gilt); }
+
+/* a panel: an aside within a page. Lighter, contained, not full bleed. */
+.g-panel{
+  background: var(--sand-2); color: var(--ink);
+  border: 1px solid var(--line); border-left: 2px solid var(--gilt);
+  padding: var(--s5) var(--s6);
+}
+.g-panel .g-panel__h{ color: var(--blue-deep); }
+
+/* the booking aside stays the deepest, because it is where money is spent. */
+.g-aside{ background: var(--blue-deep); }
+
+/* ==========================================================================
+   9. THE SIZE OF IT
+   Ninety-four squares. Five filled. The paragraph could not do this.
+   ========================================================================== */
+.g-scale{ margin: var(--s6) 0 var(--s6); }
+.g-scale__g{ width: 100%; max-width: 42rem; height: auto; display: block; }
+.g-scale__r{ fill: none; stroke: var(--line); stroke-width: 1; }
+.g-scale__r.is-done{ fill: var(--gilt); stroke: var(--gilt); }
+.g-scale__k{ list-style: none; display: flex; flex-wrap: wrap; gap: var(--s3) var(--s6);
+  margin: var(--s4) 0 0; padding: 0;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--ink-soft); }
+.g-scale__k li{ display: flex; align-items: center; gap: var(--s2); }
+.g-scale__k i{ width: 13px; height: 13px; border: 1px solid var(--line); }
+.g-scale__k i.is-done{ background: var(--gilt); border-color: var(--gilt); }
+
+/* ==========================================================================
+   16. WHAT A WEEK COSTS
+   ========================================================================== */
+.g-wk{ display: grid; gap: var(--s6); margin-top: var(--s6); }
+@media (min-width: 56rem){ .g-wk{ grid-template-columns: 1fr 22rem; gap: var(--s7); } }
+.g-wk__in{ display: flex; flex-direction: column; gap: var(--s4); }
+.g-wk__in .g-field{ margin: 0; }
+.g-wk__in output{ font-family: var(--display); font-size: var(--t-lede);
+  color: var(--blue-deep); font-variant-numeric: lining-nums; margin-left: 4px; }
+.g-wk__in input[type=range]{ width: 100%; min-height: 44px; accent-color: var(--gilt); }
+.g-field--check label{ display: flex; align-items: center; gap: var(--s3);
+  min-height: 44px; font-size: var(--t-base); cursor: pointer; }
+.g-field--check input{ width: 18px; height: 18px; }
+
+.g-wk__out{ background: var(--blue-deep); color: #F3EFE6; padding: var(--s5); align-self: start; }
+.g-wk__l{ margin: 0; }
+.g-wk__l > div{ display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s4); padding: var(--s2) 0; border-bottom: 1px solid rgba(232,226,214,.16); }
+.g-wk__l > div[hidden]{ display: none; }
+.g-wk__l dt{ font-family: var(--ui); font-size: var(--t-ui); color: #A9BCCD; }
+.g-wk__l dd{ margin: 0; text-align: right; font-size: var(--t-base); color: #fff;
+  font-variant-numeric: lining-nums; }
+.g-wk__tot{ border-bottom: 0 !important; margin-top: var(--s2); padding-top: var(--s3) !important;
+  border-top: 1px solid var(--gilt) !important; }
+.g-wk__tot dt{ color: var(--gilt) !important; }
+.g-wk__tot dd{ font-family: var(--display); font-size: var(--t-h2) !important; }
+.g-wk__n{ margin: var(--s4) 0 var(--s4); font-size: var(--t-sm); line-height: 1.55; color: #A9BCCD; }
+.g-wk__a{ margin: 0; }
+.g-wk__a .g-btn{ width: 100%; }
+
+/* ==========================================================================
+   17. WHICH ROOM IS YOURS
+   ========================================================================== */
+.g-pick{ display: grid; gap: var(--s5); margin-top: var(--s6); }
+@media (min-width: 56rem){ .g-pick{ grid-template-columns: repeat(3, 1fr) 20rem; align-items: start; } }
+.g-pick__q{ border: 0; margin: 0; padding: 0; }
+.g-pick__q legend{ padding: 0 0 var(--s3);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt); }
+.g-pick__q label{ display: flex; align-items: center; gap: var(--s3);
+  min-height: 44px; font-size: var(--t-base); color: var(--ink); cursor: pointer; }
+.g-pick__q input{ width: 18px; height: 18px; accent-color: var(--blue-deep); }
+.g-pick__r{ background: var(--sand-2); border-left: 2px solid var(--gilt); padding: var(--s5); }
+.g-pick__k{ margin: 0 0 var(--s2); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
+.g-pick__t{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-pick__d{ margin: 0 0 var(--s4); font-size: var(--t-base); line-height: 1.6; color: var(--ink); }
+.g-pick__a{ margin: 0; }
+.g-cur__note{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: var(--t-sm);
+  line-height: 1.5; color: var(--ink-soft); max-width: 34ch; }
+
+/* A two-column block with align-items:center floats the shorter column in the
+   middle of the taller one, leaving a large empty gutter above and below it.
+   Both columns start at the top; the media can still sit lower if it wants to
+   by its own margin. */
+.g-two{ align-items: start; }
+.g-two__media{ position: sticky; top: 96px; }
+@media (max-width: 52rem){ .g-two__media{ position: static; } }
+
+/* ==========================================================================
+   THE ANIMALS
+   Six cats, two dogs and chickens. Warm, and also an allergy fact — so the
+   disclaimer sits inside the section rather than in a footnote under it.
+   ========================================================================== */
+.g-anim{ list-style: none; margin: var(--s6) 0 var(--s5); padding: 0;
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem,100%),1fr)); }
+.g-anim__i{ padding: var(--s5); background: var(--white);
+  border: 1px solid var(--line); border-top: 2px solid var(--gilt); }
+.g-anim__t{ margin: 0 0 2px; font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-anim__r{ margin: 0 0 var(--s3); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gilt); }
+.g-anim__d{ margin: 0; font-size: var(--t-base); line-height: 1.65; color: var(--ink); }

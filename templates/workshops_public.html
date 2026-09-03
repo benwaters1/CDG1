@@ -9,6 +9,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_animals.html' import animals, animals_note %}
 {% from '_marks.html' import mark %}
 {# Content and voice from vicente-yuste-2air.squarespace.com/workshops — the
    .net page — not the .com. Structure: choose, then the region, then each
@@ -72,7 +73,7 @@
 
 <!-- ============ CHOOSE — the three, side by side ============ -->
 <section class="g-sec" style="background:var(--sand-2)"><div class="g-wrap">
-  <h2 class="g-place">Five Ateliers, One House</h2>
+  <h2 class="g-place">{% if workshops and workshops|length > 1 %}{{ workshops|length }} Ateliers, One House{% else %}One Atelier at a Time{% endif %}</h2>
   <p class="g-p">This is a restoration, not a renovation — fifteen years in, and years from finished.</p>
   <dl class="g-facts-list" style="margin-bottom:var(--s7)">
     <div><dt>Three nights</dt><dd>The brocantes — antique fairs, vide-greniers and the dealers worth the detour</dd></div>
@@ -250,6 +251,8 @@
     <div><dt>Insurance</dt><dd>Required. Mountains, old floors, and a long way from Toulouse</dd></div>
   </dl>
 </div></section>
+
+<div class="g-wrap">{{ animals_note() }}</div>
 
 <script>
 /* Filter the date table by workshop. Plain show/hide — the rows are already
@@ -725,7 +728,7 @@
       <ul class="g-ticks">
         <li>All fifteen places on one session, dates agreed with you</li>
         <li>The château to yourselves for the duration — no other guests</li>
-        <li>Artisans who work on the building, not visiting tutors</li>
+        <li>Taught by the artisans restoring this building, not by visiting tutors</li>
         <li>Beds for fifteen; the village takes any overflow</li>
         <li>All meals, cooked here, including the market morning</li>
       </ul>

@@ -1,0 +1,38 @@
+{# ==========================================================================
+   THE SIZE OF IT  — design item 9
+   "Ninety-four rooms" and "43,000 square feet" are numbers, and a number is
+   not a size. Five finished rooms against eighty-nine unfinished ones, drawn,
+   says the thing the paragraph cannot.
+
+       {% from '_scale.html' import scale %}
+       {{ scale() }}
+   ========================================================================== #}
+{% macro scale() %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Size of It</p>
+  <h2 class="g-place">Five Rooms of Ninety-Four</h2>
+  <p class="g-p">Each square is a room. The five in gilt are the ones you can sleep in.</p>
+
+  <div class="g-scale">
+    <svg viewBox="0 0 400 130" role="img" class="g-scale__g"
+         aria-label="Ninety-four squares, one for each room. Five are filled, showing the finished bedrooms against the eighty-nine still to come.">
+      {% for i in range(94) %}
+      <rect x="{{ (i % 24) * 16 + 2 }}" y="{{ (i // 24) * 16 + 2 }}"
+            width="13" height="13"
+            class="g-scale__r{% if i < 5 %} is-done{% endif %}"/>
+      {% endfor %}
+    </svg>
+    <ul class="g-scale__k">
+      <li><i class="is-done"></i> Five finished, and open to guests</li>
+      <li><i></i> Eighty-nine still to come</li>
+    </ul>
+  </div>
+
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Floor area</dt><dd>43,000 square feet, about 4,000 m² — roughly two Olympic pools laid side by side, over five floors</dd></div>
+    <div><dt>Grounds</dt><dd>Six acres, or 2.4 hectares. Three football pitches</dd></div>
+    <div><dt>Cleared first</dt><dd>Five hundred tonnes of fallen stone. Twenty-five articulated lorries</dd></div>
+    <div><dt>Time so far</dt><dd>Thirteen years. Five rooms. That ratio is the honest headline</dd></div>
+  </dl></div></div>
+</div></section>
+{% endmacro %}

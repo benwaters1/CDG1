@@ -1,0 +1,106 @@
+{# ==========================================================================
+   WHICH ROOM  — interactive item 17
+   Five rooms with similar names, and the differences that matter are not the
+   ones in the titles. Three questions get someone to the right one.
+
+       {% from '_roompick.html' import room_pick %}
+       {{ room_pick(rooms) }}
+   ========================================================================== #}
+{% from '_room_copy.html' import room_note %}
+{% macro room_pick(rooms) %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Rather Be Told</p>
+  <h2 class="g-place">Answer Three Questions</h2>
+  <p class="g-p">Three questions. The differences that matter are not in the names.</p>
+
+  <div class="g-pick" data-pick>
+    <fieldset class="g-pick__q">
+      <legend>How many of you?</legend>
+      <label><input type="radio" name="pk_n" value="2" checked> One or two</label>
+      <label><input type="radio" name="pk_n" value="3"> Three</label>
+      <label><input type="radio" name="pk_n" value="5"> Four or five</label>
+    </fieldset>
+
+    <fieldset class="g-pick__q">
+      <legend>Does a private bathroom matter?</legend>
+      <label><input type="radio" name="pk_b" value="private" checked> Yes, private</label>
+      <label><input type="radio" name="pk_b" value="any"> Sharing one is fine</label>
+    </fieldset>
+
+    <fieldset class="g-pick__q">
+      <legend>How are you with stairs?</legend>
+      <label><input type="radio" name="pk_s" value="any" checked> Fine either way</label>
+      <label><input type="radio" name="pk_s" value="low"> As few as possible</label>
+    </fieldset>
+
+    <div class="g-pick__r" data-pick-out role="status">
+      <p class="g-pick__k">Most likely</p>
+      <h3 class="g-pick__t" data-pick-name>—</h3>
+      <p class="g-pick__d" data-pick-why></p>
+      <p class="g-pick__a" data-pick-link></p>
+    </div>
+  </div>
+</div></section>
+
+<script>
+(function(){
+  var box=document.querySelector('[data-pick]'); if(!box) return;
+  /* Built from the rooms the macro is handed, not written out here. The
+     hand-kept version carried its own ids -- 5, 4, 2, 1, 3 -- and the rooms
+     are 8, 6, 4, 5, 7, so every recommendation linked to a different room or
+     to a 404. A copy of the database is a copy that goes wrong silently, and
+     this one recommended the Emeraude and opened Les Deux Chambres. */
+  var R=[
+  {%- for r in rooms %}
+   {n:{{ (r['name'] or '')|tojson }},
+    s:{{ r['max_occupancy'] or 2 }},
+    bath:{{ (r['bathroom'] or 'private')|tojson }},
+    stairs:{{ ('ground' if (r['floor'] or '')|lower == 'ground' else 'up')|tojson }},
+    w:{{ (room_note(r['name']) or r['description'] or '')|tojson }},
+    url:{{ url_for('book_room', room_id=r['id'])|tojson }}}{{ ',' if not loop.last }}
+  {%- endfor %}
+  ];
+  var out=box.querySelector('[data-pick-out]');
+  function paint(){
+    var n=+box.querySelector('[name=pk_n]:checked').value,
+        b_=box.querySelector('[name=pk_b]:checked').value,
+        s=box.querySelector('[name=pk_s]:checked').value;
+    var pool=R.filter(function(r){ return r.s>=n; });
+    if(b_==='private') pool=pool.filter(function(r){ return r.bath==='private'; });
+    if(s==='low'){
+      var g=pool.filter(function(r){ return r.stairs==='ground'; });
+      if(g.length) pool=g;
+    }
+    /* Ordered largest-first, so pool[0] returned the biggest room whatever
+       was asked. Rank by fit instead: the smallest room that does the job,
+       and ground floor first when stairs were flagged. */
+    pool.sort(function(a,b){
+      if(s==='low'){
+        var ga=(a.stairs==='ground')?0:1, gb=(b.stairs==='ground')?0:1;
+        if(ga!==gb) return ga-gb;
+      }
+      /* Someone who says sharing is fine should not be steered to a private
+         bathroom they did not ask for and will pay more for. */
+      if(b_==='any'){
+        var sa=(a.bath==='shared')?0:1, sb=(b.bath==='shared')?0:1;
+        if(sa!==sb) return sa-sb;
+      }
+      return a.s-b.s;                 /* smallest that still sleeps them */
+    });
+    var pick=pool[0];
+    if(!pick){
+      box.querySelector('[data-pick-name]').textContent='Ask us';
+      box.querySelector('[data-pick-why]').textContent='No single room does all of that — but two adjoining rooms often will, and we can put you in the right pair. Tell us what you need.';
+      box.querySelector('[data-pick-link]').innerHTML='<a href="{{ url_for('contact_page') }}" class="g-btn">Write to us</a>';
+      return;
+    }
+    box.querySelector('[data-pick-name]').textContent=pick.n;
+    box.querySelector('[data-pick-why]').textContent=pick.w;
+    box.querySelector('[data-pick-link]').innerHTML=
+      '<a href="'+pick.url+'" class="g-btn g-btn--solid">See this room</a>';
+  }
+  box.addEventListener('change', paint);
+  paint();
+})();
+</script>
+{% endmacro %}

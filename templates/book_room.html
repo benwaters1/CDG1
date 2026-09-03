@@ -6,6 +6,7 @@
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_animals.html' import animals, animals_note %}
 {% from '_formkeep.html' import form_keep %}
 
 
@@ -698,6 +699,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   });
 })();
 </script>
+
+<div class="g-wrap">{{ animals_note() }}</div>
 
 <script>
 /* The whole stay in one place, immediately above the button. A guest was

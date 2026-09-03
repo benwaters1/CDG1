@@ -36090,6 +36090,14 @@ IMAGE_SLOT_GROUPS = [
          {"key": "restaurant.chef", "label": "The chef", "ratio": "3/2",
           "where": "Beside Tom's biography, lower down /restaurant"},
      ]},
+    {"title": "Before and after", "note": "The gallery's sliders. Both halves "
+                                          "are needed before a pair is drawn.",
+     "slots": [
+         {"key": "gallery.salon_before", "label": "The salon, before", "ratio": "3/2",
+          "where": "Left half of the slider on /gallery"},
+         {"key": "gallery.salon_after", "label": "The salon, after", "ratio": "3/2",
+          "where": "Right half of the same slider"},
+     ]},
     {"title": "Weddings and events", "note": "The three event pages.",
      "slots": [
          {"key": "events.weddings", "label": "Weddings", "ratio": "16/9",
@@ -57994,6 +58002,10 @@ def robots():
         "Disallow: /pos",
         "Disallow: /management",
         "Disallow: /book/manage",
+        # /booking/<token>/statement is a guest's bill. The noindex on
+        # the page is what actually keeps it out of an index; this is the
+        # cheaper half, and it was the only guest-token prefix missing.
+        "Disallow: /booking",
         "Disallow: /book/confirmation",
         "Disallow: /workshops/confirmation",
         "Disallow: /restaurant/confirmation",

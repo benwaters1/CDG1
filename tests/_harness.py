@@ -130,6 +130,15 @@ def _refuse(what, remedy):
     return _blocked
 
 
+# Kept before it is replaced, because the "Pennylane isn't connected" guard
+# lives INSIDE this function -- so blocking it wholesale means the branch every
+# press of that button takes today cannot be reached, and the route 500s in the
+# harness where the owner would see a sentence. A suite that wants to test the
+# guard puts this back for a few lines and blocks urlopen underneath it, which
+# is the only arrangement where the guard is the thing answering. The module
+# global stays the raiser, so nothing reaches Pennylane by accident.
+REAL_PENNYLANE_REQUEST = m._pennylane_request
+
 m._pennylane_request = _refuse(
     "Pennylane", "the token is live; stand in for _pennylane_request in the test")
 

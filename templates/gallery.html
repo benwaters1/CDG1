@@ -317,14 +317,19 @@
     </div>
   </div>
 
-  {# Both images exist for every finished room, so this is buildable today.
-     Swap the two src values for the real before/after pair. #}
-  {{ before_after('salon',
-      url_for('static', filename='img/salon.jpg'),
-      url_for('static', filename='img/salon.jpg'),
+  {# Shipped pointing twice at static/img/salon.jpg, which is not in the
+     repository — so the slider drew two broken images on a public page, and
+     the same photograph on both halves if it ever arrived. Both halves are
+     slots now: upload them at /admin/images and the pair appears. Until then
+     nothing is drawn, because half a before-and-after is not a comparison. #}
+  {% set salon_before = site_image('gallery.salon_before') %}
+  {% set salon_after = site_image('gallery.salon_after') %}
+  {% if salon_before and salon_after %}
+  {{ before_after('salon', salon_before, salon_after,
       'The salon',
       'Plaster down, panelling black with smoke, and the ivy already inside.',
       'Gilding cleaned and consolidated. Nothing replaced that could be saved.') }}
+  {% endif %}
 
   <p class="g-limit"><span class="g-limit__k">A working archive</span>Still being added to. Every room that opens is photographed before anyone touches it.</p>
 </div></section>

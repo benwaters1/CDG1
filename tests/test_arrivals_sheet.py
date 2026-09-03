@@ -160,6 +160,39 @@ def run():
             detail="clearing on a schedule rather than on the stay would lock "
                    "out the guest it was issued for")
 
+    s.section("And a key that came back is marked once")
+    # The other half of the row. Issuing is covered above; nothing exercised
+    # the return, which is the half that says whether the château still has a
+    # key out on a stay that ended a fortnight ago.
+    conn = db()
+    code_row = conn.execute(
+        "SELECT id, returned_at FROM booking_access_codes WHERE booking_id = ?",
+        (b["id"],)).fetchone()
+    conn.close()
+    s.check("it is out to begin with", code_row["returned_at"] is None)
+
+    oc.post(f"/admin/access-code/{code_row['id']}/back", follow_redirects=True)
+    conn = db()
+    back = conn.execute(
+        "SELECT returned_at FROM booking_access_codes WHERE id = ?",
+        (code_row["id"],)).fetchone()["returned_at"]
+    conn.close()
+    s.check("marking it back is recorded", bool(back))
+
+    r = oc.post(f"/admin/access-code/{code_row['id']}/back",
+                follow_redirects=True)
+    s.check("and pressing it again says so",
+            "Already marked as back" in " ".join(flashes(r)),
+            detail=f"{flashes(r)[:1]}")
+    conn = db()
+    again = conn.execute(
+        "SELECT returned_at FROM booking_access_codes WHERE id = ?",
+        (code_row["id"],)).fetchone()["returned_at"]
+    conn.close()
+    s.check("without moving when it came back", again == back,
+            detail="the guard is `AND returned_at IS NULL`, and without it a "
+                   "second press rewrites the one fact the row is for")
+
     s.section("Guards")
     s.check("an employee can read the sheet",
             ec.get("/admin/arrivals").status_code == 200,
@@ -176,6 +209,27 @@ def run():
     s.check("but cannot record a code", sneaked == 0,
             detail="an employee reads the sheet and does not decide who gets "
                    "a way in")
+
+    # Same again for marking one back, and checked the same way: refusing and
+    # succeeding both redirect, so what settles it is the row.
+    conn = db()
+    fresh = conn.execute(
+        "SELECT id FROM booking_access_codes WHERE booking_id = ? "
+        "AND returned_at IS NULL", (old["id"],)).fetchone()
+    conn.close()
+    if fresh:
+        ec.post(f"/admin/access-code/{fresh['id']}/back")
+        conn = db()
+        moved = conn.execute(
+            "SELECT returned_at FROM booking_access_codes WHERE id = ?",
+            (fresh["id"],)).fetchone()["returned_at"]
+        conn.close()
+        s.check("nor mark a key as back", moved is None,
+                detail="whether a key is still out is the owner's record of "
+                       "what the château has lent")
+    else:
+        s.check("a code is out to try this on", False,
+                detail="reported rather than skipped")
 
     _cleanup()
     return s

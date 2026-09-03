@@ -221,6 +221,32 @@
   <path d="M56 14h14M56 19h14M56 24h10" opacity=".5"/>
   <path d="M44 8c-2 2-2 20 0 22" stroke-linejoin="round"/>
   <path d="M14 19h24M84 19h22" opacity=".45"/>
+{%- elif kind == 'bruce' %}
+  {# Bruce, in profile. Three attempts at a head-on face gave a rabbit, a bear
+     cub and a cat — at this size two ears on a round head read as whatever
+     the viewer expects. The silhouette is unmistakable instead: barrel chest,
+     short back, stubby legs, one bat ear upright. #}
+  <path d="M46 28v-5a5 5 0 015-5h11a6 6 0 005.8-5" stroke-linejoin="round"/>
+  <path d="M68 12.5a5.5 5.5 0 015.5 5.5v2a4 4 0 01-4 4h-3.5" stroke-linejoin="round"/>
+  <path d="M66 24H51" opacity=".6"/>
+  <path d="M68.5 13L69.5 6.5q.3-1.8 2-.4l3.2 6.4" stroke-linejoin="round"/>
+  <circle cx="70.5" cy="16" r=".9"/>
+  <path d="M73.5 18.5h2" opacity=".7"/>
+  <path d="M50 24v5M56 24v5M62 24v5M66.5 24v4.5" opacity=".85" stroke-linecap="round"/>
+  <path d="M46 23q-3-2-2-5" opacity=".7" stroke-linecap="round"/>
+  <path d="M44 29h34" opacity=".55"/>
+  <path d="M8 22h30M84 22h28" opacity=".5"/>
+
+{%- elif kind == 'catout' %}
+  {# a cat on a wall, outside — which is where they live #}
+  <path d="M40 30h40" opacity=".7"/>
+  <path d="M44 30v-4h32v4" opacity=".45"/>
+  <path d="M56 26v-8a4 4 0 018 0v8" stroke-linejoin="round"/>
+  <path d="M56 18l-1.5-4 3.5 2M64 18l1.5-4-3.5 2" stroke-linejoin="round"/>
+  <circle cx="58" cy="20" r=".9"/><circle cx="62" cy="20" r=".9"/>
+  <path d="M68 26q6 0 6-6" opacity=".8" stroke-linecap="round"/>
+  <path d="M10 27h28M82 27h28" opacity=".5"/>
+
 {%- else %}
   {# A rule with a centre point, when nothing more specific fits #}
   <path d="M10 17h40M70 17h40" opacity=".55"/>

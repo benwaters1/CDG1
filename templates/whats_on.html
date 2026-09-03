@@ -286,4 +286,71 @@
   </div>
 </div></section>
 
+<!-- ============ MONTH BY MONTH ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Choosing a Month</p>
+  <h2 class="g-place">The Valley, Month by Month</h2>
+  <p class="g-p">Written from this valley rather than from an average. Pick the month first and the rest follows.</p>
+
+  <div class="g-months" data-months>
+    <div class="g-months__nav" role="tablist" aria-label="Month">
+      {% for m in ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+      <button type="button" class="g-months__b{% if loop.index == 5 %} is-on{% endif %}"
+              role="tab" data-m="{{ loop.index }}"
+              aria-selected="{{ 'true' if loop.index == 5 else 'false' }}">{{ m }}</button>
+      {% endfor %}
+    </div>
+    <div class="g-months__p" role="tabpanel">
+      <h3 class="g-months__t" data-m-t>May</h3>
+      <p class="g-months__d" data-m-d>The gardens come good and the parkland is full of wildflowers. Snow still on the high peaks, so the photographs have both at once. Beille has turned from ski to walking.</p>
+      <p class="g-months__x" data-m-x>Everything open, nothing busy. The best month if you only come once.</p>
+    </div>
+  </div>
+</div></section>
+
+<!-- ============ THE CLOSER ============ -->
+<section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
+  <p class="g-fr">Dites-nous quand<span class="g-fr__en">Tell us when</span></p>
+  <p class="g-eyebrow">Pick a Month</p>
+  <h2 class="g-place">We Will Tell You What Falls In It</h2>
+  <p class="g-p g-lede-first">Markets shift with public holidays, the caves sell out weeks ahead, and the blossom lasts about ten days. Send us the dates you are considering and we will tell you honestly what you would get.</p>
+  <p class="g-p">
+    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
+    <a href="{{ url_for('contact_page') }}">Ask about a month</a>
+  </p>
+</div></section>
+
+<script>
+/* Twelve months rather than four seasons — someone choosing a week needs to
+   know whether it is the right week, and "spring" does not answer that.
+   Each entry says what the valley is doing, and then the honest line about
+   whether to come then. */
+(function(){
+  var host=document.querySelector('[data-months]'); if(!host) return;
+  var M={
+   1:['January','Deep winter. Beille is at its best for nordic skiing and the valley is quiet in a way it is not at any other time. The château is cold in the parts that are not finished, and honest about it.','Come for the snow and the silence. Not for the gardens.'],
+   2:['February','Still skiing, and the light starts to come back. Ax-les-Thermes is at its most worthwhile — a thermal bath in February is a different thing to one in August.','The cheapest month, and the one with the fewest other people.'],
+   3:['March','The thaw. Rivers run hard, the first markets fill again, and the gardens are being cut back rather than looking like anything.','A working month. Good if you want the place to yourself.'],
+   4:['April','Blossom on the cherry and plum below the terraces — and it lasts about ten days, so nobody can promise it. Beille is usually still skiable at the top.','Beautiful and unpredictable. Ask us what is actually out.'],
+   5:['May','The gardens come good and the parkland is full of wildflowers. Snow still on the high peaks, so the photographs have both at once. Beille has turned from ski to walking.','Everything open, nothing busy. The best month if you only come once.'],
+   6:['June','Long evenings, dinner outside, and the roses. The brocante season starts at Mirepoix. Water still cold enough in the river to be a shock.','Our own favourite. Book it early.'],
+   7:['July','High summer. The pool matters, the salons stay cool because the walls are a metre thick, and the markets are at their fullest. Bastille Day in the villages.','Busy in the valley, never busy in the house.'],
+   8:['August','The hottest, and the one month the valley genuinely fills. Beille is walking and mountain biking. The gardens are giving everything at once.','Hardest to get. Also the least peaceful in the villages.'],
+   9:['September','Warmer than people expect, the markets are at their best after harvest, and the crowds have gone. Figs, walnuts and the last of the tomatoes.','The month we would push if you are flexible.'],
+   10:['October','Autumn colour through the parkland and the first snow on the peaks above it. The mushroom season, which the valley takes seriously.','Foliage rather than flowers. Say so if that matters.'],
+   11:['November','The quiet before winter. Fires lit, the kitchen turns to slow cooking, and the light is low and long all day.','For reading, eating and the restoration itself.'],
+   12:['December','Beille opens. Christmas markets in Foix and Tarascon, and the château at its most candlelit — which is not a flourish, the electricity is limited by design.','Book well ahead if you want the holidays themselves.']
+  };
+  var t=host.querySelector('[data-m-t]'), d=host.querySelector('[data-m-d]'), x=host.querySelector('[data-m-x]');
+  host.querySelectorAll('.g-months__b').forEach(function(b){
+    b.addEventListener('click', function(){
+      host.querySelectorAll('.g-months__b').forEach(function(o){
+        o.classList.remove('is-on'); o.setAttribute('aria-selected','false');});
+      b.classList.add('is-on'); b.setAttribute('aria-selected','true');
+      var e=M[+b.dataset.m]; if(!e) return;
+      t.textContent=e[0]; d.textContent=e[1]; x.textContent=e[2];
+    });
+  });
+})();
+</script>
 {% endblock %}
