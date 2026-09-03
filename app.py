@@ -5310,12 +5310,11 @@ NAV_AREAS = {
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
         "record_manual_booking_payment",
-        "bulk_approve_queue", "decide_expense", "delete_bank_details", "delete_expense",
-        "delete_recurring_cost", "edit_bank_details", "edit_recurring_cost", "expenses",
+        "bulk_approve_queue", "decide_expense", "delete_expense",
+        "delete_recurring_cost", "edit_recurring_cost", "expenses",
         "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
         "export_refunds_csv", "export_report_csv", "management_bank_details",
-        "management_financials", "management_recurring_costs", "new_bank_details",
-        "management_outlook", "new_recurring_cost",
+        "management_financials", "management_recurring_costs",         "management_outlook", "new_recurring_cost",
         "regenerate_supplier_link", "toggle_recurring_cost",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
@@ -5413,12 +5412,11 @@ NAV_AREAS = {
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
-        "delete_insurance_policy", "delete_vault_entry", "delete_vendor",
+        "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
-        "edit_vault_entry", "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
+        "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
         "export_vendors_csv", "management", "management_company_info", "management_documents",
-        "management_insurance", "management_vault", "new_insurance_policy", "new_vault_entry",
-        "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
+        "management_insurance", "management_vault", "new_insurance_policy",         "new_vendor", "promo_code_blast", "renew_insurance_policy", "run_automation_job_now",
         "update_automation_settings", "upload_company_document", "vendors",
         "view_company_document",
         # Pages that had no area at all until now, so they were
@@ -5471,6 +5469,16 @@ AREA_TITLES = {
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
     "admin_access_levels": "management",
+    # Reading these was already owner-only and writing them was not, which
+    # is the asymmetry the wrong way round: the dangerous act is not seeing
+    # the account the house is paid into, it is replacing it. The vault is
+    # the same pair, safe today only because no preset grants `management`.
+    "new_bank_details": "financial",
+    "edit_bank_details": "financial",
+    "delete_bank_details": "financial",
+    "new_vault_entry": "management",
+    "edit_vault_entry": "management",
+    "delete_vault_entry": "management",
     "admin_pennylane": "financial",
     "admin_tax": "financial",
     "apply_invoice": "financial",
@@ -5557,6 +5565,20 @@ def can_reach(user, endpoint):
     if area is None:
         return False
     return area in areas
+
+
+def access_covers(actor, target):
+    """Whether `actor` has at least everything `target` has.
+
+    Used where an action hands somebody the keys to another account. A full
+    owner covers everybody; nobody covers a full owner but another one.
+    """
+    a, t = user_access(actor), user_access(target)
+    if "*" in a:
+        return True
+    if "*" in t:
+        return False
+    return t.issubset(a)
 
 
 def owner_required(view):
@@ -19870,6 +19892,23 @@ def regenerate_invite(user_id):
     if not person:
         conn.close()
         abort(404)
+    # This overwrites their password and hands the caller a link that sets a
+    # new one, so it is a way to become that person. The role check above
+    # stops an owner being taken over; it does nothing about an employee with
+    # a WIDER PRESET than the caller's -- somebody with `team` alone could
+    # reset the manager's sign-in and claim the account.
+    #
+    # Not made owner-only, which would stop whoever runs the rota re-inviting
+    # a housekeeper who has lost their link. Refused only upwards.
+    if not access_covers(current_user(), person):
+        conn.close()
+        flash(f"{person['name']} can reach more of the app than you can, so "
+              "resetting their sign-in is the owner's to do.", "error")
+        # Back to the directory, NOT to their profile. A profile is readable
+        # only by the owner or the person themselves, so redirecting there
+        # sends the refused caller to a 403 and the explanation never renders
+        # -- an unexplained refusal, which is the thing the message is for.
+        return redirect(url_for("directory"))
     was_claimed = bool(person["account_claimed"])
     new_token = secrets.token_urlsafe(24)
     conn.execute(
