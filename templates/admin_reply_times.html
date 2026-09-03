@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}How long guests wait{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>How long guests wait for an answer</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_feedback') }}" class="btn-ghost">All feedback</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A poor review already reaches the owner home. What nothing said was how long anybody had been
+  waiting &mdash; and a reply three weeks later is not a reply, it is a record that somebody
+  eventually noticed.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.still_waiting }}</span>
+    <span class="stat-tile-label">Still waiting to hear back</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.poor_waiting }}</span>
+    <span class="stat-tile-label">Of those, said it was poor</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.median_wait is not none %}{{ data.median_wait }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Days to answer, typically</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.longest_wait is not none %}{{ data.longest_wait }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Longest anybody waited</span></span></div>
+</div>
+
+{% if data.worst %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">{{ data.worst.who }} has waited {{ data.worst.days }} days</h3>
+  <p class="field-hint" style="margin-top:0;">
+    They rated the stay {{ data.worst.rating }} out of 5 and nobody has answered.
+    &ldquo;{{ data.worst.said }}&rdquo;
+  </p>
+</div>
+{% endif %}
+
+<h2 class="section-heading">Waiting</h2>
+{% if data.waiting %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Guest</th><th class="num">Rating</th>
+    <th style="text-align:left;">Said</th><th class="num">Days waiting</th></tr></thead>
+    <tbody>
+      {% for w in data.waiting %}
+      <tr{% if w.poor %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ w.who }}</th>
+        <td class="num">{{ w.rating or '&mdash;'|safe }}</td>
+        <td>{{ w.said }}</td>
+        <td class="num">{{ w.days }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Everybody who has said something has heard back.</div>
+{% endif %}
+{% endblock %}

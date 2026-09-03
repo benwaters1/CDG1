@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}What suppliers cost{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>What suppliers cost</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_supplier_prices') }}" class="btn-ghost">Price changes</a>
+    <a href="{{ url_for('export_supplier_scorecard_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Suppliers were a list of names and telephone numbers. What each is actually worth to the house,
+  and whether their prices are drifting, was spread across expenses and stock and added up nowhere.
+  Last {{ data.days }} days.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.spend) }}</span>
+    <span class="stat-tile-label">Spent with suppliers</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.rows|length }}</span>
+    <span class="stat-tile-label">Suppliers on the books</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.unbilled|length }}</span>
+    <span class="stat-tile-label">Supplying with no invoice recorded</span></span></div>
+</div>
+
+{% if data.unbilled %}
+<p class="field-hint" style="max-width:780px;">
+  {{ data.unbilled|length }} supplier{{ '' if data.unbilled|length == 1 else 's' }} have stock
+  against their name and no invoice in the window &mdash; either paid another way, or not being
+  recorded. Both are worth a look.
+</p>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Supplier</th><th class="num">Spend</th>
+    <th class="num">Invoices</th><th class="num">Items</th>
+    <th style="text-align:left;">Prices</th><th style="text-align:left;">Last seen</th></tr></thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.no_invoices %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.name }}
+          {% if r.contact or r.phone %}<span class="field-hint" style="display:block; font-weight:400;">{{ r.contact }}{% if r.phone %} &middot; {{ r.phone }}{% endif %}</span>{% endif %}</th>
+        <td class="num">{{ euro(r.spend) }}</td>
+        <td class="num">{{ r.invoices }}</td>
+        <td class="num">{{ r.items }}</td>
+        <td>
+          {%- if r.worst %}{{ r.risen }} risen &mdash; worst {{ r.worst.name }} at
+          {{ '+' if r.worst.pct > 0 }}{{ r.worst.pct }}%
+          {%- else %}&mdash;{% endif %}
+        </td>
+        <td>{{ r.last_seen or '&mdash;'|safe }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6"><div class="empty-state">No suppliers on the books.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

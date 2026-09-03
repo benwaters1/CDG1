@@ -3750,6 +3750,41 @@ def init_db():
              taken_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
              created_at TEXT NOT NULL
          )"""),
+        # The run sheet. An event goes enquiry, quote, deposit, balance -- and
+        # then nothing told anybody how to run the day. For a wedding, which
+        # is the most expensive thing the house sells, the plan lived in
+        # somebody's head and in a thread of emails.
+        ("event_timeline_table", """CREATE TABLE IF NOT EXISTS event_timeline (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             at_time TEXT NOT NULL,
+             what TEXT NOT NULL,
+             who TEXT,
+             note TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("event_suppliers_table", """CREATE TABLE IF NOT EXISTS event_suppliers (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             name TEXT NOT NULL,
+             kind TEXT,
+             arriving_at TEXT,
+             contact TEXT,
+             phone TEXT,
+             confirmed_at TEXT,
+             note TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("event_inquiries_final_numbers",
+         "ALTER TABLE event_inquiries ADD COLUMN final_numbers INTEGER"),
+        ("event_inquiries_final_numbers_at",
+         "ALTER TABLE event_inquiries ADD COLUMN final_numbers_at TEXT"),
+        ("event_inquiries_run_sheet_note",
+         "ALTER TABLE event_inquiries ADD COLUMN run_sheet_note TEXT"),
+        ("event_inquiries_arrival_time",
+         "ALTER TABLE event_inquiries ADD COLUMN arrival_time TEXT"),
+        ("event_inquiries_carriages_time",
+         "ALTER TABLE event_inquiries ADD COLUMN carriages_time TEXT"),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
         # What has already been sent to the accountant.
         #
@@ -5208,6 +5243,7 @@ NAV_AREAS = {
         "save_list_view", "delete_list_view",
         "guest_duplicates",
         "admin_turnarounds", "export_turnarounds_csv",
+        "admin_reply_times", "guest_recall_page", "admin_linen",
         "admin_arrivals_incomplete",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
@@ -5282,6 +5318,7 @@ NAV_AREAS = {
     "rota": [
         "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
         "admin_workload", "export_workload_csv",
+        "admin_tenure", "export_tenure_csv",
         "admin_timesheets", "complete_task", "copy_previous_week_shifts", "decide_leave",
         "decide_shift_swap", "delete_shift", "delete_task", "dismiss_timesheet_correction",
         "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
@@ -5399,6 +5436,11 @@ NAV_AREAS = {
     ],
     "restaurant": [
         "admin_no_shows", "export_no_shows_csv",
+        "admin_menu_engineering", "export_menu_engineering_csv",
+        "admin_rate_advice", "export_rate_advice_csv", "apply_rate_advice",
+        "management_supplier_scorecard", "export_supplier_scorecard_csv",
+        "management_money_due", "export_money_due_csv",
+        "management_turned_away", "export_turned_away_csv",
         "admin_table_utilisation", "export_table_utilisation_csv",
         "admin_wastage_rate", "export_wastage_rate_csv",
         "kitchen_dietary", "export_dietary_csv",
@@ -5465,6 +5507,10 @@ NAV_AREAS = {
     ],
     "events": [
         "admin_events", "export_events_csv", "update_event_inquiry",
+        "event_run_sheet_page", "export_event_run_sheet_csv",
+        "add_event_moment", "delete_event_moment",
+        "add_event_supplier", "confirm_event_supplier", "delete_event_supplier",
+        "save_event_run_details",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "new_event_inquiry", "update_event_types",
@@ -16679,6 +16725,791 @@ def breakage_recovery(conn, start=None, end=None):
     }
 
 
+# How long before the day the house needs a number it can cook to. A caterer
+# orders against it and a table plan is drawn from it, so it is not a
+# formality -- it is the last moment the cost of the event can still change.
+FINAL_NUMBERS_DAYS = 14
+
+SUPPLIER_KINDS = ["Florist", "Band or DJ", "Photographer", "Celebrant",
+                  "Hire", "Cake", "Transport", "Other"]
+
+
+def event_run_sheet(conn, event_id, today=None):
+    """One page that says how the day runs.
+
+    An event went enquiry, quote, deposit, balance -- and then nothing. The
+    plan for the most expensive thing the house sells lived in somebody's
+    head and in a thread of emails, and on the morning itself the people
+    actually carrying plates had never seen it.
+
+    Everything here is a fact somebody has entered. Nothing is inferred and
+    nothing is invented: a run sheet that guesses at a time is worse than a
+    blank one, because a blank line gets asked about.
+    """
+    today = today or house_today()
+    event = conn.execute(
+        "SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        return None
+
+    day = parse_date(event["preferred_date"])
+    end = parse_date(event["end_date"]) or day
+    days_away = (day - today).days if day else None
+
+    timeline = [dict(r) for r in conn.execute(
+        """SELECT * FROM event_timeline WHERE event_id = ?
+            ORDER BY at_time, id""", (event_id,)).fetchall()]
+    suppliers = [dict(r) for r in conn.execute(
+        """SELECT * FROM event_suppliers WHERE event_id = ?
+            ORDER BY COALESCE(NULLIF(arriving_at, ''), '99:99'), name""",
+        (event_id,)).fetchall()]
+
+    # The numbers question, which is the one that costs money if it is late.
+    expected = event["final_numbers"] if event["final_numbers"] is not None \
+        else event["guest_count"]
+    numbers_due = (day - timedelta(days=FINAL_NUMBERS_DAYS)) if day else None
+    numbers_confirmed = event["final_numbers"] is not None
+    numbers_overdue = bool(
+        day and not numbers_confirmed and days_away is not None
+        and days_away <= FINAL_NUMBERS_DAYS and days_away >= 0)
+
+    unconfirmed = [s for s in suppliers if not s["confirmed_at"]]
+
+    # Who is on that day, from the rota. The run sheet does not roster
+    # anybody -- it says who is already down, so a gap is visible while there
+    # is still time to fill it.
+    on_shift = []
+    if day:
+        on_shift = [dict(r) for r in conn.execute(
+            """SELECT users.name, shifts.start_time, shifts.end_time, shifts.role_note
+                 FROM shifts JOIN users ON users.id = shifts.user_id
+                WHERE shifts.shift_date = ? ORDER BY shifts.start_time, users.name""",
+            (day.isoformat(),)).fetchall()]
+
+    # Rooms sold that night, because a wedding party usually sleeps here and
+    # the housekeeping load is the event plus the beds.
+    rooms_that_night = 0
+    if day:
+        rooms_that_night = conn.execute(
+            """SELECT COUNT(*) AS c FROM bookings
+                WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
+            (day.isoformat(), day.isoformat())).fetchone()["c"]
+
+    bill = event_bill(conn, event_id)
+    return {
+        "event": dict(event), "day": day, "end": end, "days_away": days_away,
+        "timeline": timeline, "suppliers": suppliers,
+        "unconfirmed": unconfirmed,
+        "expected": expected,
+        "quoted_for": event["guest_count"],
+        "numbers_confirmed": numbers_confirmed,
+        "numbers_due": numbers_due,
+        "numbers_overdue": numbers_overdue,
+        "on_shift": on_shift,
+        "rooms_that_night": rooms_that_night,
+        "bill": bill,
+        "spaces": (event["spaces"] or "").strip(),
+        "supplier_kinds": SUPPLIER_KINDS,
+        # A run sheet with no timeline is the state this feature exists to
+        # end, so the page says so rather than showing an empty table.
+        "empty": not timeline,
+        "csv": [{"time": t["at_time"], "what": t["what"], "who": t["who"] or "",
+                 "note": t["note"] or ""} for t in timeline],
+    }
+
+
+def events_needing_numbers(conn, today=None):
+    """Confirmed events inside the numbers window with no number on them.
+
+    Closes itself: enter the number and the finding stops being true.
+    """
+    today = today or house_today()
+    horizon = today + timedelta(days=FINAL_NUMBERS_DAYS)
+    rows = conn.execute(
+        """SELECT id, reference_code, contact_name, event_type, preferred_date,
+                  guest_count, final_numbers
+             FROM event_inquiries
+            WHERE status = 'confirmed'
+              AND final_numbers IS NULL
+              AND preferred_date >= ? AND preferred_date <= ?
+            ORDER BY preferred_date""",
+        (today.isoformat(), horizon.isoformat())).fetchall()
+    out = []
+    for r in rows:
+        day = parse_date(r["preferred_date"])
+        out.append({
+            "id": r["id"], "reference": r["reference_code"],
+            "who": r["contact_name"], "kind": r["event_type"],
+            "date": r["preferred_date"],
+            "days_away": (day - today).days if day else None,
+            "quoted_for": r["guest_count"],
+        })
+    return out
+
+
+# What a dish is, once you know how often it sells and what it leaves. The
+# names are the standard ones and they are worth keeping, because each carries
+# a different instruction and "it sells well" carries none.
+MENU_QUADRANTS = {
+    "star":   ("Star", "Sells often and earns well. Protect it: keep it on, "
+                       "keep it consistent, and do not discount it."),
+    "plough": ("Plough horse", "Sells often and earns little. The room likes "
+                               "it. Take cost out of it, or put the price up "
+                               "a little — volume forgives a small rise."),
+    "puzzle": ("Puzzle", "Earns well and rarely sells. Worth a push: move it "
+                         "up the card, let the staff taste it, describe it "
+                         "better. It is not the dish, it is the offer."),
+    "dog":    ("Dog", "Rarely sells and earns little. It is taking a line on "
+                      "the card from something that would."),
+}
+
+
+def menu_engineering(conn, days=90, today=None):
+    """Which dishes sell, which earn, and what to do about each.
+
+    The house has costs on one page and sales on another and no page that puts
+    them together — so "the duck does well" has never been a statement about
+    money. Popularity alone argues for keeping whatever is cheapest to like;
+    margin alone argues for a card nobody orders from.
+
+    A dish is popular if it sells more often than a fair share of the covers
+    would give it, which is the standard test and the honest one: comparing
+    against the AVERAGE dish would call half the card unpopular by
+    construction, however well the whole card sells.
+
+    Anything without a recipe costed is reported as UNCOSTED rather than
+    quietly binned. A dish with no cost against it is the most likely thing on
+    the card to be losing money, and dropping it from the picture is how it
+    keeps doing so.
+    """
+    today = today or house_today()
+    since = (today - timedelta(days=max(1, days))).isoformat()
+
+    # The till's own words: a tab is PAID at the counter or CHARGED_TO_ROOM,
+    # and both mean a dish left the kitchen. 'settled' is not a status this
+    # app has ever had, so a filter on it matched nothing and the page read
+    # as a card that never sells.
+    sold = conn.execute(
+        """SELECT pos_order_lines.menu_item_id AS item_id,
+                  COALESCE(SUM(pos_order_lines.quantity), 0) AS qty,
+                  COALESCE(SUM(pos_order_lines.quantity * pos_order_lines.unit_price), 0) AS taken
+             FROM pos_order_lines
+             JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+            WHERE pos_order_lines.menu_item_id IS NOT NULL
+              AND COALESCE(pos_order_lines.voided, 0) = 0
+              AND pos_orders.status IN ('paid', 'charged_to_room')
+              AND DATE(pos_order_lines.created_at) >= ?
+            GROUP BY pos_order_lines.menu_item_id""", (since,)).fetchall()
+    by_item = {r["item_id"]: r for r in sold}
+
+    costs = {c["item"]["id"]: c for c in dish_costs(conn)}
+    total_qty = sum(float(r["qty"] or 0) for r in sold)
+    # The fair share: if every dish on the card sold equally, this is what
+    # each would take. 70% of it is the usual line, and it is a line about
+    # this card rather than about restaurants in general.
+    lines_on_card = len(costs) or 1
+    fair_share = total_qty / lines_on_card if total_qty else 0
+    popular_at = fair_share * 0.7
+
+    priced = [c["margin"] for c in costs.values() if c["margin"] is not None]
+    median_margin = _median(priced)
+
+    rows, uncosted = [], []
+    for item_id, cost in costs.items():
+        item = cost["item"]
+        sale = by_item.get(item_id)
+        qty = float(sale["qty"] or 0) if sale else 0.0
+        taken = float(sale["taken"] or 0) if sale else 0.0
+        margin = cost["margin"]
+        popular = qty >= popular_at and total_qty > 0
+        profitable = (margin is not None and median_margin is not None
+                      and margin >= median_margin)
+
+        if margin is None:
+            quadrant = None
+            uncosted.append(item["name"])
+        elif popular and profitable:
+            quadrant = "star"
+        elif popular:
+            quadrant = "plough"
+        elif profitable:
+            quadrant = "puzzle"
+        else:
+            quadrant = "dog"
+
+        rows.append({
+            "id": item_id, "name": item["name"],
+            "course": item["course"] or "",
+            "price": round(float(item["price"] or 0), 2),
+            "cost": cost["cost"], "margin": margin,
+            "margin_pct": cost["margin_pct"],
+            "qty": qty, "taken": round(taken, 2),
+            "share": round(qty / total_qty * 100, 1) if total_qty else 0,
+            "contribution": round((margin or 0) * qty, 2) if margin is not None else None,
+            "popular": popular, "profitable": profitable,
+            "quadrant": quadrant,
+            "label": MENU_QUADRANTS[quadrant][0] if quadrant else "Not costed",
+            "advice": MENU_QUADRANTS[quadrant][1] if quadrant else
+                      "No recipe costed, so this cannot be placed. It is also "
+                      "the most likely thing on the card to be losing money.",
+            "missing_costs": cost["missing_costs"],
+        })
+
+    rows.sort(key=lambda r: -(r["contribution"] or -1))
+    counts = {k: sum(1 for r in rows if r["quadrant"] == k) for k in MENU_QUADRANTS}
+    return {
+        "days": days, "today": today, "rows": rows,
+        "counts": counts, "uncosted": uncosted,
+        "sold_lines": int(total_qty),
+        "fair_share": round(fair_share, 1),
+        "popular_at": round(popular_at, 1),
+        "median_margin": median_margin,
+        "contribution": round(sum(r["contribution"] or 0 for r in rows), 2),
+        # With nothing sold there is no popularity axis, and half the grid
+        # would be an opinion rather than a measurement.
+        "no_sales": total_qty == 0,
+        "quadrants": MENU_QUADRANTS,
+        "csv": [{"dish": r["name"], "course": r["course"], "sold": r["qty"],
+                 "price": r["price"], "cost": r["cost"], "margin": r["margin"],
+                 "verdict": r["label"]} for r in rows],
+    }
+
+
+# How far a suggestion is ever allowed to move a rate. A recommendation that
+# can double a price is one nobody dares apply, and one that can halve it is
+# one that quietly gives the house away.
+RATE_ADVICE_FLOOR = 0.85
+RATE_ADVICE_CEILING = 1.30
+# Under this many nights of history for a weekday, the season figure is one
+# good week talking. It is reported as thin rather than used.
+RATE_ADVICE_MIN_NIGHTS = 8
+# And under this many room-nights across the whole record, the season is not a
+# season. Every month reads as empty, which would argue for cutting every rate
+# in the calendar.
+RATE_ADVICE_MIN_HISTORY = 60
+
+
+def rate_advice(conn, days=60, today=None):
+    """A suggested rate per night, and the reasoning in full.
+
+    Everything this needs already existed on separate pages: how full the
+    house is for a date, how that compares with the same point last year, how
+    far ahead people book, and which nights of the week actually sell. Nobody
+    could hold four pages in their head on a Tuesday morning, so the rate
+    never moved.
+
+    This suggests; it does not set. Every figure that moved the number is
+    shown beside it, because a rate a person cannot argue with is a rate they
+    will not use — and the one thing worse than not moving the price is moving
+    it for a reason nobody can reconstruct in six months.
+
+    Nothing is suggested for a date that is already fully sold. There is no
+    room left to sell at any price, and a higher number on a full night is a
+    figure that flatters the report and changes nothing.
+    """
+    today = today or house_today()
+    end = today + timedelta(days=max(1, days))
+    rooms = conn.execute(
+        """SELECT id, name, price_per_night FROM rooms
+            WHERE active = 1 ORDER BY sort_order, id""").fetchall()
+    rooms_total = len(rooms)
+
+    occupied = occupied_rooms_by_date(conn, today, end)
+    season = seasonality(conn, years=3, today=today)
+    weekday_occ = {w["name"]: w["occupancy"] for w in season["weekdays"]}
+    weekday_nights = {w["name"]: w["nights"] for w in season["weekdays"]}
+    month_occ = {mth["month"]: mth["occupancy"] for mth in season["months"]}
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+
+    # Overrides already in force, so the page never suggests what is set.
+    overrides = {}
+    for r in conn.execute(
+            """SELECT room_id, start_date, end_date, price_per_night, label
+                 FROM room_rate_overrides""").fetchall():
+        overrides.setdefault(r["room_id"], []).append(dict(r))
+
+    def override_for(room_id, day_iso):
+        for o in overrides.get(room_id, []):
+            if (o["start_date"] or "") <= day_iso <= (o["end_date"] or "9999-12-31"):
+                return o
+        return None
+
+    rows = []
+    for i in range((end - today).days):
+        day = today + timedelta(days=i)
+        iso = day.isoformat()
+        sold = occupied.get(iso, 0)
+        free = rooms_total - sold
+        weekday = day_names[day.weekday()]
+        lead = (day - today).days
+
+        reasons = []
+        factor = 1.0
+
+        # 1. How this night of the week actually sells, over three years.
+        wk = weekday_occ.get(weekday)
+        thin = weekday_nights.get(weekday, 0) < RATE_ADVICE_MIN_NIGHTS
+        if wk is not None and not thin:
+            if wk >= 60:
+                factor *= 1.10
+                reasons.append("%s sells at %s%% across three years" % (weekday, wk))
+            elif wk <= 25:
+                factor *= 0.95
+                reasons.append("%s only sells at %s%%" % (weekday, wk))
+        elif thin:
+            reasons.append("not enough %s nights on record to judge the day" % weekday)
+
+        # 2. The month, for the same reason and on the same evidence.
+        mo = month_occ.get(day.month)
+        if mo is not None:
+            if mo >= 60:
+                factor *= 1.10
+                reasons.append("%s runs at %s%%" % (day.strftime("%B"), mo))
+            elif mo <= 20:
+                factor *= 0.92
+                reasons.append("%s runs at only %s%%" % (day.strftime("%B"), mo))
+
+        # 3. What is already sold FOR THIS DATE. The strongest signal there
+        #    is, because it is about this night rather than about a pattern.
+        if rooms_total:
+            filled = sold / rooms_total * 100
+            if filled >= 60:
+                factor *= 1.15
+                reasons.append("%d of %d rooms already sold" % (sold, rooms_total))
+            elif filled == 0 and lead <= 21:
+                factor *= 0.92
+                reasons.append("nothing sold and only %d days out" % lead)
+
+        # 4. How close it is. Late and empty is the one case for coming down.
+        if lead <= 7 and sold == 0:
+            factor *= 0.90
+            reasons.append("inside a week with the house empty")
+
+        factor = max(RATE_ADVICE_FLOOR, min(RATE_ADVICE_CEILING, factor))
+
+        for room in rooms:
+            rack = float(room["price_per_night"] or 0)
+            if not rack:
+                continue
+            existing = override_for(room["id"], iso)
+            # Rounded to the nearest five, then held to the band again --
+            # rounding a floor of 187 down to 185 puts the suggestion below
+            # the floor it was just clamped to, and the apply route refuses
+            # its own suggestion.
+            suggested = round(rack * factor / 5) * 5
+            suggested = min(max(suggested, rack * RATE_ADVICE_FLOOR),
+                            rack * RATE_ADVICE_CEILING)
+            suggested = round(suggested, 2)
+            rows.append({
+                "date": iso, "day": day, "weekday": weekday[:3],
+                "room_id": room["id"], "room": room["name"],
+                "rack": round(rack, 2),
+                "suggested": float(suggested),
+                "change": round(suggested - rack, 2),
+                "change_pct": round((suggested - rack) / rack * 100, 1),
+                "factor": round(factor, 3),
+                "sold": sold, "free": free, "lead": lead,
+                "reasons": reasons,
+                "existing": existing,
+                # A full night has nothing left to sell at any price.
+                "full": free <= 0,
+                "worth_doing": free > 0 and abs(suggested - rack) >= 5 and not existing,
+            })
+
+    # With no history the season figures are all zero, and a month "running
+    # at 0%" would argue for cutting every rate in the calendar. That is the
+    # one direction a bad suggestion is expensive in, so under a season's
+    # worth of nights this suggests NOTHING and says why. The same reason the
+    # covers forecast withholds a take-up rate and the channel page refuses to
+    # invent a commission: a number with no evidence behind it gets acted on
+    # exactly as hard as one with.
+    thin = season["nights_counted"] < RATE_ADVICE_MIN_HISTORY
+    if thin:
+        for r in rows:
+            r["suggested"] = r["rack"]
+            r["change"] = 0.0
+            r["change_pct"] = 0.0
+            r["factor"] = 1.0
+            r["worth_doing"] = False
+            r["reasons"] = ["not enough history to suggest anything yet"]
+
+    suggestions = [r for r in rows if r["worth_doing"]]
+    return {
+        "today": today, "end": end, "days": days,
+        "rows": rows, "suggestions": suggestions,
+        "up": [r for r in suggestions if r["change"] > 0],
+        "down": [r for r in suggestions if r["change"] < 0],
+        "rooms": [dict(r) for r in rooms],
+        "already_set": sum(1 for r in rows if r["existing"]),
+        "full_nights": len({r["date"] for r in rows if r["full"]}),
+        "thin_history": thin,
+        "nights_counted": season["nights_counted"],
+        "floor": RATE_ADVICE_FLOOR, "ceiling": RATE_ADVICE_CEILING,
+        "csv": [{"date": r["date"], "room": r["room"], "rack": r["rack"],
+                 "suggested": r["suggested"], "why": "; ".join(r["reasons"])}
+                for r in suggestions],
+    }
+
+
+def supplier_scorecard(conn, days=365):
+    """What each supplier costs the house, and how their prices have moved.
+
+    Vendors were a list of names and telephone numbers. What each one is
+    actually worth to the house, and whether their prices are drifting, was
+    spread across expenses and stock movements and added up nowhere.
+    """
+    since = (house_today() - timedelta(days=max(1, days))).isoformat()
+    price_moves = {c["item_id"]: c for c in supplier_price_changes(conn, days, 0.0)["rows"]}
+
+    rows = []
+    for v in conn.execute(
+            "SELECT * FROM vendors WHERE COALESCE(active, 1) = 1 ORDER BY name").fetchall():
+        spend = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS invoices,
+                      MAX(COALESCE(spent_on, invoice_date, DATE(submitted_at))) AS last_seen
+                 FROM expenses
+                WHERE vendor_name = ? AND status != 'rejected'
+                  AND COALESCE(spent_on, invoice_date, DATE(submitted_at)) >= ?""",
+            (v["name"], since)).fetchone()
+        items = conn.execute(
+            "SELECT id, name FROM stock_items WHERE vendor_id = ?", (v["id"],)).fetchall()
+        moved = [price_moves[i["id"]] for i in items if i["id"] in price_moves]
+        risen = [m for m in moved if m["pct"] > 0]
+        rows.append({
+            "id": v["id"], "name": v["name"],
+            "contact": v["contact_person"] or "", "phone": v["phone"] or "",
+            "terms": v["payment_terms"] or "",
+            "spend": round(float(spend["total"] or 0), 2),
+            "invoices": spend["invoices"],
+            "last_seen": spend["last_seen"] or "",
+            "items": len(items),
+            "risen": len(risen),
+            "worst": max(moved, key=lambda m: m["pct"]) if moved else None,
+            # A supplier the house buys from and has no invoice for is either
+            # paid another way or not being recorded, and both are worth a look.
+            "no_invoices": spend["invoices"] == 0 and bool(items),
+        })
+    rows.sort(key=lambda r: -r["spend"])
+    return {
+        "days": days, "rows": rows,
+        "spend": round(sum(r["spend"] for r in rows), 2),
+        "unbilled": [r for r in rows if r["no_invoices"]],
+        "csv": [{"supplier": r["name"], "spend": r["spend"], "invoices": r["invoices"],
+                 "items": r["items"], "prices_risen": r["risen"]} for r in rows],
+    }
+
+
+def staff_tenure(conn, today=None):
+    """How long people stay, and who has been here longest.
+
+    A house this size loses a great deal when somebody goes: the person who
+    knows which window sticks is not in any document. Nothing counted how long
+    anybody had been here, so the question only ever came up at a resignation.
+    """
+    today = today or house_today()
+    rows = conn.execute(
+        """SELECT id, name, job_role, status, start_date, created_at
+             FROM users ORDER BY COALESCE(start_date, DATE(created_at))""").fetchall()
+
+    here, gone = [], []
+    for r in rows:
+        began = parse_date(r["start_date"]) or house_date(r["created_at"])
+        if not began:
+            continue
+        person = {"id": r["id"], "name": r["name"], "role": r["job_role"] or "",
+                  "started": began.isoformat(),
+                  "months": round((today - began).days / 30.44, 1)}
+        (here if r["status"] == "active" else gone).append(person)
+
+    tenures = [p["months"] for p in here]
+    return {
+        "today": today, "here": sorted(here, key=lambda p: -p["months"]),
+        "gone": sorted(gone, key=lambda p: -p["months"])[:25],
+        "headcount": len(here), "leavers": len(gone),
+        "median_months": _median(tenures),
+        "longest": here and max(here, key=lambda p: p["months"]) or None,
+        # Under a year is where somebody is still learning the house rather
+        # than running part of it.
+        "under_a_year": [p for p in here if p["months"] < 12],
+        "csv": [{"name": p["name"], "role": p["role"], "started": p["started"],
+                 "months": p["months"], "status": "here"} for p in here]
+               + [{"name": p["name"], "role": p["role"], "started": p["started"],
+                   "months": p["months"], "status": "left"} for p in gone],
+    }
+
+
+def review_reply_times(conn, days=365):
+    """How long a guest waits to hear back, and who is still waiting.
+
+    A poor review already reaches the owner home. What nothing said was how
+    long anybody had been waiting — and a reply three weeks later is not a
+    reply, it is a record that somebody eventually noticed.
+    """
+    since = (house_today() - timedelta(days=max(1, days))).isoformat()
+    rows = conn.execute(
+        """SELECT guest_name, rating, comment, submitted_at, reply, replied_at,
+                  acknowledged_at
+             FROM guest_feedback
+            WHERE DATE(submitted_at) >= ? ORDER BY submitted_at DESC""",
+        (since,)).fetchall()
+
+    waits, waiting, answered = [], [], []
+    today = house_today()
+    for r in rows:
+        asked = house_date(r["submitted_at"])
+        if not asked:
+            continue
+        item = {"who": r["guest_name"] or "A guest", "rating": r["rating"],
+                "said": (r["comment"] or "")[:140], "when": asked.isoformat(),
+                "poor": (r["rating"] or 5) <= 3}
+        answered_at = house_date(r["replied_at"]) or house_date(r["acknowledged_at"])
+        if answered_at:
+            item["days"] = (answered_at - asked).days
+            waits.append(item["days"])
+            answered.append(item)
+        else:
+            item["days"] = (today - asked).days
+            waiting.append(item)
+
+    poor_waiting = [w for w in waiting if w["poor"]]
+    return {
+        "days": days, "answered": answered[:25],
+        "waiting": sorted(waiting, key=lambda w: -w["days"])[:25],
+        "still_waiting": len(waiting), "poor_waiting": len(poor_waiting),
+        "median_wait": _median(waits),
+        "longest_wait": max(waits) if waits else None,
+        # The one that matters: somebody who said it was poor and has heard
+        # nothing. Everything else can wait a week.
+        "worst": max(poor_waiting, key=lambda w: w["days"]) if poor_waiting else None,
+        "csv": [{"guest": w["who"], "rating": w["rating"], "when": w["when"],
+                 "days_waiting": w["days"]} for w in waiting],
+    }
+
+
+def money_due(conn, weeks=12, today=None):
+    """What is owed to the house and when it should arrive.
+
+    Debtor ageing says what is late. Nothing said what is COMING — and a house
+    with a quiet February needs to know whether the money for it is already
+    promised or still has to be sold.
+    """
+    today = today or house_today()
+    end = today + timedelta(weeks=max(1, weeks))
+    buckets = {}
+
+    def add(when, label, amount, what):
+        day = parse_date(when) if isinstance(when, str) else when
+        if not day or day < today or day > end:
+            return
+        monday = day - timedelta(days=day.weekday())
+        slot = buckets.setdefault(monday, {"week": monday, "total": 0.0, "items": []})
+        slot["total"] += float(amount or 0)
+        slot["items"].append({"date": day.isoformat(), "who": label,
+                              "amount": round(float(amount or 0), 2), "what": what})
+
+    for r in conn.execute(
+            """SELECT guest_name, balance_due_date, balance_amount, amount_paid,
+                      total_price FROM bookings
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL""").fetchall():
+        outstanding = float(r["total_price"] or 0) - float(r["amount_paid"] or 0)
+        if outstanding > 0.005:
+            add(r["balance_due_date"], r["guest_name"] or "A guest", outstanding, "Room balance")
+
+    for r in conn.execute(
+            """SELECT guest_name, balance_due_date, total_price, deposit_amount
+                 FROM workshop_bookings
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL
+                  AND balance_paid_at IS NULL""").fetchall():
+        owed = float(r["total_price"] or 0) - float(r["deposit_amount"] or 0)
+        if owed > 0.005:
+            add(r["balance_due_date"], r["guest_name"] or "A guest", owed, "Atelier balance")
+
+    for r in conn.execute(
+            """SELECT contact_name, balance_due_date, quoted_price, amount_paid
+                 FROM event_inquiries
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL""").fetchall():
+        owed = float(r["quoted_price"] or 0) - float(r["amount_paid"] or 0)
+        if owed > 0.005:
+            add(r["balance_due_date"], r["contact_name"] or "An event", owed, "Event balance")
+
+    weeks_out = sorted(buckets.values(), key=lambda b: b["week"])
+    return {
+        "today": today, "end": end, "weeks": weeks_out,
+        "total": round(sum(b["total"] for b in weeks_out), 2),
+        "next_week": weeks_out[0] if weeks_out else None,
+        "csv": [{"week": b["week"].isoformat(), "date": i["date"], "who": i["who"],
+                 "what": i["what"], "amount": i["amount"]}
+                for b in weeks_out for i in b["items"]],
+    }
+
+
+def guest_recall(conn, guest_email=None, guest_id=None):
+    """What the house already knows about somebody, before they arrive.
+
+    All of it was recorded and none of it was ever put in front of the person
+    opening the door. Somebody arriving for the fourth time was greeted like
+    somebody arriving for the first, and told the same things about the stairs.
+    """
+    email = (guest_email or "").strip().lower()
+    guest = None
+    if guest_id:
+        guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest and email:
+        guest = conn.execute(
+            "SELECT * FROM guests WHERE LOWER(TRIM(email)) = ?", (email,)).fetchone()
+    if guest and not email:
+        email = (guest["email"] or "").strip().lower()
+
+    stays = conn.execute(
+        """SELECT bookings.arrival_date, bookings.departure_date, bookings.total_price,
+                  rooms.name AS room_name
+             FROM bookings LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND (LOWER(TRIM(bookings.guest_email)) = ? OR bookings.linked_guest_id = ?)
+            ORDER BY bookings.arrival_date DESC""",
+        (email, guest["id"] if guest else -1)).fetchall()
+
+    notes = []
+    if guest:
+        notes = [dict(r) for r in conn.execute(
+            """SELECT guest_notes.body, guest_notes.created_at, users.name AS who
+                 FROM guest_notes LEFT JOIN users ON users.id = guest_notes.written_by_user_id
+                WHERE guest_notes.guest_id = ?
+                ORDER BY guest_notes.created_at DESC LIMIT 10""",
+            (guest["id"],)).fetchall()]
+
+    feedback = conn.execute(
+        """SELECT rating, comment, submitted_at FROM guest_feedback
+            WHERE booking_id IN (SELECT id FROM bookings
+                                  WHERE LOWER(TRIM(guest_email)) = ?)
+            ORDER BY submitted_at DESC LIMIT 5""", (email,)).fetchall()
+
+    rooms_before = []
+    for st in stays:
+        if st["room_name"] and st["room_name"] not in rooms_before:
+            rooms_before.append(st["room_name"])
+
+    return {
+        "guest": dict(guest) if guest else None,
+        "email": email,
+        "stays": [dict(r) for r in stays],
+        "visits": len(stays),
+        "first": stays[-1]["arrival_date"] if stays else None,
+        "last": stays[0]["arrival_date"] if stays else None,
+        "spend": round(sum(float(r["total_price"] or 0) for r in stays), 2),
+        "rooms_before": rooms_before,
+        "notes": notes,
+        "feedback": [dict(r) for r in feedback],
+        "dietary": (guest["dietary_notes"] if guest else "") or "",
+        "preferences": (guest["preferences"] if guest else "") or "",
+        # A first-time guest is not a gap in the records, and saying so stops
+        # anybody greeting a stranger as an old friend.
+        "known": bool(guest or stays),
+        "returning": len(stays) > 1,
+    }
+
+
+LINEN_SETS_PER_CHANGEOVER = 3
+
+
+def linen_par(conn, days=14, today=None):
+    """Whether there are enough sheets for the changeovers coming.
+
+    Linen is a stock category and nothing ever compared what is held against
+    what the next fortnight needs. Running out is not an inconvenience: it is a
+    guest arriving to a bed that cannot be made.
+    """
+    today = today or house_today()
+    turn = turnaround_report(conn, days=days, on_day=today)
+    end = today + timedelta(days=max(1, days))
+
+    arrivals = conn.execute(
+        """SELECT COUNT(*) AS c FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (today.isoformat(), end.isoformat())).fetchone()["c"]
+
+    items = [dict(r) for r in conn.execute(
+        """SELECT id, name, unit, reorder_level FROM stock_items
+            WHERE category = 'linen' AND COALESCE(active, 1) = 1
+            ORDER BY name""").fetchall()]
+    levels = stock_levels(conn, [i["id"] for i in items]) if items else {}
+    for i in items:
+        i["held"] = levels.get(i["id"], 0)
+        i["needed"] = arrivals * LINEN_SETS_PER_CHANGEOVER
+        i["short"] = max(0, i["needed"] - i["held"])
+
+    return {
+        "days": days, "today": today, "arrivals": arrivals,
+        "changeovers": turn["total"],
+        "sets_per_changeover": LINEN_SETS_PER_CHANGEOVER,
+        "needed": arrivals * LINEN_SETS_PER_CHANGEOVER,
+        "items": items,
+        "short": [i for i in items if i["short"]],
+        # No linen recorded as stock at all is a different answer from having
+        # none, and the page must not read as the second.
+        "not_tracked": not items,
+        "csv": [{"item": i["name"], "held": i["held"], "needed": i["needed"],
+                 "short": i["short"]} for i in items],
+    }
+
+
+def turned_away(conn, days=365, today=None):
+    """Nights somebody asked for and could not have.
+
+    The waiting list exists to reach people when a room frees. Read the other
+    way it is the only record the house has of demand it could not sell -- and
+    a week that turns people away every year is a week to price differently,
+    not a week to feel good about filling.
+    """
+    today = today or house_today()
+    since = today - timedelta(days=max(1, days))
+    rooms_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+
+    nights = {}
+    people = 0
+    for r in conn.execute(
+            """SELECT desired_arrival, desired_departure, party_size, created_at
+                 FROM waitlist_entries
+                WHERE desired_arrival IS NOT NULL AND desired_arrival != ''
+                  AND DATE(created_at) >= ?""", (since.isoformat(),)).fetchall():
+        start = parse_date(r["desired_arrival"])
+        finish = parse_date(r["desired_departure"]) or (start + timedelta(days=1) if start else None)
+        if not (start and finish) or finish <= start:
+            continue
+        people += 1
+        for i in range((finish - start).days):
+            night = start + timedelta(days=i)
+            slot = nights.setdefault(night, {"night": night, "asks": 0, "heads": 0})
+            slot["asks"] += 1
+            slot["heads"] += r["party_size"] or 1
+
+    # Was the house actually full that night? An ask for a night with rooms
+    # free is somebody who wanted a different room, not demand turned away.
+    out = []
+    if nights:
+        span_start, span_end = min(nights), max(nights) + timedelta(days=1)
+        occupied = occupied_rooms_by_date(conn, span_start, span_end)
+        for night, slot in sorted(nights.items()):
+            sold = occupied.get(night.isoformat(), 0)
+            slot["sold"] = sold
+            slot["was_full"] = rooms_total and sold >= rooms_total
+            out.append(slot)
+
+    full_nights = [n for n in out if n["was_full"]]
+    return {
+        "days": days, "today": today, "rooms_total": rooms_total,
+        "nights": out, "asks": people,
+        "full_nights": full_nights,
+        "heads_turned_away": sum(n["heads"] for n in full_nights),
+        "busiest": max(full_nights, key=lambda n: n["asks"]) if full_nights else None,
+        "csv": [{"night": n["night"].isoformat(), "asked": n["asks"],
+                 "people": n["heads"], "rooms_sold": n["sold"],
+                 "house_was_full": "yes" if n["was_full"] else "no"} for n in out],
+    }
+
+
 def report_labour(conn, period):
     # Same helper the financial summary costs labour with, so the two pages
     # cannot disagree about the same shifts.
@@ -25208,6 +26039,30 @@ PALETTE_PAGES = [
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("What suppliers cost", "management_supplier_scorecard",
+     "supplier vendor spend scorecard price rise invoices who we buy from"),
+    ("How long people stay", "admin_tenure",
+     "tenure turnover staff retention leavers how long started service"),
+    ("How long guests wait for an answer", "admin_reply_times",
+     "review reply response time feedback unanswered waiting complaint"),
+    ("Money due to arrive", "management_money_due",
+     "money due incoming balances forecast owed cash arriving weeks"),
+    ("What we know about a guest", "guest_recall_page",
+     "guest recall history preferences returning regular before they arrive "
+     "dietary notes past stays"),
+    ("Enough sheets?", "admin_linen",
+     "linen sheets laundry par level changeover housekeeping towels"),
+    ("Nights we turned people away", "management_turned_away",
+     "turned away waiting list demand full refused lost bookings"),
+    ("What to charge", "admin_rate_advice",
+     "rate advice price suggestion nightly rate revenue management yield "
+     "put the price up discount season"),
+    ("What the card earns", "admin_menu_engineering",
+     "menu engineering dish popularity margin star plough horse puzzle dog "
+     "card profitability what sells"),
+    ("Event run sheet", "admin_events",
+     "run sheet wedding event timeline suppliers final numbers carriages "
+     "florist band photographer setup day plan"),
     ("What they cannot eat", "kitchen_dietary",
      "dietary allergy allergen intolerance medical notes kitchen sheet "
      "gluten nut vegetarian vegan service"),
@@ -44313,6 +45168,422 @@ def export_breakage_recovery_csv():
                          "written_off"], data["csv"], "breakage-recovery.csv")
 
 
+@app.route("/admin/events/<int:event_id>/run-sheet")
+@owner_required
+def event_run_sheet_page(event_id):
+    """How the day runs, on one page."""
+    conn = get_db()
+    data = event_run_sheet(conn, event_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("admin_event_run_sheet.html", data=data)
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet.csv")
+@owner_required
+def export_event_run_sheet_csv(event_id):
+    conn = get_db()
+    data = event_run_sheet(conn, event_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return csv_response(["time", "what", "who", "note"], data["csv"],
+                        "run-sheet_%s.csv" % (data["event"]["reference_code"] or event_id))
+
+
+def _event_or_404(conn, event_id):
+    row = conn.execute("SELECT id FROM event_inquiries WHERE id = ?",
+                       (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    return row
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/moment", methods=["POST"])
+@owner_required
+def add_event_moment(event_id):
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    at_time = (request.form.get("at_time", "") or "").strip()
+    what = (request.form.get("what", "") or "").strip()[:160]
+    if not at_time or not what:
+        conn.close()
+        flash("A moment needs a time and something happening.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", at_time):
+        conn.close()
+        flash("Give the time as 24-hour, like 16:30.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    conn.execute(
+        """INSERT INTO event_timeline (event_id, at_time, what, who, note, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (event_id, at_time.zfill(5), what,
+         (request.form.get("who", "") or "").strip()[:80] or None,
+         (request.form.get("note", "") or "").strip()[:200] or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/moment/<int:moment_id>/delete",
+           methods=["POST"])
+@owner_required
+def delete_event_moment(event_id, moment_id):
+    conn = get_db()
+    conn.execute("DELETE FROM event_timeline WHERE id = ? AND event_id = ?",
+                 (moment_id, event_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/supplier", methods=["POST"])
+@owner_required
+def add_event_supplier(event_id):
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    name = (request.form.get("name", "") or "").strip()[:120]
+    if not name:
+        conn.close()
+        flash("A supplier needs a name.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    arriving = (request.form.get("arriving_at", "") or "").strip()
+    if arriving and not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", arriving):
+        conn.close()
+        flash("Give the arrival as 24-hour, like 09:00, or leave it blank.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    conn.execute(
+        """INSERT INTO event_suppliers (event_id, name, kind, arriving_at, contact,
+             phone, note, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (event_id, name,
+         (request.form.get("kind", "") or "").strip()[:40] or None,
+         arriving.zfill(5) if arriving else None,
+         (request.form.get("contact", "") or "").strip()[:80] or None,
+         (request.form.get("phone", "") or "").strip()[:40] or None,
+         (request.form.get("note", "") or "").strip()[:200] or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/supplier/<int:supplier_id>/confirm",
+           methods=["POST"])
+@owner_required
+def confirm_event_supplier(event_id, supplier_id):
+    """Mark a supplier as having confirmed, or take it back.
+
+    A toggle rather than a one-way tick, because the usual reason to change
+    it is that somebody confirmed and then cancelled -- and the run sheet has
+    to be able to say so.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT confirmed_at FROM event_suppliers WHERE id = ? AND event_id = ?",
+        (supplier_id, event_id)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE event_suppliers SET confirmed_at = ? WHERE id = ?",
+                 (None if row["confirmed_at"] else datetime.now(timezone.utc).isoformat(),
+                  supplier_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/supplier/<int:supplier_id>/delete",
+           methods=["POST"])
+@owner_required
+def delete_event_supplier(event_id, supplier_id):
+    conn = get_db()
+    conn.execute("DELETE FROM event_suppliers WHERE id = ? AND event_id = ?",
+                 (supplier_id, event_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/details", methods=["POST"])
+@owner_required
+def save_event_run_details(event_id):
+    """Final numbers, the two times that bracket the day, and a note."""
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    raw = (request.form.get("final_numbers", "") or "").strip()
+    numbers = None
+    if raw:
+        try:
+            numbers = int(raw)
+        except ValueError:
+            conn.close()
+            flash("Final numbers has to be a whole number of people.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+        if numbers < 0:
+            conn.close()
+            flash("Final numbers cannot be negative.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+    for field in ("arrival_time", "carriages_time"):
+        value = (request.form.get(field, "") or "").strip()
+        if value and not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", value):
+            conn.close()
+            flash("Give times as 24-hour, like 16:30.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+    conn.execute(
+        """UPDATE event_inquiries
+              SET final_numbers = ?,
+                  final_numbers_at = CASE WHEN ? IS NULL THEN NULL
+                                          ELSE COALESCE(final_numbers_at, ?) END,
+                  arrival_time = ?, carriages_time = ?, run_sheet_note = ?
+            WHERE id = ?""",
+        (numbers, numbers, datetime.now(timezone.utc).isoformat(),
+         (request.form.get("arrival_time", "") or "").strip() or None,
+         (request.form.get("carriages_time", "") or "").strip() or None,
+         (request.form.get("run_sheet_note", "") or "").strip()[:2000] or None,
+         event_id))
+    conn.commit()
+    conn.close()
+    flash("Run sheet saved.", "success")
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/menu-engineering")
+@owner_required
+def admin_menu_engineering():
+    """Which dishes sell, which earn, and what to do about each."""
+    conn = get_db()
+    try:
+        days = max(7, min(730, int(request.args.get("days", 90))))
+    except ValueError:
+        days = 90
+    data = menu_engineering(conn, days)
+    conn.close()
+    return render_template("admin_menu_engineering.html", data=data, days=days)
+
+
+@app.route("/admin/menu-engineering.csv")
+@owner_required
+def export_menu_engineering_csv():
+    conn = get_db()
+    try:
+        days = max(7, min(730, int(request.args.get("days", 90))))
+    except ValueError:
+        days = 90
+    data = menu_engineering(conn, days)
+    conn.close()
+    return csv_response(["dish", "course", "sold", "price", "cost", "margin", "verdict"],
+                        data["csv"], "menu-engineering.csv")
+
+
+@app.route("/admin/rate-advice")
+@owner_required
+def admin_rate_advice():
+    """A suggested rate per night, with the reasoning beside it."""
+    conn = get_db()
+    try:
+        days = max(7, min(180, int(request.args.get("days", 60))))
+    except ValueError:
+        days = 60
+    data = rate_advice(conn, days)
+    conn.close()
+    return render_template("admin_rate_advice.html", data=data, days=days)
+
+
+@app.route("/admin/rate-advice.csv")
+@owner_required
+def export_rate_advice_csv():
+    conn = get_db()
+    data = rate_advice(conn, 180)
+    conn.close()
+    return csv_response(["date", "room", "rack", "suggested", "why"], data["csv"],
+                        "rate-advice.csv")
+
+
+@app.route("/admin/rate-advice/apply", methods=["POST"])
+@owner_required
+def apply_rate_advice():
+    """Take one suggestion and make it a rate for that one night.
+
+    One night and one room per press. A button that applied the whole page
+    would be the only one anybody used, and it would set sixty nights on the
+    strength of a glance -- the opposite of a decision somebody can defend.
+    """
+    conn = get_db()
+    room_id = request.form.get("room_id", "")
+    day = parse_date(request.form.get("date", ""))
+    try:
+        price = float((request.form.get("price", "") or "").replace(",", "."))
+    except ValueError:
+        price = None
+    room = conn.execute("SELECT id, name, price_per_night FROM rooms WHERE id = ?",
+                        (room_id,)).fetchone() if room_id.isdigit() else None
+    if not room or not day or price is None or price <= 0:
+        conn.close()
+        flash("That suggestion could not be read. Nothing was changed.", "error")
+        return redirect(url_for("admin_rate_advice"))
+    if day < house_today():
+        conn.close()
+        flash("That night has passed. Nothing was changed.", "error")
+        return redirect(url_for("admin_rate_advice"))
+
+    rack = float(room["price_per_night"] or 0)
+    # The same band the suggestion itself is held to, checked again here
+    # because a form can be posted with anything in it.
+    if rack and not (rack * RATE_ADVICE_FLOOR - 0.01 <= price <= rack * RATE_ADVICE_CEILING + 0.01):
+        conn.close()
+        flash("That is outside the range a suggestion can move a rate. "
+              "Set it by hand on the room if you mean it.", "error")
+        return redirect(url_for("admin_rate_advice"))
+
+    existing = conn.execute(
+        """SELECT id FROM room_rate_overrides
+            WHERE room_id = ? AND start_date <= ? AND end_date >= ?""",
+        (room["id"], day.isoformat(), day.isoformat())).fetchone()
+    if existing:
+        conn.close()
+        flash("There is already a rate set covering that night. It was left alone.",
+              "error")
+        return redirect(url_for("admin_rate_advice"))
+
+    conn.execute(
+        """INSERT INTO room_rate_overrides (room_id, start_date, end_date,
+             price_per_night, label, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (room["id"], day.isoformat(), day.isoformat(), price,
+         "Suggested", datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "rate_override_applied", f"{room['name']} {day.isoformat()}",
+              f"{euro(rack)} to {euro(price)}")
+    conn.commit()
+    conn.close()
+    flash(f"{room['name']} set to {euro(price)} for {day.isoformat()}.", "success")
+    return redirect(url_for("admin_rate_advice"))
+
+
+@app.route("/management/suppliers-scorecard")
+@owner_required
+def management_supplier_scorecard():
+    """What each supplier costs, and where their prices have gone."""
+    conn = get_db()
+    data = supplier_scorecard(conn)
+    conn.close()
+    return render_template("management_supplier_scorecard.html", data=data)
+
+
+@app.route("/management/suppliers-scorecard.csv")
+@owner_required
+def export_supplier_scorecard_csv():
+    conn = get_db()
+    data = supplier_scorecard(conn)
+    conn.close()
+    return csv_response(["supplier", "spend", "invoices", "items", "prices_risen"],
+                        data["csv"], "suppliers.csv")
+
+
+@app.route("/admin/tenure")
+@owner_required
+def admin_tenure():
+    """How long people stay."""
+    conn = get_db()
+    data = staff_tenure(conn)
+    conn.close()
+    return render_template("admin_tenure.html", data=data)
+
+
+@app.route("/admin/tenure.csv")
+@owner_required
+def export_tenure_csv():
+    conn = get_db()
+    data = staff_tenure(conn)
+    conn.close()
+    return csv_response(["name", "role", "started", "months", "status"],
+                        data["csv"], "tenure.csv")
+
+
+@app.route("/admin/reply-times")
+@login_required
+def admin_reply_times():
+    """How long a guest waits to hear back."""
+    conn = get_db()
+    data = review_reply_times(conn)
+    conn.close()
+    return render_template("admin_reply_times.html", data=data)
+
+
+@app.route("/management/money-due")
+@owner_required
+def management_money_due():
+    """What is owed to the house, and which week it should arrive in."""
+    conn = get_db()
+    try:
+        weeks = max(2, min(52, int(request.args.get("weeks", 12))))
+    except ValueError:
+        weeks = 12
+    data = money_due(conn, weeks)
+    conn.close()
+    return render_template("management_money_due.html", data=data, weeks=weeks)
+
+
+@app.route("/management/money-due.csv")
+@owner_required
+def export_money_due_csv():
+    conn = get_db()
+    data = money_due(conn, 52)
+    conn.close()
+    return csv_response(["week", "date", "who", "what", "amount"], data["csv"],
+                        "money-due.csv")
+
+
+@app.route("/guests/recall")
+@login_required
+def guest_recall_page():
+    """What the house already knows about somebody, before they arrive."""
+    conn = get_db()
+    email = (request.args.get("email", "") or "").strip()
+    data = guest_recall(conn, email) if email else None
+    conn.close()
+    return render_template("guest_recall.html", data=data, email=email)
+
+
+@app.route("/admin/linen")
+@login_required
+def admin_linen():
+    """Whether there are enough sheets for the changeovers coming."""
+    conn = get_db()
+    try:
+        days = max(3, min(90, int(request.args.get("days", 14))))
+    except ValueError:
+        days = 14
+    data = linen_par(conn, days)
+    conn.close()
+    return render_template("admin_linen.html", data=data, days=days)
+
+
+@app.route("/management/turned-away")
+@owner_required
+def management_turned_away():
+    """Nights somebody asked for and could not have."""
+    conn = get_db()
+    data = turned_away(conn)
+    conn.close()
+    return render_template("management_turned_away.html", data=data)
+
+
+@app.route("/management/turned-away.csv")
+@owner_required
+def export_turned_away_csv():
+    conn = get_db()
+    data = turned_away(conn)
+    conn.close()
+    return csv_response(["night", "asked", "people", "rooms_sold", "house_was_full"],
+                        data["csv"], "turned-away.csv")
+
+
 @app.route("/management/break-even")
 @owner_required
 def management_break_even():
@@ -48266,6 +49537,7 @@ WATCH_TASK_KINDS = {
     "filing": "A return or payment that is due",
     "celebration": "A guest with something to celebrate while they are here",
     "changeover": "A day with the whole house to turn round",
+    "numbers": "An event with no final numbers and the kitchen ordering",
     "detail": "A guest arriving without the details to prepare",
     "access": "A guest who told us something, in a room that asks something",
     "agreement": "An agreement about to roll over while nobody decided",
@@ -49731,6 +51003,21 @@ def watch_task_findings(conn, today=None):
             # Due the day BEFORE, because the useful moment is the evening
             # you can still put somebody else on.
             (day["day"] - timedelta(days=1)).isoformat(), "high"))
+
+    # A confirmed event inside the numbers window with nobody counted. The
+    # kitchen orders against this figure and the table plan is drawn from
+    # it, so it is the last moment the cost of the event can still change.
+    for ev in take("numbers", events_needing_numbers(conn, today)):
+        found.append((
+            "numbers",
+            f"Final numbers not given — {ev['reference']}",
+            f"{ev['who']}'s {ev['kind'] or 'event'} on {ev['date']}, in "
+            f"{ev['days_away']} day{'' if ev['days_away'] == 1 else 's'}. "
+            f"Quoted for {ev['quoted_for'] or 'an unknown number'}."
+            + chr(92) + "n" + chr(92) + "n"
+            + "The kitchen orders against the final figure and the table plan "
+              "is drawn from it. Events → Run sheet takes the number.",
+            ev["date"], "high"))
 
     # An arrival inside three days with no time, no telephone number or no
     # email. Fill it in and the finding stops being true.

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Money due to arrive{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Money due to arrive</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_debtors') }}" class="btn-ghost">What is late</a>
+    <a href="{{ url_for('export_money_due_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Debtor ageing says what is late. Nothing said what is <em>coming</em> &mdash; and a house with a
+  quiet February needs to know whether the money for it is already promised or still has to be sold.
+  Room balances, atelier balances and event balances, by the week they fall due.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="weeks">Weeks ahead</label>
+    <input type="number" id="weeks" name="weeks" min="2" max="52" step="1" value="{{ weeks }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.total) }}</span>
+    <span class="stat-tile-label">Due in the next {{ weeks }} weeks</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.next_week %}{{ euro(data.next_week.total) }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">In the nearest week with anything due</span></span></div>
+</div>
+
+{% if data.weeks %}
+{% for w in data.weeks %}
+<h2 class="section-heading">Week of {{ w.week.strftime('%d %B') }} &mdash; {{ euro(w.total) }}</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Due</th><th style="text-align:left;">Who</th>
+    <th style="text-align:left;">For</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+      {% for i in w['items'] %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ i.date }}</th>
+        <td>{{ i.who }}</td>
+        <td>{{ i.what }}</td>
+        <td class="num">{{ euro(i.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">Nothing falls due in the next {{ weeks }} weeks.</div>
+{% endif %}
+{% endblock %}

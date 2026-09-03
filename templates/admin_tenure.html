@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}How long people stay{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>How long people stay</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('directory') }}" class="btn-ghost">The team</a>
+    <a href="{{ url_for('export_tenure_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A house this size loses a great deal when somebody goes &mdash; the person who knows which window
+  sticks is not in any document. Nothing counted how long anybody had been here, so the question
+  only ever came up at a resignation.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.headcount }}</span>
+    <span class="stat-tile-label">Here now</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.median_months is not none %}{{ data.median_months }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Months, typically</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.under_a_year|length }}</span>
+    <span class="stat-tile-label">Still learning the house</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.leavers }}</span>
+    <span class="stat-tile-label">Have left</span></span></div>
+</div>
+
+<h2 class="section-heading">Here now, longest first</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Who</th><th style="text-align:left;">Doing</th>
+    <th style="text-align:left;">Since</th><th class="num">Months</th></tr></thead>
+    <tbody>
+      {% for p in data.here %}
+      <tr{% if p.months < 12 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <td>{{ p.role or '&mdash;'|safe }}</td>
+        <td>{{ p.started }}</td>
+        <td class="num">{{ p.months }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4"><div class="empty-state">Nobody has a start date recorded.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if data.gone %}
+<h2 class="section-heading">Have left</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Who</th><th style="text-align:left;">Doing</th>
+    <th style="text-align:left;">Started</th><th class="num">Months here</th></tr></thead>
+    <tbody>
+      {% for p in data.gone %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <td>{{ p.role or '&mdash;'|safe }}</td>
+        <td>{{ p.started }}</td>
+        <td class="num">{{ p.months }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

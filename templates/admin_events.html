@@ -187,6 +187,11 @@
   {% if e['message'] %}<p class="upload-hint">Asked for: {{ e['message'] }}</p>{% endif %}
   {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
   <p class="upload-hint">Added {{ e['created_at']|house_day }}{% if e['decided_at'] %} · Decided {{ e['decided_at']|house_day }}{% endif %}</p>
+  <p style="margin:8px 0 0;">
+    <a href="{{ url_for('event_run_sheet_page', event_id=e['id']) }}" class="btn-mini">Run sheet</a>
+    {%- if e['status'] == 'confirmed' and e['final_numbers'] is none %}
+    <span class="field-hint" style="margin-left:8px;">no final numbers yet</span>{% endif %}
+  </p>
 
   <form method="post" action="{{ url_for('update_event_inquiry', inquiry_id=e['id']) }}" class="search-bar" style="margin-top:10px; margin-bottom:0;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
