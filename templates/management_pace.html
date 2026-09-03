@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Booking pace{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Booking pace</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_on_the_books') }}" class="btn-ghost">On the books</a>
+    <a href="{{ url_for('management_year_on_year') }}" class="btn-ghost">Year on year</a>
+    <a href="{{ url_for('export_pace_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  On the books says what is sold. It cannot say whether that is good, and the honest comparison is
+  not against how last year <em>finished</em> &mdash; it is against where last year stood at the
+  same distance out. A November 40% sold in September looks terrible beside a finished November
+  and fine beside the same September. Every booking below is counted only if it had been
+  <strong>made</strong> by the equivalent date last year.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="months">Months ahead</label>
+    <input type="number" id="months" name="months" min="1" max="12" step="1" value="{{ months }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.nights }}</span>
+    <span class="stat-tile-label">Nights sold ahead</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.last_nights }}</span>
+    <span class="stat-tile-label">At this point last year</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.revenue) }}</span>
+    <span class="stat-tile-label">Revenue on the books</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.last_revenue) }}</span>
+    <span class="stat-tile-label">At this point last year</span></span></div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Month</th>
+        <th class="num">Days out</th>
+        <th class="num">Nights sold</th>
+        <th class="num">Last year, same point</th>
+        <th class="num">Difference</th>
+        <th class="num">Occupancy</th>
+        <th class="num">Revenue</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.months %}
+      <tr{% if r.nights_change < 0 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">
+          {{ r.month.strftime('%B %Y') }}
+          <span class="field-hint" style="display:block; font-weight:400;">compared as at {{ r.as_at_last.strftime('%d %b %Y') }}</span>
+        </th>
+        <td class="num">{{ r.days_out }}</td>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ r.last_nights }}</td>
+        <td class="num">{{ '+' if r.nights_change > 0 }}{{ r.nights_change }}</td>
+        <td class="num">{{ r.occupancy }}% <span class="field-hint">was {{ r.last_occupancy }}%</span></td>
+        <td class="num">{{ euro(r.revenue) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

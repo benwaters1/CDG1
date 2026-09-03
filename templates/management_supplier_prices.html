@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Supplier prices{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What has gone up</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_stock') }}" class="btn-ghost">Stock</a>
+    <a href="{{ url_for('export_supplier_prices_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every stock movement records what the thing cost at the moment it came in, and nothing ever
+  compared two of them. A supplier lifting a price by a fifth is invisible until somebody happens
+  to look at an invoice &mdash; and on a menu costed once a season, that is the difference between
+  a dish that makes money and one that does not.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Looking back</label>
+    <input type="number" id="days" name="days" min="30" max="1095" step="1" value="{{ days }}">
+    <span class="field-hint">days</span>
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.risen }}</span>
+    <span class="stat-tile-label">Have gone up</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.fallen }}</span>
+    <span class="stat-tile-label">Have come down</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.watched }}</span>
+    <span class="stat-tile-label">Items with a cost recorded</span></span></div>
+</div>
+
+{% if data.single_reading %}
+<p class="field-hint" style="max-width:760px;">
+  {{ data.single_reading }} item{{ '' if data.single_reading == 1 else 's' }} were bought only once
+  in this window, so there is no second price to compare. They are counted here rather than shown
+  below as unchanged, which would be a claim nobody has the evidence for.
+</p>
+{% endif %}
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Item</th>
+        <th style="text-align:left;">Category</th>
+        <th class="num">Was</th>
+        <th class="num">Now</th>
+        <th class="num">Change</th>
+        <th style="text-align:left;">Between</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.pct >= 20 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.name }}{% if r.unit %} <span class="field-hint">per {{ r.unit }}</span>{% endif %}</th>
+        <td>{{ r.category or '&mdash;'|safe }}</td>
+        <td class="num">{{ euro(r.old) }}</td>
+        <td class="num">{{ euro(r.new) }}</td>
+        <td class="num"><span class="{{ 'pill-bad' if r.pct > 0 else 'pill-good' }}">{{ '+' if r.pct > 0 }}{{ r.pct }}%</span></td>
+        <td>{{ r.first_seen }} &rarr; {{ r.last_seen }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  Nothing has moved by more than {{ data.min_pct }}% in the last {{ days }} days &mdash; or not
+  enough has been bought twice for a comparison to exist.
+</div>
+{% endif %}
+
+{% endblock %}

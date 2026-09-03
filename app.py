@@ -5095,7 +5095,6 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
-        "kitchen_dietary", "export_dietary_csv",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -5129,6 +5128,9 @@ NAV_AREAS = {
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
         "management_year_on_year", "export_year_on_year_csv",
+        "management_pace", "export_pace_csv",
+        "management_supplier_prices", "export_supplier_prices_csv",
+        "management_energy", "export_energy_csv",
         "management_extras_performance", "export_extras_performance_csv",
         "management_night_margin", "export_night_margin_csv",
         "management_booking_shape", "export_booking_shape_csv",
@@ -5153,6 +5155,8 @@ NAV_AREAS = {
         "regenerate_supplier_link", "toggle_recurring_cost"
     ],
     "restaurant": [
+        "admin_no_shows", "export_no_shows_csv",
+        "kitchen_dietary", "export_dietary_csv",
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
         "admin_terminal", "admin_extras", "admin_restaurant", "admin_restaurant_settings",
@@ -15437,6 +15441,265 @@ def arrivals_missing_detail(conn, days=14, on_day=None):
         "urgent": [r for r in out if r["days_away"] is not None and r["days_away"] <= 3],
         "csv": [{"guest": r["guest"], "arrival": r["arrival"], "room": r["room"],
                  "missing": ", ".join(r["missing"])} for r in out],
+    }
+
+
+def no_show_report(conn, start=None, end=None):
+    """Table reservations that did not turn up.
+
+    The house marks a no-show and nothing counted them, so the question that
+    decides whether to ask for a card -- how often, on which nights, worth how
+    much -- had no answer. It is a real cost: one sitting a night means a
+    table held for four that nobody sits at is four covers that could not be
+    sold to anybody else.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or house_today()
+    rows = conn.execute(
+        """SELECT dinner_date, party_size, total_price, no_show_at, guest_name,
+                  reference_code, status
+             FROM restaurant_bookings
+            WHERE dinner_date >= ? AND dinner_date < ? AND status = 'confirmed'""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                "Saturday", "Sunday"]
+    by_day = {d: {"day": d, "booked": 0, "no_shows": 0, "covers_lost": 0} for d in weekdays}
+    booked = missed = covers_booked = covers_lost = 0
+    value_lost = 0.0
+    recent = []
+    for r in rows:
+        day = parse_date(r["dinner_date"])
+        if not day:
+            continue
+        slot = by_day[weekdays[day.weekday()]]
+        slot["booked"] += 1
+        booked += 1
+        covers_booked += r["party_size"] or 0
+        if r["no_show_at"]:
+            missed += 1
+            slot["no_shows"] += 1
+            slot["covers_lost"] += r["party_size"] or 0
+            covers_lost += r["party_size"] or 0
+            value_lost += float(r["total_price"] or 0)
+            recent.append({"guest": r["guest_name"], "date": r["dinner_date"],
+                           "party": r["party_size"] or 0,
+                           "reference": r["reference_code"],
+                           "value": round(float(r["total_price"] or 0), 2)})
+
+    for slot in by_day.values():
+        slot["rate"] = round(slot["no_shows"] / slot["booked"] * 100, 1) if slot["booked"] else None
+
+    return {
+        "start": start, "end": end,
+        "booked": booked, "no_shows": missed,
+        "rate": round(missed / booked * 100, 1) if booked else 0,
+        "covers_booked": covers_booked, "covers_lost": covers_lost,
+        "value_lost": round(value_lost, 2),
+        # Only nights the house actually takes bookings on, so a Monday it
+        # never opens does not read as a night with a perfect record.
+        "by_day": [d for d in by_day.values() if d["booked"]],
+        "recent": sorted(recent, key=lambda x: x["date"], reverse=True)[:25],
+        "csv": [{"weekday": d["day"], "booked": d["booked"], "no_shows": d["no_shows"],
+                 "rate_pct": d["rate"], "covers_lost": d["covers_lost"]}
+                for d in by_day.values() if d["booked"]],
+    }
+
+
+def occupancy_pace(conn, months=4, today=None):
+    """Where the coming months stand against where they stood a year ago.
+
+    On the books says what is sold. It cannot say whether that is good, and
+    the honest comparison is not against how last year FINISHED -- it is
+    against where last year stood at the same distance out. A November that
+    is 40% sold in September looked terrible next to a finished November and
+    fine next to the same September.
+
+    So every booking is counted only if it had been MADE by the equivalent
+    date last year, which is what the created_at stamp is for.
+    """
+    today = today or house_today()
+    out = []
+    for i in range(max(1, months)):
+        month_start = (today.replace(day=1) + timedelta(days=32 * i)).replace(day=1)
+        month_end = (month_start + timedelta(days=32)).replace(day=1)
+        days_out = (month_start - today).days
+
+        def _sold(m_start, m_end, as_at):
+            rows = conn.execute(
+                """SELECT arrival_date, departure_date, total_price
+                     FROM bookings
+                    WHERE status = 'confirmed'
+                      AND arrival_date < ? AND departure_date > ?
+                      AND DATE(created_at) <= ?""",
+                (m_end.isoformat(), m_start.isoformat(), as_at.isoformat())).fetchall()
+            nights = 0
+            revenue = 0.0
+            for r in rows:
+                a, d = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+                if not (a and d):
+                    continue
+                overlap = (min(d, m_end) - max(a, m_start)).days
+                if overlap <= 0:
+                    continue
+                nights += overlap
+                total_nights = max(1, (d - a).days)
+                revenue += float(r["total_price"] or 0) * overlap / total_nights
+            return nights, round(revenue, 2)
+
+        now_nights, now_revenue = _sold(month_start, month_end, today)
+        try:
+            last_start = month_start.replace(year=month_start.year - 1)
+        except ValueError:
+            last_start = month_start.replace(year=month_start.year - 1, day=28)
+        last_end = (last_start + timedelta(days=32)).replace(day=1)
+        # The same distance out, not the same calendar date.
+        as_at_last = last_start - timedelta(days=days_out)
+        then_nights, then_revenue = _sold(last_start, last_end, as_at_last)
+
+        rooms_total = conn.execute(
+            "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+        capacity = rooms_total * (month_end - month_start).days
+        out.append({
+            "month": month_start, "days_out": days_out,
+            "nights": now_nights, "revenue": now_revenue,
+            "last_nights": then_nights, "last_revenue": then_revenue,
+            "as_at_last": as_at_last,
+            "occupancy": round(now_nights / capacity * 100, 1) if capacity else 0,
+            "last_occupancy": round(then_nights / capacity * 100, 1) if capacity else 0,
+            "nights_change": now_nights - then_nights,
+            "revenue_change": round(now_revenue - then_revenue, 2),
+        })
+    return {
+        "today": today, "months": out,
+        "nights": sum(r["nights"] for r in out),
+        "last_nights": sum(r["last_nights"] for r in out),
+        "revenue": round(sum(r["revenue"] for r in out), 2),
+        "last_revenue": round(sum(r["last_revenue"] for r in out), 2),
+        "csv": [{"month": r["month"].strftime("%Y-%m"), "nights": r["nights"],
+                 "last_year_nights": r["last_nights"], "revenue": r["revenue"],
+                 "last_year_revenue": r["last_revenue"]} for r in out],
+    }
+
+
+def supplier_price_changes(conn, days=365, min_pct=5.0):
+    """What the house is paying more for than it used to.
+
+    Every stock movement records the cost of the thing at the moment it came
+    in, and nothing ever compared two of them. A supplier lifting a price by a
+    fifth is invisible until somebody happens to look at an invoice -- and on
+    a menu costed once a season, that is the difference between a dish that
+    makes money and one that does not.
+    """
+    since = (house_today() - timedelta(days=max(1, days))).isoformat()
+    rows = conn.execute(
+        """SELECT stock_movements.stock_item_id AS item_id,
+                  stock_items.name AS name, stock_items.unit AS unit,
+                  stock_items.category AS category,
+                  stock_movements.unit_cost AS cost,
+                  stock_movements.created_at AS at
+             FROM stock_movements
+             JOIN stock_items ON stock_items.id = stock_movements.stock_item_id
+            WHERE stock_movements.unit_cost IS NOT NULL
+              AND stock_movements.unit_cost > 0
+              AND DATE(stock_movements.created_at) >= ?
+            ORDER BY stock_movements.stock_item_id, stock_movements.created_at""",
+        (since,)).fetchall()
+
+    by_item = {}
+    for r in rows:
+        by_item.setdefault(r["item_id"], []).append(r)
+
+    changes = []
+    for item_id, moves in by_item.items():
+        if len(moves) < 2:
+            continue
+        first, last = moves[0], moves[-1]
+        old, new = float(first["cost"]), float(last["cost"])
+        if not old:
+            continue
+        pct = (new - old) / old * 100
+        if abs(pct) < min_pct:
+            continue
+        changes.append({
+            "item_id": item_id, "name": last["name"], "unit": last["unit"] or "",
+            "category": last["category"] or "",
+            "old": round(old, 2), "new": round(new, 2),
+            "change": round(new - old, 2), "pct": round(pct, 1),
+            "first_seen": house_date_iso(first["at"]),
+            "last_seen": house_date_iso(last["at"]),
+            "readings": len(moves),
+        })
+    changes.sort(key=lambda x: -x["pct"])
+    risen = [c for c in changes if c["pct"] > 0]
+    return {
+        "days": days, "min_pct": min_pct,
+        "rows": changes, "risen": len(risen), "fallen": len(changes) - len(risen),
+        "watched": len(by_item),
+        # Items bought once in the window have no second price to compare, so
+        # they are counted rather than shown as unchanged.
+        "single_reading": sum(1 for v in by_item.values() if len(v) < 2),
+        "csv": [{"item": c["name"], "was": c["old"], "now": c["new"],
+                 "change_pct": c["pct"], "first_seen": c["first_seen"],
+                 "last_seen": c["last_seen"]} for c in changes],
+    }
+
+
+def energy_per_night(conn, months=12, today=None):
+    """What the house burns, against how many nights it sold.
+
+    Consumption on its own says nothing: a cold December uses more than a warm
+    one and a full house uses more than an empty one. Per night sold is the
+    figure that can be acted on, and it is the one nothing computed.
+    """
+    today = today or house_today()
+    start = (today.replace(day=1) - timedelta(days=31 * max(1, months) )).replace(day=1)
+    readings = conn.execute(
+        """SELECT meter, read_on, reading FROM meter_readings
+            WHERE read_on >= ? ORDER BY meter, read_on""",
+        (start.isoformat(),)).fetchall()
+
+    by_meter = {}
+    for r in readings:
+        by_meter.setdefault(r["meter"], []).append(r)
+
+    out = []
+    for meter, rows in sorted(by_meter.items()):
+        periods = []
+        for a, b in zip(rows, rows[1:]):
+            d_from, d_to = parse_date(a["read_on"]), parse_date(b["read_on"])
+            if not (d_from and d_to) or d_to <= d_from:
+                continue
+            used = float(b["reading"] or 0) - float(a["reading"] or 0)
+            # A meter that has gone backwards has been replaced or misread.
+            # Counting it would show the house generating electricity.
+            if used < 0:
+                periods.append({"from": d_from, "to": d_to, "used": None,
+                                "nights": None, "per_night": None,
+                                "note": "meter went backwards — replaced or misread"})
+                continue
+            nights = sum(occupied_rooms_by_date(conn, d_from, d_to).values())
+            periods.append({
+                "from": d_from, "to": d_to, "used": round(used, 2),
+                "days": (d_to - d_from).days, "nights": nights,
+                "per_night": round(used / nights, 2) if nights else None,
+                "note": "" if nights else "no rooms sold in this window",
+            })
+        if periods:
+            usable = [p for p in periods if p["per_night"] is not None]
+            out.append({
+                "meter": meter, "periods": list(reversed(periods)),
+                "latest": periods[-1],
+                "average_per_night": round(
+                    sum(p["per_night"] for p in usable) / len(usable), 2) if usable else None,
+            })
+    return {
+        "start": start, "today": today, "meters": out,
+        "unreadable": sum(1 for m in out for p in m["periods"] if p["used"] is None),
+        "csv": [{"meter": mt["meter"], "from": p["from"].isoformat(),
+                 "to": p["to"].isoformat(), "used": p["used"],
+                 "nights_sold": p["nights"], "per_night": p["per_night"]}
+                for mt in out for p in mt["periods"]],
     }
 
 
@@ -40907,6 +41170,96 @@ def admin_arrivals_incomplete():
     data = arrivals_missing_detail(conn, days)
     conn.close()
     return render_template("admin_arrivals_incomplete.html", data=data, days=days)
+
+
+@app.route("/admin/restaurant/no-shows")
+@owner_required
+def admin_no_shows():
+    """Table reservations that did not turn up."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = no_show_report(conn, start, end)
+    conn.close()
+    return render_template("admin_no_shows.html", data=data)
+
+
+@app.route("/admin/restaurant/no-shows.csv")
+@owner_required
+def export_no_shows_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = no_show_report(conn, start, end)
+    conn.close()
+    return csv_response(["weekday", "booked", "no_shows", "rate_pct", "covers_lost"],
+                        data["csv"], f"no-shows_{start.isoformat()}.csv")
+
+
+@app.route("/management/pace")
+@owner_required
+def management_pace():
+    """Where the coming months stand against the same point last year."""
+    conn = get_db()
+    try:
+        months = max(1, min(12, int(request.args.get("months", 4))))
+    except ValueError:
+        months = 4
+    data = occupancy_pace(conn, months)
+    conn.close()
+    return render_template("management_pace.html", data=data, months=months)
+
+
+@app.route("/management/pace.csv")
+@owner_required
+def export_pace_csv():
+    conn = get_db()
+    data = occupancy_pace(conn, 12)
+    conn.close()
+    return csv_response(["month", "nights", "last_year_nights", "revenue",
+                         "last_year_revenue"], data["csv"], "pace.csv")
+
+
+@app.route("/management/supplier-prices")
+@owner_required
+def management_supplier_prices():
+    """What the house is paying more for than it used to."""
+    conn = get_db()
+    try:
+        days = max(30, min(1095, int(request.args.get("days", 365))))
+    except ValueError:
+        days = 365
+    data = supplier_price_changes(conn, days)
+    conn.close()
+    return render_template("management_supplier_prices.html", data=data, days=days)
+
+
+@app.route("/management/supplier-prices.csv")
+@owner_required
+def export_supplier_prices_csv():
+    conn = get_db()
+    data = supplier_price_changes(conn, 1095)
+    conn.close()
+    return csv_response(["item", "was", "now", "change_pct", "first_seen", "last_seen"],
+                        data["csv"], "supplier-prices.csv")
+
+
+@app.route("/management/energy")
+@owner_required
+def management_energy():
+    """What the house burns, against how many nights it sold."""
+    conn = get_db()
+    data = energy_per_night(conn)
+    conn.close()
+    return render_template("management_energy.html", data=data)
+
+
+@app.route("/management/energy.csv")
+@owner_required
+def export_energy_csv():
+    conn = get_db()
+    data = energy_per_night(conn)
+    conn.close()
+    return csv_response(["meter", "from", "to", "used", "nights_sold", "per_night"],
+                        data["csv"], "energy.csv")
 
 
 @app.route("/management/break-even")

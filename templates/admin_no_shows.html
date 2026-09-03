@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}No-shows{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Tables that did not turn up</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_restaurant') }}" class="btn-ghost">Reservations</a>
+    <a href="{{ url_for('export_no_shows_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The house marks a no-show and nothing counted them, so the question that decides whether to ask
+  for a card &mdash; how often, on which nights, worth how much &mdash; had no answer. One sitting
+  a night means a table held for four that nobody sits at is four covers that could not be sold to
+  anybody else.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">Dinners from</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.rate }}%</span>
+    <span class="stat-tile-label">Of confirmed tables</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.no_shows }}</span>
+    <span class="stat-tile-label">No-shows of {{ data.booked }} booked</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.covers_lost }}</span>
+    <span class="stat-tile-label">Covers held for nobody, of {{ data.covers_booked }} booked</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.value_lost) }}</span>
+    <span class="stat-tile-label">What they were worth</span></span></div>
+</div>
+
+{% if data.by_day %}
+<h2 class="section-heading">By night of the week</h2>
+<p class="field-hint" style="max-width:760px;">
+  Only nights the house actually takes bookings on &mdash; a Monday it never opens would otherwise
+  read as a night with a perfect record.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Night</th><th class="num">Booked</th><th class="num">No-shows</th><th class="num">Rate</th><th class="num">Covers lost</th></tr>
+    </thead>
+    <tbody>
+      {% for d in data.by_day %}
+      <tr{% if d.rate and d.rate >= 15 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ d.day }}</th>
+        <td class="num">{{ d.booked }}</td>
+        <td class="num">{{ d.no_shows }}</td>
+        <td class="num">{% if d.rate is not none %}{{ d.rate }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num">{{ d.covers_lost }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No confirmed tables in this window.</div>
+{% endif %}
+
+{% if data.recent %}
+<h2 class="section-heading">The most recent</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Guest</th><th style="text-align:left;">Reference</th><th style="text-align:left;">Was booked for</th><th class="num">Party</th><th class="num">Value</th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.recent %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.guest or '&mdash;'|safe }}</th>
+        <td>{{ r.reference }}</td>
+        <td>{{ r.date }}</td>
+        <td class="num">{{ r.party }}</td>
+        <td class="num">{{ euro(r.value) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

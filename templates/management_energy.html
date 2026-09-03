@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Energy per night{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Energy per night sold</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_meters') if 'management_meters' in url_map else url_for('management_recurring_costs') }}" class="btn-ghost">Meter readings</a>
+    <a href="{{ url_for('export_energy_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Consumption on its own says nothing: a cold December uses more than a warm one, and a full house
+  uses more than an empty one. Per night sold is the figure that can be acted on, and it is the one
+  nothing computed.
+</p>
+
+{% if data.unreadable %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">{{ data.unreadable }} period{{ '' if data.unreadable == 1 else 's' }} cannot be read</h3>
+  <p class="field-hint" style="margin-top:0;">
+    The meter went backwards, which means it was replaced or misread. Counting it would show the
+    house generating electricity, so it is shown as unreadable rather than as a number.
+  </p>
+</div>
+{% endif %}
+
+{% if data.meters %}
+  {% for mt in data.meters %}
+  <h2 class="section-heading">{{ mt.meter|capitalize }}</h2>
+  <p class="field-hint" style="max-width:760px;">
+    {% if mt.average_per_night is not none %}
+      Averaging <strong>{{ mt.average_per_night }}</strong> per night sold across the readings below.
+    {% else %}
+      Not enough readings with rooms sold between them to give a figure per night.
+    {% endif %}
+  </p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th style="text-align:left;">Between</th><th class="num">Days</th><th class="num">Used</th><th class="num">Nights sold</th><th class="num">Per night</th></tr>
+      </thead>
+      <tbody>
+        {% for p in mt.periods %}
+        <tr{% if p.used is none %} class="row-alert"{% endif %}>
+          <th scope="row" style="text-align:left;">{{ p.from.strftime('%d %b %Y') }} &rarr; {{ p.to.strftime('%d %b %Y') }}</th>
+          <td class="num">{{ p.days or '&mdash;'|safe }}</td>
+          <td class="num">{% if p.used is not none %}{{ p.used }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">{% if p.nights is not none %}{{ p.nights }}{% else %}&mdash;{% endif %}</td>
+          <td class="num">
+            {%- if p.per_night is not none %}{{ p.per_night }}
+            {%- else %}<span class="field-hint">{{ p.note }}</span>{% endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="empty-state">
+  No meter readings recorded since {{ data.start.strftime('%B %Y') }}. Two readings on one meter
+  are the minimum for a consumption figure to exist.
+</div>
+{% endif %}
+
+{% endblock %}
