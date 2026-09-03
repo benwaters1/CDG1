@@ -131,11 +131,26 @@ def run():
             by_name.get(TAG + " Dog", {}).get("quadrant") == "dog",
             detail=str(by_name.get(TAG + " Dog", {}).get("label")))
     # The two lines the grid turns on, each checked where moving it matters.
-    mid = by_name.get(TAG + " Middling")
+    # AGAINST THE COMPUTED LINE, not a quantity chosen in advance. The
+    # fixture hardcoded six and the line this card actually produces is 12.9,
+    # so "just above" was below — the check was asserting an arithmetic
+    # assumption about the fixture rather than the boundary it is named for.
+    #
+    # Whichever dish sells least while still reaching the line IS the boundary,
+    # and it has to come out popular. That cannot drift when somebody changes
+    # a quantity in the fixture.
+    at_or_over = sorted((r for r in card["rows"]
+                         if (r["qty"] or 0) >= card["popular_at"]),
+                        key=lambda r: r["qty"] or 0)
+    s.check("the line has a dish sitting on it", bool(at_or_over),
+            detail=f"line {card['popular_at']}, quantities "
+                   f"{sorted((r['qty'] or 0) for r in card['rows'])} — with "
+                   "nothing at the boundary the next check cannot fail")
     s.check("a dish just above the popularity line counts as popular",
-            mid and mid["popular"],
-            detail=f"sold {mid['qty'] if mid else '?'} against a line of "
-                   f"{card['popular_at']}")
+            bool(at_or_over) and at_or_over[0]["popular"],
+            detail=(f"{at_or_over[0]['name']} sold {at_or_over[0]['qty']} "
+                    f"against a line of {card['popular_at']}"
+                    if at_or_over else "nothing reaches the line"))
     s.check("and the line is a fair share, not the average dish",
             card["popular_at"] < card["fair_share"] * 1.5,
             detail=f"line {card['popular_at']} against a fair share of "
