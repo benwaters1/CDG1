@@ -6031,3 +6031,70 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
 .g-anim__r{ margin: 0 0 var(--s3); font-family: var(--ui); font-size: var(--t-sm);
   font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gilt); }
 .g-anim__d{ margin: 0; font-size: var(--t-base); line-height: 1.65; color: var(--ink); }
+
+/* ==========================================================================
+   NOTHING BUT THE HERO GOES UNDER THE FIXED HEADER
+   On a hero page `main` has no top padding, because the hero is meant to run
+   full-bleed beneath the header. Anything else at the top of main — the
+   breadcrumb, and until now the credential band — lands under an 86px header
+   and is half-hidden by it.
+
+   The hero is the only element allowed there. Everything else clears it.
+   ========================================================================== */
+body.has-hero main > .g-crumbs{ padding-top: 92px; }
+@media (max-width: 44rem){ body.has-hero main > .g-crumbs{ padding-top: 78px; } }
+
+/* And when the breadcrumb IS the first thing, the header is over cream rather
+   than a photograph, so it needs its own background and dark type. */
+body.has-hero:has(main > .g-crumbs:first-child) .g-top{
+  background: var(--sand); border-bottom: 1px solid var(--line);
+}
+
+/* ==========================================================================
+   THE DATE PICKER — TYPE
+   The month name was set at a hardcoded 16px in the display face, which made
+   it smaller than the panel title above it and no louder than the day
+   numbers. The month is the thing you navigate by; it should be the loudest
+   thing in the panel after the dates themselves.
+
+   Everything here now takes a step from the scale rather than a magic number.
+   ========================================================================== */
+.g-rp__mh{
+  margin: 0 0 var(--s4);
+  font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3);                    /* was 16px */
+  letter-spacing: .01em;
+  color: var(--blue-deep);
+}
+
+/* The weekday row is a caption for the grid, not data. It was reading as
+   loud as the numbers. */
+.g-rp__g > abbr, .g-rp__wd, .g-rp__g > span:not([class]){
+  font-family: var(--ui); font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* A date is a tap target before it is a number. 40px was under the minimum. */
+.g-rp__d{
+  /* min-width:44px forced 7x44=308px into a 308px column and clipped Sunday.
+     The row divides the width it has; the 44px tap target is carried by
+     height, and the cell is never narrower than a finger in practice because
+     the panel itself has a minimum. */
+  min-height: 44px; width: 100%;
+  font-family: var(--ui); font-size: var(--t-ui);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.g-rp__d.is-sel, .g-rp__d.is-in{ font-weight: 600; }
+
+/* The panel title sat above the month and shouted over it. It is a label. */
+.g-rp__t{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+
+/* The chevrons were small glyphs adrift in 50px boxes. */
+.g-rp__nav{
+  min-width: 48px; min-height: 48px;
+  font-size: var(--t-h3); line-height: 1;
+}
