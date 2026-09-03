@@ -263,6 +263,8 @@ SUITES = [
     "test_estate_actions",
     "test_api_tokens",
     "test_ical_routes",
+    "test_owner_edits",
+    "test_provider_off",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
@@ -344,44 +346,48 @@ def _registry_complete():
 #   404  the test posts an id that does not exist, so the handler takes its
 #        not-found branch and returns. Also worth proving; also not the page.
 #
-# Twenty-three of the original thirty-eight have come off it, each by having
-# the test written: the deletes, the three declines, the three admin
-# cancellations, the estate actions, and three of the four payment returns.
+# Thirty-six of the original thirty-eight have come off it, each by having
+# the test written. The last two are here because reaching them needs a real
+# payment provider, which is a different kind of missing than a missing test.
+#
+# Three of them were only reachable at all by standing in UNDER the guard
+# rather than around it -- app.py imports urlopen by name, so a stand-in in
+# its place leaves the real check running and turns any escape into a loud
+# failure. The one that reads "Pennylane isn't connected" needed the harness
+# to keep the real _pennylane_request for the same reason: the guard lives
+# inside the function the harness blocks.
 #
 # Taking one off this list means writing the test that runs it properly. The
 # list is checked in BOTH directions: a fortieth name reds the run, and so
 # does a name that starts answering, because an exception list that outlives
 # its reason is how the next one gets in unnoticed.
 COVERAGE_KNOWN_GAPS = {
-    # Owner actions that reach a third party or a schedule. The three iCal
-    # ones are covered now (tests/test_ical_sync.py): app.py imports urlopen
-    # by name, so a stand-in drives both branches without a socket -- which
-    # is how the expensive one gets tested at all, since a real feed will not
-    # fail on demand.
-    "apply_invoice", "sync_pennylane", "run_checkin_texts_now",
-    "send_event_revenue",
-
-    # Refunding needs a card processor, and this house has none configured.
+    # Two of these need a real payment provider: reaching the branch that matters
+    # means a real payment provider, and arranging one in a test is not a
+    # thing to do with the château's own Stripe account.
+    #
+    # refund_restaurant_booking_admin issues money back. Its refusal when
+    # Stripe is unconfigured is already held by test_declines, which declines
+    # a paid booking and requires the failure to be reported rather than
+    # swallowed -- so what is missing here is only the branch where money
+    # actually moves.
+    #
+    # workshop_stripe_success retrieves the checkout session before it does
+    # anything, unlike its two siblings, which answer from the database first
+    # and are covered (tests/test_payment_returns.py).
     "refund_restaurant_booking_admin",
-
-    # Editors reached only with an id that does not exist. Plainly testable:
-    # these are next.
-    "edit_document", "edit_social_plan",
-
-    # api_draft_reply needs the model provider the harness pins off, so the
-    # only branch reachable here is the refusal its siblings already prove.
-    # The other three are covered (tests/test_api_tokens.py), including the
-    # rule that a GET can never carry a valid token -- one word away from
-    # putting a read-any-guest credential into every access log.
-    "api_draft_reply",
-
-    # The one payment return that cannot be reached without calling Stripe
-    # for real. Its siblings are covered (tests/test_payment_returns.py):
-    # their branch that matters answers BEFORE any call goes out, so a guest
-    # refreshing the page can be tested with no payment provider at all.
-    # This one retrieves the session first, and arranging that is not a
-    # thing to do in a test.
     "workshop_stripe_success",
+
+    # And one where the MEASURE is the awkward part rather than the test.
+    # api_draft_reply answers 503 {"error": "not configured"} with no model
+    # provider, which is the view running, deciding, and telling the add-in
+    # something it can act on -- not a refusal at the door. But a 5xx counts
+    # as unanswered here on purpose: loosening that to let this one through
+    # would let a genuinely broken page count as covered, which is the whole
+    # failure this measure exists to stop. So the judgement sits here, named
+    # and reversible, rather than in the rule. tests/test_provider_off.py
+    # does exercise it -- the token posture and the 503 both.
+    "api_draft_reply",
 }
 
 
@@ -420,8 +426,13 @@ def main(argv):
         try:
             hit, miss, by_area = _harness.coverage_report()
             print("\n" + "=" * 64)
-            pct = 100 * len(hit) / max(1, len(hit) + len(miss))
-            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages answered ({pct:.0f}%)")
+            # Floored, not rounded. 737 of 740 rounds to 100%, and a
+            # headline reading 100% over three outstanding pages is the exact
+            # overstatement this measure was changed to stop. It says 100%
+            # when it is 100%.
+            total_pages = len(hit) + len(miss)
+            pct = 100 * len(hit) // max(1, total_pages)
+            print(f"COVERAGE — {len(hit)} of {len(hit) + len(miss)} pages answered ({pct}%)")
             for area in sorted(by_area):
                 got, lost = by_area[area]["hit"], by_area[area]["miss"]
                 line = f"  {area:<14} {len(got):>3}/{len(got) + len(lost):<3}"
