@@ -8,6 +8,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_roompick.html' import room_pick %}
+{% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
 {% from '_availcal.html' import avail_cal %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
@@ -938,6 +940,26 @@
 {{ avail_cal(booked_dates, 2) }}
 
 {{ flexible() }}
+
+<!-- ============ WHY THE WALLS STAY ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Ce que la loi protège<span class="g-fr__en">What the law protects</span></p>
+  <p class="g-eyebrow">Not a Compromise</p>
+  <h2 class="g-place">Why the Walls Stay As They Are</h2>
+  <p class="g-p g-lede-first">The bare plaster in these rooms is not unfinished work. It is protected, and putting a modern surface over it would be illegal.</p>
+  <p class="g-p">Every intervention here is applied for and approved by the Monuments Historiques before a tool is lifted. Drawings, materials, methods and the people doing it are all reviewed. The process is long and it is strict, and it should be — this is one of fewer than fifteen hundred buildings in France holding the highest grade of protection, and it will outlast everyone currently arguing about it.</p>
+  <p class="g-p">What that buys you is a room nobody could build. The plaster you sleep beside was laid in the eighteenth century and has been read, recorded and consolidated rather than replaced. A hotel could give you a smooth wall tomorrow. Nobody can give you this one.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Reversible</dt><dd>New work is done so it could one day be removed without harming what was there</dd></div>
+    <div><dt>Recorded first</dt><dd>Every surface is photographed and documented before anyone touches it</dd></div>
+    <div><dt>Lime, not cement</dt><dd>The building has to breathe. Cement traps water and destroys what it covers</dd></div>
+    <div><dt>Approved, then done</dt><dd>Not the other way round. Unauthorised work on a Class I monument is a criminal offence</dd></div>
+  </dl></div></div>
+</div></section>
+
+{{ room_pick(rooms) }}
+
+{{ week_cost(rooms, settings) }}
 
 <script type="application/ld+json">
 {

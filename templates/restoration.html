@@ -23,6 +23,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/70db8515-8c3f-46cc-9439-b6f2497cff0a/IMG_2142+3.webp?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_scale.html' import scale %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_floorplan.html' import floorplan %}
 {# Needs a route, e.g.:
@@ -608,7 +609,7 @@
     <div><dt>A retired plasterer</dt><dd>A local man in his eighties came out of retirement — the skills needed are no longer commonly known</dd></div>
     <div><dt>Monuments Historiques</dt><dd>Every intervention approved before a tool is lifted. Reference PA00132943</dd></div>
     <div><dt>A team of six</dt><dd>The core building team, working through the year</dd></div>
-    <div><dt>Guests</dt><dd>Supervised work on the eighteenth-century frescoes in the dining room, for anyone who wants it</dd></div>
+    <div><dt>Guests</dt><dd>Taught alongside the conservators on the eighteenth-century frescoes in the dining room</dd></div>
     <div><dt>The family</dt><dd>Karina oversees the work in France. Jasmine, who studied art history, on the research</dd></div>
   </dl>
 
@@ -782,6 +783,20 @@
 </div></section>
 
 
+{{ scale() }}
+
+<!-- ============ THE CLOSER ============ -->
+<section class="g-sec g-sec--dark g-closer"><div class="g-wrap">
+  <p class="g-fr">Restons-en là pour l'instant<span class="g-fr__en">Enough for now</span></p>
+  <p class="g-eyebrow">The Part You Can Do</p>
+  <h2 class="g-place">Five Rooms Are Ready</h2>
+  <p class="g-p g-lede-first">The rest of this takes as long as it takes. The five finished rooms are what pays for it, and they are open now.</p>
+  <p class="g-p">
+    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">See the rooms</a>
+    <a href="{{ url_for('workshops_public') }}">Or learn a craft here</a>
+  </p>
+</div></section>
+
 <script>
 /* Fifteen years, and the seven steps a room goes through. Both written from
    what the building actually required rather than from a project plan. */
@@ -795,7 +810,7 @@
       2016:['The Polignac medal','The Fondation Prince Louis de Polignac awards the restoration its Medal of Honour, presented by Prince Albert II of Monaco. The château opens to guests for the first time.','Recognition and first guests in the same year.'],
       2017:['Rooms one at a time','The first bedrooms finished to a standard that could take a guest — bare walls, new floors, real beds.','The paradox the whole place runs on, established here.'],
       2018:['Under the overpaint','Cream overpaint lifted by hand, finding frescoes hidden for generations.','Wherever possible the original is kept rather than replaced.'],
-      2019:['The ateliers begin','Guests start working on the building rather than only staying in it — plaster, gilding, fresco conservation.','It turned out people would pay to do the work.'],
+      2019:['The ateliers begin','Guests start learning the crafts from the artisans doing the restoration — plaster, gilding, fresco conservation.','People wanted to learn these crafts from the people who still have them.'],
       2020:['Closed','No guests, and the work went on anyway with whoever was on site.','A restoration does not stop because the visitors do.'],
       2021:['Approved intervention','Every intervention applied for and approved by the Monuments Historiques before a tool is lifted. Restorers work alongside artisans from the valley.','Slow by law, and slow by choice.'],
       2022:['Five bedrooms','The fifth room opened. Antique French beds, vintage monogrammed linen, floors relaid by hand.','Five of ninety-four. That ratio is the honest headline.'],

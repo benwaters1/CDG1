@@ -57294,6 +57294,10 @@ def robots():
         "Disallow: /pos",
         "Disallow: /management",
         "Disallow: /book/manage",
+        # /booking/<token>/statement is a guest's bill. The noindex on
+        # the page is what actually keeps it out of an index; this is the
+        # cheaper half, and it was the only guest-token prefix missing.
+        "Disallow: /booking",
         "Disallow: /book/confirmation",
         "Disallow: /workshops/confirmation",
         "Disallow: /restaurant/confirmation",
