@@ -19,7 +19,7 @@
       </div>
     </div>
     <p class="manual-body">{{ c['description'] }}</p>
-    <p class="upload-hint">Submitted {{ c['submitted_at'][:10] }}{% if c['decided_at'] %} · Decided {{ c['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ c['submitted_at']|house_day }}{% if c['decided_at'] %} · Decided {{ c['decided_at']|house_day }}{% endif %}</p>
     {% if c['owner_note'] %}<p class="upload-hint">Note from owner: {{ c['owner_note'] }}</p>{% endif %}
     {% if c['filename'] %}
     {% if is_viewable(c['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=c['id']) }}', '{{ (c['vendor_name'] or '')|e }}')">View</button>{% endif %}

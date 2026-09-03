@@ -53,7 +53,7 @@
 
     <button type="submit" class="btn-primary" style="margin-top:16px;">Save</button>
   </form>
-  {% if info and info['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ info['updated_at'][:10] }}</p>{% endif %}
+  {% if info and info['updated_at'] %}<p class="upload-hint" style="margin-top:10px;">Last updated {{ info['updated_at']|house_day }}</p>{% endif %}
 </div>
 
 <h2 class="section-heading" id="insurance">Insurance</h2>

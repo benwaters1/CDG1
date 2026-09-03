@@ -13,11 +13,25 @@
     <div class="overview-value">{{ waiting_total }}</div>
     <div class="overview-label">Waiting to send</div>
   </div>
+  <div class="overview-cell {{ 'overview-cell-alert' if stale_total }}">
+    <div class="overview-value">{{ stale_total }}</div>
+    <div class="overview-label">Too old to send</div>
+  </div>
   <div class="overview-cell">
     <div class="overview-value">{{ recovered|length }}</div>
     <div class="overview-label">Sent on a retry</div>
   </div>
 </div>
+
+{% if stale_total %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>{{ stale_total }} of these have been waiting more than {{ stale_days }} days.</strong>
+  They are not included when you send the rest. A confirmation for a stay that
+  has already happened is not late, it is wrong &mdash; so the château would
+  rather not send it than send it by accident. Send one by hand if you still
+  want it to go, or discard them together.
+</div>
+{% endif %}
 
 {% if not can_send %}
 <div class="flash flash-error" style="margin-bottom:16px;">
@@ -26,18 +40,27 @@
 {% endif %}
 
 {% if waiting %}
-<form method="post" action="{{ url_for('send_email_outbox') }}" style="margin-bottom:16px;">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <button type="submit" class="btn-primary" {{ 'disabled' if not can_send }}>
-    Try sending {{ 'all' if waiting_total <= 100 else 'the oldest 100' }} again
-  </button>
-</form>
+<div class="filter-bar" style="margin-bottom:16px;">
+  <form method="post" action="{{ url_for('send_email_outbox') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-primary" {{ 'disabled' if not can_send or not sendable_total }}>
+      {% if sendable_total %}Try sending {{ 'all ' ~ sendable_total if sendable_total <= 100 else 'the oldest 100' }} again{% else %}Nothing here is current enough to send{% endif %}
+    </button>
+  </form>
+  {% if stale_total %}
+  <form method="post" action="{{ url_for('discard_stale_email_outbox') }}"
+        onsubmit="return confirm('Discard {{ stale_total }} message(s) too old to send? They will not go out.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-ghost">Discard the {{ stale_total }} too old to send</button>
+  </form>
+  {% endif %}
+</div>
 
 <div class="table-wrap">
   <table class="data-table">
     <thead>
       <tr>
-        <th>To</th><th>Subject</th><th>Why it was held</th><th>Held since</th><th>Tries</th><th></th>
+        <th>To</th><th>Subject</th><th>Why it was held</th><th>Held since</th><th>Age</th><th>Tries</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -49,7 +72,10 @@
           {{ row.reason }}
           {% if row.last_error %}<span class="upload-hint">— {{ row.last_error }}</span>{% endif %}
         </td>
-        <td>{{ row.created_at[:10] }}</td>
+        <td>{{ row.created_at|house_day }}</td>
+        <td class="num">{% if row.age is not none %}{{ row.age }}d{% if row.stale %}
+          <span class="mini-status status-pending">too old</span>{% endif %}
+          {% else %}&mdash;{% endif %}</td>
         <td>{{ row.attempts }}</td>
         <td>
           <div class="filter-bar">
@@ -90,7 +116,7 @@
       <tr>
         <td>{{ row.to_address }}</td>
         <td>{{ row.subject }}</td>
-        <td>{{ row.sent_at[:10] }}</td>
+        <td>{{ row.sent_at|house_day }}</td>
       </tr>
       {% endfor %}
     </tbody>

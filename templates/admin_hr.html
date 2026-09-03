@@ -485,7 +485,7 @@
         <td>{{ r['overall_rating'] ~ '/5' if r['overall_rating'] else '—' }}</td>
         <td>
           <span class="mini-status status-{{ 'confirmed' if r['status'] == 'acknowledged' else ('onshift' if r['status'] == 'shared' else 'inactive') }}">{{ r['status'] }}</span>
-          {% if r['acknowledged_at'] %}<span class="upload-hint"> {{ r['acknowledged_at'][:10] }}</span>{% endif %}
+          {% if r['acknowledged_at'] %}<span class="upload-hint"> {{ r['acknowledged_at']|house_day }}</span>{% endif %}
         </td>
         <td>
           {% if r['status'] == 'draft' %}

@@ -21,11 +21,11 @@
   {% elif not my_ack.current %}
   <div class="announcement-banner" style="margin-bottom:16px;">
     <strong>{{ t('This has changed since you last read it.') }}</strong>
-    <span>Last acknowledged {{ my_ack.acknowledged_at[:10] }}.</span>
+    <span>Last acknowledged {{ my_ack.acknowledged_at|house_day }}.</span>
     <form method="post" action="{{ url_for('acknowledge_manual') }}" style="margin-left:auto;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">{{ t("I've read the update") }}</button></form>
   </div>
   {% else %}
-  <p class="upload-hint" style="margin-top:-10px;">You acknowledged this on {{ my_ack.acknowledged_at[:10] }}.</p>
+  <p class="upload-hint" style="margin-top:-10px;">You acknowledged this on {{ my_ack.acknowledged_at|house_day }}.</p>
   {% endif %}
 {% endif %}
 
@@ -37,7 +37,7 @@
     <div class="mini-row">
       <span class="mini-name">{{ c.name }}</span>
       {% if c.acknowledged_at %}
-      <span class="mini-status status-{{ 'onshift' if c.current else 'pending' }}">{{ 'up to date' if c.current else 'outdated — ' + c.acknowledged_at[:10] }}</span>
+      <span class="mini-status status-{{ 'onshift' if c.current else 'pending' }}">{{ 'up to date' if c.current else 'outdated — ' + c.acknowledged_at|house_day }}</span>
       {% else %}
       <span class="mini-status status-inactive">{{ t('not yet read') }}</span>
       {% endif %}

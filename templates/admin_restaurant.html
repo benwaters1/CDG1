@@ -180,7 +180,7 @@
     </p>
     {% endif %}
     {% if r['dietary_notes'] %}<p class="upload-hint">Notes: {{ r['dietary_notes'] }}</p>{% endif %}
-    <p class="upload-hint">Submitted {{ r['created_at'][:10] }}{% if r['decided_at'] %} · Decided {{ r['decided_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Submitted {{ r['created_at']|house_day }}{% if r['decided_at'] %} · Decided {{ r['decided_at']|house_day }}{% endif %}</p>
 
     <div class="expense-actions">
       {% if r['status'] == 'pending' %}

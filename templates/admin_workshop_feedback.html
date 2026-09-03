@@ -34,7 +34,7 @@
       </div>
     </div>
     {% if f['comment'] %}<p class="manual-body">{{ f['comment'] }}</p>{% endif %}
-    <p class="upload-hint">{{ f['submitted_at'][:10] }}{% if f['reference_code'] %} · {{ f['reference_code'] }}{% endif %}</p>
+    <p class="upload-hint">{{ f['submitted_at']|house_day }}{% if f['reference_code'] %} · {{ f['reference_code'] }}{% endif %}</p>
     <div class="expense-actions">
       <form method="post" action="{{ url_for('toggle_workshop_feedback_featured', feedback_id=f['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

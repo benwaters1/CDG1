@@ -33,7 +33,7 @@
       </div>
     </div>
     {% if r['reason'] %}<p class="manual-body">{{ r['reason'] }}</p>{% endif %}
-    <p class="upload-hint">Requested {{ r['requested_at'][:10] }} · <a href="{{ url_for('admin_leave') }}" style="color:inherit;">full time off list</a></p>
+    <p class="upload-hint">Requested {{ r['requested_at']|house_day }} · <a href="{{ url_for('admin_leave') }}" style="color:inherit;">full time off list</a></p>
     <div class="expense-actions">
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="approved"><button type="submit" class="btn-mini">Approve</button></form>
       <form method="post" action="{{ url_for('decide_leave', request_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="status" value="declined"><button type="submit" class="btn-mini btn-mini-danger">Decline</button></form>
@@ -50,7 +50,7 @@
     {% if r['note'] %}<p class="manual-body">{{ r['note'] }}</p>{% endif %}
     <p class="upload-hint">
       {% if r['clock_in_at'] %}Logged {{ local_datetime_str(r['clock_in_at']) }}{% if r['clock_out_at'] %} → {{ local_datetime_str(r['clock_out_at']) }}{% else %} → still open{% endif %} · {% endif %}
-      Raised {{ r['created_at'][:10] }} · <a href="{{ url_for('admin_timesheet_corrections') }}" style="color:inherit;">all corrections</a>
+      Raised {{ r['created_at']|house_day }} · <a href="{{ url_for('admin_timesheet_corrections') }}" style="color:inherit;">all corrections</a>
     </p>
     <div class="expense-actions">
       <form method="post" action="{{ url_for('resolve_timesheet_correction', correction_id=r['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Mark resolved</button></form>
@@ -65,7 +65,7 @@
       </div>
     </div>
     <p class="manual-body">{{ r['description'] }}</p>
-    <p class="upload-hint">Submitted {{ r['submitted_at'][:10] }} · <a href="{{ url_for('expenses') }}" style="color:inherit;">full expenses list</a></p>
+    <p class="upload-hint">Submitted {{ r['submitted_at']|house_day }} · <a href="{{ url_for('expenses') }}" style="color:inherit;">full expenses list</a></p>
     <div class="expense-actions">
       {% if r['filename'] %}
       {% if is_viewable(r['filename']) %}<button type="button" class="view-link" onclick="openViewer('{{ url_for('view_expense_file', expense_id=r['id']) }}', '{{ (r['vendor_name'] or r['submitter_name'] or '')|e }}')">View</button>{% endif %}

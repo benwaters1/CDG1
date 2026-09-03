@@ -179,6 +179,74 @@ def run():
                        "one answer, and two spellings for one idea is how "
                        "the last one of these survived 125 times")
 
+    s.section("And the templates, which the sweep never used to open")
+    # The reason this half exists: app.py was swept and the templates were
+    # not, so the same mistake lived on in sixty-eight of them. A moment's
+    # column ends _at by this schema's own convention, which is what makes
+    # them findable.
+    tpl_dir = _os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), "templates")
+    found = []
+    for root, _dirs, files in _os.walk(tpl_dir):
+        for fn in sorted(files):
+            if not fn.endswith(".html"):
+                continue
+            path = _os.path.join(root, fn)
+            body = _re.sub(r"\{#.*?#\}", "",
+                           _io.open(path, encoding="utf-8").read(), flags=_re.S)
+            for i, line in enumerate(body.splitlines(), 1):
+                # A slice that follows ")" has already been through
+                # local_datetime_str, which converts before it truncates.
+                for mo in _re.finditer(
+                        r"([A-Za-z0-9_]*_at)['\"]?\s*\]?\s*\[\s*0?:10\s*\]",
+                        line):
+                    at = mo.start()
+                    before = line[:at + len(mo.group(0))]
+                    if _re.search(r"\)\s*\[\s*0?:10\s*\]$", before):
+                        continue
+                    found.append("%s:%d %s" % (fn, i, mo.group(1)))
+    s.check("no template slices a stored moment to get a day",
+            not found,
+            detail="; ".join(found[:6]) + (" +%d more" % (len(found) - 6)
+                                           if len(found) > 6 else ""))
+    s.check("there were templates to read at all",
+            _os.path.isdir(tpl_dir) and any(
+                f.endswith(".html") for _r, _d, fs in _os.walk(tpl_dir)
+                for f in fs),
+            detail="a sweep that found no files to sweep passes for free")
+
+    s.section("And a template can reach the right answer at all")
+    # Most of why the templates went their own way: house_date_iso was not
+    # reachable from one, so [:10] was the only thing to hand.
+    s.check("house_day is a filter templates can use",
+            "house_day" in m.app.jinja_env.filters,
+            detail=str(sorted(k for k in m.app.jinja_env.filters
+                              if "day" in k or "date" in k)))
+    s.check("and it converts rather than truncating",
+            m.app.jinja_env.filters["house_day"](pickup_utc) != pickup_utc[:10],
+            detail="on this fixture, at least, they differ")
+
+    s.section("And a page really does show the house's day, not UTC's")
+    # Source-level checks above prove nothing is slicing. This proves the
+    # thing the slicing got wrong: 23:30 UTC is half past one the NEXT
+    # morning in the Ariege, and that is the day the house calls it.
+    late = "2026-09-03T23:30:00+00:00"
+    conn.execute(
+        "INSERT INTO announcements (title, body, created_at) VALUES (?, ?, ?)",
+        (TAG + " late notice", "posted after midnight", late))
+    conn.commit()
+    body = oc.get("/announcements").get_data(as_text=True)
+    at = body.find(TAG + " late notice")
+    near = body[max(0, at - 900):at + 900] if at >= 0 else ""
+    s.check("the announcement is on the page", at >= 0)
+    s.check("it is dated the day the house was in", "2026-09-04" in near,
+            detail=" ".join(near.split())[:130])
+    s.check("and not the day UTC was in", "2026-09-03" not in near,
+            detail="half past eleven at night in London is half past one the "
+                   "next morning here, and the house goes by the house")
+    conn.execute("DELETE FROM announcements WHERE title LIKE ?", (TAG + "%",))
+    conn.commit()
+
     s.section("And the helper is what everything uses instead")
     s.check("house_date_iso exists", callable(getattr(m, "house_date_iso", None)))
     s.check("it converts rather than truncates",

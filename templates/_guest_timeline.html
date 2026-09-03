@@ -25,7 +25,7 @@
     <li class="g-timeline__i is-done">
       <span class="g-timeline__k">Booked</span>
       <span class="g-timeline__v">
-        {% if b['created_at'] %}{{ b['created_at'][:10] }}{% else %}Confirmed{% endif %}
+        {% if b['created_at'] %}{{ b['created_at']|house_day }}{% else %}Confirmed{% endif %}
         {% if dep %}· deposit of €{{ '%.0f'|format(dep) }} taken{% endif %}
       </span>
     </li>

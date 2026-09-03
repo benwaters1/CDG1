@@ -23,7 +23,7 @@
     <p class="upload-hint">
       Current: {{ local_datetime_str(c['clock_in_at']) }} →
       {% if c['clock_out_at'] %}{{ local_time_str(c['clock_out_at']) }}{% else %}still clocked in{% endif %}
-      · Flagged {{ c['created_at'][:10] }}
+      · Flagged {{ c['created_at']|house_day }}
     </p>
     {% if c['status'] == 'pending' %}
     <form method="post" action="{{ url_for('resolve_timesheet_correction', correction_id=c['id']) }}" class="upload-form">

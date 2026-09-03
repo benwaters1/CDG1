@@ -5333,7 +5333,8 @@ NAV_AREAS = {
         "add_email_optout", "admin_email_outbox", "admin_emails", "admin_inbox_flags",
         "admin_images", "admin_image_upload",
         "admin_inbox_flags_status", "announcements", "delete_announcement",
-        "delete_campaign_template", "discard_email_outbox", "edit_announcement",
+        "delete_campaign_template", "discard_email_outbox",
+        "discard_stale_email_outbox", "edit_announcement",
         "edit_campaign_template", "edit_email_template", "management_email_templates",
         "management_social", "new_announcement", "new_campaign_template",
         "restore_email_template", "send_campaign_template", "send_email_outbox",
@@ -6316,6 +6317,10 @@ def format_date_range(start_iso, end_iso):
 # The guest-facing templates call these directly. format_date_human existed but
 # was never reachable from a template, which is why workshop pages were showing
 # raw ISO dates on a €4,800 product.
+# The house's day from a stored UTC moment. Templates could not reach
+# house_date_iso, so eighty of them sliced the stamp instead and showed
+# yesterday to anyone looking between midnight and 02:00 local.
+app.jinja_env.filters["house_day"] = house_date_iso
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
 app.jinja_env.globals["date_range"] = format_date_range
@@ -17428,9 +17433,18 @@ def admin_email_outbox():
     recovered = conn.execute(
         """SELECT * FROM email_outbox WHERE sent_at IS NOT NULL
            ORDER BY sent_at DESC LIMIT 25""").fetchall()
+    sendable_rows, stale_rows = held_mail_split(conn)
+    stale_total = len(stale_rows)
     conn.close()
+    # The age is worked out once, here, rather than in the template: the page
+    # shows it, the button counts on it, and two spellings of one idea is how
+    # the last figure of this kind drifted.
+    waiting = [dict(r, stale=held_mail_stale(r), age=held_mail_age_days(r))
+               for r in map(dict, waiting)]
     return render_template(
         "admin_email_outbox.html", waiting=waiting, waiting_total=waiting_total,
+        stale_total=stale_total, stale_days=EMAIL_OUTBOX_STALE_DAYS,
+        sendable_total=len(sendable_rows),
         recovered=recovered, can_send=email_enabled() or resend_enabled())
 
 
@@ -17442,6 +17456,17 @@ def send_email_outbox():
     Sends one at a time and marks each as it goes, so a failure part-way
     through leaves the ones already sent marked as sent — a retry that loses
     track would deliver the same confirmation to a guest twice.
+
+    THE OLD ONES ARE LEFT WHERE THEY ARE. "Try sending all" means all of the
+    ones still worth sending: a message held past EMAIL_OUTBOX_STALE_DAYS is
+    about something the recipient has moved on from, and delivering a batch of
+    them the day a provider is connected is how a house sends confirmations
+    for stays that already happened. They are named rather than counted, so
+    the owner can see what was left and decide.
+
+    Asking for ONE by id still sends it, however old. That is somebody
+    looking at a particular message and choosing — the flash says it was
+    stale, so the choice is informed rather than accidental.
     """
     if not (email_enabled() or resend_enabled()):
         flash("No email provider is configured yet, so there is nothing to send with.", "error")
@@ -17449,13 +17474,18 @@ def send_email_outbox():
 
     conn = get_db()
     only = request.form.get("id", "").strip()
-    if only.isdigit():
+    chosen_one = only.isdigit()
+    if chosen_one:
         rows = conn.execute("SELECT * FROM email_outbox WHERE id = ? AND sent_at IS NULL",
                             (int(only),)).fetchall()
+        skipped = []
     else:
-        rows = conn.execute(
-            "SELECT * FROM email_outbox WHERE sent_at IS NULL ORDER BY created_at LIMIT 100"
-        ).fetchall()
+        rows, stale = held_mail_split(conn, limit=100)
+        skipped = [
+            (f"{r['subject'] or 'no subject'} to {r['to_address']}",
+             f"held past the {EMAIL_OUTBOX_STALE_DAYS} days this house sends "
+             "within")
+            for r in stale]
 
     sent = failed = 0
     for row in rows:
@@ -17470,6 +17500,8 @@ def send_email_outbox():
                 (datetime.now(timezone.utc).isoformat(), row["id"]))
         else:
             failed += 1
+            skipped.append((f"{row['subject'] or 'no subject'} to "
+                            f"{row['to_address']}", "the provider refused it"))
             conn.execute(
                 "UPDATE email_outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
                 ("retry failed", row["id"]))
@@ -17477,9 +17509,56 @@ def send_email_outbox():
     if sent:
         log_audit(conn, "email_outbox_sent", details=f"{sent} sent, {failed} failed")
         conn.commit()
+    was_stale = chosen_one and rows and held_mail_stale(rows[0])
     conn.close()
-    flash(f"{sent} sent" + (f", {failed} still waiting." if failed else "."),
-          "success" if sent and not failed else "error" if failed else "success")
+
+    if chosen_one:
+        if sent and was_stale:
+            flash("Sent, though it had been waiting "
+                  f"{held_mail_age_days(rows[0])} days — the château chose to "
+                  "send it rather than the batch doing it unasked.", "success")
+        elif sent:
+            flash("Sent.", "success")
+        else:
+            flash("That message could not be sent.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    message, category = bulk_message("Sent", "message", sent, skipped)
+    flash(message, category)
+    return redirect(url_for("admin_email_outbox"))
+
+
+@app.route("/admin/email-outbox/discard-stale", methods=["POST"])
+@owner_required
+def discard_stale_email_outbox():
+    """Throw away the held mail that is too old to send.
+
+    The action the pile actually wants. Discarding them one at a time is the
+    same decision taken four hundred times, and a page that only offers that
+    is a page where the pile stays.
+
+    What is discarded is NAMED in the audit line by count and age rather than
+    by recipient: this is mail nobody is going to read, and writing four
+    hundred guest addresses into the audit log to record throwing them away
+    would keep the thing being disposed of.
+    """
+    conn = get_db()
+    _sendable, stale = held_mail_split(conn)
+    if not stale:
+        conn.close()
+        flash("Nothing is old enough to discard.", "error")
+        return redirect(url_for("admin_email_outbox"))
+
+    oldest = max(held_mail_age_days(r) or 0 for r in stale)
+    conn.executemany("DELETE FROM email_outbox WHERE id = ?",
+                     [(r["id"],) for r in stale])
+    log_audit(conn, "email_outbox_discarded_stale", None,
+              f"{len(stale)} message(s), up to {oldest} days old")
+    conn.commit()
+    conn.close()
+    flash(f"Discarded {len(stale)} message"
+          f"{'' if len(stale) == 1 else 's'} too old to send, "
+          f"the oldest waiting {oldest} days.", "success")
     return redirect(url_for("admin_email_outbox"))
 
 
@@ -17649,6 +17728,62 @@ def send_email_via_resend(to_address, subject, body, ics_content=None, ics_filen
     except Exception as e:
         print(f"[resend email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         return False
+
+
+# How long a held message is still worth sending. Fourteen days covers a
+# provider connected late or an outage fixed slowly; past that the message is
+# about something the recipient has moved on from, and a booking confirmation
+# for a stay that has already happened is not late, it is wrong.
+#
+# The same reasoning send_email already applies with keep=False, which the
+# waitlist notice spells out: a stale one is worse than none. Those messages
+# are never kept at all. These are kept, and until now nothing looked at how
+# old they had got.
+EMAIL_OUTBOX_STALE_DAYS = 14
+
+
+def held_mail_age_days(row, now=None):
+    """How many days ago this message was held, or None if it cannot be told."""
+    keys = row.keys() if hasattr(row, "keys") else row
+    when = parse_datetime_iso(row["created_at"] if "created_at" in keys else None)
+    if not when:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return ((now or datetime.now(timezone.utc)) - when).days
+
+
+def held_mail_stale(row, now=None):
+    """True when this message is too old to send without somebody choosing to.
+
+    A row with no readable date is NOT called stale. Guessing in that
+    direction throws away a message on the strength of a bad timestamp, and
+    the safe answer for "I cannot tell how old this is" is to leave it where
+    the owner can look at it.
+    """
+    age = held_mail_age_days(row, now)
+    return age is not None and age > EMAIL_OUTBOX_STALE_DAYS
+
+
+def held_mail_split(conn, now=None, limit=None):
+    """(sendable, stale) for the mail still waiting, by one definition.
+
+    Partitioned here rather than in SQL on purpose. A string comparison on
+    created_at agrees with held_mail_stale for a well-formed stamp and
+    disagrees for a malformed one, and the page, the owner's home and the
+    send button all have to mean the same thing by "too old". The outbox
+    holds hundreds; it is not a table that needs the database to do this.
+
+    `limit` caps the SENDABLE ones, not the query. Capping the query would
+    take the oldest hundred, which once anything is stale are all stale --
+    the batch would send nothing, and go on sending nothing.
+    """
+    rows = conn.execute(
+        "SELECT * FROM email_outbox WHERE sent_at IS NULL "
+        "ORDER BY created_at").fetchall()
+    sendable = [r for r in rows if not held_mail_stale(r, now)]
+    stale = [r for r in rows if held_mail_stale(r, now)]
+    return (sendable[:limit] if limit else sendable), stale
 
 
 def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reason, error=None):
@@ -20301,6 +20436,23 @@ def owner_home_warnings(conn, today):
     # arrive -- a shortfall found the evening before is not a warning.
     # A filing that is late is already costing money, so it goes above the
     # things that are merely coming.
+    # Mail the app kept and can no longer sensibly send. About the STALE ones
+    # rather than the held ones: held mail is a standing condition while no
+    # provider is configured, and a line that is true every morning forever is
+    # furniture. This one goes away when somebody discards them.
+    _current, stale_held = held_mail_split(conn)
+    if stale_held:
+        oldest_day = house_date(stale_held[0]["created_at"])
+        add("warning",
+            f"{len(stale_held)} held message"
+            f"{'' if len(stale_held) == 1 else 's'} too old to send",
+            "They are left out when the rest go, because a confirmation for a "
+            "stay that has already happened is not late, it is wrong"
+            + (f". The oldest has been waiting since "
+               f"{format_date_short(oldest_day.isoformat())}" if oldest_day else "")
+            + ". Send one by hand if it should still go, or discard them.",
+            len(stale_held), "admin_email_outbox")
+
     filings = filings_due(conn, today)
     if filings:
         worst = filings[0]

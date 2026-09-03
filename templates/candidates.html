@@ -36,7 +36,7 @@
     </p>
     {% endif %}
     {% if c['notes'] %}<p class="manual-body">{{ c['notes'] }}</p>{% endif %}
-    <p class="upload-hint">Added {{ c['created_at'][:10] }}{% if c['updated_at'] %} · Updated {{ c['updated_at'][:10] }}{% endif %}</p>
+    <p class="upload-hint">Added {{ c['created_at']|house_day }}{% if c['updated_at'] %} · Updated {{ c['updated_at']|house_day }}{% endif %}</p>
     <div class="expense-actions">
       <form method="post" action="{{ url_for('update_candidate_status', candidate_id=c['id']) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
