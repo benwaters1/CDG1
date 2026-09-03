@@ -2782,3 +2782,10 @@ input[type="checkbox"], input[type="radio"]{ width:auto; }
 .g-prof__f{ margin-top:12px; }
 .g-prof__f textarea{ width:100%; }
 .g-opt{ font-size:.86em; color:var(--steel, #6b6759); font-weight:400; }
+
+
+/* ---- Asking for another room ------------------------------------------- */
+.g-addroom__f{ margin-top:10px; }
+.g-addroom .g-row{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+.g-addroom .g-field{ flex:1 1 14rem; margin:0; }
+.g-addroom .g-field--narrow{ flex:0 1 9rem; }

@@ -30455,6 +30455,60 @@ def manage_booking(manage_token):
 
     action = request.form.get("action") if request.method == "POST" else None
 
+    if action == "add_room":
+        room_raw = (request.form.get("room_id", "") or "").strip()
+        who = (request.form.get("guest_name", "") or "").strip()[:120]
+        try:
+            party = int(request.form.get("party_size", "2"))
+        except ValueError:
+            party = 2
+        arrival = parse_date(booking["arrival_date"])
+        departure = parse_date(booking["departure_date"])
+
+        if booking["status"] not in ("pending", "confirmed"):
+            flash("This booking cannot have a room added to it.", "error")
+        elif not room_raw.isdigit() or not who:
+            flash("Choose a room and say who is in it.", "error")
+        else:
+            room = conn.execute(
+                "SELECT * FROM rooms WHERE id = ? AND active = 1",
+                (int(room_raw),)).fetchone()
+            # claim_range, not is_range_available: this is a check followed by
+            # a write, and two people can want the last room at once.
+            ok = bool(room) and arrival and departure and claim_range(
+                conn, room["id"], arrival, departure)[0]
+            if not ok:
+                # Say what IS free rather than only no. Being told no with
+                # nothing to do next is the email this exists to stop.
+                free = rooms_free_for(conn, arrival, departure,
+                                      exclude_room_ids={booking["room_id"]})
+                conn.commit()
+                names = ", ".join(r["name"] for r in free[:4])
+                flash(
+                    ("That room has gone since you looked. Still free on your "
+                     f"dates: {names}." if names else
+                     "That room has gone since you looked, and nothing else is "
+                     "free on those dates. Write to us and we will see what "
+                     "can be done."), "error")
+            else:
+                ref, _tok = create_booking(
+                    conn, room, who, booking["guest_email"],
+                    booking["guest_phone"], arrival, departure, party,
+                    f"Added to {booking['reference_code']} from the guest's "
+                    "own page.", [], source="direct")
+                added = conn.execute(
+                    "SELECT id FROM bookings WHERE reference_code = ?",
+                    (ref,)).fetchone()
+                join_booking_party(conn, booking["id"], added["id"])
+                conn.commit()
+                flash(
+                    f"Asked for {room['name']} on the same dates \u2014 "
+                    f"{ref}. Nothing has been charged: the château will "
+                    "confirm it, and it goes on the same arrival as this one.",
+                    "success")
+        conn.close()
+        return redirect(url_for("manage_booking", manage_token=manage_token))
+
     if action == "cancel":
         # Atomic UPDATE...WHERE status IN (...) + rowcount, not a separate
         # SELECT-then-UPDATE — a double-click or two tabs racing the old
@@ -30842,10 +30896,20 @@ def manage_booking(manage_token):
     # panel simply does not render for the ordinary single booking. Read
     # before the close, like everything else on this page.
     group = booking_group(conn, booking["id"])
+    # Read-only, and only while the booking is live. A list of rooms to add to
+    # a cancelled stay is an invitation to a conversation nobody wants.
+    addable_rooms = (
+        rooms_free_for(conn, parse_date(booking["arrival_date"]),
+                       parse_date(booking["departure_date"]),
+                       exclude_room_ids={booking["room_id"]})
+        if booking["status"] in ("pending", "confirmed")
+        and parse_date(booking["arrival_date"])
+        and parse_date(booking["departure_date"]) else [])
     conn.commit()
     conn.close()
     return render_template(
         "manage_booking.html", booking=booking, guest_requests=guest_requests, room=room,
+        addable_rooms=addable_rooms,
         group=group,
         portal_token=portal_token,
         has_transfer=booking_has_transfer(booking), dinner_bookings=dinner_bookings,
@@ -31961,6 +32025,25 @@ def save_guest_own_record(conn, email, *, dietary=None, access=None,
          datetime.now(timezone.utc).isoformat() if access else None,
          row["id"]))
     return True
+
+
+def rooms_free_for(conn, arrival, departure, exclude_room_ids=()):
+    """Rooms actually free for these dates, cheapest first.
+
+    READ ONLY -- is_range_available, not claim_range. This builds a list to
+    look at; taking the write lock to draw a page would put every reader
+    behind whoever is mid-booking. The lock belongs on the submit.
+    """
+    out = []
+    for room in conn.execute(
+            "SELECT * FROM rooms WHERE active = 1 ORDER BY price_per_night, name"
+    ).fetchall():
+        if room["id"] in exclude_room_ids:
+            continue
+        ok, _why = is_range_available(conn, room["id"], arrival, departure)
+        if ok:
+            out.append(room)
+    return out
 
 
 def booking_group(conn, booking_id):

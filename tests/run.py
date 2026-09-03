@@ -254,6 +254,7 @@ SUITES = [
     "test_utc_slices",
     "test_read_write_parity",
     "test_no_overbooking",
+    "test_add_room",
     "test_guests_and_staff",
     "test_template_shadowing",
     "test_empty_nights",
