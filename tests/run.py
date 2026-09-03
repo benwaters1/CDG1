@@ -178,6 +178,7 @@ SUITES = [
     "test_budget",
     "test_capital_spend",
     "test_night_cost",
+    "test_filling_gaps",
     "test_filings",
     "test_discount_outcomes",
     "test_noindex_meta",

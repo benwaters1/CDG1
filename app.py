@@ -5201,7 +5201,7 @@ def login_required(view):
 # private until somebody decides otherwise, which is the safe direction.
 NAV_AREAS = {
     "guests": [
-        "mark_booking_no_show", "undo_booking_no_show",
+        "mark_booking_no_show", "undo_booking_no_show", "rebook_guest",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
@@ -5479,6 +5479,7 @@ NAV_AREAS = {
         "admin_wages", "new_wage_record", "save_wage_settings"
     ],
     "management": [
+        "fill_a_gap_page",
         "admin_retention",
         # Private HR notes sit here rather than in `team`: the employee is
         # promised that only the owner sees them, and this is the only area no
@@ -25236,6 +25237,9 @@ PALETTE_PAGES = [
     ("Empty nights", "empty_nights_page",
      "occupancy vacancy unsold free rooms gaps availability forecast yield "
      "which nights are empty"),
+    ("Fill a gap", "fill_a_gap_page",
+     "who to offer empty nights to lapsed overdue guests win back offer "
+     "seasonality quiet week fill the diary"),
     ("Data requests", "data_requests",
      "gdpr rgpd subject access erasure right to be forgotten what we hold "
      "copy of my data delete me portable"),
@@ -28764,11 +28768,19 @@ def guest_detail(guest_id):
                           alert=record["owed"] > 0),
             overview_cell("Known since", house_date_iso(record["first_seen"]) or "\u2014"),
         ]
+    # For the rebook box: the rooms it could be, and how long they usually
+    # stay so the dates come pre-shaped rather than blank.
+    conn2 = get_db()
+    rebook_rooms = conn2.execute(
+        "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, name").fetchall()
+    usual_nights = _typical_nights(conn2, (record.get("email") or "") if isinstance(record, dict) else "")
+    conn2.close()
     return render_template("guest_detail.html", record=record, overview=overview,
                            notes=notes, duplicates=duplicates,
                            merged_from=merged_from, caution_levels=CAUTION_LEVELS,
                            messages=messages, is_owner=is_owner,
                            party_of=party_of,
+                           rebook_rooms=rebook_rooms, usual_nights=usual_nights,
                            today=house_today_iso())
 
 
@@ -37906,6 +37918,242 @@ def disband_booking_party(party_id):
     conn.close()
     flash(f"{party['name']} untied. Every booking is on its own again.", "success")
     return redirect(url_for("admin_bookings"))
+
+
+# Which visit numbers are worth saying out loud. Not every one: a guest told
+# "your 7th stay" hears a loyalty scheme, and a guest told nothing on their
+# third hears nothing at all. Three is when somebody has stopped being a
+# visitor, and it is the one worth a word at the door.
+STAY_MILESTONES = (3, 5, 10, 20)
+
+
+def stay_number(conn, email, arrival_iso, *, exclude_booking_id=None):
+    """Which visit this is for them, counting from one.
+
+    Counts CONFIRMED stays that arrive on or before this one, so the answer is
+    stable: it does not change later because they booked something else after.
+    A first-time guest is 1, which is why the caller decides whether that is
+    worth saying.
+    """
+    email = (email or "").strip().lower()
+    if not email or not arrival_iso:
+        return 0
+    params = [email, arrival_iso]
+    extra = ""
+    if exclude_booking_id:
+        extra = " AND id != ?"
+        params.append(exclude_booking_id)
+    row = conn.execute(
+        f"""SELECT COUNT(*) AS c FROM bookings
+             WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'
+               AND arrival_date <= ?{extra}""", params).fetchone()
+    return int(row["c"] or 0)
+
+
+def stay_milestone(conn, email, arrival_iso, *, exclude_booking_id=None):
+    """The visit number if it is one worth mentioning, else None."""
+    n = stay_number(conn, email, arrival_iso, exclude_booking_id=exclude_booking_id)
+    return n if n in STAY_MILESTONES else None
+
+
+@app.route("/guests/<int:guest_id>/rebook", methods=["POST"])
+@owner_required
+def rebook_guest(guest_id):
+    """Book a returning guest in again, from what we already know.
+
+    The repeat-guests page lists them and the profile holds their telephone,
+    what they cannot eat and when they usually arrive. Booking them again still
+    meant the whole public form and retyping all of it, so in practice it was
+    done by asking the guest to do it themselves.
+
+    Creates it PENDING, not confirmed. A stay somebody types on a guest's
+    behalf is still a request until the house has looked at the dates -- and
+    confirm_booking_by_id is the one place that re-checks availability, sends
+    the confirmation and takes the money question seriously.
+    """
+    conn = get_db()
+    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest:
+        conn.close()
+        abort(404)
+    email = (guest["email"] or "").strip().lower()
+    if not email:
+        conn.close()
+        flash("This profile has no address, so there is nowhere to send a "
+              "confirmation.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    arrival = parse_date(request.form.get("arrival_date", ""))
+    departure = parse_date(request.form.get("departure_date", ""))
+    room_raw = (request.form.get("room_id", "") or "").strip()
+    if not (arrival and departure and departure > arrival):
+        conn.close()
+        flash("Give an arrival and a departure, with the departure after it.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    if arrival < house_today():
+        conn.close()
+        flash("That arrival is in the past.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+    room = conn.execute("SELECT * FROM rooms WHERE id = ? AND active = 1",
+                        (int(room_raw),)).fetchone() if room_raw.isdigit() else None
+    if not room:
+        conn.close()
+        flash("Choose a room.", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    # THE SAME AVAILABILITY CHECK the public form makes, and through claim_range
+    # rather than is_range_available. Asking and then writing are two steps, and
+    # a bare SELECT takes no write lock -- so two rebooks arriving together both
+    # read free and both write. Typing a booking on somebody's behalf must not be
+    # a way past the one thing standing between the house and two cars in the
+    # drive.
+    available, reason = claim_range(conn, room["id"], arrival, departure,
+                                    include_pending=True)
+    if not available:
+        conn.close()
+        flash(f"Those nights are not free: {reason}", "error")
+        return redirect(url_for("guest_detail", guest_id=guest_id))
+
+    try:
+        party = int(request.form.get("party_size", "") or 0)
+    except ValueError:
+        party = 0
+    party = party or 2
+    # create_booking hands back the reference and the manage token, not an id.
+    reference, _token = create_booking(
+        conn, room, guest["name"], email, (guest["phone"] or ""),
+        arrival, departure, party,
+        # What they have already told us, carried over rather than asked for
+        # again. It is on their record precisely so nobody has to.
+        (guest["dietary_notes"] or ""), [], source="returning")
+    conn.execute(
+        """UPDATE bookings SET linked_guest_id = ?,
+                  estimated_arrival_time = COALESCE(NULLIF(?, ''), estimated_arrival_time)
+            WHERE reference_code = ?""",
+        (guest_id, (guest["usual_arrival_time"] or ""), reference))
+    log_audit(conn, "guest_rebooked", target=guest["name"], details=reference)
+    conn.commit()
+    conn.close()
+    flash(f"{reference} created as a REQUEST for {guest['name']} — "
+          f"{format_date_human(arrival.isoformat())} to "
+          f"{format_date_human(departure.isoformat())}. Confirm it as usual; "
+          "nothing has been sent to them yet.", "success")
+    return redirect(url_for("admin_bookings"))
+
+
+def gap_candidates(conn, start, end, *, today=None, limit=40):
+    """The guests most likely to take a particular run of empty nights.
+
+    The app has known which nights are unsold and who has stayed before for a
+    while, and had no way to put the two facts together -- so an offer went to
+    everybody on the list or to nobody at all. Sending the whole list a note
+    about eleven nights in October is how a list stops being read.
+
+    Ranked, with the REASON on each row, because a name with no reason beside
+    it is one somebody either trusts blindly or ignores. Three reasons, and
+    each is a fact about that guest rather than a guess:
+
+      OVERDUE -- past their own typical gap between visits. Their gap, not an
+        average: somebody who comes every eleven months and somebody who comes
+        every three are not both overdue at six.
+      THIS TIME OF YEAR -- they have stayed in this month before. Seasonality
+        is the strongest signal a small house has, and it is the one a generic
+        list throws away.
+      THE RIGHT LENGTH -- their usual stay fits the gap. Offering four nights
+        to somebody who always takes two is an offer they decline.
+
+    Nothing is sent from here. This answers who, and the sending is the
+    existing campaign machinery with its own opt-out handling.
+    """
+    today = today or house_today()
+    start_d = parse_date(start) if isinstance(start, str) else start
+    end_d = parse_date(end) if isinstance(end, str) else end
+    if not (start_d and end_d) or end_d <= start_d:
+        return {"nights": 0, "month": None, "candidates": []}
+    nights = (end_d - start_d).days
+    month = start_d.month
+
+    people = repeat_guests(conn, today=today, min_stays=1)["guests"]
+    out = []
+    for g in people:
+        email = (g.get("email") or "").strip().lower()
+        if not email:
+            continue
+        reasons = []
+        score = 0
+        if g.get("overdue"):
+            reasons.append("overdue a visit")
+            score += 3
+        # Which months they have come in before. Read from their own stays
+        # rather than from an average of everybody's.
+        months = {int((s or "")[5:7]) for s in _guest_arrival_months(conn, email) if s}
+        if month in months:
+            reasons.append(f"has stayed in {start_d.strftime('%B')} before")
+            score += 4
+        typical = _typical_nights(conn, email)
+        if typical and abs(int(typical) - nights) <= 1:
+            reasons.append(f"usually takes about {int(typical)} nights")
+            score += 2
+        if not reasons:
+            continue
+        out.append({
+            "email": email, "name": g.get("name"), "stays": g.get("stays"),
+            "spend": g.get("spend"), "days_since": g.get("days_since"),
+            "reasons": reasons, "score": score,
+        })
+    out.sort(key=lambda d: (-d["score"], -(d["spend"] or 0)))
+    return {"nights": nights, "month": start_d.strftime("%B"),
+            "from": start_d, "to": end_d, "candidates": out[:limit]}
+
+
+def _typical_nights(conn, email):
+    """How long they usually stay, or None.
+
+    The median rather than the mean: one three-week visit should not make
+    somebody who otherwise takes two nights look like a fortnight guest.
+    """
+    lens = []
+    for r in conn.execute(
+        """SELECT arrival_date, departure_date FROM bookings
+            WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'""",
+        ((email or "").strip().lower(),)).fetchall():
+        a, b = parse_date(r["arrival_date"]), parse_date(r["departure_date"])
+        if a and b and b > a:
+            lens.append((b - a).days)
+    if not lens:
+        return None
+    lens.sort()
+    return lens[len(lens) // 2]
+
+
+def _guest_arrival_months(conn, email):
+    """Their arrival dates, for reading seasonality off."""
+    return [r["arrival_date"] for r in conn.execute(
+        """SELECT arrival_date FROM bookings
+            WHERE LOWER(TRIM(guest_email)) = ? AND status = 'confirmed'""",
+        ((email or "").strip().lower(),)).fetchall()]
+
+
+@app.route("/management/fill-a-gap")
+@owner_required
+def fill_a_gap_page():
+    """A run of empty nights, and who to offer it to.
+
+    Reached from the empty-nights page, which knows what is unsold. This is
+    the half that says what to do about it.
+    """
+    conn = get_db()
+    days = request.args.get("days", "90")
+    days = int(days) if days.isdigit() else 90
+    gaps = empty_nights(conn, days=max(7, min(365, days)))
+    start = request.args.get("from", "")
+    end = request.args.get("to", "")
+    chosen = None
+    if start and end:
+        chosen = gap_candidates(conn, start, end)
+    conn.close()
+    return render_template("fill_a_gap.html", gaps=gaps, chosen=chosen,
+                           days=days, start=start)
 
 
 @app.route("/management/empty-nights")
@@ -53334,6 +53582,10 @@ def arrivals_sheet(conn, day=None):
             "profile": profile,
             "caution": caution,
             "prior_no_shows": no_shows.get(email, 0),
+            # Which visit this is, when it is one worth saying out loud. The
+            # people most likely to come back were getting the same greeting as
+            # a stranger.
+            "milestone": stay_milestone(conn, b["guest_email"], b["arrival_date"]),
             "codes": codes.get(b["id"], []),
             # The profile answers it when the booking does not: a guest who
             # always arrives at six should not be asked every time.
