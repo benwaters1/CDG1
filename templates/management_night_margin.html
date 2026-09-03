@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}What a night costs{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What a night costs</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_break_even') }}" class="btn-ghost">Break-even</a>
+    <a href="{{ url_for('export_night_margin_csv', period=period.period, date=period.start_iso) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+{% with endpoint = 'management_night_margin' %}{% include "_period_selector.html" %}{% endwith %}
+
+<p class="pay-disclaimer" style="margin-top:6px;">
+  Occupancy was on one page and what the month costs on another, so nobody could say what a night
+  leaves behind. Labour is the estimated figure the rest of the app uses and is marked estimated
+  here too &mdash; pay rates are free text, so this is never a payroll number.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.nights }}</span>
+    <span class="stat-tile-label">Room-nights sold</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.adr is not none %}{{ euro(data.adr) }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Average night</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.per_night_total is not none %}{{ euro(data.per_night_total) }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Cost per night sold</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.margin_per_night is not none %}{{ euro(data.margin_per_night) }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Left over per night</span></span></div>
+</div>
+
+{% if not data.nights %}
+<div class="empty-state">
+  No room-nights were sold in this period, so there is nothing to divide the costs across.
+</div>
+{% else %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Measure</th><th class="num">Total</th><th class="num">Per night sold</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row" style="text-align:left;">Labour {% if data.labour_estimated %}<span class="field-hint">(estimated)</span>{% endif %}</th>
+        <td class="num">{% if data.labour is not none %}{{ euro(data.labour) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if data.per_night_labour is not none %}{{ euro(data.per_night_labour) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      <tr>
+        <th scope="row" style="text-align:left;">Approved expenses</th>
+        <td class="num">{{ euro(data.expenses) }}</td>
+        <td class="num">{% if data.per_night_expenses is not none %}{{ euro(data.per_night_expenses) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr>
+        <th style="text-align:left;">Cost</th>
+        <th class="num">{{ euro(data.total) }}</th>
+        <th class="num">{% if data.per_night_total is not none %}{{ euro(data.per_night_total) }}{% else %}&mdash;{% endif %}</th>
+      </tr>
+      <tr>
+        <th style="text-align:left;">Room revenue</th>
+        <th class="num">{{ euro(data.revenue) }}</th>
+        <th class="num">{% if data.adr is not none %}{{ euro(data.adr) }}{% else %}&mdash;{% endif %}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

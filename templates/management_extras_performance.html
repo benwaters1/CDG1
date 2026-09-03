@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}What the extras earn{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the extras earn</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_extras') }}" class="btn-ghost">Manage extras</a>
+    <a href="{{ url_for('export_extras_performance_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Attach rate is the figure that matters. An extra bought by one stay in forty is not a product,
+  it is a line on a form everybody scrolls past &mdash; and the fix is usually to offer it
+  differently rather than to delete it. Stays arriving between
+  {{ data.start.strftime('%d %b %Y') }} and {{ data.end.strftime('%d %b %Y') }}.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">Arriving from</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.any_attach }}%</span>
+    <span class="stat-tile-label">Of stays take anything at all</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.took_any }}</span>
+    <span class="stat-tile-label">Stays that took an extra</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.per_stay) }}</span>
+    <span class="stat-tile-label">Extras per stay</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.revenue) }}</span>
+    <span class="stat-tile-label">Extras revenue</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.stays }}</span>
+    <span class="stat-tile-label">Stays in the window</span></span></div>
+</div>
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Extra</th>
+        <th class="num">Stays that took it</th>
+        <th class="num">Attach rate</th>
+        <th class="num">Units</th>
+        <th class="num">Revenue</th>
+        <th class="num">Per stay</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.name }}</th>
+        <td class="num">{{ r.stays }}</td>
+        <td class="num">{{ r.attach }}%</td>
+        <td class="num">{{ r.units }}</td>
+        <td class="num">{{ euro(r.revenue) }}</td>
+        <td class="num">{{ euro(r.per_stay) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No extras were taken on stays arriving in this window.</div>
+{% endif %}
+
+{% if data.never_sold %}
+<h2 class="section-heading">Offered and never taken</h2>
+<p class="field-hint" style="max-width:760px;">
+  These are on the booking form and nobody in this window chose them. Only guest-bookable extras
+  count &mdash; one the staff add by hand was never on offer, so it cannot have failed to sell.
+</p>
+<ul>
+  {% for name in data.never_sold %}<li>{{ name }}</li>{% endfor %}
+</ul>
+{% endif %}
+
+{% endblock %}

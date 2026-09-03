@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Arrivals we cannot prepare for{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Arrivals we cannot prepare for</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">Bookings</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every one of these has a page it could be fixed on and nothing that said it needed fixing. An
+  arrival with no time is a dinner that cannot be planned and a gate nobody is at; one with no
+  telephone number is a guest who cannot be reached on the day they get lost, which in the
+  Ari&egrave;ge is most of them.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Days ahead</label>
+    <input type="number" id="days" name="days" min="1" max="90" step="1" value="{{ days }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.incomplete }}</span>
+    <span class="stat-tile-label">Of {{ data.arrivals }} arrivals are missing something</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.urgent|length }}</span>
+    <span class="stat-tile-label">Arriving within three days</span></span></div>
+</div>
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Guest</th>
+        <th style="text-align:left;">Room</th>
+        <th style="text-align:left;">Arriving</th>
+        <th class="num">Days away</th>
+        <th style="text-align:left;">Missing</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.days_away is not none and r.days_away <= 3 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.guest }}</th>
+        <td>{{ r.room }}</td>
+        <td>{{ r.arrival }}</td>
+        <td class="num">{% if r.days_away is not none %}{{ r.days_away }}{% else %}&mdash;{% endif %}</td>
+        <td>{{ r.missing|join(', ') }}</td>
+        <td><a href="{{ url_for('edit_booking', booking_id=r.id) }}" class="btn-mini">Fix</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  Every arrival in the next {{ days }} days has a time, a telephone number and an email address.
+</div>
+{% endif %}
+
+{% endblock %}

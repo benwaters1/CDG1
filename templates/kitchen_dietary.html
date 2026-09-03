@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}What they cannot eat{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What they cannot eat &mdash; {{ data.day.strftime('%A %d %B') }}</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('kitchen_dietary', date=yesterday) }}" class="btn-ghost">&larr; Previous</a>
+    <a href="{{ url_for('kitchen_dietary', date=tomorrow) }}" class="btn-ghost">Next &rarr;</a>
+    <a href="{{ url_for('export_dietary_csv', date=data.day.isoformat()) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The house held this in three places and brought them together nowhere: a stay carries the
+  guest&rsquo;s profile notes, a table reservation carries its own, and an atelier place carries a
+  third. Everyone who could be at the table is listed, including people with nothing recorded
+  &mdash; a blank line is a question the kitchen can ask, a missing line is one nobody knows to ask.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.covers }}</span>
+    <span class="stat-tile-label">Could be at the table</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.with_notes }}</span>
+    <span class="stat-tile-label">Have told us something</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.flagged_covers }}</span>
+    <span class="stat-tile-label">Covers those bookings carry</span></span></div>
+</div>
+
+{% if data.people %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Who</th>
+        <th style="text-align:left;">Here as</th>
+        <th style="text-align:left;">Where</th>
+        <th class="num">Covers</th>
+        <th style="text-align:left;">What they have told us</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in data.people %}
+      <tr{% if p.notes %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ p.who }}</th>
+        <td>{{ p.kind }}</td>
+        <td>{{ p.where }}</td>
+        <td class="num">{{ p.covers }}</td>
+        <td>
+          {% if p.notes %}
+            {% for n in p.notes %}<div><strong>{{ n }}</strong></div>{% endfor %}
+          {% else %}
+            <span class="field-hint">Nothing recorded &mdash; worth asking</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nobody is staying, dining or on an atelier on this day.</div>
+{% endif %}
+
+{% endblock %}

@@ -5025,6 +5025,8 @@ NAV_AREAS = {
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "save_list_view", "delete_list_view",
         "guest_duplicates",
+        "admin_turnarounds", "export_turnarounds_csv",
+        "admin_arrivals_incomplete",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
         "all_transfers", "breakfast", "checkout_booking", "confirm_booking", "decline_booking",
@@ -5093,6 +5095,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "kitchen_dietary", "export_dietary_csv",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
         "clear_bought_items", "contacts", "delete_contact", "delete_manual_section",
@@ -5126,6 +5129,8 @@ NAV_AREAS = {
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
         "management_year_on_year", "export_year_on_year_csv",
+        "management_extras_performance", "export_extras_performance_csv",
+        "management_night_margin", "export_night_margin_csv",
         "management_booking_shape", "export_booking_shape_csv",
         "management_channels", "save_channel_commission", "export_channels_csv",
         "management_night_cost", "management_filings", "record_filing",
@@ -15127,6 +15132,311 @@ def channel_cost(conn, start=None, end=None):
         "csv": [{"source": r["source"], "bookings": r["bookings"], "revenue": r["revenue"],
                  "commission_pct": r["rate"], "commission": r["cost"], "net": r["net"]}
                 for r in out],
+    }
+
+
+def dietary_sheet(conn, on_day=None):
+    """Everyone eating here on one day, and what they cannot eat.
+
+    The house holds this in three places and brought them together nowhere.
+    A stay carries the guest's profile notes, a table reservation carries its
+    own, and an atelier place carries a third. So the kitchen had to open
+    three screens to cook one dinner, and the failure mode is not an
+    inconvenience -- it is somebody being served the thing they told us about
+    when they booked.
+
+    Everyone who could be at the table is listed, including people with
+    nothing recorded, because a blank line is a question the kitchen can ask
+    and a missing line is one nobody knows to ask.
+    """
+    day = on_day or house_today()
+    iso = day.isoformat()
+    people = []
+
+    # Sleeping here tonight. Departure day is checkout, so they are not.
+    for r in conn.execute(
+        """SELECT bookings.guest_name, bookings.party_size, bookings.reference_code,
+                  bookings.special_requests, rooms.name AS room_name,
+                  guests.dietary_notes AS profile_notes, guests.name AS profile_name
+             FROM bookings
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date <= ? AND bookings.departure_date > ?
+            ORDER BY bookings.guest_name""", (iso, iso)).fetchall():
+        notes = [n for n in ((r["profile_notes"] or "").strip(),
+                             (r["special_requests"] or "").strip()) if n]
+        people.append({
+            "who": r["guest_name"] or r["profile_name"] or "Guest",
+            "where": r["room_name"] or "Room", "kind": "Staying",
+            "covers": r["party_size"] or 1, "reference": r["reference_code"],
+            "notes": notes,
+        })
+
+    for r in conn.execute(
+        """SELECT guest_name, party_size, dietary_notes, reference_code
+             FROM restaurant_bookings
+            WHERE dinner_date = ? AND status = 'confirmed' AND no_show_at IS NULL
+            ORDER BY guest_name""", (iso,)).fetchall():
+        notes = [(r["dietary_notes"] or "").strip()] if (r["dietary_notes"] or "").strip() else []
+        people.append({
+            "who": r["guest_name"] or "Guest", "where": "The table",
+            "kind": "Dining", "covers": r["party_size"] or 1,
+            "reference": r["reference_code"], "notes": notes,
+        })
+
+    # An atelier place includes dinner, and the session holds its rooms
+    # through end_date -- so the last day of a session is still a night here.
+    for r in conn.execute(
+        """SELECT workshop_bookings.guest_name, workshop_bookings.party_size,
+                  workshop_bookings.dietary_notes, workshop_bookings.reference_code,
+                  workshops.title
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.status = 'confirmed'
+              AND workshop_sessions.start_date <= ?
+              AND workshop_sessions.end_date >= ?
+            ORDER BY workshop_bookings.guest_name""", (iso, iso)).fetchall():
+        notes = [(r["dietary_notes"] or "").strip()] if (r["dietary_notes"] or "").strip() else []
+        people.append({
+            "who": r["guest_name"] or "Guest", "where": r["title"] or "Atelier",
+            "kind": "Atelier", "covers": r["party_size"] or 1,
+            "reference": r["reference_code"], "notes": notes,
+        })
+
+    with_notes = [p for p in people if p["notes"]]
+    return {
+        "day": day, "people": people,
+        "covers": sum(p["covers"] for p in people),
+        "with_notes": len(with_notes),
+        "flagged_covers": sum(p["covers"] for p in with_notes),
+        "silent": len(people) - len(with_notes),
+        "csv": [{"who": p["who"], "kind": p["kind"], "where": p["where"],
+                 "covers": p["covers"], "notes": " | ".join(p["notes"])}
+                for p in people],
+    }
+
+
+def extras_performance(conn, start=None, end=None):
+    """Which extras sell, and how often a stay takes one at all.
+
+    The house has a list of extras and no idea which of them earn anything.
+    Attach rate is the figure that matters: an extra bought by one stay in
+    forty is not a product, it is a line on a form that everybody scrolls
+    past, and the fix is usually to offer it differently rather than to
+    delete it.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or house_today()
+    stays = conn.execute(
+        """SELECT COUNT(*) AS c FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (start.isoformat(), end.isoformat())).fetchone()["c"]
+
+    rows = conn.execute(
+        """SELECT booking_extras.name AS name,
+                  COUNT(DISTINCT booking_extras.booking_id) AS stays,
+                  COALESCE(SUM(booking_extras.quantity), 0) AS units,
+                  COALESCE(SUM(booking_extras.quantity * booking_extras.unit_price), 0) AS revenue
+             FROM booking_extras
+             JOIN bookings ON bookings.id = booking_extras.booking_id
+            WHERE bookings.status = 'confirmed'
+              AND booking_extras.status != 'cancelled'
+              AND bookings.arrival_date >= ? AND bookings.arrival_date < ?
+            GROUP BY booking_extras.name
+            ORDER BY revenue DESC""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    out = [{"name": r["name"] or "Unnamed", "stays": r["stays"], "units": r["units"],
+            "revenue": round(float(r["revenue"] or 0), 2),
+            "attach": round(r["stays"] / stays * 100, 1) if stays else 0,
+            "per_stay": round(float(r["revenue"] or 0) / stays, 2) if stays else 0}
+           for r in rows]
+
+    took_any = conn.execute(
+        """SELECT COUNT(DISTINCT booking_extras.booking_id) AS c
+             FROM booking_extras
+             JOIN bookings ON bookings.id = booking_extras.booking_id
+            WHERE bookings.status = 'confirmed'
+              AND booking_extras.status != 'cancelled'
+              AND bookings.arrival_date >= ? AND bookings.arrival_date < ?""",
+        (start.isoformat(), end.isoformat())).fetchone()["c"]
+
+    # Offered and never taken. Only extras a guest can actually choose count
+    # as a failure to sell -- one the staff add by hand is not on offer.
+    sold = {r["name"] for r in rows}
+    never = [r["name"] for r in conn.execute(
+        "SELECT name FROM extras WHERE active = 1 AND guest_bookable = 1 ORDER BY name").fetchall()
+        if r["name"] not in sold]
+
+    revenue = sum(r["revenue"] for r in out)
+    return {
+        "start": start, "end": end, "stays": stays, "rows": out,
+        "took_any": took_any,
+        "any_attach": round(took_any / stays * 100, 1) if stays else 0,
+        "revenue": round(revenue, 2),
+        "per_stay": round(revenue / stays, 2) if stays else 0,
+        "never_sold": never,
+        "csv": [{"extra": r["name"], "stays": r["stays"], "units": r["units"],
+                 "revenue": r["revenue"], "attach_pct": r["attach"]} for r in out],
+    }
+
+
+def turnaround_report(conn, days=60, on_day=None):
+    """Where one guest leaves and another arrives the same day.
+
+    A same-day changeover is the whole housekeeping problem in one line, and
+    nothing put it on a page: the rota was built from shifts and the bookings
+    calendar showed arrivals and departures separately, so the day with three
+    of them looked like any other day until the morning of it.
+    """
+    start = on_day or house_today()
+    end = start + timedelta(days=max(1, days))
+    rows = conn.execute(
+        """SELECT bookings.arrival_date, bookings.departure_date, bookings.guest_name,
+                  bookings.reference_code, rooms.name AS room_name, rooms.id AS room_id
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.departure_date >= ? AND bookings.arrival_date < ?
+            ORDER BY rooms.name, bookings.arrival_date""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    by_room = {}
+    for r in rows:
+        by_room.setdefault(r["room_id"], []).append(r)
+
+    changeovers = []
+    for room_id, stays in by_room.items():
+        stays.sort(key=lambda x: x["arrival_date"])
+        for a, b in zip(stays, stays[1:]):
+            out_day = parse_date(a["departure_date"])
+            in_day = parse_date(b["arrival_date"])
+            if not (out_day and in_day):
+                continue
+            gap = (in_day - out_day).days
+            if gap == 0 and start <= out_day < end:
+                changeovers.append({
+                    "day": out_day, "room": a["room_name"],
+                    "out_guest": a["guest_name"], "out_reference": a["reference_code"],
+                    "in_guest": b["guest_name"], "in_reference": b["reference_code"],
+                })
+
+    by_day = {}
+    for c in changeovers:
+        by_day.setdefault(c["day"], []).append(c)
+    # Not "items": Jinja resolves d.items to dict.items before the key, so a
+    # page with changeovers on it 500s while an empty one renders perfectly.
+    days_out = [{"day": d, "count": len(v), "rooms": [x["room"] for x in v],
+                 "changeovers": v}
+                for d, v in sorted(by_day.items())]
+    busiest = max((d["count"] for d in days_out), default=0)
+    return {
+        "start": start, "end": end, "days": days_out,
+        "total": len(changeovers), "busiest": busiest,
+        # More than two same-day changeovers is the day that needs a second
+        # pair of hands, and it is knowable weeks ahead.
+        "heavy": [d for d in days_out if d["count"] >= 3],
+        "csv": [{"day": c["day"].isoformat(), "room": c["room"],
+                 "leaving": c["out_guest"], "arriving": c["in_guest"]}
+                for c in sorted(changeovers, key=lambda x: (x["day"], x["room"]))],
+    }
+
+
+def cost_per_occupied_night(conn, period):
+    """What a sold night costs the house before it earns anything.
+
+    Occupancy and revenue were on one page and what the month costs on
+    another, so nobody could say what a night actually leaves behind. Labour
+    is the estimated figure the rest of the app already uses and is marked as
+    estimated here too -- pay_rate is free text, so it is never a payroll
+    number.
+    """
+    occ = report_occupancy(conn, period)
+    nights = occ["booked_nights"]
+    labour = report_labour(conn, period)
+    labour_cost = labour.get("total_cost")
+
+    start_iso, end_iso = period["start"].isoformat(), period["end"].isoformat()
+    expenses = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS t FROM expenses
+            WHERE status = 'approved'
+              AND COALESCE(spent_on, invoice_date, DATE(submitted_at)) >= ?
+              AND COALESCE(spent_on, invoice_date, DATE(submitted_at)) < ?""",
+        (start_iso, end_iso)).fetchone()["t"]
+
+    def _per(x):
+        return round(x / nights, 2) if nights and x is not None else None
+
+    total = (labour_cost or 0) + float(expenses or 0)
+    return {
+        "period": period, "nights": nights,
+        "revenue": occ["revenue"], "adr": occ["adr"],
+        "labour": round(labour_cost, 2) if labour_cost is not None else None,
+        "labour_estimated": labour_cost is None or labour.get("unpriced"),
+        "expenses": round(float(expenses or 0), 2),
+        "total": round(total, 2),
+        "per_night_labour": _per(labour_cost),
+        "per_night_expenses": _per(float(expenses or 0)),
+        "per_night_total": _per(total),
+        "margin_per_night": round(occ["adr"] - _per(total), 2)
+        if occ["adr"] is not None and _per(total) is not None else None,
+        "csv": [
+            {"measure": "Room-nights sold", "amount": nights},
+            {"measure": "Labour (estimated)", "amount": round(labour_cost or 0, 2)},
+            {"measure": "Approved expenses", "amount": round(float(expenses or 0), 2)},
+            {"measure": "Cost per night sold", "amount": _per(total)},
+            {"measure": "Average night", "amount": occ["adr"]},
+        ],
+    }
+
+
+ARRIVAL_DETAILS = [
+    ("estimated_arrival_time", "No arrival time"),
+    ("guest_phone", "No telephone number"),
+    ("guest_email", "No email address"),
+]
+
+
+def arrivals_missing_detail(conn, days=14, on_day=None):
+    """Guests arriving soon that the house cannot prepare properly for.
+
+    Every one of these has a page it could be fixed on and nothing that says
+    it needs fixing. An arrival with no time is a dinner that cannot be
+    planned and a gate nobody is at; one with no telephone number is a guest
+    who cannot be reached on the day they get lost, which in the Ariege is
+    most of them.
+    """
+    start = on_day or house_today()
+    end = start + timedelta(days=max(1, days))
+    rows = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name
+             FROM bookings LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date >= ? AND bookings.arrival_date < ?
+            ORDER BY bookings.arrival_date""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    out = []
+    for r in rows:
+        missing = [label for field, label in ARRIVAL_DETAILS
+                   if not (r[field] or "").strip()]
+        if not missing:
+            continue
+        arrival = parse_date(r["arrival_date"])
+        out.append({
+            "id": r["id"], "guest": r["guest_name"], "room": r["room_name"] or "\u2014",
+            "arrival": r["arrival_date"], "reference": r["reference_code"],
+            "days_away": (arrival - start).days if arrival else None,
+            "missing": missing,
+        })
+    return {
+        "start": start, "end": end, "days": days,
+        "rows": out, "arrivals": len(rows), "incomplete": len(out),
+        # Inside three days there is no longer time to ask and get an answer.
+        "urgent": [r for r in out if r["days_away"] is not None and r["days_away"] <= 3],
+        "csv": [{"guest": r["guest"], "arrival": r["arrival"], "room": r["room"],
+                 "missing": ", ".join(r["missing"])} for r in out],
     }
 
 
@@ -40491,6 +40801,112 @@ def export_channels_csv():
     return csv_response(
         ["source", "bookings", "revenue", "commission_pct", "commission", "net"],
         data["csv"], f"channels_{start.isoformat()}.csv")
+
+
+@app.route("/kitchen/dietary")
+@login_required
+def kitchen_dietary():
+    """Everyone eating here today, and what they cannot eat."""
+    conn = get_db()
+    day = parse_date(request.args.get("date", "")) or house_today()
+    data = dietary_sheet(conn, day)
+    conn.close()
+    return render_template("kitchen_dietary.html", data=data,
+                           yesterday=(day - timedelta(days=1)).isoformat(),
+                           tomorrow=(day + timedelta(days=1)).isoformat())
+
+
+@app.route("/kitchen/dietary.csv")
+@login_required
+def export_dietary_csv():
+    conn = get_db()
+    day = parse_date(request.args.get("date", "")) or house_today()
+    data = dietary_sheet(conn, day)
+    conn.close()
+    return csv_response(["who", "kind", "where", "covers", "notes"], data["csv"],
+                        f"dietary_{day.isoformat()}.csv")
+
+
+@app.route("/management/extras-performance")
+@owner_required
+def management_extras_performance():
+    """Which extras sell, and how often a stay takes one at all."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = extras_performance(conn, start, end)
+    conn.close()
+    return render_template("management_extras_performance.html", data=data)
+
+
+@app.route("/management/extras-performance.csv")
+@owner_required
+def export_extras_performance_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = extras_performance(conn, start, end)
+    conn.close()
+    return csv_response(["extra", "stays", "units", "revenue", "attach_pct"],
+                        data["csv"], f"extras_{start.isoformat()}.csv")
+
+
+@app.route("/admin/turnarounds")
+@login_required
+def admin_turnarounds():
+    """Days where a room is emptied and filled again."""
+    conn = get_db()
+    try:
+        days = max(7, min(180, int(request.args.get("days", 60))))
+    except ValueError:
+        days = 60
+    data = turnaround_report(conn, days)
+    conn.close()
+    return render_template("admin_turnarounds.html", data=data, days=days)
+
+
+@app.route("/admin/turnarounds.csv")
+@login_required
+def export_turnarounds_csv():
+    conn = get_db()
+    data = turnaround_report(conn, 180)
+    conn.close()
+    return csv_response(["day", "room", "leaving", "arriving"], data["csv"],
+                        "turnarounds.csv")
+
+
+@app.route("/management/night-margin")
+@owner_required
+def management_night_margin():
+    """What a sold night costs before it earns anything."""
+    conn = get_db()
+    period = period_from_request()
+    data = cost_per_occupied_night(conn, period)
+    conn.close()
+    return render_template("management_night_margin.html", data=data, period=period)
+
+
+@app.route("/management/night-margin.csv")
+@owner_required
+def export_night_margin_csv():
+    conn = get_db()
+    period = period_from_request()
+    data = cost_per_occupied_night(conn, period)
+    conn.close()
+    return csv_response(["measure", "amount"], data["csv"],
+                        f"night-margin_{period['start_iso']}.csv")
+
+
+@app.route("/admin/arrivals-incomplete")
+@login_required
+def admin_arrivals_incomplete():
+    """Guests arriving soon the house cannot prepare properly for."""
+    conn = get_db()
+    try:
+        days = max(1, min(90, int(request.args.get("days", 14))))
+    except ValueError:
+        days = 14
+    data = arrivals_missing_detail(conn, days)
+    conn.close()
+    return render_template("admin_arrivals_incomplete.html", data=data, days=days)
 
 
 @app.route("/management/break-even")

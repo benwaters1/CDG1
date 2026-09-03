@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Same-day changeovers{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Same-day changeovers</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_calendar') }}" class="btn-ghost">Booking calendar</a>
+    <a href="{{ url_for('export_turnarounds_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  One guest out and another into the same room on the same day. The rota is built from shifts and
+  the calendar shows arrivals and departures separately, so the day with three of them looked like
+  any other day until the morning of it.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Days ahead</label>
+    <input type="number" id="days" name="days" min="7" max="180" step="1" value="{{ days }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.total }}</span>
+    <span class="stat-tile-label">In the next {{ days }} days</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.busiest }}</span>
+    <span class="stat-tile-label">Most on one day</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.heavy|length }}</span>
+    <span class="stat-tile-label">Days needing more hands</span></span></div>
+</div>
+
+{% if data.heavy %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">Three or more rooms turn over on {{ data.heavy|length }} day{{ '' if data.heavy|length == 1 else 's' }}</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {% for d in data.heavy %}{{ d.day.strftime('%a %d %b') }} ({{ d.count }}){% if not loop.last %}, {% endif %}{% endfor %}.
+    That is knowable weeks ahead, which is the only useful time to know it.
+  </p>
+</div>
+{% endif %}
+
+{% if data.days %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Day</th>
+        <th style="text-align:left;">Room</th>
+        <th style="text-align:left;">Out</th>
+        <th style="text-align:left;">In</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for d in data.days %}
+        {% for c in d.changeovers %}
+        <tr{% if d.count >= 3 %} class="row-alert"{% endif %}>
+          <th scope="row" style="text-align:left;">{% if loop.first %}{{ d.day.strftime('%a %d %b') }}{% if d.count > 1 %} <span class="field-hint">({{ d.count }} rooms)</span>{% endif %}{% endif %}</th>
+          <td>{{ c.room }}</td>
+          <td>{{ c.out_guest }}</td>
+          <td>{{ c.in_guest }}</td>
+        </tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No room is emptied and filled on the same day in this window.</div>
+{% endif %}
+
+{% endblock %}
