@@ -4096,6 +4096,12 @@ def init_db():
         # every booking is a live URL for every booking that has ever
         # existed, wanted or not.
         ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
+        # A stay that was confirmed and never arrived. A STAMP rather than a
+        # status, exactly as restaurant_bookings does it -- adding 'no_show' to
+        # the status CHECK would mean rebuilding a table that booking_extras,
+        # booking_payments and booking_parties all point at, which is a large
+        # risk for a word.
+        ("bookings_no_show_at", "ALTER TABLE bookings ADD COLUMN no_show_at TEXT"),
         # What the guest keeps themselves, as against what the house wrote
         # down. Same retention as access_needs: twelve months after the last
         # stay, and they can empty it whenever they like.
@@ -5165,6 +5171,7 @@ def login_required(view):
 # private until somebody decides otherwise, which is the safe direction.
 NAV_AREAS = {
     "guests": [
+        "mark_booking_no_show", "undo_booking_no_show",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "save_list_view", "delete_list_view",
@@ -37223,6 +37230,89 @@ def bulk_confirm_bookings():
     return redirect(url_for("admin_bookings"))
 
 
+@app.route("/admin/bookings/<int:booking_id>/no-show", methods=["POST"])
+@owner_required
+def mark_booking_no_show(booking_id):
+    """They were confirmed, the dates have passed, and nobody came.
+
+    Until now this was indistinguishable from a stay that happened: the booking
+    sat there confirmed for ever, occupancy counted it, and the next booking
+    from the same person looked like a first. The one question it raises --
+    whether the money is kept -- was never put in front of anybody.
+
+    Refusing to mark it before the arrival date is deliberate. A guest arriving
+    at eleven at night is not a no-show at six, and a stay written off early is
+    a room somebody stops holding.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    if booking["status"] != "confirmed":
+        conn.close()
+        flash("Only a confirmed booking can be marked as not arrived.", "error")
+        return redirect(url_for("admin_bookings"))
+    if booking["no_show_at"]:
+        conn.close()
+        flash("Already marked as not arrived.", "error")
+        return redirect(url_for("admin_bookings"))
+    arrival = parse_date(booking["arrival_date"])
+    if arrival and arrival > house_today():
+        conn.close()
+        flash(f"{booking['reference_code']} is not due until "
+              f"{format_date_human(booking['arrival_date'])}.", "error")
+        return redirect(url_for("admin_bookings"))
+    note = (request.form.get("note", "") or "").strip()[:300]
+    conn.execute(
+        "UPDATE bookings SET no_show_at = ?, owner_note = CASE WHEN ? = '' THEN owner_note "
+        "ELSE COALESCE(owner_note || char(10), '') || ? END WHERE id = ?",
+        (datetime.now(timezone.utc).isoformat(), note,
+         f"Did not arrive: {note}" if note else "", booking_id))
+    log_audit(conn, "booking_no_show", target=booking["reference_code"], details=note or None)
+    # What is owed on it does not answer itself. booking_bill is the one
+    # definition of what a stay owes, so the figure quoted here is the figure
+    # every other page would quote.
+    owed = 0.0
+    try:
+        owed = round(float(booking["total_price"] or 0) - float(booking["amount_paid"] or 0), 2)
+    except (TypeError, ValueError):
+        owed = 0.0
+    conn.commit()
+    conn.close()
+    msg = f"{booking['reference_code']} marked as not arrived."
+    if owed > 0:
+        msg += (f" EUR {owed:,.2f} of it is unpaid — decide whether to chase it "
+                "or write it off; nothing has been charged or refunded.")
+    else:
+        msg += (" It was paid in full. Refunds are a judgement call, so nothing "
+                "has been moved.")
+    flash(msg, "success")
+    return redirect(url_for("admin_bookings"))
+
+
+@app.route("/admin/bookings/<int:booking_id>/no-show/undo", methods=["POST"])
+@owner_required
+def undo_booking_no_show(booking_id):
+    """They did turn up after all, or it was the wrong row."""
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE bookings SET no_show_at = NULL WHERE id = ? AND no_show_at IS NOT NULL",
+        (booking_id,))
+    if cur.rowcount == 0:
+        conn.close()
+        flash("That booking is not marked as not arrived.", "error")
+        return redirect(url_for("admin_bookings"))
+    log_audit(conn, "booking_no_show_undone", target=str(booking_id))
+    conn.commit()
+    conn.close()
+    flash("Taken off. The stay counts as normal again.", "success")
+    return redirect(url_for("admin_bookings"))
+
+
 @app.route("/admin/bookings/<int:booking_id>/checkout", methods=["POST"])
 @owner_required
 def checkout_booking(booking_id):
@@ -38374,12 +38464,20 @@ def prior_no_shows(conn, emails):
     if not emails:
         return {}
     marks = ",".join("?" * len(emails))
+    # BOTH books. Somebody who did not turn up for a room and then asks for a
+    # table is the case this is for, and counting only one of the two made the
+    # second booking look like a first. The emails are bound twice because the
+    # same list is matched in each half of the union.
     return {
         r["guest_email"]: r["c"] for r in conn.execute(
-            f"""SELECT LOWER(guest_email) AS guest_email, COUNT(*) AS c
-                FROM restaurant_bookings
-                WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
-                GROUP BY LOWER(guest_email)""", emails).fetchall()
+            f"""SELECT LOWER(guest_email) AS guest_email, COUNT(*) AS c FROM (
+                    SELECT guest_email FROM restaurant_bookings
+                     WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
+                    UNION ALL
+                    SELECT guest_email FROM bookings
+                     WHERE no_show_at IS NOT NULL AND LOWER(guest_email) IN ({marks})
+                )
+                GROUP BY LOWER(guest_email)""", emails + emails).fetchall()
     }
 
 
