@@ -5243,6 +5243,7 @@ NAV_AREAS = {
         "save_list_view", "delete_list_view",
         "guest_duplicates",
         "admin_turnarounds", "export_turnarounds_csv",
+        "admin_reply_times", "guest_recall_page", "admin_linen",
         "admin_arrivals_incomplete",
         "guest_dates", "set_guest_dates",
         "admin_bookings", "admin_calendar", "admin_feedback", "admin_rooms", "admin_waitlist",
@@ -5317,6 +5318,7 @@ NAV_AREAS = {
     "rota": [
         "set_quick_pin", "admin_leave", "admin_shifts", "admin_tasks", "admin_timesheet_corrections",
         "admin_workload", "export_workload_csv",
+        "admin_tenure", "export_tenure_csv",
         "admin_timesheets", "complete_task", "copy_previous_week_shifts", "decide_leave",
         "decide_shift_swap", "delete_shift", "delete_task", "dismiss_timesheet_correction",
         "duplicate_task_next_week", "export_leave_csv", "export_shifts_csv",
@@ -5435,6 +5437,9 @@ NAV_AREAS = {
         "admin_no_shows", "export_no_shows_csv",
         "admin_menu_engineering", "export_menu_engineering_csv",
         "admin_rate_advice", "export_rate_advice_csv", "apply_rate_advice",
+        "management_supplier_scorecard", "export_supplier_scorecard_csv",
+        "management_money_due", "export_money_due_csv",
+        "management_turned_away", "export_turned_away_csv",
         "admin_table_utilisation", "export_table_utilisation_csv",
         "admin_wastage_rate", "export_wastage_rate_csv",
         "kitchen_dietary", "export_dietary_csv",
@@ -17110,6 +17115,364 @@ def rate_advice(conn, days=60, today=None):
     }
 
 
+def supplier_scorecard(conn, days=365):
+    """What each supplier costs the house, and how their prices have moved.
+
+    Vendors were a list of names and telephone numbers. What each one is
+    actually worth to the house, and whether their prices are drifting, was
+    spread across expenses and stock movements and added up nowhere.
+    """
+    since = (house_today() - timedelta(days=max(1, days))).isoformat()
+    price_moves = {c["item_id"]: c for c in supplier_price_changes(conn, days, 0.0)["rows"]}
+
+    rows = []
+    for v in conn.execute(
+            "SELECT * FROM vendors WHERE COALESCE(active, 1) = 1 ORDER BY name").fetchall():
+        spend = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS invoices,
+                      MAX(COALESCE(spent_on, invoice_date, DATE(submitted_at))) AS last_seen
+                 FROM expenses
+                WHERE vendor_name = ? AND status != 'rejected'
+                  AND COALESCE(spent_on, invoice_date, DATE(submitted_at)) >= ?""",
+            (v["name"], since)).fetchone()
+        items = conn.execute(
+            "SELECT id, name FROM stock_items WHERE vendor_id = ?", (v["id"],)).fetchall()
+        moved = [price_moves[i["id"]] for i in items if i["id"] in price_moves]
+        risen = [m for m in moved if m["pct"] > 0]
+        rows.append({
+            "id": v["id"], "name": v["name"],
+            "contact": v["contact_person"] or "", "phone": v["phone"] or "",
+            "terms": v["payment_terms"] or "",
+            "spend": round(float(spend["total"] or 0), 2),
+            "invoices": spend["invoices"],
+            "last_seen": spend["last_seen"] or "",
+            "items": len(items),
+            "risen": len(risen),
+            "worst": max(moved, key=lambda m: m["pct"]) if moved else None,
+            # A supplier the house buys from and has no invoice for is either
+            # paid another way or not being recorded, and both are worth a look.
+            "no_invoices": spend["invoices"] == 0 and bool(items),
+        })
+    rows.sort(key=lambda r: -r["spend"])
+    return {
+        "days": days, "rows": rows,
+        "spend": round(sum(r["spend"] for r in rows), 2),
+        "unbilled": [r for r in rows if r["no_invoices"]],
+        "csv": [{"supplier": r["name"], "spend": r["spend"], "invoices": r["invoices"],
+                 "items": r["items"], "prices_risen": r["risen"]} for r in rows],
+    }
+
+
+def staff_tenure(conn, today=None):
+    """How long people stay, and who has been here longest.
+
+    A house this size loses a great deal when somebody goes: the person who
+    knows which window sticks is not in any document. Nothing counted how long
+    anybody had been here, so the question only ever came up at a resignation.
+    """
+    today = today or house_today()
+    rows = conn.execute(
+        """SELECT id, name, job_role, status, start_date, created_at
+             FROM users ORDER BY COALESCE(start_date, DATE(created_at))""").fetchall()
+
+    here, gone = [], []
+    for r in rows:
+        began = parse_date(r["start_date"]) or house_date(r["created_at"])
+        if not began:
+            continue
+        person = {"id": r["id"], "name": r["name"], "role": r["job_role"] or "",
+                  "started": began.isoformat(),
+                  "months": round((today - began).days / 30.44, 1)}
+        (here if r["status"] == "active" else gone).append(person)
+
+    tenures = [p["months"] for p in here]
+    return {
+        "today": today, "here": sorted(here, key=lambda p: -p["months"]),
+        "gone": sorted(gone, key=lambda p: -p["months"])[:25],
+        "headcount": len(here), "leavers": len(gone),
+        "median_months": _median(tenures),
+        "longest": here and max(here, key=lambda p: p["months"]) or None,
+        # Under a year is where somebody is still learning the house rather
+        # than running part of it.
+        "under_a_year": [p for p in here if p["months"] < 12],
+        "csv": [{"name": p["name"], "role": p["role"], "started": p["started"],
+                 "months": p["months"], "status": "here"} for p in here]
+               + [{"name": p["name"], "role": p["role"], "started": p["started"],
+                   "months": p["months"], "status": "left"} for p in gone],
+    }
+
+
+def review_reply_times(conn, days=365):
+    """How long a guest waits to hear back, and who is still waiting.
+
+    A poor review already reaches the owner home. What nothing said was how
+    long anybody had been waiting — and a reply three weeks later is not a
+    reply, it is a record that somebody eventually noticed.
+    """
+    since = (house_today() - timedelta(days=max(1, days))).isoformat()
+    rows = conn.execute(
+        """SELECT guest_name, rating, comment, submitted_at, reply, replied_at,
+                  acknowledged_at
+             FROM guest_feedback
+            WHERE DATE(submitted_at) >= ? ORDER BY submitted_at DESC""",
+        (since,)).fetchall()
+
+    waits, waiting, answered = [], [], []
+    today = house_today()
+    for r in rows:
+        asked = house_date(r["submitted_at"])
+        if not asked:
+            continue
+        item = {"who": r["guest_name"] or "A guest", "rating": r["rating"],
+                "said": (r["comment"] or "")[:140], "when": asked.isoformat(),
+                "poor": (r["rating"] or 5) <= 3}
+        answered_at = house_date(r["replied_at"]) or house_date(r["acknowledged_at"])
+        if answered_at:
+            item["days"] = (answered_at - asked).days
+            waits.append(item["days"])
+            answered.append(item)
+        else:
+            item["days"] = (today - asked).days
+            waiting.append(item)
+
+    poor_waiting = [w for w in waiting if w["poor"]]
+    return {
+        "days": days, "answered": answered[:25],
+        "waiting": sorted(waiting, key=lambda w: -w["days"])[:25],
+        "still_waiting": len(waiting), "poor_waiting": len(poor_waiting),
+        "median_wait": _median(waits),
+        "longest_wait": max(waits) if waits else None,
+        # The one that matters: somebody who said it was poor and has heard
+        # nothing. Everything else can wait a week.
+        "worst": max(poor_waiting, key=lambda w: w["days"]) if poor_waiting else None,
+        "csv": [{"guest": w["who"], "rating": w["rating"], "when": w["when"],
+                 "days_waiting": w["days"]} for w in waiting],
+    }
+
+
+def money_due(conn, weeks=12, today=None):
+    """What is owed to the house and when it should arrive.
+
+    Debtor ageing says what is late. Nothing said what is COMING — and a house
+    with a quiet February needs to know whether the money for it is already
+    promised or still has to be sold.
+    """
+    today = today or house_today()
+    end = today + timedelta(weeks=max(1, weeks))
+    buckets = {}
+
+    def add(when, label, amount, what):
+        day = parse_date(when) if isinstance(when, str) else when
+        if not day or day < today or day > end:
+            return
+        monday = day - timedelta(days=day.weekday())
+        slot = buckets.setdefault(monday, {"week": monday, "total": 0.0, "items": []})
+        slot["total"] += float(amount or 0)
+        slot["items"].append({"date": day.isoformat(), "who": label,
+                              "amount": round(float(amount or 0), 2), "what": what})
+
+    for r in conn.execute(
+            """SELECT guest_name, balance_due_date, balance_amount, amount_paid,
+                      total_price FROM bookings
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL""").fetchall():
+        outstanding = float(r["total_price"] or 0) - float(r["amount_paid"] or 0)
+        if outstanding > 0.005:
+            add(r["balance_due_date"], r["guest_name"] or "A guest", outstanding, "Room balance")
+
+    for r in conn.execute(
+            """SELECT guest_name, balance_due_date, total_price, deposit_amount
+                 FROM workshop_bookings
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL
+                  AND balance_paid_at IS NULL""").fetchall():
+        owed = float(r["total_price"] or 0) - float(r["deposit_amount"] or 0)
+        if owed > 0.005:
+            add(r["balance_due_date"], r["guest_name"] or "A guest", owed, "Atelier balance")
+
+    for r in conn.execute(
+            """SELECT contact_name, balance_due_date, quoted_price, amount_paid
+                 FROM event_inquiries
+                WHERE status = 'confirmed' AND balance_due_date IS NOT NULL""").fetchall():
+        owed = float(r["quoted_price"] or 0) - float(r["amount_paid"] or 0)
+        if owed > 0.005:
+            add(r["balance_due_date"], r["contact_name"] or "An event", owed, "Event balance")
+
+    weeks_out = sorted(buckets.values(), key=lambda b: b["week"])
+    return {
+        "today": today, "end": end, "weeks": weeks_out,
+        "total": round(sum(b["total"] for b in weeks_out), 2),
+        "next_week": weeks_out[0] if weeks_out else None,
+        "csv": [{"week": b["week"].isoformat(), "date": i["date"], "who": i["who"],
+                 "what": i["what"], "amount": i["amount"]}
+                for b in weeks_out for i in b["items"]],
+    }
+
+
+def guest_recall(conn, guest_email=None, guest_id=None):
+    """What the house already knows about somebody, before they arrive.
+
+    All of it was recorded and none of it was ever put in front of the person
+    opening the door. Somebody arriving for the fourth time was greeted like
+    somebody arriving for the first, and told the same things about the stairs.
+    """
+    email = (guest_email or "").strip().lower()
+    guest = None
+    if guest_id:
+        guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    if not guest and email:
+        guest = conn.execute(
+            "SELECT * FROM guests WHERE LOWER(TRIM(email)) = ?", (email,)).fetchone()
+    if guest and not email:
+        email = (guest["email"] or "").strip().lower()
+
+    stays = conn.execute(
+        """SELECT bookings.arrival_date, bookings.departure_date, bookings.total_price,
+                  rooms.name AS room_name
+             FROM bookings LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND (LOWER(TRIM(bookings.guest_email)) = ? OR bookings.linked_guest_id = ?)
+            ORDER BY bookings.arrival_date DESC""",
+        (email, guest["id"] if guest else -1)).fetchall()
+
+    notes = []
+    if guest:
+        notes = [dict(r) for r in conn.execute(
+            """SELECT guest_notes.body, guest_notes.created_at, users.name AS who
+                 FROM guest_notes LEFT JOIN users ON users.id = guest_notes.written_by_user_id
+                WHERE guest_notes.guest_id = ?
+                ORDER BY guest_notes.created_at DESC LIMIT 10""",
+            (guest["id"],)).fetchall()]
+
+    feedback = conn.execute(
+        """SELECT rating, comment, submitted_at FROM guest_feedback
+            WHERE booking_id IN (SELECT id FROM bookings
+                                  WHERE LOWER(TRIM(guest_email)) = ?)
+            ORDER BY submitted_at DESC LIMIT 5""", (email,)).fetchall()
+
+    rooms_before = []
+    for st in stays:
+        if st["room_name"] and st["room_name"] not in rooms_before:
+            rooms_before.append(st["room_name"])
+
+    return {
+        "guest": dict(guest) if guest else None,
+        "email": email,
+        "stays": [dict(r) for r in stays],
+        "visits": len(stays),
+        "first": stays[-1]["arrival_date"] if stays else None,
+        "last": stays[0]["arrival_date"] if stays else None,
+        "spend": round(sum(float(r["total_price"] or 0) for r in stays), 2),
+        "rooms_before": rooms_before,
+        "notes": notes,
+        "feedback": [dict(r) for r in feedback],
+        "dietary": (guest["dietary_notes"] if guest else "") or "",
+        "preferences": (guest["preferences"] if guest else "") or "",
+        # A first-time guest is not a gap in the records, and saying so stops
+        # anybody greeting a stranger as an old friend.
+        "known": bool(guest or stays),
+        "returning": len(stays) > 1,
+    }
+
+
+LINEN_SETS_PER_CHANGEOVER = 3
+
+
+def linen_par(conn, days=14, today=None):
+    """Whether there are enough sheets for the changeovers coming.
+
+    Linen is a stock category and nothing ever compared what is held against
+    what the next fortnight needs. Running out is not an inconvenience: it is a
+    guest arriving to a bed that cannot be made.
+    """
+    today = today or house_today()
+    turn = turnaround_report(conn, days=days, on_day=today)
+    end = today + timedelta(days=max(1, days))
+
+    arrivals = conn.execute(
+        """SELECT COUNT(*) AS c FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?""",
+        (today.isoformat(), end.isoformat())).fetchone()["c"]
+
+    items = [dict(r) for r in conn.execute(
+        """SELECT id, name, unit, reorder_level FROM stock_items
+            WHERE category = 'linen' AND COALESCE(active, 1) = 1
+            ORDER BY name""").fetchall()]
+    levels = stock_levels(conn, [i["id"] for i in items]) if items else {}
+    for i in items:
+        i["held"] = levels.get(i["id"], 0)
+        i["needed"] = arrivals * LINEN_SETS_PER_CHANGEOVER
+        i["short"] = max(0, i["needed"] - i["held"])
+
+    return {
+        "days": days, "today": today, "arrivals": arrivals,
+        "changeovers": turn["total"],
+        "sets_per_changeover": LINEN_SETS_PER_CHANGEOVER,
+        "needed": arrivals * LINEN_SETS_PER_CHANGEOVER,
+        "items": items,
+        "short": [i for i in items if i["short"]],
+        # No linen recorded as stock at all is a different answer from having
+        # none, and the page must not read as the second.
+        "not_tracked": not items,
+        "csv": [{"item": i["name"], "held": i["held"], "needed": i["needed"],
+                 "short": i["short"]} for i in items],
+    }
+
+
+def turned_away(conn, days=365, today=None):
+    """Nights somebody asked for and could not have.
+
+    The waiting list exists to reach people when a room frees. Read the other
+    way it is the only record the house has of demand it could not sell -- and
+    a week that turns people away every year is a week to price differently,
+    not a week to feel good about filling.
+    """
+    today = today or house_today()
+    since = today - timedelta(days=max(1, days))
+    rooms_total = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+
+    nights = {}
+    people = 0
+    for r in conn.execute(
+            """SELECT desired_arrival, desired_departure, party_size, created_at
+                 FROM waitlist_entries
+                WHERE desired_arrival IS NOT NULL AND desired_arrival != ''
+                  AND DATE(created_at) >= ?""", (since.isoformat(),)).fetchall():
+        start = parse_date(r["desired_arrival"])
+        finish = parse_date(r["desired_departure"]) or (start + timedelta(days=1) if start else None)
+        if not (start and finish) or finish <= start:
+            continue
+        people += 1
+        for i in range((finish - start).days):
+            night = start + timedelta(days=i)
+            slot = nights.setdefault(night, {"night": night, "asks": 0, "heads": 0})
+            slot["asks"] += 1
+            slot["heads"] += r["party_size"] or 1
+
+    # Was the house actually full that night? An ask for a night with rooms
+    # free is somebody who wanted a different room, not demand turned away.
+    out = []
+    if nights:
+        span_start, span_end = min(nights), max(nights) + timedelta(days=1)
+        occupied = occupied_rooms_by_date(conn, span_start, span_end)
+        for night, slot in sorted(nights.items()):
+            sold = occupied.get(night.isoformat(), 0)
+            slot["sold"] = sold
+            slot["was_full"] = rooms_total and sold >= rooms_total
+            out.append(slot)
+
+    full_nights = [n for n in out if n["was_full"]]
+    return {
+        "days": days, "today": today, "rooms_total": rooms_total,
+        "nights": out, "asks": people,
+        "full_nights": full_nights,
+        "heads_turned_away": sum(n["heads"] for n in full_nights),
+        "busiest": max(full_nights, key=lambda n: n["asks"]) if full_nights else None,
+        "csv": [{"night": n["night"].isoformat(), "asked": n["asks"],
+                 "people": n["heads"], "rooms_sold": n["sold"],
+                 "house_was_full": "yes" if n["was_full"] else "no"} for n in out],
+    }
+
+
 def report_labour(conn, period):
     # Same helper the financial summary costs labour with, so the two pages
     # cannot disagree about the same shifts.
@@ -25471,6 +25834,21 @@ PALETTE_PAGES = [
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("What suppliers cost", "management_supplier_scorecard",
+     "supplier vendor spend scorecard price rise invoices who we buy from"),
+    ("How long people stay", "admin_tenure",
+     "tenure turnover staff retention leavers how long started service"),
+    ("How long guests wait for an answer", "admin_reply_times",
+     "review reply response time feedback unanswered waiting complaint"),
+    ("Money due to arrive", "management_money_due",
+     "money due incoming balances forecast owed cash arriving weeks"),
+    ("What we know about a guest", "guest_recall_page",
+     "guest recall history preferences returning regular before they arrive "
+     "dietary notes past stays"),
+    ("Enough sheets?", "admin_linen",
+     "linen sheets laundry par level changeover housekeeping towels"),
+    ("Nights we turned people away", "management_turned_away",
+     "turned away waiting list demand full refused lost bookings"),
     ("What to charge", "admin_rate_advice",
      "rate advice price suggestion nightly rate revenue management yield "
      "put the price up discount season"),
@@ -44516,6 +44894,125 @@ def apply_rate_advice():
     conn.close()
     flash(f"{room['name']} set to {euro(price)} for {day.isoformat()}.", "success")
     return redirect(url_for("admin_rate_advice"))
+
+
+@app.route("/management/suppliers-scorecard")
+@owner_required
+def management_supplier_scorecard():
+    """What each supplier costs, and where their prices have gone."""
+    conn = get_db()
+    data = supplier_scorecard(conn)
+    conn.close()
+    return render_template("management_supplier_scorecard.html", data=data)
+
+
+@app.route("/management/suppliers-scorecard.csv")
+@owner_required
+def export_supplier_scorecard_csv():
+    conn = get_db()
+    data = supplier_scorecard(conn)
+    conn.close()
+    return csv_response(["supplier", "spend", "invoices", "items", "prices_risen"],
+                        data["csv"], "suppliers.csv")
+
+
+@app.route("/admin/tenure")
+@owner_required
+def admin_tenure():
+    """How long people stay."""
+    conn = get_db()
+    data = staff_tenure(conn)
+    conn.close()
+    return render_template("admin_tenure.html", data=data)
+
+
+@app.route("/admin/tenure.csv")
+@owner_required
+def export_tenure_csv():
+    conn = get_db()
+    data = staff_tenure(conn)
+    conn.close()
+    return csv_response(["name", "role", "started", "months", "status"],
+                        data["csv"], "tenure.csv")
+
+
+@app.route("/admin/reply-times")
+@login_required
+def admin_reply_times():
+    """How long a guest waits to hear back."""
+    conn = get_db()
+    data = review_reply_times(conn)
+    conn.close()
+    return render_template("admin_reply_times.html", data=data)
+
+
+@app.route("/management/money-due")
+@owner_required
+def management_money_due():
+    """What is owed to the house, and which week it should arrive in."""
+    conn = get_db()
+    try:
+        weeks = max(2, min(52, int(request.args.get("weeks", 12))))
+    except ValueError:
+        weeks = 12
+    data = money_due(conn, weeks)
+    conn.close()
+    return render_template("management_money_due.html", data=data, weeks=weeks)
+
+
+@app.route("/management/money-due.csv")
+@owner_required
+def export_money_due_csv():
+    conn = get_db()
+    data = money_due(conn, 52)
+    conn.close()
+    return csv_response(["week", "date", "who", "what", "amount"], data["csv"],
+                        "money-due.csv")
+
+
+@app.route("/guests/recall")
+@login_required
+def guest_recall_page():
+    """What the house already knows about somebody, before they arrive."""
+    conn = get_db()
+    email = (request.args.get("email", "") or "").strip()
+    data = guest_recall(conn, email) if email else None
+    conn.close()
+    return render_template("guest_recall.html", data=data, email=email)
+
+
+@app.route("/admin/linen")
+@login_required
+def admin_linen():
+    """Whether there are enough sheets for the changeovers coming."""
+    conn = get_db()
+    try:
+        days = max(3, min(90, int(request.args.get("days", 14))))
+    except ValueError:
+        days = 14
+    data = linen_par(conn, days)
+    conn.close()
+    return render_template("admin_linen.html", data=data, days=days)
+
+
+@app.route("/management/turned-away")
+@owner_required
+def management_turned_away():
+    """Nights somebody asked for and could not have."""
+    conn = get_db()
+    data = turned_away(conn)
+    conn.close()
+    return render_template("management_turned_away.html", data=data)
+
+
+@app.route("/management/turned-away.csv")
+@owner_required
+def export_turned_away_csv():
+    conn = get_db()
+    data = turned_away(conn)
+    conn.close()
+    return csv_response(["night", "asked", "people", "rooms_sold", "house_was_full"],
+                        data["csv"], "turned-away.csv")
 
 
 @app.route("/management/break-even")

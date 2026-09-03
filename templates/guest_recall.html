@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}What we know{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>What we already know</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('guests') }}" class="btn-ghost">Guest list</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  All of it was recorded and none of it was ever put in front of the person opening the door.
+  Somebody arriving for the fourth time was greeted like somebody arriving for the first, and told
+  the same things about the stairs.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:20px;">
+  <div style="flex:2 1 260px;">
+    <label class="field-label" for="email">Their email address</label>
+    <input type="email" id="email" name="email" value="{{ email }}" placeholder="guest@example.com">
+  </div>
+  <button type="submit" class="btn-mini">Look them up</button>
+</form>
+
+{% if data is none %}
+<div class="empty-state">Give an email address and this shows everything the house has on them.</div>
+{% elif not data.known %}
+<div class="detail-card" style="max-width:760px;">
+  <h3 style="margin-top:0;">Nobody by that address has stayed here</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Which is worth knowing too &mdash; it stops anybody greeting a stranger as an old friend.
+  </p>
+</div>
+{% else %}
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.visits }}</span>
+    <span class="stat-tile-label">{{ 'Stays' if data.returning else 'Stay' }}</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.spend) }}</span>
+    <span class="stat-tile-label">Spent on rooms</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.last or '&mdash;'|safe }}</span>
+    <span class="stat-tile-label">Last here</span></span></div>
+</div>
+
+{% if data.dietary or data.preferences %}
+<div class="detail-card" style="max-width:760px;">
+  {% if data.dietary %}<p style="margin:0 0 6px;"><strong>Cannot eat:</strong> {{ data.dietary }}</p>{% endif %}
+  {% if data.preferences %}<p style="margin:0;"><strong>Prefers:</strong> {{ data.preferences }}</p>{% endif %}
+</div>
+{% endif %}
+
+{% if data.rooms_before %}
+<p class="field-hint" style="max-width:760px;">
+  Has stayed in: {{ data.rooms_before|join(', ') }}.
+</p>
+{% endif %}
+
+{% if data.stays %}
+<h2 class="section-heading">Every stay</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Arrived</th><th style="text-align:left;">Left</th>
+    <th style="text-align:left;">Room</th><th class="num">Paid</th></tr></thead>
+    <tbody>
+      {% for st in data.stays %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ st.arrival_date }}</th>
+        <td>{{ st.departure_date }}</td>
+        <td>{{ st.room_name or '&mdash;'|safe }}</td>
+        <td class="num">{{ euro(st.total_price) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if data.notes %}
+<h2 class="section-heading">Notes staff have left</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Note</th><th style="text-align:left;">Who</th></tr></thead>
+    <tbody>
+      {% for n in data.notes %}
+      <tr><th scope="row" style="text-align:left; font-weight:400;">{{ n.body }}</th>
+      <td>{{ n.who or '&mdash;'|safe }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if data.feedback %}
+<h2 class="section-heading">What they said afterwards</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th class="num">Rating</th><th style="text-align:left;">Said</th></tr></thead>
+    <tbody>
+      {% for f in data.feedback %}
+      <tr><th scope="row" class="num">{{ f.rating or '&mdash;'|safe }}</th>
+      <td>{{ f.comment or '' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

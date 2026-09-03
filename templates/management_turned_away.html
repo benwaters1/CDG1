@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Turned away{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Nights we turned people away</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_waitlist') }}" class="btn-ghost">Waiting list</a>
+    <a href="{{ url_for('admin_rate_advice') }}" class="btn-ghost">What to charge</a>
+    <a href="{{ url_for('export_turned_away_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The waiting list exists to reach people when a room frees. Read the other way it is the only
+  record the house has of demand it could not sell &mdash; and a week that turns people away every
+  year is a week to price differently, not a week to feel good about filling.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.full_nights|length }}</span>
+    <span class="stat-tile-label">Nights asked for with the house full</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.heads_turned_away }}</span>
+    <span class="stat-tile-label">People on those nights</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.asks }}</span>
+    <span class="stat-tile-label">Asked in the last year</span></span></div>
+</div>
+
+<p class="field-hint" style="max-width:780px;">
+  A request for a night with rooms still free is somebody who wanted a <em>different</em> room, not
+  demand turned away &mdash; so those nights are listed but not counted above.
+</p>
+
+{% if data.nights %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Night</th><th class="num">Asked</th>
+    <th class="num">People</th><th class="num">Rooms sold</th>
+    <th style="text-align:left;">House was full</th></tr></thead>
+    <tbody>
+      {% for n in data.nights %}
+      <tr{% if n.was_full %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ n.night.strftime('%a %d %b %Y') }}</th>
+        <td class="num">{{ n.asks }}</td>
+        <td class="num">{{ n.heads }}</td>
+        <td class="num">{{ n.sold }} / {{ data.rooms_total }}</td>
+        <td>{{ 'Yes' if n.was_full else 'No — rooms were free' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  Nobody has asked for dates the house could not offer in the last year.
+</div>
+{% endif %}
+{% endblock %}
