@@ -64,7 +64,16 @@
           <th scope="row" style="text-align:left;">{% if loop.first %}{{ d.day.strftime('%a %d %b') }}{% if d.count > 1 %} <span class="field-hint">({{ d.count }} rooms)</span>{% endif %}{% endif %}</th>
           <td>{{ c.room }}</td>
           <td>{{ c.out_guest }}</td>
-          <td>{{ c.in_guest }}</td>
+          <td>{{ c.in_guest }}
+            {#- A same-day changeover is the one turnaround with no slack in
+                it, so what the incoming guest needs has to be known before
+                the room is made up rather than after. It was on their profile
+                and nothing carried it here. #}
+            {%- if c.in_access_needs %}<br>
+            <span class="mini-status status-pending">needs</span>
+            <span class="upload-hint">{{ c.in_access_needs }}</span>
+            {%- endif %}
+          </td>
         </tr>
         {% endfor %}
       {% endfor %}

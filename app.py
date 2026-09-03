@@ -15692,6 +15692,21 @@ def extras_performance(conn, start=None, end=None):
     }
 
 
+def access_needs_for(conn, email):
+    """What this guest has told us they need from the house, or "".
+
+    Kept on the person rather than the stay so nobody explains it twice, and
+    deleted twelve months after their last visit -- which is what
+    templates/privacy.html promises and purge_stale_access_needs enforces.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return ""
+    row = conn.execute(
+        "SELECT access_needs FROM guests WHERE email = ? COLLATE NOCASE", (email,)).fetchone()
+    return ((row["access_needs"] or "").strip() if row else "")
+
+
 def turnaround_report(conn, days=60, on_day=None):
     """Where one guest leaves and another arrives the same day.
 
@@ -15704,7 +15719,8 @@ def turnaround_report(conn, days=60, on_day=None):
     end = start + timedelta(days=max(1, days))
     rows = conn.execute(
         """SELECT bookings.arrival_date, bookings.departure_date, bookings.guest_name,
-                  bookings.reference_code, rooms.name AS room_name, rooms.id AS room_id
+                  bookings.reference_code, bookings.guest_email,
+                  rooms.name AS room_name, rooms.id AS room_id
              FROM bookings JOIN rooms ON rooms.id = bookings.room_id
             WHERE bookings.status = 'confirmed'
               AND bookings.departure_date >= ? AND bookings.arrival_date < ?
@@ -15729,6 +15745,13 @@ def turnaround_report(conn, days=60, on_day=None):
                     "day": out_day, "room": a["room_name"],
                     "out_guest": a["guest_name"], "out_reference": a["reference_code"],
                     "in_guest": b["guest_name"], "in_reference": b["reference_code"],
+                    # WHAT THE INCOMING GUEST NEEDS. A same-day changeover is
+                    # the one turnaround with no slack in it, and it is exactly
+                    # where "they cannot manage the stairs" has to be known
+                    # before the room is made up rather than after. It was on
+                    # the profile and nothing carried it here.
+                    "in_email": b["guest_email"],
+                    "in_access_needs": access_needs_for(conn, b["guest_email"]),
                 })
 
     by_day = {}
@@ -29478,9 +29501,19 @@ def book_rooms():
     # render that can block on somebody else's network is one that eventually
     # does, and this is the booking page.
     weather = weather_now(conn)
+    # book_rooms.html has carried a Welcome back panel since it was designed --
+    # guarded, styled, and reading a name nothing ever passed, so it has never
+    # appeared for anybody. This is the missing half.
+    #
+    # Read BEFORE the close, like everything else here. Reading it in the
+    # render call meant a query on a closed handle, which is a 500 rather than
+    # a missing panel -- and the page still looked fine, because the error page
+    # renders too.
+    welcome = returning_guest_welcome(conn)
     conn.close()
     return render_template(
         "book_rooms.html", rooms=rooms, arrival=arrival_raw, departure=departure_raw,
+        returning_guest=welcome,
         availability=availability, unavailable_reason=unavailable_reason, searched=searched,
         nothing_available=nothing_available, next_free=next_free,
         weather=weather,
@@ -29825,7 +29858,7 @@ def public_form_prefill(form, mapping):
             for name, field in mapping.items()}
 
 
-def book_room_prefill(form=None):
+def book_room_prefill(form=None, conn=None):
     """What the guest typed, ready to hand straight back to book_room.html.
 
     The template has always read these names. The route did not pass them, so
@@ -29840,7 +29873,7 @@ def book_room_prefill(form=None):
     form = form if form is not None else {}
     def field(name):
         return (form.get(name, '') or '').strip()
-    return {
+    out = {
         "prefill_name": field("guest_name"),
         "prefill_email": field("guest_email"),
         "prefill_phone": field("guest_phone"),
@@ -29852,6 +29885,44 @@ def book_room_prefill(form=None):
                            if hasattr(form, "getlist") else [])
                            if str(i).isdigit()},
     }
+    # AND WHAT WE ALREADY KNOW, in the blanks only. A guest who has told us
+    # they are coeliac and that they usually arrive at four should not be asked
+    # either again -- those fields were being collected and nothing read them
+    # at the moment they would have saved somebody typing.
+    #
+    # Only for a guest who arrived on a link addressed to them, so this costs
+    # an anonymous visitor nothing: no session, no query. And anything the form
+    # already carries WINS, because what somebody just typed is more current
+    # than what is on file.
+    # has_request_context first: book_room_prefill is called directly by the
+    # suite as a plain function, and touching session outside a request
+    # raises. It was a pure function before this and stays usable as one.
+    if has_request_context() and session.get("guest_email") and conn is not None:
+        known = _profile_prefill_for_booking(conn)
+        for key, value in known.items():
+            if not out.get(key):
+                out[key] = value
+    return out
+
+
+def _profile_prefill_for_booking(conn):
+    """The profile's answers, keyed the way book_room.html reads them.
+
+    Takes the CALLER'S connection. Opening a second one inside a request that
+    already holds a write lock on the same file is a deadlock waiting for
+    company: it passed alone and timed out the moment anything else ran beside
+    it.
+    """
+    g = conn.execute("SELECT * FROM guests WHERE email = ? COLLATE NOCASE",
+                     (session.get("guest_email"),)).fetchone()
+    if not g:
+        return {}
+    return {k: v for k, v in {
+        "prefill_name": (g["name"] or "").strip(),
+        "prefill_email": (g["email"] or "").strip(),
+        "prefill_phone": (g["phone"] or "").strip(),
+        "prefill_requests": (g["dietary_notes"] or "").strip(),
+    }.items() if v}
 
 
 @app.route("/book/<int:room_id>", methods=["GET", "POST"])
@@ -29872,9 +29943,11 @@ def book_room(room_id):
     if request.method == "POST":
         if rate_limited(conn, "book_room", BOOKING_RATE_LIMIT_PER_HOUR):
             conn.commit()
+            # Read while the connection is open; it is closed below.
+            prefill = book_room_prefill(request.form, conn)
             conn.close()
             flash("Too many booking attempts from this connection — please try again in a bit, or contact the château directly.", "error")
-            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival="", departure="", extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
         arrival_raw = request.form.get("arrival_date", "").strip()
         departure_raw = request.form.get("departure_date", "").strip()
         guest_name = request.form.get("guest_name", "").strip()
@@ -29940,8 +30013,12 @@ def book_room(room_id):
         if error:
             flash(error, "error")
             conn.commit()  # persist the rate-limit log entry even on a validation error
+            # Read while the connection is open. It is closed on the next
+            # line, and a query on a closed handle is not a blank prefill,
+            # it is a 500 on the one page where giving up costs a booking.
+            prefill = book_room_prefill(request.form, conn)
             conn.close()
-            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
+            return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
 
         nights = (departure - arrival).days
         chosen_extras = [e for e in extras if e["id"] in selected_extra_ids]
@@ -30060,8 +30137,12 @@ def book_room(room_id):
             except Exception as e:
                 flash(f"Payment setup failed ({e}). Please try again.", "error")
                 conn.commit()  # persist the rate-limit log entry even when Stripe setup fails
+                # Read while the connection is open. It is closed on the next
+                # line, and a query on a closed handle is not a blank prefill,
+                # it is a 500 on the one page where giving up costs a booking.
+                prefill = book_room_prefill(request.form, conn)
                 conn.close()
-                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **book_room_prefill(request.form))
+                return render_template("book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras, stripe_enabled=stripe_enabled(), gallery_photos=gallery_photos, deposit_shown=deposit_shown, **prefill)
             conn.commit()
             conn.close()
             # Hold what they typed for the walk to Stripe and back.
@@ -30141,6 +30222,17 @@ def book_room(room_id):
         initial_quote = build_stay_quote(
             conn, room, arrival_d, departure_d,
             party_size=int(prefill_party_size) if prefill_party_size.isdigit() else None)
+    # AND WHAT THE PROFILE ALREADY KNOWS, in the blanks only. This is the
+    # first render -- the one a guest actually sees -- so filling it here is
+    # the whole point; the error paths below were never the moment that
+    # mattered. Read before the close, and only for somebody who arrived on a
+    # link addressed to them, so an anonymous visitor costs nothing.
+    if has_request_context() and session.get("guest_email"):
+        _known = _profile_prefill_for_booking(conn)
+        prefill_name = prefill_name or _known.get("prefill_name", "")
+        prefill_email = prefill_email or _known.get("prefill_email", "")
+        prefill_phone = prefill_phone or _known.get("prefill_phone", "")
+        prefill_requests = prefill_requests or _known.get("prefill_requests", "")
     conn.close()
     return render_template(
         "book_room.html", room=room, arrival=arrival_raw, departure=departure_raw, extras=extras,
@@ -30580,7 +30672,7 @@ def manage_booking(manage_token):
     # This is one of the few requests where the app knows WHO is reading before
     # it renders. A guest who told us they read French should not have to find
     # the switcher again on a link we sent them.
-    remember_guest_language(conn, booking["guest_email"])
+    remember_guest(conn, booking["guest_email"])
 
     action = request.form.get("action") if request.method == "POST" else None
 
@@ -36904,6 +36996,54 @@ def admin_bookings():
         scheduled_by_date=scheduled_by_date, today_iso=today_iso,
         refunded_by_booking=refunded_by_booking,
     )
+
+
+def remember_guest(conn, email):
+    """Note who is reading, because they arrived on a link addressed to them.
+
+    Called from the pages a guest reaches with a token -- their booking, their
+    statement, their portal. It is the only point on the public site where the
+    app knows who is on the other end, and it is knowledge the guest supplied
+    by clicking their own link.
+
+    Two things use it: the language they read in, and the welcome on the rooms
+    page. Kept in the session rather than a cookie so it lasts the visit and no
+    longer.
+    """
+    email = (email or "").strip().lower()
+    if not email:
+        return
+    session["guest_email"] = email
+    remember_guest_language(conn, email)
+
+
+def returning_guest_welcome(conn, email=None):
+    """Who they are and when they were last here, or None.
+
+    book_rooms.html has had a Welcome back panel since it was designed --
+    guarded, styled, and reading a variable nothing ever passed, so it has
+    never once appeared. This is the half that was missing.
+
+    Only from a stay that DEPARTED. Somebody with a booking still to come is
+    not returning, they are waiting, and telling them "welcome back" before
+    they have arrived reads as a mistake.
+    """
+    email = (email or session.get("guest_email") or "").strip().lower()
+    if not email:
+        return None
+    row = conn.execute(
+        """SELECT bookings.guest_name, bookings.departure_date, rooms.name AS room_name
+             FROM bookings JOIN rooms ON rooms.id = bookings.room_id
+            WHERE LOWER(TRIM(bookings.guest_email)) = ?
+              AND bookings.status = 'confirmed'
+              AND bookings.departure_date < ?
+            ORDER BY bookings.departure_date DESC LIMIT 1""",
+        (email, house_today().isoformat())).fetchone()
+    if not row:
+        return None
+    year = (row["departure_date"] or "")[:4]
+    return {"name": row["guest_name"], "last_room": row["room_name"],
+            "last_year": year or None, "email": email}
 
 
 def remember_guest_language(conn, email):
