@@ -31,13 +31,13 @@
 
 <div class="stat-tiles">
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ data.any_attach }}%</span>
-    <span class="stat-tile-label">Of stays take anything at all</span></span></div>
+    <span class="stat-tile-value">{% if data.any_attach is not none %}{{ data.any_attach }}%{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">{% if data.any_attach is not none %}Of stays take anything at all{% else %}No stays to measure{% endif %}</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.took_any }}</span>
     <span class="stat-tile-label">Stays that took an extra</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
-    <span class="stat-tile-value">{{ euro(data.per_stay) }}</span>
+    <span class="stat-tile-value">{% if data.per_stay is not none %}{{ euro(data.per_stay) }}{% else %}&mdash;{% endif %}</span>
     <span class="stat-tile-label">Extras per stay</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ euro(data.revenue) }}</span>
@@ -75,7 +75,7 @@
   </table>
 </div>
 {% else %}
-<div class="empty-state">No extras were taken on stays arriving in this window.</div>
+<div class="empty-state">{% if data.stays %}No extras were taken on stays arriving in this window.{% else %}No stays arriving in this window, so there is nothing to measure extras against.{% endif %}</div>
 {% endif %}
 
 {% if data.never_sold %}

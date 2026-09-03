@@ -168,7 +168,11 @@ def run():
     # too, and the test couldn't tell which reason actually fired.
     room_b = _make_second_room()
     _make_room_booking(f"{TAG}Full", start, start + timedelta(days=3), 12, room=room_b)
-    room = _harness.ensure_room()  # Tour Nord Suite, sleeps 4 — room max isn't what's tested here
+    # Asked for by size rather than taken on trust. The room's own limit is
+    # not what is tested here, so it has to be big enough to stay out of the
+    # way -- and the first active room is live catalogue data that has already
+    # changed once under this line.
+    room = _harness.ensure_room(min_occupancy=4)
     pub = m.app.test_client()
     r = pub.post(f"/book/{room['id']}", data={
         "guest_name": f"{TAG} overflow", "guest_email": f"{TAG.lower()}o@example.invalid",

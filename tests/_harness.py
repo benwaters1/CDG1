@@ -425,22 +425,39 @@ def ensure_employee():
         conn.close()
 
 
-def ensure_room():
-    """A bookable room, created if the database has none."""
+def ensure_room(min_occupancy=1):
+    """A bookable room that sleeps at least min_occupancy, created if none does.
+
+    The size is a parameter because the ROOMS ARE LIVE DATA. This used to
+    hand back the first active room and leave the caller to hope: the
+    house-capacity suite took it with the note "Tour Nord Suite, sleeps 4",
+    and when the catalogue was renamed the first active room became one that
+    sleeps 2 -- so that suite started failing on the room's own limit before
+    it reached the house limit it was written to test. It stayed green in the
+    whole run, because something earlier happened to leave things in a state
+    that suited it, which is a green belonging to another suite.
+
+    The default is what it always returned, so nothing that does not care
+    changes.
+    """
     conn = db()
     try:
         row = conn.execute(
-            "SELECT id, name FROM rooms WHERE active=1 ORDER BY id LIMIT 1").fetchone()
+            "SELECT id, name FROM rooms WHERE active=1 AND "
+            "COALESCE(max_occupancy, 0) >= ? ORDER BY id LIMIT 1",
+            (min_occupancy,)).fetchone()
         if row:
             return row
         # rooms has no created_at — it is not a log, it is a catalogue.
+        name = "Test Room" if min_occupancy <= 4 else f"Test Room {min_occupancy}"
         conn.execute(
             """INSERT INTO rooms (name, export_token, active, max_occupancy,
-               price_per_night, sort_order) VALUES (?, ?, 1, 4, 250.0, 99)""",
-            ("Test Room", secrets_token()),
+               price_per_night, sort_order) VALUES (?, ?, 1, ?, 250.0, 99)""",
+            (name, secrets_token(), max(4, min_occupancy)),
         )
         conn.commit()
-        return conn.execute("SELECT id, name FROM rooms WHERE name='Test Room'").fetchone()
+        return conn.execute(
+            "SELECT id, name FROM rooms WHERE name = ?", (name,)).fetchone()
     finally:
         conn.close()
 

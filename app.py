@@ -15683,9 +15683,13 @@ def extras_performance(conn, start=None, end=None):
     return {
         "start": start, "end": end, "stays": stays, "rows": out,
         "took_any": took_any,
-        "any_attach": round(took_any / stays * 100, 1) if stays else 0,
+        # None, not 0, with no stays in the window. Zero per cent is what a
+        # month where nobody bought anything looks like; a month where
+        # nobody CAME has no attach rate to report. seasonality and
+        # room_league already draw this line for ADR.
+        "any_attach": round(took_any / stays * 100, 1) if stays else None,
         "revenue": round(revenue, 2),
-        "per_stay": round(revenue / stays, 2) if stays else 0,
+        "per_stay": round(revenue / stays, 2) if stays else None,
         "never_sold": never,
         "csv": [{"extra": r["name"], "stays": r["stays"], "units": r["units"],
                  "revenue": r["revenue"], "attach_pct": r["attach"]} for r in out],
@@ -15921,7 +15925,11 @@ def no_show_report(conn, start=None, end=None):
     return {
         "start": start, "end": end,
         "booked": booked, "no_shows": missed,
-        "rate": round(missed / booked * 100, 1) if booked else 0,
+        # None, not 0, when nothing was booked -- the same distinction the
+        # per-weekday rate above already makes. A rate of 0% on a month the
+        # restaurant was shut reads as a perfect record rather than as no
+        # record, and the tile has no way to tell the two apart from a number.
+        "rate": round(missed / booked * 100, 1) if booked else None,
         "covers_booked": covers_booked, "covers_lost": covers_lost,
         "value_lost": round(value_lost, 2),
         # Only nights the house actually takes bookings on, so a Monday it
