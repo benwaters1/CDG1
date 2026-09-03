@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Year on year{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Year on year</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_financials') }}" class="btn-ghost">Financials</a>
+    <a href="{{ url_for('management_on_the_books') }}" class="btn-ghost">On the books</a>
+    <a href="{{ url_for('export_year_on_year_csv', period=period.period, date=period.start_iso, align=data.alignment) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+{% with endpoint = 'management_year_on_year', extra = {'align': data.alignment} %}{% include "_period_selector.html" %}{% endwith %}
+
+<p class="pay-disclaimer" style="margin-top:6px;">
+  {{ period.label }} against {{ data.prev_start.strftime('%d %b %Y') }} &ndash;
+  {{ data.prev_end.strftime('%d %b %Y') }} (end exclusive), lined up by
+  <strong>{{ data.alignment_label|lower }}</strong>.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <input type="hidden" name="period" value="{{ period.period }}">
+  <input type="hidden" name="date" value="{{ period.start_iso }}">
+  <div>
+    <label class="field-label" for="align">Line the years up by</label>
+    <select id="align" name="align" onchange="this.form.submit()">
+      {% for key, label in data.alignments.items() %}
+      <option value="{{ key }}"{% if key == data.alignment %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <noscript><button type="submit" class="btn-mini">Show</button></noscript>
+</form>
+
+{% if data.no_history %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">There is nothing to compare this period to</h3>
+  <p class="field-hint" style="margin-top:0;">
+    No room-nights and no revenue were recorded for the matching period last year, so every
+    change below would read as an improvement of infinity. The figures for this period are
+    still shown; the comparison column is not meaningful yet.
+  </p>
+</div>
+{% endif %}
+
+{# The weekend count is the single biggest reason two Augusts differ, and it
+   has nothing to do with how the house was run. Said out loud, not buried. #}
+{% if data.weekends_now != data.weekends_then %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid var(--warn, #b8860b);">
+  <h3 style="margin-top:0;">These two windows do not hold the same number of weekend nights</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {{ data.weekends_now }} Friday and Saturday nights this period against
+    {{ data.weekends_then }} last year. For a house of this size that difference alone can move
+    occupancy by more than anything anybody did.
+    {% if data.alignment == 'calendar' %}
+      Comparing by the same week instead lines the weekends up.
+    {% else %}
+      This is the week-aligned view, so the dates are {{ data.drift_days }} day{{ '' if data.drift_days == 1 else 's' }} adrift of the calendar.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Measure</th>
+        <th class="num">{{ period.label }}</th>
+        <th class="num">Last year</th>
+        <th class="num">Change</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for mtr in data.metrics %}
+      <tr>
+        <th scope="row" style="text-align:left;">
+          {{ mtr.label }}
+          {% if mtr.hint %}<span class="field-hint" style="display:block; font-weight:400;">{{ mtr.hint }}</span>{% endif %}
+        </th>
+        <td class="num">
+          {%- if mtr.now is none %}&mdash;
+          {%- elif mtr.unit == 'money' %}&euro;{{ '%.2f'|format(mtr.now) }}
+          {%- elif mtr.unit == '%' %}{{ mtr.now }}%
+          {%- else %}{{ mtr.now }}{% endif -%}
+        </td>
+        <td class="num">
+          {%- if mtr.then is none %}&mdash;
+          {%- elif mtr.unit == 'money' %}&euro;{{ '%.2f'|format(mtr.then) }}
+          {%- elif mtr.unit == '%' %}{{ mtr.then }}%
+          {%- else %}{{ mtr.then }}{% endif -%}
+        </td>
+        <td class="num">
+          {%- if mtr.change is none %}&mdash;
+          {%- else %}<span class="{{ 'pill-good' if mtr.change >= 0 else 'pill-bad' }}">{{ '+' if mtr.change > 0 }}{{ mtr.change }}%</span>{% endif -%}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">By room</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Room</th>
+        <th class="num">Nights this period</th>
+        <th class="num">Nights last year</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set then_by_room = {} %}
+      {% for r in data.then.by_room %}{% set _ = then_by_room.update({r.room: r.nights}) %}{% endfor %}
+      {% for r in data.now.by_room %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.room }}</th>
+        <td class="num">{{ r.nights }}</td>
+        <td class="num">{{ then_by_room.get(r.room, 0) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3"><div class="empty-state">No rooms sold in this period.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

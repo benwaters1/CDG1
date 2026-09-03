@@ -159,6 +159,9 @@
        'management_debtors','export_debtors_csv',
        'management_cash_banking','record_cash_banking','delete_cash_banking',
        'management_on_the_books','management_break_even',
+       'management_year_on_year','export_year_on_year_csv',
+       'management_booking_shape','export_booking_shape_csv',
+       'management_channels','save_channel_commission','export_channels_csv',
        'management_payment_cost','save_card_fee_settings',
        'admin_reports','admin_report','export_report_csv',
        'money_ahead_page','set_opening_balance',
@@ -326,6 +329,9 @@
         <a href="{{ url_for('management_cash_banking') }}" class="{{ 'active' if request.endpoint=='management_cash_banking' }}">{{ icon('financial') }}Cash Banking</a>
         <a href="{{ url_for('management_on_the_books') }}" class="{{ 'active' if request.endpoint=='management_on_the_books' }}">{{ icon('financial') }}On The Books</a>
         <a href="{{ url_for('management_break_even') }}" class="{{ 'active' if request.endpoint=='management_break_even' }}">{{ icon('financial') }}Break-even</a>
+        <a href="{{ url_for('management_year_on_year') }}" class="{{ 'active' if request.endpoint=='management_year_on_year' }}">{{ icon('financial') }}Year On Year</a>
+        <a href="{{ url_for('management_booking_shape') }}" class="{{ 'active' if request.endpoint=='management_booking_shape' }}">{{ icon('financial') }}Booking Shape</a>
+        <a href="{{ url_for('management_channels') }}" class="{{ 'active' if request.endpoint=='management_channels' }}">{{ icon('financial') }}Channel Costs</a>
         <a href="{{ url_for('management_payment_cost') }}" class="{{ 'active' if request.endpoint=='management_payment_cost' }}">{{ icon('financial') }}Cost Of Taking Money</a>
         <a href="{{ url_for('admin_refunds') }}" class="{{ 'active' if request.endpoint=='admin_refunds' }}">{{ icon('receipt') }}Refunds</a>
         <a href="{{ url_for('admin_reports') }}" class="{{ 'active' if request.endpoint in ['admin_reports','admin_report'] }}">{{ icon('financial') }}Reports</a>

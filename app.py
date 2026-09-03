@@ -5125,6 +5125,9 @@ NAV_AREAS = {
         "management_debtors", "export_debtors_csv",
         "management_cash_banking", "record_cash_banking", "delete_cash_banking",
         "management_on_the_books", "management_break_even", "management_budget",
+        "management_year_on_year", "export_year_on_year_csv",
+        "management_booking_shape", "export_booking_shape_csv",
+        "management_channels", "save_channel_commission", "export_channels_csv",
         "management_night_cost", "management_filings", "record_filing",
         "decide_breakage",
         "stop_filing",
@@ -5943,6 +5946,10 @@ def format_date_range(start_iso, end_iso):
 app.jinja_env.filters["date_short"] = format_date_short
 app.jinja_env.filters["date_human"] = format_date_human
 app.jinja_env.globals["date_range"] = format_date_range
+# Money on a page was formatted inline, template by template, with
+# '%.2f'|format and a euro sign typed next to it. One definition instead, so a
+# figure reads the same wherever it appears.
+app.jinja_env.globals["euro"] = lambda v: euro(v)
 
 
 def log_audit(conn, action, target=None, details=None):
@@ -14773,6 +14780,353 @@ def report_occupancy(conn, period):
              for r, n in room_nights.items()],
             key=lambda x: -x["nights"]),
         "csv": [{"room": r, "nights": n} for r, n in sorted(room_nights.items())],
+    }
+
+
+YOY_ALIGNMENTS = {
+    "calendar": "Same dates last year",
+    "weekday": "Same week last year (52 weeks back)",
+}
+
+
+def year_on_year(conn, period, alignment="calendar"):
+    """This period against the same period a year ago.
+
+    The question every owner asks first and the app could not answer: is this
+    August better than last August? Occupancy, what a night earned, and what
+    the rooms earned per room the house has — the three that mean different
+    things and get used interchangeably.
+
+    Two ways to line up a year, and they disagree:
+
+      calendar  1-31 August against 1-31 August. Right for anything driven by
+                the date -- school holidays, the 15th of August, a rate that
+                changes on the 1st.
+      weekday   Exactly 52 weeks back, so Saturday lands on Saturday. Right
+                for anything driven by the day of the week, which for a house
+                with five rooms and one sitting a night is most of it.
+
+    Offering only one would be quietly wrong half the year. A calendar-aligned
+    August compares four Saturdays against five in some years -- a 25% swing
+    in the busiest night of the week, reported as if the house had got worse.
+    So both are here, the page says which it is showing, and the drift between
+    them is stated rather than hidden.
+    """
+    alignment = alignment if alignment in YOY_ALIGNMENTS else "calendar"
+    start, end = period["start"], period["end"]
+
+    if alignment == "weekday":
+        back = timedelta(weeks=52)
+        prev_start, prev_end = start - back, end - back
+    else:
+        def _year_back(d):
+            try:
+                return d.replace(year=d.year - 1)
+            except ValueError:
+                # 29 February. There is no 29 February last year, and the
+                # honest answer is the 28th rather than skipping the day.
+                return d.replace(year=d.year - 1, day=28)
+        prev_start, prev_end = _year_back(start), _year_back(end)
+
+    now = report_occupancy(conn, {"start": start, "end": end})
+    then = report_occupancy(conn, {"start": prev_start, "end": prev_end})
+
+    def _revpar(r):
+        """Revenue per available room-night. Occupancy and ADR each move on
+        their own and can cancel out -- a house can fill every room by
+        halving the price and call it a good month. This is the one that
+        cannot be gamed by moving the other."""
+        return round(r["revenue"] / r["capacity"], 2) if r["capacity"] else None
+
+    def _delta(a, b):
+        if a is None or b is None:
+            return None
+        if not b:
+            return None if not a else 100.0
+        return round((a - b) / abs(b) * 100, 1)
+
+    metrics = [
+        {"key": "occupancy", "label": "Occupancy", "unit": "%",
+         "now": now["occupancy"], "then": then["occupancy"],
+         "hint": "Room-nights sold against room-nights the house had to sell."},
+        {"key": "adr", "label": "Average night", "unit": "money",
+         "now": now["adr"], "then": then["adr"],
+         "hint": "What a sold night actually earned, after refunds."},
+        {"key": "revpar", "label": "Revenue per room available", "unit": "money",
+         "now": _revpar(now), "then": _revpar(then),
+         "hint": "Occupancy and the average night in one figure, so filling "
+                 "the house by cutting the rate does not read as an improvement."},
+        {"key": "revenue", "label": "Room revenue", "unit": "money",
+         "now": now["revenue"], "then": then["revenue"],
+         "hint": "Net of refunds, apportioned across the nights inside the window."},
+        {"key": "booked_nights", "label": "Room-nights sold", "unit": "",
+         "now": now["booked_nights"], "then": then["booked_nights"]},
+        {"key": "arrivals", "label": "Arrivals", "unit": "",
+         "now": now["arrivals"], "then": then["arrivals"]},
+    ]
+    for mtr in metrics:
+        mtr["change"] = _delta(mtr["now"], mtr["then"])
+
+    # How far the two alignments actually are apart for this window. If it is
+    # a day or two it does not matter; if the window lands on a different
+    # number of weekends it matters more than anything else on the page.
+    cal_start = start.replace(year=start.year - 1) if not (
+        start.month == 2 and start.day == 29) else start.replace(year=start.year - 1, day=28)
+    drift = abs((cal_start - (start - timedelta(weeks=52))).days)
+
+    def _weekends(a, b):
+        return sum(1 for i in range((b - a).days)
+                   if (a + timedelta(days=i)).weekday() in (4, 5))
+
+    return {
+        "alignment": alignment,
+        "alignment_label": YOY_ALIGNMENTS[alignment],
+        "alignments": YOY_ALIGNMENTS,
+        "now": now, "then": then,
+        "start": start, "end": end, "prev_start": prev_start, "prev_end": prev_end,
+        "metrics": metrics,
+        "drift_days": drift,
+        "weekends_now": _weekends(start, end),
+        "weekends_then": _weekends(prev_start, prev_end),
+        "no_history": then["booked_nights"] == 0 and then["revenue"] == 0,
+        "csv": [{"metric": mtr["label"], "this_period": mtr["now"],
+                 "last_year": mtr["then"], "change_pct": mtr["change"]}
+                for mtr in metrics],
+    }
+
+
+def _median(values):
+    """The middle one. Deliberately not the mean.
+
+    Lead times and stay lengths are skewed: one booking made two years out
+    drags an average nobody recognises. The median is the booking in the
+    middle, which is the one the house actually plans around.
+    """
+    vals = sorted(v for v in values if v is not None)
+    if not vals:
+        return None
+    mid = len(vals) // 2
+    if len(vals) % 2:
+        return vals[mid]
+    return round((vals[mid - 1] + vals[mid]) / 2, 1)
+
+
+LEAD_BUCKETS = [
+    (0, 0, "Same day"), (1, 6, "Within a week"), (7, 29, "1-4 weeks"),
+    (30, 89, "1-3 months"), (90, 179, "3-6 months"), (180, None, "6 months or more"),
+]
+STAY_BUCKETS = [
+    (1, 1, "One night"), (2, 2, "Two nights"), (3, 4, "3-4 nights"),
+    (5, 7, "5-7 nights"), (8, None, "Over a week"),
+]
+
+
+def _bucket(value, buckets):
+    for lo, hi, label in buckets:
+        if value >= lo and (hi is None or value <= hi):
+            return label
+    return buckets[-1][2]
+
+
+def booking_shape(conn, start=None, end=None):
+    """How far ahead people book, and how long they stay.
+
+    Both drive decisions nothing in the app could answer. How far ahead
+    decides when a rate should move and when it is too late to fill a week.
+    How long decides whether a two-night minimum would cost more than it
+    protects -- for five rooms, refusing one-nighters is either the thing
+    that saves the changeover or the thing that empties a Tuesday.
+
+    Counted on stays that HAPPENED, not on bookings taken, so a cancelled
+    booking cannot inflate the picture of what the house sold.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or house_today()
+    rows = conn.execute(
+        """SELECT arrival_date, departure_date, created_at, total_price, party_size
+             FROM bookings
+            WHERE status = 'confirmed'
+              AND arrival_date >= ? AND arrival_date < ?""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    leads, stays, by_month = [], [], {}
+    lead_counts = {label: 0 for _lo, _hi, label in LEAD_BUCKETS}
+    stay_counts = {label: 0 for _lo, _hi, label in STAY_BUCKETS}
+    undated = 0
+    for r in rows:
+        arrival = parse_date(r["arrival_date"])
+        depart = parse_date(r["departure_date"])
+        booked = house_date(r["created_at"])
+        if not arrival or not depart:
+            undated += 1
+            continue
+        nights = (depart - arrival).days
+        if nights > 0:
+            stays.append(nights)
+            stay_counts[_bucket(nights, STAY_BUCKETS)] += 1
+        if booked:
+            lead = (arrival - booked).days
+            # A negative lead time is a booking entered after the guest
+            # arrived -- a walk-in typed up later. Real, and not a lead time.
+            if lead >= 0:
+                leads.append(lead)
+                lead_counts[_bucket(lead, LEAD_BUCKETS)] += 1
+            key = arrival.strftime("%Y-%m")
+            slot = by_month.setdefault(key, {"month": key, "leads": [], "stays": []})
+            if lead >= 0:
+                slot["leads"].append(lead)
+            if nights > 0:
+                slot["stays"].append(nights)
+
+    months = [{"month": v["month"],
+               "bookings": len(v["stays"]) or len(v["leads"]),
+               "median_lead": _median(v["leads"]),
+               "median_stay": _median(v["stays"])}
+              for v in sorted(by_month.values(), key=lambda x: x["month"])]
+
+    return {
+        "start": start, "end": end, "total": len(rows), "undated": undated,
+        "median_lead": _median(leads), "median_stay": _median(stays),
+        "longest_lead": max(leads) if leads else None,
+        "lead_rows": [{"band": label, "count": lead_counts[label],
+                       "share": round(lead_counts[label] / len(leads) * 100, 1) if leads else 0}
+                      for _lo, _hi, label in LEAD_BUCKETS],
+        "stay_rows": [{"band": label, "count": stay_counts[label],
+                       "share": round(stay_counts[label] / len(stays) * 100, 1) if stays else 0}
+                      for _lo, _hi, label in STAY_BUCKETS],
+        "months": months,
+        "one_nighters": stay_counts["One night"],
+        "one_nighter_share": round(stay_counts["One night"] / len(stays) * 100, 1) if stays else 0,
+        "csv": [{"band": r["band"], "kind": "lead time", "count": r["count"]}
+                for r in [{"band": l, "count": lead_counts[l]} for _a, _b, l in LEAD_BUCKETS]]
+               + [{"band": l, "kind": "length of stay", "count": stay_counts[l]}
+                  for _a, _b, l in STAY_BUCKETS],
+    }
+
+
+def cancellation_analysis(conn, start=None, end=None):
+    """What gets cancelled, when, and what it was worth.
+
+    A cancellation rate on its own is a number to worry about. What makes it
+    actionable is WHEN: a booking that falls away four months out costs
+    nothing but a diary entry, and one that goes two days out is a room that
+    will not sell again. They are the same line in every report the house had.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or (house_today() + timedelta(days=365))
+    rows = conn.execute(
+        """SELECT status, arrival_date, departure_date, created_at, decided_at,
+                  total_price, cancel_reason, guest_name, reference_code
+             FROM bookings
+            WHERE arrival_date >= ? AND arrival_date < ?""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    kept = [r for r in rows if r["status"] == "confirmed"]
+    lost = [r for r in rows if r["status"] in ("cancelled", "declined")]
+    notice, late, reasons = [], [], {}
+    lost_value = 0.0
+    for r in lost:
+        lost_value += float(r["total_price"] or 0)
+        why = (r["cancel_reason"] or "").strip() or "Not recorded"
+        reasons[why] = reasons.get(why, 0) + 1
+        arrival = parse_date(r["arrival_date"])
+        # decided_at is when the house acted on it; for a guest cancellation
+        # that is the moment the room came back.
+        when = house_date(r["decided_at"]) or house_date(r["created_at"])
+        if arrival and when:
+            days = (arrival - when).days
+            notice.append(days)
+            if days <= 7:
+                late.append({"reference": r["reference_code"], "guest": r["guest_name"],
+                             "arrival": r["arrival_date"], "days": days,
+                             "value": round(float(r["total_price"] or 0), 2)})
+
+    total = len(kept) + len(lost)
+    return {
+        "start": start, "end": end,
+        "kept": len(kept), "lost": len(lost), "total": total,
+        "rate": round(len(lost) / total * 100, 1) if total else 0,
+        "lost_value": round(lost_value, 2),
+        "median_notice": _median(notice),
+        # The ones that actually cost money: too late to sell the room again.
+        "late": sorted(late, key=lambda x: x["days"])[:25],
+        "late_count": len(late),
+        "late_value": round(sum(x["value"] for x in late), 2),
+        "reasons": sorted(({"reason": k, "count": v} for k, v in reasons.items()),
+                          key=lambda x: -x["count"]),
+        "csv": [{"reason": r["reason"], "count": r["count"]} for r in
+                sorted(({"reason": k, "count": v} for k, v in reasons.items()),
+                       key=lambda x: -x["count"])],
+    }
+
+
+CHANNEL_COMMISSION_PREFIX = "channel_commission_"
+KNOWN_CHANNELS = ["direct", "booking.com", "airbnb", "expedia", "agent", "other"]
+
+
+def channel_commission(conn, source):
+    """The commission rate the owner has entered for a channel, or None.
+
+    None is not zero. A channel with no rate set has an unknown cost, and
+    reporting it as free would understate what the house pays to be booked.
+    """
+    key = CHANNEL_COMMISSION_PREFIX + (source or "").strip().lower().replace(" ", "_")
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    raw = row["value"] if row else None
+    try:
+        return float(raw) if raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def channel_cost(conn, start=None, end=None):
+    """What each way of getting a booking actually costs.
+
+    A booking through an agent and a booking through the website are the same
+    line in every revenue figure the house has, and they are not the same
+    money. This puts the commission against them.
+
+    Rates are entered by the owner, not guessed. A channel with no rate set
+    is reported as unknown rather than as free -- a nil commission is a claim
+    about a contract, and inventing one understates what the house pays.
+    """
+    start = start or (house_today() - timedelta(days=365))
+    end = end or house_today()
+    rows = conn.execute(
+        """SELECT COALESCE(NULLIF(TRIM(source), ''), 'Not recorded') AS src,
+                  COUNT(*) AS bookings,
+                  COALESCE(SUM(total_price), 0) AS revenue
+             FROM bookings
+            WHERE status = 'confirmed' AND arrival_date >= ? AND arrival_date < ?
+            GROUP BY src ORDER BY revenue DESC""",
+        (start.isoformat(), end.isoformat())).fetchall()
+
+    out, total_rev, total_cost, unpriced = [], 0.0, 0.0, []
+    for r in rows:
+        rate = channel_commission(conn, r["src"])
+        revenue = float(r["revenue"] or 0)
+        cost = round(revenue * rate / 100, 2) if rate is not None else None
+        total_rev += revenue
+        if cost is not None:
+            total_cost += cost
+        elif r["src"] != "Not recorded":
+            unpriced.append(r["src"])
+        out.append({
+            "source": r["src"], "bookings": r["bookings"],
+            "revenue": round(revenue, 2), "rate": rate, "cost": cost,
+            "net": round(revenue - cost, 2) if cost is not None else None,
+        })
+    return {
+        "start": start, "end": end, "rows": out,
+        "revenue": round(total_rev, 2), "cost": round(total_cost, 2),
+        "net": round(total_rev - total_cost, 2),
+        "unpriced": sorted(set(unpriced)),
+        "unrecorded": next((r["bookings"] for r in out if r["source"] == "Not recorded"), 0),
+        "channels": KNOWN_CHANNELS,
+        "rates": {c: channel_commission(conn, c) for c in KNOWN_CHANNELS},
+        "csv": [{"source": r["source"], "bookings": r["bookings"], "revenue": r["revenue"],
+                 "commission_pct": r["rate"], "commission": r["cost"], "net": r["net"]}
+                for r in out],
     }
 
 
@@ -40025,6 +40379,120 @@ def management_on_the_books():
     return render_template("management_on_the_books.html", data=data)
 
 
+@app.route("/management/year-on-year")
+@owner_required
+def management_year_on_year():
+    """This period against the same period last year."""
+    conn = get_db()
+    period = period_from_request()
+    data = year_on_year(conn, period, request.args.get("align", "calendar"))
+    conn.close()
+    return render_template("management_year_on_year.html", data=data, period=period)
+
+
+@app.route("/management/year-on-year.csv")
+@owner_required
+def export_year_on_year_csv():
+    conn = get_db()
+    period = period_from_request()
+    data = year_on_year(conn, period, request.args.get("align", "calendar"))
+    conn.close()
+    return csv_response(["metric", "this_period", "last_year", "change_pct"], data["csv"],
+                        f"year-on-year_{period['start_iso']}.csv")
+
+
+def _window_from_request(default_days=365):
+    """A start/end pair from ?from=&to=, defaulting to the last year."""
+    end = parse_date(request.args.get("to", "")) or house_today()
+    start = parse_date(request.args.get("from", "")) or (end - timedelta(days=default_days))
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+@app.route("/management/booking-shape")
+@owner_required
+def management_booking_shape():
+    """How far ahead people book, and how long they stay."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = booking_shape(conn, start, end)
+    conn.close()
+    return render_template("management_booking_shape.html", data=data)
+
+
+@app.route("/management/booking-shape.csv")
+@owner_required
+def export_booking_shape_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = booking_shape(conn, start, end)
+    conn.close()
+    return csv_response(["band", "kind", "count"], data["csv"],
+                        f"booking-shape_{start.isoformat()}.csv")
+
+
+@app.route("/management/channels")
+@owner_required
+def management_channels():
+    """What each way of getting a booking costs."""
+    conn = get_db()
+    start, end = _window_from_request()
+    data = channel_cost(conn, start, end)
+    conn.close()
+    return render_template("management_channels.html", data=data)
+
+
+@app.route("/management/channels/settings", methods=["POST"])
+@owner_required
+def save_channel_commission():
+    conn = get_db()
+    saved = 0
+    for channel in KNOWN_CHANNELS:
+        field = "rate_" + channel.replace(".", "_")
+        if field not in request.form:
+            continue
+        raw = (request.form.get(field, "") or "").strip().replace(",", ".")
+        key = CHANNEL_COMMISSION_PREFIX + channel.lower().replace(" ", "_")
+        if raw == "":
+            # Cleared, not zeroed. An empty rate means "unknown", and the
+            # report says so rather than treating the channel as free.
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+            saved += 1
+            continue
+        try:
+            value = float(raw)
+        except ValueError:
+            conn.close()
+            flash(f"{channel}: enter a percentage, or leave it blank.", "error")
+            return redirect(url_for("management_channels"))
+        if not 0 <= value <= 100:
+            conn.close()
+            flash(f"{channel}: a commission is between 0 and 100 per cent.", "error")
+            return redirect(url_for("management_channels"))
+        conn.execute(
+            """INSERT INTO app_settings (key, value) VALUES (?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+            (key, str(value)))
+        saved += 1
+    conn.commit()
+    conn.close()
+    flash(f"{saved} commission rate{'' if saved == 1 else 's'} saved.", "success")
+    return redirect(url_for("management_channels"))
+
+
+@app.route("/management/channels.csv")
+@owner_required
+def export_channels_csv():
+    conn = get_db()
+    start, end = _window_from_request()
+    data = channel_cost(conn, start, end)
+    conn.close()
+    return csv_response(
+        ["source", "bookings", "revenue", "commission_pct", "commission", "net"],
+        data["csv"], f"channels_{start.isoformat()}.csv")
+
+
 @app.route("/management/break-even")
 @owner_required
 def management_break_even():
@@ -40681,6 +41149,11 @@ def management_cancellations():
     today = house_today()
     reasons = cancellation_reasons(conn, today=today)
     enquiries = enquiry_conversion(conn, today=today)
+    # Reasons say WHY. This says how often, how much notice, and what it was
+    # worth -- a booking that falls away four months out costs a diary entry,
+    # one that goes two days out is a room that will not sell again, and this
+    # page had them as the same line.
+    analysis = cancellation_analysis(conn)
     recent = conn.execute(
         """SELECT id, guest_name, arrival_date, cancel_reason, cancel_note,
                   decided_at
@@ -40690,6 +41163,17 @@ def management_cancellations():
     conn.close()
     overview = [
         overview_cell("Cancellations", reasons["total"], hint="in the last year"),
+        overview_cell("Of everything booked", f"{analysis['rate']}%",
+                      hint=f"{analysis['lost']} of {analysis['total']} stays"),
+        overview_cell("Typical notice",
+                      f"{analysis['median_notice']} days"
+                      if analysis["median_notice"] is not None else "—",
+                      hint="median, so one booking cancelled two years out "
+                           "cannot move it"),
+        overview_cell("Too late to re-sell", analysis["late_count"],
+                      sub=euro(analysis["late_value"]),
+                      alert=bool(analysis["late_count"]),
+                      hint="cancelled inside a week of arrival"),
         overview_cell("With a reason on them",
                       f"{reasons['explained']}/{reasons['total']}"
                       if reasons["total"] else "\u2014",
@@ -40701,7 +41185,7 @@ def management_cancellations():
                            "that got an answer"),
     ]
     return render_template("management_cancellations.html", reasons=reasons,
-                           enquiries=enquiries, recent=recent,
+                           enquiries=enquiries, recent=recent, analysis=analysis,
                            overview=overview, choices=CANCEL_REASONS)
 
 

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Booking shape{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>How far ahead, and how long</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_year_on_year') }}" class="btn-ghost">Year on year</a>
+    <a href="{{ url_for('export_booking_shape_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Stays that arrived between {{ data.start.strftime('%d %b %Y') }} and
+  {{ data.end.strftime('%d %b %Y') }} &mdash; counted on stays that happened, not bookings taken,
+  so something cancelled cannot inflate the picture of what the house sold.
+  Medians rather than averages: one booking made two years out drags an average nobody recognises.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">Arriving from</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.median_lead is not none %}{{ data.median_lead }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Days ahead, typically</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.median_stay is not none %}{{ data.median_stay }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Nights, typically</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.one_nighter_share }}%</span>
+    <span class="stat-tile-label">Are single nights</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.total }}</span>
+    <span class="stat-tile-label">Stays counted</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.longest_lead is not none %}{{ data.longest_lead }}{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">Furthest ahead anyone booked</span></span></div>
+</div>
+
+{% if not data.total %}
+<div class="empty-state">No stays arrived in this window, so there is nothing to describe.</div>
+{% else %}
+
+<h2 class="section-heading">How far ahead they book</h2>
+<p class="field-hint" style="max-width:760px;">
+  This decides when a rate should move and when a week is too late to fill.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Booked</th><th class="num">Stays</th><th class="num">Share</th></tr></thead>
+    <tbody>
+      {% for r in data.lead_rows %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.band }}</th>
+        <td class="num">{{ r.count }}</td>
+        <td class="num">{{ r.share }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-heading">How long they stay</h2>
+<p class="field-hint" style="max-width:760px;">
+  With five rooms, refusing single nights is either what saves the changeover or what empties a
+  Tuesday. {{ data.one_nighters }} of the stays here were one night.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Length</th><th class="num">Stays</th><th class="num">Share</th></tr></thead>
+    <tbody>
+      {% for r in data.stay_rows %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.band }}</th>
+        <td class="num">{{ r.count }}</td>
+        <td class="num">{{ r.share }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if data.months %}
+<h2 class="section-heading">Month by month</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Arriving</th><th class="num">Stays</th><th class="num">Days ahead</th><th class="num">Nights</th></tr></thead>
+    <tbody>
+      {% for r in data.months %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.month }}</th>
+        <td class="num">{{ r.bookings }}</td>
+        <td class="num">{% if r.median_lead is not none %}{{ r.median_lead }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.median_stay is not none %}{{ r.median_stay }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

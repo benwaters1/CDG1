@@ -100,4 +100,47 @@
 </div>
 {% endif %}
 
+
+<h2 class="section-heading">The ones that cost money</h2>
+<p class="field-hint" style="max-width:760px;">
+  A cancellation four months out costs a diary entry. One inside a week is a room that will not
+  sell again, and until now both were the same line. These are the {{ analysis.late_count }}
+  cancelled within seven days of arrival, worth {{ euro(analysis.late_value) }} between them &mdash;
+  out of {{ euro(analysis.lost_value) }} cancelled in total over the same window.
+</p>
+{% if analysis.late %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Guest</th>
+        <th style="text-align:left;">Reference</th>
+        <th style="text-align:left;">Was arriving</th>
+        <th class="num">Days' notice</th>
+        <th class="num">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in analysis.late %}
+      <tr{% if r.days <= 2 %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">{{ r.guest or '&mdash;'|safe }}</th>
+        <td>{{ r.reference }}</td>
+        <td>{{ r.arrival }}</td>
+        <td class="num">{{ r.days }}</td>
+        <td class="num">{{ euro(r.value) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th colspan="4" style="text-align:left;">Total</th>
+        <th class="num">{{ euro(analysis.late_value) }}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nothing was cancelled inside a week of arrival. That is the good version of this table.</div>
+{% endif %}
+
 {% endblock %}

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}What a booking costs to get{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What a booking costs to get</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_payment_cost') }}" class="btn-ghost">Cost of taking money</a>
+    <a href="{{ url_for('export_channels_csv', **request.args) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  A booking through an agent and a booking through the website are the same line in every revenue
+  figure the house has, and they are not the same money. Stays arriving between
+  {{ data.start.strftime('%d %b %Y') }} and {{ data.end.strftime('%d %b %Y') }}.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">Arriving from</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">to</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.revenue) }}</span>
+    <span class="stat-tile-label">Room revenue</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.cost) }}</span>
+    <span class="stat-tile-label">Commission on it</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.net) }}</span>
+    <span class="stat-tile-label">What the house keeps</span></span></div>
+</div>
+
+{% if data.unrecorded %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">{{ data.unrecorded }} booking{{ '' if data.unrecorded == 1 else 's' }} do not say where they came from</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Those are grouped as <em>Not recorded</em> below and carry no commission, which is honest
+    rather than free: the cost is unknown, not nil. Setting the source on a booking is what makes
+    this page worth reading.
+  </p>
+</div>
+{% endif %}
+
+{% if data.unpriced %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid var(--warn, #b8860b);">
+  <h3 style="margin-top:0;">No commission rate set for {{ data.unpriced|join(', ') }}</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Those rows show a dash rather than zero, and their revenue is excluded from the commission
+    total. A rate of nil is a claim about a contract; the app will not make it for you.
+  </p>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Came from</th>
+        <th class="num">Stays</th>
+        <th class="num">Revenue</th>
+        <th class="num">Rate</th>
+        <th class="num">Commission</th>
+        <th class="num">Kept</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ r.source }}</th>
+        <td class="num">{{ r.bookings }}</td>
+        <td class="num">{{ euro(r.revenue) }}</td>
+        <td class="num">{% if r.rate is not none %}{{ r.rate }}%{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.cost is not none %}{{ euro(r.cost) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.net is not none %}{{ euro(r.net) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6"><div class="empty-state">No stays in this window.</div></td></tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <th style="text-align:left;">Total</th>
+        <th class="num">{{ data.rows|sum(attribute='bookings') }}</th>
+        <th class="num">{{ euro(data.revenue) }}</th>
+        <th class="num"></th>
+        <th class="num">{{ euro(data.cost) }}</th>
+        <th class="num">{{ euro(data.net) }}</th>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<h2 class="section-heading">Commission rates</h2>
+<p class="field-hint" style="max-width:760px;">
+  What each channel takes, as you have agreed it. Leave one blank to say the rate is unknown &mdash;
+  that is different from nil, and the table above keeps the two apart.
+</p>
+<form method="post" action="{{ url_for('save_channel_commission') }}" class="detail-card" style="max-width:640px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for channel in data.channels %}
+  <div style="margin-bottom:12px;">
+    <label class="field-label" for="rate_{{ channel|replace('.', '_') }}">{{ channel|capitalize }}</label>
+    <input type="number" step="0.01" min="0" max="100" inputmode="decimal"
+           id="rate_{{ channel|replace('.', '_') }}"
+           name="rate_{{ channel|replace('.', '_') }}"
+           value="{{ data.rates.get(channel) if data.rates.get(channel) is not none else '' }}"
+           placeholder="unknown">
+    <span class="field-hint">per cent of the room revenue</span>
+  </div>
+  {% endfor %}
+  <button type="submit" class="btn-primary">Save rates</button>
+</form>
+
+{% endblock %}
