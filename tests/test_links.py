@@ -29,6 +29,7 @@ from werkzeug.routing.exceptions import RequestRedirect
 
 from _harness import Suite, ROOT
 import _harness
+app = _harness.m.app
 
 m = _harness.m
 TPL_DIR = os.path.join(ROOT, "templates")
@@ -120,9 +121,43 @@ def run():
     # right, which is how it survived nine handovers: Weddings, Private,
     # Photoshoots and Press were all built, and not one link in the public nav
     # or footer pointed at any of them.
-    guarded = sorted(rel for rel, body in templates.items() if 'in url_map' in body)
-    s.check('no link is hidden behind a url_map test', not guarded,
-            detail=f'{guarded[:4]} — url_map is not a thing a template is given, so the branch naming the page is dead and the fallback is permanent')
+    # CORRECTED. This check used to forbid `in url_map` outright, on the
+    # grounds that nothing supplied it -- which was true, and cost four
+    # dedicated pages every link to them for five rounds. But the answer was
+    # never to ban the question. sitemap.xml asks it about sixteen endpoints
+    # and is RIGHT to: a page with no route should be absent from a sitemap
+    # rather than a 404 inside it.
+    #
+    # So url_map is in the context now, and what this checks is that it is --
+    # because an unsupplied url_map does not error. It renders an empty
+    # sitemap that returns 200 and looks perfectly fine.
+    with app.test_request_context('/'):
+        supplied = None
+        for proc in app.template_context_processors[None]:
+            got = proc()
+            if 'url_map' in got:
+                supplied = got['url_map']
+                break
+    s.check('templates are told which endpoints exist', supplied is not None,
+            detail='every sketch since the first handover has tested '
+                   "`'X' in url_map`; with nothing behind it the test is "
+                   'false in every render and the guard silently takes its '
+                   'fallback for ever')
+    s.check('and it names real endpoints',
+            bool(supplied) and 'dashboard' in supplied and 'sitemap' in supplied,
+            detail=f'{sorted(supplied)[:4] if supplied else supplied} — a set '
+                   'that does not contain the pages it is asked about is the '
+                   'same bug with a value in it')
+    # Checked against `dashboard`, which is what the front page's endpoint is
+    # actually called. Worth writing down: the designer's sitemap.xml lists
+    # `home`, which does not exist -- so the guard correctly leaves the front
+    # page out of THAT file. The one that serves uses dashboard and does not.
+    # And the consequence, checked at the far end rather than inferred: the
+    # whole of sitemap.xml sits inside one of those tests.
+    with app.test_client() as _c:
+        _sitemap = _c.get('/sitemap.xml').get_data(as_text=True)
+    s.check('so the sitemap is not empty', _sitemap.count('<loc>') > 5,
+            detail=f"{_sitemap.count('<loc>')} urls — an empty sitemap returns 200 and tells nobody anything is wrong")
 
     s.check("no page carries the same section heading twice", not dupe_headings,
             detail=" | ".join(dupe_headings[:4]))

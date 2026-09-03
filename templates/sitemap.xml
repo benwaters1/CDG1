@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+{#- Item 7. Five new pages had no route for a search engine to find. Built
+    from url_map so a page that has no route is simply absent rather than a
+    404 in the sitemap, and lastmod comes from the app rather than being
+    hardcoded to a date that immediately goes stale. -#}
+<urlset xmlns="http://www.sitemap.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+{%- set pages = [
+  ('home',              '1.0', 'weekly'),
+  ('book_rooms',        '0.9', 'daily'),
+  ('workshops_public',  '0.9', 'weekly'),
+  ('restaurant_info',   '0.8', 'weekly'),
+  ('events_info',       '0.7', 'monthly'),
+  ('events_weddings',   '0.7', 'monthly'),
+  ('events_private',    '0.6', 'monthly'),
+  ('events_photoshoots','0.6', 'monthly'),
+  ('facilities',        '0.7', 'monthly'),
+  ('restoration_page',  '0.8', 'monthly'),
+  ('story',             '0.7', 'monthly'),
+  ('gallery',           '0.6', 'weekly'),
+  ('press',             '0.5', 'monthly'),
+  ('whats_on',          '0.6', 'weekly'),
+  ('contact_page',      '0.5', 'yearly'),
+  ('terms',             '0.2', 'yearly')
+] -%}
+{%- for endpoint, priority, freq in pages %}
+{%- if endpoint in url_map %}
+  <url>
+    <loc>{{ url_for(endpoint, _external=True) }}</loc>
+    <changefreq>{{ freq }}</changefreq>
+    <priority>{{ priority }}</priority>
+    {%- if lastmod %}<lastmod>{{ lastmod }}</lastmod>{% endif %}
+    {%- for code in (languages or ['en']) %}
+    <xhtml:link rel="alternate" hreflang="{{ code }}" href="{% if alt_urls and alt_urls.get(code) %}{{ alt_urls[code] }}{% else %}{{ url_for(endpoint, _external=True) }}{% if code != 'en' %}?lang={{ code }}{% endif %}{% endif %}"/>
+    {%- endfor %}
+  </url>
+{%- endif %}
+{%- endfor %}
+{#- Each room gets its own entry — they are the pages that should rank. -#}
+{%- for r in (rooms or []) %}
+  <url>
+    <loc>{{ url_for('book_room', room_id=r['id'], _external=True) }}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+{%- endfor %}
+</urlset>

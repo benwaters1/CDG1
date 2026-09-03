@@ -21,12 +21,13 @@
 {% set crumbs = [('La Table', None)] %}
 {% block title_fr %}La Table{% endblock %}
 {% block description_fr %}Un seul service par soir, dans la salle à manger du château. Cuisiné dans la cuisine Renaissance à partir du marché du dimanche et du potager.{% endblock %}
-{% block title %}La Table{% endblock %}
-{% block description %}Dinner at Château de Gudanes, cooked in the château's own Renaissance kitchen from the Sunday market and the gardens. Candlelight, and a fire in winter.{% endblock %}
+{% block title %}Dining in a French Château, Ariège Pyrenees{% endblock %}
+{% block description %}One table, one sitting, in the dining salon of a Class I French château. Cooked from the Sunday market and the château gardens.{% endblock %}
 {% block og_desc %}Dinner at Château de Gudanes, cooked in the château's own Renaissance kitchen from the Sunday market and the gardens. Candlelight, and a fire in winter.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/31fe8cbe-b064-4abd-89d0-f52b04b522a2/Food+and+Dining+Full+Page.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
 {% from '_marks.html' import mark %}
 <section class="g-hero">
 <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583218908946-B7KNZLCLRCS5QH1EYFG3/Dining+Room.jpg?format=1500w" alt="The dining room at Château de Gudanes">
@@ -304,7 +305,7 @@
 </div></section>
 
 <!-- ============ THE COOKBOOK ============ -->
-{# Sourced from the château's own Captain's Log, a pastry chef's published
+{# Sourced from a pastry chef's published
    account of working here, and Karina's interview with Tamara Goodwin. #}
 <section class="g-sec g-sec--sand"><div class="g-wrap">
   <p class="g-eyebrow">The Source</p>
@@ -528,5 +529,7 @@
       <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn">Stay the night</a>
   </div>
 </div></section>
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 {% endblock %}

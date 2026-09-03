@@ -3,12 +3,14 @@
 {% set crumbs = [('Workshops', None)] %}
 {% block title_fr %}Les Ateliers{% endblock %}
 {% block description_fr %}Ateliers de restauration au château : enduits à la chaux, dorure, conservation de fresques du XVIIIe siècle. Quinze places, un atelier à la fois.{% endblock %}
-{% block title %}Château Workshops{% endblock %}
-{% block description %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
+{% block title %}French Craft Workshops in a Château, Ariège{% endblock %}
+{% block description %}Plaster, gilding and fresco conservation taught by the artisans restoring a Class I French château. Fifteen places, the house to yourselves, full board.{% endblock %}
 {% block og_desc %}Five ateliers at Château de Gudanes — restoration, cooking, and the brocantes of the Ariège. Never more than fifteen guests, and the château takes no others.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
+{% from '_exclusive.html' import exclusive %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_marks.html' import mark %}
 {# Content and voice from vicente-yuste-2air.squarespace.com/workshops — the
@@ -253,6 +255,10 @@
 </div></section>
 
 <div class="g-wrap">{{ animals_note() }}</div>
+
+{{ exclusive(settings) }}
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script>
 /* Filter the date table by workshop. Plain show/hide — the rows are already

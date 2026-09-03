@@ -2,6 +2,30 @@
 {% block title %}Social Media Schedule{% endblock %}
 {% block content %}
 
+{# THE FIGURES THE PUBLIC PAGES QUOTE. _proof.html reads these four and
+   renders nothing for any that is absent, so there was no way to make it
+   show anything and no way to correct it if it were wrong.
+
+   Nothing is seeded. The designer found numbers publicly and said plainly
+   they should be checked first, and a review count invented by software and
+   printed on the house's own website is worth nothing at best. #}
+<div class="detail-card">
+  <h2 class="section-heading">What the public pages quote</h2>
+  <form method="post" action="{{ url_for('save_proof_figures') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for key, meta in proof_figures.items() %}
+    <label class="field-label" for="pf_{{ key }}">{{ meta[0] }}</label>
+    <input type="text" id="pf_{{ key }}" name="{{ key }}" maxlength="40"
+           value="{{ proof_now.get(key, '') }}">
+    <p class="field-hint">{{ meta[1] }}</p>
+    {% endfor %}
+    <button type="submit" class="btn-mini">Save</button>
+    <p class="field-hint">Empty means the line does not appear at all. Clearing
+      one is how a figure that has gone stale comes off the site rather than
+      sitting there being wrong.</p>
+  </form>
+</div>
+
 <div class="page-head">
   <h1>Social Media Schedule</h1>
   <div style="display:flex; gap:10px; align-items:center;">

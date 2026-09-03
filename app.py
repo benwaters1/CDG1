@@ -5480,7 +5480,7 @@ NAV_AREAS = {
         "admin_wages", "new_wage_record", "save_wage_settings"
     ],
     "management": [
-        "fill_a_gap_page",
+        "fill_a_gap_page", "save_proof_figures",
         "admin_retention",
         # Private HR notes sit here rather than in `team`: the employee is
         # promised that only the owner sees them, and this is the only area no
@@ -18440,6 +18440,27 @@ def inject_user():
         # guest form is rendered from four places, so three of them got the
         # choices and the fourth raised on .items() of an undefined.
         "languages": translations.LANGUAGES,
+        # WHICH ENDPOINTS EXIST, so a template can ask.
+        #
+        # The sketches have tested `'X' in url_map` since the first handover to
+        # mean "only if that page is built yet", and nothing ever supplied it --
+        # so the test was false in every render and the guard silently took its
+        # fallback for five rounds. Four dedicated pages were built and no link
+        # in the public nav or footer pointed at any of them.
+        #
+        # It was never the wrong idea. It was an idea with nothing behind it.
+        # sitemap.xml is where that stops being cosmetic: the whole file is
+        # inside such a test, so an unsupplied url_map is an EMPTY sitemap that
+        # still returns 200 and looks fine.
+        #
+        # A frozenset of names rather than the Werkzeug map: a template only
+        # ever asks whether a name is there, and handing it the real object
+        # invites somebody to walk the rules from a page.
+        "url_map": frozenset(app.view_functions),
+        # The allowlisted public settings, read only if a template asks. A route
+        # that passes its own `settings` shadows this, which is how the
+        # restaurant and workshop pages keep theirs.
+        "settings": LazyPublicSettings(),
         "photo_consent_choices": PHOTO_CONSENT,
         "decline_reasons": DECLINE_REASONS,
         # WHICH AREA THIS PAGE IS IN, from the one list that decides it.
@@ -47618,6 +47639,142 @@ def run_social_schedule_job(conn):
 # Social media content calendar
 # ---------------------------------------------------------------------------
 
+# The ONLY app_settings keys a public template may read, by name.
+#
+# An allowlist rather than the table, and this is not fussiness: app_settings
+# also holds supplier_upload_token and vapid_private_key. Handing the whole
+# table to every template means one stray `{{ settings['vapid_private_key'] }}`
+# in a sketch -- or one loop over settings written while debugging -- puts a
+# secret on a public page, and nothing about the page would look wrong.
+#
+# Most of what public templates call `settings` is a restaurant_settings or
+# workshop row passed by its own route. Those are untouched: a route that
+# passes its own `settings` shadows this one, which is how they keep theirs.
+PUBLIC_SETTINGS = (
+    "tourist_tax",            # named on the room list and in the pre-submit review
+    "press_email",            # on the press page
+    "review_recommend", "review_count",
+    "instagram_followers", "facebook_followers",
+)
+
+
+class LazyPublicSettings:
+    """Reads the allowlisted settings on FIRST ACCESS, and not before.
+
+    A plain dict in the context processor would put one query on every render
+    in the app -- four hundred staff pages that never mention `settings`
+    included. Public pages are also the anonymous case, where the processor
+    opens no connection at all, so there is nothing to borrow.
+
+    So: nothing happens until a template actually subscripts it. Reads once per
+    request and remembers, because _proof.html asks four times.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self):
+        self._data = None
+
+    def _load(self):
+        if self._data is None:
+            try:
+                conn = get_db()
+                try:
+                    marks = ",".join("?" * len(PUBLIC_SETTINGS))
+                    self._data = {
+                        r["key"]: r["value"] for r in conn.execute(
+                            f"SELECT key, value FROM app_settings WHERE key IN ({marks})",
+                            list(PUBLIC_SETTINGS)).fetchall()}
+                finally:
+                    conn.close()
+            except Exception:
+                # A figure nobody can read is a line that does not appear. That
+                # is the right failure for a page whose job is to show the
+                # house, and better than a 500 over a review count.
+                self._data = {}
+        return self._data
+
+    def __getitem__(self, key):
+        # KeyError on purpose for anything not allowlisted, so a template
+        # reaching for a secret gets nothing rather than the value.
+        if key not in PUBLIC_SETTINGS:
+            raise KeyError(key)
+        value = self._load().get(key)
+        if value is None:
+            raise KeyError(key)
+        return value
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key):
+        return self.get(key) is not None
+
+    def __bool__(self):
+        return True          # so `settings['x'] if settings else none` reaches the lookup
+
+
+# The four figures _proof.html reads. Named here so the form, the page and
+# the component cannot drift, and so that adding a fifth is one line.
+#
+# NONE of them is seeded with a value. The designer found numbers publicly and
+# said plainly they should be checked before they go live, and a review count
+# invented by software and printed on a hotel's own website is the kind of
+# claim that is worth nothing at best. The component renders nothing for a
+# figure that is absent, so an empty setting is a correct empty setting.
+PROOF_FIGURES = {
+    "review_recommend": ("Guests who recommend (%)",
+                         "Shown as '96% of guests recommend'. Leave empty and "
+                         "the line does not appear."),
+    "review_count": ("How many reviews",
+                     "Shown as '2,533 reviews and counting'."),
+    "instagram_followers": ("Instagram following",
+                            "As you would write it — 367k."),
+    "facebook_followers": ("Facebook following",
+                           "As you would write it — 390k."),
+}
+
+
+@app.route("/management/proof-figures", methods=["POST"])
+@owner_required
+def save_proof_figures():
+    """Set, or clear, the numbers the public pages quote.
+
+    Cleared as easily as set: a figure that has gone stale should come OFF the
+    site rather than sit there being wrong, and a form that can only add is a
+    form that guarantees it eventually is.
+    """
+    conn = get_db()
+    changed, cleared = 0, 0
+    for key in PROOF_FIGURES:
+        if key not in request.form:
+            continue
+        value = (request.form.get(key, "") or "").strip()[:40]
+        if value:
+            conn.execute(
+                """INSERT INTO app_settings (key, value) VALUES (?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                (key, value))
+            changed += 1
+        else:
+            conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+            cleared += 1
+    log_audit(conn, "proof_figures_saved", target=f"{changed} set, {cleared} cleared")
+    conn.commit()
+    conn.close()
+    if changed or cleared:
+        flash(f"{changed} figure{'' if changed == 1 else 's'} set, "
+              f"{cleared} cleared. Anything empty simply does not appear on the "
+              "site.", "success")
+    else:
+        flash("Nothing to change.", "error")
+    return redirect(url_for("management_social"))
+
+
+
 @app.route("/management/social")
 @owner_required
 def management_social():
@@ -47642,10 +47799,16 @@ def management_social():
         "SELECT id, name FROM users WHERE status = 'active' ORDER BY name"
     ).fetchall()
     today = house_today_iso()
+    # The four public-facing figures _proof.html reads, so the form below can
+    # show what is actually set. Read before the close.
+    proof_now = {r["key"]: r["value"] for r in conn.execute(
+        "SELECT key, value FROM app_settings WHERE key IN (%s)"
+        % ",".join("?" * len(PROOF_FIGURES)), list(PROOF_FIGURES)).fetchall()}
     conn.close()
     return render_template(
         "management_social.html", posts=posts, platforms=platforms, employees=employees,
         status_filter=status_filter, platform_filter=platform_filter, today=today,
+        proof_figures=PROOF_FIGURES, proof_now=proof_now,
     )
 
 
@@ -58410,6 +58573,15 @@ def robots():
     body = "\n".join([
         "User-agent: *",
         "Disallow: /admin",
+        # From the designer's robots.txt this round: /manage/ and /account/
+        # are guest-token prefixes their version had and this one did not, and
+        # the two wildcards keep a crawler off any token in a query string and
+        # off crawling every page a second time per language.
+        "Disallow: /manage/",
+        "Disallow: /account/",
+        "Disallow: /open",
+        "Disallow: /*?token=",
+        "Disallow: /*?lang=",
         "Disallow: /staff",
         "Disallow: /pos",
         "Disallow: /management",

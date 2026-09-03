@@ -6023,7 +6023,7 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
    ========================================================================== */
 .g-anim{ list-style: none; margin: var(--s6) 0 var(--s5); padding: 0;
   display: grid; gap: var(--s5);
-  grid-template-columns: repeat(auto-fit, minmax(min(19rem,100%),1fr)); }
+  grid-template-columns: repeat(auto-fit, minmax(min(24rem,100%),1fr)); }
 .g-anim__i{ padding: var(--s5); background: var(--white);
   border: 1px solid var(--line); border-top: 2px solid var(--gilt); }
 .g-anim__t{ margin: 0 0 2px; font-family: var(--display); font-weight: 300;
@@ -6097,4 +6097,258 @@ body.has-hero:has(main > .g-crumbs:first-child) .g-top{
 .g-rp__nav{
   min-width: 48px; min-height: 48px;
   font-size: var(--t-h3); line-height: 1;
+}
+
+/* ==========================================================================
+   ROOM CARDS — WHERE THE SLACK GOES
+   Cards in a row stretch to the tallest, and `.g-card__desc` had
+   `flex: 1 0 auto` — so a short description absorbed every spare pixel and
+   left a hole between the prose and the chips. Émeraude has four lines and
+   Cerise three; the slack all landed in one place.
+
+   The description takes its natural height. The gap goes below the chips,
+   above the button, where it reads as breathing room rather than a hole.
+   ========================================================================== */
+.g-cards .g-card__desc{ flex: 0 0 auto; margin-bottom: 0; }
+.g-card__desc{ flex: 0 0 auto; }
+.g-cards .g-card__b > .g-tags{ margin: 0; }
+.g-cards .g-card__b > .g-btn{ margin-top: auto; }
+.g-card__b > .g-tags{ margin-bottom: 0; }
+.g-card__b > .g-tags + .g-btn,
+.g-card__b > .g-btn{ margin-top: auto; }
+
+/* Doubling up: the flex gap AND a margin-bottom on every child gave 12px of
+   gap plus 8/16/24px of margin, so the spacing was the sum of two systems.
+   One system. */
+.g-card__b{ gap: var(--s3); }
+.g-card__b > *{ margin-bottom: 0; }
+.g-card__name{ margin: 0; }
+.g-card__rate{ margin: 0; }
+.g-card__desc{ margin: 0; }
+
+/* The rate line is the second thing anyone reads. Give it the weight. */
+.g-card__rate b{
+  font-family: var(--display); font-weight: 400; font-size: var(--t-h3);
+  color: var(--blue-deep); font-variant-numeric: lining-nums;
+}
+.g-card__rate span{
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--ink-soft);
+}
+.g-card__per{
+  display: block; margin-top: 2px;
+  font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   ORPHANS
+   Five room cards in a two-column grid gave 2+2+1 — a single card marooned
+   beside an empty half. The Estate and Events had 2+1. Three columns takes
+   five to 3+2 and three to 3, and the card is narrow enough to read at that
+   width because the description is three lines.
+   ========================================================================== */
+/* A viewport query cannot know how wide the card is — the wrap caps around
+   1100px however wide the window. Size on the container instead: three
+   columns only when each one still holds a readable line. */
+/* An element cannot query its own container, so container-type goes on the
+   wrapper and the grid inside reads it. Setting it on .g-cards itself meant
+   the query was measuring the page, not the grid. */
+.g-sec > .g-wrap, .g-wrap:has(> .g-cards){ container-type: inline-size; }
+@container (min-width: 80rem){
+  .g-cards{ grid-template-columns: repeat(3, 1fr); }
+  /* A lone trailing card spans the empty tracks rather than sitting beside a
+     hole. In the same query as the columns, so the two can never disagree. */
+  .g-cards > .g-card:last-child:nth-child(3n + 1){ grid-column: span 3; }
+  .g-cards > .g-card:last-child:nth-child(3n + 1) .g-card__img{ aspect-ratio: 21 / 9; }
+}
+/* A lone last card in a two-column grid spans both, rather than sitting
+   beside a hole. Unbounded: it is what an odd last child should always do,
+   and the three-column query overrides it where three columns apply. */
+@media (min-width: 52rem){
+  .g-cards > .g-card:last-child:nth-child(odd){ grid-column: 1 / -1; }
+  .g-cards > .g-card:last-child:nth-child(odd) .g-card__img{ aspect-ratio: 21 / 9; }
+}
+@supports not (container-type: inline-size){
+  @media (min-width: 100rem){ .g-cards{ grid-template-columns: repeat(3, 1fr); } }
+}
+/* Where three would be too narrow, the last item spans the empty track rather
+   than sitting beside a hole. */
+/* A lone item on the last row spans the empty tracks rather than sitting
+   beside a hole. Written for both the 2- and 3-column cases. */
+
+
+
+/* ==========================================================================
+   IMAGES MUST RESERVE THEIR SPACE
+   Between one and six images per page had no aspect ratio and no width
+   attribute, so each one reflowed the page as it arrived. The ratio is set by
+   role rather than per image, so nothing has to be measured.
+   ========================================================================== */
+main img{ height: auto; background: var(--sand-2); }
+main img:not([class]){ aspect-ratio: 3 / 2; width: 100%; object-fit: cover; }
+.g-card__img, .g-homeroom__img, .g-two__media img, .g-anim img,
+.g-chef__img img, .g-slot__img{ aspect-ratio: 3 / 2; object-fit: cover; }
+.g-hero img, .g-hero video{ aspect-ratio: 16 / 9; object-fit: cover; }
+.g-figure img, figure img{ aspect-ratio: 4 / 3; object-fit: cover; }
+
+/* ==========================================================================
+   SECTION SEAMS
+   Restoration ran ten consecutive sections on the same background and
+   La Table eight, so the page read as one undifferentiated column and the
+   section headings had nothing to sit against.
+
+   A hairline where two same-coloured sections meet — not a band, not a
+   colour change, just enough to say a new thing has started.
+   ========================================================================== */
+.g-sec + .g-sec:not(.g-sec--sand):not(.g-sec--dark):not(.g-closer){
+  border-top: 1px solid var(--line);
+}
+.g-sec--sand + .g-sec--sand{ border-top: 1px solid rgba(115,86,45,.14); }
+/* A dark section is its own seam and needs no rule. */
+.g-sec--dark + .g-sec, .g-sec + .g-sec--dark{ border-top: 0; }
+
+/* ==========================================================================
+   PROSE LINKS
+   A link inside a paragraph carried colour alone on several pages, which
+   fails for anyone who cannot separate the two colours, and reads as emphasis
+   rather than as a link to everyone else.
+   ========================================================================== */
+.g .g-p a:not(.g-btn),
+.g main p a:not(.g-btn),
+.g main li a:not(.g-btn),
+.g main dd a:not(.g-btn){
+  text-decoration: underline;
+  text-underline-offset: .18em;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(115,86,45,.5);
+}
+.g main p a:not(.g-btn):hover{ text-decoration-color: var(--gilt); }
+
+/* ==========================================================================
+   BUTTONS SIDE BY SIDE
+   A solid button and a bare link in the same line sat on different baselines
+   and different heights, so the pair read as a mistake rather than as a
+   primary and a secondary.
+   ========================================================================== */
+.g-p:has(> .g-btn + a),
+.g-p:has(> .g-btn + .g-btn),
+.g-three__a, .g-programme__a{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s5);
+}
+.g main p > .g-btn + a:not(.g-btn){
+  min-height: 48px; display: inline-flex; align-items: center;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep);
+}
+
+/* ==========================================================================
+   THE FIGURE CAPTION
+   Captions were inheriting body size and sitting flush against the image, so
+   they read as the start of the next paragraph rather than as a caption.
+   ========================================================================== */
+main figcaption{
+  margin-top: var(--s3); padding-left: var(--s3);
+  border-left: 2px solid var(--gilt);
+  font-family: var(--ui); font-size: var(--t-ui); line-height: 1.5;
+  color: var(--ink-soft); max-width: 46ch;
+}
+
+/* ==========================================================================
+   TABLES
+   The comparison table had no zebra, no sticky header and no minimum column,
+   so at width it was a wall of numbers and on a phone it collapsed.
+   ========================================================================== */
+main table{ border-collapse: collapse; width: 100%; }
+main thead th{
+  position: sticky; top: 86px; z-index: 1;
+  background: var(--sand); border-bottom: 2px solid var(--gilt);
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--gilt);
+  text-align: left; padding: var(--s3) var(--s4); white-space: nowrap;
+}
+main tbody th, main tbody td{
+  padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line);
+  font-size: var(--t-base); vertical-align: top;
+}
+main tbody tr:nth-child(even){ background: rgba(115,86,45,.035); }
+main tbody th{ font-weight: 400; color: var(--blue-deep); }
+main td[data-num], main .g-num-cell{ font-variant-numeric: lining-nums tabular-nums; }
+
+/* A drawn mark or a band between two sections breaks the `+` adjacency, so
+   the seam rule missed most of the page. The mark IS the seam where it
+   appears; elsewhere the section carries its own top rule and the ones that
+   follow a mark or a band suppress it. */
+main > .g-sec{ border-top: 1px solid var(--line); }
+main > .g-hero + .g-sec,
+main > .g-mark__wrap + .g-sec,
+main > .g-band + .g-sec,
+main > .g-sec--dark + .g-sec,
+main > .g-sec--sand + .g-sec--sand,
+main > .g-sec:first-child{ border-top: 0; }
+main > .g-sec--dark{ border-top: 0; }
+
+/* The hero image already sets an explicit height, which reserves its space
+   just as well as a ratio. Nothing to do — noted so the next pass does not
+   try to "fix" it again. */
+
+/* ==========================================================================
+   THE FACTS LIST ON A TABLET
+   Two columns from 46rem, each carrying an 8rem label plus its answer, left
+   the answer 128px wide — nineteen characters. The label column only makes
+   sense once there is room for both, so the pair stacks until then and the
+   two-column split waits for real width.
+   ========================================================================== */
+@media (max-width: 66rem){
+  .g-facts-list{ grid-template-columns: 1fr; }
+}
+@media (max-width: 52rem){
+  .g-facts-list > div{ grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* Same fault as the facts list, in the plate: a fixed label column beside a
+   two-column split leaves the answer 243px — thirty-four characters. The
+   label sits above its answer until there is room for both side by side. */
+@media (max-width: 72rem){
+  .g-plate__l{ grid-template-columns: 1fr; }
+}
+@media (max-width: 56rem){
+  .g-plate__l > div{ grid-template-columns: 1fr; gap: 2px; }
+}
+
+/* ==========================================================================
+   THE CREDENTIAL, AND THE PROOF
+   Two claims, kept visually apart on purpose. The credential is about the
+   building and is stated by the house. The proof is other people, and looks
+   like something quoted rather than something asserted.
+   ========================================================================== */
+.g-cred2{
+  display: grid; gap: var(--s2); margin: var(--s6) 0;
+  padding-left: var(--s4); border-left: 2px solid var(--gilt);
+  max-width: 62ch;
+}
+.g-cred2__k{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-cred2__t{ font-size: var(--t-base); line-height: 1.6; color: var(--ink); }
+
+.g-proof{
+  margin: var(--s6) 0; padding: var(--s5) 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+.g-proof__k{
+  margin: 0 0 var(--s4); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gilt);
+}
+.g-proof__l{
+  margin: 0; display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem,100%),1fr));
+}
+.g-proof__l > div{ display: grid; gap: 2px; }
+.g-proof__l dt{
+  font-family: var(--display); font-weight: 300; font-size: var(--t-h2);
+  color: var(--blue-deep); font-variant-numeric: lining-nums;
+}
+.g-proof__l dd{
+  margin: 0; font-family: var(--ui); font-size: var(--t-ui);
+  line-height: 1.45; color: var(--ink-soft);
 }

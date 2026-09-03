@@ -1,0 +1,43 @@
+{# ==========================================================================
+   PROOF  — marketing items 1 and 3
+   Two separate claims, deliberately kept apart.
+
+   The CREDENTIAL is the building: Class I, which means nothing to a British
+   or American reader until it is called what it is — the equivalent of Grade
+   I — and fewer than fifteen hundred buildings in France hold it. That fact
+   sat on one page.
+
+   The PROOF is other guests. The scores and follower counts are real and are
+   nowhere on the site. They are read from settings rather than written in,
+   because a number typed into a template is a number nobody updates and
+   nobody can verify. Any figure not supplied simply does not render.
+
+       {% from '_proof.html' import credential, proof %}
+       {{ credential() }}
+       {{ proof(settings) }}
+   ========================================================================== #}
+
+{% macro credential() %}
+<p class="g-cred2">
+  <span class="g-cred2__k">Monument Historique · Classé</span>
+  <span class="g-cred2__t">The French equivalent of Grade&nbsp;I. Fewer than fifteen hundred buildings in France hold it, and the restoration carries the Medal of Honour of the Fondation Prince Louis de Polignac.</span>
+</p>
+{% endmacro %}
+
+{% macro proof(settings) %}
+{%- set rc = settings['review_count'] if settings else none -%}
+{%- set rp = settings['review_recommend'] if settings else none -%}
+{%- set ig = settings['instagram_followers'] if settings else none -%}
+{%- set fb = settings['facebook_followers'] if settings else none -%}
+{%- if rc or rp or ig or fb %}
+<div class="g-proof">
+  <p class="g-proof__k">Not our words</p>
+  <dl class="g-proof__l">
+    {% if rp %}<div><dt>{{ rp }}%</dt><dd>of guests recommend the château</dd></div>{% endif %}
+    {% if rc %}<div><dt>{{ '{:,}'.format(rc|int) }}</dt><dd>reviews and counting</dd></div>{% endif %}
+    {% if ig %}<div><dt>{{ ig }}</dt><dd>following the restoration on Instagram</dd></div>{% endif %}
+    {% if fb %}<div><dt>{{ fb }}</dt><dd>on Facebook</dd></div>{% endif %}
+  </dl>
+</div>
+{%- endif %}
+{% endmacro %}

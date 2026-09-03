@@ -138,6 +138,36 @@ AWAITING_WIRING = {
 # entry and `add_room` is now on the guest's manage page, so the entry is
 # gone rather than amended -- and the machinery stays, because the next
 # half-landed file should not have to reinvent it.
+# A THIRD KIND, and the reason it needs its own list is that neither of the
+# other two can hold it honestly.
+#
+# AWAITING_WIRING means designed, styled, not yet wired -- and its proof is
+# that the class IS styled. These two have no classes at all: they are a .txt
+# and an .xml. PARTLY_LANDED means half of a file is reached, and neither of
+# these is reached at all.
+#
+# What is actually true is that the app serves both, in code, and more fully
+# than the templates do. robots() blocks seven paths the template misses
+# (/staff, /pos, /management, /api, /login, /feedback, /my); sitemap() lists
+# every atelier with a date still ahead as well as every room, where the
+# template lists only rooms.
+#
+# They are kept rather than deleted because what they ADDED has been taken:
+# five Disallow lines are in robots() now, including the two wildcards that
+# keep a crawler off any token in a query string.
+#
+# Proved, not asserted, and the proof is the opposite of the one above: the
+# endpoint has to exist AND app.py must not render the template, because a
+# route that renders it is a route that is using it, and then it belongs
+# nowhere on this page.
+SERVED_IN_CODE = {
+    "robots.txt": ("robots",
+                   "robots() builds it in code and blocks more than the template does; the five lines the template added were taken into it"),
+    "sitemap.xml": ("sitemap",
+                    "sitemap() builds it in code and lists the ateliers as well as the rooms; the template lists only the rooms"),
+}
+
+
 PARTLY_LANDED = {}
 
 
@@ -250,9 +280,24 @@ def run():
                        "CSS: these arrive styled, so an absent rule "
                        "proves nothing about whether a page draws it")
 
+    s.section("The ones the app serves in code instead")
+    app_src = io.open(os.path.join(os.path.dirname(TPL), "app.py"),
+                      encoding="utf-8").read()
+    for name, (endpoint, what) in sorted(SERVED_IN_CODE.items()):
+        s.check(f"{name} is still on disk ({what[:40]}...)", name in names,
+                detail="what it added was taken into the code; deleting it loses the record of where that came from")
+        s.check(f"and {endpoint}() is the thing serving it",
+                f"def {endpoint}(" in app_src,
+                detail="if the route went, nothing serves this path and the template is the only copy left")
+        # The opposite proof from AWAITING_WIRING's: a route that renders the
+        # template IS using it, and then it is not an orphan at all.
+        s.check(f"and nothing renders {name}",
+                f'render_template("{name}"' not in app_src,
+                detail="somebody has wired it in, so take it off this list")
+
     s.section("Every other template is reached from somewhere")
     orphans = sorted(names - hit - set(DYNAMIC) - set(AWAITING_WIRING)
-                     - set(PARTLY_LANDED))
+                     - set(PARTLY_LANDED) - set(SERVED_IN_CODE))
     s.check("nothing else sits in templates/ unreferenced", not orphans,
             detail="a template nothing renders reads as live code: somebody "
                    "corrects it, changes nothing anybody can see, and goes "

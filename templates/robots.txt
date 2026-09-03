@@ -1,0 +1,17 @@
+{#- Item 7. Admin and guest-token pages should never be indexed — a booking
+    management URL carries a token, and a search engine following one would
+    expose someone's booking. -#}
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /admin/
+Disallow: /manage/
+Disallow: /booking/
+Disallow: /workshop/manage
+Disallow: /account/
+Disallow: /open
+Disallow: /*?token=
+Disallow: /*?lang=          {# the alternates are declared in hreflang, not crawled twice #}
+
+Sitemap: {{ url_for('sitemap', _external=True) if 'sitemap' in url_map else request.url_root ~ 'sitemap.xml' }}

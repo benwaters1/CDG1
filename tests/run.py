@@ -48,6 +48,7 @@ SUITES = [
     "test_approvals_money",
     "test_closing_loops",
     "test_list_view",
+    "test_crawlers_and_proof",
     "test_consequences",
     "test_pos",
     "test_service_day",

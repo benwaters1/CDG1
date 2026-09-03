@@ -1,0 +1,28 @@
+{# ==========================================================================
+   WHAT AN ATELIER WEEK ACTUALLY IS  — marketing item 5
+   The house takes no other guests while an atelier runs. That is a private
+   château, six acres and a kitchen, at a per-person price — and the site
+   mentioned it in passing under a list of inclusions.
+
+       {% from '_exclusive.html' import exclusive %}
+       {{ exclusive(settings) }}
+   ========================================================================== #}
+{% macro exclusive(settings) %}
+<section class="g-sec g-sec--dark"><div class="g-wrap">
+  <p class="g-fr">Le château, rien qu'à vous<span class="g-fr__en">The château, and no one else</span></p>
+  <p class="g-eyebrow">Worth Saying Plainly</p>
+  <h2 class="g-place">You Have the Whole House</h2>
+  <p class="g-p g-lede-first">While an atelier runs the château takes no other guests. Not a floor, not a wing — the building, the gardens, the pool, the salons and the kitchen, for the length of your stay.</p>
+  <p class="g-p">Booked as a private hire that would be one number. Booked as an atelier it is a per-person price with the teaching, the board and the transfers inside it. That is the same house either way.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Party size</dt><dd>Fifteen at most, and no other guests in the building</dd></div>
+    <div><dt>What you get</dt><dd>Ninety-four rooms, six acres, the pool and the tennis court</dd></div>
+    <div><dt>In the price</dt><dd>The teaching, full board, château beverages, every activity and the transfers from Toulouse</dd></div>
+    <div><dt>Not in it</dt><dd>Your flights, and anything you buy at the brocantes</dd></div>
+  </dl></div></div>
+  <p class="g-p">
+    <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn--solid">See the dates</a>
+    <a href="{{ url_for('contact_page') }}">Ask about taking a week privately</a>
+  </p>
+</div></section>
+{% endmacro %}
