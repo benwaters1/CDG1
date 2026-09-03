@@ -306,4 +306,27 @@ def run():
     s.check("it is reading a real url_map", len(by_address) > 200,
             detail=f"{len(by_address)} distinct address(es)")
 
+    s.section("Every file a page asks for is actually in the repository")
+    # Twice now a handover has shipped markup pointing at a photograph that
+    # was not carried with it: static/img/tom.jpg on the restaurant page and
+    # static/img/salon.jpg on the gallery. On a public page a missing file is
+    # a BROKEN image, not an absent one -- the browser draws the torn-page
+    # icon and the guest sees a site that does not work. Nothing rendered
+    # wrong, no route failed, and no check went red.
+    import glob as _g
+    import os as _o
+    import re as _r
+    absent = {}
+    for path in _g.glob(_o.path.join(_harness.ROOT, "templates", "*.html")):
+        html = open(path, encoding="utf-8").read()
+        for hit in _r.finditer(r"filename=['\"]([^'\"{}]+)['\"]", html):
+            rel = hit.group(1)
+            if not _o.path.exists(_o.path.join(_harness.ROOT, "static", rel)):
+                absent.setdefault(rel, set()).add(_o.path.basename(path))
+    s.check("no template points at a static file that is not there",
+            not absent,
+            detail="; ".join("%s (%s)" % (f, ", ".join(sorted(w)))
+                             for f, w in sorted(absent.items()))[:220]
+                   + " — use site_image() for a photograph somebody uploads")
+
     return s
