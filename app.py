@@ -4095,10 +4095,6 @@ def init_db():
         # Minted only when somebody asks for one, and revocable. A token on
         # every booking is a live URL for every booking that has ever
         # existed, wanted or not.
-        # A shared reference for bookings that are one arrival. Never
-        # inferred: two bookings with the same surname on the same dates are
-        # often one family and are sometimes two families called Martin.
-        ("bookings_group_ref", "ALTER TABLE bookings ADD COLUMN group_ref TEXT"),
         ("bookings_share_token", "ALTER TABLE bookings ADD COLUMN share_token TEXT"),
         # What the guest keeps themselves, as against what the house wrote
         # down. Same retention as access_needs: twelve months after the last
@@ -4562,7 +4558,6 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_expenses_status ON expenses(status)",
         "CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_waitlist_entries_status ON waitlist_entries(status)",
-        "CREATE INDEX IF NOT EXISTS idx_bookings_group_ref ON bookings(group_ref)",
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_share_token "
         "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
@@ -31971,12 +31966,17 @@ def save_guest_own_record(conn, email, *, dietary=None, access=None,
 def booking_group(conn, booking_id):
     """Every booking travelling with this one, this one included.
 
-    Returns [] when it is not in a group, so a page can ask without first
-    asking whether to ask.
+    Reads party_id, which is the house's own mechanism -- a named party with a
+    lead booking, an audit line and a bulk action behind it. I built a second
+    the booking is in no party, so a page can ask without first asking whether
+    to ask.
+
+    A CANCELLED ROOM IS LEFT OUT. Telling a family that a room they cancelled
+    is still coming is worse than telling them nothing.
     """
-    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+    row = conn.execute("SELECT party_id FROM bookings WHERE id = ?",
                        (booking_id,)).fetchone()
-    if not row or not row["group_ref"]:
+    if not row or not row["party_id"]:
         return []
     return conn.execute(
         """SELECT bookings.id, bookings.reference_code, bookings.guest_name,
@@ -31984,57 +31984,70 @@ def booking_group(conn, booking_id):
                   bookings.party_size, bookings.status, rooms.name AS room_name
              FROM bookings
              JOIN rooms ON rooms.id = bookings.room_id
-            WHERE bookings.group_ref = ?
+            WHERE bookings.party_id = ?
               AND bookings.status IN ('pending', 'confirmed')
-            ORDER BY rooms.name""", (row["group_ref"],)).fetchall()
+            ORDER BY rooms.name""", (row["party_id"],)).fetchall()
 
 
-def join_booking_group(conn, booking_id, other_id):
-    """Put two bookings in one group. Returns (ok, why not).
+def join_booking_party(conn, booking_id, other_id):
+    """Put two bookings in one party. Returns (ok, why not).
 
-    Joins rather than overwrites: linking a third booking to one that is
-    already in a group puts it in THAT group, instead of making a second
-    group of two and quietly orphaning the first.
+    JOINS rather than mints. The bulk action takes two or more bookings and
+    creates a party, and refuses outright if any of them is already in one --
+    so a fourth room booked a fortnight later could not be tied to the other
+    three at all. This is the path for that.
+
+    Two EXISTING parties are still not merged: that moves everybody in one of
+    them, which is a decision and not a side effect of tying two rooms.
     """
-    # BEFORE the fetch. "id IN (?, ?)" with the same id twice returns one
-    # row, so this guard sat behind the row-count check and never ran -- and
-    # linking a booking to itself was refused as "one of those bookings does
-    # not exist", which sends somebody looking for a booking that is on the
-    # screen in front of them.
     if booking_id == other_id:
         return False, "a booking cannot travel with itself"
     rows = conn.execute(
-        "SELECT id, group_ref, arrival_date FROM bookings WHERE id IN (?, ?)",
+        "SELECT id, party_id, guest_name FROM bookings WHERE id IN (?, ?)",
         (booking_id, other_id)).fetchall()
     if len(rows) != 2:
         return False, "one of those bookings does not exist"
-    a, b = rows[0], rows[1]
-    if a["group_ref"] and b["group_ref"] and a["group_ref"] != b["group_ref"]:
-        # Merging two existing groups would silently move everybody in one of
-        # them. That is a decision, not a side effect of linking two rooms.
+    a_row, b_row = rows[0], rows[1]
+    if (a_row["party_id"] and b_row["party_id"]
+            and a_row["party_id"] != b_row["party_id"]):
         return False, ("both are already travelling with other bookings; "
-                       "take one out of its group first")
-    ref = a["group_ref"] or b["group_ref"] or ("GRP-" + secrets.token_hex(4).upper())
-    conn.execute("UPDATE bookings SET group_ref = ? WHERE id IN (?, ?)",
-                 (ref, booking_id, other_id))
+                       "take one out of its party first")
+    party_id = a_row["party_id"] or b_row["party_id"]
+    if not party_id:
+        # Named the way the house would name it, the same as the bulk action:
+        # the lead guest's surname. A party with no name is a row nobody can
+        # refer to on the telephone.
+        lead = (a_row["guest_name"] or "").strip()
+        name = (lead.split(" ")[-1] + " party") if lead else "Party"
+        cur = conn.execute(
+            "INSERT INTO booking_parties (name, lead_booking_id, created_at) "
+            "VALUES (?, ?, ?)",
+            (name, a_row["id"], datetime.now(timezone.utc).isoformat()))
+        party_id = cur.lastrowid
+    conn.execute("UPDATE bookings SET party_id = ? WHERE id IN (?, ?)",
+                 (party_id, booking_id, other_id))
     return True, ""
 
 
-def leave_booking_group(conn, booking_id):
-    """Take one booking out. If that leaves one behind, it is not a group."""
-    row = conn.execute("SELECT group_ref FROM bookings WHERE id = ?",
+def leave_booking_party(conn, booking_id):
+    """Take one booking out, without disbanding the whole party.
+
+    A party of one is not a party, and leaving it as one puts a "travelling
+    together" panel on a page with nobody else on it -- so the last booking is
+    untied too and the empty party row goes with it.
+    """
+    row = conn.execute("SELECT party_id FROM bookings WHERE id = ?",
                        (booking_id,)).fetchone()
-    if not row or not row["group_ref"]:
+    if not row or not row["party_id"]:
         return
-    ref = row["group_ref"]
-    conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?", (booking_id,))
-    # A group of one is not a group, and leaving it as one puts a
-    # "travelling together" panel on a page with nobody else on it.
-    left = conn.execute(
-        "SELECT id FROM bookings WHERE group_ref = ?", (ref,)).fetchall()
-    if len(left) == 1:
-        conn.execute("UPDATE bookings SET group_ref = NULL WHERE id = ?",
-                     (left[0]["id"],))
+    party_id = row["party_id"]
+    conn.execute("UPDATE bookings SET party_id = NULL WHERE id = ?", (booking_id,))
+    left = conn.execute("SELECT id FROM bookings WHERE party_id = ?",
+                        (party_id,)).fetchall()
+    if len(left) <= 1:
+        conn.execute("UPDATE bookings SET party_id = NULL WHERE party_id = ?",
+                     (party_id,))
+        conn.execute("DELETE FROM booking_parties WHERE id = ?", (party_id,))
 
 
 # The chateau's own coordinates.
@@ -44443,7 +44456,7 @@ def set_booking_group(booking_id):
     """
     conn = get_db()
     if request.form.get("leave"):
-        leave_booking_group(conn, booking_id)
+        leave_booking_party(conn, booking_id)
         conn.commit()
         conn.close()
         flash("Taken out. It is its own arrival again.", "success")
@@ -44459,7 +44472,7 @@ def set_booking_group(booking_id):
         return redirect(request.referrer
                         or url_for("edit_booking", booking_id=booking_id))
 
-    ok, why = join_booking_group(conn, booking_id, other["id"])
+    ok, why = join_booking_party(conn, booking_id, other["id"])
     if ok:
         log_audit(conn, "bookings_linked", f"{booking_id} + {other['id']}", ref)
         conn.commit()
