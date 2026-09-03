@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Arrivals{% endblock %}
+{% block content %}
+
+{# ONE DAY, ON ONE PAGE. The arrival card is per booking and the incomplete
+   list says only what is missing; neither is the thing somebody wants at
+   breakfast. Defaults to TOMORROW, because by the time today's arrivals are
+   arriving it is too late to act on anything this would have told you. #}
+
+<div class="page-head">
+  <h1>Arrivals</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <form method="get" action="{{ url_for('arrivals_sheet_page') }}" style="display:flex; gap:6px; align-items:center;">
+      <input type="date" name="date" value="{{ day.isoformat() }}" aria-label="Which day">
+      <button type="submit" class="btn-mini">Show</button>
+    </form>
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
+  </div>
+</div>
+
+<p class="upload-hint" style="margin-bottom:18px;">
+  {{ day.strftime('%A, %e %B %Y') }}{% if day == today %} · today{% endif %}
+  {%- if sheet.beds %} · {{ sheet.beds }} coming{% endif %}
+</p>
+
+{% if sheet.nothing_doing %}
+  {# An empty day and a sheet nobody built look identical unless one says so. #}
+  <div class="empty-state">Nobody is arriving or leaving on this day.</div>
+{% endif %}
+
+{% if sheet.arriving %}
+<h2 class="section-heading">Arriving</h2>
+<div class="task-list">
+  {% for r in sheet.arriving %}
+  {% set b = r.booking %}
+  <div class="expense-card">
+    <div class="expense-head">
+      <strong>{{ b['guest_name'] }}</strong>
+      {%- if r.profile and r.profile['name_pronunciation'] %}
+      <span class="upload-hint">&nbsp;({{ r.profile['name_pronunciation'] }})</span>
+      {%- endif %}
+      <span class="mini-status status-active" style="margin-left:8px;">{{ b['room_name'] }}</span>
+      {%- if r.arrival_time %}
+      <span class="mini-status status-onshift" style="margin-left:4px;">{{ r.arrival_time }}</span>
+      {%- endif %}
+      {%- if r.profile and r.profile['vip'] %}
+      <span class="mini-status status-active" style="margin-left:4px;">VIP</span>
+      {%- endif %}
+      {%- if r.profile and r.profile['language'] and r.profile['language'] != 'en' %}
+      <span class="mini-status status-pending" style="margin-left:4px;">reads {{ languages.get(r.profile['language'], r.profile['language']) }}</span>
+      {%- endif %}
+    </div>
+
+    <p class="field-label">Party</p>
+    <p>{{ b['party_size'] }}{% if b['guests_under_18'] %}, {{ b['guests_under_18'] }} under 18{% endif %}
+      · {{ b['arrival_date'] }} to {{ b['departure_date'] }}
+      · <span class="upload-hint">{{ b['reference_code'] }}</span></p>
+
+    {% if r.dietary %}
+    <p class="field-label">Cannot eat</p>
+    <p>{{ r.dietary }}</p>
+    {% endif %}
+
+    {% if r.access_needs %}
+    {# Read here rather than found on the profile afterwards: the ground-floor
+       decision is made before they arrive or not at all. #}
+    <p class="field-label">Needs from the house</p>
+    <p>{{ r.access_needs }}</p>
+    {% endif %}
+
+    {% if b['transfer_flight_number'] or b['transfer_arrival_time'] or b['transfer_notes'] %}
+    <p class="field-label">Meeting them</p>
+    <p>
+      {%- if b['transfer_flight_number'] %}Flight {{ b['transfer_flight_number'] }}{% endif %}
+      {%- if b['transfer_arrival_time'] %} · lands {{ b['transfer_arrival_time'] }}{% endif %}
+      {%- if b['transfer_notes'] %} · {{ b['transfer_notes'] }}{% endif %}
+    </p>
+    {% endif %}
+
+    {% if r.caution %}
+    <p><span class="mini-status status-declined">standing instruction</span>
+      {{ r.caution['caution'] }}</p>
+    {% endif %}
+    {% if r.prior_no_shows %}
+    <p><span class="mini-status status-declined">did not arrive {{ r.prior_no_shows }}&times; before</span></p>
+    {% endif %}
+
+    {% if r.missing %}
+    {# The questions somebody would otherwise ask at the door, which is the
+       worst moment to ask any of them. #}
+    <p class="field-label">Still unanswered</p>
+    <p>{% for m in r.missing %}<span class="mini-status status-pending" style="margin-right:4px;">{{ m }}</span>{% endfor %}</p>
+    {% endif %}
+
+    {% if r.codes %}
+    <p class="field-label">Given out</p>
+    {% for c in r.codes %}
+    <p>
+      {{ 'Key' if c['kind'] == 'key' else 'Code' }}
+      {%- if c['value'] %} <code>{{ c['value'] }}</code>{% else %}
+      <span class="upload-hint">(cleared — the stay is over)</span>{% endif %}
+      {%- if c['issued_to'] %} to {{ c['issued_to'] }}{% endif %}
+      {%- if c['note'] %} · {{ c['note'] }}{% endif %}
+      <form method="post" action="{{ url_for('access_code_returned', code_id=c['id']) }}" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="back" value="{{ url_for('arrivals_sheet_page', date=day.isoformat()) }}">
+        <button type="submit" class="small-link">back</button>
+      </form>
+    </p>
+    {% endfor %}
+    {% endif %}
+
+    {% if may('guests') %}
+    <form method="post" action="{{ url_for('issue_access_code', booking_id=b['id']) }}"
+          class="expense-actions" style="margin-top:8px; padding-top:10px; border-top:1px dashed var(--parchment-line); display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="back" value="{{ url_for('arrivals_sheet_page', date=day.isoformat()) }}">
+      <select name="kind" aria-label="Code or key">
+        <option value="code">Door code</option>
+        <option value="key">Key</option>
+      </select>
+      <input type="text" name="value" placeholder="What was given" maxlength="60" aria-label="What was given">
+      <input type="text" name="issued_to" placeholder="To whom (defaults to the guest)" maxlength="120" aria-label="To whom">
+      <button type="submit" class="btn-mini">Record it</button>
+      <span class="upload-hint">Cleared automatically once the stay is over.</span>
+    </form>
+    {% endif %}
+
+    <p style="margin-top:8px;">
+      <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link">Arrival card</a>
+      &nbsp;<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="small-link">Everything about them</a>
+    </p>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if sheet.leaving %}
+{# The other half of the same morning: a room is not ready for an arrival until
+   the departure has gone. #}
+<h2 class="section-heading">Leaving</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Guest</th><th scope="col">Room</th><th scope="col">Reference</th></tr></thead>
+    <tbody>
+      {% for b in sheet.leaving %}
+      <tr>
+        <th scope="row">{{ b['guest_name'] }}</th>
+        <td>{{ b['room_name'] }}</td>
+        <td>{{ b['reference_code'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}

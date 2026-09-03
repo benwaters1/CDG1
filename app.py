@@ -2481,6 +2481,19 @@ def init_db():
         -- One group across several rooms. Holds nothing but who they are:
         -- the rooms, dates, prices and bills stay on the bookings, which is
         -- where they already work.
+        CREATE TABLE IF NOT EXISTS booking_access_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL DEFAULT 'code' CHECK(kind IN ('code','key')),
+            value TEXT NOT NULL,
+            issued_to TEXT,
+            issued_at TEXT NOT NULL,
+            good_until TEXT,
+            returned_at TEXT,
+            note TEXT,
+            issued_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+        );
+
         CREATE TABLE IF NOT EXISTS booking_parties (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -5189,6 +5202,7 @@ def login_required(view):
 NAV_AREAS = {
     "guests": [
         "mark_booking_no_show", "undo_booking_no_show",
+        "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
         "save_list_view", "delete_list_view",
@@ -51424,6 +51438,30 @@ def purge_dead_enquiries(conn, today=None):
     return cleared
 
 
+def purge_spent_access_codes(conn, today=None):
+    """Blank the door code once the stay it was for is over.
+
+    A code kept after the guest has gone is not a record, it is a way in. The
+    ROW stays -- who was given something, when, and whether a key came back is
+    worth having -- but the value itself is cleared, because there is no
+    question anybody asks later that needs the digits.
+
+    A grace period, because a key can come back a few days after the guest
+    does, and blanking the code the morning they leave loses the thing you look
+    at when it does not.
+    """
+    today = today or house_today()
+    cutoff = (today - timedelta(days=ACCESS_CODE_KEEP_DAYS)).isoformat()
+    cur = conn.execute(
+        """UPDATE booking_access_codes SET value = ''
+            WHERE value != ''
+              AND booking_id IN (SELECT id FROM bookings WHERE departure_date <= ?)""",
+        (cutoff,))
+    if cur.rowcount:
+        conn.commit()
+    return {"door codes blanked": cur.rowcount}
+
+
 def run_health_notes_purge_job(conn):
     """The retention pass, daily. Everything the privacy notice promises to
     delete is deleted here, so the notice can be checked against one function
@@ -51436,6 +51474,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_dead_enquiries(conn))
     cleared.update(purge_police_register(conn))
     cleared.update(purge_stale_access_needs(conn))
+    cleared.update(purge_spent_access_codes(conn))
     done = {k: v for k, v in cleared.items() if v}
     if not done:
         return "nothing to clear"
@@ -53051,6 +53090,179 @@ def decide_leave(request_id):
 # Printable daily ops sheet — today's tasks, shifts, who's off, who's here,
 # in one page meant to be printed and posted, not clicked through.
 # ---------------------------------------------------------------------------
+
+ACCESS_CODE_KEEP_DAYS = 7
+
+
+def arrivals_sheet(conn, day=None):
+    """One day's arrivals and departures, with everything about each on the row.
+
+    The arrival card is per booking and the incomplete list says only what is
+    MISSING. Neither is the thing somebody wants at breakfast: who is coming,
+    when, which room, what they cannot eat, whether anybody is meeting a plane,
+    and what still has no answer. It was assembled by opening six pages.
+
+    Read-only and rebuilt every time. Nothing here is stored, so it cannot go
+    stale and disagree with the bookings it describes.
+    """
+    day = day or house_today()
+    iso = day.isoformat()
+    arriving = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.arrival_date = ? AND bookings.status = 'confirmed'
+            ORDER BY COALESCE(NULLIF(bookings.estimated_arrival_time, ''), '99:99'),
+                     rooms.name""",
+        (iso,)).fetchall()
+    leaving = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+             JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.departure_date = ? AND bookings.status = 'confirmed'
+            ORDER BY rooms.name""",
+        (iso,)).fetchall()
+
+    emails = [b["guest_email"] for b in arriving]
+    # Both in one query each rather than per row: a sheet that opens six times
+    # per arrival is a sheet nobody opens.
+    no_shows = prior_no_shows(conn, emails) if emails else {}
+    profiles = {}
+    if emails:
+        marks = ",".join("?" * len(emails))
+        profiles = {
+            (r["email"] or "").lower(): r for r in conn.execute(
+                f"SELECT * FROM guests WHERE LOWER(email) IN ({marks})",
+                [(e or "").strip().lower() for e in emails]).fetchall()}
+    codes = {}
+    if arriving:
+        marks = ",".join("?" * len(arriving))
+        for r in conn.execute(
+                f"""SELECT * FROM booking_access_codes
+                     WHERE booking_id IN ({marks}) AND returned_at IS NULL
+                     ORDER BY issued_at""", [b["id"] for b in arriving]).fetchall():
+            codes.setdefault(r["booking_id"], []).append(r)
+
+    rows = []
+    for b in arriving:
+        email = (b["guest_email"] or "").strip().lower()
+        profile = profiles.get(email)
+        caution = guest_caution_for(conn, email=b["guest_email"], name=b["guest_name"])
+        # WHAT IS STILL UNANSWERED, said on the row rather than on a second
+        # page. These are the questions somebody would otherwise ask at the
+        # door, which is the worst moment to ask any of them.
+        missing = []
+        if not (b["guest_email"] or "").strip():
+            missing.append("no email")
+        if not (b["guest_phone"] or "").strip():
+            missing.append("no telephone")
+        if not (b["estimated_arrival_time"] or "").strip() and not (
+                profile and (profile["usual_arrival_time"] or "").strip()):
+            missing.append("no arrival time")
+        if booking_has_transfer(b) and not (b["transfer_arrival_time"] or "").strip():
+            missing.append("transfer with no time")
+        rows.append({
+            "booking": b,
+            "profile": profile,
+            "caution": caution,
+            "prior_no_shows": no_shows.get(email, 0),
+            "codes": codes.get(b["id"], []),
+            # The profile answers it when the booking does not: a guest who
+            # always arrives at six should not be asked every time.
+            "arrival_time": (b["estimated_arrival_time"] or "").strip()
+                            or ((profile["usual_arrival_time"] or "").strip()
+                                if profile else ""),
+            "dietary": " · ".join(x for x in [
+                (profile["dietary_notes"] or "").strip() if profile else "",
+                (b["special_requests"] or "").strip()] if x),
+            "access_needs": (profile["access_needs"] or "").strip() if profile else "",
+            "missing": missing,
+        })
+    return {
+        "day": day,
+        "arriving": rows,
+        "leaving": leaving,
+        "beds": sum((b["party_size"] or 0) for b in arriving),
+        # Said plainly, because an empty sheet and a sheet nobody built look
+        # identical otherwise.
+        "nothing_doing": not arriving and not leaving,
+    }
+
+
+@app.route("/admin/arrivals")
+@login_required
+def arrivals_sheet_page():
+    """The sheet for a day, defaulting to tomorrow.
+
+    TOMORROW rather than today on purpose: this is the page somebody reads to
+    prepare, and by the time today's arrivals are arriving it is too late to do
+    anything the sheet would have told them.
+    """
+    day = parse_date(request.args.get("date", "")) or (house_today() + timedelta(days=1))
+    conn = get_db()
+    sheet = arrivals_sheet(conn, day)
+    conn.close()
+    return render_template("arrivals_sheet.html", sheet=sheet,
+                           today=house_today(), day=day)
+
+
+@app.route("/admin/bookings/<int:booking_id>/access-code", methods=["POST"])
+@owner_required
+def issue_access_code(booking_id):
+    """What was given to whom, so it is not a text message somebody has to find.
+
+    Late arrivals in the valley are normal and the code was living in whichever
+    phone sent it. Recording it means the next person on can answer the
+    telephone at eleven at night without ringing somebody at home.
+    """
+    conn = get_db()
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    value = (request.form.get("value", "") or "").strip()[:60]
+    if not value:
+        conn.close()
+        flash("Nothing to record — put in the code or which key it was.", "error")
+        return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+    kind = (request.form.get("kind", "") or "code").strip()
+    if kind not in ("code", "key"):
+        kind = "code"
+    user = current_user()
+    conn.execute(
+        """INSERT INTO booking_access_codes (booking_id, kind, value, issued_to,
+           issued_at, good_until, note, issued_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (booking_id, kind, value,
+         (request.form.get("issued_to", "") or "").strip()[:120] or booking["guest_name"],
+         datetime.now(timezone.utc).isoformat(),
+         booking["departure_date"],
+         (request.form.get("note", "") or "").strip()[:300] or None,
+         user["id"] if user else None))
+    log_audit(conn, "access_code_issued", target=booking["reference_code"], details=kind)
+    conn.commit()
+    conn.close()
+    flash(f"Recorded. It is cleared automatically {ACCESS_CODE_KEEP_DAYS} days "
+          "after they leave — a code kept afterwards is a way in, not a record.",
+          "success")
+    return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+
+
+@app.route("/admin/access-code/<int:code_id>/back", methods=["POST"])
+@owner_required
+def access_code_returned(code_id):
+    """The key came back."""
+    conn = get_db()
+    cur = conn.execute(
+        "UPDATE booking_access_codes SET returned_at = ? WHERE id = ? AND returned_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(), code_id))
+    if cur.rowcount == 0:
+        conn.close()
+        flash("Already marked as back.", "error")
+        return redirect(url_for("arrivals_sheet_page"))
+    conn.commit()
+    conn.close()
+    flash("Marked as back.", "success")
+    return redirect(request.form.get("back") or url_for("arrivals_sheet_page"))
+
 
 @app.route("/admin/today-sheet")
 @owner_required

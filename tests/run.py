@@ -44,6 +44,7 @@ SUITES = [
     "test_workflows",
     "test_operations",
     "test_areas",
+    "test_arrivals_sheet",
     "test_approvals_money",
     "test_closing_loops",
     "test_list_view",
