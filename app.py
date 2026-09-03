@@ -3750,6 +3750,41 @@ def init_db():
              taken_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
              created_at TEXT NOT NULL
          )"""),
+        # The run sheet. An event goes enquiry, quote, deposit, balance -- and
+        # then nothing told anybody how to run the day. For a wedding, which
+        # is the most expensive thing the house sells, the plan lived in
+        # somebody's head and in a thread of emails.
+        ("event_timeline_table", """CREATE TABLE IF NOT EXISTS event_timeline (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             at_time TEXT NOT NULL,
+             what TEXT NOT NULL,
+             who TEXT,
+             note TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("event_suppliers_table", """CREATE TABLE IF NOT EXISTS event_suppliers (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             name TEXT NOT NULL,
+             kind TEXT,
+             arriving_at TEXT,
+             contact TEXT,
+             phone TEXT,
+             confirmed_at TEXT,
+             note TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("event_inquiries_final_numbers",
+         "ALTER TABLE event_inquiries ADD COLUMN final_numbers INTEGER"),
+        ("event_inquiries_final_numbers_at",
+         "ALTER TABLE event_inquiries ADD COLUMN final_numbers_at TEXT"),
+        ("event_inquiries_run_sheet_note",
+         "ALTER TABLE event_inquiries ADD COLUMN run_sheet_note TEXT"),
+        ("event_inquiries_arrival_time",
+         "ALTER TABLE event_inquiries ADD COLUMN arrival_time TEXT"),
+        ("event_inquiries_carriages_time",
+         "ALTER TABLE event_inquiries ADD COLUMN carriages_time TEXT"),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
         # What has already been sent to the accountant.
         #
@@ -5464,6 +5499,10 @@ NAV_AREAS = {
     ],
     "events": [
         "admin_events", "export_events_csv", "update_event_inquiry",
+        "event_run_sheet_page", "export_event_run_sheet_csv",
+        "add_event_moment", "delete_event_moment",
+        "add_event_supplier", "confirm_event_supplier", "delete_event_supplier",
+        "save_event_run_details",
         # Pages that had no area at all until now, so they were
         # owner-only by omission rather than by choice.
         "new_event_inquiry", "update_event_types",
@@ -16642,6 +16681,128 @@ def breakage_recovery(conn, start=None, end=None):
     }
 
 
+# How long before the day the house needs a number it can cook to. A caterer
+# orders against it and a table plan is drawn from it, so it is not a
+# formality -- it is the last moment the cost of the event can still change.
+FINAL_NUMBERS_DAYS = 14
+
+SUPPLIER_KINDS = ["Florist", "Band or DJ", "Photographer", "Celebrant",
+                  "Hire", "Cake", "Transport", "Other"]
+
+
+def event_run_sheet(conn, event_id, today=None):
+    """One page that says how the day runs.
+
+    An event went enquiry, quote, deposit, balance -- and then nothing. The
+    plan for the most expensive thing the house sells lived in somebody's
+    head and in a thread of emails, and on the morning itself the people
+    actually carrying plates had never seen it.
+
+    Everything here is a fact somebody has entered. Nothing is inferred and
+    nothing is invented: a run sheet that guesses at a time is worse than a
+    blank one, because a blank line gets asked about.
+    """
+    today = today or house_today()
+    event = conn.execute(
+        "SELECT * FROM event_inquiries WHERE id = ?", (event_id,)).fetchone()
+    if not event:
+        return None
+
+    day = parse_date(event["preferred_date"])
+    end = parse_date(event["end_date"]) or day
+    days_away = (day - today).days if day else None
+
+    timeline = [dict(r) for r in conn.execute(
+        """SELECT * FROM event_timeline WHERE event_id = ?
+            ORDER BY at_time, id""", (event_id,)).fetchall()]
+    suppliers = [dict(r) for r in conn.execute(
+        """SELECT * FROM event_suppliers WHERE event_id = ?
+            ORDER BY COALESCE(NULLIF(arriving_at, ''), '99:99'), name""",
+        (event_id,)).fetchall()]
+
+    # The numbers question, which is the one that costs money if it is late.
+    expected = event["final_numbers"] if event["final_numbers"] is not None \
+        else event["guest_count"]
+    numbers_due = (day - timedelta(days=FINAL_NUMBERS_DAYS)) if day else None
+    numbers_confirmed = event["final_numbers"] is not None
+    numbers_overdue = bool(
+        day and not numbers_confirmed and days_away is not None
+        and days_away <= FINAL_NUMBERS_DAYS and days_away >= 0)
+
+    unconfirmed = [s for s in suppliers if not s["confirmed_at"]]
+
+    # Who is on that day, from the rota. The run sheet does not roster
+    # anybody -- it says who is already down, so a gap is visible while there
+    # is still time to fill it.
+    on_shift = []
+    if day:
+        on_shift = [dict(r) for r in conn.execute(
+            """SELECT users.name, shifts.start_time, shifts.end_time, shifts.role_note
+                 FROM shifts JOIN users ON users.id = shifts.user_id
+                WHERE shifts.shift_date = ? ORDER BY shifts.start_time, users.name""",
+            (day.isoformat(),)).fetchall()]
+
+    # Rooms sold that night, because a wedding party usually sleeps here and
+    # the housekeeping load is the event plus the beds.
+    rooms_that_night = 0
+    if day:
+        rooms_that_night = conn.execute(
+            """SELECT COUNT(*) AS c FROM bookings
+                WHERE status = 'confirmed' AND arrival_date <= ? AND departure_date > ?""",
+            (day.isoformat(), day.isoformat())).fetchone()["c"]
+
+    bill = event_bill(conn, event_id)
+    return {
+        "event": dict(event), "day": day, "end": end, "days_away": days_away,
+        "timeline": timeline, "suppliers": suppliers,
+        "unconfirmed": unconfirmed,
+        "expected": expected,
+        "quoted_for": event["guest_count"],
+        "numbers_confirmed": numbers_confirmed,
+        "numbers_due": numbers_due,
+        "numbers_overdue": numbers_overdue,
+        "on_shift": on_shift,
+        "rooms_that_night": rooms_that_night,
+        "bill": bill,
+        "spaces": (event["spaces"] or "").strip(),
+        "supplier_kinds": SUPPLIER_KINDS,
+        # A run sheet with no timeline is the state this feature exists to
+        # end, so the page says so rather than showing an empty table.
+        "empty": not timeline,
+        "csv": [{"time": t["at_time"], "what": t["what"], "who": t["who"] or "",
+                 "note": t["note"] or ""} for t in timeline],
+    }
+
+
+def events_needing_numbers(conn, today=None):
+    """Confirmed events inside the numbers window with no number on them.
+
+    Closes itself: enter the number and the finding stops being true.
+    """
+    today = today or house_today()
+    horizon = today + timedelta(days=FINAL_NUMBERS_DAYS)
+    rows = conn.execute(
+        """SELECT id, reference_code, contact_name, event_type, preferred_date,
+                  guest_count, final_numbers
+             FROM event_inquiries
+            WHERE status = 'confirmed'
+              AND final_numbers IS NULL
+              AND preferred_date >= ? AND preferred_date <= ?
+            ORDER BY preferred_date""",
+        (today.isoformat(), horizon.isoformat())).fetchall()
+    out = []
+    for r in rows:
+        day = parse_date(r["preferred_date"])
+        out.append({
+            "id": r["id"], "reference": r["reference_code"],
+            "who": r["contact_name"], "kind": r["event_type"],
+            "date": r["preferred_date"],
+            "days_away": (day - today).days if day else None,
+            "quoted_for": r["guest_count"],
+        })
+    return out
+
+
 def report_labour(conn, period):
     # Same helper the financial summary costs labour with, so the two pages
     # cannot disagree about the same shifts.
@@ -25003,6 +25164,9 @@ PALETTE_PAGES = [
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("Event run sheet", "admin_events",
+     "run sheet wedding event timeline suppliers final numbers carriages "
+     "florist band photographer setup day plan"),
     ("What they cannot eat", "kitchen_dietary",
      "dietary allergy allergen intolerance medical notes kitchen sheet "
      "gluten nut vegetarian vegan service"),
@@ -43744,6 +43908,191 @@ def export_breakage_recovery_csv():
                          "written_off"], data["csv"], "breakage-recovery.csv")
 
 
+@app.route("/admin/events/<int:event_id>/run-sheet")
+@owner_required
+def event_run_sheet_page(event_id):
+    """How the day runs, on one page."""
+    conn = get_db()
+    data = event_run_sheet(conn, event_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("admin_event_run_sheet.html", data=data)
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet.csv")
+@owner_required
+def export_event_run_sheet_csv(event_id):
+    conn = get_db()
+    data = event_run_sheet(conn, event_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return csv_response(["time", "what", "who", "note"], data["csv"],
+                        "run-sheet_%s.csv" % (data["event"]["reference_code"] or event_id))
+
+
+def _event_or_404(conn, event_id):
+    row = conn.execute("SELECT id FROM event_inquiries WHERE id = ?",
+                       (event_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    return row
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/moment", methods=["POST"])
+@owner_required
+def add_event_moment(event_id):
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    at_time = (request.form.get("at_time", "") or "").strip()
+    what = (request.form.get("what", "") or "").strip()[:160]
+    if not at_time or not what:
+        conn.close()
+        flash("A moment needs a time and something happening.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    if not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", at_time):
+        conn.close()
+        flash("Give the time as 24-hour, like 16:30.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    conn.execute(
+        """INSERT INTO event_timeline (event_id, at_time, what, who, note, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (event_id, at_time.zfill(5), what,
+         (request.form.get("who", "") or "").strip()[:80] or None,
+         (request.form.get("note", "") or "").strip()[:200] or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/moment/<int:moment_id>/delete",
+           methods=["POST"])
+@owner_required
+def delete_event_moment(event_id, moment_id):
+    conn = get_db()
+    conn.execute("DELETE FROM event_timeline WHERE id = ? AND event_id = ?",
+                 (moment_id, event_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/supplier", methods=["POST"])
+@owner_required
+def add_event_supplier(event_id):
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    name = (request.form.get("name", "") or "").strip()[:120]
+    if not name:
+        conn.close()
+        flash("A supplier needs a name.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    arriving = (request.form.get("arriving_at", "") or "").strip()
+    if arriving and not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", arriving):
+        conn.close()
+        flash("Give the arrival as 24-hour, like 09:00, or leave it blank.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    conn.execute(
+        """INSERT INTO event_suppliers (event_id, name, kind, arriving_at, contact,
+             phone, note, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (event_id, name,
+         (request.form.get("kind", "") or "").strip()[:40] or None,
+         arriving.zfill(5) if arriving else None,
+         (request.form.get("contact", "") or "").strip()[:80] or None,
+         (request.form.get("phone", "") or "").strip()[:40] or None,
+         (request.form.get("note", "") or "").strip()[:200] or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/supplier/<int:supplier_id>/confirm",
+           methods=["POST"])
+@owner_required
+def confirm_event_supplier(event_id, supplier_id):
+    """Mark a supplier as having confirmed, or take it back.
+
+    A toggle rather than a one-way tick, because the usual reason to change
+    it is that somebody confirmed and then cancelled -- and the run sheet has
+    to be able to say so.
+    """
+    conn = get_db()
+    row = conn.execute(
+        "SELECT confirmed_at FROM event_suppliers WHERE id = ? AND event_id = ?",
+        (supplier_id, event_id)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("UPDATE event_suppliers SET confirmed_at = ? WHERE id = ?",
+                 (None if row["confirmed_at"] else datetime.now(timezone.utc).isoformat(),
+                  supplier_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/supplier/<int:supplier_id>/delete",
+           methods=["POST"])
+@owner_required
+def delete_event_supplier(event_id, supplier_id):
+    conn = get_db()
+    conn.execute("DELETE FROM event_suppliers WHERE id = ? AND event_id = ?",
+                 (supplier_id, event_id))
+    conn.commit()
+    conn.close()
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/run-sheet/details", methods=["POST"])
+@owner_required
+def save_event_run_details(event_id):
+    """Final numbers, the two times that bracket the day, and a note."""
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    raw = (request.form.get("final_numbers", "") or "").strip()
+    numbers = None
+    if raw:
+        try:
+            numbers = int(raw)
+        except ValueError:
+            conn.close()
+            flash("Final numbers has to be a whole number of people.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+        if numbers < 0:
+            conn.close()
+            flash("Final numbers cannot be negative.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+    for field in ("arrival_time", "carriages_time"):
+        value = (request.form.get(field, "") or "").strip()
+        if value and not re.match(r"^([01]?\d|2[0-3]):[0-5]\d$", value):
+            conn.close()
+            flash("Give times as 24-hour, like 16:30.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+    conn.execute(
+        """UPDATE event_inquiries
+              SET final_numbers = ?,
+                  final_numbers_at = CASE WHEN ? IS NULL THEN NULL
+                                          ELSE COALESCE(final_numbers_at, ?) END,
+                  arrival_time = ?, carriages_time = ?, run_sheet_note = ?
+            WHERE id = ?""",
+        (numbers, numbers, datetime.now(timezone.utc).isoformat(),
+         (request.form.get("arrival_time", "") or "").strip() or None,
+         (request.form.get("carriages_time", "") or "").strip() or None,
+         (request.form.get("run_sheet_note", "") or "").strip()[:2000] or None,
+         event_id))
+    conn.commit()
+    conn.close()
+    flash("Run sheet saved.", "success")
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
 @app.route("/management/break-even")
 @owner_required
 def management_break_even():
@@ -47555,6 +47904,7 @@ WATCH_TASK_KINDS = {
     "filing": "A return or payment that is due",
     "celebration": "A guest with something to celebrate while they are here",
     "changeover": "A day with the whole house to turn round",
+    "numbers": "An event with no final numbers and the kitchen ordering",
     "detail": "A guest arriving without the details to prepare",
     "access": "A guest who told us something, in a room that asks something",
     "agreement": "An agreement about to roll over while nobody decided",
@@ -49020,6 +49370,21 @@ def watch_task_findings(conn, today=None):
             # Due the day BEFORE, because the useful moment is the evening
             # you can still put somebody else on.
             (day["day"] - timedelta(days=1)).isoformat(), "high"))
+
+    # A confirmed event inside the numbers window with nobody counted. The
+    # kitchen orders against this figure and the table plan is drawn from
+    # it, so it is the last moment the cost of the event can still change.
+    for ev in take("numbers", events_needing_numbers(conn, today)):
+        found.append((
+            "numbers",
+            f"Final numbers not given — {ev['reference']}",
+            f"{ev['who']}'s {ev['kind'] or 'event'} on {ev['date']}, in "
+            f"{ev['days_away']} day{'' if ev['days_away'] == 1 else 's'}. "
+            f"Quoted for {ev['quoted_for'] or 'an unknown number'}."
+            + chr(92) + "n" + chr(92) + "n"
+            + "The kitchen orders against the final figure and the table plan "
+              "is drawn from it. Events → Run sheet takes the number.",
+            ev["date"], "high"))
 
     # An arrival inside three days with no time, no telephone number or no
     # email. Fill it in and the finding stops being true.

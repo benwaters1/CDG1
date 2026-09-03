@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Run sheet — {{ data.event.contact_name }}{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>{{ data.event.event_type|capitalize if data.event.event_type else 'Event' }} &mdash; {{ data.event.contact_name }}</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_events') }}" class="btn-ghost">All events</a>
+    <a href="{{ url_for('export_event_run_sheet_csv', event_id=data.event.id) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  An event went enquiry, quote, deposit, balance &mdash; and then nothing. The plan for the most
+  expensive thing the house sells lived in somebody&rsquo;s head and in a thread of emails, and on
+  the morning itself the people carrying plates had never seen it. Everything on this page is a
+  fact somebody entered: nothing is inferred, because a run sheet that guesses at a time is worse
+  than a blank one. A blank line gets asked about.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.day.strftime('%a %d %b') if data.day else '&mdash;'|safe }}</span>
+    <span class="stat-tile-label">{% if data.days_away is not none and data.days_away >= 0 %}In {{ data.days_away }} day{{ '' if data.days_away == 1 else 's' }}{% else %}Date{% endif %}</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.expected or '&mdash;'|safe }}</span>
+    <span class="stat-tile-label">{% if data.numbers_confirmed %}Final numbers{% else %}Quoted for &mdash; not yet final{% endif %}</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.suppliers|length }}</span>
+    <span class="stat-tile-label">Suppliers, {{ data.unconfirmed|length }} unconfirmed</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.rooms_that_night }}</span>
+    <span class="stat-tile-label">Rooms sold that night</span></span></div>
+</div>
+
+{% if data.numbers_overdue %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">Final numbers are due and have not been given</h3>
+  <p class="field-hint" style="margin-top:0;">
+    The kitchen orders against this figure and the table plan is drawn from it, so it is the last
+    moment the cost of the event can still change. It was due
+    {{ data.numbers_due.strftime('%d %B') if data.numbers_due }}.
+  </p>
+</div>
+{% endif %}
+
+{% if data.empty %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">Nothing is written down for this day yet</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Add the moments below and this becomes the sheet the kitchen, the front of house and the
+    couple all work from. Start with the two that bracket everything else &mdash; when guests
+    arrive and when the music stops.
+  </p>
+</div>
+{% endif %}
+
+<h2 class="section-heading">The day</h2>
+{% if data.timeline %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Time</th><th style="text-align:left;">What</th>
+      <th style="text-align:left;">Who has it</th><th style="text-align:left;">Note</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in data.timeline %}
+      <tr>
+        <th scope="row" style="text-align:left;"><span style="font-variant-numeric:tabular-nums;">{{ t.at_time }}</span></th>
+        <td>{{ t.what }}</td>
+        <td>{{ t.who or '&mdash;'|safe }}</td>
+        <td>{{ t.note or '' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_event_moment', event_id=data.event.id, moment_id=t.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('add_event_moment', event_id=data.event.id) }}"
+      class="search-bar" style="margin:14px 0 26px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label" for="at_time">Time</label>
+    <input type="time" id="at_time" name="at_time" required>
+  </div>
+  <div style="flex:2 1 240px;">
+    <label class="field-label" for="what">What happens</label>
+    <input type="text" id="what" name="what" maxlength="160" required
+           placeholder="Guests arrive at the front steps">
+  </div>
+  <div>
+    <label class="field-label" for="who">Who has it</label>
+    <input type="text" id="who" name="who" maxlength="80" placeholder="Front of house">
+  </div>
+  <button type="submit" class="btn-mini">Add moment</button>
+</form>
+
+<h2 class="section-heading">Who is coming to set up</h2>
+<p class="field-hint" style="max-width:760px;">
+  A supplier nobody confirmed is the one that does not arrive, and the day it matters is the day
+  there is no time to ring round.
+</p>
+{% if data.suppliers %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th style="text-align:left;">Arriving</th><th style="text-align:left;">Who</th>
+      <th style="text-align:left;">For</th><th style="text-align:left;">Contact</th>
+      <th style="text-align:left;">Confirmed</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for sup in data.suppliers %}
+      <tr{% if not sup.confirmed_at %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;"><span style="font-variant-numeric:tabular-nums;">{{ sup.arriving_at or '&mdash;'|safe }}</span></th>
+        <td>{{ sup.name }}{% if sup.note %}<span class="field-hint" style="display:block;">{{ sup.note }}</span>{% endif %}</td>
+        <td>{{ sup.kind or '&mdash;'|safe }}</td>
+        <td>{{ sup.contact or '' }}{% if sup.phone %} &middot; {{ sup.phone }}{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('confirm_event_supplier', event_id=data.event.id, supplier_id=sup.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">{{ 'Yes' if sup.confirmed_at else 'Not yet' }}</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('delete_event_supplier', event_id=data.event.id, supplier_id=sup.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No suppliers listed for this event.</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('add_event_supplier', event_id=data.event.id) }}"
+      class="search-bar" style="margin:14px 0 26px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div>
+    <label class="field-label" for="sup_name">Who</label>
+    <input type="text" id="sup_name" name="name" maxlength="120" required placeholder="Fleurs d'Ariège">
+  </div>
+  <div>
+    <label class="field-label" for="kind">For</label>
+    <select id="kind" name="kind">
+      <option value="">&mdash;</option>
+      {% for k in data.supplier_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="field-label" for="arriving_at">Arriving</label>
+    <input type="time" id="arriving_at" name="arriving_at">
+  </div>
+  <div>
+    <label class="field-label" for="phone">Telephone</label>
+    <input type="text" id="phone" name="phone" maxlength="40">
+  </div>
+  <button type="submit" class="btn-mini">Add supplier</button>
+</form>
+
+<h2 class="section-heading">Who is on that day</h2>
+<p class="field-hint" style="max-width:760px;">
+  Read from the rota rather than set here. This does not roster anybody &mdash; it shows who is
+  already down, so a gap is visible while there is still time to fill it.
+</p>
+{% if data.on_shift %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Who</th><th style="text-align:left;">From</th>
+    <th style="text-align:left;">Until</th><th style="text-align:left;">Doing</th></tr></thead>
+    <tbody>
+      {% for p in data.on_shift %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ p.name }}</th>
+        <td>{{ p.start_time or '&mdash;'|safe }}</td>
+        <td>{{ p.end_time or '&mdash;'|safe }}</td>
+        <td>{{ p.role_note or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">
+  Nobody is rostered for {{ data.day.strftime('%A %d %B') if data.day else 'that day' }} yet.
+</div>
+{% endif %}
+
+<h2 class="section-heading">The numbers, and the two times that bracket the day</h2>
+<form method="post" action="{{ url_for('save_event_run_details', event_id=data.event.id) }}"
+      class="detail-card" style="max-width:760px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="final_numbers">Final numbers</label>
+      <input type="number" id="final_numbers" name="final_numbers" min="0" step="1"
+             value="{{ data.event.final_numbers if data.event.final_numbers is not none else '' }}">
+      <span class="field-hint">Quoted for {{ data.quoted_for or '&mdash;'|safe }}. Leave blank until the couple have counted.</span>
+    </div>
+    <div>
+      <label class="field-label" for="arrival_time">Guests arrive</label>
+      <input type="time" id="arrival_time" name="arrival_time" value="{{ data.event.arrival_time or '' }}">
+    </div>
+  </div>
+  <div class="field-row-2">
+    <div>
+      <label class="field-label" for="carriages_time">Carriages</label>
+      <input type="time" id="carriages_time" name="carriages_time" value="{{ data.event.carriages_time or '' }}">
+      <span class="field-hint">When the music stops. The neighbours and the commune both care.</span>
+    </div>
+    <div>
+      <label class="field-label">Spaces booked</label>
+      <p style="margin:6px 0 0;">{{ data.spaces or 'Not recorded' }}</p>
+    </div>
+  </div>
+  <div>
+    <label class="field-label" for="run_sheet_note">Anything the day turns on</label>
+    <textarea id="run_sheet_note" name="run_sheet_note" rows="3" maxlength="2000"
+              placeholder="Bride's grandmother cannot manage the stairs — ground floor only.">{{ data.event.run_sheet_note or '' }}</textarea>
+  </div>
+  <button type="submit" class="btn-primary">Save</button>
+</form>
+
+{% endblock %}

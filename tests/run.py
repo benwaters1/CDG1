@@ -84,6 +84,7 @@ SUITES = [
     "test_house_crud",
     "test_hr_compliance",
     "test_animals",
+    "test_event_run_sheet",
     "test_house_day",
     "test_house_operations",
     "test_house_reports",
