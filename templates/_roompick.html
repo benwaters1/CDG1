@@ -95,7 +95,16 @@
       return;
     }
     box.querySelector('[data-pick-name]').textContent=pick.n;
-    box.querySelector('[data-pick-why]').textContent=pick.w;
+    // The card already carries the description. What the card cannot say is
+    // why this room for the answers just given — so say that instead.
+    var why=[];
+    if(n>=4) why.push('it is the only room that sleeps '+n);
+    else if(n===3) why.push('it takes three without anyone on a sofa');
+    if(b_==='private') why.push('the bathroom is yours alone');
+    else if(pick.bath==='shared') why.push('you said sharing was fine, and this is the one that costs least');
+    if(s==='low' && pick.stairs==='ground') why.push('it is on the ground floor, so no staircase');
+    box.querySelector('[data-pick-why]').textContent =
+      why.length ? 'Because '+why.join(', and ')+'.' : pick.w;
     box.querySelector('[data-pick-link]').innerHTML=
       '<a href="'+pick.url+'" class="g-btn g-btn--solid">See this room</a>';
   }

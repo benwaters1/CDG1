@@ -1,0 +1,99 @@
+{# ==========================================================================
+   BEFORE YOU BOOK  — items 7, 9, 11, 12 and 18
+   Five things a guest currently discovers too late: whether it is for them,
+   what the deposit is, what to bring, what arriving is actually like, and the
+   minimum stay. All of them are better said now than in an email afterwards.
+
+       {% from '_before.html' import honest, terms_upfront, packing, arriving %}
+   ========================================================================== #}
+
+{# 7 — who this is not for. Said plainly, because the wrong guest is worse for
+   you than an empty room, and because saying it makes the rest believable. #}
+{% macro honest() %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Straight With You</p>
+  <h2 class="g-place">This Is Not For Everyone</h2>
+  <p class="g-p g-lede-first">We would rather you knew now than found out on the first evening.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Not if you want a hotel</dt><dd>There is no reception desk, no lift, no turndown and no room service. Someone will meet you and then leave you alone</dd></div>
+    <div><dt>Not if the walls will bother you</dt><dd>Most of the house is bare plaster and weathered stone, and it is illegal for us to change it. If that reads as unfinished rather than as the point, this is the wrong house</dd></div>
+    <div><dt>Not for a party</dt><dd>Sound carries through a stone building and the valley is quiet at night. Weddings and events are taken separately, one at a time</dd></div>
+    <div><dt>Not for very young children</dt><dd>Eight and over. Original staircases, unrestored rooms and a working restoration next door</dd></div>
+    <div><dt>Not if you need to be online</dt><dd>Starlink reaches some rooms and not others. Electricity is deliberately limited and the evenings are lit by candle</dd></div>
+  </dl></div></div>
+  <p class="g-p">If none of that puts you off, you are exactly who this is for.</p>
+</div></section>
+{% endmacro %}
+
+{# 9 and 18 — the deposit and the minimum, before the form rather than inside
+   it. Both read from settings so there is one source for each figure. #}
+{% macro terms_upfront(settings, min_nights, deposit_percent=0) %}
+{#- The figure comes from the ROUTE, through the same deposit_percent_to_show
+    the booking itself uses. It read settings['deposit_percent'], which is not
+    a key this app has, and fell back to a hardcoded 30 -- on a house whose
+    room deposit is ZERO. So it told every guest they must pay 30% now, in
+    front of the person paying it, on the page where they decide. The same
+    mistake _nights_calc.html carries a comment about. -#}
+{%- set varies = deposit_percent is none -%}
+{%- set dep = 0 if varies else (deposit_percent or 0)|round|int -%}
+{%- set mn = (min_nights if min_nights else (settings['min_nights'] if settings else none)) -%}
+<div class="g-terms">
+  <p class="g-terms__k">Before you fill anything in</p>
+  <dl class="g-terms__l">
+    {% if varies %}
+    <div><dt>To hold the dates</dt><dd>What is taken now depends on the dates and the size of the party. The booking page works it out before you commit to anything</dd></div>
+    {% elif dep %}
+    <div><dt>To hold the dates</dt><dd>{{ dep }}% now. The balance is due before you arrive, not on the day</dd></div>
+    {% else %}
+    <div><dt>To hold the dates</dt><dd>Nothing is taken to hold them. The stay is paid in full once we confirm the booking</dd></div>
+    {% endif %}
+    {% if mn %}<div><dt>Minimum stay</dt><dd>{{ mn }} night{{ '' if mn == 1 else 's' }}{% if settings and settings['min_nights_peak'] %}, {{ settings['min_nights_peak'] }} in July and August{% endif %}</dd></div>{% endif %}
+    <div><dt>Free cancellation</dt><dd>Up to {{ (settings['free_cancel_days'] if settings and settings['free_cancel_days'] else 30)|int }} days before arrival</dd></div>
+    <div><dt>Nothing is taken now</dt><dd>You are sending a request. We confirm it, and only then does anything leave your account</dd></div>
+  </dl>
+</div>
+{% endmacro %}
+
+{# 11 — what to bring. A château with limited electricity in November has
+   real implications and nobody was told them. #}
+{% macro packing() %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Worth Bringing</p>
+  <h2 class="g-place">What to Pack</h2>
+  <p class="g-p g-lede-first">Everything you need is here. These are the things guests wish they had brought.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>A layer more than you think</dt><dd>Stone walls a metre thick hold the cold as well as the heat. Warm in August, genuinely cold in the unrestored rooms in winter</dd></div>
+    <div><dt>Shoes for the valley</dt><dd>The parkland, the drive and anything at Montségur or Beille. Not for the house — the floors are new</dd></div>
+    <div><dt>A torch, if you wake in the night</dt><dd>Electricity is limited by design. There is light where you need it and not much beyond that</dd></div>
+    <div><dt>Whatever you take for an allergy</dt><dd>Six cats, two dogs and an old house with open doors</dd></div>
+    <div><dt>Cash for the markets</dt><dd>Most stalls at Les Cabannes and Mirepoix do not take cards</dd></div>
+    <div><dt>Not a hairdryer or an adaptor</dt><dd>Both are in the rooms. European sockets, and towels and linen are ours</dd></div>
+  </dl></div></div>
+</div></section>
+{% endmacro %}
+
+{# 12 — no reception desk is stated. What actually happens when you pull up
+   was not, and it is the thing people quietly worry about. #}
+{% macro arriving(settings) %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">En arrivant<span class="g-fr__en">On arriving</span></p>
+  <p class="g-eyebrow">No Reception Desk</p>
+  <h2 class="g-place">What Happens When You Pull Up</h2>
+  <ol class="g-arrive">
+    <li><span class="g-arrive__n">1</span><div>
+      <h3 class="g-arrive__t">You come through the gates and up the drive</h3>
+      <p class="g-arrive__p">A quarter of a mile of it, and the house appears at the top. Park anywhere on the gravel — there is no allocated space and no charge.</p></div></li>
+    <li><span class="g-arrive__n">2</span><div>
+      <h3 class="g-arrive__t">Someone is expecting you</h3>
+      <p class="g-arrive__p">Not at a desk. We will have your arrival time from the booking, and whoever is on that day will come out to the steps. If nobody appears within a minute or two, the number on your confirmation rings a phone in the kitchen.</p></div></li>
+    <li><span class="g-arrive__n">3</span><div>
+      <h3 class="g-arrive__t">Your bags go up, and so do you</h3>
+      <p class="g-arrive__p">There is no lift and the original staircase is the only way to the first floor. Tell us in advance if that is a problem and we will put you on the ground floor.</p></div></li>
+    <li><span class="g-arrive__n">4</span><div>
+      <h3 class="g-arrive__t">Then you are left alone</h3>
+      <p class="g-arrive__p">Tea, coffee and the salons are yours from the moment you arrive. Dinner, if it is running that night, is at {{ settings['dinner_time'] if settings and settings['dinner_time'] else 'eight' }}. Nobody will knock.</p></div></li>
+  </ol>
+  <p class="g-limit g-limit--warn"><span class="g-limit__k">Arriving late</span>
+    Tell us and it is fine — the drive is unlit and the gates are the only thing you need to find. If you have not arrived and we have not heard, someone will ring you.</p>
+</div></section>
+{% endmacro %}

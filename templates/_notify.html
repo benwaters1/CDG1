@@ -1,0 +1,42 @@
+{# ==========================================================================
+   TELL ME WHEN  — marketing item 5
+   Somebody who looks in February for a September week has nothing to do but
+   leave. This asks for one month and one email.
+
+       {% from '_notify.html' import notify %}
+       {{ notify() }}
+   ========================================================================== #}
+{% macro notify() %}
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">Not Yet?</p>
+  <h2 class="g-place">Tell Us When You Are Thinking Of</h2>
+  <p class="g-p g-lede-first">Five rooms and a house that is still being finished means the calendar moves. Give us a month and we will write to you when it opens — once, not a newsletter.</p>
+  <form method="post" action="{{ url_for('contact_page') }}" class="g-notify">
+    <input type="hidden" name="action" value="notify">
+    <p class="g-field">
+      <label for="nf_month">Which month</label>
+      <select id="nf_month" name="notify_month" required>
+        <option value="">Choose a month</option>
+        {% for m in ['January','February','March','April','May','June','July','August','September','October','November','December'] %}
+        <option value="{{ m }}">{{ m }}</option>
+        {% endfor %}
+      </select>
+    </p>
+    <p class="g-field">
+      <label for="nf_year">Which year</label>
+      <select id="nf_year" name="notify_year">
+        {% for y in range(2026, 2030) %}<option value="{{ y }}">{{ y }}</option>{% endfor %}
+      </select>
+    </p>
+    <p class="g-field">
+      <label for="nf_email">Your email</label>
+      <input type="email" id="nf_email" name="notify_email" required autocomplete="email">
+    </p>
+    <p class="g-field g-field--check">
+      <label><input type="checkbox" name="notify_kind" value="atelier"> An atelier week rather than a stay</label>
+    </p>
+    <p><button type="submit" class="g-btn g-btn--solid">Let me know</button></p>
+    <p class="g-notify__n">One email, when that month opens. Nothing else, and you can say stop in a line.</p>
+  </form>
+</div></section>
+{% endmacro %}

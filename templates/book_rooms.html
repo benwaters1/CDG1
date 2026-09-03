@@ -8,6 +8,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_notify.html' import notify %}
+{% from '_before.html' import honest, terms_upfront, packing, arriving %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_roompick.html' import room_pick %}
 {% from '_weekcost.html' import week_cost %}
@@ -963,6 +965,14 @@
 {{ room_pick(rooms) }}
 
 {{ week_cost(rooms, settings) }}
+
+{{ honest() }}
+
+{{ arriving(settings) }}
+
+{{ packing() }}
+
+{{ notify() }}
 
 <script type="application/ld+json">
 {

@@ -5,11 +5,12 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
-{% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel %}
+{% from '_proof.html' import credential, proof %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 
 <section class="g-hero">
@@ -75,8 +76,6 @@
 
 
 {{ stay_panel() }}
-
-<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script>
 (function(){
@@ -352,7 +351,7 @@
         <div><dt>Classified</dt><dd>Class I, 14 June 1994 — the same protection as Versailles, and the same restrictions</dd></div>
         <div><dt>Empty from</dt><dd>1850. A century and a half of weather, and a spell as a holiday camp</dd></div>
         <div><dt>Bought</dt><dd>March 2013. Ninety of the ninety-four rooms could not be walked into</dd></div>
-        <div><dt>Open to guests</dt><dd>Since 2016 — ten years, and never once finished</dd></div>
+        <div><dt>Open to guests</dt><dd>Since 2016, and never once finished</dd></div>
       </dl>
     </div>
   </div>

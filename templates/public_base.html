@@ -115,24 +115,26 @@
     </a>
 
 
-    <nav class="g-nav" aria-label="{{ t('Main') }}">
-      <a href="{{ url_for('book_rooms') }}">{{ t('Stay') }}</a>
-      <a href="{{ url_for('workshops_public') }}">{{ t('Workshops') }}</a>
-      <a href="{{ url_for('restaurant_info') }}">{{ t('La Table') }}</a>
+    {%- set NAV_OF = {"book_rooms": "book_rooms", "workshops_public": "workshops_public", "restaurant_info": "restaurant_info", "events_info": "events_info", "facilities_page": "facilities_page", "restoration_page": "restoration_page", "gallery_page": "gallery_page", "contact_page": "contact_page", "events_weddings": "events_info", "events_private": "events_info", "events_photoshoots": "events_info", "book_room": "book_rooms", "workshop_detail": "workshops_public", "workshop_register": "workshops_public", "restaurant_book": "restaurant_info", "whats_on": "facilities_page"} -%}
+{%- set NAV_HERE = NAV_OF.get(request.endpoint, request.endpoint) if request else "" -%}
+<nav class="g-nav" aria-label="{{ t('Main') }}">
+      <a href="{{ url_for('book_rooms') }}"{% if NAV_HERE == 'book_rooms' %} class="is-here" aria-current="page"{% endif %}>{{ t('Stay') }}</a>
+      <a href="{{ url_for('workshops_public') }}"{% if NAV_HERE == 'workshops_public' %} class="is-here" aria-current="page"{% endif %}>{{ t('Workshops') }}</a>
+      <a href="{{ url_for('restaurant_info') }}"{% if NAV_HERE == 'restaurant_info' %} class="is-here" aria-current="page"{% endif %}>{{ t('La Table') }}</a>
       <div class="g-nav__has-sub">
-        <a href="{{ url_for('events_info') }}" aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
+        <a href="{{ url_for('events_info') }}"{% if NAV_HERE == 'events_info' %} class="is-here" aria-current="page"{% endif %} aria-haspopup="true" aria-expanded="false">{{ t('Events') }}<span class="g-nav__caret" aria-hidden="true"></span></a>
         <ul class="g-subnav">
           {# Each link falls back to the events page until its route exists,
              so a missing endpoint cannot break the header site-wide. #}
-          <li><a href="{{ url_for('events_weddings') }}">{{ t('Weddings') }}</a></li>
-          <li><a href="{{ url_for('events_private') }}">{{ t('Private') }}</a></li>
-          <li><a href="{{ url_for('events_photoshoots') }}">{{ t('Photoshoots') }}</a></li>
+          <li><a href="{{ url_for('events_weddings') }}"{% if NAV_HERE == 'events_weddings' %} class="is-here" aria-current="page"{% endif %}>{{ t('Weddings') }}</a></li>
+          <li><a href="{{ url_for('events_private') }}"{% if NAV_HERE == 'events_private' %} class="is-here" aria-current="page"{% endif %}>{{ t('Private') }}</a></li>
+          <li><a href="{{ url_for('events_photoshoots') }}"{% if NAV_HERE == 'events_photoshoots' %} class="is-here" aria-current="page"{% endif %}>{{ t('Photoshoots') }}</a></li>
         </ul>
       </div>
-      <a href="{{ url_for('facilities_page') }}">{{ t('The Estate') }}</a>
-      <a href="{{ url_for('restoration_page') }}">{{ t('Restoration') }}</a>
-      <a href="{{ url_for('gallery_page') }}">{{ t('Gallery') }}</a>
-      <a href="{{ url_for('contact_page') }}">{{ t('Contact') }}</a>
+      <a href="{{ url_for('facilities_page') }}"{% if NAV_HERE == 'facilities_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('The Estate') }}</a>
+      <a href="{{ url_for('restoration_page') }}"{% if NAV_HERE == 'restoration_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Restoration') }}</a>
+      <a href="{{ url_for('gallery_page') }}"{% if NAV_HERE == 'gallery_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Gallery') }}</a>
+      <a href="{{ url_for('contact_page') }}"{% if NAV_HERE == 'contact_page' %} class="is-here" aria-current="page"{% endif %}>{{ t('Contact') }}</a>
     </nav>
     <button type="button" class="g-navbtn" aria-expanded="false" aria-controls="g-mainnav">
       <span class="g-navbtn__bars"><span></span><span></span></span>
