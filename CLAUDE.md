@@ -25,6 +25,14 @@ and invoices via zips the owner downloads and applies here.
 - Handover zips are **literal overwrites, never merges**. "Replace
   byte-for-byte" means exactly that — do not reconcile with what's here.
 - Show `git log -1 --stat` after every push so the owner can see what landed.
+- **Check the name before writing a new file, especially in `tests/`.** 263
+  suites is more than anyone holds in their head, and a new one written
+  straight to `tests/test_<topic>.py` will silently replace an existing suite
+  covering the same ground. It happened: a route-level iCal suite landed on
+  top of `test_ical_sync`, which already held the parser, the wholesale
+  replace and the fail-safe — the whole file, gone, and the run stayed green
+  because the replacement passed. `git status` showed `M` rather than `A`,
+  which is the only thing that gave it away. Read that letter.
 
 **Secrets.**
 - `.env` is not in git and has no other copy. Don't print its contents.
