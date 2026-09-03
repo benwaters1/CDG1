@@ -35562,7 +35562,16 @@ def sync_all_ical_sources():
 @app.route("/api/sync-ical", methods=["GET", "POST"])
 def api_sync_ical():
     """No-login sync trigger for an external scheduler. 404s (not 401/403,
-    so a prober learns nothing) unless ICAL_SYNC_TOKEN is set and matches."""
+    so a prober learns nothing) unless ICAL_SYNC_TOKEN is set and matches.
+
+    The token comes from the QUERY STRING here, and from the body on
+    /api/guest-lookup, and that difference is on purpose. A scheduler fetches
+    a URL; asking the owner's cron to POST a form is a deployment change for
+    no gain. What a leaked token buys here is an iCal sync somebody could
+    have triggered by waiting an hour. Guest lookup reads any guest's record,
+    which is why that one refuses to see a token it did not find in the body.
+    Do not harmonise these: the posture is shared, the placement is not, and
+    moving this one breaks a cron at 6am."""
     supplied = request.args.get("token", "")
     if not ICAL_SYNC_TOKEN or not hmac.compare_digest(supplied, ICAL_SYNC_TOKEN):
         abort(404)
@@ -35749,7 +35758,12 @@ def build_owner_digest(conn):
 def api_owner_digest():
     """No-login digest trigger for an external scheduler — same 404-not-403
     posture as /api/sync-ical, so an unset/wrong token teaches a prober
-    nothing. See DEPLOY.md."""
+    nothing. See DEPLOY.md.
+
+    Query string, like /api/sync-ical and unlike /api/guest-lookup, and for
+    the reason set out there: a scheduler fetches a URL, and a leaked token
+    here sends the owner their own summary. It does not read anybody's
+    record."""
     supplied = request.args.get("token", "")
     if not DIGEST_TOKEN or not hmac.compare_digest(supplied, DIGEST_TOKEN):
         abort(404)

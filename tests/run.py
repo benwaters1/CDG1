@@ -260,6 +260,7 @@ SUITES = [
     "test_cancel_and_reject",
     "test_declines",
     "test_estate_actions",
+    "test_api_tokens",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
@@ -356,11 +357,12 @@ COVERAGE_KNOWN_GAPS = {
     # these are next.
     "edit_document", "edit_social_plan",
 
-    # JSON the pages call, answered only with 404 so far. api_draft_reply
-    # needs the model provider the harness pins off; the other three are
-    # testable and are next as well.
-    "api_check_send_conflict", "api_draft_reply", "api_guest_lookup",
-    "api_owner_digest",
+    # api_draft_reply needs the model provider the harness pins off, so the
+    # only branch reachable here is the refusal its siblings already prove.
+    # The other three are covered (tests/test_api_tokens.py), including the
+    # rule that a GET can never carry a valid token -- one word away from
+    # putting a read-any-guest credential into every access log.
+    "api_draft_reply",
 
     # The one payment return that cannot be reached without calling Stripe
     # for real. Its siblings are covered (tests/test_payment_returns.py):
