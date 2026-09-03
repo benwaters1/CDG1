@@ -5656,10 +5656,23 @@ html, body{ margin: 0; padding: 0; }
 .g-scarcity-line{ margin-top: var(--s3); }
 
 .g-cred{
-  margin: 0; padding: var(--s2) var(--s5);
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
+  /* Was display:flex on a block parent, so it shrank to its content and
+     rendered as a dark 492px stub floating above the hero on every page.
+     It is a full-width band or it is nothing. */
+  /* It is a <p>, so the 62ch prose cap applied and held it at 492px. */
+  margin: 0; width: 100%; max-width: none;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: var(--s2) var(--s4);
+  padding: var(--s2) var(--s5);
   background: var(--blue-deep); color: #C9D4DF;
   font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .04em;
+  text-align: center;
+}
+/* Over a hero it belongs to the hero, not floating between it and the
+   breadcrumb. */
+body.has-hero .g-cred{
+  background: rgba(14,28,48,.55);
+  backdrop-filter: saturate(140%) blur(2px);
 }
 .g-cred__m{
   font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt);
@@ -5994,3 +6007,27 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
 .g-pick__a{ margin: 0; }
 .g-cur__note{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: var(--t-sm);
   line-height: 1.5; color: var(--ink-soft); max-width: 34ch; }
+
+/* A two-column block with align-items:center floats the shorter column in the
+   middle of the taller one, leaving a large empty gutter above and below it.
+   Both columns start at the top; the media can still sit lower if it wants to
+   by its own margin. */
+.g-two{ align-items: start; }
+.g-two__media{ position: sticky; top: 96px; }
+@media (max-width: 52rem){ .g-two__media{ position: static; } }
+
+/* ==========================================================================
+   THE ANIMALS
+   Six cats, two dogs and chickens. Warm, and also an allergy fact — so the
+   disclaimer sits inside the section rather than in a footnote under it.
+   ========================================================================== */
+.g-anim{ list-style: none; margin: var(--s6) 0 var(--s5); padding: 0;
+  display: grid; gap: var(--s5);
+  grid-template-columns: repeat(auto-fit, minmax(min(19rem,100%),1fr)); }
+.g-anim__i{ padding: var(--s5); background: var(--white);
+  border: 1px solid var(--line); border-top: 2px solid var(--gilt); }
+.g-anim__t{ margin: 0 0 2px; font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-anim__r{ margin: 0 0 var(--s3); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gilt); }
+.g-anim__d{ margin: 0; font-size: var(--t-base); line-height: 1.65; color: var(--ink); }

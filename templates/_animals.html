@@ -1,0 +1,58 @@
+{# ==========================================================================
+   THE ANIMALS
+   Six cats, two dogs and chickens live here. Two things at once: it is one of
+   the warmest things about the place, and it is an allergy fact somebody has
+   to be told before they book rather than on arrival.
+
+   So the disclaimer is inside the charm, not in a footnote under it. The cats
+   are outdoor cats and Bruce goes wherever he likes, which is the honest
+   version and also the funnier one.
+
+       {% from '_animals.html' import animals, animals_note %}
+       {{ animals() }}
+   ========================================================================== #}
+{% from '_marks.html' import mark %}
+
+{% macro animals() %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Les habitants à quatre pattes<span class="g-fr__en">The four-legged residents</span></p>
+  <p class="g-eyebrow">Also In Residence</p>
+  <h2 class="g-place">There Are Rather a Lot of Them</h2>
+  <p class="g-p g-lede-first">Six cats, two dogs and a run of chickens live here. They were here before the guests were, and none of them has read the terms and conditions.</p>
+
+  <ul class="g-anim">
+    <li class="g-anim__i">
+      <h3 class="g-anim__t">Bruce</h3>
+      <p class="g-anim__r">French bulldog · everywhere</p>
+      <p class="g-anim__d">Bruce considers the whole château his, and the evidence supports him. He will follow you from the breakfast table to the salon to the terrace, sit heavily on the foot of whatever you are doing, and appear in more of your photographs than the frescoes will. Guests write to us about Bruce more than about anything else in the building.</p>
+    </li>
+    <li class="g-anim__i">
+      <h3 class="g-anim__t">The cats</h3>
+      <p class="g-anim__r">Six of them · outside</p>
+      <p class="g-anim__d">The cats live outdoors, which is what they want and what the building needs — a house of this age has mice and the cats have opinions about them. You will meet them on the terraces, in the parkland and asleep on the warm stone. They do not live in the bedrooms.</p>
+    </li>
+    <li class="g-anim__i">
+      <h3 class="g-anim__t">The chickens</h3>
+      <p class="g-anim__r">In the grounds</p>
+      <p class="g-anim__d">They supply the kitchen and they are entirely unbothered by anyone. Children tend to find them before they find anything else.</p>
+    </li>
+  </ul>
+
+  <div class="g-mark__wrap">{{ mark('bruce') }}</div>
+
+  {{ animals_note() }}
+</div></section>
+{% endmacro %}
+
+{# The allergy line on its own, for the pages where the full section would be
+   too much — the booking form, the atelier registration. #}
+{% macro animals_note() %}
+<p class="g-limit g-limit--warn">
+  <span class="g-limit__k">Before you book</span>
+  The château is home to six cats, two dogs and chickens. The cats are outdoor
+  cats and the bedrooms are theirs to stay out of — but this is an old house
+  with open doors, and Bruce in particular goes where he likes. If anyone in
+  your party has an animal allergy, please bring what you need for it and tell
+  us in advance so we can put you in the rooms furthest from the kitchen.
+</p>
+{% endmacro %}

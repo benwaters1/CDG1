@@ -8,6 +8,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_animals.html' import animals, animals_note %}
 {% from '_roompick.html' import room_pick %}
 {% from '_weekcost.html' import week_cost %}
 {% from '_flexible.html' import flexible %}
@@ -694,8 +695,8 @@
    'Fly to Toulouse, then an hour and three quarters by road. Or take the train to Foix and we will meet it. Tell us your arrival and we will arrange the car.'),
   ('Can I bring children?',
    'Children of eight and over are welcome. Les Deux Chambres sleeps five across two bedrooms, and the kitchen will cook for them. Below that age the building is not suitable — original staircases, unrestored rooms, and a working site in parts.'),
-  ('Are dogs welcome?',
-   'Not at present. Write to us if it matters and we will tell you what is possible.'),
+  ('Can I bring my dog?',
+   'Not at present — the château already has two of its own, plus six cats and a run of chickens, and adding to that is more than the house can hold. Write to us if it matters.'),
   ('Is there Wi-Fi?',
    'Starlink, in select areas of the château. Electricity is deliberately limited elsewhere — the evenings are lit by candle, which is part of the point.'),
   ('Can I visit without staying?',
@@ -938,6 +939,8 @@
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
 {{ avail_cal(booked_dates, 2) }}
+
+{{ animals() }}
 
 {{ flexible() }}
 

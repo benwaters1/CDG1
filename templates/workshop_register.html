@@ -4,6 +4,7 @@
 {% set crumbs = [('Workshops', url_for('workshops_public')), ('Register', None)] %}
 {% block title %}Register — {{ session['title'] }}{% endblock %}
 {% block content %}
+{% from '_animals.html' import animals, animals_note %}
 {% from '_formkeep.html' import form_keep %}
 
 
@@ -177,6 +178,8 @@
     </div>
   </form>
 </div>
+
+<div class="g-wrap">{{ animals_note() }}</div>
 
 <script>
 // The running total, so the figure on the confirmation is never a surprise.
