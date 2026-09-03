@@ -32,6 +32,10 @@ def _cleanup(conn):
     conn.execute("DELETE FROM event_inquiries WHERE reference_code LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM waitlist_entries WHERE name LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM notifications WHERE title LIKE ?", (TAG + "%",))
+    conn.execute(
+        "DELETE FROM police_register WHERE booking_id IN "
+        "(SELECT id FROM bookings WHERE reference_code LIKE ?)", (TAG + "%",))
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
     conn.commit()
 
 
@@ -273,6 +277,87 @@ def run():
     s.check("and that deletion can be asked for", "delete it" in page)
     s.check("the enquiry period is a number a reader can check",
             "twelve months" in page)
+
+    s.section("The police register really does go six months after the stay")
+    # The row on this page most worth knowing is true: a name and a home
+    # address, held for every guest who is not a French national, under a
+    # legal obligation with a stated end.
+    booking = conn.execute(
+        "SELECT id FROM bookings ORDER BY id DESC LIMIT 1").fetchone()
+    room = conn.execute(
+        "SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    if booking and room:
+        def _stay(ref, departed_days_ago, nights=3):
+            left = m.house_today() - timedelta(days=departed_days_ago)
+            conn.execute(
+                """INSERT INTO bookings (room_id, reference_code, manage_token,
+                           guest_name, guest_email, arrival_date,
+                           departure_date, party_size, status, total_price,
+                           created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', 300, ?)""",
+                (room["id"], TAG + ref, (TAG + ref).lower(), TAG + ref,
+                 TAG + ref + "@example.invalid",
+                 (left - timedelta(days=nights)).isoformat(),
+                 left.isoformat(), now))
+            bid = conn.execute(
+                "SELECT last_insert_rowid() AS id").fetchone()["id"]
+            # Recorded on ARRIVAL, which is when a fiche is filled in. That
+            # is what makes the long-stay case below discriminating: stamp
+            # them all with today and the two datings cannot be told apart,
+            # which is how the first version of this passed either way.
+            conn.execute(
+                """INSERT INTO police_register (booking_id, surname,
+                           first_names, nationality, recorded_at)
+                   VALUES (?, ?, 'A', 'GB', ?)""",
+                (bid, TAG + ref,
+                 (left - timedelta(days=nights)).isoformat() + "T15:00:00"))
+            return bid
+
+        old_stay = _stay("old", 400)
+        recent = _stay("recent", 30)
+        # A long stay whose fiche was written on ARRIVAL, months before the
+        # guest left. Dating the six months from the fiche rather than the
+        # departure would take this one early -- which is the mistake the
+        # function's own docstring says it is avoiding.
+        long_stay = _stay("long", 20, nights=200)   # arrived 220 days ago
+        conn.commit()
+
+        cleared = m.purge_police_register(conn)
+        conn.commit()
+
+        def _still(bid):
+            return conn.execute(
+                "SELECT COUNT(*) AS c FROM police_register WHERE booking_id = ?",
+                (bid,)).fetchone()["c"] > 0
+
+        s.check("a stay that ended over a year ago has no fiche left",
+                not _still(old_stay),
+                detail="the notice says six months, and names the law it is "
+                       "keeping it under")
+        s.check("one that ended last month still has its fiche",
+                _still(recent),
+                detail="the house has to be able to produce it if it is asked")
+        s.check("and a long stay is dated from when the guest LEFT",
+                _still(long_stay),
+                detail="the fiche was written on arrival two hundred days "
+                       "before departure; dating the six months from the "
+                       "fiche would delete it while the law still wants it")
+        s.check("and it says what it cleared",
+                sum(cleared.values()) >= 1, detail=str(cleared))
+
+        s.section("And the purge is wired to something that actually runs")
+        # A retention rule in a function nobody calls is a paragraph on a page.
+        import inspect
+        job = inspect.getsource(m.run_health_notes_purge_job)
+        code = "\n".join(l.split("#")[0] for l in job.splitlines())
+        s.check("the housekeeping job calls it",
+                "purge_police_register" in code,
+                detail="written and never called, the notice is a statement "
+                       "about code that does not run")
+    else:
+        s.check("a room and a booking exist to attach a fiche to", False,
+                detail="reported rather than skipped: every check above would "
+                       "pass on nothing")
 
     _cleanup(conn)
     return s
