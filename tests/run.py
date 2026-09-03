@@ -261,6 +261,7 @@ SUITES = [
     "test_declines",
     "test_estate_actions",
     "test_api_tokens",
+    "test_ical_routes",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
@@ -312,13 +313,21 @@ def _registry_complete():
     on_disk = {os.path.basename(f)[:-3] for f in glob.glob(os.path.join(here, "test_*.py"))}
     missing = sorted(on_disk - set(SUITES))
     ghosts = sorted(set(SUITES) - on_disk)
-    ok = not missing and not ghosts
+    # Compared as sets above, which cannot see a name listed TWICE -- and a
+    # duplicate runs that suite twice and counts its checks twice, so the
+    # total quietly overstates. Found by listing one that was already there.
+    seen = set()
+    dupes = sorted({n for n in SUITES if n in seen or seen.add(n)})
+    ok = not missing and not ghosts and not dupes
     print(f"  {'PASS' if ok else 'FAIL'}  every suite file is registered "
           f"({len(on_disk)} on disk)")
     if missing:
         print("        written but never run: " + ", ".join(missing))
     if ghosts:
         print("        registered but the file is gone: " + ", ".join(ghosts))
+    if dupes:
+        print("        listed twice, so run and counted twice: "
+              + ", ".join(dupes))
     return ok
 
 
@@ -343,11 +352,12 @@ def _registry_complete():
 # does a name that starts answering, because an exception list that outlives
 # its reason is how the next one gets in unnoticed.
 COVERAGE_KNOWN_GAPS = {
-    # Owner actions that reach a third party or a schedule. Running the
-    # working branch means letting a test out to the network, or standing up
-    # a fake for it, which is a bigger decision than a missing check.
-    "apply_invoice", "new_ical_source", "sync_ical_source_now",
-    "api_sync_ical", "sync_pennylane", "run_checkin_texts_now",
+    # Owner actions that reach a third party or a schedule. The three iCal
+    # ones are covered now (tests/test_ical_sync.py): app.py imports urlopen
+    # by name, so a stand-in drives both branches without a socket -- which
+    # is how the expensive one gets tested at all, since a real feed will not
+    # fail on demand.
+    "apply_invoice", "sync_pennylane", "run_checkin_texts_now",
     "send_event_revenue",
 
     # Refunding needs a card processor, and this house has none configured.
