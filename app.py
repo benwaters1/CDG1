@@ -33136,7 +33136,10 @@ def workshop_register(session_id):
             error = "Party size is required."
         elif party_size > session_row["capacity"]:
             error = f"This session has {session_row['capacity']} spots total."
-        elif workshop_session_remaining_capacity(conn, session_id) < party_size:
+        elif claim_workshop_places(conn, session_id) < party_size:
+            # claim_, not the bare count: this one is followed by an INSERT,
+            # and without the lock two people taking the last two places both
+            # read "room for you".
             error = "This session is fully booked — join the waitlist below, or choose another date."
             fully_booked = True
         else:
@@ -33336,7 +33339,9 @@ def workshop_manage(manage_token):
         ).fetchone()
         if not new_session:
             flash("That date isn't available for this workshop.", "error")
-        elif workshop_session_remaining_capacity(conn, new_session_id) < booking["party_size"]:
+        elif claim_workshop_places(conn, new_session_id) < booking["party_size"]:
+            # Also followed by a write. A guest moving onto the last place at
+            # the same moment as somebody books it is the same collision.
             flash("That date doesn't have enough spots left for your party size.", "error")
         elif booking["status"] == "pending" and not booking["deposit_paid_at"]:
             # Nothing's been charged yet, so it's safe to move immediately
@@ -38786,6 +38791,33 @@ def sessions_at_risk(conn, today=None):
     return out
 
 
+def claim_workshop_places(conn, session_id, exclude_id=None):
+    """Remaining places, with nobody else able to answer at the same time.
+
+    The workshop half of claim_range, and it exists for the same bug. Every
+    guest path asked how many places were left and then wrote, with nothing
+    joining the two: a bare SELECT takes no write lock, so two people taking
+    the last two places at the same instant both read "room for you" and both
+    get one. Nothing errors. The public page says "when a session reads as
+    full, it is full".
+
+    The UPDATE is the mechanism, not bookkeeping -- writing any row takes
+    SQLite's RESERVED lock, so the count that follows and the INSERT that
+    follows that are one write transaction. A second connection blocks on its
+    own UPDATE until the first commits, and then counts a world that includes
+    it. Released by the caller's own conn.commit(), which every caller
+    already does before it sends anything.
+
+    READ-ONLY CALLERS MUST NOT USE THIS. The session lists, the public page
+    and the alternative-dates suggestion all ask the same question without
+    acting on it, and making them take the write lock would put every visitor
+    behind whoever is mid-registration.
+    """
+    conn.execute("UPDATE booking_write_lock SET held_at = ? WHERE id = 1",
+                 (datetime.now(timezone.utc).isoformat(),))
+    return workshop_session_remaining_capacity(conn, session_id, exclude_id)
+
+
 def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
     session = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?", (session_id,)).fetchone()
     if not session:
@@ -39666,6 +39698,12 @@ def confirm_workshop_registration(registration_id):
         "SELECT COALESCE(SUM(party_size), 0) AS t FROM workshop_bookings WHERE session_id = ? AND status = 'confirmed'",
         (booking["session_id"],),
     ).fetchone()["t"]
+    # NOT guarded by claim_workshop_places, on purpose. This writes and then
+    # says "over the cap", which is a staff override with a warning attached
+    # -- the same reasoning as entering a booking by hand, where somebody may
+    # know something the rules do not. What the public promise is about is a
+    # GUEST being told there is room and then finding there was not, and that
+    # is the path that takes the lock.
     capacity_note = ""
     if confirmed_total > booking["capacity"]:
         capacity_note = f" Heads up — confirmed registrations for this session now total {confirmed_total}, over the {booking['capacity']}-spot cap."
