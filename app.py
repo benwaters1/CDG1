@@ -5433,6 +5433,8 @@ NAV_AREAS = {
     ],
     "restaurant": [
         "admin_no_shows", "export_no_shows_csv",
+        "admin_menu_engineering", "export_menu_engineering_csv",
+        "admin_rate_advice", "export_rate_advice_csv", "apply_rate_advice",
         "admin_table_utilisation", "export_table_utilisation_csv",
         "admin_wastage_rate", "export_wastage_rate_csv",
         "kitchen_dietary", "export_dietary_csv",
@@ -16803,6 +16805,311 @@ def events_needing_numbers(conn, today=None):
     return out
 
 
+# What a dish is, once you know how often it sells and what it leaves. The
+# names are the standard ones and they are worth keeping, because each carries
+# a different instruction and "it sells well" carries none.
+MENU_QUADRANTS = {
+    "star":   ("Star", "Sells often and earns well. Protect it: keep it on, "
+                       "keep it consistent, and do not discount it."),
+    "plough": ("Plough horse", "Sells often and earns little. The room likes "
+                               "it. Take cost out of it, or put the price up "
+                               "a little — volume forgives a small rise."),
+    "puzzle": ("Puzzle", "Earns well and rarely sells. Worth a push: move it "
+                         "up the card, let the staff taste it, describe it "
+                         "better. It is not the dish, it is the offer."),
+    "dog":    ("Dog", "Rarely sells and earns little. It is taking a line on "
+                      "the card from something that would."),
+}
+
+
+def menu_engineering(conn, days=90, today=None):
+    """Which dishes sell, which earn, and what to do about each.
+
+    The house has costs on one page and sales on another and no page that puts
+    them together — so "the duck does well" has never been a statement about
+    money. Popularity alone argues for keeping whatever is cheapest to like;
+    margin alone argues for a card nobody orders from.
+
+    A dish is popular if it sells more often than a fair share of the covers
+    would give it, which is the standard test and the honest one: comparing
+    against the AVERAGE dish would call half the card unpopular by
+    construction, however well the whole card sells.
+
+    Anything without a recipe costed is reported as UNCOSTED rather than
+    quietly binned. A dish with no cost against it is the most likely thing on
+    the card to be losing money, and dropping it from the picture is how it
+    keeps doing so.
+    """
+    today = today or house_today()
+    since = (today - timedelta(days=max(1, days))).isoformat()
+
+    # The till's own words: a tab is PAID at the counter or CHARGED_TO_ROOM,
+    # and both mean a dish left the kitchen. 'settled' is not a status this
+    # app has ever had, so a filter on it matched nothing and the page read
+    # as a card that never sells.
+    sold = conn.execute(
+        """SELECT pos_order_lines.menu_item_id AS item_id,
+                  COALESCE(SUM(pos_order_lines.quantity), 0) AS qty,
+                  COALESCE(SUM(pos_order_lines.quantity * pos_order_lines.unit_price), 0) AS taken
+             FROM pos_order_lines
+             JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+            WHERE pos_order_lines.menu_item_id IS NOT NULL
+              AND COALESCE(pos_order_lines.voided, 0) = 0
+              AND pos_orders.status IN ('paid', 'charged_to_room')
+              AND DATE(pos_order_lines.created_at) >= ?
+            GROUP BY pos_order_lines.menu_item_id""", (since,)).fetchall()
+    by_item = {r["item_id"]: r for r in sold}
+
+    costs = {c["item"]["id"]: c for c in dish_costs(conn)}
+    total_qty = sum(float(r["qty"] or 0) for r in sold)
+    # The fair share: if every dish on the card sold equally, this is what
+    # each would take. 70% of it is the usual line, and it is a line about
+    # this card rather than about restaurants in general.
+    lines_on_card = len(costs) or 1
+    fair_share = total_qty / lines_on_card if total_qty else 0
+    popular_at = fair_share * 0.7
+
+    priced = [c["margin"] for c in costs.values() if c["margin"] is not None]
+    median_margin = _median(priced)
+
+    rows, uncosted = [], []
+    for item_id, cost in costs.items():
+        item = cost["item"]
+        sale = by_item.get(item_id)
+        qty = float(sale["qty"] or 0) if sale else 0.0
+        taken = float(sale["taken"] or 0) if sale else 0.0
+        margin = cost["margin"]
+        popular = qty >= popular_at and total_qty > 0
+        profitable = (margin is not None and median_margin is not None
+                      and margin >= median_margin)
+
+        if margin is None:
+            quadrant = None
+            uncosted.append(item["name"])
+        elif popular and profitable:
+            quadrant = "star"
+        elif popular:
+            quadrant = "plough"
+        elif profitable:
+            quadrant = "puzzle"
+        else:
+            quadrant = "dog"
+
+        rows.append({
+            "id": item_id, "name": item["name"],
+            "course": item["course"] or "",
+            "price": round(float(item["price"] or 0), 2),
+            "cost": cost["cost"], "margin": margin,
+            "margin_pct": cost["margin_pct"],
+            "qty": qty, "taken": round(taken, 2),
+            "share": round(qty / total_qty * 100, 1) if total_qty else 0,
+            "contribution": round((margin or 0) * qty, 2) if margin is not None else None,
+            "popular": popular, "profitable": profitable,
+            "quadrant": quadrant,
+            "label": MENU_QUADRANTS[quadrant][0] if quadrant else "Not costed",
+            "advice": MENU_QUADRANTS[quadrant][1] if quadrant else
+                      "No recipe costed, so this cannot be placed. It is also "
+                      "the most likely thing on the card to be losing money.",
+            "missing_costs": cost["missing_costs"],
+        })
+
+    rows.sort(key=lambda r: -(r["contribution"] or -1))
+    counts = {k: sum(1 for r in rows if r["quadrant"] == k) for k in MENU_QUADRANTS}
+    return {
+        "days": days, "today": today, "rows": rows,
+        "counts": counts, "uncosted": uncosted,
+        "sold_lines": int(total_qty),
+        "fair_share": round(fair_share, 1),
+        "popular_at": round(popular_at, 1),
+        "median_margin": median_margin,
+        "contribution": round(sum(r["contribution"] or 0 for r in rows), 2),
+        # With nothing sold there is no popularity axis, and half the grid
+        # would be an opinion rather than a measurement.
+        "no_sales": total_qty == 0,
+        "quadrants": MENU_QUADRANTS,
+        "csv": [{"dish": r["name"], "course": r["course"], "sold": r["qty"],
+                 "price": r["price"], "cost": r["cost"], "margin": r["margin"],
+                 "verdict": r["label"]} for r in rows],
+    }
+
+
+# How far a suggestion is ever allowed to move a rate. A recommendation that
+# can double a price is one nobody dares apply, and one that can halve it is
+# one that quietly gives the house away.
+RATE_ADVICE_FLOOR = 0.85
+RATE_ADVICE_CEILING = 1.30
+# Under this many nights of history for a weekday, the season figure is one
+# good week talking. It is reported as thin rather than used.
+RATE_ADVICE_MIN_NIGHTS = 8
+# And under this many room-nights across the whole record, the season is not a
+# season. Every month reads as empty, which would argue for cutting every rate
+# in the calendar.
+RATE_ADVICE_MIN_HISTORY = 60
+
+
+def rate_advice(conn, days=60, today=None):
+    """A suggested rate per night, and the reasoning in full.
+
+    Everything this needs already existed on separate pages: how full the
+    house is for a date, how that compares with the same point last year, how
+    far ahead people book, and which nights of the week actually sell. Nobody
+    could hold four pages in their head on a Tuesday morning, so the rate
+    never moved.
+
+    This suggests; it does not set. Every figure that moved the number is
+    shown beside it, because a rate a person cannot argue with is a rate they
+    will not use — and the one thing worse than not moving the price is moving
+    it for a reason nobody can reconstruct in six months.
+
+    Nothing is suggested for a date that is already fully sold. There is no
+    room left to sell at any price, and a higher number on a full night is a
+    figure that flatters the report and changes nothing.
+    """
+    today = today or house_today()
+    end = today + timedelta(days=max(1, days))
+    rooms = conn.execute(
+        """SELECT id, name, price_per_night FROM rooms
+            WHERE active = 1 ORDER BY sort_order, id""").fetchall()
+    rooms_total = len(rooms)
+
+    occupied = occupied_rooms_by_date(conn, today, end)
+    season = seasonality(conn, years=3, today=today)
+    weekday_occ = {w["name"]: w["occupancy"] for w in season["weekdays"]}
+    weekday_nights = {w["name"]: w["nights"] for w in season["weekdays"]}
+    month_occ = {mth["month"]: mth["occupancy"] for mth in season["months"]}
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+
+    # Overrides already in force, so the page never suggests what is set.
+    overrides = {}
+    for r in conn.execute(
+            """SELECT room_id, start_date, end_date, price_per_night, label
+                 FROM room_rate_overrides""").fetchall():
+        overrides.setdefault(r["room_id"], []).append(dict(r))
+
+    def override_for(room_id, day_iso):
+        for o in overrides.get(room_id, []):
+            if (o["start_date"] or "") <= day_iso <= (o["end_date"] or "9999-12-31"):
+                return o
+        return None
+
+    rows = []
+    for i in range((end - today).days):
+        day = today + timedelta(days=i)
+        iso = day.isoformat()
+        sold = occupied.get(iso, 0)
+        free = rooms_total - sold
+        weekday = day_names[day.weekday()]
+        lead = (day - today).days
+
+        reasons = []
+        factor = 1.0
+
+        # 1. How this night of the week actually sells, over three years.
+        wk = weekday_occ.get(weekday)
+        thin = weekday_nights.get(weekday, 0) < RATE_ADVICE_MIN_NIGHTS
+        if wk is not None and not thin:
+            if wk >= 60:
+                factor *= 1.10
+                reasons.append("%s sells at %s%% across three years" % (weekday, wk))
+            elif wk <= 25:
+                factor *= 0.95
+                reasons.append("%s only sells at %s%%" % (weekday, wk))
+        elif thin:
+            reasons.append("not enough %s nights on record to judge the day" % weekday)
+
+        # 2. The month, for the same reason and on the same evidence.
+        mo = month_occ.get(day.month)
+        if mo is not None:
+            if mo >= 60:
+                factor *= 1.10
+                reasons.append("%s runs at %s%%" % (day.strftime("%B"), mo))
+            elif mo <= 20:
+                factor *= 0.92
+                reasons.append("%s runs at only %s%%" % (day.strftime("%B"), mo))
+
+        # 3. What is already sold FOR THIS DATE. The strongest signal there
+        #    is, because it is about this night rather than about a pattern.
+        if rooms_total:
+            filled = sold / rooms_total * 100
+            if filled >= 60:
+                factor *= 1.15
+                reasons.append("%d of %d rooms already sold" % (sold, rooms_total))
+            elif filled == 0 and lead <= 21:
+                factor *= 0.92
+                reasons.append("nothing sold and only %d days out" % lead)
+
+        # 4. How close it is. Late and empty is the one case for coming down.
+        if lead <= 7 and sold == 0:
+            factor *= 0.90
+            reasons.append("inside a week with the house empty")
+
+        factor = max(RATE_ADVICE_FLOOR, min(RATE_ADVICE_CEILING, factor))
+
+        for room in rooms:
+            rack = float(room["price_per_night"] or 0)
+            if not rack:
+                continue
+            existing = override_for(room["id"], iso)
+            # Rounded to the nearest five, then held to the band again --
+            # rounding a floor of 187 down to 185 puts the suggestion below
+            # the floor it was just clamped to, and the apply route refuses
+            # its own suggestion.
+            suggested = round(rack * factor / 5) * 5
+            suggested = min(max(suggested, rack * RATE_ADVICE_FLOOR),
+                            rack * RATE_ADVICE_CEILING)
+            suggested = round(suggested, 2)
+            rows.append({
+                "date": iso, "day": day, "weekday": weekday[:3],
+                "room_id": room["id"], "room": room["name"],
+                "rack": round(rack, 2),
+                "suggested": float(suggested),
+                "change": round(suggested - rack, 2),
+                "change_pct": round((suggested - rack) / rack * 100, 1),
+                "factor": round(factor, 3),
+                "sold": sold, "free": free, "lead": lead,
+                "reasons": reasons,
+                "existing": existing,
+                # A full night has nothing left to sell at any price.
+                "full": free <= 0,
+                "worth_doing": free > 0 and abs(suggested - rack) >= 5 and not existing,
+            })
+
+    # With no history the season figures are all zero, and a month "running
+    # at 0%" would argue for cutting every rate in the calendar. That is the
+    # one direction a bad suggestion is expensive in, so under a season's
+    # worth of nights this suggests NOTHING and says why. The same reason the
+    # covers forecast withholds a take-up rate and the channel page refuses to
+    # invent a commission: a number with no evidence behind it gets acted on
+    # exactly as hard as one with.
+    thin = season["nights_counted"] < RATE_ADVICE_MIN_HISTORY
+    if thin:
+        for r in rows:
+            r["suggested"] = r["rack"]
+            r["change"] = 0.0
+            r["change_pct"] = 0.0
+            r["factor"] = 1.0
+            r["worth_doing"] = False
+            r["reasons"] = ["not enough history to suggest anything yet"]
+
+    suggestions = [r for r in rows if r["worth_doing"]]
+    return {
+        "today": today, "end": end, "days": days,
+        "rows": rows, "suggestions": suggestions,
+        "up": [r for r in suggestions if r["change"] > 0],
+        "down": [r for r in suggestions if r["change"] < 0],
+        "rooms": [dict(r) for r in rooms],
+        "already_set": sum(1 for r in rows if r["existing"]),
+        "full_nights": len({r["date"] for r in rows if r["full"]}),
+        "thin_history": thin,
+        "nights_counted": season["nights_counted"],
+        "floor": RATE_ADVICE_FLOOR, "ceiling": RATE_ADVICE_CEILING,
+        "csv": [{"date": r["date"], "room": r["room"], "rack": r["rack"],
+                 "suggested": r["suggested"], "why": "; ".join(r["reasons"])}
+                for r in suggestions],
+    }
+
+
 def report_labour(conn, period):
     # Same helper the financial summary costs labour with, so the two pages
     # cannot disagree about the same shifts.
@@ -25164,6 +25471,12 @@ PALETTE_PAGES = [
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("What to charge", "admin_rate_advice",
+     "rate advice price suggestion nightly rate revenue management yield "
+     "put the price up discount season"),
+    ("What the card earns", "admin_menu_engineering",
+     "menu engineering dish popularity margin star plough horse puzzle dog "
+     "card profitability what sells"),
     ("Event run sheet", "admin_events",
      "run sheet wedding event timeline suppliers final numbers carriages "
      "florist band photographer setup day plan"),
@@ -44091,6 +44404,118 @@ def save_event_run_details(event_id):
     conn.close()
     flash("Run sheet saved.", "success")
     return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/menu-engineering")
+@owner_required
+def admin_menu_engineering():
+    """Which dishes sell, which earn, and what to do about each."""
+    conn = get_db()
+    try:
+        days = max(7, min(730, int(request.args.get("days", 90))))
+    except ValueError:
+        days = 90
+    data = menu_engineering(conn, days)
+    conn.close()
+    return render_template("admin_menu_engineering.html", data=data, days=days)
+
+
+@app.route("/admin/menu-engineering.csv")
+@owner_required
+def export_menu_engineering_csv():
+    conn = get_db()
+    try:
+        days = max(7, min(730, int(request.args.get("days", 90))))
+    except ValueError:
+        days = 90
+    data = menu_engineering(conn, days)
+    conn.close()
+    return csv_response(["dish", "course", "sold", "price", "cost", "margin", "verdict"],
+                        data["csv"], "menu-engineering.csv")
+
+
+@app.route("/admin/rate-advice")
+@owner_required
+def admin_rate_advice():
+    """A suggested rate per night, with the reasoning beside it."""
+    conn = get_db()
+    try:
+        days = max(7, min(180, int(request.args.get("days", 60))))
+    except ValueError:
+        days = 60
+    data = rate_advice(conn, days)
+    conn.close()
+    return render_template("admin_rate_advice.html", data=data, days=days)
+
+
+@app.route("/admin/rate-advice.csv")
+@owner_required
+def export_rate_advice_csv():
+    conn = get_db()
+    data = rate_advice(conn, 180)
+    conn.close()
+    return csv_response(["date", "room", "rack", "suggested", "why"], data["csv"],
+                        "rate-advice.csv")
+
+
+@app.route("/admin/rate-advice/apply", methods=["POST"])
+@owner_required
+def apply_rate_advice():
+    """Take one suggestion and make it a rate for that one night.
+
+    One night and one room per press. A button that applied the whole page
+    would be the only one anybody used, and it would set sixty nights on the
+    strength of a glance -- the opposite of a decision somebody can defend.
+    """
+    conn = get_db()
+    room_id = request.form.get("room_id", "")
+    day = parse_date(request.form.get("date", ""))
+    try:
+        price = float((request.form.get("price", "") or "").replace(",", "."))
+    except ValueError:
+        price = None
+    room = conn.execute("SELECT id, name, price_per_night FROM rooms WHERE id = ?",
+                        (room_id,)).fetchone() if room_id.isdigit() else None
+    if not room or not day or price is None or price <= 0:
+        conn.close()
+        flash("That suggestion could not be read. Nothing was changed.", "error")
+        return redirect(url_for("admin_rate_advice"))
+    if day < house_today():
+        conn.close()
+        flash("That night has passed. Nothing was changed.", "error")
+        return redirect(url_for("admin_rate_advice"))
+
+    rack = float(room["price_per_night"] or 0)
+    # The same band the suggestion itself is held to, checked again here
+    # because a form can be posted with anything in it.
+    if rack and not (rack * RATE_ADVICE_FLOOR - 0.01 <= price <= rack * RATE_ADVICE_CEILING + 0.01):
+        conn.close()
+        flash("That is outside the range a suggestion can move a rate. "
+              "Set it by hand on the room if you mean it.", "error")
+        return redirect(url_for("admin_rate_advice"))
+
+    existing = conn.execute(
+        """SELECT id FROM room_rate_overrides
+            WHERE room_id = ? AND start_date <= ? AND end_date >= ?""",
+        (room["id"], day.isoformat(), day.isoformat())).fetchone()
+    if existing:
+        conn.close()
+        flash("There is already a rate set covering that night. It was left alone.",
+              "error")
+        return redirect(url_for("admin_rate_advice"))
+
+    conn.execute(
+        """INSERT INTO room_rate_overrides (room_id, start_date, end_date,
+             price_per_night, label, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (room["id"], day.isoformat(), day.isoformat(), price,
+         "Suggested", datetime.now(timezone.utc).isoformat()))
+    log_audit(conn, "rate_override_applied", f"{room['name']} {day.isoformat()}",
+              f"{euro(rack)} to {euro(price)}")
+    conn.commit()
+    conn.close()
+    flash(f"{room['name']} set to {euro(price)} for {day.isoformat()}.", "success")
+    return redirect(url_for("admin_rate_advice"))
 
 
 @app.route("/management/break-even")

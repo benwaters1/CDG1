@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}What to charge{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What to charge</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('management_seasonality') }}" class="btn-ghost">Seasonality</a>
+    <a href="{{ url_for('management_pace') }}" class="btn-ghost">Booking pace</a>
+    <a href="{{ url_for('admin_rooms') }}" class="btn-ghost">Rooms</a>
+    <a href="{{ url_for('export_rate_advice_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Everything this needs was already on separate pages: how full the house is for a date, which
+  nights of the week actually sell, how each month runs, and how close the date is. Nobody could
+  hold four pages in their head on a Tuesday morning, so the rate never moved.
+  <strong>This suggests; it does not set.</strong> Every figure that moved the number is shown
+  beside it &mdash; a rate you cannot argue with is a rate you will not use.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Nights ahead</label>
+    <input type="number" id="days" name="days" min="7" max="180" step="1" value="{{ days }}">
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% if data.thin_history %}
+<div class="detail-card" style="max-width:860px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">Not enough history to suggest anything yet</h3>
+  <p class="field-hint" style="margin-top:0;">
+    {{ data.nights_counted }} room-nights are on record. With this little, every month reads as
+    empty &mdash; which would argue for cutting every rate in the calendar, and that is the one
+    direction a bad suggestion is expensive in. Everything below is shown at its standing rate
+    and nothing is being recommended.
+  </p>
+</div>
+{% else %}
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.up|length }}</span>
+    <span class="stat-tile-label">Nights worth asking more for</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.down|length }}</span>
+    <span class="stat-tile-label">Nights worth coming down on</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.full_nights }}</span>
+    <span class="stat-tile-label">Already full &mdash; nothing left to sell</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.already_set }}</span>
+    <span class="stat-tile-label">Nights you have already priced by hand</span></span></div>
+</div>
+{% endif %}
+
+<p class="field-hint" style="max-width:800px;">
+  A suggestion never moves a rate below {{ (data.floor * 100)|round|int }}% or above
+  {{ (data.ceiling * 100)|round|int }}% of the standing price. One that could double a price is one
+  nobody dares apply; one that could halve it quietly gives the house away. Nights already priced
+  by hand are left alone, and full nights are not suggested for at all &mdash; there is no room
+  left to sell at any price.
+</p>
+
+{% if data.suggestions %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Night</th>
+        <th style="text-align:left;">Room</th>
+        <th class="num">Standing</th>
+        <th class="num">Suggested</th>
+        <th class="num">Change</th>
+        <th style="text-align:left;">Because</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.suggestions %}
+      <tr>
+        <th scope="row" style="text-align:left;">
+          <span style="font-variant-numeric:tabular-nums;">{{ r.weekday }} {{ r.date }}</span>
+          <span class="field-hint" style="display:block; font-weight:400;">{{ r.sold }} of {{ r.sold + r.free }} sold &middot; {{ r.lead }} days out</span>
+        </th>
+        <td>{{ r.room }}</td>
+        <td class="num">{{ euro(r.rack) }}</td>
+        <td class="num"><strong>{{ euro(r.suggested) }}</strong></td>
+        <td class="num">
+          <span class="{{ 'pill-good' if r.change > 0 else 'pill-bad' }}">{{ '+' if r.change > 0 }}{{ r.change_pct }}%</span>
+        </td>
+        <td>
+          <ul style="margin:0; padding-left:1.1em;">
+            {% for why in r.reasons %}<li class="field-hint">{{ why }}</li>{% endfor %}
+          </ul>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('apply_rate_advice') }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="room_id" value="{{ r.room_id }}">
+            <input type="hidden" name="date" value="{{ r.date }}">
+            <input type="hidden" name="price" value="{{ r.suggested }}">
+            <button type="submit" class="btn-mini">Use it</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="field-hint" style="max-width:800px;">
+  One night and one room per press, deliberately. A button that applied the whole page would be
+  the only one anybody used, and it would set sixty nights on the strength of a glance.
+</p>
+{% elif not data.thin_history %}
+<div class="empty-state">
+  Nothing in the next {{ days }} nights is far enough from its standing rate to be worth changing.
+</div>
+{% endif %}
+
+{% endblock %}

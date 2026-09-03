@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}What the card earns{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the card earns</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('menu_day') }}" class="btn-ghost">The day's menu</a>
+    <a href="{{ url_for('admin_stock') }}" class="btn-ghost">Stock</a>
+    <a href="{{ url_for('export_menu_engineering_csv', days=days) }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Costs were on one page and sales on another, and nothing put them together &mdash; so
+  &ldquo;the duck does well&rdquo; was never a statement about money. Popularity on its own argues
+  for keeping whatever is cheapest to like; margin on its own argues for a card nobody orders from.
+  Last {{ days }} days of settled tabs.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="days">Looking back</label>
+    <input type="number" id="days" name="days" min="7" max="730" step="1" value="{{ days }}">
+    <span class="field-hint">days</span>
+  </div>
+  <button type="submit" class="btn-mini">Show</button>
+</form>
+
+{% if data.no_sales %}
+<div class="detail-card" style="max-width:840px;">
+  <h3 style="margin-top:0;">Nothing has been sold through the till in this window</h3>
+  <p class="field-hint" style="margin-top:0;">
+    Without sales there is no popularity to measure, and half the grid would be an opinion rather
+    than a measurement. The costs below still stand on their own.
+  </p>
+</div>
+{% else %}
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.counts.star }}</span>
+    <span class="stat-tile-label">Stars &mdash; sell and earn</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.counts.plough }}</span>
+    <span class="stat-tile-label">Plough horses &mdash; sell, earn little</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.counts.puzzle }}</span>
+    <span class="stat-tile-label">Puzzles &mdash; earn, rarely sell</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.counts.dog }}</span>
+    <span class="stat-tile-label">Taking a line on the card</span></span></div>
+</div>
+
+<p class="field-hint" style="max-width:780px;">
+  A dish counts as popular above <strong>{{ data.popular_at }}</strong> sold &mdash; seven tenths of
+  the {{ data.fair_share }} an equal share of {{ data.sold_lines }} lines would give it. Measured
+  against a fair share rather than against the average dish, because the average would call half
+  the card unpopular by construction however well the whole card sells.
+  {% if data.median_margin is not none %}A dish earns well above
+  <strong>{{ euro(data.median_margin) }}</strong> a plate, the middle of this card &mdash;
+  the middle rather than the average, so one very rich dish cannot drag the line everything
+  else is judged against.{% endif %}
+</p>
+{% endif %}
+
+{% if data.uncosted %}
+<div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">
+  <h3 style="margin-top:0;">{{ data.uncosted|length }} dish{{ '' if data.uncosted|length == 1 else 'es' }} have no recipe costed</h3>
+  <p class="field-hint" style="margin-top:0;">
+    They are listed below as <em>not costed</em> rather than dropped. A dish with no cost against
+    it is the most likely thing on the card to be losing money, and leaving it out of the picture
+    is how it goes on doing so.
+  </p>
+</div>
+{% endif %}
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="text-align:left;">Dish</th>
+        <th class="num">Sold</th>
+        <th class="num">Price</th>
+        <th class="num">Ingredients</th>
+        <th class="num">Leaves</th>
+        <th class="num">Total left</th>
+        <th style="text-align:left;">Verdict</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr{% if r.quadrant == 'dog' or not r.quadrant %} class="row-alert"{% endif %}>
+        <th scope="row" style="text-align:left;">
+          {{ r.name }}
+          {% if r.course %}<span class="field-hint" style="display:block; font-weight:400;">{{ r.course }}</span>{% endif %}
+        </th>
+        <td class="num">{{ r.qty|round|int }}</td>
+        <td class="num">{{ euro(r.price) }}</td>
+        <td class="num">{% if r.cost is not none %}{{ euro(r.cost) }}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.margin is not none %}{{ euro(r.margin) }}{% if r.margin_pct is not none %} <span class="field-hint">{{ r.margin_pct }}%</span>{% endif %}{% else %}&mdash;{% endif %}</td>
+        <td class="num">{% if r.contribution is not none %}{{ euro(r.contribution) }}{% else %}&mdash;{% endif %}</td>
+        <td>
+          <strong>{{ r.label }}</strong>
+          <span class="field-hint" style="display:block;">{{ r.advice }}</span>
+          {% if r.missing_costs %}<span class="field-hint" style="display:block;">No cost recorded for: {{ r.missing_costs|join(', ') }}</span>{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7"><div class="empty-state">No dishes on the card.</div></td></tr>
+      {% endfor %}
+    </tbody>
+    {% if not data.no_sales %}
+    <tfoot>
+      <tr>
+        <th colspan="5" style="text-align:left;">What the card left over the window</th>
+        <th class="num">{{ euro(data.contribution) }}</th>
+        <th></th>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+
+<h2 class="section-heading">What the four names mean</h2>
+<p class="field-hint" style="max-width:780px;">
+  Each carries a different instruction, which is the reason for using them at all &mdash;
+  &ldquo;it sells well&rdquo; carries none.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Name</th><th style="text-align:left;">What to do</th></tr></thead>
+    <tbody>
+      {% for key, pair in data.quadrants.items() %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ pair[0] }}</th>
+        <td>{{ pair[1] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
