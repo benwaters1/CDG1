@@ -1,15 +1,14 @@
 {% extends "public_base.html" %}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% set sticky_bar = 'none' %}
 {% block title %}Email preferences{% endblock %}
-{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
 {% block content %}
 
 <section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
 <div class="g-mb-card">
 {% if state == "confirm" %}
   <h1>Unsubscribe</h1>
-  <p class="g-p">
-    {% if name %}{{ name.split(' ')[0] }}, this{% else %}This{% endif %} will stop
+  <p class="g-p">{%- if name %}{{ name.split(' ')[0] }}, this{% else %}This{% endif %} will stop
     announcements and offers going to <strong>{{ email }}</strong>.
   </p>
   <p class="g-p">

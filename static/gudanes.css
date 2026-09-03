@@ -933,9 +933,13 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 /* Single-column prose inside a full-width wrap was hanging left with a large
    empty right side. Centring the measure keeps the comfortable line length
    while sitting properly in the page — matching how Ritz sets prose blocks. */
+/* Both the heading and its paragraph are centred, but only the heading was
+   capped at --measure — so the two centred against different widths and their
+   left edges differed by half the difference. On most pages the gap was
+   invisible; on a few it read as an 8px misalignment. Cap both. */
 .g-wrap > .g-p,
 .g-wrap > .g-h2 + .g-p,
-.g-sec > .g-wrap > .g-p{ margin-left: auto; margin-right: auto; }
+.g-sec > .g-wrap > .g-p{ max-width: var(--measure); margin-left: auto; margin-right: auto; }
 .g-sec > .g-wrap > .g-h2{ max-width: var(--measure); margin-left: auto; margin-right: auto; }
 /* ---- Language switcher ------------------------------------------------- */
 /* Plain links, not a dropdown: three options do not need a menu, and a link
@@ -1561,7 +1565,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-plate-edge::after{ bottom:0; right:0; border-bottom:1px solid var(--stone); border-right:1px solid var(--stone); }
 
 /* The opening paragraph of a page carries a little more weight than the rest. */
-.g-lede-first{ font-size: 18px; line-height: 1.6; max-width: 46rem; }
+.g-lede-first{ font-size: var(--t-base); line-height: 1.6; max-width: var(--measure); }
 
 /* ==========================================================================
    CONFIRMATION PAGES
@@ -5483,3 +5487,292 @@ main img{ height: auto; }
   letter-spacing: .04em; text-transform: none; color: var(--ink-soft);
   margin-left: 4px;
 }
+
+/* ==========================================================================
+   HEADINGS MUST SIT ON THE SAME EDGE AS THEIR TEXT
+   Section headings were carrying an 8px left margin from outside this
+   stylesheet — the same style.css that sets a bare `form` to column almost
+   certainly sets a bare `h2` margin too. The result was a heading standing
+   8px proud of the paragraph beneath it, which reads as a mistake rather
+   than as an offset, and only on some pages.
+
+   Stated explicitly so nothing outside can move them.
+   ========================================================================== */
+.g h1, .g h2, .g h3, .g h4, .g h5, .g h6{ margin-left: 0; margin-right: 0; }
+
+/* The actual cause: the browser's default 8px body margin was never reset, so
+   the whole page — every section, every heading, main itself — sat 8px right
+   of the viewport edge. Centred elements hid it; left-aligned ones did not,
+   which is why only some headings looked 8px proud of their own text. */
+html, body{ margin: 0; padding: 0; }
+.g .g-place, .g .g-h2, .g .g-h3, .g .g-pagehead, .g .g-hero__title{ margin-left: 0; }
+.g-table-cta__d{ margin: 0; color: var(--ink-soft); font-size: var(--t-base); }
+
+/* ==========================================================================
+   ELEMENTS WITH NOTHING IN THEM
+   Several blocks render an empty paragraph when the record they describe has
+   no value — a workshop with no length, a session with no meta, a promo hint
+   with no code. An empty element still takes its margin, so the page shows a
+   gap with nothing in it.
+
+   :empty only matches truly empty nodes, so this also covers the whitespace
+   case with :has(). Both are safe: an element that HAS content is untouched.
+   ========================================================================== */
+.g-p:empty, .g-hint:empty, .g-room__meta:empty, .g-wscard__len:empty,
+.g-sit__meta:empty, .g-table-cta__d:empty, .g-programme__s:empty,
+.g-tier__n:empty{ display: none; }
+/* :empty does not match whitespace, and Jinja leaves a newline behind when a
+   conditional produces nothing. A dd or p that renders blank still takes its
+   margin, so the page shows a gap with nothing in it. The templates below use
+   {%- -%} to close the gap at source; this covers anything missed. */
+
+/* ==========================================================================
+   BEFORE YOU SEND THIS
+   The room was in the panel, the extras 800px above it, and the total in a
+   third place. This restates the whole stay immediately above the button,
+   from the form's own values, so it cannot disagree with what is submitted.
+   ========================================================================== */
+.g-review{
+  margin: var(--s5) 0 var(--s4); padding: var(--s5);
+  border: 1px solid rgba(232,226,214,.28); background: rgba(255,255,255,.05);
+}
+.g-review__h{
+  margin: 0 0 var(--s3); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-review__l{ margin: 0; }
+.g-review__l > div{
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--s4); padding: var(--s2) 0;
+}
+.g-review__l dt{
+  flex: 0 0 auto; font-family: var(--ui); font-size: var(--t-ui); color: #A9BCCD;
+}
+.g-review__l dd{
+  margin: 0; flex: 1 1 auto; min-width: 0; text-align: right;
+  font-size: var(--t-base); color: #fff;
+}
+.g-review__tot{ margin-top: var(--s2); padding-top: var(--s3) !important;
+  border-top: 1px solid rgba(232,226,214,.28); }
+.g-review__tot dt{ color: var(--gilt); }
+.g-review__tot dd{ font-family: var(--display); font-size: var(--t-h3);
+  font-variant-numeric: lining-nums; }
+.g-review__n{ margin: var(--s3) 0 0; font-size: var(--t-sm); line-height: 1.5; color: #A9BCCD; }
+
+/* Holding state — a submit with no feedback gets clicked twice. */
+.g-holding{ margin: var(--s3) 0 0; text-align: center; }
+.g-holding__m{ font-family: var(--ui); font-size: var(--t-ui); color: var(--gilt); }
+.g-submit[disabled]{ opacity: .65; cursor: progress; }
+
+/* Notice period, on the extra itself rather than under the list. */
+.g-addons__notice{
+  grid-column: 2 / -1; margin-top: 2px;
+  font-family: var(--ui); font-size: var(--t-sm);
+  letter-spacing: .04em; color: var(--gilt);
+}
+/* `hidden` does nothing when a rule sets display, so the extras row was
+   showing with an em dash in it whenever nothing was chosen. */
+.g-review__extras[hidden]{ display: none; }
+
+/* ==========================================================================
+   FORM RESTORED, CANCELLING, DATED PAYMENTS
+   ========================================================================== */
+.g-restored{
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4);
+  margin: 0 0 var(--s5); padding: var(--s3) var(--s4);
+  border-left: 2px solid var(--gilt); background: var(--sand-2);
+}
+.g-restored[hidden]{ display: none; }
+.g-restored__k{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.g-restored__x{
+  margin-left: auto; min-height: 44px; padding: 0 var(--s3);
+  border: 0; background: none; cursor: pointer;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep);
+  text-decoration: underline;
+}
+
+.g-cancel__terms{ margin: var(--s5) 0; }
+.g-cancel__terms > div{ padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+.g-cancel__terms dt{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .06em; color: var(--gilt);
+}
+.g-cancel__terms dd{ margin: 2px 0 0; font-size: var(--t-base); color: var(--ink); }
+.g-cancel__d{ margin-top: var(--s5); border-top: 1px solid var(--line); }
+.g-cancel__d summary{
+  min-height: 48px; display: flex; align-items: center; cursor: pointer;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--ink-soft);
+}
+.g-cancel__d summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-cancel__b{ padding-bottom: var(--s5); }
+/* Cancelling is not the primary action and should not look like one. */
+.g .g-btn--warn{
+  background: transparent; color: #8C2F2F; border: 1px solid #8C2F2F;
+}
+.g .g-btn--warn:hover{ background: #8C2F2F; color: #fff; }
+
+.g-pay2{ margin-top: var(--s5); }
+.g-pay2__h{
+  margin: 0 0 var(--s4); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-pay2__l{ list-style: none; margin: 0; padding: 0 0 0 var(--s6);
+  border-left: 1px solid var(--gilt); }
+.g-pay2__i{ position: relative; display: grid; gap: 2px;
+  grid-template-columns: minmax(8rem, 12rem) 1fr; padding-bottom: var(--s5); }
+@media (max-width: 40rem){ .g-pay2__i{ grid-template-columns: 1fr; } }
+.g-pay2__i::before{
+  content: ""; position: absolute; left: calc(var(--s6) * -1 - 1px); top: .45em;
+  width: 9px; height: 9px; margin-left: -4px;
+  border: 1px solid var(--gilt); border-radius: 50%; background: var(--parchment);
+}
+.g-pay2__i.is-done::before{ background: var(--gilt); }
+.g-pay2__i:last-child{ padding-bottom: 0; }
+.g-pay2__k{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.g-pay2__v{ font-size: var(--t-base); line-height: 1.6; color: var(--ink); max-width: 48ch; }
+
+/* ==========================================================================
+   THE TEN
+   ========================================================================== */
+.g-review__tax dd{ font-size: var(--t-ui) !important; color: #C9D4DF !important; }
+.g-review__tax[hidden]{ display: none; }
+
+.g-family, .g-second, .g-overlap, .g-scarcity-line{
+  display: grid; gap: var(--s2);
+  margin: var(--s5) 0; padding: var(--s4) 0 var(--s4) var(--s5);
+  border-left: 2px solid var(--gilt);
+  font-size: var(--t-base); line-height: 1.6; color: var(--ink);
+}
+.g-family__k, .g-second__k, .g-overlap__k{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-scarcity-line{ margin-top: var(--s3); }
+
+.g-cred{
+  margin: 0; padding: var(--s2) var(--s5);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
+  background: var(--blue-deep); color: #C9D4DF;
+  font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .04em;
+}
+.g-cred__m{
+  font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt);
+}
+@media print{ .g-cred{ display: none; } }
+
+.g-lb__go{
+  display: inline-block; margin-top: var(--s3); padding: var(--s3) var(--s5);
+  min-height: 44px; border: 1px solid var(--gilt); color: #fff;
+  font-family: var(--ui); font-size: var(--t-ui); text-decoration: none;
+}
+.g-lb__go:hover{ background: var(--gilt); color: var(--blue-deep); }
+
+.g-nodate{ margin-top: var(--s6); max-width: 46rem; }
+.g-nodate .g-row{ display: flex; flex-wrap: wrap; gap: var(--s4); }
+.g-nodate .g-field--narrow{ flex: 1 1 10rem; min-width: 0; }
+
+.g-news__see{ margin: var(--s3) 0 0; font-family: var(--ui); font-size: var(--t-sm); }
+
+.g-arrive{ margin: var(--s7) 0; padding: var(--s6); border: 1px solid var(--gilt); background: var(--white); }
+.g-arrive__k{
+  margin: 0 0 var(--s2); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt);
+}
+.g-arrive__h{ margin: 0 0 var(--s5); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h2); color: var(--blue-deep); }
+.g-arrive__l{ margin: 0; }
+.g-arrive__l > div{ padding: var(--s4) 0; border-bottom: 1px solid var(--line); }
+.g-arrive__l > div:last-child{ border-bottom: 0; }
+.g-arrive__l dt{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.g-arrive__l dd{ margin: 4px 0 0; font-size: var(--t-base); line-height: 1.6;
+  color: var(--ink); max-width: 56ch; }
+.g-arrive__map{ display: block; margin-top: 4px; }
+.g-arrive__n{ margin: var(--s5) 0 0; font-family: var(--ui);
+  font-size: var(--t-sm); color: var(--ink-soft); }
+@media print{
+  .g-arrive{ border: 1px solid #999; padding: 12pt; }
+  .g-arrive__map{ display: none; }
+}
+.g-arrive__a{ display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--s3) var(--s5); margin: var(--s5) 0 0; }
+@media print{ .g-arrive__a{ display: none; } }
+
+/* ==========================================================================
+   WAITING LIST, FLEXIBLE ENQUIRY, CALENDAR, DOWNLOADS, INTERESTS
+   ========================================================================== */
+.g-wait{ margin-top: var(--s4); border-top: 1px solid var(--line); }
+.g-wait summary{
+  min-height: 48px; display: flex; align-items: center; cursor: pointer;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep);
+}
+.g-wait summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-wait__b{ padding-bottom: var(--s5); }
+.g-wait__row{ display: grid; gap: var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem,100%),1fr)); }
+
+.g-flex{ padding: var(--s7) 0; border-top: 1px solid var(--gilt); }
+.g-flex__f{ max-width: 46rem; margin-top: var(--s6);
+  display: flex; flex-direction: column; gap: var(--s4); }
+.g-flex__row{ display: grid; gap: var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem,100%),1fr)); }
+.g-flex__f .g-field{ margin: 0; }
+
+.g-avc{ display: grid; gap: var(--s6); margin: var(--s6) 0 var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(min(17rem,100%),1fr)); }
+.g-avc__mh{
+  margin: 0 0 var(--s3); font-family: var(--display); font-size: var(--t-h3);
+  color: var(--blue-deep);
+}
+.g-avc__g{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.g-avc__d, .g-avc__x{
+  display: flex; align-items: center; justify-content: center;
+  min-height: 38px; font-family: var(--ui); font-size: var(--t-ui);
+  font-variant-numeric: lining-nums; border: 1px solid var(--line);
+  background: var(--white); color: var(--ink);
+}
+.g-avc__x{ border: 0; background: none; }
+.g-avc__d.is-past{ color: var(--ink-soft); opacity: .4; border-color: transparent; }
+.g-avc__d.is-taken{
+  color: var(--ink-soft); background: var(--sand-2);
+  text-decoration: line-through; text-decoration-thickness: 1px;
+}
+.g-avc__k{ display: flex; flex-wrap: wrap; gap: var(--s5); margin: 0;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--ink-soft); }
+.g-avc__ks{ display: inline-flex; align-items: center; gap: var(--s2); }
+.g-avc__k i{ width: 16px; height: 16px; border: 1px solid var(--line); background: var(--white); }
+.g-avc__k i.g-avc__taken{ background: var(--sand-2); }
+
+.g-dl{ list-style: none; margin: var(--s6) 0 0; padding: 0; display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem,100%),1fr)); }
+.g .g-dl__i a{
+  display: grid; gap: 2px; padding: var(--s4) var(--s5); min-height: 44px;
+  border: 1px solid var(--line); background: var(--white); text-decoration: none;
+}
+.g .g-dl__i a:hover{ border-color: var(--gilt); }
+.g-dl__i b{ font-family: var(--display); font-weight: 400; font-size: var(--t-h3);
+  color: var(--blue-deep); }
+.g-dl__i span{ font-size: var(--t-ui); color: var(--ink-soft); }
+.g-dl__t{ font-family: var(--ui); font-size: var(--t-sm); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--gilt) !important; }
+
+.g-interests{ margin: var(--s4) 0 0; padding: 0; border: 0; }
+.g-interests legend{
+  padding: 0 0 var(--s2); font-family: var(--ui); font-size: var(--t-sm);
+  letter-spacing: .08em; text-transform: uppercase; color: var(--gilt);
+}
+.g-interests label{
+  display: flex; align-items: center; gap: var(--s3);
+  min-height: 40px; font-size: var(--t-ui); color: var(--ink); cursor: pointer;
+}
+.g-interests input{ flex: 0 0 auto; width: 18px; height: 18px; }
+
+.g-presskit .g-h3{ margin-top: var(--s6); }

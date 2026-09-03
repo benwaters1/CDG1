@@ -30,8 +30,7 @@
     <h1 class="g-hero__title">{{ workshop['title'] }}</h1>
     {% if workshop['price_per_person'] %}
     <p class="g-hero__lede" data-eur="{{ workshop['price_per_person']|int }}">
-      €{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['instructor_name'] %} · with {{ workshop['instructor_name'] }}{% endif %}
-    </p>
+      €{{ '%.0f'|format(workshop['price_per_person']) }} per person{% if workshop['instructor_name'] %} · with {{ workshop['instructor_name'] }}{%- endif %}</p>
     {% endif %}
   
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">Choose your dates</a></p>
@@ -72,10 +71,8 @@
         <div class="g-sit__b">
           <p class="g-sit__name">{{ workshop['title'] }}</p>
           <h3 class="g-sit__when">{{ date_range(s['start_date'], s['end_date']) }}</h3>
-          <p class="g-sit__meta">
-            {% if s['notes'] %}{{ s['notes'] }}{% endif %}
-            {% if s['notes'] %}<br>{{ s['notes'] }}{% endif %}
-          </p>
+          <p class="g-sit__meta">{%- if s['notes'] %}{{ s['notes'] }}{% endif %}
+            {% if s['notes'] %}<br>{{ s['notes'] }}{%- endif %}</p>
           {% if workshop['price_per_person'] %}
           <p class="g-sit__rate">
             <span class="g-fig">€{{ '{:,.0f}'.format(workshop['price_per_person']) }}</span>

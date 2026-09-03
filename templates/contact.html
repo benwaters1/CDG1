@@ -1,5 +1,6 @@
 {% extends "public_base.html" %}
 {% block schema %}
+
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -19,6 +20,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/e8a9fd2f-c0cf-427b-b438-473be3217d51/Chateau+At+Night_.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_flexible.html' import flexible %}
 {% from '_marks.html' import mark, monogram %}
 
 
@@ -203,5 +205,7 @@
       <a href="{{ url_for('restaurant_info') }}" class="g-btn g-btn">Reserve a table</a>
   </div>
 </div></section>
+
+{{ flexible() }}
 
 {% endblock %}

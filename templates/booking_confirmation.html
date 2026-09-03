@@ -3,6 +3,8 @@
 {% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block content %}
+{% from '_arrival_card.html' import arrival_card %}
+{% from '_paydates.html' import pay_dates, no_reply %}
 {% from '_room_copy.html' import room_name %}
 
 {# CONTRACT — read-only. Uses booking.* and the same url_for endpoints as
@@ -10,7 +12,7 @@
    ISO dates, on the one page a guest sees straight after committing money. #}
 
 <section class="g-sec"><div class="g-wrap g-wrap--narrow">
-  <p class="g-eyebrow">{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}</p>
+  <p class="g-eyebrow">{%- if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{%- endif %}</p>
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
     <path d="M0 13h38"/><path d="M82 13h38"/>
     <path d="M60 5c-4 3-6 5-6 8s2 5 6 8c4-3 6-5 6-8s-2-5-6-8z"/>
@@ -20,17 +22,15 @@
   <h1 class="g-display" >
     {{ t('Thank you') }}, {{ booking['guest_name'].split(' ')[0] }}
   </h1>
-  <p class="g-p g-lede-first">
-    {% if booking['payment_status'] == 'paid' %}Your stay in <strong>{{ room_name(booking['room_name']) }}</strong> is booked
+  <p class="g-p g-lede-first">{%- if booking['payment_status'] == 'paid' %}Your stay in <strong>{{ room_name(booking['room_name']) }}</strong> is booked
     and paid in full. There is nothing further to do — we will write again a few days before
     you travel, with directions and arrival times.{% else %}Your request for <strong>{{ room_name(booking['room_name']) }}</strong> has been received.
-    We confirm every booking by hand, usually the same day.{% endif %}
-  </p>
+    We confirm every booking by hand, usually the same day.{%- endif %}</p>
 
   <div class="g-conf g-plate-edge">
     <dl class="g-facts-list">
       <div><dt>{{ t('Reference code') }}</dt><dd><strong>{{ booking['reference_code'] }}</strong></dd></div>
-      <div><dt>{{ t('Status') }}</dt><dd>{{ booking['status']|capitalize }}{% if booking['payment_status'] == 'paid' %} · {{ t('paid') }}{% endif %}</dd></div>
+      <div><dt>{{ t('Status') }}</dt><dd>{{ booking['status']|capitalize }}{% if booking['payment_status'] == 'paid' %} · {{ t('paid') }}{%- endif %}</dd></div>
       <div><dt>{{ t('Arrival') }}</dt><dd>{{ booking['arrival_date']|date_short }}</dd></div>
       <div><dt>{{ t('Departure') }}</dt><dd>{{ booking['departure_date']|date_short }}</dd></div>
       <div><dt>{{ t('Guests') }}</dt><dd>{{ booking['party_size'] }}</dd></div>
@@ -83,7 +83,7 @@
     <div class="g-find">
       <p class="g-find__k">Dinner</p>
       <h3 class="g-find__t">A table at La Table</h3>
-      <p class="g-find__d">Aperitifs in the Renaissance kitchen, then dinner by candlelight. The kitchen cooks for one sitting a night, so it is worth claiming early.</p>
+      <p class="g-find__d">Aperitifs in the Renaissance kitchen, then dinner by candlelight. The kitchen cooks for a single table, and not every night, so it is worth claiming early.</p>
     </div>
     <div class="g-find">
       <p class="g-find__k">Arrival</p>
@@ -100,5 +100,9 @@
     </p>
   </div>
 </div></section>
+
+<div class="g-wrap">{{ no_reply() }}</div>
+
+<div class="g-wrap">{{ arrival_card(booking) }}</div>
 
 {% endblock %}

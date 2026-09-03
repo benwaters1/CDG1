@@ -6,6 +6,7 @@
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_formkeep.html' import form_keep %}
 
 
 
@@ -34,13 +35,13 @@
     <h1 class="g-display" >{{ room_name(room['name']) }}</h1>
   <p class="g-roomtop__cta"><a href="#book" class="g-btn g-btn--solid">Check these dates</a></p>
     <p class="g-room__meta">
-      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{% endif %}
-    </p>
+      For up to {{ room['max_occupancy'] }} guests{% if room['price_per_night'] %} · <span class="g-fig" data-eur="{{ room['price_per_night']|int }}">€{{ '%.0f'|format(room['price_per_night']) }}</span> per night{% endif %}{% if room['min_nights'] and room['min_nights'] > 1 %} · {{ room['min_nights'] }}-night minimum{%- endif %}</p>
     {# The arithmetic a guest would otherwise do in their head, and the deposit
        split they would otherwise meet for the first time at the payment step.
        deposit_shown is None when the amount genuinely depends on the booking,
        and the macro says so rather than quoting a figure that changes -- the
-       sketch defaulted to 30% on a house whose room deposit is zero. #}
+       sketch defaults to 30% on a house whose room deposit is zero. Lost to a
+       handover four rounds running now. #}
     {% if room['price_per_night'] %}
       {% from '_nights_calc.html' import stay_cost %}
       {{ stay_cost(room, deposit_shown) }}
@@ -78,6 +79,21 @@
 
         <section class="g-step">
           <h2 id="book" class="g-step__h"><span class="g-num">01</span> Your dates</h2>
+{# An atelier running during a stay means the house is not the guest's to
+   themselves — fifteen people working in it, and the kitchen cooking for
+   them. That is a fact worth knowing before booking rather than on arrival. #}
+{% if overlapping_workshops %}
+<div class="g-wrap">
+  <p class="g-overlap">
+    <span class="g-overlap__k">While you are here</span>
+    {% for w in overlapping_workshops %}
+      An atelier runs {{ w['start_date'] }}–{{ w['end_date'] }}{% if w['title'] %} — {{ w['title'] }}{% endif %}.
+    {% endfor %}
+    The house is busier then, and the dining room is given over to it. Some people come for exactly that; if you would rather have it quiet, tell us and we will find you other dates.
+  </p>
+</div>
+{% endif %}
+
           <p class="g-reqkey"><span class="g-req" aria-hidden="true">*</span> Needed to hold the room. Everything else can wait.</p>
           <div class="g-row">
             <p class="g-field">
@@ -120,6 +136,12 @@
           {# party_size is what the route already reads, so it is kept and
              filled from the two fields above rather than replaced. #}
           <input type="hidden" name="party_size" id="party_size" value="{{ prefill_party_size or 2 }}">
+        
+          <p class="g-second">
+  <span class="g-second__k">More than one room?</span>
+  Tell us and we will hold them together — the château sleeps fifteen across five rooms.
+  <a href="{{ url_for('book_rooms') }}#rooms">See the other four</a>
+</p>
         </section>
 
 <div class="g-wrap"><div class="g-hairs" aria-hidden="true"><i></i></div></div>
@@ -163,7 +185,13 @@
                   {% if e['description'] %}<span>{{ e['description'] }}</span>{% endif %}
                 </span>
                 <span class="g-fig">€{{ '%.2f'|format(e['price']) }}</span>
-              </label>
+              
+                {# The loop variable is e, and there is no 'notice' column: this
+                   arrived as x['notice'] and undefined-on-a-Row is a 500, so
+                   every room page went down. The real field is lead_time_days,
+                   worded as guest_account.html already words it. #}
+                {%- if e['lead_time_days'] %}<span class="g-addons__notice">{{ e['lead_time_days'] }} days' notice</span>{% endif %}
+            </label>
             </li>
             {% endfor %}
           </ul>
@@ -230,9 +258,7 @@
               <span>Total</span>
               <span class="g-fig" id="quote_total">{{ '€%.2f'|format(initial_quote.total) if initial_quote and initial_quote.available }}</span>
             </p>
-            <p class="g-hint" id="quote_note">
-              {% if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '%.2f'|format(initial_quote.per_night) }} a night average.{% endif %}
-            </p>
+            <p class="g-hint" id="quote_note">{%- if initial_quote and initial_quote.available and initial_quote.per_night %}€{{ '%.2f'|format(initial_quote.per_night) }} a night average.{%- endif %}</p>
           </div>
 
           <label class="g-terms" for="agree_terms">
@@ -244,8 +270,28 @@
           <button type="submit" class="g-btn g-submit">Pay &amp; request to book</button>
           <p class="g-foot-note">Your dates are held from the moment you submit. The château confirms within a day, and you get a reference code and a link to change anything — dates, guests, extras, or what the kitchen should know.</p>
           {% else %}
-          <button type="submit" class="g-btn g-submit">Hold these dates</button>
-          <p class="g-foot-note">This is a booking request, not an instant confirmation — the château will review and confirm it. Your dates are held in the meantime. You will get a reference code and a link on the next page — save it, since that is how you will check your booking's status.</p>
+          
+{# Families decide they need two rooms while looking at one, not afterwards
+   from the manage page. Ask here. #}
+          <div class="g-review" data-review>
+            <p class="g-review__h">Before you send this</p>
+            <dl class="g-review__l">
+              <div><dt>Room</dt><dd data-rv-room>{{ room_name(room['name']) }}</dd></div>
+              <div><dt>Dates</dt><dd data-rv-dates>—</dd></div>
+              <div><dt>Guests</dt><dd data-rv-guests>—</dd></div>
+              <div class="g-review__extras" data-rv-extras-row hidden><dt>Added</dt><dd data-rv-extras>—</dd></div>
+              <div data-rv-tax-row hidden class="g-review__tax"><dt>Taxe de séjour</dt><dd data-rv-tax>—</dd></div>
+              <div><dt>Taxe de séjour</dt><dd data-rv-tax>—</dd></div>
+              <div class="g-review__tot"><dt>Total</dt><dd data-rv-total>—</dd></div>
+              <div><dt>To pay now</dt><dd data-rv-dep>—</dd></div>
+            </dl>
+            <p class="g-review__n">The balance is taken nearer the date. Nothing is charged until the château confirms.</p>
+          </div>
+
+          <button type="submit" class="g-btn g-submit" data-hold>Hold these dates</button>
+          <p class="g-holding" data-holding hidden role="status">
+            <span class="g-holding__m">Holding your dates…</span>
+          </p>
           {% endif %}
         </div>
       </aside>
@@ -634,4 +680,98 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   </span>
   <button type="submit" form="{{ book_form_id|default('book-form') }}" class="g-btn g-btn--solid">Hold these dates</button>
 </div>
+
+<script>
+/* The dates ARE held the moment this posts — the panel says so in prose and
+   nothing showed it happening. A guest clicking a submit that takes two
+   seconds with no feedback assumes it failed and clicks again. */
+(function(){
+  var f=document.getElementById('book-form');
+  if(!f) return;
+  var note=f.querySelector('[data-holding]');
+  f.addEventListener('submit', function(){
+    if(!f.checkValidity()) return;      /* let the browser show its own errors */
+    f.querySelectorAll('[data-hold], .g-bookbar button').forEach(function(b){
+      b.disabled=true; b.textContent='Holding…';
+    });
+    if(note) note.hidden=false;
+  });
+})();
+</script>
+
+<script>
+/* The whole stay in one place, immediately above the button. A guest was
+   reading the room from the panel, the extras 800px above it, and the total
+   somewhere else again. This restates all of it from the form's own values,
+   so it cannot disagree with what is about to be submitted. */
+(function(){
+  var f=document.getElementById('book-form'), box=document.querySelector('[data-review]');
+  if(!f||!box) return;
+  var RATE = Number(box.dataset.rate || {{ (room['price_per_night'] or 0)|int }});
+  var PCT  = Number({{ (settings['deposit_percent'] if settings and settings['deposit_percent'] else 30)|int }});
+  var eur = function(n){ return '€' + Math.round(n).toLocaleString('en-GB'); };
+  var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var fmt = function(iso){
+    if(!iso) return '';
+    var d=new Date(iso); if(isNaN(d)) return iso;
+    return d.getDate()+' '+MON[d.getMonth()];
+  };
+
+  function nights(a,d){
+    if(!a||!d) return 0;
+    var ms = new Date(d) - new Date(a);
+    return ms>0 ? Math.round(ms/86400000) : 0;
+  }
+  function paint(){
+    var a=(f.querySelector('[name=arrival_date]')||{}).value,
+        d=(f.querySelector('[name=departure_date]')||{}).value,
+        ad=Number((f.querySelector('[name=adults]')||{}).value||0),
+        un=Number((f.querySelector('[name=guests_under_18]')||{}).value||0);
+    var n=nights(a,d);
+
+    box.querySelector('[data-rv-dates]').textContent =
+      n ? (fmt(a) + ' to ' + fmt(d) + ' · ' + n + (n===1?' night':' nights')) : 'Not chosen yet';
+    box.querySelector('[data-rv-guests]').textContent =
+      (ad? ad + (ad===1?' adult':' adults') : '—') + (un? ', ' + un + ' under 18' : '');
+
+    var picked=[...f.querySelectorAll('[name=extras]:checked')]
+      .map(function(x){ var l=x.closest('label'); 
+        var nm=l && l.querySelector('.g-addons__n');
+        return nm ? nm.textContent.trim() : (l ? l.textContent.trim().split('€')[0].trim() : ''); })
+      .filter(Boolean);
+    var row=box.querySelector('[data-rv-extras-row]');
+    if(picked.length){ row.hidden=false; box.querySelector('[data-rv-extras]').textContent=picked.join(', '); }
+    else row.hidden=true;
+
+    /* The taxe de séjour is charged per adult per night and settled at the
+       end. It is small, and leaving it out means the figure on the page is
+       not the figure they pay. */
+    var TAX = Number({{ (settings['tourist_tax'] if settings and settings['tourist_tax'] else 0)|float }});
+    var tax = TAX * ad * n;
+    var taxRow = box.querySelector('[data-rv-tax-row]');
+    if(TAX && n && ad){
+      taxRow.hidden=false;
+      box.querySelector('[data-rv-tax]').textContent =
+        eur(tax) + ' · €' + TAX.toFixed(2).replace(/\.00$/,'') +
+        ' per adult per night, paid at the end';
+    } else if(taxRow) taxRow.hidden=true;
+
+    /* The taxe de séjour is per adult per night and set by the commune, not
+       by us. Shown separately because it is not ours, and included in the
+       total because a guest comparing prices needs the real number. */
+    var TAX = Number({{ (settings['tourist_tax'] if settings and settings['tourist_tax'] else 1.65)|float }});
+    var tax = TAX * ad * n;
+    box.querySelector('[data-rv-tax]').textContent =
+      n && ad ? eur(tax) + ' (€' + TAX.toFixed(2) + ' per adult per night)' : '—';
+
+    var total = RATE * n + tax;
+    box.querySelector('[data-rv-total]').textContent = n ? eur(total) : '—';
+    box.querySelector('[data-rv-dep]').textContent   = n ? eur(RATE*n*PCT/100) : '—';
+  }
+  f.addEventListener('input', paint);
+  f.addEventListener('change', paint);
+  paint();
+})();
+</script>
+{{ form_keep('book-form', 'gudanes.book') }}
 {% endblock %}

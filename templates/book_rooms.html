@@ -8,6 +8,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_flexible.html' import flexible %}
+{% from '_availcal.html' import avail_cal %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
@@ -111,13 +113,11 @@
         {%- set nights = ((d[8:10]|int) - (a[8:10]|int)) + (((d[5:7]|int) - (a[5:7]|int)) * 30) -%}
         {%- if nights > 0 %}· {{ nights }} night{{ '' if nights == 1 else 's' }}{% endif -%}
       {%- endif -%}
-      {% if prefill_party_size %}· {{ prefill_party_size }} guest{{ '' if prefill_party_size == 1 else 's' }}{% endif %}
-    </p>
+      {% if prefill_party_size %}· {{ prefill_party_size }} guest{{ '' if prefill_party_size == 1 else 's' }}{%- endif %}</p>
     <p class="g-searched__count">
       {% set free = availability.values()|select|list|length %}
       {% if free %}{{ free }} of {{ rooms|length }} room{{ '' if rooms|length == 1 else 's' }} available
-      {% else %}No rooms free on these dates{% endif %}
-    </p>
+      {% else %}No rooms free on these dates{%- endif %}</p>
     <a href="{{ url_for('book_rooms') }}" class="g-searched__clear">Clear dates</a>
   </div>
   {% endif %}
@@ -127,7 +127,9 @@
   {% else %}
   <div class="g-cards">
     {% for room in rooms %}
-    <article class="g-card g-card--room" id="room-{{ room['id'] }}">
+    <article class="g-card g-card--room" id="room-{{ room['id'] }}"
+             data-room-url="{{ url_for('book_room', room_id=room['id']) }}"
+             data-room-name="{{ room_name(room['name'])|trim }}">
       {# Until a room has its own uploaded photograph, show a château interior
          matched to the room's character. A card with no image is worse than a
          representative one, and the real photo takes over the moment it is
@@ -163,8 +165,7 @@
         {# When dates are set, lead with the total for the stay — the figure a
            guest is actually deciding on — and keep the nightly rate beneath. #}
         {% set _n = stay_nights | default(0) | int %}
-        <p class="g-card__rate">
-          {% if _n > 0 %}
+        <p class="g-card__rate">{%- if _n > 0 %}
             <b data-eur="{{ (room['price_per_night'] * _n)|int }}">€{{ '%.0f'|format(room['price_per_night'] * _n) }}</b>
             <span>total · {{ _n }} night{{ '' if _n == 1 else 's' }}</span>
             {# On a single night the total and the nightly rate are the same
@@ -173,8 +174,7 @@
           {% else %}
             <b data-eur="{{ room['price_per_night']|int }}">From €{{ '%.0f'|format(room['price_per_night']) }}</b>
             <span>/ night</span>
-          {% endif %}
-        </p>
+          {%- endif %}</p>
         {% endif %}
         {# Prefer the written description. The database column holds imported
            listing copy — generic, and in one case factually wrong — so it is
@@ -228,7 +228,13 @@
       <input type="hidden" name="desired_arrival" value="{{ arrival }}">
       <input type="hidden" name="desired_departure" value="{{ departure }}">
       <p class="g-field"><label for="w_name">Name</label><input type="text" id="w_name" name="name" required></p>
-      <p class="g-field"><label for="w_email">Email</label><input type="email" inputmode="email" id="w_email" name="email" required></p>
+      <p class="g-field"><label for="w_email">Email</label><input type="email" inputmode="email" id="w_email" name="email" required>
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset></p>
       <p class="g-field"><label for="w_phone">Telephone <span class="g-opt">optional</span></label><input type="tel" inputmode="tel" id="w_phone" name="phone" inputmode="tel"></p>
       <p class="g-field g-field--narrow"><label for="w_party">Guests</label><input type="number" inputmode="numeric" id="w_party" name="party_size" min="1"></p>
       <p class="g-field"><label for="w_notes">Anything else <span class="g-opt">optional</span></label><input type="text" id="w_notes" name="notes"></p>
@@ -252,6 +258,7 @@
         <input type="email" id="wl_email" name="email" placeholder="Your email" required>
         <button type="submit" class="g-btn g-btn--solid">Tell me when they open</button>
       </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
       <p class="g-hint">Only about these dates. No newsletter unless you ask for one.</p>
     </div>
 {% endif %}
@@ -587,18 +594,16 @@
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
    across all six categories. Short quotes, attributed, nothing invented. #}
 {# The next nights actually free, so nobody has to guess two dates and be
-   told they were wrong. Renders nothing when there is nothing open, and is
-   left off entirely once somebody HAS searched. The route computes next_free
-   either way, so dropping the include did not save the work -- it threw the
-   answer away after doing it. #}
-{# What it is doing at the chateau. Read from a cache the house refreshes
-   hourly -- not fetched by the guest's own browser, which would hand their
-   address to a third party on a page that promises otherwise. #}
-{% from '_weather_live.html' import weather_now %}
-{{ weather_now(weather) }}
-
+   told they were wrong. The route computes next_free either way, so dropping
+   the include does not save the work -- it throws the answer away. #}
 {% from '_availability_strip.html' import next_free as next_free_strip %}
 {{ next_free_strip(next_free) }}
+
+{# What it is doing at the chateau. Read from a cache the house refreshes
+   hourly -- NOT fetched by the guest's own browser, which would hand their
+   address to Open-Meteo on a page that promises otherwise. #}
+{% from '_weather_live.html' import weather_now %}
+{{ weather_now(weather) }}
 
 <section class="g-sec g-says"><div class="g-wrap">
   <svg class="g-fleur" viewBox="0 0 120 26" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
@@ -749,7 +754,7 @@
 
     <div class="g-scarce__grid">
       <div class="g-scarce__i"><b class="g-fig">5</b><span>Bedrooms open, of ninety-four rooms</span></div>
-      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting a night at La Table</span></div>
+      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting, when it runs</span></div>
       <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most on an atelier</span></div>
       <div class="g-scarce__i"><b class="g-fig">1</b><span>Wedding or event at a time</span></div>
     </div>
@@ -779,7 +784,7 @@
     <div class="g-panel">
       <h3 class="g-h3">Extra</h3>
       <ul class="g-ticks g-ticks--no">
-        <li>Dinner at La Table — one sitting a night</li>
+        <li>Dinner at La Table — one sitting, on the nights it runs</li>
         <li>Anything from the thirteen additions below</li>
         <li>The taxe de séjour, charged per adult per night</li>
         <li>Transfers from Toulouse</li>
@@ -805,7 +810,7 @@
       <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
       <dl class="g-tier__f">
         <div><dt>Sleeps</dt><dd>{{ r['max_occupancy'] or 2 }}</dd></div>
-        <div><dt>Bathroom</dt><dd>{% if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, along the corridor{% endif %}</dd></div>
+        <div><dt>Bathroom</dt><dd>{%- if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, along the corridor{%- endif %}</dd></div>
         <div><dt>Breakfast</dt><dd>Included</dd></div>
         <div><dt>Minimum</dt><dd>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</dd></div>
       </dl>
@@ -813,6 +818,7 @@
     </li>
     {% endfor %}
   </ul>
+  <p class="g-limit"><span class="g-limit__k">On top</span>The taxe de séjour is set by the commune, not by us, and charged per adult per night{% if settings and settings['tourist_tax'] %} — €{{ '%.2f'|format(settings['tourist_tax']) }}{% endif %}. It is the only thing added to the rates above.</p>
   <p class="g-limit"><span class="g-limit__k">No ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class.</p>
 </div></section>
 
@@ -822,6 +828,47 @@
   <h2 class="g-place">Side By Side</h2>
   <p class="g-p">Five rooms, and most people are choosing between two of them. Put any two next to each other.</p>
   {{ compare_rooms(rooms) }}
+</div></section>
+
+
+<!-- ============ NO DATES YET ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-fr">Pas encore de dates<span class="g-fr__en">No dates yet</span></p>
+  <p class="g-eyebrow">If You Are Still Deciding</p>
+  <h2 class="g-place">Tell Us Roughly When</h2>
+  <p class="g-p g-lede-first">Most people arrive here knowing the month and not the week. That is a real enquiry and there was nowhere to put it — until now.</p>
+
+  <form class="g-nodate" method="post" action="{{ url_for('contact_page') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="subject" value="Rough dates">
+    <div class="g-row">
+      <p class="g-field g-field--narrow">
+        <label for="nd_month">Roughly when</label>
+        <select id="nd_month" name="rough_month" required>
+          <option value="">— choose —</option>
+          {% for m in ['January','February','March','April','May','June','July',
+                       'August','September','October','November','December'] %}
+          <option value="{{ m }}">{{ m }}</option>
+          {% endfor %}
+          <option value="Flexible">I am flexible</option>
+        </select>
+      </p>
+      <p class="g-field g-field--narrow">
+        <label for="nd_nights">How many nights</label>
+        <input type="number" id="nd_nights" name="rough_nights" min="1" max="21" value="3" inputmode="numeric">
+      </p>
+      <p class="g-field g-field--narrow">
+        <label for="nd_people">How many of you</label>
+        <input type="number" id="nd_people" name="rough_people" min="1" max="15" value="2" inputmode="numeric">
+      </p>
+    </div>
+    <p class="g-field">
+      <label for="nd_email">Where to write back</label>
+      <input type="email" id="nd_email" name="email" required autocomplete="email">
+    </p>
+    <button type="submit" class="g-btn g-btn--solid">Send this</button>
+    <p class="g-hint">We will come back with what is free around then, and what it costs. No newsletter attached.</p>
+  </form>
 </div></section>
 
 <!-- ============ KEY INFORMATION ============ -->
@@ -886,6 +933,10 @@
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
+{{ avail_cal(booked_dates, 2) }}
+
+{{ flexible() }}
+
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",

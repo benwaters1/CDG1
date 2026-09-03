@@ -23,29 +23,25 @@
    Anything not listed falls through unchanged. #}
 {# The house's French room names, NOT LANDED, and deliberately so.
 
-   The map below is the designer's: Suite with Mountain View becomes Chambre
-   Emeraude, and so on for all five. It is careful work and it may well be
-   what the house wants. But a room's name is DATA, not presentation, and
-   renaming it in a template renames it in only some of the places a guest
-   sees it.
+   A room's name is DATA, not presentation. confirm_booking_by_id builds
+   the confirmation email from room['name'] out of the database, so
+   landing this map alone means a guest books one name and is written to
+   about another -- and so are their bill, statement and arrival card.
 
-   Concretely: confirm_booking_by_id builds the confirmation email from
-   room['name'] straight out of the database. Land this map on its own and a
-   guest books Chambre Emeraude, then gets an email about a King Room with
-   Mountain View, and their bill, their statement and the arrival card all
-   say the second thing too.
+   Renaming the rooms properly is one UPDATE on the rooms table, after
+   which every page and every email agrees without a map anywhere. #}
+{# The house's French room names, NOT LANDED, and deliberately so.
 
-   So this passes the database name through untouched for now. Renaming the
-   rooms properly is one UPDATE on the rooms table, after which every page,
-   every email and every export agrees without a map anywhere. Left in place
-   rather than deleted so the intent and the names are not lost. #}
+   A room's name is DATA, not presentation. confirm_booking_by_id builds
+   the confirmation email from room['name'] out of the database, so
+   landing this map alone means a guest books one name and is written to
+   about another -- and so are their bill, statement and arrival card.
+
+   Renaming the rooms properly is one UPDATE on the rooms table, after
+   which every page and every email agrees without a map anywhere. #}
 {% macro room_name(db_name) -%}
 {#- The intended names, for whoever lands them:
-    Suite with Mountain View        -> Chambre Emeraude
-    King Room with Mountain View    -> Chambre du Levant
-    Family Suite with Mountain View -> Les Deux Chambres
-    Double with Shared Bathroom     -> Chambre Cerise
-    Twin/Double with Shared Bathroom-> Chambre Tilleul  -#}
+  -#}
 {{- db_name -}}
 {%- endmacro %}
 

@@ -409,6 +409,11 @@ WRONG_ENDPOINTS = {
     # the page this link sits. find_booking is where somebody holding only an
     # email address can actually reach their stays.
     "url_for('guest_portal')": "url_for('find_booking')",
+
+    # The valley page is facilities_page; `facilities` is the TEMPLATE's
+    # name, not the route's. Unguarded, so it is a 500 on the arrival card
+    # rather than merely a wrong link.
+    "url_for('facilities')": "url_for('facilities_page')",
 }
 
 
@@ -708,22 +713,25 @@ def repair_admin_images_page():
 
 
 def repair_url_map_guards():
-    """The guard that never fires, and the four pages nobody could reach.
+    """The guard that never fires, and the pages nobody could reach.
 
     The sketches wrap a link in `{% if 'X' in url_map %}` to mean "only if that
     page is built yet". It cannot work. url_map is not in the template context,
     so Jinja reports that a name it has never heard of contains nothing, the
-    test is false in every render, and the link takes its fallback FOREVER.
+    test is false in EVERY render, and the link takes its fallback forever.
 
-    Nothing errors and every page looks fine, which is why it survived nine
+    Nothing errors and every page looks right, which is why it survived nine
     rounds. Weddings, Private, Photoshoots and Press are all real, dedicated
-    pages, and not one link in the public nav or footer pointed at any of them
-    -- they all went to events_info or the restoration page instead.
+    pages, and not one link in the public nav or footer pointed at any of them.
 
-    Repaired by naming the endpoint directly wherever the endpoint EXISTS. A
-    guard on a page that genuinely is not built is left alone, because there
-    the fallback is the right answer; it is just written as a guard rather than
-    as the plain link it is.
+    BOTH halves are repaired, and the second half is the one that took a second
+    round to learn:
+
+      the page EXISTS  -> name the endpoint, which is what the guard reached for
+      the page does NOT -> collapse to the fallback it has always silently
+                           taken, because a guard that cannot fire is not a
+                           guard, it is a note claiming this might light up one
+                           day when it never will
     """
     import re as _re
     app_src = _read("app.py")
@@ -738,14 +746,19 @@ def repair_url_map_guards():
             continue
         before = src
 
-        def block(mo):
-            return ("{{ url_for('%s') }}" % mo.group(1)) if mo.group(1) in real else mo.group(0)
+        def pick(mo):
+            ep, fallback = mo.group(1), mo.group(2)
+            return ("{{ url_for('%s') }}" % ep) if ep in real else fallback
+
+        # {% if 'X' in url_map %}{{ url_for('X') }}{% else %}FALLBACK{% endif %}
         src = _re.sub(
             r"\{%\s*if\s*'(\w+)'\s*in url_map\s*%\}\{\{\s*url_for\('\1'\)\s*\}\}"
-            r"\{%\s*else\s*%\}.*?\{%\s*endif\s*%\}", block, src)
+            r"\{%\s*else\s*%\}(.*?)\{%\s*endif\s*%\}", pick, src)
+        # {{ url_for('X') if 'X' in url_map else FALLBACK }}
         src = _re.sub(
-            r"\{\{\s*url_for\('(\w+)'\)\s*if\s*'\1'\s*in url_map\s*else\s*[^}]*\}\}",
-            block, src)
+            r"\{\{\s*url_for\('(\w+)'\)\s*if\s*'\1'\s*in url_map\s*else\s*([^}]*)\}\}",
+            lambda mo: pick(mo) if mo.group(1) in real
+            else "{{ " + mo.group(2).strip() + " }}", src)
 
         if src != before:
             _write(rel, src)
@@ -818,6 +831,71 @@ def repair_invented_columns():
     return fixed
 
 
+def repair_room_name_map():
+    """The French room names, which are NOT landed, and arrive every round.
+
+    room_name() maps 'Suite with Mountain View' to 'Chambre Emeraude' and so on
+    for all five. It is careful work and may well be what the house wants. But a
+    room's name is DATA, and renaming it in a template renames it in only some
+    of the places a guest sees it.
+
+    Concretely: confirm_booking_by_id builds the confirmation email from
+    room['name'] straight out of the database. Land the map alone and a guest
+    books Chambre Emeraude, then gets an email about a King Room with Mountain
+    View -- and so do their bill, their statement and their arrival card.
+
+    Renaming the rooms properly is one UPDATE on the rooms table, after which
+    every page and every email agrees without a map anywhere. Until somebody
+    does that, this passes the database name through and keeps the intended
+    names in a comment so the work is not lost.
+    """
+    rel = "templates/_room_copy.html"
+    if not os.path.exists(os.path.join(ROOT, rel)):
+        return 0
+    src = _read(rel)
+    start = src.find("{% macro room_name(db_name) -%}")
+    if start == -1:
+        return 0
+    end = src.find("{%- endmacro %}", start)
+    if end == -1:
+        return 0
+    end += len("{%- endmacro %}")
+    body = src[start:end]
+    if "Chambre" not in body:
+        return 0                      # already passing the database name through
+
+    keep = []
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if "':" in stripped and "'" in stripped:
+            # 'Suite with Mountain View': 'Chambre Emeraude',
+            left, _, right = stripped.partition("':")
+            frm = left.lstrip("'")
+            to = right.strip().strip(",").strip("'")
+            if frm and to:
+                keep.append("    %-34s -> %s" % (frm, to))
+
+    NEW = [
+        "{# The house's French room names, NOT LANDED, and deliberately so.",
+        "",
+        "   A room's name is DATA, not presentation. confirm_booking_by_id builds",
+        "   the confirmation email from room['name'] out of the database, so",
+        "   landing this map alone means a guest books one name and is written to",
+        "   about another -- and so are their bill, statement and arrival card.",
+        "",
+        "   Renaming the rooms properly is one UPDATE on the rooms table, after",
+        "   which every page and every email agrees without a map anywhere. #}",
+        "{% macro room_name(db_name) -%}",
+        "{#- The intended names, for whoever lands them:",
+    ] + keep + [
+        "  -#}",
+        "{{- db_name -}}",
+        "{%- endmacro %}",
+    ]
+    _write(rel, src[:start] + "\n".join(NEW) + src[end:])
+    return 1
+
+
 def repair_reverted_guest_pages():
     """Report the four pages the handovers keep shipping an older copy of.
 
@@ -874,6 +952,7 @@ def main():
         ("the image manager posting to a hardcoded path", repair_admin_images_page),
         ("the url_map guard that never fires", repair_url_map_guards),
         ("column names the database does not have", repair_invented_columns),
+        ("the French room names, which are not landed", repair_room_name_map),
         ("guest pages to read before committing", repair_reverted_guest_pages),
     ]
     total, failed = 0, []

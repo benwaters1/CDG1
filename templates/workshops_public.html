@@ -20,9 +20,9 @@
   <img loading="lazy" decoding="async" class="g-hero__img" src="{{ WS_HERO }}" alt="Château Workshops">
   <div class="g-hero__wash"></div>
   <div class="g-hero__in">
-    <p class="g-hero__eyebrow">{% if workshops %}{{ workshops|length }} Atelier{{ '' if workshops|length == 1 else 's' }} · {% endif %}Château de Gudanes</p>
+    <p class="g-hero__eyebrow">{%- if workshops %}{{ workshops|length }} Atelier{{ '' if workshops|length == 1 else 's' }} · {% endif %}Château de Gudanes</p>
     <h1 class="g-hero__title">Château Workshops</h1>
-    <p class="g-hero__lede">{% if workshops %}{{ workshops|length }} atelier{{ '' if workshops|length == 1 else 's' }}{% else %}Time{% endif %} inside a working restoration — and the real luxury of French food, antiques and craft around them.</p>
+    <p class="g-hero__lede">{%- if workshops %}{{ workshops|length }} atelier{{ '' if workshops|length == 1 else 's' }}{% else %}Time{% endif %} inside a working restoration — and the real luxury of French food, antiques and craft around them.</p>
   
     <p class="g-hero__cta"><a href="#dates" class="g-btn g-btn--solid">See every date</a></p>
   </div>
@@ -36,7 +36,7 @@
 
 
 <section class="g-sec"><div class="g-wrap">
-  <p class="g-p g-drop-cap g-lede-first">{% if workshops %}{{ workshops|length }} ateliers, and the length you choose decides what you spend your days doing.{% else %}The length you choose decides what you spend your days doing.{% endif %} Three nights is given to the brocantes, five to the kitchen, seven to the restoration itself. Noël and the artisan atelier stand apart — one seasonal, one built entirely around making.</p>
+  <p class="g-p g-drop-cap g-lede-first">{%- if workshops %}{{ workshops|length }} ateliers, and the length you choose decides what you spend your days doing.{% else %}The length you choose decides what you spend your days doing.{% endif %} Three nights is given to the brocantes, five to the kitchen, seven to the restoration itself. Noël and the artisan atelier stand apart — one seasonal, one built entirely around making.</p>
 
   <div class="g-split" style="margin-top:var(--s6)">
     <div>
@@ -99,7 +99,7 @@
       <div class="g-wscard__top">
         {% set rows = sessions_by_workshop.get(w['id'], []) %}
         {% if rows and rows[0].session['end_date'] and rows[0].session['end_date'] != rows[0].session['start_date'] %}
-        <p class="g-wscard__len">{{ w['nights_label'] or '' }}</p>
+        {% if w['nights_label'] %}<p class=\"g-wscard__len\">{{ w['nights_label'] }}</p>{% endif %}
         {% endif %}
         <h3 class="g-wscard__name">{{ w['title'] }}</h3>
         {% if rows %}
@@ -175,9 +175,7 @@
       <div class="g-sit__b">
         <p class="g-sit__name">{{ w['title'] }}</p>
         <h3 class="g-sit__when">{{ date_range(r.session['start_date'], r.session['end_date']) }}</h3>
-        <p class="g-sit__meta">
-          {{ w['nights_label'] or '' }}
-        </p>
+        {% if w['nights_label'] %}<p class=\"g-sit__meta\">{{ w['nights_label'] }}</p>{% endif %}
         {% if w['price_per_person'] %}
         <p class="g-sit__rate">
           <span class="g-fig">€{{ '{:,.0f}'.format(w['price_per_person']) }}</span>
@@ -535,8 +533,15 @@
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
     </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>
@@ -574,21 +579,17 @@
     <li class="g-programme__i{% if r.remaining <= 0 %} is-full{% endif %}">
       <span class="g-programme__n">{{ '%02d'|format(loop.index) }}</span>
       <div class="g-programme__b">
-        <p class="g-programme__d">
-          {% if r.start_date %}{{ r.start_date }}{% if r.end_date %} — {{ r.end_date }}{% endif %}{% else %}Dates to be confirmed{% endif %}
-        </p>
+        <p class="g-programme__d">{%- if r.start_date %}{{ r.start_date }}{% if r.end_date %} — {{ r.end_date }}{% endif %}{% else %}Dates to be confirmed{%- endif %}</p>
         <h3 class="g-programme__t">{{ w['title'] }}</h3>
-        {% if w['lead_name'] %}<p class="g-programme__w">With {{ w['lead_name'] }}{% if w['lead_role'] %}, {{ w['lead_role'] }}{% endif %}</p>{% endif %}
+        {% if w['lead_name'] %}<p class="g-programme__w">With {{ w['lead_name'] }}{% if w['lead_role'] %}, {{ w['lead_role'] }}{%- endif %}</p>{% endif %}
         {% if w['summary'] %}<p class="g-programme__s">{{ w['summary']|truncate(140) }}</p>{% endif %}
-        <p class="g-programme__a">
-          {% if r.remaining > 0 %}
+        <p class="g-programme__a">{%- if r.remaining > 0 %}
             <span class="g-programme__left">{{ r.remaining }} of {{ r.capacity }} place{{ '' if r.capacity == 1 else 's' }} left</span>
             <a href="{{ url_for('workshop_detail', workshop_id=w['id']) }}" class="g-btn">See this atelier</a>
           {% else %}
             <span class="g-programme__left">Full</span>
             <a href="{{ url_for('contact_page') }}">Ask about a cancellation</a>
-          {% endif %}
-        </p>
+          {%- endif %}</p>
       </div>
     </li>
     {% endfor %}

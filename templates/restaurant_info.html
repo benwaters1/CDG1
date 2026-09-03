@@ -10,7 +10,7 @@
   "acceptsReservations": "True",
   "address": {"@type":"PostalAddress","streetAddress":"2 Route de Beille",
     "addressLocality":"Château-Verdun","postalCode":"09310","addressCountry":"FR"},
-  "description": "One sitting a night, by candlelight, cooked from the morning market and the château's own eighteenth-century recipe book.",
+  "description": "One table, one sitting, by candlelight — cooked from the morning market and the château's own eighteenth-century recipe book. Not every night.",
   "openingHoursSpecification": {"@type":"OpeningHoursSpecification",
     "dayOfWeek":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"],
     "opens":"19:00","closes":"23:00"}
@@ -40,7 +40,7 @@
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
-<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">The table</span>One sitting a night. The kitchen cooks for a single table, and residents are seated first.</p></div>
+<div class="g-wrap"><p class="g-limit"><span class="g-limit__k">The table</span>One table, one sitting, on the nights the kitchen is open. Residents are seated first.</p></div>
 
 
 
@@ -52,8 +52,15 @@
   <div class="g-table-cta">
     <div>
       <h2 class="g-h3" style="margin-bottom:var(--s2)">Reserve a table</h2>
-      <p style="margin:0;color:var(--ink-2)">
-        {% if settings and settings['price_per_person'] %}<span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person{% endif %}{% if settings and settings['dinner_time'] %} · from {{ settings['dinner_time'] }}{% endif %}{% if settings and settings['capacity'] %} · up to {{ settings['capacity'] }} guests{% endif %}
+      <p class="g-table-cta__d">
+        {%- if settings and settings['price_per_person'] -%}
+          <span class="g-fig" data-eur="{{ settings['price_per_person']|int }}">€{{ '%.0f'|format(settings['price_per_person']) }}</span> per person ·
+        {%- endif -%}
+        {%- if settings and settings['dinner_time'] %} from {{ settings['dinner_time'] }} · {% endif -%}
+        {# Always true, so the line is never empty even before the settings
+           are filled in. #}
+        one sitting, on the nights it runs
+        {%- if settings and settings['capacity'] %}, up to {{ settings['capacity'] }} at the table{% endif -%}
       </p>
     </div>
     {% if settings and settings['enabled'] %}
@@ -73,6 +80,12 @@
 <section class="g-sec--flush"><div class="g-half">
   <img class="g-half__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/732f6ec2-6e34-43f8-b891-2d3e1becfd2c/Gardens+In+Fall.jpg?format=1500w" alt="Gardens In Fall" loading="lazy">
   <div class="g-half__text"><h2 class="g-place">Where It Comes From</h2><p class="g-p"><em>Most of it comes from within a few miles.</em></p>
+  <p class="g-limit g-closed">
+    <span class="g-limit__k">Not every night</span>
+    The kitchen does not cook every evening{% if settings and settings['closed_day'] %} — it is closed on {{ settings['closed_day'] }}{% endif %}.
+    We will tell you which nights are running when you book, and where to eat in the village on the ones that are not.
+  </p>
+
 <p class="g-p">Bread and pastries come from the boulangerie in Les Cabannes, three minutes' walk below the gates, and arrive while they are still warm. The Sunday morning market in the village square supplies most of the rest — vegetables, cheeses from the mountain farms, and charcuterie.</p>
 <p class="g-p">The château gardens give herbs through the year, and in summer cherries, plums and raspberries. Trout comes from the Ariège. Lamb comes from the Pyrénées, sometimes from the valley visible out of the dining room windows.</p></div>
 </div></section>
@@ -184,7 +197,7 @@
         <div><dt>At table</dt><dd>Half past seven, by candlelight in the dining room</dd></div>
         <div><dt>The menu</dt><dd>Set, and built from what the market had that morning</dd></div>
         <div><dt>Wine</dt><dd>Local, poured with dinner</dd></div>
-        <div><dt>One table</dt><dd>The kitchen cooks for one sitting a night</dd></div>
+        <div><dt>One table</dt><dd>One sitting, on the nights the kitchen is open</dd></div>
         <div><dt>Afterwards</dt><dd>The salons, the fire, and no need to go anywhere</dd></div>
       </dl>
     </div>
@@ -386,8 +399,15 @@
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
              placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required>
+        <fieldset class="g-interests">
+          <legend>What would you like to hear about?</legend>
+          <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
+          <label><input type="checkbox" name="interests" value="ateliers"> Atelier dates</label>
+          <label><input type="checkbox" name="interests" value="restoration" checked> The restoration itself</label>
+        </fieldset>
       <button type="submit" class="g-btn g-btn--solid">{{ t('Subscribe') }}</button>
     </form>
+        <p class="g-news__see"><a href="{{ url_for('restoration_page') }}">See what it looks like first</a></p>
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>
@@ -420,10 +440,10 @@
 <section class="g-sec g-scarce"><div class="g-wrap">
   <div class="g-scarce__in">
     <p class="g-eyebrow">Worth Knowing</p>
-    <h2 class="g-scarce__h">One Sitting a Night</h2>
+    <h2 class="g-scarce__h">One Table, One Sitting</h2>
     <p class="g-scarce__p">The kitchen cooks for one table. When it is taken, it is taken, and there is no second service.</p>
     <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting each evening</span></div>
+      <div class="g-scarce__i"><b class="g-fig">1</b><span>Sitting, when it runs</span></div>
       <div class="g-scarce__i"><b class="g-fig">40</b><span>Seated at most, in the main salon</span></div>
       <div class="g-scarce__i"><b class="g-fig">7:30</b><span>At table, by candlelight</span></div>
       <div class="g-scarce__i"><b class="g-fig">317</b><span>People in the village that feeds it</span></div>
@@ -484,7 +504,7 @@
       <p class="g-p g-lede-first">Tom owned his own restaurant for more than twenty years before he came here, and it was recognised by the Michelin Guide throughout.</p>
       <p class="g-p">He cooks classically and seasonally, which at this altitude means the menu is decided by what the Sunday market and the château gardens give that week rather than by what a card says. Herbs, flowers and produce come from twenty metres away.</p>
       <p class="g-p">He is one of the few chefs equally serious about the savoury and the sweet, which is why the afternoon tea here is not an afterthought. Ask him about French cooking and you will get the history as well as the method.</p>
-      <p class="g-limit"><span class="g-limit__k">Why it matters</span>One sitting a night means he cooks for a room rather than a service. Dietary requirements sent early are designed into the menu, not worked around.</p>
+      <p class="g-limit"><span class="g-limit__k">Why it matters</span>Cooking for one table means he cooks for a room rather than a service. Dietary requirements sent early are designed into the menu, not worked around.</p>
     </div>
   </div>
 </div></section>

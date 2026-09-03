@@ -1,0 +1,70 @@
+{# ==========================================================================
+   FLEXIBLE ENQUIRY  — item 10
+   The date picker demands two exact dates before it will say anything, so a
+   guest who is flexible has to guess, get refused, and guess again. This
+   takes the enquiry as it is actually held in someone's head: a month, a
+   rough length, and a number of people.
+
+       {% from '_flexible.html' import flexible %}
+       {{ flexible() }}
+
+   Posts action=flexible to contact. Nothing here needs an availability
+   lookup — it is a question, and someone answers it.
+   ========================================================================== #}
+{% macro flexible() %}
+<section class="g-flex"><div class="g-wrap">
+  <p class="g-eyebrow">Not Sure of the Dates</p>
+  <h2 class="g-place">Tell Us Roughly</h2>
+  <p class="g-p g-lede-first">Most people arrive at this knowing a month and a rough length rather than two exact dates. That is a perfectly good enquiry and we would rather have it than nothing.</p>
+
+  <form method="post" action="{{ url_for('contact_page') }}" class="g-flex__f">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="flexible">
+
+    <div class="g-flex__row">
+      <p class="g-field">
+        <label for="fx_when">Roughly when<span class="g-req" aria-hidden="true">*</span></label>
+        <input type="month" id="fx_when" name="rough_month" required>
+      </p>
+      <p class="g-field">
+        <label for="fx_nights">How many nights</label>
+        <select id="fx_nights" name="rough_nights">
+          <option value="2">Two</option>
+          <option value="3" selected>Three</option>
+          <option value="4">Four</option>
+          <option value="5">Five</option>
+          <option value="7">A week</option>
+          <option value="0">Not decided</option>
+        </select>
+      </p>
+      <p class="g-field">
+        <label for="fx_people">How many of you</label>
+        <input type="number" id="fx_people" name="rough_guests" min="1" max="15" value="2" inputmode="numeric">
+      </p>
+    </div>
+
+    <p class="g-field">
+      <label for="fx_flex">How flexible are you</label>
+      <select id="fx_flex" name="flexibility">
+        <option value="exact">Those dates or nothing</option>
+        <option value="week" selected>Give or take a week</option>
+        <option value="month">Anywhere in that month</option>
+        <option value="any">Any time — tell us when it is quiet</option>
+      </select>
+    </p>
+
+    <p class="g-field">
+      <label for="fx_email">Email<span class="g-req" aria-hidden="true">*</span></label>
+      <input type="email" id="fx_email" name="email" required autocomplete="email">
+    </p>
+
+    <p class="g-field">
+      <label for="fx_note">Anything else <span class="g-opt">optional</span></label>
+      <textarea id="fx_note" name="message" rows="3" placeholder="A birthday, an atelier you are interested in, a dietary requirement"></textarea>
+    </p>
+
+    <button type="submit" class="g-btn g-btn--solid">Send this</button>
+    <p class="g-hint">We answer within a day. Nothing is held and nothing is charged — this is a question, not a booking.</p>
+  </form>
+</div></section>
+{% endmacro %}

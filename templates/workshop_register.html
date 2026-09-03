@@ -4,6 +4,7 @@
 {% set crumbs = [('Workshops', url_for('workshops_public')), ('Register', None)] %}
 {% block title %}Register — {{ session['title'] }}{% endblock %}
 {% block content %}
+{% from '_formkeep.html' import form_keep %}
 
 
 {# Set here rather than passed in: this template is rendered from three places in
@@ -22,14 +23,13 @@
     <p class="g-eyebrow">Château Workshop</p>
     <h1 class="g-display" >{{ session['title'] }}</h1>
     <p class="g-room__meta">
-      {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig" data-eur="{{ session['price_per_person']|int }}">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{% endif %}
-    </p>
+      {{ date_range(session['start_date'], session['end_date']) }}{% if session['instructor_name'] %} · with {{ session['instructor_name'] }}{% endif %}{% if session['price_per_person'] %} · <span class="g-fig" data-eur="{{ session['price_per_person']|int }}">€{{ '%.0f'|format(session['price_per_person']) }}</span> per person{%- endif %}</p>
     {% if session['inclusions'] %}
     <p class="g-room__note"><b>Includes:</b> {{ session['inclusions'] }}</p>
     {% endif %}
   </div>
 
-  <form method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem)">
+  <form id="workshop_register-form" method="post" class="g-form-full" style="margin-top:clamp(1.5rem,4vw,2.5rem)">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="g-cols">
@@ -312,4 +312,5 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   </div>
 </div></section>
 
+{{ form_keep('workshop_register-form', 'gudanes.atelier') }}
 {% endblock %}

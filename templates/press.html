@@ -1,6 +1,7 @@
 {% extends "public_base.html" %}
 {% block title %}Press{% endblock %}
 {% block description %}Château de Gudanes in the press — Vogue, AD Italia, House &amp; Garden, the Australian Financial Review, and the Medal of Honour of the Fondation Prince Louis de Polignac.{% endblock %}
+{% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Press', None)] %}
 {% block content %}
 {% from '_stay_panel.html' import stay_panel %}
@@ -49,5 +50,33 @@
 <div class="g-mono__wrap">{{ monogram() }}</div>
 
 {{ stay_panel() }}
+
+
+<!-- ============ PRESS KIT ============ -->
+<section class="g-sec g-sec--sand g-presskit"><div class="g-wrap">
+  <p class="g-fr">Dossier de presse<span class="g-fr__en">Press kit</span></p>
+  <p class="g-eyebrow">For Journalists</p>
+  <h2 class="g-place">Everything In One Place</h2>
+  <p class="g-p g-lede-first">If you are writing about the château, this is what you need without having to ask for it.</p>
+
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Built</dt><dd>1741, by Ange-Jacques Gabriel, First Architect to Louis XV</dd></div>
+    <div><dt>Classified</dt><dd>Monument Historique, 14 June 1994 — the same protected class as Versailles</dd></div>
+    <div><dt>Bought</dt><dd>2013, by Karina Waters, from Perth, Western Australia</dd></div>
+    <div><dt>Size</dt><dd>Ninety-four rooms across roughly forty-three thousand square feet</dd></div>
+    <div><dt>Open to guests</dt><dd>Five bedrooms, since 2016</dd></div>
+    <div><dt>Recognition</dt><dd>Medal of Honour, Fondation Prince Louis de Polignac, presented by Prince Albert II of Monaco</dd></div>
+    <div><dt>Where</dt><dd>Château-Verdun, Ariège, in the French Pyrénées — an hour and a half from Toulouse</dd></div>
+  </dl></div></div>
+
+  <h3 class="g-h3">Photographs</h3>
+  <p class="g-p">High-resolution images are available for editorial use, with credit. Tell us what the piece is and we will send what fits it — we would rather do that than publish a folder of the same six pictures everyone else has used.</p>
+
+  <h3 class="g-h3">Who to write to</h3>
+  <p class="g-p">
+    <a href="mailto:{{ settings['press_email'] if settings and settings['press_email'] else 'info@chateaugudanes.com' }}" class="g-btn g-btn--solid">Press enquiries</a>
+  </p>
+  <p class="g-hint">Someone at the château answers it, usually the same day.</p>
+</div></section>
 
 {% endblock %}
