@@ -14451,7 +14451,13 @@ def pos_allocate_receipt_number(conn, order_id):
                          (order_id,)).fetchone()
     if order and order["receipt_number"]:
         return order["receipt_number"]
-    year = datetime.now(timezone.utc).year
+    # The year the HOUSE is in. datetime.now(timezone.utc).year is a
+    # different year for an hour every New Year's morning: at 00:30 in the
+    # Ariege it is still December in UTC, so a receipt printed on the first
+    # of January would be numbered into a sequence the accounts had already
+    # closed. One receipt a year, on the one night of the year when the
+    # numbering matters most.
+    year = house_today().year
     row = conn.execute(
         "SELECT receipt_number FROM pos_orders WHERE receipt_number LIKE ? "
         "ORDER BY receipt_number DESC LIMIT 1", (f"{year}-%",)).fetchone()
@@ -14459,6 +14465,54 @@ def pos_allocate_receipt_number(conn, order_id):
     number = f"{year}-{nxt:06d}"
     conn.execute("UPDATE pos_orders SET receipt_number = ? WHERE id = ?", (number, order_id))
     return number
+
+
+def receipt_sequence_gaps(conn):
+    """Holes in the receipt numbering, per year, worst first.
+
+    The counterpart to pos_journal_verify. That one answers "has anything been
+    altered"; this one answers "is anything MISSING", which is the question an
+    inspector asks first and the one the numbering exists to answer.
+
+    Per year because the sequence restarts each year. A run reported across a
+    year boundary would be one enormous false gap every January.
+
+    Reports RANGES rather than every number in the hole. "2026-000104 to
+    2026-000131" is a sentence somebody can look into; twenty-eight lines
+    saying one number each is a page nobody reads to the bottom of.
+    """
+    out = []
+    by_year = {}
+    for r in conn.execute(
+            "SELECT receipt_number FROM pos_orders "
+            "WHERE receipt_number IS NOT NULL AND receipt_number != '' "
+            "ORDER BY receipt_number").fetchall():
+        raw = r["receipt_number"]
+        year, _sep, num = raw.partition("-")
+        if not num.isdigit():
+            # A number that does not parse is its own kind of problem, and a
+            # silent skip would hide it. Reported as a malformed one rather
+            # than counted as a gap, because they need different answers.
+            out.append({"year": year or "?", "kind": "malformed",
+                        "from": raw, "to": raw, "missing": 0})
+            continue
+        by_year.setdefault(year, []).append(int(num))
+
+    for year, numbers in sorted(by_year.items()):
+        numbers.sort()
+        # Starting anywhere but one is itself a gap: the sequence is supposed
+        # to begin at 000001 each year, and starting at 47 means forty-six
+        # receipts that ought to exist and do not.
+        expect = 1
+        for n in numbers:
+            if n > expect:
+                out.append({"year": year, "kind": "gap",
+                            "from": f"{year}-{expect:06d}",
+                            "to": f"{year}-{n - 1:06d}",
+                            "missing": n - expect})
+            expect = max(expect, n + 1)
+    out.sort(key=lambda g: -g["missing"])
+    return out
 
 
 def pos_perpetual_total(conn):
@@ -21998,7 +22052,18 @@ def supplier_agreements(conn, today=None):
              FROM supplier_agreements
              LEFT JOIN vendors ON vendors.id = supplier_agreements.vendor_id
             WHERE supplier_agreements.active = 1""").fetchall()
-    out = [dict(agreement_state(r, today), row=r) for r in rows]
+    out = []
+    for r in rows:
+        state = dict(agreement_state(r, today), row=r)
+        # How long it has run. started_on has been written by the form since
+        # this was built and read by nothing -- yet an agreement in its first
+        # year and one in its ninth are different conversations with the same
+        # supplier, and the second is the one worth having.
+        began = parse_date(r["started_on"] or "")
+        state["running_days"] = (today - began).days if began else None
+        state["running_years"] = (round((today - began).days / 365.25, 1)
+                                  if began else None)
+        out.append(state)
     out.sort(key=lambda x: (x["deadline"] is None,
                             x["deadline"] or today, x["row"]["what"]))
     return out
@@ -27786,6 +27851,10 @@ def pos_journal_page():
         default_sort="recent",
     )
     chain = pos_journal_verify(conn)
+    # The other half of the same question. The chain answers 'has anything
+    # been altered'; this answers 'is anything missing', which is the one an
+    # inspector asks first.
+    gaps = receipt_sequence_gaps(conn)
     closures = conn.execute(
         "SELECT * FROM pos_closures ORDER BY closed_at DESC LIMIT 30").fetchall()
     perpetual = pos_perpetual_total(conn)
@@ -27795,10 +27864,15 @@ def pos_journal_page():
         overview_cell("Entries", total_events),
         overview_cell("Chain", "Broken" if chain else "Verified", alert=bool(chain),
                       sub=chain["problem"] if chain else "recomputed just now"),
+        overview_cell("Receipt numbers",
+                      "Gaps" if gaps else "Unbroken", alert=bool(gaps),
+                      sub=(f"{sum(g['missing'] for g in gaps)} missing"
+                           if gaps else "none missing")),
         overview_cell("Taken since the start", euro(perpetual), hint="never resets"),
         overview_cell("Periods closed", len(closures)),
     ]
-    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"], chain=chain,
+    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"],
+                           chain=chain, gaps=gaps,
                            closures=closures, overview=overview, perpetual=perpetual)
 
 
@@ -47813,6 +47887,43 @@ def revenue_to_send():
                        "total": round(float(bill["quoted"] if bill else 0), 2),
                        "sent": pennylane_already_sent(conn, "event", event["id"])})
 
+    # And the other direction. This page's own docstring says why it exists:
+    # "Only expenses ever reached Pennylane -- money going out." That half was
+    # true and unmeasured. The expenses page shows a tick per row and nothing
+    # counts them, so "how many costs is the accountant still missing" was a
+    # question you answered by scrolling.
+    costs = []
+    for e in conn.execute(
+            """SELECT expenses.*, vendors.name AS linked_vendor
+                 FROM expenses
+                 LEFT JOIN vendors ON vendors.id = expenses.vendor_id
+                -- 'rejected', which is what the CHECK constraint on this
+                -- column actually allows. It was written as 'declined' and
+                -- excluded a status that cannot exist, so every refused cost
+                -- was on the list of things the accountant had not been given.
+                WHERE COALESCE(expenses.status, 'approved') != 'rejected'
+                ORDER BY COALESCE(expenses.spent_on, expenses.submitted_at) DESC
+                LIMIT 300""").fetchall():
+        went = parse_datetime_iso(e["pennylane_synced_at"])
+        paid = parse_date(e["spent_on"] or "")
+        # How long it sat here before the accountant saw it. Recorded since
+        # the column existed and read by nothing, so nobody could say whether
+        # the lag was a day or a quarter.
+        lag = ((went.astimezone(LOCAL_TZ).date() - paid).days
+               if (went and paid) else None)
+        costs.append({
+            "row": e, "what": e["description"] or "Cost",
+            # expenses carries a free-text vendor_name AND a vendor_id. The
+            # typed one wins where there is one, because the free-text field
+            # is whatever somebody put on the receipt.
+            "vendor": e["linked_vendor"] or e["vendor_name"] or "",
+            "total": round(float(e["amount"] or 0), 2),
+            "spent_on": e["spent_on"],
+            "sent": bool(e["pennylane_invoice_id"]),
+            "sent_at": e["pennylane_synced_at"],
+            "lag_days": lag,
+        })
+
     # Read before the close, like the stays above it.
     days = []
     for closure in conn.execute(
@@ -47823,11 +47934,19 @@ def revenue_to_send():
                      "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
+    costs_waiting = [c for c in costs if not c["sent"] and c["total"] > 0]
+    # The lag on the ones that DID go. Reported as a median rather than a
+    # mean: one expense sent eight months late would otherwise make a
+    # perfectly good quarter look bad.
+    lags = sorted(c["lag_days"] for c in costs
+                  if c["lag_days"] is not None and c["lag_days"] >= 0)
+    typical_lag = lags[len(lags) // 2] if lags else None
     days_waiting = [d for d in days if not d["sent"] and d["total"] > 0]
     ateliers_waiting = [w for w in ateliers if not w["sent"] and w["total"] > 0]
     events_waiting = [e for e in events if not e["sent"] and e["total"] > 0]
     return render_template(
         "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
+        costs=costs, costs_waiting=costs_waiting, typical_lag=typical_lag,
         days_waiting=days_waiting, ateliers=ateliers,
         ateliers_waiting=ateliers_waiting,
         waiting_total=round(sum(r["total"] for r in waiting)
@@ -54179,7 +54298,16 @@ def guest_record(conn, guest_id):
     The money is summed from each booking's own bill rather than recomputed,
     so there is one definition of what a stay costs and this is not a second.
     """
-    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    guest = conn.execute(
+        # The person who put the caution on. Written since the column existed
+        # and read by nothing, so the strongest statement this app can make
+        # about a guest carried a date and no author -- and whether it can be
+        # overturned by whoever is on tonight depends entirely on who it was.
+        """SELECT guests.*, setter.name AS caution_set_by
+             FROM guests
+             LEFT JOIN users AS setter
+                    ON setter.id = guests.caution_set_by_user_id
+            WHERE guests.id = ?""", (guest_id,)).fetchone()
     if not guest:
         return None
     email = (guest["email"] or "").strip().lower()

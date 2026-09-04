@@ -335,7 +335,7 @@
   <span class="mini-status status-declined">{{ caution_levels[record.guest['caution_level']] }}</span>
   {{ record.guest['caution'] }}
   {% if record.guest['caution_set_at'] %}
-  <span class="upload-hint">set {{ record.guest['caution_set_at']|house_day|date_short }}</span>
+  <span class="upload-hint">set {{ record.guest['caution_set_at']|house_day|date_short }}{% if record.guest['caution_set_by'] %} by {{ record.guest['caution_set_by'] }}{% endif %}</span>
   {% endif %}
 </p>
 {% endif %}

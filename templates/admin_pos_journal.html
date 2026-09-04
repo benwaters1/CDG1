@@ -57,6 +57,32 @@
 </div>
 {% endif %}
 
+{% if gaps %}
+<div class="flash flash-error" style="margin:12px 0;">
+  <strong>The receipt numbering has {{ gaps|length }} hole{{ '' if gaps|length == 1 else 's' }}
+  in it &mdash; {{ gaps|sum(attribute='missing') }} number{{ '' if gaps|sum(attribute='missing') == 1 else 's' }}
+  that ought to exist and do not.</strong>
+  A receipt number is allocated at the first payment, so a table that sits down
+  and leaves cannot eat one. A hole means a bill that was paid for and is no
+  longer here.
+</div>
+<div class="table-wrap" style="margin-bottom:18px;">
+  <table class="data-table">
+    <thead><tr><th>Year</th><th>From</th><th>To</th><th class="num">Missing</th></tr></thead>
+    <tbody>
+      {% for g in gaps %}
+      <tr>
+        <td>{{ g.year }}</td>
+        <td>{{ g.from }}</td>
+        <td>{{ g.to }}</td>
+        <td class="num">{% if g.kind == 'malformed' %}<span class="mini-status status-overdue">not a number</span>{% else %}{{ g.missing }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 <h2 class="section-heading">Entries</h2>
 {% if lv.total %}{% include "_list_toolbar.html" %}{% endif %}
 
