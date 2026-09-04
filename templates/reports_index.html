@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}All the reports{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What the house can tell you</h1>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every report, grouped by the part of the house it is about. Each line is
+  what that page answers, taken from the page itself &mdash; so it cannot
+  drift from what the page actually does. Search by what you want to know
+  rather than by what the report is called.
+</p>
+
+{% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
+
+{% include "_list_toolbar.html" %}
+
+{% if lv.rows %}
+  {% for area, pages in groups %}
+  <h2 class="section-h">{{ area }} <span class="g-hint">{{ pages|length }}</span></h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <tbody>
+        {% for p in pages %}
+        <tr>
+          <td style="width:26%;">
+            <a href="{{ url_for(p.endpoint) }}"><strong>{{ p.label }}</strong></a>
+          </td>
+          <td>
+            {% if p.described %}{{ p.what }}
+            {% else %}<span class="g-hint">No description on the page itself.</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="empty-state">No report matches that. Try a word from the question
+  you are asking rather than the name of a page.</div>
+{% endif %}
+
+{% if undescribed %}
+<h2 class="section-h">Pages that cannot say what they do</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  Listed rather than left blank. A blank line reads as a report that does
+  nothing; a named one is a job somebody can do in a minute, by writing the
+  first line of the page's own docstring.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <tbody>
+      {% for name in undescribed %}
+      <tr><td>{{ name }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
