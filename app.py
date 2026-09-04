@@ -4155,6 +4155,11 @@ def init_db():
         # booking_payments and booking_parties all point at, which is a large
         # risk for a word.
         ("bookings_no_show_at", "ALTER TABLE bookings ADD COLUMN no_show_at TEXT"),
+        # An offer with a deadline on it. 'contacted' already existed as a
+        # state; what was missing was WHEN, and therefore when it runs out.
+        ("waitlist_offered_at", "ALTER TABLE waitlist_entries ADD COLUMN offered_at TEXT"),
+        ("waitlist_offer_expires_at",
+         "ALTER TABLE waitlist_entries ADD COLUMN offer_expires_at TEXT"),
         # Why a REQUEST was turned away. Cancellations have carried a reason and
         # a note for a while and there is a report on them; declines carried
         # nothing, so the pattern in what the house says no to -- too large, too
@@ -53624,6 +53629,10 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_police_register(conn))
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
+    # Not a purge, but the same daily pass: an offer that has run out has to be
+    # taken back before the next person can be told, and nothing else was going
+    # to notice.
+    cleared.update(lapse_waitlist_offers(conn))
     done = {k: v for k, v in cleared.items() if v}
     if not done:
         return "nothing to clear"
@@ -56330,7 +56339,64 @@ def run_workshop_feedback_request_job(conn):
     return f"requested feedback for {sent} booking(s)"
 
 
-def notify_room_waitlist_opening(conn, arrival_iso, departure_iso):
+WAITLIST_OFFER_HOURS_DEFAULT = 48
+
+
+def waitlist_offer_hours(conn):
+    """How long somebody has to take a room before it passes on.
+
+    Two days by default. Long enough to answer an email over a weekend, short
+    enough that a room does not sit unsold while one person thinks about it --
+    which is the trade the old behaviour avoided by not holding it at all.
+    """
+    row = conn.execute(
+        "SELECT value FROM app_settings WHERE key = 'waitlist_offer_hours'").fetchone()
+    try:
+        return max(1, min(336, int((row["value"] if row else "") or
+                                   WAITLIST_OFFER_HOURS_DEFAULT)))
+    except (TypeError, ValueError):
+        return WAITLIST_OFFER_HOURS_DEFAULT
+
+
+def lapse_waitlist_offers(conn, *, now=None):
+    """Take back an offer nobody acted on, and pass it to the next in line.
+
+    Without this the old behaviour was the only one available: tell EVERYBODY
+    the moment a room frees, and let them race. Nothing was double-booked --
+    claim_range sees to that -- but four of the five people told a room was
+    free were then turned down for it, by the house that had just written to
+    them. That is worse than not writing.
+
+    So one offer at a time with a deadline, and when it runs out the entry
+    goes back on the list and the next person is told. Back to 'open' rather
+    than to a state of its own: they are still waiting, which is what open
+    means, and the alternative is a list where half the rows are a history of
+    offers nobody reads.
+    """
+    now = now or datetime.now(timezone.utc)
+    stale = conn.execute(
+        """SELECT * FROM waitlist_entries
+            WHERE status = 'contacted' AND offer_expires_at IS NOT NULL
+              AND offer_expires_at <= ?""",
+        (now.isoformat(),)).fetchall()
+    passed_on = 0
+    for entry in stale:
+        conn.execute(
+            """UPDATE waitlist_entries SET status = 'open', offered_at = NULL,
+               offer_expires_at = NULL WHERE id = ?""", (entry["id"],))
+        conn.commit()
+        # And the next person for the SAME nights, if those nights are still
+        # free. Checked rather than assumed: by now the room may have gone to
+        # somebody who was never on the list at all.
+        if entry["desired_arrival"] and entry["desired_departure"]:
+            if notify_room_waitlist_opening(
+                    conn, entry["desired_arrival"], entry["desired_departure"],
+                    skip_entry_id=entry["id"]):
+                passed_on += 1
+    return {"offers lapsed": len(stale), "passed to the next": passed_on}
+
+
+def notify_room_waitlist_opening(conn, arrival_iso, departure_iso, *, skip_entry_id=None):
     """Emails every 'open' waitlist entry whose desired range overlaps the
     dates that just freed up, then marks them 'contacted' so the next
     cancellation on an unrelated date doesn't re-notify someone who's
@@ -56340,7 +56406,18 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso):
     settings = get_automation_settings(conn)
     if settings["automation_waitlist_autonotify_enabled"] != "1":
         return []
-    matches = [e for e in matching_waitlist_entries(conn, arrival_iso, departure_iso) if e["status"] == "open"]
+    # ONE AT A TIME, longest-waiting first, and never somebody who has a live
+    # offer already. Telling everybody was not a double-booking risk --
+    # claim_range stops that -- it was writing to five people about one room
+    # and then turning four of them down.
+    #
+    # Nobody is offered the same nights twice in a row either: the entry whose
+    # offer has just lapsed is skipped, or a lapse would hand it straight back
+    # to the person who let it run out.
+    matches = [e for e in matching_waitlist_entries(conn, arrival_iso, departure_iso)
+               if e["status"] == "open" and e["id"] != skip_entry_id]
+    matches.sort(key=lambda e: (e["created_at"] or "", e["id"]))
+    matches = matches[:1]
     book_url = url_for("book_rooms", _external=True)
     notified = []
     for entry in matches:
@@ -56374,7 +56451,15 @@ def notify_room_waitlist_opening(conn, arrival_iso, departure_iso):
         # guest who was successfully texted stayed 'open' and would be told
         # again by the next cancellation.
         if reached or texted:
-            conn.execute("UPDATE waitlist_entries SET status = 'contacted' WHERE id = ?", (entry["id"],))
+            # The deadline is recorded WITH the contact, so the list can say
+            # when it runs out rather than only that somebody was written to.
+            expires = (datetime.now(timezone.utc)
+                       + timedelta(hours=waitlist_offer_hours(conn)))
+            conn.execute(
+                """UPDATE waitlist_entries SET status = 'contacted', offered_at = ?,
+                   offer_expires_at = ? WHERE id = ?""",
+                (datetime.now(timezone.utc).isoformat(), expires.isoformat(),
+                 entry["id"]))
             notified.append(entry)
     if notified:
         conn.commit()
