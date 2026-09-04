@@ -284,6 +284,7 @@ SUITES = [
     "test_reopened_bills",
     "test_guest_keys_and_photos",
     "test_recorded_never_read",
+    "test_receipt_sequence",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",

@@ -14450,7 +14450,13 @@ def pos_allocate_receipt_number(conn, order_id):
                          (order_id,)).fetchone()
     if order and order["receipt_number"]:
         return order["receipt_number"]
-    year = datetime.now(timezone.utc).year
+    # The year the HOUSE is in. datetime.now(timezone.utc).year is a
+    # different year for an hour every New Year's morning: at 00:30 in the
+    # Ariege it is still December in UTC, so a receipt printed on the first
+    # of January would be numbered into a sequence the accounts had already
+    # closed. One receipt a year, on the one night of the year when the
+    # numbering matters most.
+    year = house_today().year
     row = conn.execute(
         "SELECT receipt_number FROM pos_orders WHERE receipt_number LIKE ? "
         "ORDER BY receipt_number DESC LIMIT 1", (f"{year}-%",)).fetchone()
@@ -14458,6 +14464,54 @@ def pos_allocate_receipt_number(conn, order_id):
     number = f"{year}-{nxt:06d}"
     conn.execute("UPDATE pos_orders SET receipt_number = ? WHERE id = ?", (number, order_id))
     return number
+
+
+def receipt_sequence_gaps(conn):
+    """Holes in the receipt numbering, per year, worst first.
+
+    The counterpart to pos_journal_verify. That one answers "has anything been
+    altered"; this one answers "is anything MISSING", which is the question an
+    inspector asks first and the one the numbering exists to answer.
+
+    Per year because the sequence restarts each year. A run reported across a
+    year boundary would be one enormous false gap every January.
+
+    Reports RANGES rather than every number in the hole. "2026-000104 to
+    2026-000131" is a sentence somebody can look into; twenty-eight lines
+    saying one number each is a page nobody reads to the bottom of.
+    """
+    out = []
+    by_year = {}
+    for r in conn.execute(
+            "SELECT receipt_number FROM pos_orders "
+            "WHERE receipt_number IS NOT NULL AND receipt_number != '' "
+            "ORDER BY receipt_number").fetchall():
+        raw = r["receipt_number"]
+        year, _sep, num = raw.partition("-")
+        if not num.isdigit():
+            # A number that does not parse is its own kind of problem, and a
+            # silent skip would hide it. Reported as a malformed one rather
+            # than counted as a gap, because they need different answers.
+            out.append({"year": year or "?", "kind": "malformed",
+                        "from": raw, "to": raw, "missing": 0})
+            continue
+        by_year.setdefault(year, []).append(int(num))
+
+    for year, numbers in sorted(by_year.items()):
+        numbers.sort()
+        # Starting anywhere but one is itself a gap: the sequence is supposed
+        # to begin at 000001 each year, and starting at 47 means forty-six
+        # receipts that ought to exist and do not.
+        expect = 1
+        for n in numbers:
+            if n > expect:
+                out.append({"year": year, "kind": "gap",
+                            "from": f"{year}-{expect:06d}",
+                            "to": f"{year}-{n - 1:06d}",
+                            "missing": n - expect})
+            expect = max(expect, n + 1)
+    out.sort(key=lambda g: -g["missing"])
+    return out
 
 
 def pos_perpetual_total(conn):
@@ -27796,6 +27850,10 @@ def pos_journal_page():
         default_sort="recent",
     )
     chain = pos_journal_verify(conn)
+    # The other half of the same question. The chain answers 'has anything
+    # been altered'; this answers 'is anything missing', which is the one an
+    # inspector asks first.
+    gaps = receipt_sequence_gaps(conn)
     closures = conn.execute(
         "SELECT * FROM pos_closures ORDER BY closed_at DESC LIMIT 30").fetchall()
     perpetual = pos_perpetual_total(conn)
@@ -27805,10 +27863,15 @@ def pos_journal_page():
         overview_cell("Entries", total_events),
         overview_cell("Chain", "Broken" if chain else "Verified", alert=bool(chain),
                       sub=chain["problem"] if chain else "recomputed just now"),
+        overview_cell("Receipt numbers",
+                      "Gaps" if gaps else "Unbroken", alert=bool(gaps),
+                      sub=(f"{sum(g['missing'] for g in gaps)} missing"
+                           if gaps else "none missing")),
         overview_cell("Taken since the start", euro(perpetual), hint="never resets"),
         overview_cell("Periods closed", len(closures)),
     ]
-    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"], chain=chain,
+    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"],
+                           chain=chain, gaps=gaps,
                            closures=closures, overview=overview, perpetual=perpetual)
 
 
