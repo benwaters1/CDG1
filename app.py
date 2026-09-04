@@ -19547,6 +19547,29 @@ def create_booking_from_stripe_session(conn, session):
         "SELECT id FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone()
     if paid_row:
         received = (sval(session, "amount_total") or 0) / 100.0
+        # A ROW SAYING HOW IT ARRIVED, not only that it did.
+        #
+        # Every other way money reaches a stay writes one -- the balance paid
+        # online, cash at the desk, a voucher spent, all of them go in as a
+        # booking_payments row AND through record_booking_payment. This path,
+        # the first payment on a brand-new booking, only ever did the second
+        # half. So a stay showed as paid with nothing to account for it, and
+        # the card-fee report reads booking_payments: the fees the house pays
+        # on the one kind of payment that always carries a fee were the fees
+        # it could not see.
+        #
+        # The UNIQUE session id is the guard, exactly as in
+        # mark_booking_payment_paid: the success redirect and the webhook can
+        # be in flight together, and losing that race is the correct outcome
+        # rather than a 500 for a guest who has just paid.
+        try:
+            conn.execute(
+                """INSERT INTO booking_payments (booking_id, amount, method,
+                   stripe_session_id, created_at) VALUES (?, ?, 'stripe', ?, ?)""",
+                (paid_row["id"], round(received, 2), session["id"],
+                 datetime.now(timezone.utc).isoformat()))
+        except sqlite3.IntegrityError:
+            pass
         record_booking_payment(conn, paid_row["id"], received,
                                reference=sval(session, "payment_intent"))
     if not available:
@@ -32811,6 +32834,7 @@ def manage_booking(manage_token):
                 # nights they moved to, at what those nights cost.
                 stamp_room_total(conn, booking["id"], new_room_portion,
                                  new_arrival.isoformat(), new_departure.isoformat())
+                restamp_stay(conn, booking["id"])
                 conn.commit()
                 owner_to = owner_email(conn)
                 if owner_to:
@@ -32890,6 +32914,8 @@ def manage_booking(manage_token):
                     conn, booking["id"],
                     quoted_room_total(conn, booking, room) + added,
                     booking["arrival_date"], new_departure.isoformat())
+                # More nights is more taxe de sejour and a bigger balance.
+                restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
                           details=f"+{nights} night(s), +€{added:.2f}")
                 owner_to = owner_email(conn)
@@ -34573,6 +34599,98 @@ def room_payment_schedule(conn, arrival, total_price, party_size=None):
     if due < today:
         due = today
     return deposit, balance, due.isoformat()
+
+
+def restamp_stay(conn, booking_id):
+    """Move everything stamped on a stay to match the stay it is now.
+
+    THE FAULT THIS EXISTS FOR, which was a grid rather than a bug. Three
+    figures are stamped on a room booking and never derived -- the taxe de
+    sejour, the deposit, and the dated balance -- and three paths move a stay:
+    the owner editing it, the guest changing their own dates, and the guest
+    adding nights on the end. One cell of those nine was covered. The tax was
+    re-stamped on the owner edit, with a comment saying exactly why it had to
+    be, and nothing else was re-stamped anywhere.
+
+    What it cost, measured: a stay moved from October to the following April
+    kept a balance falling due on 30 September. The reminder job selects on
+    balance_due_date, so that guest was chased seven months early -- and
+    because the reminder is sent once per booking and stamps itself, they were
+    then never chased again. Nobody asks in April. The money turns up as a
+    conversation at reception, which is the exact thing the reminder was
+    written to prevent.
+
+    A deposit already taken is not re-quoted: what was charged is history, and
+    restating it would move a figure a card has already been debited for. Only
+    what is left, and when it falls due, follow the stay. The workshop side has
+    worked this way since it was written and is the precedent here.
+    """
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        return
+    arrival = parse_date(booking["arrival_date"])
+    departure = parse_date(booking["departure_date"])
+    if not arrival or not departure:
+        return
+    nights = (departure - arrival).days
+    party = booking["party_size"] or 1
+    under_18 = booking["guests_under_18"] or 0
+
+    # The tax follows the stay. A night added or a guest removed changes what
+    # the commune is owed, and leaving the stamped figure behind puts the
+    # declaration out by the difference with nothing looking wrong on the page.
+    #
+    # ONLY A STAY THAT WAS ACTUALLY CHARGED ONE. booking_bill reads the stamped
+    # figure and deliberately never falls back to a computation, for the reason
+    # written there: a stay taken before the tax existed was never charged it
+    # and cannot be now, so inventing one would move what an existing guest
+    # owes for a stay already agreed -- in some cases already paid in full. An
+    # edit is not the moment to start charging somebody a tax nobody quoted
+    # them.
+    #
+    # A ZERO is indistinguishable from a never, because the column is NOT NULL
+    # DEFAULT 0: a stay predating the tax and a stay whose party is all
+    # children look identical on the row. So a nil tax stays nil, and the cost
+    # of that is the rarer, smaller error -- a party of children that gains an
+    # adult is not re-taxed until somebody sets the figure by hand, rather than
+    # every historical stay gaining a charge the moment anybody edits it.
+    #
+    # Found by test_booking_bill, which extends a stay that was paid in full
+    # and expects to see the extra night and nothing else on the bill. The
+    # first version of this check tested for NULL, which the column cannot
+    # hold -- so it was dead code that read as a guard.
+    if not booking["city_tax"]:
+        city_tax = booking["city_tax"]
+    else:
+        city_tax, _adults, _rate = compute_city_tax(conn, party, under_18, nights)
+
+    total = round(float(booking["total_price"] or 0), 2)
+    deposit, balance, due = room_payment_schedule(conn, arrival, total, party)
+    if booking["deposit_paid_at"]:
+        deposit = round(float(booking["deposit_amount"] or 0), 2)
+        balance = round(max(total - deposit, 0.0), 2)
+        if balance <= 0:
+            due = None
+
+    # A reminder that went out for a date that no longer exists has to be able
+    # to go out again, whichever way the date moved. Later, and the guest was
+    # told about a moment that has gone away from them while the real one is
+    # still ahead. Nearer, and they were told a deadline that is now sooner
+    # than the one they wrote down, which is the more urgent of the two.
+    #
+    # Only when it actually MOVES. An edit that leaves the dates alone is not
+    # a reason to write to anybody, and the job itself still only sends inside
+    # its own window, so nobody is chased for a balance that is months off.
+    was_due = booking["balance_due_date"] or None
+    reset_reminder = bool(booking["balance_reminder_sent_at"] and due != was_due)
+    conn.execute(
+        """UPDATE bookings SET city_tax = ?, deposit_amount = ?, balance_amount = ?,
+           balance_due_date = ? WHERE id = ?""",
+        (city_tax, deposit or None, balance or 0.0, due, booking_id))
+    if reset_reminder:
+        conn.execute(
+            "UPDATE bookings SET balance_reminder_sent_at = NULL WHERE id = ?",
+            (booking_id,))
 
 
 def compute_restaurant_deposit(total_price, deposit_percent):
@@ -41037,28 +41155,26 @@ def edit_booking(booking_id):
         new_total = new_room_portion + extras_portion
         new_total = new_total or None
 
-        # The tax follows the stay. Moving a booking a night longer or adding a
-        # guest changes what the commune is owed, and leaving the stamped figure
-        # behind would put the declaration out by the difference without anything
-        # looking wrong on the page.
         typed_source = (request.form.get("source", "") or "").strip()
         source = typed_source if typed_source in BOOKING_SOURCES else booking["source"]
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
-        new_city_tax, _a, _r = compute_city_tax(
-            conn, party_size, under_18, (departure - arrival).days)
 
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
-               special_requests=?, total_price=?, guests_under_18=?, city_tax=?,
+               special_requests=?, total_price=?, guests_under_18=?,
                source=?, booked_by_name=?, booked_by_email=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
-             special_requests or None, new_total, under_18, new_city_tax, source,
+             special_requests or None, new_total, under_18, source,
              booked_by_name or None, booked_by_email or None,
              booking_id),
         )
         stamp_room_total(conn, booking_id, new_room_portion,
                          arrival.isoformat(), departure.isoformat())
+        # The tax AND the payment schedule, in one place all three paths call.
+        # The tax used to be recomputed inline right here and the schedule not
+        # at all, which is how one of nine cells came to be covered.
+        restamp_stay(conn, booking_id)
         conn.commit()
 
         # No guest-row date sync any more: the booking IS the record of when
