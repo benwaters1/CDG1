@@ -58488,6 +58488,32 @@ def purge_guest_messages(conn, *, today=None):
     return {"old guest correspondence": cur.rowcount if cur.rowcount > 0 else 0}
 
 
+SUBMISSION_LOG_KEEP_DAYS = 7
+
+
+def purge_submission_log(conn, *, now=None):
+    """Drop rate-limit rows older than any limit can still see.
+
+    Every caller of rate_limited uses the one-hour default and the PIN lockout
+    looks at ten minutes, so a row stops mattering an hour after it is
+    written. What is left is an IP address -- for people who never became
+    guests at all, which is most of them: somebody who opened the availability
+    calendar and left.
+
+    A week rather than two hours, deliberately. A rate limit whose history is
+    deleted underneath it stops being a rate limit, and a week costs almost
+    nothing next to an attacker learning the counter resets at lunchtime. The
+    point is retention with a reason rather than retention by omission.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=SUBMISSION_LOG_KEEP_DAYS)).isoformat()
+    cur = conn.execute(
+        "DELETE FROM submission_log WHERE created_at < ?", (cutoff,))
+    if cur.rowcount:
+        conn.commit()
+    return {"rate-limit records dropped": cur.rowcount}
+
+
 def run_health_notes_purge_job(conn):
     """The retention pass, daily. Everything the privacy notice promises to
     delete is deleted here, so the notice can be checked against one function
@@ -58502,6 +58528,9 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    # The only one of these holding an identifier for people who never became
+    # guests at all -- somebody who opened the availability calendar and left.
+    cleared.update(purge_submission_log(conn))
     # Not a purge either, but the same daily pass: a date held on the strength
     # of a conversation nobody followed up has to come back on the market, and
     # nothing else was going to notice.

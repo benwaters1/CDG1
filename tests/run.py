@@ -291,6 +291,7 @@ SUITES = [
     "test_final_numbers_moved",
     "test_one_off_search_boxes",
     "test_who_decided",
+    "test_rate_limit_retention",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
