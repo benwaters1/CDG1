@@ -489,7 +489,10 @@
   {% elif _sb == 'events' %}
     <a href="{{ url_for('events_info') }}#enquire" class="g-btn g-stickybar__cta">{{ t('Enquire') }}</a>
   {% elif _sb == 'atelier' %}
-    <a href="{{ url_for('workshops_public') }}" class="g-btn g-stickybar__cta">{{ t('See dates') }}</a>
+    {# #dates, because the atelier pages include the workshops page itself and
+       "See dates" there was a link to the page it was drawn on. From
+       anywhere else it still lands on the workshops page, at the dates. #}
+    <a href="{{ url_for('workshops_public') }}#dates" class="g-btn g-stickybar__cta">{{ t('See dates') }}</a>
   {% else %}
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">{{ t('Book') }}</a>
   {% endif %}

@@ -1,4 +1,8 @@
 {% extends "public_base.html" %}
+{# The bar offers "Stay the Night — Book", which on this page is a link to
+   the page it is drawn on. book_room and booking_confirmation already say
+   none for the same reason: the guest is here, doing it. #}
+{% set sticky_bar = 'none' %}
 {% set crumbs = [('Stay', None)] %}
 {% block title_fr %}Séjourner au château{% endblock %}
 {% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. À partir de 220 € la nuit, petit-déjeuner compris.{% endblock %}

@@ -21,6 +21,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+from html.parser import HTMLParser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -62,6 +63,14 @@ os.environ["GUDANES_DB_PATH"] = SCRATCH_DB
 # stops the tests littering a directory the app itself uses.
 SCRATCH_UPLOADS = tempfile.mkdtemp(prefix="gudanes_test_uploads_")
 os.environ["GUDANES_UPLOAD_DIR"] = SCRATCH_UPLOADS
+
+# The mirrored photographs get it too, for the reason above and one more: the
+# copies are the ONLY copy. A test writing a stub file under the name of a real
+# photograph would silently replace it, the coverage page would go on saying
+# the house holds that picture, and the page would show eighteen bytes of
+# nothing where the salon used to be.
+SCRATCH_MIRROR = tempfile.mkdtemp(prefix="gudanes_test_mirror_")
+os.environ["GUDANES_MIRROR_DIR"] = SCRATCH_MIRROR
 # Never let a test reach the payment provider, whatever is in .env.
 for _k in ("STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"):
     os.environ.pop(_k, None)
@@ -78,6 +87,7 @@ def _cleanup():
     # on Windows is not worth failing a finished run over, and the directory is
     # under the system temp folder either way.
     shutil.rmtree(SCRATCH_UPLOADS, ignore_errors=True)
+    shutil.rmtree(SCRATCH_MIRROR, ignore_errors=True)
 
 
 import app as m  # noqa: E402  — must follow the env setup above
@@ -193,6 +203,14 @@ m.anthropic.Anthropic = _refuse(
     "every call costs money and ships the document off this machine; stand in "
     "for the helper the route calls, not for claude_configured")
 
+# The photograph mirror. This one needs no key and costs nothing, which is the
+# category that gets left out -- the same argument as the weather, and it is
+# worse here: a run that reached it would pull ninety-three images down and
+# write them to the data volume as a side effect of testing a coverage figure.
+m.fetch_one_image = _refuse(
+    "the Squarespace CDN",
+    "stand in for fetch_one_image in the test; a real run downloads 93 images")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
@@ -206,6 +224,9 @@ assert m.fetch_weather.__name__ == "_blocked", (
     "nothing, which is why it is the one that gets forgotten")
 assert m.webpush.__name__ == "_blocked", (
     "the browser push send is not blocked under test")
+assert m.fetch_one_image.__name__ == "_blocked", (
+    "the photograph mirror is not blocked under test — it needs no key, which "
+    "is why it is the kind that gets forgotten")
 assert not m.claude_configured(), (
     "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
     "global at import, and _load_dotenv puts the environment variable back, so "
@@ -236,6 +257,11 @@ assert m.DB_PATH == SCRATCH_DB, (
 assert m.UPLOAD_DIR == SCRATCH_UPLOADS, (
     f"tests would have written uploads into {m.UPLOAD_DIR} — refusing. "
     "The GUDANES_UPLOAD_DIR override in app.py is missing or was overwritten."
+)
+
+assert m.MIRROR_DIR == SCRATCH_MIRROR, (
+    f"tests would have written into {m.MIRROR_DIR} — refusing. That directory "
+    "holds the only copy of the site's photographs."
 )
 
 
@@ -347,6 +373,107 @@ def coverage_knocked_only():
 
 def db():
     return m.get_db()
+
+
+# ---------------------------------------------------------------------------
+# Reading a page the way a browser roughly would.
+#
+# Every booking test in this suite posts the field names the ROUTE expects,
+# which is right for testing the route and proves nothing about the form. These
+# read the form out of the rendered HTML instead, so a template that renames or
+# drops a field fails the way it would for a guest.
+#
+# They live here rather than in the suite that first needed them because two
+# suites need them now, and two copies of a parser is two things to keep in
+# step. Stdlib html.parser: this app has no build step and no third-party HTML
+# library, and a test is not a reason to acquire one.
+# ---------------------------------------------------------------------------
+
+class FormReader(HTMLParser):
+    """Every <form> on a page, with the fields it actually renders.
+
+    Deliberately forgiving about malformed markup: the job is to see roughly
+    what a browser would, not to validate. test_links and the template checks
+    own whether the markup itself is correct.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.forms = []
+        self._open = None
+        self._textarea = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "form":
+            self._open = {"action": a.get("action"),
+                          "method": (a.get("method") or "get").lower(),
+                          "id": a.get("id"), "fields": []}
+            self.forms.append(self._open)
+        elif self._open is not None and tag in ("input", "select", "textarea"):
+            if not a.get("name"):
+                return
+            self._open["fields"].append({
+                "tag": tag, "name": a["name"],
+                "type": (a.get("type") or ("select" if tag == "select" else "text")).lower(),
+                "value": a.get("value", ""), "required": "required" in a,
+                "options": [],
+            })
+            if tag == "textarea":
+                self._textarea = self._open["fields"][-1]
+        elif self._open is not None and tag == "option" and self._open["fields"]:
+            self._open["fields"][-1]["options"].append(a.get("value", ""))
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self._open = None
+        elif tag == "textarea":
+            self._textarea = None
+
+    def handle_data(self, data):
+        if self._textarea is not None:
+            self._textarea["value"] = (self._textarea["value"] or "") + data
+
+
+def forms_on(html):
+    """Every form on a page, in document order."""
+    p = FormReader()
+    p.feed(html)
+    return p.forms
+
+
+def links_on(html, pattern):
+    """Every href on the page matching a pattern, in document order."""
+    return [h for h in re.findall(r'href="([^"]+)"', html) if re.match(pattern, h)]
+
+
+def fill(form, answers):
+    """What a browser would submit for this form, given answers by field name.
+
+    Only fields the form RENDERS are sent. That is the whole point: if a route
+    needs something the template never draws, nothing supplies it here either,
+    and the submission fails the way it would for a guest.
+    """
+    data = {}
+    for f in form["fields"]:
+        name = f["name"]
+        if f["type"] in ("submit", "button", "image", "reset"):
+            continue
+        if f["type"] in ("checkbox", "radio"):
+            if name in answers:          # an unchecked box sends nothing at all
+                data[name] = answers[name]
+            continue
+        if name in answers:
+            data[name] = answers[name]
+        elif f["type"] == "select":
+            picks = [o for o in f["options"] if o]
+            if picks:
+                data[name] = picks[0]
+        elif f["value"]:
+            data[name] = f["value"]      # hidden fields, and anything prefilled
+        elif f["required"]:
+            data[name] = ""              # rendered, required, and unanswered
+    return data
 
 
 def flashes(response):

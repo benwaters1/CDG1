@@ -169,6 +169,29 @@ page rendered perfectly while doing the wrong thing.
 - **The warnings panel must be able to be empty.** If it can never be empty
   it becomes furniture. There is a test for exactly that.
 
+- **The site's photographs are not the site's.** 256 `<img>` tags across 40
+  templates — the logo on every page included — point at a Squarespace CDN
+  belonging to an account the house no longer publishes from. The day it
+  lapses, every picture and the masthead go together. So the house keeps its
+  own copy and **swaps it in at the response layer**, in
+  `serve_our_own_photographs` — never by editing the tags. The public
+  templates arrive from the design side as whole-file replacements, so 256
+  edited tags would survive exactly one handover; done to the response it
+  needs nothing from anybody and cannot be reverted by accident. Copies live
+  on the volume (`MIRROR_DIR`, beside the database and the room photos), not
+  in git. `hotlinked_urls()` reads the templates rather than a kept list,
+  because a list goes stale the first time a handover adds a photograph — and
+  going stale quietly is the whole failure. Coverage is on the owner home and
+  at `/admin/photo-mirror`; `tools/mirror_images.py` does the bulk fetch.
+  Guarded by `test_photo_mirror`, which never touches the network:
+  `_harness.py` stands `fetch_one_image` down at import.
+  - Two things this found on the way in, both of which had been live for
+    months and neither of which errored: three URLs written flush against
+    `{% endblock %}` in an `og_image` block, and two on the restoration page
+    with the site id **doubled** — `content/<id>/v1/<id>/` — which 400 for
+    everybody, so those two photographs were simply missing from a public
+    page. A broken `<img>` renders as nothing and reports nothing.
+
 - **Stripping a secret out of `os.environ` does not keep it out.** Importing
   `app` runs `_load_dotenv()`, which reads `.env` and puts every popped key
   straight back — so anything the harness clears before the import is live
