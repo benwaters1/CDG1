@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% block og_image %}{{ site_image('chateau.facade') or 'https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w' }}{% endblock %}
 {% block title %}From Instagram{% endblock %}
 {% block description %}What is open at Château de Gudanes right now — rooms, ateliers, the table, and what has just come out from under the plaster.{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}

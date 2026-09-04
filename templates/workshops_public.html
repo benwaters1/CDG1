@@ -194,6 +194,11 @@
     </article>
     {% endfor %}
   </div>
+  {# The places above are live, and the code behind them takes the write lock
+     before it answers -- see claim_range and test_no_overbooking. Saying so is
+     the point: the guarantee is worth nothing to a guest who does not know it
+     exists, and this sentence is what that suite checks is still true. #}
+  <p class="g-p g-hint">Places are shown live. When a sitting reads as full, it is full &mdash; we do not overbook a house this size.</p>
   {% else %}
   <p class="g-p">Dates for the coming season are being finalised. They are released here first, and to the newsletter before that.</p>
   {% endif %}
@@ -436,7 +441,7 @@
 <!-- ============ THE MARKET MORNING ============ -->
 {# The markets, the farm shop and the eighteenth-century recipe book are all
    documented in the château's own material. #}
-<section class="g-sec g-paper"><div class="g-wrap">
+<section class="g-sec g-paper" data-fold><div class="g-wrap">
   <p class="g-eyebrow">Cooking in the Cuisine</p>
   <h2 class="g-place">The Market Comes First</h2>
 
@@ -510,23 +515,7 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('brushgild') }}</div>
 
-<!-- ============ THE WORK ITSELF ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">The Work</p>
-  <h2 class="g-place">What You Will Actually Do</h2>
 
-  <div class="g-two" style="margin-top:var(--s7)">
-    <div>
-      <p class="g-p g-lede-first">The front rooms were cleared to make the restoration workshop. The table in them was built from trees the wind brought down on the estate.</p>
-      <p class="g-p">On a restoration atelier you work on eighteenth-century wall frescoes under supervision — lifting overpaint, consolidating what is loose, cleaning what centuries of smoke have covered. It is slow, and a good morning is measured in centimetres.</p>
-      <p class="g-p">Running workshops for paying guests required permission. This is a Class I Historic Monument, and letting people touch it was not a decision anyone made lightly.</p>
-    </div>
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="Work on a fresco" loading="lazy">
-      <figcaption>What comes off is overpaint. What is underneath has not been seen since it was covered.</figcaption>
-    </figure>
-  </div>
-</div></section>
 
 
 <!-- ============ THE JOURNAL ============ -->
@@ -556,21 +545,7 @@
 </div></section>
 
 
-<!-- ============ FIFTEEN ============ -->
-<section class="g-sec g-scarce"><div class="g-wrap">
-  <div class="g-scarce__in">
-    <p class="g-eyebrow">Worth Knowing</p>
-    <h2 class="g-scarce__h">Fifteen, and No Others</h2>
-    <p class="g-scarce__p">While an atelier runs, the château takes no other guests. The building is yours and the conservators are working in it.</p>
-    <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most</span></div>
-      <div class="g-scarce__i"><b class="g-fig">0</b><span>Other guests in the building</span></div>
-      <div class="g-scarce__i"><b class="g-fig">94</b><span>Rooms, for fifteen people</span></div>
-      <div class="g-scarce__i"><b class="g-fig">5</b><span>Ateliers a year, at most</span></div>
-    </div>
-    <p class="g-scarce__note">Places are shown live above. When a session reads as full, it is full — we do not overbook a house this size.</p>
-  </div>
-</div></section>
+
 
 
 
@@ -634,7 +609,7 @@
 
 
 <!-- ============ KEY INFORMATION ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
   <p class="g-eyebrow">Practical</p>
   <h2 class="g-place">Key Information</h2>
   <div class="g-key">
@@ -693,7 +668,7 @@
 </div></section>
 
 <!-- ============ WHAT YOU NEED ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
   <p class="g-eyebrow">Before You Come</p>
   <h2 class="g-place">What to Bring, and What Not To</h2>
   <div class="g-grid g-grid--2">
@@ -790,37 +765,7 @@
 </div></section>
 
 
-<!-- ============ QUESTIONS ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Asked Often</p>
-  <h2 class="g-place">Questions</h2>
-  <div class="g-faq2">
-    <details class="g-faq2__i">
-      <summary>Do I need experience?</summary>
-      <p>None. Half of every atelier has never held a trowel and the artisans are used to it.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>What should I bring?</summary>
-      <p>Clothes you would not mind ruining — lime does not wash out. Closed-toe shoes. Reading glasses if you use them.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Will I finish something?</summary>
-      <p>No. You are joining work in progress, and a good morning is measured in centimetres.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Is it physical?</summary>
-      <p>Yes. On your feet, often on a platform, often with your arms above your head. Tell us if that is a problem and we will place you where it is not.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>Is everything included?</summary>
-      <p>Full board, all materials and tools, and transfers from Toulouse are in one price.</p>
-    </details>
-    <details class="g-faq2__i">
-      <summary>How many people?</summary>
-      <p>Fifteen at most, and no other guests in the building while an atelier runs.</p>
-    </details>
-  </div>
-</div></section>
+
 
 <!-- ============ THE CLOSE ============ -->
 

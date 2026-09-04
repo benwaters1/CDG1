@@ -5,6 +5,7 @@
 {% block description %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
+{% set sticky_bar = 'none' %}
 {% block content %}
 {% from '_before.html' import terms_upfront %}
 {% from '_animals.html' import animals, animals_note %}
@@ -670,8 +671,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 <div class="g-wrap">
   <p class="g-backtoform">
     <span class="g-backtoform__k">Still here?</span>
-    Everything above is worth reading before you book, and none of it changes the price.
-    <a href="#book" class="g-btn g-btn--solid">Back to the dates</a>
+    <span class="g-backtoform__t">Everything above is worth reading before you book, and none of it changes the price.</span>
+  <a href="#book" class="g-btn g-btn--solid">Back to the dates</a>
   </p>
 </div>
 

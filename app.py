@@ -19955,6 +19955,156 @@ def is_viewable(filename):
     return filename.rsplit(".", 1)[-1].lower() in VIEWABLE_EXTENSIONS
 
 
+# How far ahead the public calendars look. Two months are drawn and the date
+# picker can be paged, so a year covers anything a guest can reach without
+# loading every booking the house has ever taken into every public page.
+PUBLIC_CALENDAR_DAYS = 400
+
+
+def nights_already_taken(conn, *, days=None):
+    """Every night the house cannot sell, as ISO dates.
+
+    THE LIST THE PICKER HAS ALWAYS ASKED FOR. `booked_dates` is read in three
+    places -- the date picker's JSON block in public_base, the availability
+    calendar, and the room search -- and was supplied by nothing. All three
+    read it as `booked_dates or []`, so the picker struck out no nights and the
+    calendar drew an empty grid, on a page that rendered perfectly.
+
+    Everything that blocks a night is here, not just bookings: a workshop takes
+    the whole house for its run, a confirmed event takes its own days, and a
+    provisional hold takes the dates somebody has been promised. A guest
+    offered a night the desk would then refuse has been told something untrue
+    by the calendar that exists to prevent exactly that.
+    """
+    days = PUBLIC_CALENDAR_DAYS if days is None else max(0, int(days))
+    today = house_today()
+    horizon = today + timedelta(days=days)
+    taken = set()
+
+    def _span(start_iso, end_iso, *, inclusive_end):
+        start, end = parse_date(start_iso), parse_date(end_iso)
+        if not start:
+            return
+        end = end or start
+        if end < start:
+            start, end = end, start
+        day = max(start, today)
+        last = min(end, horizon)
+        while day <= last:
+            # A departure day is sellable again; an event's last day is not.
+            if inclusive_end or day < end:
+                taken.add(day.isoformat())
+            day += timedelta(days=1)
+
+    # A night is only unsellable when EVERY room is gone, so rooms are counted
+    # per night rather than added to the set one booking at a time.
+    total_rooms = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+    per_night = {}
+    for row in conn.execute(
+            """SELECT arrival_date, departure_date FROM bookings
+                WHERE status IN ('pending', 'confirmed')
+                  AND COALESCE(departure_date, '') >= ?
+                  AND COALESCE(arrival_date, '') <= ?""",
+            (today.isoformat(), horizon.isoformat())).fetchall():
+        start, end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+        if not start or not end:
+            continue
+        day = max(start, today)
+        while day < min(end, horizon + timedelta(days=1)):
+            per_night[day.isoformat()] = per_night.get(day.isoformat(), 0) + 1
+            day += timedelta(days=1)
+    if total_rooms:
+        taken.update(d for d, n in per_night.items() if n >= total_rooms)
+
+    for row in conn.execute(
+            """SELECT start_date, end_date FROM workshop_sessions
+                WHERE end_date >= ? AND start_date <= ?""",
+            (today.isoformat(), horizon.isoformat())).fetchall():
+        _span(row["start_date"], row["end_date"], inclusive_end=True)
+    for row in conn.execute(
+            """SELECT preferred_date, end_date FROM event_inquiries
+                WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
+        _span(row["preferred_date"], row["end_date"], inclusive_end=True)
+    for row in conn.execute(
+            """SELECT start_date, end_date FROM event_holds
+                WHERE released_at IS NULL AND expires_at > ?""",
+            (datetime.now(timezone.utc).isoformat(),)).fetchall():
+        _span(row["start_date"], row["end_date"], inclusive_end=True)
+    for row in conn.execute(
+            """SELECT start_date, end_date FROM room_blocks
+                WHERE end_date >= ? AND start_date <= ?""",
+            (today.isoformat(), horizon.isoformat())).fetchall():
+        _span(row["start_date"], row["end_date"], inclusive_end=False)
+    return sorted(taken)
+
+
+def nights_la_table_is_cooking(conn, *, days=None):
+    """Every night with a published dinner menu, as ISO dates.
+
+    THE PUBLISHED MENU IS THE SCHEDULE. `menus` already carries a service_date
+    and a published status and the kitchen already works from it, so the night
+    opens when the menu is published and there is no second list for anybody
+    to keep in step. A separate "open nights" table would have drifted out of
+    step with the kitchen inside a month.
+    """
+    days = PUBLIC_CALENDAR_DAYS if days is None else max(0, int(days))
+    today = house_today().isoformat()
+    horizon = (house_today() + timedelta(days=days)).isoformat()
+    return [r["service_date"] for r in conn.execute(
+        """SELECT DISTINCT service_date FROM menus
+            WHERE service = 'dinner' AND status = 'published'
+              AND service_date >= ? AND service_date <= ?
+            ORDER BY service_date""", (today, horizon)).fetchall()]
+
+
+def page_draws_a_calendar(endpoint):
+    """Whether this page could possibly want the public date lists.
+
+    Asked of the app's own map of back-end pages rather than guessed from the
+    URL. A named function rather than a condition inside the context processor
+    so it can be checked directly: the version of this check that read the
+    rendered HTML proved only that admin pages do not extend public_base,
+    which they would not do whatever this rule said.
+    """
+    return not (endpoint in NAV_AREA_OF or endpoint in OWNER_ONLY_ENDPOINTS)
+
+
+@app.context_processor
+def inject_calendar_dates():
+    """Give every public page the two date lists its calendars ask for.
+
+    A context processor rather than an argument threaded through every public
+    route: the date picker lives in public_base, which every public page
+    extends, so wiring it per route means remembering it on the next page
+    somebody adds -- and the version of this that forgot has been shipping an
+    empty calendar and a picker that struck out nothing.
+
+    SKIPPED FOR THE BACK END, by asking the app's own map which endpoints are
+    back-end pages. Every one of the 480-odd admin pages would otherwise pay
+    for two queries it has no calendar to draw on. Not done lazily: public_base
+    serialises booked_dates straight into the page with tojson, which reads a
+    list's contents directly and cannot be talked out of it, so anything
+    clever here would only look lazy.
+
+    Wrapped in its own try, like the saved-views processor beside it: a context
+    processor that raises takes down every page in the app.
+    """
+    empty = {"booked_dates": [], "dinner_dates": []}
+    try:
+        if not page_draws_a_calendar(request.endpoint or ""):
+            return empty
+        conn = get_db()
+        try:
+            return {"booked_dates": nights_already_taken(conn),
+                    "dinner_dates": nights_la_table_is_cooking(conn)}
+        finally:
+            conn.close()
+    except Exception:
+        # A public page with no calendar on it beats no public page.
+        return empty
+
+
 @app.context_processor
 def _saved_views_for_this_page():
     """Every list gets its saved views without seventeen routes being edited.
