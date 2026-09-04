@@ -104,6 +104,10 @@
 </script>
 {% block schema %}{% endblock %}
 <script type="application/json" id="booked-dates">{{ (booked_dates or [])|tojson }}</script>
+{# The nights La Table is cooking. Sourced from published menus, so the
+   kitchen publishing a menu is what opens a night — there is no second
+   schedule anyone has to remember to update. Empty renders nothing. #}
+<script type="application/json" id="dinner-dates">{{ (dinner_dates or [])|tojson }}</script>
 </head>
 <body class="g{% block bodyclass %}{% endblock %}">
 <a class="g-skip" href="#main">Skip to content</a>
@@ -935,6 +939,15 @@
     try { return JSON.parse(el.textContent) || []; } catch(e){ return []; }
   })();
 
+  /* Nights La Table is cooking, from published menus. Someone picking dates
+     should be able to see which of them come with a dinner, rather than
+     finding out afterwards. Without the data the picker is unchanged. */
+  var DINNER = (function(){
+    var el = document.getElementById('dinner-dates');
+    if (!el) return [];
+    try { return JSON.parse(el.textContent) || []; } catch(e){ return []; }
+  })();
+
   function month(base){
     var y = base.getFullYear(), m = base.getMonth();
     var days = new Date(y, m+1, 0).getDate();
@@ -946,6 +959,7 @@
       var d = new Date(y, m, n), k = iso(d);
       var past = d < today;
       var taken = TAKEN.indexOf(k) > -1;
+      var dinner = DINNER.indexOf(k) > -1;
       var isStart = start && k === iso(start);
       var isEnd = end && k === iso(end);
       var edge = end || hover;
@@ -953,12 +967,16 @@
       var cls = 'g-rp__d';
       if (past) cls += ' is-past';
       if (taken) cls += ' is-taken';
+      if (dinner) cls += ' has-dinner';
       if (isStart) cls += ' is-start';
       if (isEnd) cls += ' is-end';
       if (inRange) cls += ' is-in';
+      var dinLabel = dinner ? ', dinner at La Table' : '';
+      var dinTitle = dinner ? ' \u00b7 Dinner at La Table' : '';
       h += (past || taken)
-        ? '<span class="' + cls + '"' + (taken ? ' title="Taken" aria-label="' + n + ', taken"' : '') + '>' + n + '</span>'
-        : '<button type="button" class="' + cls + '" data-d="' + k + '">' + n + '</button>';
+        ? '<span class="' + cls + '"' + (taken ? ' title="Taken' + dinTitle + '" aria-label="' + n + ', taken' + dinLabel + '"' : '') + '>' + n + '</span>'
+        : '<button type="button" class="' + cls + '" data-d="' + k + '"'
+          + (dinner ? ' title="Dinner at La Table" aria-label="' + n + dinLabel + '"' : '') + '>' + n + '</button>';
     }
     return h + '</div></div>';
   }

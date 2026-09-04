@@ -887,7 +887,7 @@
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
-{{ avail_cal(booked_dates, 2) }}
+{{ avail_cal(booked_dates, 2, dinner_dates=dinner_dates) }}
 
 {{ flexible() }}
 

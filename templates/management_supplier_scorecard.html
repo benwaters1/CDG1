@@ -38,7 +38,8 @@
   <table class="data-table">
     <thead><tr><th style="text-align:left;">Supplier</th><th class="num">Spend</th>
     <th class="num">Invoices</th><th class="num">Items</th>
-    <th style="text-align:left;">Prices</th><th style="text-align:left;">Last seen</th></tr></thead>
+    <th style="text-align:left;">Prices</th><th style="text-align:left;">Papers</th>
+    <th style="text-align:left;">Last seen</th></tr></thead>
     <tbody>
       {% for r in data.rows %}
       <tr{% if r.no_invoices %} class="row-alert"{% endif %}>
@@ -52,10 +53,43 @@
           {{ '+' if r.worst.pct > 0 }}{{ r.worst.pct }}%
           {%- else %}&mdash;{% endif %}
         </td>
+        {#- WHAT THEY HOLD. Staff certifications expire and are chased; a
+            florist working on a listed monument for a day was asked for
+            nothing. Public liability of anybody, and an attestation de
+            vigilance once a contract reaches the statutory figure -- which is
+            the château's liability for not asking, not theirs. -#}
+        <td>
+          {% if r.papers.ok %}
+          <span class="mini-status status-onshift">in order</span>
+          {% else %}
+          <span class="mini-status status-declined">{{ r.papers.missing|map('replace', '_', ' ')|join(', ') or 'out of date' }}</span>
+          {% endif %}
+          {% for kind, doc in r.papers.held.items() %}
+          <span class="field-hint" style="display:block;">{{ kind|replace('_', ' ') }}{% if doc['expires_on'] %} to {{ doc['expires_on'] }}{% endif %}
+            <form method="post" action="{{ url_for('delete_vendor_document', document_id=doc['id']) }}" style="display:inline;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini">Remove</button>
+            </form>
+          </span>
+          {% endfor %}
+          {% for kind, doc in r.papers.expired.items() %}
+          <span class="field-hint" style="display:block;">{{ kind|replace('_', ' ') }} ran out {{ doc['expires_on'] }}</span>
+          {% endfor %}
+          <form method="post" action="{{ url_for('new_vendor_document', vendor_id=r.id) }}"
+                style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="kind" aria-label="What kind of document">
+              {% for key, label in document_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+            </select>
+            <input type="date" name="expires_on" aria-label="Runs out">
+            <input type="text" name="reference" placeholder="Reference" style="max-width:120px;">
+            <button type="submit" class="btn-mini">Record it</button>
+          </form>
+        </td>
         <td>{{ r.last_seen or '&mdash;'|safe }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6"><div class="empty-state">No suppliers on the books.</div></td></tr>
+      <tr><td colspan="7"><div class="empty-state">No suppliers on the books.</div></td></tr>
       {% endfor %}
     </tbody>
   </table>
