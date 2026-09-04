@@ -77,7 +77,10 @@
         {% if r.user_id %}
           <a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.who }}</a>
         {% else %}{{ r.who }}{% endif %}
-        {% if r.gone %}<span class="mini-status status-declined">has left</span>{% endif %}
+        {% if r.gone %}<span class="mini-status status-declined">{{ 'has checked out' if r.sort == 'guest_key' else 'has left' }}</span>{% endif %}
+        {% if r.good_until %}
+          <span class="upload-hint">due back {{ r.good_until|date_short }}{% if r.reference %} &middot; {{ r.reference }}{% endif %}</span>
+        {% endif %}
       </td>
       <td>
         {% if r.issued_by %}

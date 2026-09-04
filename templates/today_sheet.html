@@ -1,6 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Today's Sheet{% endblock %}
 {% block content %}
+{% if no_photos %}
+<div class="flash flash-error" style="margin:12px 0;">
+  <strong>{{ no_photos|length }} guest{{ '' if no_photos|length == 1 else 's' }}
+  in the house {{ 'has' if no_photos|length == 1 else 'have' }} asked not to be
+  photographed.</strong>
+  {% for g in no_photos %}{{ g.who }}{% if g.room %} ({{ g.room }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}.
+  The house asked and they answered; nothing else in the software checks.
+</div>
+{% endif %}
+
 
 <div class="page-head no-print">
   <h1>Today's Sheet</h1>
