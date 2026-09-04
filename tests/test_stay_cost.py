@@ -26,6 +26,10 @@ right on the page nine times out of ten.
 from _harness import Suite, db
 
 from datetime import date, timedelta
+import io as _io
+import os as _os
+import re as _re
+
 import _harness
 
 m = _harness.m
@@ -192,6 +196,75 @@ def run():
 
     _cleanup(conn)
     conn.close()
+    s.section("The room deposit never comes from the restaurant's settings")
+    # `settings` on a room page is the RESTAURANT settings row, and it has a
+    # deposit_percent column of its own. A template reading it there is not
+    # reading a missing key -- it is reading the wrong half of the business.
+    # It is None today, which is why the fallback fired instead; set a dinner
+    # deposit and the room page would quietly start quoting it at people
+    # booking a bed. Twice now a new component has done this.
+    import glob as _g
+    import os as _o
+    import re as _re
+    ROOM_PAGES = ("book_room.html", "book_rooms.html", "_before.html",
+                  "_nights_calc.html", "_paydates.html", "_weekcost.html",
+                  "_stay_panel.html", "home.html")
+    wrong = []
+    for path in _g.glob(_o.path.join(_harness.ROOT, "templates", "*.html")):
+        name = _o.path.basename(path)
+        if name not in ROOM_PAGES:
+            continue
+        body = open(path, encoding="utf-8").read()
+        # Only inside a Jinja expression. The comment explaining why this is
+        # wrong names the string, and a check that fails on its own
+        # explanation is one somebody deletes.
+        for expr in _re.findall(r"\{[{%](.*?)[}%]\}", body, _re.S):
+            if "settings['deposit_percent']" in expr:
+                wrong.append(name)
+                break
+    s.check("no room page reads a deposit out of the restaurant settings",
+            not wrong,
+            detail=", ".join(wrong) + " — the room figure comes from the route, "
+                   "through deposit_percent_to_show")
+
+    s.section("And no template invents a deposit percentage of its own")
+    # Asked of the SOURCE, not of a rendered page, because this keeps coming
+    # back somewhere a page-level check cannot reach. The fifth occurrence
+    # arrived inside a brand new macro, and the sixth was JavaScript --
+    # Number(... else 30) working out a euro figure in the browser, which no
+    # check on rendered text would ever have seen.
+    #
+    # deposit_percent_to_show() is the one answer and it has three: a figure,
+    # None for "it depends on the dates and the party", or nothing at all. A
+    # template picking its own default quotes a guest a number about their
+    # own money that the checkout will disagree with.
+    tpl_dir = _os.path.join(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__))), "templates")
+    invented = []
+    for root, _dirs, files in _os.walk(tpl_dir):
+        for fn in sorted(files):
+            if not fn.endswith(".html"):
+                continue
+            body = _re.sub(r"\{#.*?#\}", "",
+                           _io.open(_os.path.join(root, fn),
+                                    encoding="utf-8").read(), flags=_re.S)
+            for i, line in enumerate(body.splitlines(), 1):
+                # A form's default for a NEW record is the owner setting a
+                # figure, not a page inventing one to show a guest.
+                if "<input" in line:
+                    continue
+                if _re.search(r"deposit_percent[^\n]{0,120}?\belse\s+(?!0\b)\d+",
+                              line):
+                    invented.append("%s:%d" % (fn, i))
+    s.check("no template falls back to a percentage of its own",
+            not invented,
+            detail="; ".join(invented) + " -- deposit_percent_to_show() is "
+                   "the one answer, and 'it depends' is one of its three")
+    s.check("there were templates to read at all",
+            any(f.endswith(".html") for _r, _d, fs in _os.walk(tpl_dir)
+                for f in fs),
+            detail="a sweep with nothing to sweep passes for free")
+
     return s
 
 

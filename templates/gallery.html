@@ -86,6 +86,14 @@
           <img src="{{ img['url'] }}" alt="{{ img['caption'] or gal['title'] }}" loading="lazy"
                style="width:100%; height:16rem; object-fit:cover;">
           {% if img['caption'] %}<figcaption class="g-hint">{{ img['caption'] }}</figcaption>{% endif %}
+          {# Every photograph of a room is a booking opportunity and none of
+             them went anywhere. Matched on the caption naming a room, so an
+             image of the gardens simply stays a picture. #}
+          {% if rooms %}{% for r in rooms %}
+            {% if r['name'] and r['name']|lower in (img['caption']|default('')|lower) %}
+              <a class="g-gal__go" href="{{ url_for('book_room', room_id=r['id']) }}">See {{ r['name'] }} <span aria-hidden="true">&rsaquo;</span></a>
+            {% endif %}
+          {% endfor %}{% endif %}
         </figure>
         {% endfor %}
       </div>

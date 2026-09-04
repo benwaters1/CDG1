@@ -9,15 +9,19 @@
        {% from '_paydates.html' import pay_dates %}
        {{ pay_dates(booking, settings) }}
    ========================================================================== #}
-{% macro pay_dates(b, settings) %}
-{% set pct = (settings['deposit_percent'] if settings and settings['deposit_percent'] else 30)|int %}
+{% macro pay_dates(b, settings, deposit_percent=0) %}
+{#- Was reading the restaurant's deposit and falling back to a hardcoded 30.
+    A booking carries its own deposit_amount; when it does not, the honest
+    line is that it is worked out on confirmation rather than a percentage
+    nobody agreed to. -#}
+{% set pct = (deposit_percent or 0)|round|int %}
 <div class="g-pay2">
   <p class="g-pay2__h">What you pay, and when</p>
   <ol class="g-pay2__l">
     <li class="g-pay2__i{% if b['deposit_paid'] %} is-done{% endif %}">
       <span class="g-pay2__k">Now</span>
       <span class="g-pay2__v">
-        {% if b['deposit_amount'] %}€{{ '%.0f'|format(b['deposit_amount']) }}{% else %}{{ pct }}% of the total{% endif %}
+        {% if b['deposit_amount'] %}€{{ '%.0f'|format(b['deposit_amount']) }}{% elif pct %}{{ pct }}% of the total{% else %}Worked out when we confirm the booking{% endif %}
         {% if b['deposit_paid'] %} · paid{% endif %}
       </span>
     </li>

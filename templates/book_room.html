@@ -6,6 +6,7 @@
 {% block og_desc %}A bedroom inside a Class I Historic Monument under restoration in the French Pyrénées. Rates, availability and what the room actually is.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% block content %}
+{% from '_before.html' import terms_upfront %}
 {% from '_animals.html' import animals, animals_note %}
 {% from '_formkeep.html' import form_keep %}
 
@@ -702,6 +703,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <div class="g-wrap">{{ animals_note() }}</div>
 
+<div class="g-wrap">{{ terms_upfront(settings, room['min_nights'] if room else none, deposit_shown) }}</div>
+
 <script>
 /* The whole stay in one place, immediately above the button. A guest was
    reading the room from the panel, the extras 800px above it, and the total
@@ -711,7 +714,11 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var f=document.getElementById('book-form'), box=document.querySelector('[data-review]');
   if(!f||!box) return;
   var RATE = Number(box.dataset.rate || {{ (room['price_per_night'] or 0)|int }});
-  var PCT  = Number({{ (settings['deposit_percent'] if settings and settings['deposit_percent'] else 30)|int }});
+  {# From the route, like the panel above it. This read the RESTAURANT's
+     deposit -- `settings` on a room page is the restaurant settings row --
+     and fell back to 30 when it was unset, so the calculator quoted a
+     deposit this house does not take. #}
+  var PCT  = Number({{ (deposit_shown or 0)|round|int }});
   var eur = function(n){ return '€' + Math.round(n).toLocaleString('en-GB'); };
   var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var fmt = function(iso){

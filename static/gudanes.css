@@ -3787,7 +3787,7 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
   display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
   width: 100%; min-height: 44px; padding: 0;
   border: 0; background: transparent; cursor: pointer; text-align: left;
-  font-family: var(--display); font-size: 18px; color: var(--blue-deep);
+  font-family: var(--display); font-size: var(--t-h3); color: var(--blue-deep);
   font-variant-numeric: lining-nums;
 }
 .g-rp__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
@@ -6351,4 +6351,323 @@ main > .g-sec--dark{ border-top: 0; }
 .g-proof__l dd{
   margin: 0; font-family: var(--ui); font-size: var(--t-ui);
   line-height: 1.45; color: var(--ink-soft);
+}
+
+/* ==========================================================================
+   1. THE CURRENT PAGE IN THE NAV
+   Eight items and nothing said which one you were on.
+   ========================================================================== */
+.g-nav a.is-here, .g-nav a[aria-current="page"]{
+  color: var(--gilt);
+  box-shadow: inset 0 -2px 0 var(--gilt);
+}
+.g-nav__has-sub:has(a[aria-current="page"]) > a{
+  color: var(--gilt); box-shadow: inset 0 -2px 0 var(--gilt);
+}
+/* On a transparent header over a photograph the gilt underline still reads,
+   but the text needs to stay white to survive the image behind it. */
+body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
+  color: #fff; box-shadow: inset 0 -2px 0 var(--gilt);
+}
+
+/* ==========================================================================
+   14. PRINT
+   Someone will print the confirmation and the arrival details, and until now
+   they would have got the navigation, the booking bar and a dark hero eating
+   a cartridge of ink.
+   ========================================================================== */
+@media print{
+  .g-top, .g-nav, .g-foot, .g-bookbar, .g-book-bar, .g-cred, .g-crumbs,
+  .g-hero, .g-mark__wrap, .g-cur, .g-lb, .g-panel--sticky,
+  .g-three, .g-proof, .g-anim, .g-months, .g-avc,
+  [data-wk], [data-pick], video, .g-skip{ display: none !important; }
+
+  html, body{ background: #fff !important; color: #000 !important; font-size: 11pt; }
+  main{ padding: 0 !important; }
+  .g-wrap{ max-width: none; padding: 0; }
+  .g-sec{ padding: 0 0 12pt !important; border: 0 !important; }
+
+  h1,h2,h3{ color: #000 !important; page-break-after: avoid; }
+  h2{ font-size: 15pt; margin-top: 14pt; }
+  p, li, dd{ color: #000 !important; orphans: 3; widows: 3; }
+
+  /* The reference and the dates are what the page is for. */
+  .g-ref, .g-conf__ref{ font-size: 16pt !important; font-weight: 700; }
+
+  /* A printed link is useless unless the address is on the paper. */
+  main a[href^="http"]::after{ content: " (" attr(href) ")"; font-size: 9pt; }
+  main a[href^="/"]::after{ content: " (chateaugudanes.com" attr(href) ")"; font-size: 9pt; }
+  main a[href^="#"]::after, main a.g-btn::after{ content: ""; }
+  main a.g-btn{ border: 1px solid #000; color: #000 !important; background: none !important; }
+
+  .g-plate, .g-limit, table{ page-break-inside: avoid; }
+  img{ max-width: 100% !important; page-break-inside: avoid; }
+}
+
+/* ==========================================================================
+   BEFORE YOU BOOK — the terms, arriving, and telling us when
+   ========================================================================== */
+.g-terms{
+  margin: var(--s5) 0; padding: var(--s5);
+  background: var(--sand-2); border-left: 2px solid var(--gilt);
+}
+/* Panel padding inside the wrap's padding left 28 characters on a phone.
+   Below 30rem the panel keeps its rule and drops the inset. */
+@media (max-width: 34rem){
+  .g-terms{ padding: var(--s4) 0 var(--s4) var(--s4); background: none; }
+  .g-terms__l{ gap: var(--s3); }
+  .g-terms__l > div{ gap: 1px; }
+}
+.g-terms__k{
+  margin: 0 0 var(--s4); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
+}
+.g-terms__l{ margin: 0; display: grid; gap: var(--s4); }
+@media (min-width: 60rem){ .g-terms__l{ grid-template-columns: 1fr 1fr; gap: var(--s4) var(--s6); } }
+.g-terms__l > div{ display: grid; gap: 2px; }
+.g-terms__l dt{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .06em; color: var(--blue-deep);
+}
+.g-terms__l dd{ margin: 0; font-size: var(--t-ui); line-height: 1.55; color: var(--ink-soft); }
+
+.g-arrive{ list-style: none; counter-reset: none; margin: var(--s6) 0 var(--s5); padding: 0; }
+.g-arrive > li{
+  display: grid; grid-template-columns: 3rem 1fr; gap: var(--s4);
+  padding: var(--s5) 0; border-bottom: 1px solid var(--line);
+}
+@media (max-width: 34rem){ .g-arrive > li{ grid-template-columns: 1fr; gap: var(--s2); } }
+.g-arrive__n{
+  display: flex; align-items: center; justify-content: center;
+  width: 2.6rem; height: 2.6rem; border: 1px solid var(--gilt); border-radius: 50%;
+  font-family: var(--ui); font-size: var(--t-sm); color: var(--gilt);
+  font-variant-numeric: lining-nums;
+}
+.g-arrive__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
+  font-size: var(--t-h3); color: var(--blue-deep); }
+.g-arrive__p{ margin: 0; font-size: var(--t-base); line-height: 1.65; color: var(--ink); max-width: 60ch; }
+
+.g-notify{ margin-top: var(--s5); display: grid; gap: var(--s4); max-width: 34rem; }
+.g-notify .g-field{ margin: 0; }
+.g-notify__n{ margin: 0; font-family: var(--ui); font-size: var(--t-sm);
+  line-height: 1.5; color: var(--ink-soft); }
+
+/* 13 — the old-link list on the 404 */
+.g-lost__old{ margin: var(--s6) 0 0; border-top: 1px solid var(--line); padding-top: var(--s5); }
+.g-lost__old summary{
+  cursor: pointer; min-height: 44px; display: flex; align-items: center;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep);
+}
+.g-lost__old summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-lost__l{ margin: var(--s3) 0 0; padding-left: var(--s5); display: grid; gap: var(--s2); }
+.g-lost__l li{ font-size: var(--t-ui); color: var(--ink-soft); }
+.g-lost__l code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em;
+  background: var(--sand-2); padding: 1px 5px; color: var(--ink);
+}
+
+/* 15 — the price on each of the three intents */
+.g-three__p{
+  margin: var(--s2) 0 0; font-family: var(--ui); font-size: var(--t-ui);
+  color: var(--ink-soft);
+}
+.g-three__p b{
+  font-family: var(--display); font-weight: 400; font-size: var(--t-h3);
+  color: var(--blue-deep); font-variant-numeric: lining-nums;
+}
+
+/* 17 — the link out of a gallery photograph */
+.g-gal__go{
+  display: inline-flex; align-items: center; gap: 4px; min-height: 44px;
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--gilt);
+  text-decoration: none;
+}
+.g-gal__go:hover{ text-decoration: underline; }
+.g-gal__go:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+
+/* ==========================================================================
+   THE HEADER — TWO FAULTS VISIBLE ON THE LIVE SITE
+   ==========================================================================
+
+   1. THE LOGO IS A WHITE PNG
+   `Logo_white.png` is the only logo file, and on a cream header it is
+   invisible — which is what you see at the top left of every page that has a
+   breadcrumb. There is no dark version to swap to, so the white one is
+   inverted back to ink wherever the header is not sitting over a photograph.
+   The moment a dark logo file exists, delete this rule and point at it.        */
+body:not(.at-top) .g-logo img,
+body:not(.has-hero) .g-logo img,
+body.has-hero:has(main > .g-crumbs:first-child) .g-logo img{
+  filter: invert(19%) sepia(28%) saturate(1600%) hue-rotate(190deg) brightness(94%);
+}
+/* Over a photograph it stays white, and gains a shadow so it survives a pale
+   image behind it. */
+body.at-top.has-hero:not(:has(main > .g-crumbs:first-child)) .g-logo img{
+  filter: drop-shadow(0 1px 6px rgba(0,0,0,.45));
+}
+
+/* 2. THE BOOK BUTTON SAT ON TOP OF "CONTACT"
+   `.g-booksel` was positioned rather than laid out, so it landed at x1089
+   while the nav ran to x1073 — the last nav item disappeared underneath it.
+   The header is a flex row; the button takes its place in the row and the nav
+   gets the space that is left.                                                */
+.g-top__in{ display: flex; align-items: center; gap: var(--s4); }
+.g-top__in .g-nav{ flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+.g-top__in .g-booksel{
+  position: static; flex: 0 0 auto; margin-left: var(--s2); inset: auto;
+}
+.g-top__in .g-navbtn{ flex: 0 0 auto; }
+.g-top__in .g-logo{ flex: 0 0 auto; }
+
+/* Below the width where eight items plus a button genuinely fit, the nav goes
+   to the menu rather than shrinking until it collides. */
+@media (max-width: 78rem){
+  .g-top__in .g-nav{ display: none; }
+}
+
+/* ==========================================================================
+   THE THREE WAYS IN
+   `auto-fit, minmax(27rem, 1fr)` gave two columns in a 1216px wrap, so with
+   three items the third was always marooned on its own row with half the
+   page empty beside it. Three items want three columns or one — never two.
+   ========================================================================== */
+.g-three__l{ grid-template-columns: 1fr; gap: var(--s6); }
+@media (min-width: 62rem){
+  .g-three__l{ grid-template-columns: repeat(3, 1fr); gap: var(--s5); }
+}
+/* At three across each column is about 22rem, so the number moves above the
+   text rather than beside it — a 40px circle plus a 3-word heading does not
+   fit on one line at that width. */
+@media (min-width: 62rem){
+  .g-three__i{ display: block; }
+  .g-three__n{ margin-bottom: var(--s4); }
+}
+
+/* ==========================================================================
+   THE FAMILY NOTE
+   612px of text sitting in a 1216px wrap with nothing beside it. It is one
+   sentence and a link, so it should sit as a line across the page rather
+   than as a column with a hole next to it.
+   ========================================================================== */
+.g-family{
+  display: grid; align-items: baseline; gap: var(--s3) var(--s6);
+  padding: var(--s5) 0 var(--s5) var(--s5);
+  border-left: 2px solid var(--gilt); max-width: none;
+}
+@media (min-width: 60rem){
+  .g-family{ grid-template-columns: 12rem 1fr auto; }
+  .g-family__k{ grid-column: 1; }
+  .g-family p{ grid-column: 2; margin: 0; max-width: 62ch; }
+  .g-family a{ grid-column: 3; white-space: nowrap; }
+}
+
+/* The three columns hold different amounts of description, so the price and
+   the buttons landed at three different heights and the row read as ragged.
+   Each column is a flex column and the action is pushed to the bottom, so
+   the three buttons sit on one line whatever the copy does. */
+@media (min-width: 62rem){
+  .g-three__l{ align-items: stretch; }
+  .g-three__i{ display: flex; flex-direction: column; height: 100%; }
+  /* The content is nested in .g-three__b, so the push has to happen there. */
+  .g-three__b{ display: flex; flex-direction: column; flex: 1 1 auto; }
+  .g-three__d{ flex: 0 0 auto; }
+  /* The push was on the price line, so an item with no price had nothing to
+     push with and its buttons rode up. It belongs on the last child. */
+  .g-three__b > :last-child{ margin-top: auto; }
+  /* At three columns a long secondary link ("Ask about a private dinner")
+     wrapped under its button on one item only, so that button rode up 60px.
+     The pair stacks in every item, so the row stays even whatever the copy. */
+  .g-three__a{ flex-direction: column; align-items: flex-start; gap: var(--s2); }
+  .g-three__a .g-btn{ width: 100%; text-align: center; }
+  .g-three__p{ padding-top: var(--s4); margin-bottom: var(--s3); }
+}
+
+/* ==========================================================================
+   THE HERO SEARCH BAR
+   Three typefaces in one four-cell bar: the labels in Inter, the values in
+   EB Garamond, the button in Cormorant Garamond. And the value was 16px
+   against a 15px label — so the thing you are entering was the same size as
+   the word describing it, which is the wrong way round for the most important
+   control on the site.
+
+   The cells were also 97px tall around 48px of content, so the bar carried
+   50px of dead height.
+   ========================================================================== */
+
+/* One face for the labels, one for the values. The button is an action, so it
+   takes the interface face like every other button on the site. */
+.g .g-herosearch__f > label,
+.g .g-herosearch__f label,
+.g .g-herosearch__f .g-herosearch__k{
+  font-family: var(--ui); font-size: var(--t-xs); font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft);
+  display: block; margin-bottom: 2px;
+}
+.g .g-herosearch__f input,
+.g .g-herosearch__f select,
+.g .g-herosearch__f .g-rp__btn,
+.g .g-herosearch__f .g-rp__btn .g-rp__val,
+.g .g-herosearch__f .g-herosearch__v{
+  font-family: var(--display); font-weight: 400;
+  font-size: var(--t-h3);            /* was 16px — a pixel above its own label */
+  color: var(--blue-deep); line-height: 1.15;
+  font-variant-numeric: lining-nums;
+}
+/* The picker button replaces the input visually, so it carries no chrome of
+   its own — it is the value, not a control around the value. */
+.g-herosearch__f .g-rp__btn{
+  display: block; width: 100%; padding: 0; border: 0; background: none;
+  text-align: left; min-height: 40px; cursor: pointer;
+}
+.g-herosearch__f .g-rp__btn:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 3px; }
+/* Nothing entered yet, so it is a prompt rather than a value. */
+.g .g-herosearch__f .g-rp__val:not(.is-set){
+  color: var(--ink-soft); opacity: .7; font-style: italic;
+}
+/* The placeholder was full-strength ink, so an empty field looked filled in.
+   It is a prompt, not a value. */
+.g-herosearch__f input::placeholder{
+  color: var(--ink-soft); opacity: .62; font-style: italic;
+}
+.g .g-herosearch__go{
+  font-family: var(--ui); font-size: var(--t-ui); font-weight: 600;
+  letter-spacing: .04em;
+}
+
+/* 97px cells around 48px of content. The bar is a row of controls, not a
+   panel, so it takes the height its content needs and no more. */
+.g .g-herosearch__f{ padding: var(--s3) var(--s5); }
+.g-herosearch__f input,
+.g-herosearch__f select{ min-height: 40px; padding: 0; border: 0; background: none; }
+.g-herosearch__go{ padding: var(--s3) var(--s6); }
+.g-herosearch{ align-items: stretch; }
+
+@media (max-width: 44rem){
+  .g-herosearch__f{ padding: var(--s3) var(--s4); }
+  .g-herosearch__f input,
+  .g-herosearch__f select,
+  .g-herosearch__f .g-herosearch__v{ font-size: var(--t-lede); }
+}
+
+/* The value span inside the picker button computed 15px while the button
+   itself was 27px. It is not inheriting and I could not find the rule that
+   stops it — an ordinary declaration here has no effect, though other
+   properties on the same selector apply normally. Forced, with the cause
+   noted so it can be found and this removed. */
+.g-herosearch__f .g-rp__btn .g-rp__val,
+.g-rp__btn .g-rp__val{
+  font-size: var(--t-h3) !important;
+  font-family: var(--display) !important;
+  color: inherit;
+}
+
+/* The guests select sat at label size beside two 27px date values, so the
+   row read as two big fields and one small one. Same treatment, same reason. */
+.g-herosearch__f select,
+.g-herosearch__f input:not([type="date"]){
+  font-size: var(--t-h3) !important;
+  font-family: var(--display) !important;
+  color: var(--blue-deep);
+  border: 0; background: none; padding: 0; min-height: 40px;
+  font-variant-numeric: lining-nums;
 }
