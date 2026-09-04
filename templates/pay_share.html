@@ -1,0 +1,69 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}Your share — Château de Gudanes{% endblock %}
+{# One named person's part of somebody else's booking. Never indexed: it is a
+   single guest's money on a page reached by a link they were sent. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+<div class="statement">
+  <div class="statement-head">
+    <div>
+      <h1 style="margin:0;">Your share</h1>
+      <p class="g-hint" style="margin:var(--s1) 0 0;">
+        {{ booking['room_name'] }} · {{ booking['arrival_date'] }} to {{ booking['departure_date'] }}
+      </p>
+    </div>
+  </div>
+
+  {# The whole page. They are not the guest and have no manage token: no dates
+     to change, no bill for the rest of the party, and NO FIELD TO TYPE AN
+     AMOUNT INTO. It pays what it says or it does nothing. #}
+  <p>
+    {% if share['name'] %}{{ share['name'] }},{% else %}Hello,{% endif %}
+    your part of the booking made by {{ booking['guest_name'] }}
+    ({{ booking['reference_code'] }}) comes to
+    <strong>&euro;{{ '%.2f'|format(share['amount']) }}</strong>.
+  </p>
+
+  {% if share['note'] %}<p class="g-hint">{{ share['note'] }}</p>{% endif %}
+
+  {% if share['status'] == 'paid' %}
+  <p class="g-hint">
+    This share was paid on {{ share['paid_at']|house_day }}. Thank you —
+    there is nothing more to do.
+  </p>
+  {% elif share['status'] == 'cancelled' %}
+  <p class="g-hint">
+    This request is no longer open{% if share['closed_reason'] %} — {{ share['closed_reason'] }}{% endif %}.
+    If you think that is a mistake, the best thing is to speak to whoever
+    organised the stay.
+  </p>
+  {% elif not payable %}
+  {# The stay may have been settled between this page being sent and being
+     opened. Saying so plainly is better than a card page that takes money the
+     château would then have to give back. #}
+  {% if bill and bill.owed > 0.005 %}
+  <p class="g-hint">
+    The amount on this request is more than what is now outstanding on the
+    booking (&euro;{{ '%.2f'|format(bill.owed) }}), so it cannot be paid as it
+    stands. Whoever organised the stay can send you a new one.
+  </p>
+  {% else %}
+  <p class="g-hint">
+    There is nothing outstanding on this booking at the moment, so this share
+    cannot be paid. Nobody needs to do anything.
+  </p>
+  {% endif %}
+  {% else %}
+  <form method="post" action="{{ url_for('pay_share', token=share['token']) }}">
+    <button type="submit" class="btn-primary">Pay &euro;{{ '%.2f'|format(share['amount']) }} by card</button>
+  </form>
+  <p class="g-hint" style="margin-top:var(--s2);">
+    This pays that amount and nothing else. The link stops working once it is
+    paid, or if the stay is settled another way.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

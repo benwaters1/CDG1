@@ -85,6 +85,17 @@
         {%- if b['no_show_at'] %}
         <span class="mini-status status-declined" style="margin-left:4px;" title="Confirmed, and nobody arrived">did not arrive</span>
         {%- endif %}
+        {#- WHICH GROUP THIS ROOM BELONGS TO, so three rooms on three lines
+            read as one booking rather than three coincidences -- and a way
+            through to what the whole party owes.
+
+            On the row itself, deliberately. This lived in the pending-only
+            actions block, which meant the party disappeared from the list the
+            moment its rooms were confirmed: visible while there was nothing to
+            pay, gone by the time there was. -#}
+        {%- if b['party_name'] %}
+        <a href="{{ url_for('party_statement', party_id=b['party_id']) }}" class="mini-status status-upcoming" style="margin-left:4px; text-decoration:none;" title="One bill for the whole party">{{ b['party_name'] }}</a>
+        {%- endif %}
         {% if b['guest_email'] in returning_emails %}<a href="{{ url_for('guest_booking_history', email=b['guest_email']) }}" class="mini-status status-onshift" style="margin-left:4px; text-decoration:none;">returning guest · €{{ '%.0f'|format(confirmed_spend_by_email[b['guest_email']]) }} lifetime</a>{% endif %}
       </div>
       <span class="upload-hint">
@@ -122,11 +133,6 @@
     <div class="expense-actions">
       {% if b['status'] == 'pending' %}
       <input type="checkbox" value="{{ b['id'] }}" class="bulk-check" style="margin-right:4px;">
-      {%- if b['party_name'] %}
-      {# The row says which group it belongs to, so three rooms on three lines
-         read as one booking rather than three coincidences. #}
-      <span class="mini-status status-upcoming" title="One party across several rooms">{{ b['party_name'] }}</span>
-      {%- endif %}
       <form method="post" action="{{ url_for('confirm_booking', booking_id=b['id']) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="btn-mini">Confirm</button></form>
       {# Why, asked at the moment somebody knows the answer. Optional on
          purpose: refusing a decline over a missing dropdown means somebody

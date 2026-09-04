@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}What we've said — {{ booking['reference_code'] }}{% endblock %}
+{% block content %}
+
+{# EVERYTHING THE HOUSE HAS SAID TO THIS GUEST.
+
+   A guest rings and says "you told us we could arrive at ten" and there was no
+   way to check. Everything went out through send_email and vanished unless it
+   FAILED — in which case a copy sat in the outbox, so the only messages the
+   house could still read were the ones the guest never got.
+
+   Read-only on purpose. This is a record of what was sent, not a place to
+   write from: replies happen in Outlook, which is where the house already
+   answers guests. #}
+
+<div class="page-head">
+  <h1>What we've said</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('edit_booking', booking_id=booking['id']) }}" class="btn-ghost">The booking</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ booking['guest_name'] }} · {{ booking['room_name'] }} ·
+  {{ booking['arrival_date'] }} to {{ booking['departure_date'] }} ·
+  {{ booking['reference_code'] }}
+</p>
+
+{% if waiting %}
+{# "We tried and it bounced" and "it is still sitting here" are different
+   answers to give somebody on the telephone, so they are not in one list. #}
+<div class="detail-card">
+  <h2 style="margin-top:0;">Still waiting to go out</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th scope="col">When</th><th scope="col">Subject</th><th scope="col">Why it is waiting</th></tr>
+      </thead>
+      <tbody>
+        {% for row in waiting %}
+        <tr>
+          <th scope="row">{{ row['created_at']|house_day }}</th>
+          <td>{{ row['subject'] }}</td>
+          <td>{{ row['reason'] }}{% if row['last_error'] %} — {{ row['last_error'] }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if messages %}
+{% for message in messages %}
+<div class="detail-card">
+  <div class="expense-head">
+    <strong>{{ message['subject'] or ('Text message' if message['channel'] == 'sms' else 'No subject') }}</strong>
+    <span class="upload-hint">&nbsp;{{ message['created_at']|house_day }} · to {{ message['to_address'] }}</span>
+    {% if message['channel'] == 'sms' %}
+    <span class="mini-status status-upcoming" style="margin-left:6px;">text</span>
+    {% endif %}
+    {% if message['delivered'] %}
+    <span class="mini-status status-onshift" style="margin-left:6px;">sent</span>
+    {% else %}
+    {# The distinction the outbox already makes, kept here: a letter the guest
+       never received is exactly the one somebody needs to know about. #}
+    <span class="mini-status status-declined" style="margin-left:6px;">did not go</span>
+    {% endif %}
+  </div>
+  <p class="manual-body" style="white-space:pre-wrap;">{{ message['body'] }}</p>
+</div>
+{% endfor %}
+{% else %}
+<p class="empty-state">
+  Nothing has been sent to this guest yet — or it was sent before the house
+  started keeping a copy. Anything that goes out from here on will appear here.
+</p>
+{% endif %}
+
+<p class="upload-hint">
+  Kept for {{ keep_months }} months after the stay, then deleted. Password
+  resets and anything else whose text is itself a key are never kept.
+</p>
+
+{% endblock %}

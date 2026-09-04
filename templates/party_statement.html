@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ party.party['name'] }}{% endblock %}
+{% block content %}
+
+{# ONE BILL FOR A PARTY. Three rooms tied together have been written to once
+   rather than once each since parties existed; the money stayed per booking,
+   so the family treated as one for letters got three of everything for money
+   and somebody added them up by hand.
+
+   Every figure here is summed from each stay's own bill. booking_bill is the
+   one definition of what a stay costs and this is not a second one. #}
+
+<div class="page-head">
+  <h1>{{ party.party['name'] }}</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('admin_bookings') }}" class="btn-ghost">All bookings</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ party.rooms }} room{{ '' if party.rooms == 1 else 's' }}
+  {%- if party.arrival %} · {{ party.arrival }}{% if party.departure %} to {{ party.departure }}{% endif %}{% endif %}
+  {%- if party.party['note'] %} · {{ party.party['note'] }}{% endif %}
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">The whole party</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(party.total) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Received</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(party.paid) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Still owed</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(party.owed) }}</span>
+  </div>
+</div>
+
+{# The lines, not just the number. A total somebody has to trust is a total
+   somebody re-adds by hand, which is what this page is replacing. #}
+{% for entry in bills %}
+{% set stay = entry.stay %}
+{% set bill = entry.bill %}
+<div class="detail-card">
+  <div class="expense-head">
+    <strong>{{ stay['room_name'] }}</strong>
+    <span class="upload-hint">&nbsp;{{ stay['guest_name'] }} · {{ stay['reference_code'] }}</span>
+    {%- if stay['booked_by_name'] %}
+    <span class="mini-status status-pending" style="margin-left:6px;"
+          title="The bill goes to them; the arrival details go to the guest">booked by {{ stay['booked_by_name'] }}</span>
+    {%- endif %}
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th scope="col">What</th><th scope="col">Amount</th></tr>
+      </thead>
+      <tbody>
+        {% for line in bill.lines %}
+        <tr>
+          <th scope="row">{{ line.label }}</th>
+          <td>&euro;{{ '%.2f'|format(line.amount) }}</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <th scope="row">This room</th>
+          <td><strong>&euro;{{ '%.2f'|format(bill.total) }}</strong></td>
+        </tr>
+        {% if bill.paid %}
+        <tr><th scope="row">Received</th><td>&euro;{{ '%.2f'|format(bill.paid) }}</td></tr>
+        {% endif %}
+        {% if bill.owed %}
+        <tr><th scope="row">Still owed</th><td>&euro;{{ '%.2f'|format(bill.owed) }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:8px;">
+    <a class="small-link" href="{{ url_for('admin_bookings') }}?q={{ stay['reference_code'] }}">This booking</a>
+  </p>
+</div>
+{% endfor %}
+
+{% if not bills %}
+<p class="empty-state">
+  Every stay in this party has been cancelled or declined, so there is nothing
+  to bill. The party itself is still here &mdash; disband it from the bookings
+  list if it is finished with.
+</p>
+{% endif %}
+
+{% endblock %}

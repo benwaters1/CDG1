@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Split the bill — {{ booking['reference_code'] }}{% endblock %}
+{% block content %}
+
+{# SPLITTING A BILL BETWEEN THE PEOPLE TRAVELLING.
+
+   Four friends take a room and one of them is left carrying it, chasing three
+   bank transfers and reconciling them by hand. The house could send one bill
+   and take one payment, so the splitting happened somewhere the château could
+   not see, and it heard about it only when the money was late.
+
+   THE HOUSE NAMES THE AMOUNTS. A share is a fixed sum for a named person,
+   payable once. There is no amount field at the other end — that is the whole
+   difference between this and letting a guest type a figure at the card page,
+   which is off on purpose (room_part_payment_allowed). #}
+
+<div class="page-head">
+  <h1>Split the bill</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('edit_booking', booking_id=booking['id']) }}" class="btn-ghost">The booking</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ booking['guest_name'] }} · {{ booking['room_name'] }} ·
+  {{ booking['arrival_date'] }} to {{ booking['departure_date'] }} ·
+  {{ booking['reference_code'] }}
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">The stay</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.bill.total) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Received</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.bill.paid) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Still owed</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.bill.owed) }}</span>
+  </div>
+  {# The figure this page exists for: what is owed and not yet anybody's.
+     Nought means every euro has a name against it. #}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Nobody's yet</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(state.unassigned) }}</span>
+  </div>
+</div>
+
+{% if state.bill.owed <= 0.005 %}
+<p class="empty-state">
+  This stay is paid in full, so there is nothing left to divide. Any share
+  still open was taken back when the last payment landed &mdash; four people
+  holding links for a bill somebody has already settled is four refunds.
+</p>
+{% endif %}
+
+{% if state.shares %}
+<h2>The shares</h2>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Whose</th>
+        <th scope="col">Amount</th>
+        <th scope="col">Where it stands</th>
+        <th scope="col">Their link</th>
+        <th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for share in state.shares %}
+      <tr>
+        <th scope="row">
+          {{ share['name'] or '—' }}
+          {% if share['email'] %}<br><span class="upload-hint">{{ share['email'] }}</span>{% endif %}
+          {% if share['note'] %}<br><span class="upload-hint">{{ share['note'] }}</span>{% endif %}
+        </th>
+        <td>&euro;{{ '%.2f'|format(share['amount']) }}</td>
+        <td>
+          {% if share['status'] == 'paid' %}
+          <span class="mini-status status-onshift">paid {{ share['paid_at']|house_day }}</span>
+          {% elif share['status'] == 'cancelled' %}
+          {# Cancelled, not deleted: somebody was asked for this and may still
+             put it in the bank, and a row that vanished cannot be reconciled
+             against. The reason is kept for the same reason. #}
+          <span class="mini-status status-declined">{{ share['closed_reason'] or 'cancelled' }}</span>
+          {% elif share['sent_at'] %}
+          <span class="mini-status status-pending">asked {{ share['sent_at']|house_day }}</span>
+          {% else %}
+          <span class="mini-status status-upcoming">not sent yet</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if share['status'] == 'open' %}
+          <span class="upload-hint" style="word-break:break-all;">{{ links[share['id']] }}</span>
+          {% else %}
+          <span class="upload-hint">the link no longer works</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if share['status'] == 'open' %}
+          <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+            {% if share['email'] %}
+            <form method="post" action="{{ url_for('send_bill_share', share_id=share['id']) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini">{{ 'Ask again' if share['sent_at'] else 'Ask them' }}</button>
+            </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('cancel_bill_share', share_id=share['id']) }}"
+                  onsubmit="return confirm('Take this share back? Their link stops working.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn-mini btn-danger">Take it back</button>
+            </form>
+          </div>
+          {% endif %}
+        </td>
+      </tr>
+      {% if share['status'] == 'open' %}
+      <tr>
+        <td colspan="5">
+          {# A name and an address, put on afterwards. Splitting evenly makes
+             the shares before anybody knows who they belong to, which is the
+             order it actually happens in at the desk. #}
+          <form method="post" action="{{ url_for('edit_bill_share', share_id=share['id']) }}"
+                style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="name" value="{{ share['name'] }}" placeholder="Whose share" style="max-width:200px;">
+            <input type="email" name="email" value="{{ share['email'] }}" placeholder="Their email" style="max-width:240px;">
+            <input type="text" name="note" value="{{ share['note'] or '' }}" placeholder="A line for them (optional)" style="max-width:260px;">
+            <button type="submit" class="btn-mini">Save</button>
+          </form>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if state.bill.owed > 0.005 %}
+<div class="detail-card">
+  <h2 style="margin-top:0;">Add a share</h2>
+  <p class="upload-hint">
+    &euro;{{ '%.2f'|format(state.unassigned) }} of this bill is still nobody's.
+    A share is refused if it would take the total over what is owed &mdash; a
+    split that does not add up is worse than no split.
+  </p>
+  <form method="post" action="{{ url_for('add_bill_share', booking_id=booking['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <label>Whose share
+        <input type="text" name="name" placeholder="Their name">
+      </label>
+      <label>Their email
+        <input type="email" name="email" placeholder="So they can be sent the link">
+      </label>
+      <label>Amount (&euro;)
+        <input type="text" name="amount" inputmode="decimal" required
+               placeholder="{{ '%.2f'|format(state.unassigned) }}">
+      </label>
+      <label>A line for them
+        <input type="text" name="note" placeholder="Optional — appears in the email">
+      </label>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+      <button type="submit" class="btn-primary">Add it</button>
+      <button type="submit" name="send" value="1" class="btn-ghost">Add it and ask them now</button>
+    </div>
+  </form>
+</div>
+
+{% if not state.shares %}
+<div class="detail-card">
+  <h2 style="margin-top:0;">Or split it evenly</h2>
+  <p class="upload-hint">
+    The whole outstanding balance, divided in one go. The odd cents go on the
+    first share &mdash; &euro;1000 three ways is 333.34 and two of 333.33, not
+    three of 333.33, which leaves a stay a cent short of paid for ever.
+  </p>
+  <form method="post" action="{{ url_for('split_bill_evenly', booking_id=booking['id']) }}"
+        style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0;">How many ways
+      <input type="number" name="ways" min="2" max="20" value="{{ booking['party_size'] if booking['party_size'] and booking['party_size'] > 1 else 2 }}" style="max-width:100px;">
+    </label>
+    <button type="submit" class="btn-ghost">Split it</button>
+  </form>
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

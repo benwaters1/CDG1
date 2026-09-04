@@ -1046,6 +1046,11 @@ def close_open_connections(exc):
             conn.close()
         except Exception:
             pass
+    # AFTER the closes, deliberately. Letters the house sent during this
+    # request are filed now that nothing it opened is still holding the write
+    # lock; doing it inline would make every guest email wait on the caller's
+    # own transaction.
+    write_guest_messages(g.pop("_guest_messages", None) or [])
 
 
 # The tables a form can hand us an id for. A tuple rather than an f-string
@@ -1525,6 +1530,36 @@ def init_db():
         -- retries webhooks and guests reload the success page, and crediting
         -- the same payment twice would send somebody home believing they had
         -- paid when they had not.
+        -- One person's named part of one stay's bill.
+        --
+        -- Four friends take a room together and one of them is left carrying
+        -- it, chasing three bank transfers and reconciling them by hand. The
+        -- house could only ever send ONE bill and take ONE payment, so the
+        -- splitting happened in a WhatsApp group and the chateau heard about
+        -- it only when the money was late.
+        --
+        -- The AMOUNT IS NAMED BY THE HOUSE, not chosen by whoever pays. That
+        -- is the whole difference between this and letting a guest type a
+        -- figure at the card page, which is off on purpose (see
+        -- room_part_payment_allowed): a share is a fixed sum for a named
+        -- person that can be paid once. Nobody decides what to send, so the
+        -- balance can never quietly drift.
+        CREATE TABLE IF NOT EXISTS booking_shares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+            name TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            amount REAL NOT NULL,
+            token TEXT UNIQUE,
+            status TEXT NOT NULL DEFAULT 'open',
+            note TEXT,
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            paid_at TEXT,
+            closed_reason TEXT,
+            stripe_session_id TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS booking_payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
@@ -2925,6 +2960,29 @@ def init_db():
         );
         INSERT OR IGNORE INTO booking_write_lock (id, held_at) VALUES (1, NULL);
 
+        -- What the house has actually said to a guest.
+        --
+        -- A guest rings and says "you told us we could arrive at ten" and
+        -- there was no way to check. Everything went out through send_email
+        -- and vanished unless it FAILED, in which case a copy sat in the
+        -- outbox -- so the only messages the house could still read were the
+        -- ones the guest never got.
+        --
+        -- Only what keep=True already covers. That flag exists to mark a body
+        -- that is itself a credential -- a password reset, a staff invitation
+        -- -- and those are never stored here for the same reason they are
+        -- never queued: a working key in a table somebody can read.
+        CREATE TABLE IF NOT EXISTS guest_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER REFERENCES bookings(id) ON DELETE CASCADE,
+            channel TEXT NOT NULL DEFAULT 'email',
+            to_address TEXT NOT NULL,
+            subject TEXT,
+            body TEXT NOT NULL,
+            delivered INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS email_outbox (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             to_address TEXT NOT NULL,
@@ -4157,6 +4215,12 @@ def init_db():
         ("bookings_no_show_at", "ALTER TABLE bookings ADD COLUMN no_show_at TEXT"),
         # An offer with a deadline on it. 'contacted' already existed as a
         # state; what was missing was WHEN, and therefore when it runs out.
+        # Somebody who is not staying. An agent, a company, or a son booking
+        # for his parents: the payer and the guest were the same record, so the
+        # arrival details went to whoever was paying and the bill went to
+        # whoever was sleeping here.
+        ("bookings_booked_by_name", "ALTER TABLE bookings ADD COLUMN booked_by_name TEXT"),
+        ("bookings_booked_by_email", "ALTER TABLE bookings ADD COLUMN booked_by_email TEXT"),
         ("waitlist_offered_at", "ALTER TABLE waitlist_entries ADD COLUMN offered_at TEXT"),
         ("waitlist_offer_expires_at",
          "ALTER TABLE waitlist_entries ADD COLUMN offer_expires_at TEXT"),
@@ -5247,6 +5311,8 @@ def login_required(view):
 NAV_AREAS = {
     "guests": [
         "mark_booking_no_show", "undo_booking_no_show", "rebook_guest",
+        "party_statement",
+        "booking_correspondence",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
@@ -5430,6 +5496,10 @@ NAV_AREAS = {
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
         "record_manual_booking_payment",
+        # Splitting a bill is moving money about, so it sits with the rest of
+        # the money rather than with the guest record.
+        "split_bill", "add_bill_share", "split_bill_evenly", "edit_bill_share",
+        "send_bill_share", "cancel_bill_share",
         "bulk_approve_queue", "decide_expense", "delete_expense",
         "delete_recurring_cost", "edit_recurring_cost", "expenses",
         "export_expenses_csv", "export_financials_csv", "export_recurring_costs_csv",
@@ -12595,6 +12665,158 @@ def booking_bill(conn, booking_id):
     }
 
 
+SHARE_OPEN, SHARE_PAID, SHARE_CANCELLED = "open", "paid", "cancelled"
+
+
+def booking_shares_for(conn, booking_id):
+    """Every share on a stay, oldest first, cancelled ones last."""
+    return conn.execute(
+        """SELECT * FROM booking_shares WHERE booking_id = ?
+            ORDER BY (status = 'cancelled') ASC, id""", (booking_id,)).fetchall()
+
+
+def split_state(conn, booking_id):
+    """How a stay's bill is divided, and how much of it nobody holds yet.
+
+    The invariant this exists to keep: OPEN SHARES CAN NEVER EXCEED WHAT IS
+    STILL OWED. A paid share is already inside bill['paid'] -- it went through
+    record_booking_payment like every other euro -- so it is deliberately not
+    counted again here. Anything else and the same money appears twice.
+    """
+    bill = booking_bill(conn, booking_id)
+    if not bill:
+        return None
+    shares = booking_shares_for(conn, booking_id)
+    held = round(sum(s["amount"] for s in shares if s["status"] == SHARE_OPEN), 2)
+    return {
+        "bill": bill,
+        "shares": shares,
+        "open": [s for s in shares if s["status"] == SHARE_OPEN],
+        "held": held,
+        # What is owed and not yet somebody's. Never below zero: a share
+        # cancelled after the stay was paid must not read as a credit.
+        "unassigned": round(max(bill["owed"] - held, 0.0), 2),
+    }
+
+
+def create_booking_share(conn, booking_id, name, email, amount, note=None):
+    """Give one named person one named part of the bill. (share, error).
+
+    Refused rather than clamped when it is over what is left. Clamping is right
+    at the card page -- a guest typing 500 against a 480 balance means all of it
+    -- but here somebody is dividing a known total between known people, and
+    silently shrinking their third to fit is how a split stops adding up.
+    """
+    bill = booking_bill(conn, booking_id)
+    if not bill:
+        return None, "That booking no longer exists."
+    if bill["booking"]["status"] in ("cancelled", "declined"):
+        return None, "That stay is cancelled, so there is nothing to divide."
+    try:
+        amount = round(float(str(amount).replace(",", ".").strip()), 2)
+    except (TypeError, ValueError):
+        return None, "That is not an amount."
+    if amount <= 0:
+        return None, "A share has to be more than nothing."
+    state = split_state(conn, booking_id)
+    if amount > state["unassigned"] + 0.005:
+        return None, ("Only EUR %.2f of this bill is unclaimed, so a share of "
+                      "EUR %.2f would take the total over what is owed."
+                      % (state["unassigned"], amount))
+    name = (name or "").strip()[:120]
+    email = (email or "").strip()[:200]
+    if not name and not email:
+        return None, "Say whose share it is."
+    token = secrets.token_urlsafe(24)
+    conn.execute(
+        """INSERT INTO booking_shares (booking_id, name, email, amount, token,
+           status, note, created_at) VALUES (?, ?, ?, ?, ?, 'open', ?, ?)""",
+        (booking_id, name, email, amount, token, (note or "").strip()[:200] or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return conn.execute("SELECT * FROM booking_shares WHERE token = ?",
+                        (token,)).fetchone(), None
+
+
+def even_split(amount, ways):
+    """Divide a bill n ways so the parts add up to the whole, exactly.
+
+    1000 euros three ways is 333.34, 333.33, 333.33 -- not three lots of
+    333.33, which is 999.99 and leaves a stay a cent short of paid for ever.
+    The odd cents go on the FIRST share, which is the lead guest: whoever is
+    organising it is the right person to carry the rounding, and they are the
+    one who can be told.
+    """
+    try:
+        ways = int(ways)
+    except (TypeError, ValueError):
+        return []
+    cents = int(round(float(amount) * 100))
+    if ways < 1 or cents < ways:
+        return []
+    base, extra = divmod(cents, ways)
+    return [round((base + (1 if i < extra else 0)) / 100.0, 2)
+            for i in range(ways)]
+
+
+def share_payment_link(share):
+    """Where the person holding a share goes to pay it."""
+    return url_for("pay_share", token=share["token"], _external=True)
+
+
+def send_share_request(conn, share, booking):
+    """Ask one person for their part, with a link that pays exactly that.
+
+    No amount field at the other end. They are not being asked how much they
+    would like to contribute -- that question is what turns an arrival into a
+    conversation about what is left -- they are being asked for a named sum
+    somebody has already agreed.
+    """
+    if not (share["email"] or "").strip():
+        return False, "There is no email address for that share."
+    ok = send_email(
+        share["email"],
+        f"Your share of the stay at Chateau de Gudanes",
+        f"Hi {share['name'] or 'there'},\n\n"
+        f"Your part of the booking at Chateau de Gudanes "
+        f"({booking['reference_code']}, {booking['arrival_date']} to "
+        f"{booking['departure_date']}) comes to EUR {share['amount']:.2f}.\n\n"
+        f"You can pay it here:\n{share_payment_link(share)}\n\n"
+        + ((share["note"] + "\n\n") if share["note"] else "")
+        + "The link pays that amount and nothing else, and stops working once "
+          "it is paid or once the stay is settled another way.\n\n"
+          "-- Chateau de Gudanes")
+    if not ok:
+        return False, "That message could not be sent."
+    conn.execute("UPDATE booking_shares SET sent_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), share["id"]))
+    conn.commit()
+    return True, None
+
+
+def close_open_shares(conn, booking_id, reason):
+    """Take back every share nobody has paid, and say why.
+
+    THE ONE THAT WOULD COST REAL MONEY. Four friends each hold a link for 250
+    euros; one of them settles the whole thousand by card at the desk instead.
+    Without this the other three links still work, the house takes 1750 euros
+    and owes three refunds -- and refunds here are a manual call, so that is
+    three conversations and three transfers to undo one helpful guest.
+
+    Called from record_booking_payment, which is the single place money is
+    added to a stay, so there is no route to a paid-up booking that misses it.
+    """
+    open_rows = conn.execute(
+        "SELECT * FROM booking_shares WHERE booking_id = ? AND status = 'open'",
+        (booking_id,)).fetchall()
+    if not open_rows:
+        return 0
+    conn.execute(
+        """UPDATE booking_shares SET status = 'cancelled', closed_reason = ?
+            WHERE booking_id = ? AND status = 'open'""", (reason, booking_id))
+    return len(open_rows)
+
+
 def record_booking_payment(conn, booking_id, amount, reference=None):
     """Add to what has been received on a stay.
 
@@ -12608,6 +12830,10 @@ def record_booking_payment(conn, booking_id, amount, reference=None):
     bill = booking_bill(conn, booking_id)
     if bill and bill["owed"] <= 0.005:
         conn.execute("UPDATE bookings SET payment_status = 'paid' WHERE id = ?", (booking_id,))
+        # A stay with nothing left to pay has no shares left to pay either.
+        # Here rather than at each call site: this is the one place money is
+        # added to a stay, so nothing can settle a bill and miss it.
+        close_open_shares(conn, booking_id, "the stay was paid in full")
     if reference:
         conn.execute(
             "UPDATE bookings SET stripe_payment_intent_id = COALESCE(stripe_payment_intent_id, ?) "
@@ -12717,6 +12943,17 @@ def mark_booking_payment_paid(conn, session):
         # real guarantee; losing the race is the correct outcome, not an error
         # the guest should see as a 500 immediately after paying.
         return
+    # The share is stamped BEFORE the payment is recorded. record_booking_payment
+    # closes every open share the moment a stay reads as paid in full, and a
+    # share still open at that moment would be cancelled by the very payment
+    # that settled it — so the person who paid would be shown a cancelled share
+    # and no receipt of their own.
+    share_id = meta.get("share_id")
+    if share_id:
+        conn.execute(
+            """UPDATE booking_shares SET status = 'paid', paid_at = ?,
+               stripe_session_id = ? WHERE id = ? AND status = 'open'""",
+            (datetime.now(timezone.utc).isoformat(), session_id, int(share_id)))
     record_booking_payment(conn, booking_id, amount, reference=sval(session, "payment_intent"))
     booking = conn.execute(
         """SELECT bookings.*, rooms.name AS room_name FROM bookings
@@ -12736,7 +12973,7 @@ def mark_booking_payment_paid(conn, session):
             account_line = ("\nYour bookings and balances are always here:\n"
                             f"{url_for('guest_portal', token=portal_token, _external=True)}\n")
         send_email(
-            booking["guest_email"],
+            stay_details_go_to(booking),   # the stay side: always whoever is staying
             f"Payment received — {booking['room_name']}",
             f"Hi {booking['guest_name']},\n\n"
             f"We've received €{amount:.2f} for your stay ({booking['reference_code']}).\n"
@@ -18746,6 +18983,126 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
         print(f"[outbox write failed] To: {to_address} | Subject: {subject} | Error: {e}")
 
 
+# How long a message to a guest is kept. Two years past the stay: long enough
+# for a returning guest and for any argument about what was agreed, short
+# enough that the house is not sitting on a decade of other people's letters.
+# Stated in templates/privacy.html, which is a set of testable claims about
+# this code rather than marketing copy -- change one and change the other.
+GUEST_MESSAGE_KEEP_MONTHS = 24
+
+
+def booking_for_contact(conn, address=None, phone=None):
+    """Which stay a message to this person is about. None if it is not a guest.
+
+    The stay they are on now, else the next one they are coming for, else the
+    last one they were here for. A message during a stay is almost always about
+    that stay, and one sent between stays is about the next.
+    """
+    address = (address or "").strip().casefold()
+    phone_digits = "".join(c for c in (phone or "") if c.isdigit())[-9:]
+    if not address and not phone_digits:
+        return None
+    rows = []
+    if address:
+        rows = conn.execute(
+            """SELECT id, arrival_date, departure_date FROM bookings
+                WHERE LOWER(COALESCE(guest_email, '')) = ?
+                   OR LOWER(COALESCE(booked_by_email, '')) = ?""",
+            (address, address)).fetchall()
+        if not rows:
+            # Somebody paying one share of somebody else's booking is writing
+            # about that booking, and is on no booking of their own.
+            rows = conn.execute(
+                """SELECT b.id, b.arrival_date, b.departure_date FROM bookings b
+                     JOIN booking_shares s ON s.booking_id = b.id
+                    WHERE LOWER(COALESCE(s.email, '')) = ?""", (address,)).fetchall()
+    if not rows and phone_digits:
+        rows = conn.execute(
+            """SELECT id, arrival_date, departure_date FROM bookings
+                WHERE REPLACE(REPLACE(REPLACE(COALESCE(guest_phone, ''), ' ', ''),
+                      '-', ''), '.', '') LIKE ?""", ("%" + phone_digits,)).fetchall()
+    if not rows:
+        return None
+    today = house_today_iso()
+    here_now = [r for r in rows
+                if (r["arrival_date"] or "") <= today < (r["departure_date"] or "")]
+    if here_now:
+        return here_now[0]["id"]
+    upcoming = sorted((r for r in rows if (r["arrival_date"] or "") > today),
+                      key=lambda r: r["arrival_date"] or "")
+    if upcoming:
+        return upcoming[0]["id"]
+    # Genuinely past, not just "latest". Unfiltered this returned a stay
+    # still to come whenever they had one, which the branch above has already
+    # dealt with -- so it never did the wrong thing, and it read as though it
+    # might.
+    past = sorted((r for r in rows if (r["departure_date"] or "") <= today),
+                  key=lambda r: r["departure_date"] or "", reverse=True)
+    if past:
+        return past[0]["id"]
+    return sorted(rows, key=lambda r: r["arrival_date"] or "")[0]["id"]
+
+
+def write_guest_messages(rows):
+    """File a batch of sent messages against the stays they belong to.
+
+    Its own connection, and everything swallowed. This is bookkeeping about a
+    side effect: losing the record of a letter must never lose the letter, and
+    must never take down the request that sent it.
+    """
+    if not rows:
+        return 0
+    written = 0
+    try:
+        conn = get_db()
+        try:
+            for to_address, subject, body, channel, delivered in rows:
+                booking_id = booking_for_contact(
+                    conn, address=to_address if channel == "email" else None,
+                    phone=to_address if channel == "sms" else None)
+                if not booking_id:
+                    # Staff mail, a supplier, the accountant. Not correspondence
+                    # with a guest, and not kept here.
+                    continue
+                conn.execute(
+                    """INSERT INTO guest_messages (booking_id, channel, to_address,
+                       subject, body, delivered, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (booking_id, channel, to_address, subject, body,
+                     1 if delivered else 0, datetime.now(timezone.utc).isoformat()))
+                written += 1
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:                     # pragma: no cover - last resort
+        print(f"[correspondence not filed] {e}")
+    return written
+
+
+def keep_guest_message(to_address, subject, body, channel="email", delivered=False):
+    """Hold one message until it is safe to write it down.
+
+    NOT written here. Inside a request this waits in g and is flushed after
+    every connection that request opened has been closed -- because a second
+    connection asking for the write lock while the first still holds it waits
+    the full busy_timeout, and doing that on every letter the house sends
+    would turn a rare stall into a routine one.
+
+    Outside a request there is no such transaction to collide with (the
+    automation thread closes its own connections), so it goes straight down.
+    """
+    if not to_address:
+        return
+    row = (to_address, subject, body, channel, delivered)
+    if has_request_context():
+        pending = g.get("_guest_messages")
+        if pending is None:
+            pending = g._guest_messages = []
+        pending.append(row)
+        return
+    write_guest_messages([row])
+
+
 def send_email(to_address, subject, body, ics_content=None, ics_filename=None, keep=True):
     """Send one message, and if it cannot go out, keep it.
 
@@ -18755,18 +19112,25 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None, k
     """
     if not to_address:
         return False
+    # Filed whether it goes or not, and marked with which. "We wrote to them
+    # and it bounced" is a different fact from "we never wrote", and the whole
+    # point of keeping this is being able to tell somebody which happened.
     if resend_enabled():
         if send_email_via_resend(to_address, subject, body, ics_content, ics_filename):
+            if keep:
+                keep_guest_message(to_address, subject, body, delivered=True)
             return True
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                               "provider rejected it", "Resend API call failed")
+            keep_guest_message(to_address, subject, body)
         return False
     if not email_enabled():
         print(f"[email held — no email provider configured] To: {to_address} | Subject: {subject}")
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                               "no email provider configured")
+            keep_guest_message(to_address, subject, body)
         return False
     try:
         # Assigning headers can itself raise (e.g. a crafted guest_email
@@ -18791,12 +19155,15 @@ def send_email(to_address, subject, body, ics_content=None, ics_filename=None, k
             server.starttls(context=context)
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
+        if keep:
+            keep_guest_message(to_address, subject, body, delivered=True)
         return True
     except Exception as e:
         print(f"[email failed] To: {to_address} | Subject: {subject} | Error: {e}")
         if keep:
             queue_undelivered(to_address, subject, body, ics_content, ics_filename,
                               "send failed", str(e))
+            keep_guest_message(to_address, subject, body)
         return False
 
 
@@ -29277,7 +29644,10 @@ def email_booking_statement(manage_token):
     if not booking:
         conn.close()
         abort(404)
-    address = (booking["guest_email"] or "").strip()
+    # THE MONEY SIDE goes to whoever booked it, when that is somebody else.
+    # An agent's client should not be sent an invoice, and a father paying for
+    # his daughter's stay should not have to ask her to forward it.
+    address = bill_goes_to(booking)
     if not address:
         conn.close()
         flash("There is no email address on this booking.", "error")
@@ -31820,6 +32190,114 @@ def booking_pay(manage_token):
 # paid and got an error page, and nothing on this path recorded the money.
 #
 # The URL is only ever produced by url_for, so renaming it is invisible.
+@app.route("/book/pay-share/<token>", methods=["GET", "POST"])
+@csrf.exempt
+def pay_share(token):
+    """One person's part of somebody else's booking.
+
+    They are not the guest and have no manage token: this link is all they
+    have, so it shows the stay, the sum they were asked for, and a card button
+    — and nothing else. No dates to change, no bill for the whole party, and no
+    field to type an amount into. It pays what it says or it does nothing.
+
+    CSRF-exempt for the same reason the statement and unsubscribe routes are:
+    whoever opens it has no session. A forged POST sends somebody to a card
+    page for a share that already exists, which charges nobody anything.
+    """
+    conn = get_db()
+    share = conn.execute("SELECT * FROM booking_shares WHERE token = ?",
+                         (token,)).fetchone()
+    if not share:
+        conn.close()
+        abort(404)
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (share["booking_id"],)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    bill = booking_bill(conn, share["booking_id"])
+    # A share is only payable while it is open AND the stay still owes at
+    # least that much. Both, because the two can come apart: the stay can be
+    # settled by somebody else between this page loading and the button being
+    # pressed.
+    payable = (share["status"] == SHARE_OPEN
+               and booking["status"] not in ("cancelled", "declined")
+               and bill and bill["owed"] + 0.005 >= share["amount"])
+    if request.method == "POST" and payable:
+        checkout_url = start_share_payment(conn, share, booking)
+        conn.close()
+        if checkout_url:
+            return redirect(checkout_url, code=303)
+        flash("Card payment is not available at the moment — please contact "
+              "the chateau.", "error")
+        return redirect(url_for("pay_share", token=token))
+    conn.close()
+    return render_template("pay_share.html", share=share, booking=booking,
+                           bill=bill, payable=payable)
+
+
+def start_share_payment(conn, share, booking):
+    """A checkout for exactly one share, and no other figure.
+
+    Goes through the same metadata as any other room payment, so the webhook,
+    the success redirect, the receipt and the once-only session check are the
+    ones already in use. share_id rides along so the share can be stamped paid
+    when the money lands — nothing else about the path changes.
+    """
+    if not stripe_enabled():
+        return None
+    charge = round(float(share["amount"] or 0), 2)
+    if charge < 0.5:
+        return None
+    try:
+        checkout_session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": (
+                        f"{booking['room_name']} ({booking['reference_code']})"
+                        f" — {share['name'] or 'a'}'s share")},
+                    "unit_amount": int(round(charge * 100)),
+                },
+                "quantity": 1,
+            }],
+            customer_email=(share["email"] or "") or None,
+            success_url=url_for("share_payment_success", token=share["token"],
+                                _external=True) + "&session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=url_for("pay_share", token=share["token"], _external=True),
+            metadata={"booking_id": str(share["booking_id"]),
+                      "kind": "room_balance", "share_id": str(share["id"])},
+        )
+    except Exception:
+        return None
+    return checkout_session.url
+
+
+@app.route("/book/share-paid")
+def share_payment_success():
+    """Where somebody who has just paid their share lands."""
+    token = request.args.get("token", "")
+    session_id = request.args.get("session_id", "").strip()
+    if not stripe_enabled() or not session_id or not token:
+        abort(404)
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+    except Exception:
+        abort(404)
+    if sval(session, "payment_status") == "paid":
+        conn = get_db()
+        mark_booking_payment_paid(conn, session)
+        conn.close()
+        flash("Thank you — your share is paid.", "success")
+    else:
+        flash("That payment wasn't completed.", "error")
+    return redirect(url_for("pay_share", token=token))
+
+
 @app.route("/book/payment-success")
 def booking_stripe_success():
     manage_token = request.args.get("manage_token", "")
@@ -34489,6 +34967,27 @@ def record_sms_consent(conn, raw_number, source=None):
     return number
 
 
+def file_guest_text(conn, number, body, *, delivered):
+    """Keep a copy of a text to a guest, against their stay.
+
+    On the caller's connection, unlike the mail side. send_sms already joins
+    the caller's transaction on purpose, so the record of the text lands with
+    the text rather than waiting for the request to finish.
+
+    A HELD text is filed too, marked as not gone. The house needs to be able to
+    say "we wrote, it did not reach you" as readily as "we never wrote".
+    """
+    booking_id = booking_for_contact(conn, phone=number)
+    if not booking_id:
+        return
+    conn.execute(
+        """INSERT INTO guest_messages (booking_id, channel, to_address,
+           subject, body, delivered, created_at)
+           VALUES (?, 'sms', ?, NULL, ?, ?, ?)""",
+        (booking_id, number, body, 1 if delivered else 0,
+         datetime.now(timezone.utc).isoformat()))
+
+
 def send_sms(conn, raw_number, body, purpose="transactional", hold=True):
     """Send a text, or keep it until there is a way to.
 
@@ -34521,6 +35020,7 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True):
             """INSERT INTO sms_outbox (phone, body, purpose, reason, created_at)
                VALUES (?, ?, ?, 'no provider configured', ?)""",
             (number, body, purpose, datetime.now(timezone.utc).isoformat()))
+        file_guest_text(conn, number, body, delivered=False)
         return False, None          # held, not refused
     ok, result = sms_provider_send(number, body)
     conn.execute(
@@ -34531,6 +35031,7 @@ def send_sms(conn, raw_number, body, purpose="transactional", hold=True):
          datetime.now(timezone.utc).isoformat(),
          datetime.now(timezone.utc).isoformat() if ok else None,
          result if ok else None, None if ok else str(result)[:400]))
+    file_guest_text(conn, number, body, delivered=ok)
     return bool(ok), None
 
 
@@ -39063,6 +39564,263 @@ def new_booking_party():
     return redirect(url_for("admin_bookings"))
 
 
+@app.route("/admin/bookings/<int:booking_id>/correspondence")
+@owner_required
+def booking_correspondence(booking_id):
+    """Everything the house has said to this guest, in order.
+
+    A guest rings and says "you told us we could arrive at ten" and there was
+    no way to check. Everything went out through send_email and vanished unless
+    it FAILED -- in which case a copy sat in the outbox, so the only messages
+    the house could still read were the ones the guest never got.
+
+    Read-only. This is a record of what was sent, not a place to write from:
+    replies happen in Outlook, which is where the house already answers guests.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE bookings.id = ?""",
+        (booking_id,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    messages = conn.execute(
+        """SELECT * FROM guest_messages WHERE booking_id = ?
+            ORDER BY created_at DESC, id DESC""", (booking_id,)).fetchall()
+    # Anything still sitting in the outbox for this guest, which has not gone
+    # out at all. Shown separately because "we tried" and "it is still waiting"
+    # are different answers to give somebody on the telephone.
+    waiting = conn.execute(
+        """SELECT * FROM email_outbox
+            WHERE sent_at IS NULL AND LOWER(to_address) = ?
+            ORDER BY created_at DESC""",
+        ((booking["guest_email"] or "").strip().casefold(),)).fetchall()
+    conn.close()
+    return render_template("booking_correspondence.html", booking=booking,
+                           messages=messages, waiting=waiting,
+                           keep_months=GUEST_MESSAGE_KEEP_MONTHS)
+
+
+@app.route("/admin/bookings/<int:booking_id>/split")
+@owner_required
+def split_bill(booking_id):
+    """Divide one stay's bill between the people travelling.
+
+    Four friends take a room and one of them is left carrying it, chasing three
+    bank transfers and reconciling them by hand. The house could send one bill
+    and take one payment, so the splitting happened somewhere the chateau could
+    not see and it heard about it only when the money was late.
+
+    The house names the amounts. A share is a fixed sum for a named person,
+    payable once -- not an invitation to send what they feel like, which is a
+    different thing and deliberately off (see room_part_payment_allowed).
+    """
+    conn = get_db()
+    state = split_state(conn, booking_id)
+    if not state:
+        conn.close()
+        abort(404)
+    # Read before the close, like everything else: a query on a shut handle is
+    # a 500, and the error page renders perfectly while it happens.
+    booking = state["bill"]["booking"]
+    links = {s["id"]: share_payment_link(s) for s in state["shares"]}
+    conn.close()
+    return render_template("split_bill.html", booking=booking, state=state,
+                           links=links)
+
+
+@app.route("/admin/bookings/<int:booking_id>/split/add", methods=["POST"])
+@owner_required
+def add_bill_share(booking_id):
+    conn = get_db()
+    share, error = create_booking_share(
+        conn, booking_id, request.form.get("name", ""),
+        request.form.get("email", ""), request.form.get("amount", ""),
+        request.form.get("note", ""))
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("split_bill", booking_id=booking_id))
+    # Offered to send straight away, because a share nobody is told about is
+    # a note to self, not a request for money.
+    if request.form.get("send") and (share["email"] or "").strip():
+        booking = conn.execute("SELECT * FROM bookings WHERE id = ?",
+                               (booking_id,)).fetchone()
+        sent, problem = send_share_request(conn, share, booking)
+        flash(f"{share['name'] or share['email']} has been asked for EUR "
+              f"{share['amount']:.2f}." if sent
+              else f"The share is saved, but {problem[0].lower()}{problem[1:]}",
+              "success" if sent else "error")
+    else:
+        flash(f"EUR {share['amount']:.2f} is now "
+              f"{share['name'] or share['email']}'s share.", "success")
+    conn.close()
+    return redirect(url_for("split_bill", booking_id=booking_id))
+
+
+@app.route("/admin/bookings/<int:booking_id>/split/evenly", methods=["POST"])
+@owner_required
+def split_bill_evenly(booking_id):
+    """The whole outstanding balance, divided n ways, in one go.
+
+    The common case by a distance: four people, one room, split four ways. Done
+    by hand it is four amounts somebody works out on a phone, and the parts do
+    not add up to the whole as often as you would hope.
+    """
+    conn = get_db()
+    state = split_state(conn, booking_id)
+    if not state:
+        conn.close()
+        abort(404)
+    if state["shares"]:
+        conn.close()
+        flash("This bill is already divided. Cancel the shares first if you "
+              "want to start again.", "error")
+        return redirect(url_for("split_bill", booking_id=booking_id))
+    amounts = even_split(state["unassigned"], request.form.get("ways", "0"))
+    if not amounts:
+        conn.close()
+        flash("Say how many ways to split it — at least two, and no more "
+              "people than there are cents.", "error")
+        return redirect(url_for("split_bill", booking_id=booking_id))
+    lead = state["bill"]["booking"]
+    made = 0
+    for i, amount in enumerate(amounts):
+        # The lead guest is named; the rest are numbered until somebody says
+        # who they are. A blank name would be refused, and refusing half a
+        # split leaves the bill in a state nobody asked for.
+        share, error = create_booking_share(
+            conn, booking_id,
+            lead["guest_name"] if i == 0 else f"Guest {i + 1}",
+            lead["guest_email"] if i == 0 else "", amount)
+        if error:
+            flash(error, "error")
+            break
+        made += 1
+    conn.close()
+    if made:
+        flash(f"The balance is split {made} ways. Put a name and an email "
+              "against each one, then send them.", "success")
+    return redirect(url_for("split_bill", booking_id=booking_id))
+
+
+@app.route("/admin/split/<int:share_id>/edit", methods=["POST"])
+@owner_required
+def edit_bill_share(share_id):
+    """Put a name and an address against a share. Not the amount.
+
+    The amount is deliberately not editable: changing it would have to re-check
+    the whole split against the balance, and the honest way to change somebody's
+    part is to cancel it and make the right one.
+    """
+    conn = get_db()
+    share = conn.execute("SELECT * FROM booking_shares WHERE id = ?",
+                         (share_id,)).fetchone()
+    if not share:
+        conn.close()
+        abort(404)
+    if share["status"] != SHARE_OPEN:
+        conn.close()
+        flash("That share is settled or cancelled, so it cannot be changed.",
+              "error")
+        return redirect(url_for("split_bill", booking_id=share["booking_id"]))
+    conn.execute(
+        "UPDATE booking_shares SET name = ?, email = ?, note = ? WHERE id = ?",
+        (request.form.get("name", "").strip()[:120],
+         request.form.get("email", "").strip()[:200],
+         request.form.get("note", "").strip()[:200] or None, share_id))
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("split_bill", booking_id=share["booking_id"]))
+
+
+@app.route("/admin/split/<int:share_id>/send", methods=["POST"])
+@owner_required
+def send_bill_share(share_id):
+    conn = get_db()
+    share = conn.execute("SELECT * FROM booking_shares WHERE id = ?",
+                         (share_id,)).fetchone()
+    if not share:
+        conn.close()
+        abort(404)
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?",
+                           (share["booking_id"],)).fetchone()
+    if share["status"] != SHARE_OPEN:
+        conn.close()
+        flash("That share is settled or cancelled — there is nothing to ask "
+              "for.", "error")
+        return redirect(url_for("split_bill", booking_id=booking["id"]))
+    sent, problem = send_share_request(conn, share, booking)
+    conn.close()
+    flash(f"Asked {share['name'] or share['email']} for EUR "
+          f"{share['amount']:.2f}." if sent else problem,
+          "success" if sent else "error")
+    return redirect(url_for("split_bill", booking_id=booking["id"]))
+
+
+@app.route("/admin/split/<int:share_id>/cancel", methods=["POST"])
+@owner_required
+def cancel_bill_share(share_id):
+    """Take a share back, and put the money back in the unclaimed pot.
+
+    Cancelled rather than deleted: somebody was asked for this and may still
+    pay it into a bank account, and a row that vanished is a row nobody can
+    reconcile against.
+    """
+    conn = get_db()
+    share = conn.execute("SELECT * FROM booking_shares WHERE id = ?",
+                         (share_id,)).fetchone()
+    if not share:
+        conn.close()
+        abort(404)
+    if share["status"] == SHARE_PAID:
+        conn.close()
+        flash("That share has been paid. Cancelling it would not give the "
+              "money back — refund the stay instead.", "error")
+        return redirect(url_for("split_bill", booking_id=share["booking_id"]))
+    conn.execute(
+        """UPDATE booking_shares SET status = 'cancelled',
+           closed_reason = 'cancelled by the house' WHERE id = ?""", (share_id,))
+    conn.commit()
+    conn.close()
+    flash(f"EUR {share['amount']:.2f} is unclaimed again. The link no longer "
+          "works.", "success")
+    return redirect(url_for("split_bill", booking_id=share["booking_id"]))
+
+
+@app.route("/admin/parties/<int:party_id>")
+@owner_required
+def party_statement(party_id):
+    """Everything one party owes, on one page.
+
+    booking_parties has tied a family's three rooms together for a while --
+    they are written to once rather than once each -- and the money stayed
+    resolutely per booking. So the family treated as one for letters got three
+    bills, three statements and three payment links, and somebody had to add
+    them up by hand to answer "what do we owe?".
+
+    Summed from each stay's own bill. booking_bill is the one definition of
+    what a stay costs and this is emphatically not a second one: a party total
+    that could disagree with the bills inside it is worse than no party total.
+    """
+    conn = get_db()
+    party = party_detail(conn, party_id)
+    if not party:
+        conn.close()
+        abort(404)
+    # Each stay's bill in full, so the page can show the lines and not just a
+    # number somebody has to trust.
+    bills = []
+    for stay in party["stays"]:
+        bill = booking_bill(conn, stay["id"])
+        if bill:
+            bills.append({"stay": stay, "bill": bill})
+    conn.close()
+    return render_template("party_statement.html", party=party, bills=bills)
+
+
 @app.route("/admin/parties/<int:party_id>/disband", methods=["POST"])
 @owner_required
 def disband_booking_party(party_id):
@@ -39792,6 +40550,15 @@ def edit_booking(booking_id):
         under_18_raw = request.form.get("guests_under_18", "").strip()
         guest_phone = phone_from_form("guest_phone")
         special_requests = request.form.get("special_requests", "").strip()
+        # Somebody who is not staying. Both empty means the guest is the payer,
+        # which is almost every booking.
+        booked_by_name = request.form.get("booked_by_name", "").strip()[:120]
+        booked_by_email = request.form.get("booked_by_email", "").strip().lower()[:200]
+        # A name with nowhere to send the bill is worse than neither: the
+        # statement would keep going to the guest while the page says somebody
+        # else booked it.
+        if booked_by_name and "@" not in booked_by_email:
+            booked_by_name = booked_by_email = ""
 
         arrival, departure = parse_date(arrival_raw), parse_date(departure_raw)
         party_size = int(party_size_raw) if party_size_raw.isdigit() else None
@@ -39836,9 +40603,10 @@ def edit_booking(booking_id):
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
                special_requests=?, total_price=?, guests_under_18=?, city_tax=?,
-               source=? WHERE id=?""",
+               source=?, booked_by_name=?, booked_by_email=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
              special_requests or None, new_total, under_18, new_city_tax, source,
+             booked_by_name or None, booked_by_email or None,
              booking_id),
         )
         conn.commit()
@@ -50356,6 +51124,39 @@ def party_for_booking(conn, booking_id):
     return party_detail(conn, row["id"])
 
 
+def bill_goes_to(booking):
+    """Where the money side of a stay should be sent.
+
+    The payer, when somebody else booked it. An agent's client should not be
+    sent an invoice, and a father paying for his daughter's stay should not
+    have to ask her to forward it.
+
+    Falls back to the guest, which is almost every booking.
+    """
+    for key in ("booked_by_email", "guest_email"):
+        try:
+            value = (booking[key] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            value = ""
+        if value:
+            return value
+    return ""
+
+
+def stay_details_go_to(booking):
+    """Where the ARRIVAL side should be sent: always whoever is staying.
+
+    Deliberately the other way round from the bill. Directions, the door code
+    and what time to come are no use to the agent who booked it, and the one
+    thing worse than sending them to the wrong person is sending the door code
+    to the wrong person.
+    """
+    try:
+        return (booking["guest_email"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
 def party_detail(conn, party_id):
     """A party, its stays, and what the whole group owes.
 
@@ -53616,6 +54417,25 @@ def purge_spent_access_codes(conn, today=None):
     return {"door codes blanked": cur.rowcount}
 
 
+def purge_guest_messages(conn, *, today=None):
+    """Drop correspondence about stays that ended long enough ago.
+
+    The privacy notice says two years past the stay and this is what makes that
+    true. A booking that was deleted takes its letters with it through the
+    foreign key; this is for the ordinary case of a stay that simply happened a
+    long time ago.
+    """
+    today = today or house_today()
+    cutoff = (today - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))).isoformat()
+    cur = conn.execute(
+        """DELETE FROM guest_messages WHERE booking_id IN (
+               SELECT id FROM bookings
+                WHERE COALESCE(departure_date, arrival_date, '') != ''
+                  AND COALESCE(departure_date, arrival_date) < ?)""", (cutoff,))
+    conn.commit()
+    return {"old guest correspondence": cur.rowcount if cur.rowcount > 0 else 0}
+
+
 def run_health_notes_purge_job(conn):
     """The retention pass, daily. Everything the privacy notice promises to
     delete is deleted here, so the notice can be checked against one function
@@ -53629,6 +54449,7 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_police_register(conn))
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
+    cleared.update(purge_guest_messages(conn))
     # Not a purge, but the same daily pass: an offer that has run out has to be
     # taken back before the next person can be told, and nothing else was going
     # to notice.

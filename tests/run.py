@@ -281,6 +281,9 @@ SUITES = [
     "test_booking_parties",
     "test_guest_record",
     "test_guest_preferences_apply",
+    "test_party_bill",
+    "test_split_bill",
+    "test_correspondence",
     "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
@@ -384,8 +387,15 @@ COVERAGE_KNOWN_GAPS = {
     # workshop_stripe_success retrieves the checkout session before it does
     # anything, unlike its two siblings, which answer from the database first
     # and are covered (tests/test_payment_returns.py).
+    #
+    # share_payment_success is workshop_stripe_success again: it retrieves the
+    # checkout session as its first act, so with Stripe pinned off there is
+    # nothing to answer with. The half that can be tested without a card --
+    # what somebody holding a share sees, and when the button disappears --
+    # is in tests/test_split_bill.py.
     "refund_restaurant_booking_admin",
     "workshop_stripe_success",
+    "share_payment_success",
 
     # And one where the MEASURE is the awkward part rather than the test.
     # api_draft_reply answers 503 {"error": "not configured"} with no model
