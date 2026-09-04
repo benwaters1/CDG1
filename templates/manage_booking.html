@@ -20,6 +20,16 @@
   <p class="g-p">Status: <span class="mini-status status-{{ booking['status'] }}">{{ booking['status'] }}</span>
     {% if booking['payment_status'] != 'unpaid' %}· Payment: <span class="mini-status status-{{ booking['payment_status'] }}">{{ booking['payment_status'] }}</span>{% endif %}
   </p>
+  {#- Their days here, on one page. A guest knew their arrival date and
+      nothing else: whether the restaurant served on the Tuesday, whether
+      there was an atelier on while they were here, what they had already
+      booked themselves. All of it was in the app and none of it was in front
+      of the person it concerned. -#}
+  {% if booking['status'] in ('pending', 'confirmed') %}
+  <p class="g-p">
+    <a class="g-btn" href="{{ url_for('stay_itinerary_page', manage_token=booking['manage_token']) }}">What is on while you are here</a>
+  </p>
+  {% endif %}
   {% if booking['status'] in ('pending', 'confirmed') %}<p class="g-hint">Check in online below — confirm your arrival time, tell us about any requests, and manage your booking.</p>{% endif %}
 
   <div class="g-mb-card">

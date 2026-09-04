@@ -9,6 +9,18 @@
   <h1>Thank you</h1>
 </div>
 <p class="g-p">Your feedback has been sent — we really appreciate it.</p>
+{% if review_url %}
+{# THE BEST MOMENT TO ASK. They have just told us, in private, that it went
+   well; nobody who said otherwise ever sees this, and there is no email
+   involved. Not a demand — a guest who ignores it is never chased. #}
+<p class="g-p">
+  If you have another minute, saying the same thing where other people can
+  read it helps us more than almost anything else.
+</p>
+<p class="g-p">
+  <a class="g-btn" href="{{ review_url }}" target="_blank" rel="noopener noreferrer nofollow">Leave a public review</a>
+</p>
+{% endif %}
 </div></section>
 
 

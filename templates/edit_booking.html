@@ -4,7 +4,13 @@
 
 <div class="narrow-card">
   <h1>Edit Booking — {{ booking['room_name'] }}</h1>
-  <p class="upload-hint">{{ booking['guest_name'] }} · {{ booking['reference_code'] }}</p>
+  <p class="upload-hint">{{ booking['guest_name'] }} · {{ booking['reference_code'] }}
+    {#- The way through to dividing this bill between the people travelling.
+        Here rather than on the list, because it belongs with the rest of what
+        this stay owes and is a thing somebody does once per booking. -#}
+    · <a class="small-link" href="{{ url_for('split_bill', booking_id=booking['id']) }}">Split the bill</a>
+    · <a class="small-link" href="{{ url_for('booking_correspondence', booking_id=booking['id']) }}">What we've said</a>
+  </p>
 
   {% if booking['payment_status'] == 'paid' %}
   <p class="pay-disclaimer">This booking was already paid (€{{ '%.2f'|format(booking['total_price']) if booking['total_price'] else '0.00' }}). Changing dates or party size updates the record and the reference total shown here, but does <strong>not</strong> automatically charge or refund the difference on Stripe — use the Refund button on the bookings list if you need to adjust the payment.</p>
@@ -35,6 +41,25 @@
     </div>
     <p class="upload-hint">Changing either recalculates the taxe de séjour on
     this stay, and with it what the commune is owed for the period.</p>
+
+    {# SOMEBODY WHO IS NOT STAYING. An agent, a company, or a son booking for
+       his parents. Leave both empty and the guest is the payer, which is
+       almost every booking.
+
+       The split matters in one direction: the BILL goes to whoever is named
+       here, and the arrival details — directions, the door code, what time to
+       come — always go to whoever is staying. The one thing worse than
+       sending those to the wrong person is sending the door code to the wrong
+       person. #}
+    <label class="field-label" for="booked_by_name">Booked by somebody else</label>
+    <input type="text" id="booked_by_name" name="booked_by_name" maxlength="120"
+           placeholder="Their name, if the guest is not the one paying"
+           value="{{ booking['booked_by_name'] or '' }}">
+    <input type="email" name="booked_by_email" maxlength="200"
+           placeholder="Where the bill should go"
+           value="{{ booking['booked_by_email'] or '' }}">
+    <p class="field-hint">The statement and anything about money goes to them.
+      Everything about the stay itself still goes to the guest.</p>
 
     {# The app stamps this from the door the booking came through, which it
        always knows. The one thing it cannot know is that a walk-in first saw

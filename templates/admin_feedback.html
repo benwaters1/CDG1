@@ -20,6 +20,29 @@
 </p>
 {% endif %}
 
+{# THE PUBLIC ASK IS GATED ON THE PRIVATE ANSWER. Guests who tell us here
+   that it went well are asked to say so where other people can read it; a
+   guest who said otherwise is never asked, and has already told us why. #}
+<div class="detail-card">
+  <h2 style="margin-top:0;">Asking for a public review</h2>
+  <p class="upload-hint">
+    {% if review_url %}
+      Guests who rate the house 4 or 5 are invited to review it here, two days
+      after they answer. Nobody else is asked.
+    {% else %}
+      Nobody is being asked for a public review, because there is nowhere to
+      send them. Paste your Google or TripAdvisor page below.
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('save_review_link') }}"
+        style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="url" name="review_link_url" value="{{ review_url }}"
+           placeholder="https://g.page/r/..." style="flex:1; min-width:260px;">
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+</div>
+
 {% if avg_rating is not none %}
 <div class="stat-tiles">
   <div class="stat-tile">
@@ -78,6 +101,17 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn-mini">{% if f['featured'] %}Unfeature{% else %}Feature on booking page{% endif %}</button>
       </form>
+      {# Featuring puts their words on our own page. This asks them to put
+         their own words on somebody else's, which is a different favour and
+         only ever asked of a guest who was pleased. #}
+      {% if f['review_invited_at'] %}
+      <span class="mini-status status-onshift">asked for a review {{ f['review_invited_at']|house_day }}</span>
+      {% elif may_ask(f) and review_url %}
+      <form method="post" action="{{ url_for('ask_for_a_review', feedback_id=f['id']) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn-mini btn-ghost">Ask for a public review</button>
+      </form>
+      {% endif %}
     </div>
     {# "Nothing is published without asking you first" is on the form they
        filled in. The public page will not show a review without consent
