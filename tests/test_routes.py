@@ -106,7 +106,12 @@ def run():
         # A data endpoint that requires query parameters answers 400 without
         # them, and that is the correct answer, not a broken page. Everything
         # else must still land in the normal range.
-        allowed = (200, 302, 304, 400, 404) if path.startswith("/api/") else (200, 302, 304, 404)
+        #
+        # 301 included since the old Squarespace addresses were wired up. A
+        # permanent redirect is the most definite answer in the file, and it
+        # was reading here as a page that had broken.
+        allowed = ((200, 301, 302, 304, 400, 404) if path.startswith("/api/")
+                   else (200, 301, 302, 304, 404))
         if code >= 500 or code not in allowed:
             broken.append((path, code))
     s.check(f"all {len(plain)} render", not broken,
@@ -132,7 +137,7 @@ def run():
         except Exception as e:
             broken.append((filled, f"{type(e).__name__}: {e}"))
             continue
-        if code >= 500 or code not in (200, 302, 304, 404):
+        if code >= 500 or code not in (200, 301, 302, 304, 404):
             broken.append((filled, code))
     s.check(f"all {len(resolved)} render", not broken,
             detail="; ".join(f"{p} -> {c}" for p, c in broken[:6]))

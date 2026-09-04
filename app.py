@@ -62454,6 +62454,78 @@ def preview_home():
     return render_template('home.html')
 
 
+# The addresses this site had on Squarespace, and where each one goes now.
+#
+# PERMANENT, mostly. A 301 is what hands the old page's search ranking to the
+# new one, which is the only reason to do this rather than let them 404. The
+# cost is that browsers cache a 301 more or less forever: a path sent
+# permanently somewhere is hard to take back, so anything the house might
+# plausibly want as a page of its own later is marked False and goes out as a
+# temporary redirect instead. /journal above all, on a house that has kept a
+# Captain's Log for a decade.
+#
+# The five paths that are already real routes are NOT here -- /book,
+# /workshops, /restaurant, /gallery and /events are the pages themselves, and
+# a redirect would either be refused or shadow them. register_legacy_paths
+# checks that rather than trusting this list to stay right.
+LEGACY_PATHS = [
+    ("/rooms", "book_rooms", True),
+    ("/accommodation", "book_rooms", True),
+    ("/bedrooms", "book_rooms", True),
+    ("/stay", "book_rooms", True),
+    ("/courses", "workshops_public", True),
+    ("/retreats", "workshops_public", True),
+    ("/ateliers", "workshops_public", True),
+    ("/dining", "restaurant_info", True),
+    ("/food", "restaurant_info", True),
+    ("/la-table", "restaurant_info", True),
+    ("/the-chateau", "restoration_page", True),
+    ("/about", "restoration_page", True),
+    ("/history", "restoration_page", True),
+    # The house writes. If it ever publishes that writing at its own address,
+    # a 301 cached in every returning reader's browser would be in the way.
+    ("/blog", "gallery_page", False),
+    ("/journal", "gallery_page", False),
+    ("/news", "gallery_page", False),
+    ("/weddings", "events_weddings", True),
+    ("/contact-us", "contact_page", True),
+    ("/visit", "facilities_page", True),
+]
+
+
+def register_legacy_paths():
+    """Wire up LEGACY_PATHS, refusing to shadow anything that already exists.
+
+    Skipped rather than raised. This runs at import, so a hard failure here
+    would take the whole site down the day somebody adds a real /news -- over
+    a redirect, which is the least important thing in the file. It is a test
+    that fails on a shadowed path, where failing loudly costs nothing.
+
+    The query string is carried across. An old newsletter link is
+    /rooms?utm_source=... and dropping the tail turns every arrival from a
+    campaign the house paid for into an anonymous one.
+    """
+    taken = {str(rule.rule) for rule in app.url_map.iter_rules()}
+    wired = []
+    for path, endpoint, permanent in LEGACY_PATHS:
+        if path in taken:
+            continue
+
+        def view(_endpoint=endpoint, _permanent=permanent):
+            target = url_for(_endpoint)
+            if request.query_string:
+                target += "?" + request.query_string.decode("utf-8", "ignore")
+            return redirect(target, code=301 if _permanent else 302)
+
+        app.add_url_rule(path, "legacy_" + path.strip("/").replace("-", "_"),
+                         view)
+        wired.append(path)
+    return wired
+
+
+LEGACY_WIRED = register_legacy_paths()
+
+
 @app.errorhandler(404)
 def not_found(e):
     """A mistyped address, or a manage link that has expired.

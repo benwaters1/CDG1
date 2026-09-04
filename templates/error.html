@@ -55,21 +55,11 @@
 <img class="g-formhero" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/d05b0d21-75e0-464e-bcad-9faac533884c/IMG_4368.jpeg?format=1500w" alt="The château at night" loading="lazy">
 
 
-<div class="g-wrap">
-  {# The site moved off Squarespace, so these paths are still in Google, in old
-     newsletters and on other people's blogs. Listed so the dev can 301 the
-     ones that earn it rather than guessing which mattered. #}
-  <details class="g-lost__old">
-    <summary>Came from an old link?</summary>
-    <p class="g-p">The site was rebuilt, so a few addresses changed. These are the ones that moved:</p>
-    <ul class="g-lost__l">
-      <li><code>/rooms</code>, <code>/accommodation</code>, <code>/bedrooms</code> — now <a href="{{ url_for('book_rooms') }}">Stay</a></li>
-      <li><code>/workshops</code>, <code>/courses</code>, <code>/retreats</code> — now <a href="{{ url_for('workshops_public') }}">Workshops</a></li>
-      <li><code>/dining</code>, <code>/food</code>, <code>/restaurant</code> — now <a href="{{ url_for('restaurant_info') }}">La Table</a></li>
-      <li><code>/the-chateau</code>, <code>/about</code>, <code>/history</code> — now <a href="{{ url_for('restoration_page') }}">The Restoration</a></li>
-      <li><code>/blog</code>, <code>/journal</code>, <code>/news</code> — now <a href="{{ url_for('gallery_page') }}">Gallery</a></li>
-    </ul>
-  </details>
-</div>
+{# The list of moved Squarespace addresses that used to sit here is gone.
+   Every one of them is a redirect now -- see LEGACY_PATHS in app.py -- so
+   nobody arriving from an old link reaches this page at all, and the only
+   people who saw the list were reading fifteen addresses that all work.
+   The list is executable there and tested by test_old_addresses; it was
+   decorative here. #}
 
 {% endblock %}

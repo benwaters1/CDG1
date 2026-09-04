@@ -275,6 +275,7 @@ SUITES = [
     "test_awaiting_answer",
     "test_refused_cards",
     "test_voids",
+    "test_old_addresses",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
