@@ -191,6 +191,8 @@
     {#- The quote somebody accepted, the dates being held, and the stages the
         money arrives in. All three lived nowhere before this page. -#}
     <a href="{{ url_for('event_agreement', inquiry_id=e['id']) }}" class="btn-mini">Agreement</a>
+    <a href="{{ url_for('event_guest_list_page', event_id=e['id']) }}" class="btn-mini">Guest list</a>
+    <a href="{{ url_for('event_margin_page', event_id=e['id']) }}" class="btn-mini">What it made</a>
     <a href="{{ url_for('event_run_sheet_page', event_id=e['id']) }}" class="btn-mini">Run sheet</a>
     {%- if e['status'] == 'confirmed' and e['final_numbers'] is none %}
     <span class="field-hint" style="margin-left:8px;">no final numbers yet</span>{% endif %}

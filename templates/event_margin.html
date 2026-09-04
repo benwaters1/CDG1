@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}What it made — {{ data.event['reference_code'] }}{% endblock %}
+{% block content %}
+
+{# WHAT AN EVENT MADE. Rooms have night margin, break-even and room
+   economics. An event had a quoted price and nothing else, so the most
+   expensive thing the house sells was the one thing nobody could say made
+   money.
+
+   The rows add up to the total, and everything the figure leaves out is named
+   underneath rather than treated as zero — because somebody will price the
+   next wedding off this page. #}
+
+<div class="page-head">
+  <h1>What it made</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('event_run_sheet_page', event_id=data.event['id']) }}" class="btn-ghost">Run sheet</a>
+    <a href="{{ url_for('event_agreement', inquiry_id=data.event['id']) }}" class="btn-ghost">The agreement</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ data.event['event_type']|capitalize }} · {{ data.event['contact_name'] }} ·
+  {{ data.event['preferred_date'] or 'no date yet' }} · {{ data.event['reference_code'] }}
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">Agreed</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.revenue) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Suppliers</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.supplier_cost) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">What it kept</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.margin) }}</span>
+  </div>
+  {% if data.percent is not none %}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Of what was agreed</span>
+    <span class="stat-tile-value">{{ data.percent }}%</span>
+  </div>
+  {% endif %}
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
+    <tbody>
+      {% for line in data.lines %}
+      <tr>
+        <th scope="row">{{ line.label }}</th>
+        <td>{% if line.amount < 0 %}&minus;{% endif %}&euro;{{ '%.2f'|format(line.amount|abs) }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <th scope="row"><strong>What it kept</strong></th>
+        <td><strong>&euro;{{ '%.2f'|format(data.margin) }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+{% if data.caveats %}
+{# NAMED, NOT COUNTED. A margin that quietly omits the caterer and two
+   salaried staff is worse than no margin. #}
+<p class="pay-disclaimer">
+  What this figure does not include:
+  {% for c in data.caveats %}{{ c }}{% if not loop.last %}; {% endif %}{% endfor %}.
+</p>
+{% else %}
+<p class="upload-hint">
+  Every supplier has a cost and every person on it has a wage on file, so this
+  is the whole picture.
+</p>
+{% endif %}
+
+{% if data.labour and data.labour.people %}
+<h2>The people on it</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Who</th><th scope="col">Hours</th>
+      <th scope="col">Cost</th><th scope="col">From</th></tr></thead>
+    <tbody>
+      {% for row in data.labour.people %}
+      <tr>
+        <th scope="row">{{ row.name }}</th>
+        <td>{{ row.hours }}</td>
+        <td>{% if row.gross is not none %}&euro;{{ '%.2f'|format(row.gross) }}{% else %}&mdash;{% endif %}</td>
+        <td>{{ row.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
