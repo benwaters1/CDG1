@@ -5866,6 +5866,7 @@ NAV_AREAS = {
         
     ],
     "payroll": [
+        "pay_statement_page",
         "admin_payroll", "export_payroll_csv",
         # Wages sit in `payroll` rather than `team`: what somebody is paid is
         # not something everybody who can see the staff list should read, and
@@ -6214,6 +6215,179 @@ def labour_hours_by_person(conn, start_iso, end_iso):
     ).fetchall()
 
 
+def french_public_holidays(year):
+    """The eleven jours feries in France for one year.
+
+    Six are fixed and five move with Easter. Computed rather than listed,
+    because a table of dates is a table somebody has to remember to extend and
+    a rota that silently stops knowing about Easter Monday is worse than one
+    that never knew.
+
+    Anonymous Gregorian computus for Easter Sunday: standard, exact, and no
+    dependency. Pentecost Monday is included -- it is a jour ferie in France
+    even in years it is worked as the journee de solidarite, which is a
+    question about pay rather than about the calendar.
+    """
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    mm = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * mm + 114) // 31
+    day = ((h + l - 7 * mm + 114) % 31) + 1
+    easter = date(year, month, day)
+    return {
+        date(year, 1, 1): "Jour de l'An",
+        easter + timedelta(days=1): "Lundi de Paques",
+        date(year, 5, 1): "Fete du Travail",
+        date(year, 5, 8): "Victoire 1945",
+        easter + timedelta(days=39): "Ascension",
+        easter + timedelta(days=50): "Lundi de Pentecote",
+        date(year, 7, 14): "Fete Nationale",
+        date(year, 8, 15): "Assomption",
+        date(year, 11, 1): "Toussaint",
+        date(year, 11, 11): "Armistice 1918",
+        date(year, 12, 25): "Noel",
+    }
+
+
+def is_french_holiday(day):
+    return day in french_public_holidays(day.year)
+
+
+def premium_hours(conn, user_id, start, end):
+    """Hours worked that the convention collective pays extra for.
+
+    Hospitality hours are unsocial by nature and the agreement pays for it. The
+    rota and the clock already know the exact hours to the minute; nothing
+    applied a rate to them, so a Sunday shift cost the house exactly what a
+    Tuesday did in every report the owner reads -- and the one number they
+    might have used to decide whether to open on a Sunday was the wrong one.
+
+    Split per calendar day and per hour, because a shift starting at 22:00 on
+    a Saturday is partly Saturday-night and partly Sunday. Counted from the
+    CLOCK rather than the rota: what somebody was rostered for is a plan and
+    what they clocked is what happened.
+
+    A single hour can attract more than one premium -- a Sunday night in
+    August is all three -- and each is counted in its own bucket. They are
+    never added together here, because how they combine is a question for the
+    agreement and not for this function.
+    """
+    night_from = wage_setting(conn, "payroll_night_from_hour", int)
+    night_to = wage_setting(conn, "payroll_night_to_hour", int)
+    buckets = {"sunday": 0.0, "night": 0.0, "holiday": 0.0, "worked": 0.0}
+    rows = conn.execute(
+        """SELECT clock_in_at, clock_out_at FROM time_entries
+            WHERE user_id = ? AND clock_out_at IS NOT NULL
+              AND clock_out_at > clock_in_at
+              AND clock_in_at >= ? AND clock_in_at < ?""",
+        (user_id, start, end)).fetchall()
+    for row in rows:
+        try:
+            began = datetime.fromisoformat(row["clock_in_at"])
+            ended = datetime.fromisoformat(row["clock_out_at"])
+        except (TypeError, ValueError):
+            continue
+        # Local time, because a premium is about the hour a person was standing
+        # in a kitchen and not about UTC. Between midnight and 02:00 in the
+        # Ariege those are different days, which is the mistake this app has a
+        # rule about.
+        began = began.astimezone(LOCAL_TZ) if began.tzinfo else began
+        ended = ended.astimezone(LOCAL_TZ) if ended.tzinfo else ended
+        cursor = began
+        while cursor < ended:
+            step_end = min(cursor.replace(minute=0, second=0, microsecond=0)
+                           + timedelta(hours=1), ended)
+            slice_hours = (step_end - cursor).total_seconds() / 3600.0
+            if slice_hours <= 0:
+                break
+            buckets["worked"] = round(buckets["worked"] + slice_hours, 4)
+            day = cursor.date()
+            hour = cursor.hour
+            if day.weekday() == 6:
+                buckets["sunday"] = round(buckets["sunday"] + slice_hours, 4)
+            if is_french_holiday(day):
+                buckets["holiday"] = round(buckets["holiday"] + slice_hours, 4)
+            # The night window wraps midnight, so "from 21 to 6" is two ranges.
+            if night_from > night_to:
+                nightly = hour >= night_from or hour < night_to
+            else:
+                nightly = night_from <= hour < night_to
+            if nightly:
+                buckets["night"] = round(buckets["night"] + slice_hours, 4)
+            cursor = step_end
+    return {k: round(v, 2) for k, v in buckets.items()}
+
+
+def premium_cost(conn, wage, hours):
+    """What the unsocial hours add, per premium, never as one figure.
+
+    Only for somebody paid by the hour. A monthly salary already covers the
+    hours it covers, and applying a percentage of an hourly rate the house has
+    not typed would be inventing both halves.
+
+    Each premium is its own line for the same reason gross and employer
+    contributions are: they are negotiated separately, they are declared
+    separately, and one number labelled "premiums" is a number nobody can
+    check against their agreement.
+    """
+    if not wage or wage["basis"] != "hourly":
+        return {}
+    rate = float(wage["gross_amount"] or 0)
+    out = {}
+    for key, setting in (("sunday", "payroll_sunday_premium_percent"),
+                         ("night", "payroll_night_premium_percent"),
+                         ("holiday", "payroll_holiday_premium_percent")):
+        percent = wage_setting(conn, setting)
+        if not percent or not hours.get(key):
+            continue
+        out[key] = {
+            "hours": hours[key], "percent": percent,
+            "amount": round(hours[key] * rate * percent / 100.0, 2),
+        }
+    return out
+
+
+def meals_taken(conn, user_id, start, end):
+    """How many staff meals somebody has had, from the shifts they worked.
+
+    AVANTAGE EN NATURE NOURRITURE. In French hospitality a meal provided to
+    staff is a benefit in kind with a value set annually, and it belongs on the
+    payslip and in the labour cost. The house feeds its staff, and none of it
+    appeared anywhere.
+
+    Counted per SHIFT WORKED rather than per day, from the clock: somebody who
+    did not come in did not eat here. How many meals a shift carries is the
+    owner's to set, because a lunch service and a split shift are not the same
+    thing, and it is zero until they do.
+    """
+    per_shift = wage_setting(conn, "payroll_meals_per_shift")
+    if not per_shift:
+        return {"shifts": 0, "meals": 0.0}
+    shifts = conn.execute(
+        """SELECT COUNT(*) AS c FROM time_entries
+            WHERE user_id = ? AND clock_out_at IS NOT NULL
+              AND clock_out_at > clock_in_at
+              AND clock_in_at >= ? AND clock_in_at < ?""",
+        (user_id, start, end)).fetchone()["c"] or 0
+    return {"shifts": shifts, "meals": round(shifts * per_shift, 2)}
+
+
+def meal_benefit(conn, user_id, start, end):
+    """The value of those meals, or nothing if the house has not set one."""
+    value = wage_setting(conn, "payroll_meal_value_eur")
+    taken = meals_taken(conn, user_id, start, end)
+    if not value or not taken["meals"]:
+        return None
+    return {"meals": taken["meals"], "shifts": taken["shifts"],
+            "value": value, "amount": round(taken["meals"] * value, 2)}
+
+
 WAGE_SETTING_DEFAULTS = {
     # Employer social contributions, as a percentage on top of gross. Zero by
     # default and deliberately so: the real French figure depends on the
@@ -6225,6 +6399,29 @@ WAGE_SETTING_DEFAULTS = {
     # Twelve months because that is the ordinary rhythm of it; set 0 to turn
     # the reminder off entirely rather than to mean "immediately".
     "wage_review_months": "12",
+
+    # WHAT THE UNSOCIAL HOURS ARE WORTH. Zero by default for exactly the same
+    # reason as the employer contribution above: the real figures come from the
+    # convention collective the house works to, and a percentage the app
+    # invented would be read as one the app knows. Until they are set, every
+    # report says the hours and adds nothing for them.
+    "payroll_sunday_premium_percent": "0",
+    "payroll_night_premium_percent": "0",
+    "payroll_holiday_premium_percent": "0",
+    # When the night starts and ends. 21:00 to 06:00 is the usual reading of
+    # the Code du travail, and it wraps midnight on purpose.
+    "payroll_night_from_hour": "21",
+    "payroll_night_to_hour": "6",
+
+    # AVANTAGE EN NATURE NOURRITURE. A meal given to staff is a benefit in kind
+    # with a value set annually by URSSAF, and the house feeds its staff. Zero
+    # until the owner sets this year's figure, because last year's is wrong and
+    # a guessed one is worse.
+    "payroll_meal_value_eur": "0",
+    # How many meals a worked shift carries. A lunch service and a split shift
+    # are not the same thing, so this is the owner's to say rather than
+    # something to infer from the length of a clock entry.
+    "payroll_meals_per_shift": "0",
 }
 
 
@@ -6381,12 +6578,33 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         if gross is None:
             unpriced.append(r["name"])
             continue
+        # THE UNSOCIAL HOURS AND THE MEALS, each its own named figure.
+        #
+        # Both are part of what a person costs, and neither was anywhere. A
+        # Sunday shift cost the house exactly what a Tuesday did, and the
+        # meals the château feeds its staff -- a benefit in kind with a value
+        # URSSAF sets every year -- appeared in no total at all.
+        #
+        # Added to gross rather than kept beside it, because they ARE pay and
+        # the employer contribution is due on them. Itemised in the row so the
+        # figure can be checked against the agreement it comes from, and both
+        # are nothing until the owner sets the rates.
+        unsocial = premium_hours(conn, r["id"], start_iso, end_iso)
+        premiums = premium_cost(conn, wage, unsocial)
+        premium_total = round(sum(x["amount"] for x in premiums.values()), 2)
+        benefit = meal_benefit(conn, r["id"], start_iso, end_iso)
+        benefit_total = benefit["amount"] if benefit else 0.0
+        gross = round(gross + premium_total + benefit_total, 2)
         rate = wage["employer_rate"] if (wage and wage["employer_rate"] is not None) else employer_pct
         employer = gross * (rate or 0) / 100.0
         rows.append({
             "user_id": r["id"], "name": r["name"], "hours": round(r["hours"], 1),
             "shifts": r["shifts"], "basis": basis, "source": source,
             "employer_rate": rate or 0,
+            "unsocial": unsocial, "premiums": premiums,
+            "premium_total": premium_total,
+            "benefit": benefit, "benefit_total": benefit_total,
+            "base": round(gross - premium_total - benefit_total, 2),
             "gross": round(gross, 2), "employer": round(employer, 2),
             "total": round(gross + employer, 2),
         })
@@ -6398,11 +6616,108 @@ def labour_cost_breakdown(conn, start_iso, end_iso):
         "employer": round(sum(x["employer"] for x in rows), 2),
         "total": round(sum(x["total"] for x in rows), 2),
         "hours": round(sum(x["hours"] for x in rows), 1),
+        # Broken out as well as folded in, so a page can show what the
+        # unsocial hours and the meals came to without a second definition
+        # of either.
+        "base": round(sum(x["base"] for x in rows), 2),
+        "premium_total": round(sum(x["premium_total"] for x in rows), 2),
+        "benefit_total": round(sum(x["benefit_total"] for x in rows), 2),
         "typed_count": typed_count,
         "estimated_count": estimated_count,
         "unpriced": unpriced,
         "employer_rate": employer_pct,
         "priced_any": bool(rows),
+    }
+
+
+def monthly_pay_statement(conn, user_id, year, month):
+    """One person, one month, itemised: what to hand the accountant.
+
+    NOT A BULLETIN DE PAIE, and the page says so in as many words. A bulletin
+    is a legal document with mandatory headings, the employee's net, the
+    employee-side contributions line by line and a URSSAF declaration behind
+    it -- and this app does none of that. Producing something that LOOKED like
+    one would be worse than producing nothing: it would be filed, and it would
+    be wrong.
+
+    What it is instead: every figure the person who does produce the bulletin
+    has to ask for, in one place, for one person, for one month, with its
+    working shown. Hours from the clock, the wage in force on the last day of
+    the month, the unsocial hours split out, the meals as a benefit in kind,
+    and the employer contribution at the rate on file. Before this the answer
+    to "what did Marie cost in July" was a CSV of the whole team.
+
+    Every figure comes from labour_cost_breakdown, so this is a view of THE
+    costing rather than a second one. That matters more than the convenience:
+    a pay statement and a labour report disagreeing about one person is the
+    failure the one-definition rule exists to prevent.
+    """
+    person = conn.execute(
+        "SELECT * FROM users WHERE id = ? AND role != 'owner'", (user_id,)).fetchone()
+    if not person:
+        return None
+    try:
+        year, month = int(year), int(month)
+        start = date(year, month, 1)
+    except (TypeError, ValueError):
+        return None
+    end = add_months(start, 1)
+    breakdown = labour_cost_breakdown(conn, start.isoformat(), end.isoformat())
+    row = next((r for r in breakdown["rows"] if r["user_id"] == user_id), None)
+    wage = wage_on(conn, user_id, end - timedelta(days=1))
+
+    lines = []
+    if row:
+        if row["basis"] == "hourly" and wage:
+            lines.append({
+                "label": f"{row['hours']} hours at EUR {float(wage['gross_amount'] or 0):.2f}",
+                "amount": row["base"], "kind": "base"})
+        elif row["basis"] == "monthly" and wage:
+            lines.append({"label": "Monthly salary",
+                          "amount": row["base"], "kind": "base"})
+        else:
+            lines.append({"label": f"{row['hours']} hours",
+                          "amount": row["base"], "kind": "base"})
+        for key, label in (("sunday", "Sunday hours"),
+                           ("night", "Night hours"),
+                           ("holiday", "Public holiday hours")):
+            item = (row["premiums"] or {}).get(key)
+            if item:
+                lines.append({
+                    "label": f"{label}: {item['hours']} at +{item['percent']}%",
+                    "amount": item["amount"], "kind": "premium"})
+        if row["benefit"]:
+            lines.append({
+                "label": (f"Meals provided: {row['benefit']['meals']} across "
+                          f"{row['benefit']['shifts']} shifts at "
+                          f"EUR {row['benefit']['value']:.2f}"),
+                "amount": row["benefit"]["amount"], "kind": "benefit"})
+    gross = round(sum(l["amount"] for l in lines), 2)
+    employer = round(gross * (row["employer_rate"] if row else 0) / 100.0, 2)
+    # Hours the house pays a premium on but has set no rate for. Named, because
+    # a statement that silently drops the Sunday hours is one the accountant
+    # will produce a bulletin from.
+    unrated = []
+    if row:
+        for key, setting, label in (
+                ("sunday", "payroll_sunday_premium_percent", "Sunday"),
+                ("night", "payroll_night_premium_percent", "night"),
+                ("holiday", "payroll_holiday_premium_percent", "public holiday")):
+            if row["unsocial"].get(key) and not wage_setting(conn, setting):
+                unrated.append(f"{row['unsocial'][key]} {label} hours, with no "
+                               "rate set for them")
+        if row["unsocial"].get("worked") and not wage_setting(conn, "payroll_meal_value_eur"):
+            unrated.append("no value set for staff meals")
+    return {
+        "person": person, "year": year, "month": month,
+        "start": start, "end": end - timedelta(days=1),
+        "row": row, "wage": wage, "lines": lines,
+        "gross": gross, "employer": employer,
+        "employer_rate": row["employer_rate"] if row else 0,
+        "total": round(gross + employer, 2),
+        "unrated": unrated,
+        "leave": leave_balance(conn, user_id, person["annual_leave_days"],
+                               end - timedelta(days=1)),
     }
 
 
@@ -7250,30 +7565,34 @@ def _has(row, key):
         return False
 
 
-def leave_balance(conn, user_id, entitlement, year=None):
-    """Calendar days used from approved leave this year, against the
-    employee's annual_leave_days entitlement. Counts each approved request
-    whose start_date falls in the target year, inclusive of both end dates —
-    a simple calendar-day count, not a business-day one, and a request
-    spanning New Year's only counts toward the year it starts in. Sick leave
-    is tracked but excluded from the count — it doesn't eat into the paid
-    annual leave entitlement the way vacation/personal days do. Returns
-    None for 'remaining' when no entitlement is set, so the UI can show
-    "not set" instead of a misleading number."""
-    year = year or datetime.now(timezone.utc).year
-    rows = conn.execute(
-        "SELECT start_date, end_date FROM leave_requests WHERE user_id = ? AND status = 'approved' AND leave_type != 'sick'",
-        (user_id,),
-    ).fetchall()
-    used = 0
-    for r in rows:
-        start = parse_date(r["start_date"])
-        end = parse_date(r["end_date"])
-        if not start or not end or start.year != year:
-            continue
-        used += (end - start).days + 1
+def leave_balance(conn, user_id, entitlement, on_date=None):
+    """Days taken from approved leave this LEAVE year, against the entitlement.
+
+    THE SECOND DEFINITION THIS USED TO BE. leave_days_taken calls itself "THE
+    definition of a day taken, shared by the balance and the accrual" -- and
+    this function did not call it. It counted its own way, over the calendar
+    year rather than the leave year, and landed a request straddling the year
+    end entirely in the year it started in.
+
+    Measured on one person with two approved requests: this said 5 days taken
+    and 20 remaining while the HR pages said 8. Same person, same requests, two
+    answers, and the one on their own profile was the wrong one -- which is the
+    figure somebody plans a holiday around.
+
+    So it reads leave_days_taken over leave_year_window now. Sick leave is
+    tracked and does not eat the paid entitlement; `remaining` stays None with
+    no entitlement set, so a page can say "not set" rather than a number that
+    means nothing.
+    """
+    today = on_date or house_today()
+    if isinstance(today, str):
+        today = parse_date(today) or house_today()
+    year_start, year_end = leave_year_window(conn, today)
+    used = leave_days_taken(conn, user_id, year_start, year_end)
     remaining = (entitlement - used) if entitlement is not None else None
-    return {"year": year, "entitlement": entitlement, "used": used, "remaining": remaining}
+    return {"year": year_start.year, "year_start": year_start,
+            "year_end": year_end, "entitlement": entitlement,
+            "used": used, "remaining": remaining}
 
 
 def financial_trend(conn, months, today=None):
@@ -47822,6 +48141,18 @@ def export_night_margin_csv():
     conn.close()
     return csv_response(["measure", "amount"], data["csv"],
                         f"night-margin_{period['start_iso']}.csv")
+
+
+@app.route("/admin/payroll/statement/<int:user_id>/<int:year>/<int:month>")
+@owner_required
+def pay_statement_page(user_id, year, month):
+    """One person, one month, itemised. Not a bulletin de paie."""
+    conn = get_db()
+    data = monthly_pay_statement(conn, user_id, year, month)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("pay_statement.html", data=data)
 
 
 @app.route("/admin/arrivals-incomplete")
