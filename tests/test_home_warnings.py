@@ -130,9 +130,33 @@ def run():
     conn.execute(
         "UPDATE workshop_feedback SET acknowledged_at = ? WHERE acknowledged_at IS NULL",
         (now,))
+    # Held mail too old to send is on the panel too, and the database this
+    # runs against is a copy of the real one, which is holding hundreds. The
+    # same treatment as the reviews above: not deleted, made not-stale, so
+    # "nothing is wrong" is honestly true rather than true because this suite
+    # threw somebody's messages away.
+    #
+    # Put back immediately after the check. Suites share one database in one
+    # order, and rewriting 483 timestamps for everything downstream is the
+    # fault that left five automations switched off for the 134 suites after
+    # test_automation_switches.
+    held_before = conn.execute(
+        "SELECT id, created_at FROM email_outbox WHERE sent_at IS NULL").fetchall()
+    conn.execute("UPDATE email_outbox SET created_at = ? WHERE sent_at IS NULL",
+                 (now,))
     conn.commit()
     left = _titles(conn, today)
+    for row in held_before:
+        conn.execute("UPDATE email_outbox SET created_at = ? WHERE id = ?",
+                     (row["created_at"], row["id"]))
+    conn.commit()
     s.check("with nothing wrong, nothing is listed", left == [], detail=str(left))
+    s.check("and the outbox was left as it was found",
+            [r["created_at"] for r in conn.execute(
+                "SELECT created_at FROM email_outbox WHERE sent_at IS NULL "
+                "ORDER BY id")]
+            == [r["created_at"] for r in sorted(held_before, key=lambda r: r["id"])],
+            detail="every suite after this one reads the same outbox")
 
     s.section("A missing backup is the loudest thing on it")
     conn.execute("DELETE FROM audit_log WHERE action IN "

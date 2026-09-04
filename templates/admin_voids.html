@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Voids{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>What came off the bills</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('pos_home') }}" class="btn-ghost">The till</a>
+    <a href="{{ url_for('restaurant_what_sells') }}" class="btn-ghost">What sells</a>
+    <a href="{{ url_for('export_voids_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The till has always recorded who voided a line, when, and why &mdash; it refuses a void without a
+  reason. Nothing read any of it back. Figures are gross, as rung, which is the basis
+  <em>What sells</em> uses, so a void and a sale can be compared.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">To</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-primary">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.voids }}</span>
+    <span class="stat-tile-label">Lines voided</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.value) }}</span>
+    <span class="stat-tile-label">Taken off the bills</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{% if data.share is not none %}{{ data.share }}%{% else %}&mdash;{% endif %}</span>
+    <span class="stat-tile-label">{% if data.share is not none %}Of what was rung up{% else %}Nothing was rung up{% endif %}</span></span></div>
+  <div class="stat-tile {{ 'overview-cell-alert' if data.after_sent }}"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.after_sent }}</span>
+    <span class="stat-tile-label">After the kitchen had it</span></span></div>
+  <div class="stat-tile {{ 'overview-cell-alert' if data.after_close }}"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.after_close }}</span>
+    <span class="stat-tile-label">After the bill was settled</span></span></div>
+</div>
+
+{% if data.after_close %}
+<div class="flash flash-error" style="margin:16px 0;">
+  <strong>{{ data.after_close }} line{{ '' if data.after_close == 1 else 's' }} came off a bill that
+  had already been settled.</strong> There are honest reasons for it &mdash; a correction somebody
+  spotted after cashing up &mdash; and the till does not prevent it. It is worth knowing which,
+  because the money had already been taken when the line went.
+</div>
+{% endif %}
+
+{% if data.rows %}
+
+<h2 class="section-h">Who</h2>
+<p class="upload-hint" style="margin-top:-6px;">Against what each of them rang up over the same
+  window. A plain count names whoever worked the most shifts.</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Who</th><th class="num">Voids</th><th class="num">Value</th>
+          <th class="num">Of their own sales</th><th class="num">After the kitchen</th>
+          <th class="num">After settling</th></tr>
+    </thead>
+    <tbody>
+      {% for p in data.people %}
+      <tr>
+        <td>{{ p.who }}</td>
+        <td class="num">{{ p.voids }}</td>
+        <td class="num">{{ euro(p.value) }}</td>
+        <td class="num">
+          {% if p.share is not none %}{{ p.share }}%
+          <span class="g-hint">of {{ euro(p.sold) }}</span>
+          {% else %}&mdash; <span class="g-hint">rang up nothing</span>{% endif %}
+        </td>
+        <td class="num">{% if p.after_sent %}<span class="mini-status status-pending">{{ p.after_sent }}</span>{% else %}0{% endif %}</td>
+        <td class="num">{% if p.after_close %}<span class="mini-status status-overdue">{{ p.after_close }}</span>{% else %}0{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-h">Why</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Reason</th><th class="num">Voids</th><th class="num">Value</th></tr></thead>
+    <tbody>
+      {% for r in data.reasons %}
+      <tr>
+        <td>{{ r.reason }}</td>
+        <td class="num">{{ r.voids }}</td>
+        <td class="num">{{ euro(r.value) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-h">Every one of them</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Night</th><th>What</th><th class="num">Value</th><th>Why</th>
+          <th>Who</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <td>{{ r.service_date|date_short }}{% if r.table %}
+          <span class="g-hint">{{ r.table }}</span>{% endif %}</td>
+        <td>{{ r.what }}</td>
+        <td class="num">{{ euro(r.value) }}</td>
+        <td>{{ r.reason }}</td>
+        <td>
+          {{ r.who }}
+          {% if r.same_person and r.added_by %}
+          <span class="g-hint">keyed it in as well</span>
+          {% elif r.added_by %}
+          <span class="g-hint">{{ r.added_by }} keyed it in</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if r.after_close %}<span class="mini-status status-overdue">After settling</span>{% endif %}
+          {% if r.after_sent %}<span class="mini-status status-pending">Kitchen had it</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="empty-state">Nothing was voided between
+  {{ data.start.isoformat()|date_short }} and {{ data.end.isoformat()|date_short }}.</div>
+{% endif %}
+
+{% endblock %}
