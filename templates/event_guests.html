@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Guest list — {{ data.event['reference_code'] }}{% endblock %}
+{% block content %}
+
+{# WHO IS ACTUALLY COMING. final_numbers was one integer, and the kitchen
+   sheet — which gathers every dietary note in the house for a day — had
+   nothing for a wedding's eighty covers. So the caterer got a headcount and a
+   telephone call.
+
+   The notes are health data, held only to cook for somebody safely, and
+   cleared once the event is over by the same daily pass as every other one.
+   The privacy notice says so. #}
+
+<div class="page-head">
+  <h1>The guest list</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('event_run_sheet_page', event_id=data.event['id']) }}" class="btn-ghost">Run sheet</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ data.event['event_type']|capitalize }} · {{ data.event['contact_name'] }} ·
+  {{ data.event['preferred_date'] or 'no date yet' }} · {{ data.event['reference_code'] }}
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">Names on the list</span>
+    <span class="stat-tile-value">{{ data.named }}</span>
+  </div>
+  {% if data.told is not none %}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Number they told us</span>
+    <span class="stat-tile-value">{{ data.told }}</span>
+  </div>
+  {% endif %}
+  <div class="stat-tile">
+    <span class="stat-tile-label">To cook differently for</span>
+    <span class="stat-tile-value">{{ data.dietary|length }}</span>
+  </div>
+  {% if data.seatings %}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Tables</span>
+    <span class="stat-tile-value">{{ data.seatings|length }}</span>
+  </div>
+  {% endif %}
+</div>
+
+{% if data.gap %}
+{# A LIST AND A NUMBER THAT DISAGREE is the thing worth showing: eighty
+   confirmed and sixty-two names is either eighteen people nobody has written
+   down or a number that is out of date. Both are worth knowing before the
+   caterer is told. #}
+<p class="pay-disclaimer">
+  {% if data.gap > 0 %}
+  {{ data.gap }} of the {{ data.told }} they told us
+  {{ 'is' if data.gap == 1 else 'are' }} not named here yet.
+  {% else %}
+  There {{ 'is' if data.gap == -1 else 'are' }} {{ -data.gap }} more
+  {{ 'name' if data.gap == -1 else 'names' }} here than the {{ data.told }}
+  they told us &mdash; either the number is out of date or somebody is on
+  twice.
+  {% endif %}
+</p>
+{% endif %}
+
+{% if data.guests %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Who</th><th scope="col">Sitting</th>
+      <th scope="col">Cannot eat</th><th scope="col"></th></tr></thead>
+    <tbody>
+      {% for g in data.guests %}
+      <tr{% if g['dietary_notes'] %} class="row-alert"{% endif %}>
+        <th scope="row">{{ g['name'] }}
+          {%- if g['note'] %}<br><span class="upload-hint">{{ g['note'] }}</span>{% endif %}</th>
+        <td>{{ g['seating'] or '&mdash;'|safe }}</td>
+        <td>{{ g['dietary_notes'] or '' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('delete_event_guest', guest_id=g['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">Off the list</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty-state">
+  Nobody is named yet. Paste the couple's list below &mdash; eighty names
+  arrive as a list, and typing them one at a time is how a page goes unused.
+</p>
+{% endif %}
+
+<div class="detail-card">
+  <h2 style="margin-top:0;">Paste the list</h2>
+  <p class="upload-hint">
+    One person per line: a name on its own, or a name, then where they are
+    sitting, then what they cannot eat. It says how many it read, and names
+    any line it could not make sense of.
+  </p>
+  <form method="post" action="{{ url_for('paste_event_guests', event_id=data.event['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <textarea name="names" rows="8" placeholder="Marie Dubois, Table 3, no shellfish"></textarea>
+    <button type="submit" class="btn-primary" style="margin-top:8px;">Add them</button>
+  </form>
+</div>
+
+<div class="detail-card">
+  <h2 style="margin-top:0;">Or one at a time</h2>
+  <form method="post" action="{{ url_for('add_event_guest', event_id=data.event['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <label>Who
+        <input type="text" name="name" required>
+      </label>
+      <label>Sitting
+        <input type="text" name="seating" placeholder="Table 3">
+      </label>
+      <label>Cannot eat
+        <input type="text" name="dietary_notes" placeholder="No shellfish">
+      </label>
+      <label>Anything else
+        <input type="text" name="note">
+      </label>
+    </div>
+    <button type="submit" class="btn-ghost" style="margin-top:10px;">Add them</button>
+  </form>
+</div>
+
+<p class="upload-hint">
+  What somebody cannot eat is kept only to cook for them safely, and is
+  cleared once the event is over.
+</p>
+
+{% endblock %}
