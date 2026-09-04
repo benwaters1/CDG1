@@ -194,11 +194,6 @@
     </article>
     {% endfor %}
   </div>
-  {# The places above are live, and the code behind them takes the write lock
-     before it answers -- see claim_range and test_no_overbooking. Saying so is
-     the point: the guarantee is worth nothing to a guest who does not know it
-     exists, and this sentence is what that suite checks is still true. #}
-  <p class="g-p g-hint">Places are shown live. When a sitting reads as full, it is full &mdash; we do not overbook a house this size.</p>
   {% else %}
   <p class="g-p">Dates for the coming season are being finalised. They are released here first, and to the newsletter before that.</p>
   {% endif %}
@@ -515,6 +510,25 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('brushgild') }}</div>
 
+<!-- ============ THE WORK ITSELF ============ -->
+<section class="g-sec"><div class="g-wrap">
+  <p class="g-eyebrow">The Work</p>
+  <h2 class="g-place">What You Will Actually Do</h2>
+
+  <div class="g-two" style="margin-top:var(--s7)">
+    <div>
+      <p class="g-p g-lede-first">The front rooms were cleared to make the restoration workshop. The table in them was built from trees the wind brought down on the estate.</p>
+      <p class="g-p">On a restoration atelier you work on eighteenth-century wall frescoes under supervision — lifting overpaint, consolidating what is loose, cleaning what centuries of smoke have covered. It is slow, and a good morning is measured in centimetres.</p>
+      <p class="g-p">Running workshops for paying guests required permission. This is a Class I Historic Monument, and letting people touch it was not a decision anyone made lightly.</p>
+    </div>
+    <figure class="g-fig-block">
+      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="Work on a fresco" loading="lazy">
+      <figcaption>What comes off is overpaint. What is underneath has not been seen since it was covered.</figcaption>
+    </figure>
+  </div>
+</div></section>
+
+
 
 
 
@@ -543,6 +557,24 @@
     <p class="g-journal__note">No more than a few times a year. Unsubscribe in one click.</p>
   </div>
 </div></section>
+
+
+<!-- ============ FIFTEEN ============ -->
+<section class="g-sec g-scarce"><div class="g-wrap">
+  <div class="g-scarce__in">
+    <p class="g-eyebrow">Worth Knowing</p>
+    <h2 class="g-scarce__h">Fifteen, and No Others</h2>
+    <p class="g-scarce__p">While an atelier runs, the château takes no other guests. The building is yours and the conservators are working in it.</p>
+    <div class="g-scarce__grid">
+      <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most</span></div>
+      <div class="g-scarce__i"><b class="g-fig">0</b><span>Other guests in the building</span></div>
+      <div class="g-scarce__i"><b class="g-fig">94</b><span>Rooms, for fifteen people</span></div>
+      <div class="g-scarce__i"><b class="g-fig">5</b><span>Ateliers a year, at most</span></div>
+    </div>
+    <p class="g-scarce__note">Places are shown live above. When a session reads as full, it is full — we do not overbook a house this size.</p>
+  </div>
+</div></section>
+
 
 
 
@@ -763,6 +795,7 @@
 
   <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
 </div></section>
+
 
 
 
