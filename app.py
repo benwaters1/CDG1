@@ -57724,6 +57724,20 @@ def run_room_balance_reminder_job(conn, days_before):
     send returns true, so a run with no email provider configured leaves the
     booking un-stamped and tries again once one exists — rather than marking
     everybody reminded and telling nobody.
+
+    THE WINDOW IS BOUNDED BY THE STAY, NOT BY THE DUE DATE. It used to require
+    the due date to be today or later, which quietly undid the retry above: a
+    balance that fell due while the provider was down, or on a stay whose
+    schedule was re-cut to a date already behind us, dropped out of the window
+    for ever. Measured: a guest owing €420 on a stay three weeks away, due
+    three days ago, was never written to and never would be — and the job
+    reported "1 of 1 guest(s) with a balance outstanding", because it could
+    not see them.
+
+    An overdue balance is exactly the one worth chasing, so the only floor is
+    that the stay has not happened yet. Somebody who came and went owing money
+    is a debt for a person to chase, not an automated email; the debtors page
+    is where that lives. The event version has always worked this way.
     """
     horizon = (house_today() + timedelta(days=days_before)).isoformat()
     today = house_today_iso()
@@ -57735,7 +57749,7 @@ def run_room_balance_reminder_job(conn, days_before):
            WHERE bookings.status = 'confirmed'
              AND bookings.balance_reminder_sent_at IS NULL
              AND bookings.guest_email IS NOT NULL AND bookings.guest_email != ''
-             AND COALESCE(bookings.balance_due_date, bookings.arrival_date) >= ?
+             AND bookings.arrival_date >= ?
              AND COALESCE(bookings.balance_due_date, bookings.arrival_date) <= ?
            ORDER BY COALESCE(bookings.balance_due_date, bookings.arrival_date)""",
         (today, horizon)).fetchall()
