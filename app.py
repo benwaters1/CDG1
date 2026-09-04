@@ -4246,6 +4246,41 @@ def init_db():
         # On the feedback row and not the booking, because the ask follows the
         # ANSWER: nobody is invited who has not first said, in private, that it
         # went well.
+        # WHAT THE ROOM ITSELF WAS AGREED AT, and for which nights.
+        #
+        # booking_bill worked the room line out from the rate card every time
+        # it was asked, so putting the summer rate up moved what a guest who
+        # had already PAID appeared to owe. Measured: a 400 euro stay, paid in
+        # full, showed 300 outstanding the moment a seasonal override was
+        # added over its dates -- and everything downstream reads booking_bill,
+        # so the balance reminder would have chased them for it and the Pay
+        # button would have taken it.
+        #
+        # The nights are stamped alongside the figure so the stamp can only
+        # ever apply to the stay it was quoted for. Change the dates and it is
+        # re-stamped, which is the behaviour the recompute was there to give:
+        # a guest who moves to different nights buys those nights at the
+        # price they cost.
+        ("bookings_room_total_quoted",
+         "ALTER TABLE bookings ADD COLUMN room_total_quoted REAL"),
+        ("bookings_room_total_quoted_for",
+         "ALTER TABLE bookings ADD COLUMN room_total_quoted_for TEXT"),
+        # And every stay already taken. total_price is what the guest agreed
+        # to, and the extras on a booking carry their own stamped unit price,
+        # so the room portion is recoverable exactly rather than guessed from
+        # a rate card that may already have moved under it.
+        ("bookings_room_total_backfill",
+         """UPDATE bookings SET
+              room_total_quoted = ROUND(
+                  COALESCE(total_price, 0) + COALESCE(discount_amount, 0)
+                  - COALESCE((SELECT SUM(COALESCE(unit_price, 0) * COALESCE(quantity, 0))
+                                FROM booking_extras
+                               WHERE booking_extras.booking_id = bookings.id
+                                 AND booking_extras.category = 'room'
+                                 AND COALESCE(booking_extras.status, '') != 'cancelled'), 0), 2),
+              room_total_quoted_for = arrival_date || '|' || departure_date
+            WHERE room_total_quoted IS NULL AND total_price IS NOT NULL
+              AND COALESCE(arrival_date, '') != '' AND COALESCE(departure_date, '') != ''"""),
         ("guest_feedback_review_invited_at",
          "ALTER TABLE guest_feedback ADD COLUMN review_invited_at TEXT"),
         ("bookings_booked_by_name", "ALTER TABLE bookings ADD COLUMN booked_by_name TEXT"),
@@ -12641,6 +12676,55 @@ def extras_for_booking(conn, category, booking_id):
 EXTRAS_COUNTED_SQL = "COALESCE(booking_extras.status, '') != 'cancelled'"
 
 
+def room_nights_key(booking):
+    """The nights a quote belongs to. Stamped with the figure so a price can
+    never be read against a stay it was not quoted for."""
+    return f"{booking['arrival_date']}|{booking['departure_date']}"
+
+
+def quoted_room_total(conn, booking, room=None):
+    """What the room itself was agreed at, for the nights currently booked.
+
+    THE BUG THIS EXISTS FOR. This was worked out from the rate card every time
+    anybody asked, so a seasonal override added months later moved what a guest
+    who had already paid appeared to owe -- 300 euros on a 400 euro stay, in
+    the measurement that prompted this. Nothing errored. The guest's own page,
+    the balance chase, the debtors list and the Pay button all read
+    booking_bill, so all four moved together and none of them was wrong about
+    the others.
+
+    Falls back to the rate card when there is no stamp for THESE nights, which
+    is a stay whose dates have since been changed by a path that forgot to
+    re-stamp. That is the old behaviour: wrong in the same way it always was,
+    rather than confidently quoting a price for different nights.
+    """
+    arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    if not arrival or not departure or departure <= arrival:
+        return 0.0
+    keys = booking.keys()
+    if "room_total_quoted_for" in keys and "room_total_quoted" in keys:
+        if (booking["room_total_quoted_for"] == room_nights_key(booking)
+                and booking["room_total_quoted"] is not None):
+            return round(float(booking["room_total_quoted"]), 2)
+    room = room or conn.execute("SELECT * FROM rooms WHERE id = ?",
+                                (booking["room_id"],)).fetchone()
+    return compute_room_total(conn, room, arrival, departure) if room else 0.0
+
+
+def stamp_room_total(conn, booking_id, amount, arrival_iso, departure_iso):
+    """Record what the room was agreed at, and for which nights.
+
+    Called wherever a stay is priced: created, or moved to different dates.
+    Re-stamping on a date change is the point -- somebody who moves to other
+    nights buys those nights at what they cost, which is exactly what the
+    recompute was there to give.
+    """
+    conn.execute(
+        """UPDATE bookings SET room_total_quoted = ?, room_total_quoted_for = ?
+            WHERE id = ?""",
+        (round(float(amount or 0), 2), f"{arrival_iso}|{departure_iso}", booking_id))
+
+
 def booking_bill(conn, booking_id):
     """What a stay costs, what has been received, and what is still owed.
 
@@ -12666,7 +12750,8 @@ def booking_bill(conn, booking_id):
     arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
     nights = (departure - arrival).days if (arrival and departure) else 0
     room = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
-    room_total = compute_room_total(conn, room, arrival, departure) if (room and nights) else 0.0
+    # What was agreed for THESE nights, not what the rate card says today.
+    room_total = quoted_room_total(conn, booking, room) if (room and nights) else 0.0
 
     lines = []
     if room_total:
@@ -19357,6 +19442,11 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
         total_price = (round(room_total - discount_amount, 2) + extras_total) or None
     extras_summary = ", ".join(f"{e['name']} (€{e['price']:.2f})" for e in chosen_extras) or None
 
+    # The room portion, kept. Both branches above have just worked it out --
+    # from the rate card, or backed out of the price actually charged at
+    # checkout -- and until this was stamped it was worked out again on every
+    # read, from whatever the rate card said by then.
+    quoted_room_portion = room_total
     reference_code = make_reference_code()
     manage_token = secrets.token_urlsafe(24)
     # Taxe de sejour, STAMPED HERE rather than worked out later.
@@ -19408,6 +19498,14 @@ def create_booking(conn, room, guest_name, guest_email, guest_phone, arrival, de
     # never increments, making max_redemptions silently bypassable.
     if promo:
         record_promo_redemption(conn, promo, "room", reference_code, guest_email, room_total, discount_amount)
+    # In the same transaction as the insert, for the same reason as the promo
+    # redemption above: a booking saved without its stamp falls back to the
+    # rate card, which is the drift this exists to stop.
+    new_row = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                           (reference_code,)).fetchone()
+    if new_row:
+        stamp_room_total(conn, new_row["id"], quoted_room_portion,
+                         arrival.isoformat(), departure.isoformat())
     conn.commit()
 
     checkin_url = url_for("guest_checkin", manage_token=manage_token, _external=True)
@@ -32785,14 +32883,23 @@ def manage_booking(manage_token):
                 # Nothing's been committed or charged yet, so it's safe to
                 # apply immediately rather than routing a still-pending
                 # request through the owner.
-                old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
-                old_room_portion = compute_room_total(conn, room, old_arrival, old_departure)
+                # What the room was AGREED at, not what it would cost if
+                # quoted today. Backing the extras out of a recomputed room
+                # portion made this wrong twice over: a rate card that had
+                # moved gave the wrong extras figure as well as the wrong
+                # room one.
+                old_room_portion = quoted_room_total(conn, booking, room)
                 extras_portion = (booking["total_price"] or 0) - old_room_portion
-                new_total = compute_room_total(conn, room, new_arrival, new_departure) + extras_portion
+                new_room_portion = compute_room_total(conn, room, new_arrival, new_departure)
+                new_total = new_room_portion + extras_portion
                 conn.execute(
                     "UPDATE bookings SET arrival_date = ?, departure_date = ?, total_price = ? WHERE id = ?",
                     (new_arrival.isoformat(), new_departure.isoformat(), new_total or None, booking["id"]),
                 )
+                # Re-stamped at the new nights: somebody who moves buys the
+                # nights they moved to, at what those nights cost.
+                stamp_room_total(conn, booking["id"], new_room_portion,
+                                 new_arrival.isoformat(), new_departure.isoformat())
                 conn.commit()
                 owner_to = owner_email(conn)
                 if owner_to:
@@ -32862,6 +32969,16 @@ def manage_booking(manage_token):
                     (new_departure.isoformat(),
                      round((booking["total_price"] or 0) + added, 2) or None,
                      booking["id"]))
+                # The nights they already had, at the price they already
+                # agreed, plus the new ones at what the new ones cost.
+                # Without re-stamping, the stamp is for a departure date that
+                # is no longer the booking's -- and a stamp that does not
+                # match falls back to the rate card, which is the whole fault
+                # this stops.
+                stamp_room_total(
+                    conn, booking["id"],
+                    quoted_room_total(conn, booking, room) + added,
+                    booking["arrival_date"], new_departure.isoformat())
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
                           details=f"+{nights} night(s), +€{added:.2f}")
                 owner_to = owner_email(conn)
@@ -41001,10 +41118,12 @@ def edit_booking(booking_id):
                                group=group, booking_sources=BOOKING_SOURCES)
 
         room_for_pricing = conn.execute("SELECT * FROM rooms WHERE id = ?", (booking["room_id"],)).fetchone()
-        old_arrival, old_departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
-        old_room_portion = compute_room_total(conn, room_for_pricing, old_arrival, old_departure) if old_arrival and old_departure else 0
+        # Same as the guest-side change: the extras are backed out of what the
+        # room was AGREED at, never out of a fresh quote.
+        old_room_portion = quoted_room_total(conn, booking, room_for_pricing)
         extras_portion = (booking["total_price"] or 0) - old_room_portion
-        new_total = compute_room_total(conn, room_for_pricing, arrival, departure) + extras_portion
+        new_room_portion = compute_room_total(conn, room_for_pricing, arrival, departure)
+        new_total = new_room_portion + extras_portion
         new_total = new_total or None
 
         # The tax follows the stay. Moving a booking a night longer or adding a
@@ -41027,6 +41146,8 @@ def edit_booking(booking_id):
              booked_by_name or None, booked_by_email or None,
              booking_id),
         )
+        stamp_room_total(conn, booking_id, new_room_portion,
+                         arrival.isoformat(), departure.isoformat())
         conn.commit()
 
         # No guest-row date sync any more: the booking IS the record of when
@@ -45826,10 +45947,13 @@ def walk_in_booking():
         except ValueError:
             charge = rack
         charge = max(0.0, min(charge, rack))
-        # As a discount, not a rewritten room total: booking_bill recomputes the
-        # nights from the rate card and reads discount_amount, so a smaller
-        # total_price on its own would simply be ignored by everything that
-        # asks the guest for money.
+        # As a discount, not a rewritten room total: booking_bill builds the
+        # room line from what was agreed for these nights and reads
+        # discount_amount separately, so a smaller total_price on its own
+        # would simply be ignored by everything that asks the guest for money.
+        # (create_booking backs the room line out of the override and the
+        # discount, so the stamp is the rack rate and the difference stays
+        # visible as the discount it is.)
         discount = round(rack - charge, 2)
 
         reference_code, manage_token = create_booking(
