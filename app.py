@@ -21469,6 +21469,10 @@ def inject_user():
         "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
         "access_bathrooms": ACCESS_BATHROOMS, "consent_routes": CONSENT_ROUTES,
         "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
+        # Read once per request and handed to every page, so the ten public
+        # pages that state the room count and the starting price all read the
+        # same answer from the same place.
+        "house_rooms": house_room_facts_cached(),
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
         "unread_notifications_count": unread_notifications_count,
@@ -36425,6 +36429,58 @@ def next_free_nights(conn, *, limit=6, today=None):
         # perfectly good answer and not an error.
     found.sort(key=lambda f: (f["date_iso"], f["room_name"]))
     return found[:limit]
+
+
+ROOM_COUNT_WORDS = {
+    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+    7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+}
+
+
+def house_room_facts_cached():
+    """house_room_facts for the template context, with its own connection.
+
+    The context processor already opens and closes a connection for the badge
+    counts, but only for a logged-in user -- and these two facts are needed on
+    the PUBLIC pages, where there is no user at all. So this asks for its own
+    rather than depending on a branch that does not run for a guest.
+    """
+    conn = get_db()
+    try:
+        return house_room_facts(conn)
+    finally:
+        conn.close()
+
+
+def house_room_facts(conn):
+    """How many rooms the house lets, and what the cheapest one costs.
+
+    Both facts are written in prose on ten public pages -- "five bedrooms",
+    "from EUR220 a night" -- and both are owned by the rooms table. They are
+    true this morning. Add a sixth room or change a price and ten pages are
+    wrong at once, and one of them carries the first figure a guest ever
+    reads.
+
+    The word as well as the number, because the prose says "five bedrooms"
+    and not "5 bedrooms", and a page that switches to digits the day a sixth
+    room is added has been fixed in a way somebody has to go back over.
+    Beyond twelve it gives up and returns the digits, which is the point at
+    which a château stops writing its room count out in words anyway.
+    """
+    row = conn.execute(
+        """SELECT COUNT(*) AS n, MIN(NULLIF(price_per_night, 0)) AS cheapest
+             FROM rooms WHERE active = 1""").fetchone()
+    count = int(row["n"] or 0)
+    cheapest = row["cheapest"]
+    return {
+        "count": count,
+        "count_word": ROOM_COUNT_WORDS.get(count, str(count)),
+        # None rather than nought when no room carries a price. A page saying
+        # "from EUR0 a night" is worse than one that does not mention a price
+        # at all, and this is the line guests read first.
+        "from_price": (int(cheapest) if cheapest and float(cheapest) == int(cheapest)
+                       else (round(float(cheapest), 2) if cheapest else None)),
+    }
 
 
 def deposit_percent_to_show(conn):
