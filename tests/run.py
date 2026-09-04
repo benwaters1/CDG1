@@ -286,6 +286,7 @@ SUITES = [
     "test_recorded_never_read",
     "test_receipt_sequence",
     "test_unasked_questions",
+    "test_delivered_and_deposit",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",

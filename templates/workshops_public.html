@@ -249,7 +249,20 @@
   <dl class="g-facts-list">
     <div><dt>Group size</dt><dd>Never more than fifteen, and the château takes no other guests while a workshop runs</dd></div>
     <div><dt>Rooms</dt><dd>Arranged for two. A third bed if you need it. Solo travellers paired, or given a room where one is free</dd></div>
-    <div><dt>Deposit</dt><dd>30% to reserve; the balance thirty days before</dd></div>
+    {# Read from the workshops rather than stated. deposit_percent is a column
+       with a default of 30, not a house rule, and this line printed it as one.
+       And it left out the part that costs a guest money: inside the balance
+       window the WHOLE amount is due at booking, so somebody reading "30% to
+       reserve" three weeks out was told one figure and charged another. #}
+    <div><dt>Deposit</dt><dd>
+      {% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance
+      {{ balance_days }} days before.
+      {% else %}It depends on the workshop &mdash; the figure is on the
+      session you choose.
+      {% endif %}
+      Booking inside {{ balance_days }} days? The whole amount is due then,
+      not a deposit.
+    </dd></div>
     <div><dt>Insurance</dt><dd>Required. Mountains, old floors, and a long way from Toulouse</dd></div>
   </dl>
 </div></section>

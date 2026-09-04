@@ -13314,6 +13314,35 @@ def mark_booking_extra_delivered(conn, line_id, user_id=None, undo=False):
     return True, f"{line['name']} ticked off."
 
 
+def extras_delivered_today(conn, today=None):
+    """What has been ticked off for today's service, and by whom.
+
+    Scoped to the SERVICE day, the same as extras_due, so the two halves of
+    the page agree about which night it is -- and so a delivery at half past
+    midnight sits with the service it belonged to rather than opening
+    tomorrow's list.
+
+    Today only. A running history of every hamper the house has ever
+    delivered is a page nobody opens twice, and this exists to answer one
+    question asked at the moment it matters: was that one done, and by whom.
+    """
+    today = today or service_day()
+    start, end = service_day_window(today)
+    return [dict(r, when=r["delivered_at"]) for r in conn.execute(
+        """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code,
+                  rooms.name AS room_name, users.name AS delivered_by
+             FROM booking_extras
+             JOIN bookings ON bookings.id = booking_extras.booking_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+             LEFT JOIN users ON users.id = booking_extras.delivered_by_user_id
+            WHERE booking_extras.status = 'delivered'
+              AND booking_extras.delivered_at >= ?
+              AND booking_extras.delivered_at < ?
+            ORDER BY booking_extras.delivered_at DESC""",
+        # service_day_window already hands back stored strings.
+        (start, end)).fetchall()]
+
+
 def extras_due(conn, today=None):
     """What the house still owes its guests, soonest first.
 
@@ -37525,6 +37554,33 @@ def make_workshop_reference_code():
     return "WRK-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
+def workshop_deposit_to_show(conn):
+    """What to tell somebody a workshop costs to reserve, or None.
+
+    None means "it depends", and the page has to say that rather than pick a
+    number -- the same rule the rooms follow, and for the same reason: a guest
+    who sees 30% on the public page and is charged 50% at checkout has been
+    told a wrong figure about their own money on the page where they decided.
+
+    deposit_percent is a column on each workshop with a default of 30, not a
+    house rule. The page has always stated it as one.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT COALESCE(deposit_percent, 30) AS pct FROM workshops "
+        "WHERE active = 1").fetchall()
+    percents = {int(r["pct"]) for r in rows}
+    if len(percents) != 1:
+        return None
+    return percents.pop()
+
+
+# How close to a session the whole amount falls due. The same number
+# compute_workshop_payment_terms uses, named once so the public page cannot
+# state a different one -- which is exactly how the deposit came to be wrong
+# on four pages at once.
+WORKSHOP_BALANCE_DAYS = 30
+
+
 def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     """A workshop registration is really a whole-château retreat package, so
     it follows the same deposit/balance convention as the real thing: a
@@ -37536,11 +37592,12 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     if not total_price:
         return None, None, None
     today = house_today()
-    if (start_date - today).days < 30:
+    if (start_date - today).days < WORKSHOP_BALANCE_DAYS:
         return round(total_price, 2), 0.0, None
     deposit_amount = round(total_price * deposit_percent / 100, 2)
     balance_amount = round(total_price - deposit_amount, 2)
-    balance_due_date = (start_date - timedelta(days=30)).isoformat()
+    balance_due_date = (start_date
+                        - timedelta(days=WORKSHOP_BALANCE_DAYS)).isoformat()
     return deposit_amount, balance_amount, balance_due_date
 
 
@@ -39355,9 +39412,18 @@ def workshops_public():
              AND workshop_feedback.publish_consent = 1
            ORDER BY workshop_feedback.rating DESC, workshop_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
+    # Read rather than stated. deposit_percent is a column on each workshop
+    # with a default of 30, and the page has always printed 30 as though it
+    # were a house rule. None means the workshops disagree, and the page has
+    # to say so rather than pick one. Asked BEFORE the close, like everything
+    # else this route reads.
+    deposit_pct = workshop_deposit_to_show(conn)
     conn.close()
     return render_template(
-        "workshops_public.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
+        "workshops_public.html", workshops=workshops,
+        deposit_pct=deposit_pct,
+        balance_days=WORKSHOP_BALANCE_DAYS,
+        sessions_by_workshop=sessions_by_workshop,
         featured_reviews=featured_reviews,
     )
 
@@ -42336,9 +42402,15 @@ def extras_due_page():
     something to leave on a table.
     """
     conn = get_db()
+    day = service_day()
     due = extras_due(conn)
+    # And what has already been done tonight, with a name against it. The
+    # moment a line is ticked it leaves the list above and was, until now,
+    # invisible everywhere -- so "was that one done, and by whom" had no
+    # answer at all.
+    done = extras_delivered_today(conn, day)
     conn.close()
-    return render_template("extras_due.html", due=due, today=service_day())
+    return render_template("extras_due.html", due=due, done=done, today=day)
 
 
 @app.route("/extras/<int:line_id>/delivered", methods=["POST"])
