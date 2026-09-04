@@ -377,6 +377,11 @@ ROOM_PAYMENT_DEFAULTS = {
     "room_part_payment_allowed": "0",
 }
 
+# How long a date is held for while somebody decides. Three weeks: long enough
+# for a couple to see the place twice and talk to their families, short enough
+# that a season is not closed by a conversation nobody followed up.
+EVENT_HOLD_DAYS_DEFAULT = 21
+
 # Where a guest is sent to say it publicly. Empty until the house pastes its
 # own Google or TripAdvisor page in, and nothing is ever sent while it is
 # empty -- an invitation to review that lands on a broken link is worse than
@@ -3849,6 +3854,88 @@ def init_db():
              note TEXT,
              created_at TEXT NOT NULL
          )"""),
+        # WHAT WAS AGREED, AND WHO AGREED IT.
+        #
+        # An enquiry carried a price and a note, and nothing was ever signed.
+        # The figure could be re-typed by anybody at any time, and a couple
+        # asking "what did we agree about the marquee" had only an email
+        # thread to go on -- on the most expensive thing the house sells.
+        #
+        # A quote is a version, not a field. Re-quoting supersedes rather than
+        # overwrites, so the price somebody accepted in March is still
+        # readable in September when they ask why it changed.
+        ("event_quotes_table", """CREATE TABLE IF NOT EXISTS event_quotes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             version INTEGER NOT NULL DEFAULT 1,
+             token TEXT UNIQUE,
+             quoted_price REAL NOT NULL DEFAULT 0,
+             discount_amount REAL,
+             deposit_amount REAL,
+             balance_due_date TEXT,
+             spaces TEXT,
+             arrival_time TEXT,
+             carriages_time TEXT,
+             guest_count INTEGER,
+             includes TEXT,
+             terms TEXT,
+             status TEXT NOT NULL DEFAULT 'draft',
+             created_at TEXT NOT NULL,
+             created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             sent_at TEXT,
+             accepted_at TEXT,
+             accepted_name TEXT,
+             superseded_at TEXT
+         )"""),
+        ("idx_event_quotes_event",
+         "CREATE INDEX IF NOT EXISTS idx_event_quotes_event ON event_quotes(event_id)"),
+
+        # A DATE PROMISED BUT NOT YET CONFIRMED.
+        #
+        # The house only had free or confirmed. A date held verbally for three
+        # weeks while a couple decided was, as far as the app knew, free -- so
+        # a room booking could take it, and did not know it had.
+        #
+        # Confirming already blocks the date (see is_range_available). A hold
+        # blocks it the same way and lapses on its own, which is what stops a
+        # promise nobody wrote down from quietly closing a month of rooms.
+        ("event_holds_table", """CREATE TABLE IF NOT EXISTS event_holds (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             start_date TEXT NOT NULL,
+             end_date TEXT NOT NULL,
+             expires_at TEXT NOT NULL,
+             note TEXT,
+             created_at TEXT NOT NULL,
+             created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             released_at TEXT,
+             released_reason TEXT
+         )"""),
+        ("idx_event_holds_dates",
+         "CREATE INDEX IF NOT EXISTS idx_event_holds_dates ON event_holds(start_date, end_date)"),
+
+        # A WEDDING IS PAID IN THREE OR FOUR GOES OVER A YEAR.
+        #
+        # One deposit and one dated balance cannot say that, so a twenty-five
+        # thousand euro event had a single figure falling due once and the
+        # instalments in between lived in somebody's diary.
+        #
+        # A PLAN, NOT A SECOND LEDGER. Nothing here records money. Whether an
+        # instalment has been met is worked out from what the event has
+        # actually received, oldest first, so there is exactly one record of
+        # what came in and the schedule cannot drift out of step with it.
+        ("event_instalments_table", """CREATE TABLE IF NOT EXISTS event_instalments (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             label TEXT NOT NULL DEFAULT '',
+             amount REAL NOT NULL,
+             due_date TEXT NOT NULL,
+             reminder_sent_at TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_event_instalments_event",
+         "CREATE INDEX IF NOT EXISTS idx_event_instalments_event ON event_instalments(event_id, due_date)"),
+
         ("event_suppliers_table", """CREATE TABLE IF NOT EXISTS event_suppliers (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
              event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
@@ -5650,6 +5737,9 @@ NAV_AREAS = {
         
     ],
     "events": [
+        "event_agreement", "new_event_quote", "send_event_quote",
+        "new_event_hold", "release_event_hold", "new_event_instalment",
+        "delete_event_instalment", "save_event_terms",
         "admin_events", "export_events_csv", "update_event_inquiry",
         "event_run_sheet_page", "export_event_run_sheet_csv",
         "add_event_moment", "delete_event_moment",
@@ -9941,16 +10031,44 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
         if w_start and w_end and arrival <= w_end and w_start < departure:
             return False, f"Those dates are held for a workshop ({row['title']})."
 
-    # A confirmed event (wedding, photoshoot, etc.) takes over the château
-    # for that day the same way a workshop does — event_inquiries only ever
-    # stores a single preferred_date, not a range, so this blocks just that
-    # one day rather than a multi-day span.
+    # A confirmed event (wedding, photoshoot, etc.) takes over the château for
+    # its run, the same way a workshop does.
+    #
+    # THE WHOLE RUN, NOT THE FIRST DAY. This read preferred_date alone with a
+    # comment saying event_inquiries had no range -- and end_date had been
+    # added since, so a three-day wedding blocked one day and left the rest of
+    # itself on sale.
     for row in conn.execute(
-        "SELECT preferred_date, event_type FROM event_inquiries WHERE status = 'confirmed' AND preferred_date IS NOT NULL"
+        """SELECT preferred_date, end_date, event_type FROM event_inquiries
+            WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""
     ).fetchall():
-        e_date = parse_date(row["preferred_date"])
-        if e_date and arrival <= e_date < departure:
+        e_start = parse_date(row["preferred_date"])
+        e_end = parse_date(row["end_date"]) or e_start
+        if e_end and e_start and e_end < e_start:
+            e_end = e_start
+        if e_start and arrival <= e_end and e_start < departure:
             return False, f"That date is held for a confirmed event ({row['event_type']})."
+
+    # And a date PROMISED but not yet confirmed. The house only had free or
+    # confirmed, so a date held verbally for three weeks while somebody
+    # decided was, as far as this function knew, free -- and a room booking
+    # could take it without anybody noticing until the wedding was confirmed
+    # on top of it.
+    #
+    # Named as provisional, deliberately. "Not available" sends whoever is at
+    # the desk looking for a booking that does not exist; "held while somebody
+    # decides" tells them there is a person to ring.
+    for row in conn.execute(
+        """SELECT event_holds.start_date, event_holds.end_date,
+                  event_inquiries.event_type AS kind
+             FROM event_holds
+             JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+            WHERE event_holds.released_at IS NULL AND event_holds.expires_at > ?""",
+        (datetime.now(timezone.utc).isoformat(),)).fetchall():
+        h_start, h_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+        if h_start and h_end and arrival <= h_end and h_start < departure:
+            return False, (f"Those dates are provisionally held for a "
+                           f"{row['kind']} while somebody decides.")
 
     return True, None
 
@@ -33853,6 +33971,8 @@ def admin_events():
     # nothing on this page linked to it, so the only way to use it was to
     # know the URL.
     bills = {e["id"]: event_bill(conn, e["id"]) for e in inquiries}
+    # Read before the close, like everything else on this page.
+    terms_text = event_terms(conn)
     conn.close()
 
     # Split by whether the event has actually happened yet. Previously one
@@ -33875,6 +33995,7 @@ def admin_events():
         status_filter=status_filter, today=house_today(),
         new_count=new_count, confirmed_count=confirmed_count, event_types=types,
         bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
+        event_terms_text=terms_text,
     )
 
 
@@ -34590,6 +34711,331 @@ def event_payment_setting(conn, key, cast=float):
         return cast(raw)
     except (TypeError, ValueError):
         return cast(EVENT_PAYMENT_DEFAULTS[key])
+
+
+# The wording a couple is agreeing to. Held as a setting because it is a
+# commercial term the owner changes with their insurer and their accountant,
+# not a code change -- the same reason the email templates and the terms of
+# booking are data.
+EVENT_TERMS_SETTING = "event_quote_terms"
+EVENT_TERMS_DEFAULT = (
+    "This quote holds the date named above for the party named above.\n\n"
+    "The deposit is payable to accept it and is not refundable: the date is "
+    "taken off the market the moment it is accepted, and the ch\u00e2teau "
+    "cannot sell it twice.\n\n"
+    "The balance falls due by the date shown. Final numbers are needed no "
+    "later than fourteen days before the event; the quote is based on the "
+    "number of guests shown and will be re-quoted if that changes "
+    "materially.\n\n"
+    "Music outdoors stops at midnight. The house is a listed monument and "
+    "nothing may be fixed to the walls, floors or trees.")
+
+
+def event_terms(conn):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (EVENT_TERMS_SETTING,)).fetchone()
+    return ((row["value"] if row else "") or "").strip() or EVENT_TERMS_DEFAULT
+
+
+def event_quotes(conn, event_id):
+    """Every quote ever put to this event, newest first."""
+    return conn.execute(
+        """SELECT * FROM event_quotes WHERE event_id = ?
+            ORDER BY version DESC, id DESC""", (event_id,)).fetchall()
+
+
+def live_event_quote(conn, event_id):
+    """The one quote that can still be accepted, if there is one.
+
+    Superseded and accepted quotes are kept and are readable; neither can be
+    accepted again. Re-quoting is how a price changes, so exactly one quote is
+    ever open.
+    """
+    return conn.execute(
+        """SELECT * FROM event_quotes
+            WHERE event_id = ? AND status IN ('draft', 'sent')
+            ORDER BY version DESC, id DESC LIMIT 1""", (event_id,)).fetchone()
+
+
+def create_event_quote(conn, event_id, fields, user_id=None):
+    """Put a quote to a couple. (quote, error).
+
+    Supersedes whatever was open. A quote is a VERSION rather than a set of
+    columns on the enquiry, so the price somebody accepted in March is still
+    readable in September when they ask why it has changed -- and so an
+    accepted one can never be edited into saying something else.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None, "That enquiry no longer exists."
+    if event["status"] in ("cancelled", "declined"):
+        return None, "That enquiry is closed, so there is nothing to quote for."
+    try:
+        price = round(float(str(fields.get("quoted_price", "")).replace(",", ".").strip() or 0), 2)
+    except (TypeError, ValueError):
+        return None, "That is not a price."
+    if price <= 0:
+        return None, "A quote needs a price."
+    discount = 0.0
+    try:
+        discount = round(float(str(fields.get("discount_amount", "") or 0).replace(",", ".")), 2)
+    except (TypeError, ValueError):
+        discount = 0.0
+    discount = max(0.0, min(discount, price))
+    deposit = None
+    raw_deposit = str(fields.get("deposit_amount", "") or "").replace(",", ".").strip()
+    if raw_deposit:
+        try:
+            deposit = round(float(raw_deposit), 2)
+        except (TypeError, ValueError):
+            return None, "That is not a deposit."
+        if deposit < 0 or deposit > price - discount + 0.005:
+            return None, "The deposit cannot be more than the quote."
+    due = (fields.get("balance_due_date", "") or "").strip() or None
+    if due and not parse_date(due):
+        return None, "That is not a date."
+    # Nothing is asked for that the enquiry does not already know, so a quote
+    # can be raised in one click and edited before it goes.
+    guests = fields.get("guest_count")
+    try:
+        guests = int(guests) if str(guests or "").strip() else (event["guest_count"] or None)
+    except (TypeError, ValueError):
+        guests = event["guest_count"] or None
+    version = (conn.execute(
+        "SELECT COALESCE(MAX(version), 0) AS v FROM event_quotes WHERE event_id = ?",
+        (event_id,)).fetchone()["v"] or 0) + 1
+    conn.execute(
+        """UPDATE event_quotes SET status = 'superseded', superseded_at = ?
+            WHERE event_id = ? AND status IN ('draft', 'sent')""",
+        (datetime.now(timezone.utc).isoformat(), event_id))
+    token = secrets.token_urlsafe(24)
+    conn.execute(
+        """INSERT INTO event_quotes (event_id, version, token, quoted_price,
+           discount_amount, deposit_amount, balance_due_date, spaces,
+           arrival_time, carriages_time, guest_count, includes, terms,
+           status, created_at, created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)""",
+        (event_id, version, token, price, discount or None, deposit, due,
+         (fields.get("spaces", "") or event["spaces"] or "").strip()[:300] or None,
+         (fields.get("arrival_time", "") or event["arrival_time"] or "").strip()[:40] or None,
+         (fields.get("carriages_time", "") or event["carriages_time"] or "").strip()[:40] or None,
+         guests,
+         (fields.get("includes", "") or "").strip()[:4000] or None,
+         # The terms are COPIED onto the quote, not looked up when it is read.
+         # A couple agreed to the words in front of them that day; changing the
+         # setting must not change what an accepted quote says.
+         event_terms(conn),
+         datetime.now(timezone.utc).isoformat(), user_id))
+    conn.commit()
+    return conn.execute("SELECT * FROM event_quotes WHERE token = ?", (token,)).fetchone(), None
+
+
+def accept_event_quote(conn, quote):
+    """Record that a couple accepted this quote, and make it the agreement.
+
+    The accepted figures are copied onto the enquiry, because everything
+    downstream -- event_bill, the reminder, the invoice -- reads the enquiry.
+    The quote stays as the record of WHAT was agreed and WHEN.
+
+    Accepting does NOT confirm the event. Confirming blocks the date against
+    every room booking in the diary, and that is the house's act rather than
+    the guest's -- somebody has to look at the calendar. The owner is told
+    instead, and a hold is what keeps the date safe in the meantime.
+    """
+    if quote["status"] not in ("draft", "sent"):
+        return False, "That quote is no longer open."
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE event_quotes SET status = 'accepted', accepted_at = ?,
+           accepted_name = ? WHERE id = ?""",
+        (now, (quote["accepted_name"] or "")[:120] or None, quote["id"]))
+    conn.execute(
+        """UPDATE event_inquiries SET quoted_price = ?, discount_amount = ?,
+           deposit_amount = ?, balance_due_date = COALESCE(?, balance_due_date),
+           spaces = COALESCE(?, spaces), arrival_time = COALESCE(?, arrival_time),
+           carriages_time = COALESCE(?, carriages_time)
+            WHERE id = ?""",
+        (quote["quoted_price"], quote["discount_amount"], quote["deposit_amount"],
+         quote["balance_due_date"], quote["spaces"], quote["arrival_time"],
+         quote["carriages_time"], quote["event_id"]))
+    conn.commit()
+    return True, None
+
+
+def event_holds(conn, event_id=None, *, live_only=True):
+    """Dates promised but not yet confirmed."""
+    sql = "SELECT * FROM event_holds WHERE 1 = 1"
+    args = []
+    if event_id is not None:
+        sql += " AND event_id = ?"
+        args.append(event_id)
+    if live_only:
+        sql += " AND released_at IS NULL AND expires_at > ?"
+        args.append(datetime.now(timezone.utc).isoformat())
+    return conn.execute(sql + " ORDER BY start_date", tuple(args)).fetchall()
+
+
+def place_event_hold(conn, event_id, start_iso, end_iso, *, days=None,
+                     note=None, user_id=None):
+    """Hold a date while somebody decides. (hold, error).
+
+    Refused when a room booking, a workshop or another event already has those
+    dates: a hold that overlaps something sold is a promise the house cannot
+    keep, and finding that out in March is much cheaper than in August.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None, "That enquiry no longer exists."
+    start, end = parse_date(start_iso), parse_date(end_iso)
+    if not start or not end or end < start:
+        return None, "Those dates do not make sense."
+    # The whole house, so any room answers for all of them.
+    room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    if room:
+        ok, why = is_range_available(conn, room["id"], start, end + timedelta(days=1))
+        if not ok:
+            return None, f"Those dates are not free: {why}"
+    try:
+        days = int(days) if days else EVENT_HOLD_DAYS_DEFAULT
+    except (TypeError, ValueError):
+        days = EVENT_HOLD_DAYS_DEFAULT
+    days = max(1, min(days, 365))
+    expires = datetime.now(timezone.utc) + timedelta(days=days)
+    conn.execute(
+        """INSERT INTO event_holds (event_id, start_date, end_date, expires_at,
+           note, created_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (event_id, start.isoformat(), end.isoformat(), expires.isoformat(),
+         (note or "").strip()[:300] or None,
+         datetime.now(timezone.utc).isoformat(), user_id))
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM event_holds WHERE event_id = ? ORDER BY id DESC LIMIT 1",
+        (event_id,)).fetchone(), None
+
+
+def lapse_event_holds(conn, *, now=None):
+    """Let go of a date nobody came back about, and say so.
+
+    A hold blocks every room in the house for its span. Left to stand it would
+    close a month on the strength of a conversation somebody forgot, so it has
+    an end and this is what enforces it.
+    """
+    now = now or datetime.now(timezone.utc)
+    stale = conn.execute(
+        """SELECT event_holds.*, event_inquiries.reference_code AS ref,
+                  event_inquiries.event_type AS kind,
+                  event_inquiries.contact_name AS who
+             FROM event_holds
+             JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+            WHERE event_holds.released_at IS NULL AND event_holds.expires_at <= ?""",
+        (now.isoformat(),)).fetchall()
+    if not stale:
+        return {"event holds lapsed": 0}
+    conn.execute(
+        """UPDATE event_holds SET released_at = ?, released_reason = 'it ran out'
+            WHERE released_at IS NULL AND expires_at <= ?""",
+        (now.isoformat(), now.isoformat()))
+    conn.commit()
+    # The owner is TOLD. A date coming back on the market is news -- it is a
+    # weekend that can be sold again, and nobody would otherwise know.
+    to_address = owner_email(conn)
+    if to_address:
+        lines = "\n".join(
+            f"- {h['start_date']} to {h['end_date']} — {h['kind']} for "
+            f"{h['who']} ({h['ref']})" for h in stale)
+        send_email(
+            to_address, "Dates back on the market",
+            "These provisional holds have run out, so the dates are free "
+            f"again:\n\n{lines}\n\nIf any of them is still live, place the "
+            "hold again from the event.\n\n— Château de Gudanes")
+    return {"event holds lapsed": len(stale)}
+
+
+def event_instalments(conn, event_id):
+    """The payment plan for an event, in date order.
+
+    A PLAN, NOT A LEDGER. Nothing here records money: whether an instalment
+    has been met is worked out below from what the event has actually
+    received, oldest first. So there is one record of what came in, and a
+    schedule that cannot disagree with it.
+    """
+    return conn.execute(
+        """SELECT * FROM event_instalments WHERE event_id = ?
+            ORDER BY due_date, id""", (event_id,)).fetchall()
+
+
+def event_schedule(conn, event_id):
+    """The plan with what has been received applied against it.
+
+    Each instalment comes back with how much of it is covered and whether it
+    is met, settled oldest first -- which is what somebody means when they say
+    "the second payment has come in".
+    """
+    bill = event_bill(conn, event_id)
+    if not bill:
+        return None
+    rows = event_instalments(conn, event_id)
+    left = bill["paid"]
+    out = []
+    for row in rows:
+        amount = round(float(row["amount"] or 0), 2)
+        covered = round(min(left, amount), 2)
+        left = round(max(left - amount, 0.0), 2)
+        out.append({
+            "row": row, "amount": amount, "covered": covered,
+            "outstanding": round(amount - covered, 2),
+            "met": covered + 0.005 >= amount,
+            "overdue": bool(covered + 0.005 < amount
+                            and (row["due_date"] or "") < house_today_iso()),
+        })
+    planned = round(sum(x["amount"] for x in out), 2)
+    return {
+        "bill": bill,
+        "instalments": out,
+        "planned": planned,
+        # What the quote asks for and the plan does not yet cover. Nought means
+        # the plan adds up to the agreement.
+        "unplanned": round(max(bill["quoted"] - planned, 0.0), 2),
+        "next_due": next((x for x in out if not x["met"]), None),
+    }
+
+
+def add_event_instalment(conn, event_id, label, amount, due_date):
+    """One dated stage of the plan. (row, error).
+
+    Refused rather than clamped if it would take the plan over the quote: this
+    is somebody dividing an agreed figure into stages, and silently shrinking
+    a stage to fit is how a plan stops adding up to the agreement.
+    """
+    state = event_schedule(conn, event_id)
+    if not state:
+        return None, "That enquiry no longer exists."
+    if state["bill"]["event"]["status"] in ("cancelled", "declined"):
+        return None, "That event is closed, so there is nothing to schedule."
+    try:
+        amount = round(float(str(amount).replace(",", ".").strip()), 2)
+    except (TypeError, ValueError):
+        return None, "That is not an amount."
+    if amount <= 0:
+        return None, "An instalment has to be more than nothing."
+    if amount > state["unplanned"] + 0.005:
+        return None, ("Only EUR %.2f of this quote is unscheduled, so an "
+                      "instalment of EUR %.2f would take the plan over what "
+                      "was agreed." % (state["unplanned"], amount))
+    due = parse_date((due_date or "").strip())
+    if not due:
+        return None, "An instalment needs a date it falls due."
+    conn.execute(
+        """INSERT INTO event_instalments (event_id, label, amount, due_date,
+           created_at) VALUES (?, ?, ?, ?, ?)""",
+        (event_id, (label or "").strip()[:120], amount, due.isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM event_instalments WHERE event_id = ? ORDER BY id DESC LIMIT 1",
+        (event_id,)).fetchone(), None
 
 
 def event_payment_terms(conn, quoted, event_date_iso, party_size=None):
@@ -46728,6 +47174,257 @@ def export_breakage_recovery_csv():
                          "written_off"], data["csv"], "breakage-recovery.csv")
 
 
+@app.route("/admin/events/<int:inquiry_id>/agreement")
+@owner_required
+def event_agreement(inquiry_id):
+    """What was agreed, what is promised, and how it will be paid for.
+
+    One page for the three things an enquiry had nowhere to keep: the quote
+    somebody actually accepted, the dates being held while they decide, and
+    the instalments the money arrives in.
+    """
+    conn = get_db()
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (inquiry_id,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    quotes = event_quotes(conn, inquiry_id)
+    live = live_event_quote(conn, inquiry_id)
+    schedule = event_schedule(conn, inquiry_id)
+    holds = event_holds(conn, inquiry_id, live_only=False)
+    # Read before the close, like everything else on a page in this app.
+    quote_links = {q["id"]: url_for("event_quote", token=q["token"], _external=True)
+                   for q in quotes if q["token"]}
+    hold_days = EVENT_HOLD_DAYS_DEFAULT
+    conn.close()
+    return render_template("event_agreement.html", event=event, quotes=quotes,
+                           live=live, schedule=schedule, holds=holds,
+                           quote_links=quote_links,
+                           hold_days=hold_days, today=house_today_iso())
+
+
+@app.route("/admin/events/<int:inquiry_id>/quote", methods=["POST"])
+@owner_required
+def new_event_quote(inquiry_id):
+    conn = get_db()
+    quote, error = create_event_quote(
+        conn, inquiry_id, request.form.to_dict(), user_id=session.get("user_id"))
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+    log_audit(conn, "event_quote_raised", target=str(inquiry_id),
+              details=f"v{quote['version']} at €{quote['quoted_price']:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"Quote {quote['version']} raised. Send them the link when you are "
+          "ready — nothing goes out on its own.", "success")
+    return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+
+
+@app.route("/admin/events/quote/<int:quote_id>/send", methods=["POST"])
+@owner_required
+def send_event_quote(quote_id):
+    """Put the quote in front of the couple.
+
+    Separate from raising it on purpose: a quote for the largest thing the
+    house sells should be readable and correctable before anybody sees it.
+    """
+    conn = get_db()
+    quote = conn.execute("SELECT * FROM event_quotes WHERE id = ?", (quote_id,)).fetchone()
+    if not quote:
+        conn.close()
+        abort(404)
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (quote["event_id"],)).fetchone()
+    if quote["status"] not in ("draft", "sent"):
+        conn.close()
+        flash("That quote is no longer open, so there is nothing to send.", "error")
+        return redirect(url_for("event_agreement", inquiry_id=quote["event_id"]))
+    link = url_for("event_quote", token=quote["token"], _external=True)
+    net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
+    sent = send_email(
+        event["contact_email"],
+        f"Your quote for Ch\u00e2teau de Gudanes",
+        f"Dear {event['contact_name']},\n\n"
+        f"Your quote for {event['event_type']} at Ch\u00e2teau de Gudanes "
+        f"comes to EUR {net:.2f}.\n\n"
+        f"Everything it covers, the terms, and a button to accept it are "
+        f"here:\n{link}\n\n"
+        "Nothing is agreed until you accept it, and we are glad to talk any "
+        "of it through first.\n\n\u2014 Ch\u00e2teau de Gudanes")
+    if sent:
+        conn.execute(
+            "UPDATE event_quotes SET status = 'sent', sent_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), quote_id))
+        conn.commit()
+    conn.close()
+    flash(f"Quote {quote['version']} sent to {event['contact_email']}." if sent
+          else "That message could not be sent.", "success" if sent else "error")
+    return redirect(url_for("event_agreement", inquiry_id=quote["event_id"]))
+
+
+@app.route("/admin/events/<int:inquiry_id>/hold", methods=["POST"])
+@owner_required
+def new_event_hold(inquiry_id):
+    conn = get_db()
+    hold, error = place_event_hold(
+        conn, inquiry_id,
+        request.form.get("start_date", ""),
+        request.form.get("end_date", "") or request.form.get("start_date", ""),
+        days=request.form.get("days", ""),
+        note=request.form.get("note", ""), user_id=session.get("user_id"))
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+    log_audit(conn, "event_hold_placed", target=str(inquiry_id),
+              details=f"{hold['start_date']} to {hold['end_date']} until {hold['expires_at'][:10]}")
+    conn.commit()
+    conn.close()
+    flash(f"Held {hold['start_date']} to {hold['end_date']}. No room can be "
+          f"sold on those dates until it runs out on {hold['expires_at'][:10]}.",
+          "success")
+    return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+
+
+@app.route("/admin/events/hold/<int:hold_id>/release", methods=["POST"])
+@owner_required
+def release_event_hold(hold_id):
+    conn = get_db()
+    hold = conn.execute("SELECT * FROM event_holds WHERE id = ?", (hold_id,)).fetchone()
+    if not hold:
+        conn.close()
+        abort(404)
+    if hold["released_at"]:
+        conn.close()
+        flash("That hold has already gone.", "error")
+        return redirect(url_for("event_agreement", inquiry_id=hold["event_id"]))
+    conn.execute(
+        """UPDATE event_holds SET released_at = ?, released_reason = 'let go by the house'
+            WHERE id = ?""", (datetime.now(timezone.utc).isoformat(), hold_id))
+    conn.commit()
+    conn.close()
+    flash(f"{hold['start_date']} to {hold['end_date']} is back on the market.",
+          "success")
+    return redirect(url_for("event_agreement", inquiry_id=hold["event_id"]))
+
+
+@app.route("/admin/events/<int:inquiry_id>/instalment", methods=["POST"])
+@owner_required
+def new_event_instalment(inquiry_id):
+    conn = get_db()
+    row, error = add_event_instalment(
+        conn, inquiry_id, request.form.get("label", ""),
+        request.form.get("amount", ""), request.form.get("due_date", ""))
+    conn.close()
+    flash(error if error else
+          f"EUR {row['amount']:.2f} falls due {row['due_date']}.",
+          "error" if error else "success")
+    return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+
+
+@app.route("/admin/events/instalment/<int:instalment_id>/delete", methods=["POST"])
+@owner_required
+def delete_event_instalment(instalment_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM event_instalments WHERE id = ?",
+                       (instalment_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM event_instalments WHERE id = ?", (instalment_id,))
+    conn.commit()
+    conn.close()
+    flash("That stage is off the plan. Nothing about what has actually been "
+          "received has changed.", "success")
+    return redirect(url_for("event_agreement", inquiry_id=row["event_id"]))
+
+
+@app.route("/admin/events/terms", methods=["POST"])
+@owner_required
+def save_event_terms():
+    """The wording a couple agrees to.
+
+    Data rather than code, like the email templates: a commercial term the
+    owner changes with their insurer, not a deploy. An accepted quote keeps
+    the words that were in front of the person who accepted it, so editing
+    this never changes what anybody already agreed to.
+    """
+    text = (request.form.get("terms", "") or "").strip()[:8000]
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (EVENT_TERMS_SETTING, text))
+    conn.commit()
+    conn.close()
+    flash("Saved. Quotes raised from now on carry this wording; ones already "
+          "accepted keep what they said." if text else
+          "Cleared, so quotes carry the house wording again.", "success")
+    return redirect(url_for("admin_events"))
+
+
+@app.route("/events/quote/<token>", methods=["GET", "POST"])
+@csrf.exempt
+def event_quote(token):
+    """The quote itself, as the couple sees it.
+
+    Their own money and their own day on a link they were sent, so it is never
+    indexed. CSRF-exempt for the same reason the statement and the share pages
+    are: whoever opens it has no session, and the worst a forged POST can do is
+    accept a quote that was already put to them, which is recorded with the
+    name typed into it.
+    """
+    conn = get_db()
+    quote = conn.execute("SELECT * FROM event_quotes WHERE token = ?", (token,)).fetchone()
+    if not quote:
+        conn.close()
+        abort(404)
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (quote["event_id"],)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    if request.method == "POST" and quote["status"] in ("draft", "sent"):
+        who = (request.form.get("accepted_name", "") or "").strip()[:120]
+        if not who:
+            conn.close()
+            flash("Please type your name to accept.", "error")
+            return redirect(url_for("event_quote", token=token))
+        conn.execute("UPDATE event_quotes SET accepted_name = ? WHERE id = ?",
+                     (who, quote["id"]))
+        quote = conn.execute("SELECT * FROM event_quotes WHERE id = ?",
+                             (quote["id"],)).fetchone()
+        ok, problem = accept_event_quote(conn, quote)
+        if ok:
+            log_audit(conn, "event_quote_accepted", target=event["reference_code"],
+                      details=f"v{quote['version']} by {who}")
+            conn.commit()
+            to_address = owner_email(conn)
+            conn.close()
+            if to_address:
+                send_email(
+                    to_address,
+                    f"Quote accepted \u2014 {event['event_type']} ({event['reference_code']})",
+                    f"{who} has accepted quote {quote['version']} for "
+                    f"{event['event_type']} on {event['preferred_date']}, at "
+                    f"EUR {float(quote['quoted_price'] or 0):.2f}.\n\n"
+                    "The date is NOT blocked yet \u2014 confirming the event is "
+                    "what does that, and it is worth looking at the calendar "
+                    "first.\n\n\u2014 Ch\u00e2teau de Gudanes")
+            flash("Thank you \u2014 that is accepted. We will be in touch to "
+                  "settle the deposit.", "success")
+            return redirect(url_for("event_quote", token=token))
+        conn.close()
+        flash(problem or "That quote is no longer open.", "error")
+        return redirect(url_for("event_quote", token=token))
+    net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
+    conn.close()
+    return render_template("event_quote.html", quote=quote, event=event, net=net)
+
+
 @app.route("/admin/events/<int:event_id>/run-sheet")
 @owner_required
 def event_run_sheet_page(event_id):
@@ -55114,6 +55811,10 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    # Not a purge either, but the same daily pass: a date held on the strength
+    # of a conversation nobody followed up has to come back on the market, and
+    # nothing else was going to notice.
+    cleared.update(lapse_event_holds(conn))
     # Not a purge, but the same daily pass: an offer that has run out has to be
     # taken back before the next person can be told, and nothing else was going
     # to notice.
@@ -57648,18 +58349,49 @@ def run_event_balance_reminder_job(conn, days_before):
     contact's send is what stops queue_undelivered keeping their copy.
     """
     cutoff = (house_today() + timedelta(days=days_before)).isoformat()
+    # EVERY CONFIRMED EVENT, then decided one at a time below.
+    #
+    # It used to select on balance_due_date alone, which cannot see a payment
+    # plan: an event paid in four stages has four dates and this column holds
+    # one of them, or none. Choosing per event costs nothing -- a house runs
+    # tens of weddings, not thousands -- and means the plan and the single
+    # balance are read by the same job rather than by two that can disagree.
     due = conn.execute(
         """SELECT * FROM event_inquiries
             WHERE status = 'confirmed'
-              AND balance_reminder_sent_at IS NULL
               AND contact_email IS NOT NULL AND contact_email != ''
-              AND balance_due_date IS NOT NULL AND balance_due_date <= ?
-            ORDER BY balance_due_date""", (cutoff,)).fetchall()
+            ORDER BY COALESCE(preferred_date, '9999-12-31')""").fetchall()
     sent, owing = 0, 0
     for event in due:
         bill = event_bill(conn, event["id"])
         if not bill or bill["owed"] <= 0.005:
             continue
+        # WHICH DATE IS THE ONE TO CHASE, and what it is worth.
+        #
+        # With a plan: the earliest stage not yet met, and only its own
+        # shortfall -- a couple who have paid two of four instalments are
+        # asked for the third, not for everything left. Its own stamp, so the
+        # fourth can still be chased after the third has been.
+        #
+        # Without one: the single dated balance, exactly as before.
+        schedule = event_schedule(conn, event["id"])
+        instalment = None
+        if schedule and schedule["instalments"]:
+            instalment = next(
+                (x for x in schedule["instalments"]
+                 if not x["met"] and (x["row"]["due_date"] or "") <= cutoff
+                 and not x["row"]["reminder_sent_at"]), None)
+            if not instalment:
+                continue
+            chase_amount = instalment["outstanding"]
+            chase_date = instalment["row"]["due_date"]
+        else:
+            if (event["balance_reminder_sent_at"]
+                    or not event["balance_due_date"]
+                    or event["balance_due_date"] > cutoff):
+                continue
+            chase_amount = bill["owed"]
+            chase_date = event["balance_due_date"]
         owing += 1
         try:
             manage_url = url_for("event_manage", manage_token=event["manage_token"],
@@ -57671,17 +58403,25 @@ def run_event_balance_reminder_job(conn, days_before):
             "event_type": event["event_type"] or "event",
             "event_date": format_date_human(event["preferred_date"])
                           if event["preferred_date"] else "the agreed date",
-            "balance_amount": f"{bill['owed']:.2f}",
-            "balance_due_date": format_date_human(event["balance_due_date"]),
+            "balance_amount": f"{chase_amount:.2f}",
+            "balance_due_date": format_date_human(chase_date),
             "manage_url": manage_url,
             "reference_code": event["reference_code"] or "",
         })
         if not subject:
             continue
         if send_email(event["contact_email"], subject, body):
-            conn.execute(
-                "UPDATE event_inquiries SET balance_reminder_sent_at = ? WHERE id = ?",
-                (datetime.now(timezone.utc).isoformat(), event["id"]))
+            # The STAGE is stamped when there is a plan, so the next one can
+            # still be chased. Stamping the event would have meant one
+            # reminder per wedding rather than one per instalment.
+            if instalment:
+                conn.execute(
+                    "UPDATE event_instalments SET reminder_sent_at = ? WHERE id = ?",
+                    (datetime.now(timezone.utc).isoformat(), instalment["row"]["id"]))
+            else:
+                conn.execute(
+                    "UPDATE event_inquiries SET balance_reminder_sent_at = ? WHERE id = ?",
+                    (datetime.now(timezone.utc).isoformat(), event["id"]))
             conn.commit()
             sent += 1
     if not owing:

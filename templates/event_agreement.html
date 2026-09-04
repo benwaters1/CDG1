@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Agreement — {{ event['reference_code'] }}{% endblock %}
+{% block content %}
+
+{# THE THREE THINGS AN ENQUIRY HAD NOWHERE TO KEEP.
+
+   A price that could be re-typed by anybody and was never signed. A date
+   promised verbally that the app believed was free. And a twenty-five thousand
+   euro total with one due date on it, when a wedding is paid in three or four
+   goes over a year. #}
+
+<div class="page-head">
+  <h1>The agreement</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('event_run_sheet_page', event_id=event['id']) }}" class="btn-ghost">Run sheet</a>
+    <a href="{{ url_for('admin_events') }}" class="btn-ghost">All enquiries</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ event['event_type']|capitalize }} · {{ event['contact_name'] }} ·
+  {{ event['preferred_date'] or 'no date yet' }}
+  {%- if event['end_date'] and event['end_date'] != event['preferred_date'] %} to {{ event['end_date'] }}{% endif %}
+  · {{ event['reference_code'] }} ·
+  <span class="mini-status status-{{ event['status'] }}">{{ event['status'] }}</span>
+</p>
+
+{% if schedule %}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">Agreed</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.bill.quoted) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Received</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.bill.paid) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Still owed</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.bill.owed) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Not yet scheduled</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.unplanned) }}</span>
+  </div>
+  {% if schedule.next_due %}
+  {# The one figure somebody actually came to this page for: what is coming
+     next and when. Worked out from what has been received, oldest stage
+     first. #}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Next, {{ schedule.next_due.row['due_date'] }}</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(schedule.next_due.outstanding) }}</span>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<h2>The quote</h2>
+{% if quotes %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Version</th><th scope="col">Total</th>
+        <th scope="col">Where it stands</th><th scope="col">Their link</th>
+        <th scope="col"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for q in quotes %}
+      <tr>
+        <th scope="row">{{ q['version'] }}<br><span class="upload-hint">{{ q['created_at']|house_day }}</span></th>
+        <td>&euro;{{ '%.2f'|format((q['quoted_price'] or 0) - (q['discount_amount'] or 0)) }}
+          {%- if q['deposit_amount'] %}<br><span class="upload-hint">&euro;{{ '%.2f'|format(q['deposit_amount']) }} deposit</span>{% endif %}
+        </td>
+        <td>
+          {% if q['status'] == 'accepted' %}
+          <span class="mini-status status-onshift">accepted{% if q['accepted_name'] %} by {{ q['accepted_name'] }}{% endif %} {{ q['accepted_at']|house_day }}</span>
+          {% elif q['status'] == 'superseded' %}
+          {# Kept, not deleted. The price somebody accepted in March is still
+             readable in September when they ask why it changed. #}
+          <span class="mini-status status-declined">replaced {{ q['superseded_at']|house_day }}</span>
+          {% elif q['status'] == 'sent' %}
+          <span class="mini-status status-pending">sent {{ q['sent_at']|house_day }}</span>
+          {% else %}
+          <span class="mini-status status-upcoming">not sent yet</span>
+          {% endif %}
+        </td>
+        <td><span class="upload-hint" style="word-break:break-all;">{{ quote_links.get(q['id'], '') }}</span></td>
+        <td>
+          {% if q['status'] in ('draft', 'sent') %}
+          <form method="post" action="{{ url_for('send_event_quote', quote_id=q['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini">{{ 'Send it again' if q['status'] == 'sent' else 'Send it' }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty-state">
+  Nothing has been quoted yet. A quote is what makes the price something both
+  sides can point at &mdash; and an accepted one can never be edited into
+  saying something else.
+</p>
+{% endif %}
+
+{% if event['status'] not in ('cancelled', 'declined') %}
+<div class="detail-card">
+  <h2 style="margin-top:0;">{{ 'Re-quote' if quotes else 'Raise a quote' }}</h2>
+  {% if live %}
+  <p class="upload-hint">
+    Quote {{ live['version'] }} is still open. Raising another replaces it
+    &mdash; the old one stays readable and stops being acceptable.
+  </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('new_event_quote', inquiry_id=event['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <label>Price (&euro;)
+        <input type="text" name="quoted_price" inputmode="decimal" required
+               value="{{ '%.2f'|format(event['quoted_price']) if event['quoted_price'] else '' }}">
+      </label>
+      <label>Discount (&euro;)
+        <input type="text" name="discount_amount" inputmode="decimal"
+               value="{{ '%.2f'|format(event['discount_amount']) if event['discount_amount'] else '' }}">
+      </label>
+      <label>Deposit to accept it (&euro;)
+        <input type="text" name="deposit_amount" inputmode="decimal"
+               value="{{ '%.2f'|format(event['deposit_amount']) if event['deposit_amount'] else '' }}">
+      </label>
+      <label>The rest due by
+        <input type="date" name="balance_due_date" value="{{ event['balance_due_date'] or '' }}">
+      </label>
+      <label>Guests
+        <input type="number" name="guest_count" min="1" value="{{ event['guest_count'] or '' }}">
+      </label>
+      <label>Spaces
+        <input type="text" name="spaces" value="{{ event['spaces'] or '' }}">
+      </label>
+      <label>From
+        <input type="text" name="arrival_time" value="{{ event['arrival_time'] or '' }}" placeholder="14:00">
+      </label>
+      <label>Until
+        <input type="text" name="carriages_time" value="{{ event['carriages_time'] or '' }}" placeholder="01:00">
+      </label>
+    </div>
+    <label class="field-label" for="includes">What it covers</label>
+    <textarea id="includes" name="includes" rows="4"
+              placeholder="The rooms, the tables, who lays them, what the couple bring themselves"></textarea>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Raise it</button>
+  </form>
+</div>
+{% endif %}
+
+<h2>The date, while they decide</h2>
+{% if holds %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th scope="col">Dates</th><th scope="col">Held until</th>
+        <th scope="col">Where it stands</th><th scope="col"></th></tr>
+    </thead>
+    <tbody>
+      {% for h in holds %}
+      <tr>
+        <th scope="row">{{ h['start_date'] }}{% if h['end_date'] != h['start_date'] %} to {{ h['end_date'] }}{% endif %}
+          {%- if h['note'] %}<br><span class="upload-hint">{{ h['note'] }}</span>{% endif %}</th>
+        <td>{{ h['expires_at']|house_day }}</td>
+        <td>
+          {% if h['released_at'] %}
+          <span class="mini-status status-declined">{{ h['released_reason'] or 'let go' }} {{ h['released_at']|house_day }}</span>
+          {% else %}
+          <span class="mini-status status-upcoming">no room can be sold on these dates</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not h['released_at'] %}
+          <form method="post" action="{{ url_for('release_event_hold', hold_id=h['id']) }}"
+                onsubmit="return confirm('Put these dates back on the market?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini btn-danger">Let it go</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="detail-card">
+  <p class="upload-hint">
+    A hold blocks every room in the house for those dates, exactly as
+    confirming would &mdash; and lapses on its own, so a promise nobody
+    followed up cannot quietly close a season. You are told when one runs out.
+  </p>
+  <form method="post" action="{{ url_for('new_event_hold', inquiry_id=event['id']) }}"
+        style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0;">From
+      <input type="date" name="start_date" required value="{{ event['preferred_date'] or '' }}">
+    </label>
+    <label style="margin:0;">To
+      <input type="date" name="end_date" value="{{ event['end_date'] or event['preferred_date'] or '' }}">
+    </label>
+    <label style="margin:0;">For how many days
+      <input type="number" name="days" min="1" max="365" value="{{ hold_days }}" style="max-width:110px;">
+    </label>
+    <button type="submit" class="btn-ghost">Hold it</button>
+  </form>
+</div>
+
+<h2>How it will be paid for</h2>
+{% if schedule and schedule.instalments %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th scope="col">Stage</th><th scope="col">Amount</th>
+        <th scope="col">Due</th><th scope="col">Where it stands</th><th scope="col"></th></tr>
+    </thead>
+    <tbody>
+      {% for i in schedule.instalments %}
+      <tr>
+        <th scope="row">{{ i.row['label'] or 'Instalment' }}</th>
+        <td>&euro;{{ '%.2f'|format(i.amount) }}</td>
+        <td>{{ i.row['due_date'] }}</td>
+        <td>
+          {# Worked out from what has actually been received, oldest first.
+             Nothing here records money, so the plan cannot disagree with the
+             ledger about what came in. #}
+          {% if i.met %}
+          <span class="mini-status status-onshift">met</span>
+          {% elif i.overdue %}
+          <span class="mini-status status-declined">overdue &mdash; &euro;{{ '%.2f'|format(i.outstanding) }} short</span>
+          {% elif i.covered %}
+          <span class="mini-status status-pending">&euro;{{ '%.2f'|format(i.covered) }} of it in</span>
+          {% else %}
+          <span class="mini-status status-upcoming">to come</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('delete_event_instalment', instalment_id=i.row['id']) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn-mini btn-danger">Off the plan</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if schedule and schedule.unplanned > 0.005 %}
+<div class="detail-card">
+  <p class="upload-hint">
+    &euro;{{ '%.2f'|format(schedule.unplanned) }} of what was agreed is not on
+    the plan yet. A stage is refused if it would take the plan over the
+    agreement &mdash; a plan that does not add up to the quote is worse than no
+    plan.
+  </p>
+  <form method="post" action="{{ url_for('new_event_instalment', inquiry_id=event['id']) }}"
+        style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0;">What to call it
+      <input type="text" name="label" placeholder="Deposit, second payment, balance">
+    </label>
+    <label style="margin:0;">Amount (&euro;)
+      <input type="text" name="amount" inputmode="decimal" required
+             placeholder="{{ '%.2f'|format(schedule.unplanned) }}" style="max-width:130px;">
+    </label>
+    <label style="margin:0;">Falls due
+      <input type="date" name="due_date" required>
+    </label>
+    <button type="submit" class="btn-ghost">Add the stage</button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}
