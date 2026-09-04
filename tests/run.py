@@ -286,6 +286,7 @@ SUITES = [
     "test_correspondence",
     "test_review_invitation",
     "test_itinerary",
+    "test_price_agreed",
     "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
