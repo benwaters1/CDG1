@@ -3358,6 +3358,11 @@ def init_db():
         ("payment_status", "ALTER TABLE bookings ADD COLUMN payment_status TEXT NOT NULL DEFAULT 'unpaid'"),
         ("bookings_balance_reminder_sent_at",
          "ALTER TABLE bookings ADD COLUMN balance_reminder_sent_at TEXT"),
+        # Told once, not every ten minutes. The housekeeping job runs on a
+        # timer, and a notification per pass would be forty an hour for one
+        # guest who is waiting.
+        ("bookings_waiting_notified_at",
+         "ALTER TABLE bookings ADD COLUMN waiting_notified_at TEXT"),
         # A stay booked eight months out was all-or-nothing: the whole amount
         # at checkout, or none of it. Workshops have had a deposit and a
         # dated balance since the start and rooms never did, which is why
@@ -6544,6 +6549,100 @@ def rate_limited(conn, action, limit, window_hours=1):
         (ip, action, datetime.now(timezone.utc).isoformat()),
     )
     return count >= limit
+
+
+# What the booking page promises: "The château confirms within a day."
+# Past this a request has already broken that promise, which is a different
+# thing from being close to the 48 hours at which the app answers instead.
+BOOKING_ANSWER_HOURS = 24
+
+
+def bookings_awaiting_answer(conn, now=None, hours=None):
+    """Pending requests nobody has answered inside the house's own promise.
+
+    Each row carries how long it has waited and how long is left before
+    expire_stale_pending_bookings answers for the house. A PAID request has
+    no deadline -- those are deliberately excluded from the auto-decline,
+    because a silent decline-and-refund because nobody checked the site is
+    not a decision anybody made. It still wants answering, and arguably more.
+
+    Oldest first: if only one thing gets done, it should be the guest who has
+    been waiting longest.
+    """
+    now = now or datetime.now(timezone.utc)
+    hours = BOOKING_ANSWER_HOURS if hours is None else hours
+    cutoff = (now - timedelta(hours=hours)).isoformat()
+    rows = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name
+             FROM bookings
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'pending' AND bookings.created_at <= ?
+            ORDER BY bookings.created_at""", (cutoff,)).fetchall()
+    out = []
+    for row in rows:
+        made = parse_datetime_iso(row["created_at"])
+        if not made:
+            # A request whose age cannot be read is still a request. It is
+            # reported with no figures rather than dropped, because dropping
+            # it is how one waits for ever.
+            out.append({"booking": row, "waited": None, "left": None,
+                        "paid": row["payment_status"] == "paid"})
+            continue
+        if made.tzinfo is None:
+            made = made.replace(tzinfo=timezone.utc)
+        waited = (now - made).total_seconds() / 3600.0
+        paid = row["payment_status"] == "paid"
+        left = None if paid else max(
+            0.0, STALE_PENDING_BOOKING_HOURS - waited)
+        out.append({"booking": row, "waited": round(waited, 1),
+                    "left": round(left, 1) if left is not None else None,
+                    "paid": paid})
+    return out
+
+
+def notify_bookings_awaiting_answer(conn, now=None):
+    """Tell somebody a guest is waiting, once per request.
+
+    Sent from the housekeeping job, BEFORE it expires anything, so the notice
+    goes out ahead of the decline rather than after it. That ordering is the
+    whole point: the panel helps an owner who opens the page, and a request
+    is auto-declined on a ten-minute timer whether anybody opens anything.
+
+    Marked on the booking rather than counted, so a guest is not announced
+    forty times an hour. Returns how many were announced.
+    """
+    waiting = [w for w in bookings_awaiting_answer(conn, now)
+               if not w["booking"]["waiting_notified_at"]]
+    if not waiting:
+        return 0
+    owner = conn.execute(
+        "SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1").fetchone()
+    if not owner:
+        return 0
+    told = 0
+    for item in waiting:
+        b = item["booking"]
+        left = item["left"]
+        when = ("no deadline: it is paid, so the app will not answer for you"
+                if item["paid"] else
+                f"{int(left)}h before the app declines it for you"
+                if left is not None else "waiting")
+        send_notification(
+            conn, owner["id"], "booking_waiting",
+            f"{b['guest_name']} has been waiting for an answer",
+            body=(f"{b['room_name'] or 'a room'}, "
+                  f"{b['arrival_date']} to {b['departure_date']} \u2014 "
+                  f"asked {int(item['waited'])}h ago. {when}."
+                  if item["waited"] is not None else
+                  f"{b['room_name'] or 'a room'}, "
+                  f"{b['arrival_date']} to {b['departure_date']}."),
+            link=url_for("admin_bookings") if has_request_context() else "/admin/bookings")
+        conn.execute(
+            "UPDATE bookings SET waiting_notified_at = ? WHERE id = ?",
+            ((now or datetime.now(timezone.utc)).isoformat(), b["id"]))
+        told += 1
+    conn.commit()
+    return told
 
 
 def expire_stale_pending_bookings(conn, hours=STALE_PENDING_BOOKING_HOURS):
@@ -21288,6 +21387,36 @@ def owner_home_warnings(conn, today):
     # arrive -- a shortfall found the evening before is not a warning.
     # A filing that is late is already costing money, so it goes above the
     # things that are merely coming.
+    # A guest waiting for an answer the booking page promised within a day.
+    # First, because everything else on this panel is about the house and
+    # this one is about somebody who is waiting -- and because if nobody gets
+    # to it the software declines it for them on a ten-minute timer.
+    waiting = bookings_awaiting_answer(conn)
+    if waiting:
+        # The tightest deadline decides the tone. "Close" is six hours: less
+        # than that and an owner reading this at breakfast may not be at a
+        # desk again before the app has answered.
+        urgent = [w for w in waiting
+                  if w["left"] is not None and w["left"] <= 6]
+        worst = min((w for w in waiting if w["left"] is not None),
+                    key=lambda w: w["left"], default=None)
+        first = waiting[0]
+        b = first["booking"]
+        add("blocker" if urgent else "attention",
+            f"{len(waiting)} booking request"
+            f"{'' if len(waiting) == 1 else 's'} nobody has answered",
+            f"{b['guest_name']} asked "
+            + (f"{int(first['waited'])} hours ago" if first["waited"] is not None
+               else "a while ago")
+            + f" for {b['room_name'] or 'a room'}, {b['arrival_date']}"
+            + (f". The page told them the château answers within a day"
+               if not worst else
+               f". In {int(worst['left'])} hour"
+               f"{'' if int(worst['left']) == 1 else 's'} the app declines "
+               "the oldest of them, which is not an answer anybody chose")
+            + ".",
+            len(waiting), "admin_bookings")
+
     # Mail the app kept and can no longer sensibly send. About the STALE ones
     # rather than the held ones: held mail is a standing condition while no
     # provider is configured, and a line that is true every morning forever is
@@ -55880,9 +56009,15 @@ def claim_job_run(conn, job_name, cooldown_seconds):
 
 def run_housekeeping_job(conn):
     today = house_today()
+    # Told BEFORE anything is expired, so the owner hears that a guest is
+    # waiting rather than that a guest was declined. Both run on the same
+    # ten-minute timer, so the ordering here is the only thing that decides
+    # which of those two sentences they get.
+    told = notify_bookings_awaiting_answer(conn)
     expired = expire_stale_pending_bookings(conn)
     prepped = auto_prep_upcoming_arrivals(conn, today)
-    return f"expired {expired} stale booking(s), prepped {prepped} arrival(s)"
+    return (f"told about {told} waiting request(s), expired {expired} stale "
+            f"booking(s), prepped {prepped} arrival(s)")
 
 
 def run_daily_digest_job(conn):
