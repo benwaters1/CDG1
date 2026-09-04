@@ -51,6 +51,7 @@
       <tr>
         <td>
           <a href="{{ url_for('profile', user_id=r.user_id) }}">{{ r.name }}</a>
+          <a class="small-link" href="{{ url_for('pay_statement_page', user_id=r.user_id, year=period.start.year, month=period.start.month) }}">their month</a>
           {% if r.blockers %}<span class="mini-status status-declined">{{ r.blockers|join(', ') }}</span>{% endif %}
           {% if r.job_role %}<div class="upload-hint">{{ r.job_role }}</div>{% endif %}
         </td>

@@ -306,6 +306,7 @@ SUITES = [
     "test_public_calendar",
     "test_event_day",
     "test_event_worth",
+    "test_pay_statement",
     "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",
