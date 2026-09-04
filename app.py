@@ -21748,7 +21748,18 @@ def supplier_agreements(conn, today=None):
              FROM supplier_agreements
              LEFT JOIN vendors ON vendors.id = supplier_agreements.vendor_id
             WHERE supplier_agreements.active = 1""").fetchall()
-    out = [dict(agreement_state(r, today), row=r) for r in rows]
+    out = []
+    for r in rows:
+        state = dict(agreement_state(r, today), row=r)
+        # How long it has run. started_on has been written by the form since
+        # this was built and read by nothing -- yet an agreement in its first
+        # year and one in its ninth are different conversations with the same
+        # supplier, and the second is the one worth having.
+        began = parse_date(r["started_on"] or "")
+        state["running_days"] = (today - began).days if began else None
+        state["running_years"] = (round((today - began).days / 365.25, 1)
+                                  if began else None)
+        out.append(state)
     out.sort(key=lambda x: (x["deadline"] is None,
                             x["deadline"] or today, x["row"]["what"]))
     return out
@@ -47384,6 +47395,43 @@ def revenue_to_send():
                        "total": round(float(bill["quoted"] if bill else 0), 2),
                        "sent": pennylane_already_sent(conn, "event", event["id"])})
 
+    # And the other direction. This page's own docstring says why it exists:
+    # "Only expenses ever reached Pennylane -- money going out." That half was
+    # true and unmeasured. The expenses page shows a tick per row and nothing
+    # counts them, so "how many costs is the accountant still missing" was a
+    # question you answered by scrolling.
+    costs = []
+    for e in conn.execute(
+            """SELECT expenses.*, vendors.name AS linked_vendor
+                 FROM expenses
+                 LEFT JOIN vendors ON vendors.id = expenses.vendor_id
+                -- 'rejected', which is what the CHECK constraint on this
+                -- column actually allows. It was written as 'declined' and
+                -- excluded a status that cannot exist, so every refused cost
+                -- was on the list of things the accountant had not been given.
+                WHERE COALESCE(expenses.status, 'approved') != 'rejected'
+                ORDER BY COALESCE(expenses.spent_on, expenses.submitted_at) DESC
+                LIMIT 300""").fetchall():
+        went = parse_datetime_iso(e["pennylane_synced_at"])
+        paid = parse_date(e["spent_on"] or "")
+        # How long it sat here before the accountant saw it. Recorded since
+        # the column existed and read by nothing, so nobody could say whether
+        # the lag was a day or a quarter.
+        lag = ((went.astimezone(LOCAL_TZ).date() - paid).days
+               if (went and paid) else None)
+        costs.append({
+            "row": e, "what": e["description"] or "Cost",
+            # expenses carries a free-text vendor_name AND a vendor_id. The
+            # typed one wins where there is one, because the free-text field
+            # is whatever somebody put on the receipt.
+            "vendor": e["linked_vendor"] or e["vendor_name"] or "",
+            "total": round(float(e["amount"] or 0), 2),
+            "spent_on": e["spent_on"],
+            "sent": bool(e["pennylane_invoice_id"]),
+            "sent_at": e["pennylane_synced_at"],
+            "lag_days": lag,
+        })
+
     # Read before the close, like the stays above it.
     days = []
     for closure in conn.execute(
@@ -47394,11 +47442,19 @@ def revenue_to_send():
                      "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
+    costs_waiting = [c for c in costs if not c["sent"] and c["total"] > 0]
+    # The lag on the ones that DID go. Reported as a median rather than a
+    # mean: one expense sent eight months late would otherwise make a
+    # perfectly good quarter look bad.
+    lags = sorted(c["lag_days"] for c in costs
+                  if c["lag_days"] is not None and c["lag_days"] >= 0)
+    typical_lag = lags[len(lags) // 2] if lags else None
     days_waiting = [d for d in days if not d["sent"] and d["total"] > 0]
     ateliers_waiting = [w for w in ateliers if not w["sent"] and w["total"] > 0]
     events_waiting = [e for e in events if not e["sent"] and e["total"] > 0]
     return render_template(
         "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
+        costs=costs, costs_waiting=costs_waiting, typical_lag=typical_lag,
         days_waiting=days_waiting, ateliers=ateliers,
         ateliers_waiting=ateliers_waiting,
         waiting_total=round(sum(r["total"] for r in waiting)
@@ -53750,7 +53806,16 @@ def guest_record(conn, guest_id):
     The money is summed from each booking's own bill rather than recomputed,
     so there is one definition of what a stay costs and this is not a second.
     """
-    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    guest = conn.execute(
+        # The person who put the caution on. Written since the column existed
+        # and read by nothing, so the strongest statement this app can make
+        # about a guest carried a date and no author -- and whether it can be
+        # overturned by whoever is on tonight depends entirely on who it was.
+        """SELECT guests.*, setter.name AS caution_set_by
+             FROM guests
+             LEFT JOIN users AS setter
+                    ON setter.id = guests.caution_set_by_user_id
+            WHERE guests.id = ?""", (guest_id,)).fetchone()
     if not guest:
         return None
     email = (guest["email"] or "").strip().lower()

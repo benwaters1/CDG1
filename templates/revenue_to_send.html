@@ -174,6 +174,58 @@
 </div>
 {% endif %}
 
+<h2 class="section-heading" style="margin-top:26px;">Costs going the other way</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  This page was built because only expenses ever reached Pennylane &mdash; money
+  going out. That half was true and unmeasured: the expenses page shows a tick
+  per row and nothing counted them, so how many costs the accountant is still
+  missing was a question you answered by scrolling.
+  {% if typical_lag is not none %}
+  The ones that did go took <strong>{{ typical_lag }} day{{ '' if typical_lag == 1 else 's' }}</strong>
+  from being spent to being sent, as a median &mdash; one invoice sent eight
+  months late would make an average lie about a good quarter.
+  {% endif %}
+</p>
+
+{% if costs_waiting %}
+<div class="flash flash-error" style="margin:10px 0 16px;">
+  <strong>{{ costs_waiting|length }} cost{{ '' if costs_waiting|length == 1 else 's' }}
+  {{ 'has' if costs_waiting|length == 1 else 'have' }} not been sent.</strong>
+  {{ euro(costs_waiting|sum(attribute='total')) }} the accountant has not seen.
+</div>
+{% endif %}
+
+{% if costs %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Spent</th><th>What</th><th>Who to</th>
+               <th class="num">Amount</th><th>With the accountant</th></tr></thead>
+    <tbody>
+      {% for c in costs %}
+      <tr class="{{ 'row-alert' if not c.sent and c.total > 0 }}">
+        <td>{{ c.spent_on|date_short if c.spent_on else '&mdash;'|safe }}</td>
+        <td>{{ c.what }}</td>
+        <td>{{ c.vendor or '&mdash;'|safe }}</td>
+        <td class="num">{{ euro(c.total) }}</td>
+        <td>
+          {% if c.sent %}
+            Sent{% if c.sent_at %} {{ c.sent_at|house_day|date_short }}{% endif %}
+            {% if c.lag_days is not none %}
+              <span class="g-hint">{{ c.lag_days }} day{{ '' if c.lag_days == 1 else 's' }} after it was spent</span>
+            {% endif %}
+          {% else %}
+            <span class="mini-status status-pending">Not sent</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">No costs recorded.</div>
+{% endif %}
+
 <h2 class="section-heading" style="margin-top:26px;">Restaurant, by service day</h2>
 {#
   One invoice for the day, not one per diner: a table of two who paid cash and
