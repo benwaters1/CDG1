@@ -113,6 +113,7 @@
     <thead>
       <tr><th style="text-align:left;">Arriving</th><th style="text-align:left;">Who</th>
       <th style="text-align:left;">For</th><th style="text-align:left;">Contact</th>
+      <th style="text-align:left;">Cost</th><th style="text-align:left;">Papers</th>
       <th style="text-align:left;">Confirmed</th><th></th></tr>
     </thead>
     <tbody>
@@ -122,6 +123,27 @@
         <td>{{ sup.name }}{% if sup.note %}<span class="field-hint" style="display:block;">{{ sup.note }}</span>{% endif %}</td>
         <td>{{ sup.kind or '&mdash;'|safe }}</td>
         <td>{{ sup.contact or '' }}{% if sup.phone %} &middot; {{ sup.phone }}{% endif %}</td>
+        {#- WHAT THEY CHARGE AND WHETHER THEY MAY WORK. Neither was recorded,
+            so no event had a margin and nothing asked a band on a listed
+            monument for an insurance certificate. -#}
+        {% set ready = data.readiness.by_id.get(sup.id) if data.readiness else none %}
+        <td>
+          {% if ready and ready.cost is not none %}
+            &euro;{{ '%.2f'|format(ready.cost) }}
+            <span class="field-hint" style="display:block;">{{ 'paid' if sup.paid_at else 'not paid' }}</span>
+          {% else %}
+            <span class="mini-status status-pending">no cost</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if not sup.vendor_id %}
+            <span class="mini-status status-pending" title="Add them to the supplier list to record their papers">not on the list</span>
+          {% elif ready and ready.papers and ready.papers.ok %}
+            <span class="mini-status status-onshift">papers in order</span>
+          {% elif ready and ready.papers %}
+            <span class="mini-status status-declined">{{ ready.papers.missing|map('replace', '_', ' ')|join(', ') or 'out of date' }}</span>
+          {% endif %}
+        </td>
         <td>
           <form method="post" action="{{ url_for('confirm_event_supplier', event_id=data.event.id, supplier_id=sup.id) }}" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -173,6 +195,104 @@
   Read from the rota rather than set here. This does not roster anybody &mdash; it shows who is
   already down, so a gap is visible while there is still time to fill it.
 </p>
+{% if data.readiness and (data.readiness.papers_missing or data.readiness.not_on_the_list or data.readiness.unpriced) %}
+{#- AT THE TOP, NAMED. The badge on each row is easy to miss in a table of
+    eleven suppliers, and the morning of a wedding is not when to be reading
+    carefully. Named rather than counted, for the same reason bulk_message
+    names things: "two suppliers" is a number somebody has to go and match up. -#}
+<p class="pay-disclaimer">
+  {% if data.readiness.papers_missing %}
+  <strong>{{ data.readiness.papers_missing|join(', ') }}</strong>
+  {{ 'has' if data.readiness.papers_missing|length == 1 else 'have' }} papers
+  missing or out of date for this day.
+  {% endif %}
+  {% if data.readiness.not_on_the_list %}
+  {{ data.readiness.not_on_the_list|join(', ') }}
+  {{ 'is' if data.readiness.not_on_the_list|length == 1 else 'are' }} not on
+  the supplier list, so nothing can be recorded against
+  {{ 'them' if data.readiness.not_on_the_list|length > 1 else 'them' }}.
+  {% endif %}
+  {% if data.readiness.unpriced %}
+  No cost yet for {{ data.readiness.unpriced|join(', ') }} &mdash; the
+  &euro;{{ '%.2f'|format(data.readiness.cost) }} above leaves
+  {{ 'it' if data.readiness.unpriced|length == 1 else 'them' }} out.
+  {% endif %}
+</p>
+{% endif %}
+
+{% if data.staffing %}
+{#- THE QUESTION THAT HAD NO ANSWER. The list below is everybody rostered that
+    DAY -- a wedding for eighty and four rooms let the same night were one
+    undifferentiated set of names. These are the ones down for the event
+    itself, counted against how many the day needs. -#}
+<div class="detail-card">
+  <div class="expense-head">
+    <strong>On the event itself</strong>
+    <span class="upload-hint">&nbsp;{{ data.staffing.assigned|length }} shift(s)
+      {%- if data.staffing.needed %} &middot; {{ data.staffing.needed }} needed{% endif %}</span>
+    {% if data.staffing.short %}
+    <span class="mini-status status-declined" style="margin-left:6px;">{{ data.staffing.short }} short on the thinnest day</span>
+    {% elif data.staffing.needed %}
+    <span class="mini-status status-onshift" style="margin-left:6px;">staffed</span>
+    {% endif %}
+  </div>
+  {% if data.staffing.assigned %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th style="text-align:left;">Day</th><th style="text-align:left;">Who</th>
+      <th style="text-align:left;">From</th><th style="text-align:left;">Until</th><th></th></tr></thead>
+      <tbody>
+        {% for sh in data.staffing.assigned %}
+        <tr>
+          <th scope="row" style="text-align:left;">{{ sh.shift_date }}</th>
+          <td>{{ sh.who }}</td>
+          <td>{{ sh.start_time or '&mdash;'|safe }}</td>
+          <td>{{ sh.end_time or '&mdash;'|safe }}</td>
+          <td>
+            <form method="post" action="{{ url_for('assign_shift_to_event', event_id=data.event.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="shift_id" value="{{ sh.id }}">
+              <input type="hidden" name="off" value="1">
+              <button type="submit" class="btn-mini">Take off</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-state">Nobody is down for the event yet. The people below are
+    in the building that day and are the ones who could be put on it.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('save_event_staffing', event_id=data.event.id) }}"
+        style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0;">How many the day needs
+      <input type="number" name="staff_needed" min="0" max="200" style="max-width:120px;"
+             value="{{ data.event.staff_needed if data.event.staff_needed is not none else '' }}">
+    </label>
+    <button type="submit" class="btn-mini">Save</button>
+  </form>
+
+  {% if data.staffing.elsewhere %}
+  <form method="post" action="{{ url_for('assign_shift_to_event', event_id=data.event.id) }}"
+        style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:10px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label style="margin:0;">Put somebody on it
+      <select name="shift_id">
+        {% for sh in data.staffing.elsewhere %}
+        <option value="{{ sh.id }}">{{ sh.shift_date }} &mdash; {{ sh.who }}{% if sh.start_time %}, {{ sh.start_time }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn-mini">On the event</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
 {% if data.on_shift %}
 <div class="table-wrap">
   <table class="data-table">
