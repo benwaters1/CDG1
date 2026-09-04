@@ -423,6 +423,72 @@ def run():
         reached = True
     s.check("and calling it raises rather than fetches", not reached)
 
+    # ------------------------------------------------------------- the job
+    #
+    # The button needs somebody to press it, several times, and to remember
+    # that it exists. A safeguard that depends on that is a safeguard for the
+    # fortnight after it is built, so the job is the part that matters on a
+    # server nobody is looking at.
+    s.section("And it does it without being asked")
+
+    s.check("the job is registered to run on its own",
+            "photo_mirror" in [j[0] for j in m.AUTOMATION_JOBS],
+            detail="it exists but nothing calls it, which is the state four "
+                   "other jobs were found in")
+    job = next((j for j in m.AUTOMATION_JOBS if j[0] == "photo_mirror"), None)
+    s.check("it is on by default",
+            m.AUTOMATION_SETTING_DEFAULTS.get(job[1]) == "1" if job else False,
+            detail="a mirror switched off by default is not a mirror")
+    s.check("and it says what it is for on the automation page",
+            "photo_mirror" in m.AUTOMATION_JOB_LABELS,
+            detail="an unlabelled job does not appear on that page at all")
+    s.check("hourly, not daily", job and job[3] == 3600,
+            detail=str(job[3]) if job else "no job")
+
+    real_scan_j = m.hotlinked_urls
+    m.hotlinked_urls = lambda: [FAKE_URL, FAKE_TWO]
+    made_j = []
+
+    def _pretend_j(url, timeout=20):                   # pragma: no cover
+        name = m.mirror_name(url) + ".jpg"
+        _write_stub(name)
+        made_j.append(name)
+        return name, len(STUB), "image/jpeg"
+
+    real_fetch_j = m.fetch_one_image
+    try:
+        m.fetch_one_image = _pretend_j
+        said = m.run_photo_mirror_job(conn)
+        s.check("a run with something to fetch fetches it",
+                m.mirror_coverage(conn)["held"] == 2, detail=said)
+        s.check("and says what it did", "copied 2" in said, detail=said)
+
+        idle = m.run_photo_mirror_job(conn)
+        s.check("a run with nothing to do says so rather than working",
+                "all 2 held" in idle, detail=idle)
+
+        # The backoff. A dead address asked for every hour is twenty-four
+        # requests a day at somebody else's CDN for an answer that will not
+        # change -- and it would bury the ones that might.
+        for name in made_j:
+            _drop_stub(name)
+        made_j.clear()
+        m.fetch_one_image = real_fetch_j               # the harness's raiser
+        m.mirror_cache_clear()
+        first = m.run_photo_mirror_job(conn)
+        s.check("a photograph that will not come down is recorded as failed",
+                "would not come down" in first, detail=first)
+        second = m.run_photo_mirror_job(conn)
+        s.check("and the next run leaves it alone rather than asking again",
+                "tried within the day" in second, detail=second)
+    finally:
+        m.hotlinked_urls = real_scan_j
+        m.fetch_one_image = real_fetch_j
+        for name in made_j:
+            _drop_stub(name)
+        _clean(conn)
+        m.mirror_cache_clear()
+
     # ---------------------------------------------------------- the button
     #
     # Both paths, with hotlinked_urls standing in so the route has two
