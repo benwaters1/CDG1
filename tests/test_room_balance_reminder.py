@@ -58,6 +58,22 @@ def _booking(ref, days_ahead, total, paid, status="confirmed", email=None):
     return row
 
 
+def _due(ref, days_ahead):
+    """Put a dated balance on a booking, due whenever we say.
+
+    Needed because the interesting cases are a due date that has slipped
+    BEHIND today while the stay is still ahead -- which is what a missed run,
+    a provider outage, or a stay whose schedule was re-cut leaves you with.
+    """
+    conn = db()
+    conn.execute(
+        """UPDATE bookings SET deposit_amount = 180, balance_amount = 420,
+           balance_due_date = ? WHERE reference_code = ?""",
+        ((house_today() + timedelta(days=days_ahead)).isoformat(), f"{TAG}-{ref}"))
+    conn.commit()
+    conn.close()
+
+
 def _stamped(ref):
     conn = db()
     try:
@@ -186,6 +202,35 @@ def run():
     s.check("ten days out is beyond a seven-day window", not sent5, detail=f"{sent5}")
     _r6, sent6 = _run(days_before=14)
     s.check("and inside a fourteen-day one", len(sent6) == 1, detail=f"{sent6}")
+
+    s.section("A balance that fell due before anybody looked is still chased")
+    # THE ONE THAT UNDID THE RETRY ABOVE. The window used to require the due
+    # date to be today or later, so a balance that came due while the provider
+    # was down -- or on a stay whose schedule was re-cut to a date already
+    # behind us -- dropped out of it for ever. And the job reported "1 of 1
+    # guest(s) with a balance outstanding", because it could not see them.
+    _cleanup()
+    _booking("SOON", 21, total=600.0, paid=180.0)
+    _due("SOON", 7)
+    _booking("SLIPPED", 21, total=600.0, paid=180.0)
+    _due("SLIPPED", -3)
+    _r7, sent7 = _run(days_before=14)
+    to7 = [x["to"] for x in sent7]
+    s.check("the one still to fall due is chased",
+            any("soon" in t for t in to7), detail=f"{to7}")
+    s.check("and so is the one that fell due three days ago",
+            any("slipped" in t for t in to7),
+            detail=f"{to7} — an overdue balance is exactly the one worth "
+                   "chasing, and it was the one guaranteed never to be")
+
+    s.section("But nobody who came and went")
+    # A debt for a person to chase, not an automated email. The debtors page
+    # is where that lives.
+    _cleanup()
+    _booking("GONE", -90, total=600.0, paid=180.0)
+    _due("GONE", -104)
+    _r8, sent8 = _run(days_before=14)
+    s.check("a stay three months past is left alone", not sent8, detail=f"{sent8}")
 
     s.section("It is switchable, and labelled where the owner looks")
     s.check("the setting exists",
