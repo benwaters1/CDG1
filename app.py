@@ -5674,6 +5674,7 @@ NAV_AREAS = {
         "management_turned_away", "export_turned_away_csv",
         "admin_table_utilisation", "export_table_utilisation_csv",
         "admin_wastage_rate", "export_wastage_rate_csv",
+        "admin_voids", "export_voids_csv",
         "kitchen_dietary", "export_dietary_csv",
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
@@ -21488,6 +21489,131 @@ def covers_ahead(conn, days=21, today=None):
     return out
 
 
+def void_report(conn, *, start=None, end=None, today=None):
+    """Every voided line in the window, and what the pattern says.
+
+    Scoped on the ORDER'S SERVICE DATE rather than on when the line was
+    voided. A service running past midnight belongs to the night it started
+    -- service_day winds back past 05:00 for exactly this -- and a void at
+    half past one would otherwise land on the following day's figures while
+    the sale it cancels sits on the night before.
+
+    Values are GROSS, as rung, which is the basis what_sells uses. A void is
+    compared against sales here, and two bases would make the share wrong.
+    """
+    today = today or house_today()
+    if end is None:
+        end = today
+    if start is None:
+        start = end - timedelta(days=30)
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    a, b = start.isoformat(), end.isoformat()
+
+    lines = conn.execute(
+        """SELECT pos_order_lines.*, pos_orders.service_date,
+                  pos_orders.status AS order_status,
+                  pos_orders.closed_at, pos_orders.table_label,
+                  voider.name AS voided_by, adder.name AS added_by
+             FROM pos_order_lines
+             JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+             LEFT JOIN users AS voider
+                    ON voider.id = pos_order_lines.voided_by_user_id
+             LEFT JOIN users AS adder
+                    ON adder.id = pos_order_lines.added_by_user_id
+            WHERE COALESCE(pos_order_lines.voided, 0) = 1
+              AND pos_orders.service_date >= ? AND pos_orders.service_date <= ?
+            ORDER BY pos_orders.service_date DESC,
+                     pos_order_lines.voided_at DESC""", (a, b)).fetchall()
+
+    # What each person rang up over the same window, so a void count can be
+    # read against the work it came out of. Voided lines excluded, the same
+    # as what_sells: a line struck off was not sold.
+    sold_by = {}
+    for row in conn.execute(
+            """SELECT pos_order_lines.added_by_user_id AS uid,
+                      COALESCE(SUM(pos_order_lines.quantity
+                                   * pos_order_lines.unit_price), 0) AS took
+                 FROM pos_order_lines
+                 JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+                WHERE COALESCE(pos_order_lines.voided, 0) = 0
+                  AND pos_orders.service_date >= ?
+                  AND pos_orders.service_date <= ?
+                GROUP BY pos_order_lines.added_by_user_id""", (a, b)).fetchall():
+        sold_by[row["uid"]] = round(float(row["took"] or 0), 2)
+
+    rows, by_person, by_reason = [], {}, {}
+    for line in lines:
+        value = round((line["unit_price"] or 0) * (line["quantity"] or 0), 2)
+        # Sent to the kitchen before it was struck off, so it was made. The
+        # route already knows this at the moment of voiding and says so in
+        # the audit line; this is the same fact, kept.
+        after_sent = bool(line["sent_at"])
+        # Voided after the bill was settled. parse rather than compare the
+        # strings: closed_at and voided_at are both UTC moments, and one of
+        # them can be absent.
+        closed = parse_datetime_iso(line["closed_at"])
+        struck = parse_datetime_iso(line["voided_at"])
+        after_close = bool(closed and struck and struck > closed)
+        same_person = bool(line["voided_by_user_id"]
+                           and line["voided_by_user_id"] == line["added_by_user_id"])
+        rows.append({
+            "line": line, "value": value, "when": line["voided_at"],
+            "service_date": line["service_date"], "what": line["name"],
+            "reason": line["void_reason"] or "no reason recorded",
+            "who": line["voided_by"] or "nobody recorded",
+            "added_by": line["added_by"] or "",
+            "table": line["table_label"] or "",
+            "after_sent": after_sent, "after_close": after_close,
+            "same_person": same_person,
+        })
+        uid = line["voided_by_user_id"]
+        p = by_person.setdefault(uid, {
+            "who": line["voided_by"] or "nobody recorded", "voids": 0,
+            "value": 0.0, "after_sent": 0, "after_close": 0,
+            "sold": sold_by.get(uid, 0.0)})
+        p["voids"] += 1
+        p["value"] = round(p["value"] + value, 2)
+        p["after_sent"] += 1 if after_sent else 0
+        p["after_close"] += 1 if after_close else 0
+        r = by_reason.setdefault(line["void_reason"] or "no reason recorded",
+                                 {"reason": line["void_reason"]
+                                  or "no reason recorded",
+                                  "voids": 0, "value": 0.0})
+        r["voids"] += 1
+        r["value"] = round(r["value"] + value, 2)
+
+    for p in by_person.values():
+        # None, not nought, when they rang up nothing at all: a share of
+        # nothing is not a small share, it is not a share. The same
+        # distinction the no-show rate and the attach rate both make.
+        p["share"] = (round(p["value"] / p["sold"] * 100, 1)
+                      if p["sold"] > 0.005 else None)
+
+    total_value = round(sum(r["value"] for r in rows), 2)
+    total_sold = round(sum(sold_by.values()), 2)
+    return {
+        "start": start, "end": end,
+        "rows": rows,
+        "people": sorted(by_person.values(),
+                         key=lambda p: (-p["value"], -p["voids"])),
+        "reasons": sorted(by_reason.values(), key=lambda r: -r["value"]),
+        "voids": len(rows),
+        "value": total_value,
+        "sold": total_sold,
+        "share": (round(total_value / total_sold * 100, 1)
+                  if total_sold > 0.005 else None),
+        "after_sent": sum(1 for r in rows if r["after_sent"]),
+        "after_close": sum(1 for r in rows if r["after_close"]),
+        "csv": [{"service_date": r["service_date"], "what": r["what"],
+                 "value": r["value"], "reason": r["reason"], "who": r["who"],
+                 "after_kitchen": int(r["after_sent"]),
+                 "after_close": int(r["after_close"])} for r in rows],
+    }
+
+
 def what_sells(conn, *, days=90, today=None, limit=None):
     """Every dish the till has sold, most first.
 
@@ -22115,6 +22241,30 @@ def owner_home_warnings(conn, today):
               "app will not try the card again, so nothing more happens "
               "unless somebody follows it up.",
             len(refused), "management_outstanding")
+
+    # Lines taken off a bill that was already settled. The till records who
+    # voided what, when and why, and has done since it was written; until the
+    # voids page there was nowhere to read any of it, so this is a fortnight
+    # of that record arriving rather than waiting to be asked for.
+    #
+    # Not every void -- there are always voids, and a line that is always
+    # here is furniture. This one is rare and it is objective: the money had
+    # been taken when the line went.
+    voids = void_report(conn, start=today - timedelta(days=14), end=today)
+    settled_after = [r for r in voids["rows"] if r["after_close"]]
+    if settled_after:
+        worst = max(settled_after, key=lambda r: r["value"])
+        add("attention",
+            f"{len(settled_after)} line{'' if len(settled_after) == 1 else 's'} "
+            "voided after the bill was settled",
+            f"{worst['who']} took {euro(worst['value'])} off "
+            f"{worst['what']}"
+            + (f" on {format_date_short(worst['service_date'])}"
+               if worst["service_date"] else "")
+            + f" \u2014 {worst['reason']}."
+            + " Correcting a closed order can be perfectly honest; the point"
+              " is that until now nobody could see it had happened.",
+            len(settled_after), "admin_voids")
 
     # A guest waiting for an answer the booking page promised within a day.
     # First, because everything else on this panel is about the house and
@@ -26959,6 +27109,9 @@ PALETTE_PAGES = [
      "no show did not turn up restaurant table missed cover deposit"),
     ("Table utilisation", "admin_table_utilisation",
      "covers seats full restaurant capacity utilisation how busy"),
+    ("Voids", "admin_voids",
+     "void voids voided struck off comped taken off bill till pos theft "
+     "control who voided"),
     ("Wastage", "admin_wastage_rate",
      "wastage waste share thrown away stock bin spoilage percentage"),
     ("Workload", "admin_workload",
@@ -47118,6 +47271,30 @@ def admin_wastage_rate():
     data = wastage_rate(conn, days)
     conn.close()
     return render_template("admin_wastage_rate.html", data=data, days=days)
+
+
+@app.route("/admin/restaurant/voids")
+@owner_required
+def admin_voids():
+    """What came off the bills, and the pattern in it."""
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = void_report(conn, start=start, end=end)
+    conn.close()
+    return render_template("admin_voids.html", data=data)
+
+
+@app.route("/admin/restaurant/voids.csv")
+@owner_required
+def export_voids_csv():
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = void_report(conn, start=start, end=end)
+    conn.close()
+    return csv_response(
+        ["service_date", "what", "value", "reason", "who", "after_kitchen",
+         "after_close"], data["csv"],
+        f"voids_{start.isoformat()}_to_{end.isoformat()}.csv")
 
 
 @app.route("/admin/wastage.csv")
