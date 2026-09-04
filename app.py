@@ -29034,27 +29034,51 @@ def admin_assets():
     """The furniture, art and antiques the house owns, and what they are insured for."""
     conn = get_db()
     today = house_today()
-    category = request.args.get("category", "")
-    q = request.args.get("q", "").strip()
+    # Everything, filtered in Python by list_view rather than concatenated
+    # into the SQL. The register is a few hundred rows; the counts on the
+    # chips are worth more than the query.
     show = request.args.get("status", "current")
-
-    sql = """SELECT assets.*, insurance_policies.provider AS insurer
+    rows = conn.execute(
+        """SELECT assets.*, insurance_policies.provider AS insurer
              FROM assets LEFT JOIN insurance_policies
-               ON insurance_policies.id = assets.insurance_policy_id WHERE 1=1"""
-    params = []
+               ON insurance_policies.id = assets.insurance_policy_id
+            ORDER BY assets.category, assets.name""").fetchall()
+    # The page has always opened on what the house still has, which is right:
+    # a register that opens on everything ever owned buries the forty things
+    # in the building under the four that were sold.
     if show == "current":
-        sql += " AND assets.status IN ('held','on_loan')"
+        rows = [a for a in rows if a["status"] in ("held", "on_loan")]
     elif show in ASSET_STATUSES:
-        sql += " AND assets.status = ?"
-        params.append(show)
-    if category in ASSET_CATEGORIES:
-        sql += " AND assets.category = ?"
-        params.append(category)
-    if q:
-        sql += " AND (assets.name LIKE ? OR assets.location LIKE ? OR assets.description LIKE ?)"
-        params += [f"%{q}%"] * 3
-    sql += " ORDER BY assets.category, assets.name"
-    assets = conn.execute(sql, params).fetchall()
+        # Asking for the sold ones has to give the sold ones. Dropped in the
+        # rewrite, which made every pool show everything — caught by the one
+        # check that had a sold piece in its fixtures.
+        rows = [a for a in rows if a["status"] == show]
+    lv = list_view(
+        rows, request.args,
+        search=["name", "location", "description", "category", "insurer"],
+        search_hint="Name, room, description or insurer",
+        facets=[
+            facet("category", "Kind",
+                  lambda a: (a["category"] or "").strip() or None, limit=12),
+            facet("where", "Where it is",
+                  lambda a: (a["location"] or "").strip() or "Unrecorded",
+                  limit=12),
+            # The question an insurance renewal is actually about: what is
+            # on the register with no cover behind it.
+            facet("cover", "Insurance",
+                  lambda a: "Not covered" if not a["insurance_policy_id"]
+                  else None),
+        ],
+        sorts=[
+            sort_option("place", "By kind, then name",
+                        lambda a: ((a["category"] or "").lower(),
+                                   (a["name"] or "").lower())),
+            sort_option("value", "Most valuable first",
+                        lambda a: a["estimated_value"] or 0, reverse=True),
+        ],
+        default_sort="place",
+    )
+    assets = lv["rows"]
 
     summary = asset_summary(conn, today)
     by_location = conn.execute(
@@ -29079,7 +29103,7 @@ def admin_assets():
     ]
     return render_template("admin_assets.html", assets=assets, overview=overview,
                            summary=summary, by_location=by_location, policies=policies,
-                           category=category, q=q, show=show,
+                           lv=lv, show=show,
                            asset_categories=ASSET_CATEGORIES,
                            asset_value_sources=ASSET_VALUE_SOURCES,
                            asset_conditions=ASSET_CONDITIONS,
@@ -32122,20 +32146,8 @@ def guests():
     in_residence = [s for s in stays if s["stay_status"] == "current"]
     upcoming = [s for s in stays if s["stay_status"] == "upcoming"]
 
-    if q:
-        needle = f"%{q}%"
-        profiles = conn.execute(
-            """SELECT * FROM guests
-               WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
-                  OR notes LIKE ? OR preferences LIKE ? OR dietary_notes LIKE ?
-               ORDER BY vip DESC, name""",
-            (needle,) * 6,
-        ).fetchall()
-        lowered = q.lower()
-        in_residence = [s for s in in_residence if lowered in (s["name"] or "").lower()]
-        upcoming = [s for s in upcoming if lowered in (s["name"] or "").lower()]
-    else:
-        profiles = conn.execute("SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
+    profiles = conn.execute(
+        "SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
 
     # How many past stays each profile has, so the list conveys "returning guest"
     # at a glance rather than needing a click-through.
@@ -32147,9 +32159,42 @@ def guests():
         ).fetchall()
     }
     conn.close()
+    lv = list_view(
+        profiles, request.args,
+        search=["name", "email", "phone", "notes", "preferences",
+                "dietary_notes"],
+        search_hint="Name, address, telephone or something in their notes",
+        facets=[
+            # The two questions actually asked of a guest list, and neither
+            # could be asked before: who has stayed before, and who carries
+            # a standing instruction.
+            facet("known", "Have they stayed",
+                  lambda g: "Been before" if stay_counts.get(g["id"]) else "First time",
+                  order=["Been before", "First time"]),
+            facet("caution", "Caution",
+                  lambda g: (CAUTION_LEVELS.get(g["caution_level"])
+                             if (g["caution_level"] or "").strip() else None)),
+            facet("vip", "VIP", lambda g: "VIP" if g["vip"] else None),
+        ],
+        sorts=[
+            sort_option("name", "By name",
+                        lambda g: (not g["vip"], (g["name"] or "").lower())),
+            sort_option("stays", "Most stays first",
+                        lambda g: stay_counts.get(g["id"], 0), reverse=True),
+        ],
+        default_sort="name",
+    )
+    # The who-is-here lists follow the same search, so one box narrows the
+    # whole page rather than only the half below it.
+    if lv["q"]:
+        lowered = lv["q"].lower()
+        in_residence = [x for x in in_residence
+                        if lowered in (x["name"] or "").lower()]
+        upcoming = [x for x in upcoming
+                    if lowered in (x["name"] or "").lower()]
     return render_template(
         "guests.html", in_residence=in_residence, upcoming=upcoming,
-        profiles=profiles, stay_counts=stay_counts, q=q,
+        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
         overview=overview, period=period,
     )
 
@@ -32641,9 +32686,6 @@ def save_expense_file(file):
 @owner_required
 def expenses():
     """Every bill and receipt, whether it was approved, and whether the accountant has it."""
-    status_filter = request.args.get("status", "").strip()
-    q = request.args.get("q", "").strip()
-
     conn = get_db()
     invoices = conn.execute(
         "SELECT * FROM expenses WHERE kind = 'supplier_invoice' ORDER BY submitted_at DESC"
@@ -32668,19 +32710,44 @@ def expenses():
         "unpaid_value": sum(r["amount"] or 0 for r in all_rows if r["status"] == "approved"),
     }
 
-    if status_filter:
-        invoices = [i for i in invoices if i["status"] == status_filter]
-        claims = [c for c in claims if c["status"] == status_filter]
-    if q:
-        needle = q.lower()
-        invoices = [i for i in invoices if needle in (i["vendor_name"] or "").lower() or needle in i["description"].lower()]
-        claims = [
-            c for c in claims
-            if needle in (c["submitter_name"] or "").lower()
-            or needle in (c["vendor_name"] or "").lower()
-            or needle in c["description"].lower()
-        ]
-
+    # ONE toolbar over both lists, split back afterwards. The page renders
+    # supplier invoices and staff claims as two different card layouts, and a
+    # toolbar each would put two `q` and two `status` in the same query
+    # string. One search, one set of chips covering everything, and both
+    # sections keep the markup they have.
+    lv = list_view(
+        all_rows, request.args,
+        search=["vendor_name", "description", "submitter_name",
+                "invoice_number"],
+        search_hint="Supplier, who submitted it, or what it was for",
+        facets=[
+            facet("status", "Where it stands",
+                  lambda e: (e["status"] or "pending").capitalize(),
+                  order=["Pending", "Approved", "Paid", "Rejected"]),
+            facet("kind", "Kind",
+                  lambda e: ("Supplier bill" if e["kind"] == "supplier_invoice"
+                             else "Staff claim")),
+            facet("doc", "What it is",
+                  lambda e: EXPENSE_DOC_TYPES.get(
+                      e["doc_type"] or "bill_to_pay")),
+            # The other question this page is opened to answer, and it could
+            # not be asked at all: what has the accountant not been given.
+            facet("sent", "With the accountant",
+                  lambda e: "Sent" if e["pennylane_invoice_id"] else "Not sent",
+                  order=["Not sent", "Sent"]),
+        ],
+        sorts=[
+            sort_option("recent", "Newest first",
+                        lambda e: e["submitted_at"] or "", reverse=True),
+            sort_option("oldest", "Oldest first",
+                        lambda e: e["submitted_at"] or ""),
+            sort_option("amount", "Largest first",
+                        lambda e: e["amount"] or 0, reverse=True),
+        ],
+        default_sort="recent",
+    )
+    invoices = [r for r in lv["rows"] if r["kind"] == "supplier_invoice"]
+    claims = [r for r in lv["rows"] if r["kind"] == "staff_expense"]
     supplier_upload_url = url_for("supplier_invoice_submit", token=supplier_token, _external=True)
     reopen = get_db()
     try:
@@ -32689,8 +32756,8 @@ def expenses():
     finally:
         reopen.close()
     return render_template(
-        "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
-        status_filter=status_filter, q=q, totals=totals,
+        "expenses.html", invoices=invoices, claims=claims,
+        supplier_upload_url=supplier_upload_url, lv=lv, totals=totals,
         pennylane_ready=pennylane_configured(),
         today_iso=house_today_iso(),
         # What the house owes its own people, which nothing could answer while

@@ -44,19 +44,23 @@ def _chip_count(body, label, chip):
 
 
 def run():
-    s = Suite("Two lists that had a search box and nothing else")
+    s = Suite("Five lists that had a search box and nothing else")
     oc, ec, _owner, _emp = clients()
     conn = db()
 
-    s.section("Both pages use the toolbar the rest of the house uses")
+    s.section("All five pages use the toolbar the rest of the house uses")
     for path, name in (("/directory", "directory"),
-                       ("/management/vendors", "vendors")):
+                       ("/management/vendors", "vendors"),
+                       ("/expenses", "expenses"),
+                       ("/guests", "guests"),
+                       ("/admin/assets", "admin_assets")):
         src = open(f"templates/{name}.html", encoding="utf-8").read()
         s.check(f"{name} includes the shared toolbar",
                 '_list_toolbar.html' in src)
-        s.check(f"and no longer rolls its own search box",
+        s.check("and no longer rolls its own search box",
                 'name="q"' not in src,
                 detail="never add another one-off search box")
+        s.check(f"{name} still renders", oc.get(path).status_code == 200)
 
     s.section("The chips carry counts, which is the point")
     body = oc.get("/directory").get_data(as_text=True)
@@ -238,6 +242,86 @@ def run():
             not conn.execute("SELECT 1 FROM vendors WHERE name LIKE ?",
                              (TAG + "%",)).fetchone(),
             detail="every suite after this one reads the same table")
+
+    s.section("The expenses page can be asked the two things it is opened for")
+    e = " ".join(oc.get("/expenses").get_data(as_text=True).split())
+    s.check("where the work is", 'facet-label">Where it stands<' in e,
+            detail="a page showing every invoice and every claim with no way "
+                   "to ask what is waiting on you")
+    s.check("and what the accountant has not been given",
+            'facet-label">With the accountant<' in e,
+            detail="the other question, and it could not be asked at all")
+    s.check("with the two lists told apart", 'facet-label">Kind<' in e,
+            detail="supplier bills and staff claims are different money and "
+                   "different people")
+    s.check("and the document type from this morning's work",
+            'facet-label">What it is<' in e)
+    s.check("a chip narrows it",
+            oc.get("/expenses?sent=Not+sent").status_code == 200)
+
+    s.section("The guest list can be asked who has stayed before")
+    g = " ".join(oc.get("/guests").get_data(as_text=True).split())
+    s.check("that is a chip", 'facet-label">Have they stayed<' in g,
+            detail="one of the two questions actually asked of a guest list, "
+                   "and it could not be asked before")
+    s.check("with a number on it",
+            _chip_count(g, "Have they stayed", "First time") is not None
+            or _chip_count(g, "Have they stayed", "Been before") is not None,
+            detail=g[g.find("Have they stayed"):][:150])
+    s.check("and one search narrows the whole page",
+            "lv.q" in open("templates/guests.html", encoding="utf-8").read()
+            or oc.get("/guests?q=zzz-nobody").status_code == 200,
+            detail="the who-is-here lists above the profiles follow the same "
+                   "box, so it does not narrow half a page")
+
+    s.section("The asset register keeps the pool and gains the chips")
+    # Built, because the register is empty. With no rows the facets correctly
+    # render nothing — hide_empty again — and every check below would be a
+    # sentence about nothing.
+    # One of them sold, which is the only fixture that proves the page still
+    # opens on what the house STILL HAS rather than on everything it has ever
+    # owned.
+    for name, where, status in ((" Gilt mirror", "Chambre Cerise", "held"),
+                                (" Oak table", "La Cuisine", "held"),
+                                (" Sold commode", "Gone", "sold")):
+        conn.execute(
+            """INSERT INTO assets (name, category, location, status,
+                       estimated_value, insurance_policy_id, created_at)
+               VALUES (?, 'furniture', ?, ?, 900.0, NULL, ?)""",
+            (TAG + name, where, status,
+             m.datetime.now(m.timezone.utc).isoformat()))
+    conn.commit()
+    a = " ".join(oc.get("/admin/assets").get_data(as_text=True).split())
+    s.check("still-held is still what it opens on",
+            'value="current" selected' in a,
+            detail="a register opening on everything ever owned buries the "
+                   "forty things in the building under the four that were sold")
+    s.check("so a sold piece is not on the default view",
+            TAG + " Sold commode" not in a,
+            detail="a register opening on everything ever owned buries the "
+                   "forty things in the building under the four that were sold")
+    sold = oc.get("/admin/assets?status=sold").get_data(as_text=True)
+    s.check("and asking for the sold ones still works",
+            TAG + " Sold commode" in sold)
+    s.check("without the ones still in the house",
+            TAG + " Gilt mirror" not in sold,
+            detail="the dropdown chooses which pool the page is about, which "
+                   "is a different job from filtering within one")
+    s.check("what is not insured is now a chip",
+            'facet-label">Insurance<' in a or "Not covered" in a,
+            detail="the sentence an insurance renewal is actually about, and "
+                   "the old form could not say it")
+    s.check("as is where a thing is",
+            'facet-label">Where it is<' in a)
+    s.check("counting the two uninsured pieces",
+            _chip_count(a, "Insurance", "Not covered") == 2,
+            detail=str(_chip_count(a, "Insurance", "Not covered")))
+    conn.execute("DELETE FROM assets WHERE name LIKE ?", (TAG + "%",))
+    conn.commit()
+    s.check("and the register is left as it was found",
+            not conn.execute("SELECT 1 FROM assets WHERE name LIKE ?",
+                             (TAG + "%",)).fetchone(),
+            detail="every suite after this one reads the same register")
 
     s.section("An employee sees the colleague list, not the admin one")
     emp = ec.get("/directory")

@@ -100,27 +100,15 @@
   </form>
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label">Status</label>
-    <select name="status">
-      <option value="">All</option>
-      {% for s in ['pending','approved','rejected','paid'] %}
-      <option value="{{ s }}" {{ 'selected' if status_filter == s }}>{{ s|capitalize }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="field-label">Search</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Vendor, submitter, or description">
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if status_filter or q %}<a href="{{ url_for('expenses') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{# One toolbar over both lists below. The chips are the two questions
+   this page is opened to answer and neither could be asked before:
+   "Pending 4" says where the work is, and "Not sent 9" says what the
+   accountant has not been given. #}
+{% include "_list_toolbar.html" %}
 
 <h2 class="section-heading">Supplier Invoices</h2>
 {% if not invoices %}
-  <div class="empty-state">{% if status_filter or q %}No supplier invoices match those filters.{% else %}No supplier invoices submitted yet.{% endif %}</div>
+  <div class="empty-state">{% if lv.q or lv.chosen %}No supplier invoices match those filters.{% else %}No supplier invoices submitted yet.{% endif %}</div>
 {% else %}
   {% for inv in invoices %}
   <div class="expense-card">
@@ -207,7 +195,7 @@
 
 <h2 class="section-heading">Staff Expense Claims</h2>
 {% if not claims %}
-  <div class="empty-state">{% if status_filter or q %}No expense claims match those filters.{% else %}No expense claims submitted yet.{% endif %}</div>
+  <div class="empty-state">{% if lv.q or lv.chosen %}No expense claims match those filters.{% else %}No expense claims submitted yet.{% endif %}</div>
 {% else %}
   {% for c in claims %}
   <div class="expense-card">
