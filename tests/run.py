@@ -143,6 +143,7 @@ SUITES = [
     "test_sick_note",
     "test_insurer_notice",
     "test_home_warnings",
+    "test_waitlist_offer",
     "test_watch_tasks",
     "test_job_outcomes",
     "test_automation_switches",

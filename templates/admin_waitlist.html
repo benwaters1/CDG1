@@ -17,6 +17,13 @@
       <div>
         <strong>{{ e['name'] }}</strong>
         <span class="mini-status status-{{ 'onshift' if e['status'] == 'booked' else ('inactive' if e['status'] == 'closed' else ('pending' if e['status'] == 'open' else 'current')) }}" style="margin-left:8px;">{{ e['status'] }}</span>
+        {#- An offer with no visible deadline is no better than no offer: the
+            whole point is that one person has it for a fixed time and then
+            the next is told. #}
+        {%- if e['status'] == 'contacted' and e['offer_expires_at'] %}
+        <span class="mini-status status-pending" style="margin-left:4px;"
+              title="After this it goes back on the list and the next person is told">theirs until {{ e['offer_expires_at'][:16]|replace('T', ' ') }}</span>
+        {%- endif %}
       </div>
     </div>
     <p class="upload-hint">
