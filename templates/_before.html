@@ -26,14 +26,28 @@
 {% endmacro %}
 
 {# 9 and 18 — the deposit and the minimum, before the form rather than inside
-   it. Both read from settings so there is one source for each figure. #}
+   it. The minimum reads from settings; the deposit does NOT, and cannot. #}
 {% macro terms_upfront(settings, min_nights, deposit_percent=0) %}
-{#- The figure comes from the ROUTE, through the same deposit_percent_to_show
-    the booking itself uses. It read settings['deposit_percent'], which is not
-    a key this app has, and fell back to a hardcoded 30 -- on a house whose
-    room deposit is ZERO. So it told every guest they must pay 30% now, in
-    front of the person paying it, on the page where they decide. The same
-    mistake _nights_calc.html carries a comment about. -#}
+{#- THE DEPOSIT COMES FROM THE ROUTE. It has now been written three times as
+    settings['deposit_percent'] with a fallback to 30, and reverted by a
+    handover twice, so it is worth saying plainly why that is wrong rather
+    than only that it is.
+
+    `settings` on a room page is the RESTAURANT settings row. It has a
+    deposit_percent column of its own, so the expression does not error -- it
+    reads the wrong half of the business, finds nothing there, and falls back
+    to 30. This house takes NO room deposit. So the page told every guest they
+    must pay 30% now, in the panel above the form, on the page where they
+    decide.
+
+    The route passes deposit_percent_to_show(), which has three answers and
+    none of them is a guess: a number, zero, or None for "it depends on the
+    dates and the party". Quote the first two; say so for the third. A guest
+    who reads 30% here and meets 60% at checkout has been told something
+    untrue about their own money.
+
+    test_stay_cost is the ratchet on this. It reads the Jinja expressions
+    rather than the file, so this comment does not satisfy it. -#}
 {%- set varies = deposit_percent is none -%}
 {%- set dep = 0 if varies else (deposit_percent or 0)|round|int -%}
 {%- set mn = (min_nights if min_nights else (settings['min_nights'] if settings else none)) -%}

@@ -6671,3 +6671,15 @@ body.at-top.has-hero:not(:has(main > .g-crumbs:first-child)) .g-logo img{
   border: 0; background: none; padding: 0; min-height: 40px;
   font-variant-numeric: lining-nums;
 }
+
+/* The optional extras were 4.3 screens of add-ons between the price and the
+   reviews — more page than the rooms themselves. Folded, so the people who
+   want a private dinner can find it and everyone else scrolls past one line. */
+.g-extras-fold > summary{
+  cursor: pointer; min-height: 48px; display: flex; align-items: center;
+  padding: var(--s3) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep);
+}
+.g-extras-fold > summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-extras-fold[open] > summary{ border-bottom-color: var(--gilt); }
+.g-extras-fold .g-sec{ padding-top: var(--s5); border: 0; }

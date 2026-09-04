@@ -37742,7 +37742,13 @@ def serve_our_own_photographs(response):
     employee side, every form post, every CSV -- pays 0.0005ms for the
     substring test and nothing else.
     """
-    if response.direct_passthrough or response.status_code != 200:
+    # Any HTML answer, not only a 200. The not-found page is a full public page
+    # with the masthead and four photographs on it, and guests reach it from
+    # every stale link and mistyped address there is -- so restricting this to
+    # 200 left the one page somebody arrives at by accident still pointing at
+    # an account the house does not own. The content-type test below is what
+    # keeps redirects and JSON out; the status never told us anything.
+    if response.direct_passthrough:
         return response
     if not (response.content_type or "").startswith("text/html"):
         return response

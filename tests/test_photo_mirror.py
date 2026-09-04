@@ -298,10 +298,49 @@ def run():
                     or len(m._MIRROR_URL_RE.findall(
                         m.app.test_client().get(carrier).get_data(as_text=True))) == 0,
                     detail="every remote photograph vanished, not just ours")
+
         finally:
             _drop_stub(name)
             conn.execute("DELETE FROM mirrored_images WHERE source_url = ?",
                          (real_url,))
+            conn.commit()
+            m.mirror_cache_clear()
+
+    # The not-found page is a full public page — masthead, four photographs —
+    # and it is the one people reach from every stale link and mistyped address
+    # there is. The hook used to act only on a 200, so the single page somebody
+    # lands on by accident was the one still pointing at an account the house
+    # does not own. Mirrored on its own rather than leaning on whatever the
+    # carrier page happened to hold.
+    s.section("Including the page nobody meant to open")
+
+    lost_page = m.app.test_client().get("/no-such-page-at-all-zz")
+    lost = lost_page.get_data(as_text=True)
+    s.check("the not-found page is a whole page, not a bare message",
+            lost_page.status_code == 404 and len(lost) > 2000,
+            detail="HTTP %s, %d bytes" % (lost_page.status_code, len(lost)))
+    on_lost = m._MIRROR_URL_RE.findall(lost)
+    if not on_lost:
+        s.check("it carries a photograph to swap", False,
+                detail="nothing to prove here if it has none")
+    else:
+        lost_url = on_lost[0]
+        lost_name = m.mirror_name(lost_url) + ".jpg"
+        _write_stub(lost_name)
+        m.record_mirror(conn, lost_url, lost_name, len(STUB), "image/jpeg")
+        conn.commit()
+        m.mirror_cache_clear()
+        try:
+            again = m.app.test_client().get("/no-such-page-at-all-zz")
+            s.check("a 404 is swapped too, not only the pages that answer 200",
+                    "/mirrored-photo/" + lost_name in again.get_data(as_text=True),
+                    detail="a guest who mistypes a URL is the one person "
+                           "guaranteed to see this page")
+            s.check("and it is still a 404", again.status_code == 404)
+        finally:
+            _drop_stub(lost_name)
+            conn.execute("DELETE FROM mirrored_images WHERE source_url = ?",
+                         (lost_url,))
             conn.commit()
             m.mirror_cache_clear()
 

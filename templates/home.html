@@ -9,6 +9,11 @@
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
+{# The figures the owner enters at /management/proof-figures. Removed by a
+   handover without a word about it in the notes, which left the admin page
+   with nothing behind it: fill in the review score and it appeared nowhere.
+   The macro renders nothing at all when no figure is supplied, so keeping it
+   here costs an empty div and no claim. #}
 {% from '_proof.html' import credential, proof %}
 <div class="g-wrap">{{ proof(settings) }}</div>
 

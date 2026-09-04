@@ -3,6 +3,8 @@
 {% set sticky_bar = 'none' %}
 {% block title %}{% if booking['payment_status'] == 'paid' %}{{ t('Your stay is booked') }}{% else %}{{ t('Booking request received') }}{% endif %}{% endblock %}
 {% block content %}
+{% from '_before.html' import packing, arriving %}
+{% from '_animals.html' import animals %}
 {% from '_arrival_card.html' import arrival_card %}
 {% from '_paydates.html' import pay_dates, no_reply %}
 {% from '_room_copy.html' import room_name %}
@@ -104,5 +106,11 @@
 <div class="g-wrap">{{ no_reply() }}</div>
 
 <div class="g-wrap">{{ arrival_card(booking) }}</div>
+
+{{ arriving(settings) }}
+
+{{ packing() }}
+
+{{ animals() }}
 
 {% endblock %}
