@@ -188,6 +188,9 @@
   {% if e['owner_note'] %}<p class="upload-hint">Note: {{ e['owner_note'] }}</p>{% endif %}
   <p class="upload-hint">Added {{ e['created_at']|house_day }}{% if e['decided_at'] %} · Decided {{ e['decided_at']|house_day }}{% endif %}</p>
   <p style="margin:8px 0 0;">
+    {#- The quote somebody accepted, the dates being held, and the stages the
+        money arrives in. All three lived nowhere before this page. -#}
+    <a href="{{ url_for('event_agreement', inquiry_id=e['id']) }}" class="btn-mini">Agreement</a>
     <a href="{{ url_for('event_run_sheet_page', event_id=e['id']) }}" class="btn-mini">Run sheet</a>
     {%- if e['status'] == 'confirmed' and e['final_numbers'] is none %}
     <span class="field-hint" style="margin-left:8px;">no final numbers yet</span>{% endif %}
@@ -264,5 +267,19 @@ function toggleAddEvent() {
   if (opening) el.querySelector('input[name="contact_name"]').focus();
 }
 </script>
+
+
+{# THE WORDING A COUPLE AGREES TO, as data rather than code -- a commercial
+   term the owner changes with their insurer, not a deploy. A quote copies
+   this the moment it is raised, so editing it never changes what anybody has
+   already accepted. #}
+<div class="detail-card">
+  <h2 style="margin-top:0;">The terms every quote carries</h2>
+  <form method="post" action="{{ url_for('save_event_terms') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <textarea name="terms" rows="8">{{ event_terms_text }}</textarea>
+    <button type="submit" class="btn-mini" style="margin-top:8px;">Save the wording</button>
+  </form>
+</div>
 
 {% endblock %}
