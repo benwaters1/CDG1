@@ -18,14 +18,13 @@ fills in the fields THE FORM RENDERS, and posts to the action THE FORM NAMES.
 If the template and the route ever disagree about what a field is called, the
 booking simply fails and this goes red -- which is what a guest would get.
 
-The parser is stdlib html.parser, because this app has no build step and no
-third-party HTTP or HTML library, and one test is not a reason to acquire one.
+The form reader lives in _harness, because test_funnel_forms needs it too and
+two copies of a parser is two things to keep in step. It is stdlib
+html.parser: this app has no build step and no third-party HTML library.
 """
-from _harness import Suite, db, ensure_room
+from _harness import Suite, db, ensure_room, forms_on, links_on, fill
 
-import re
 from datetime import timedelta
-from html.parser import HTMLParser
 
 import _harness
 
@@ -39,91 +38,6 @@ EMAIL = "zzjourney@example.invalid"
 # others it did not, which is the worst kind of test to leave lying about.
 # A documentation-range address, so it is obviously not a real one.
 GUEST_IP = "203.0.113.7"
-
-
-class FormReader(HTMLParser):
-    """Every <form> on a page, with the fields it actually renders.
-
-    Deliberately forgiving about malformed markup: the job is to see the page
-    the way a browser roughly would, not to validate it. test_links and the
-    template checks own correctness of the markup itself.
-    """
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.forms = []
-        self._open = None
-        self._textarea = None
-
-    def handle_starttag(self, tag, attrs):
-        a = dict(attrs)
-        if tag == "form":
-            self._open = {"action": a.get("action"), "method": (a.get("method") or "get").lower(),
-                          "id": a.get("id"), "fields": []}
-            self.forms.append(self._open)
-        elif self._open is not None and tag in ("input", "select", "textarea"):
-            if not a.get("name"):
-                return
-            self._open["fields"].append({
-                "tag": tag, "name": a["name"],
-                "type": (a.get("type") or ("select" if tag == "select" else "text")).lower(),
-                "value": a.get("value", ""), "required": "required" in a,
-                "options": [],
-            })
-            if tag == "textarea":
-                self._textarea = self._open["fields"][-1]
-        elif self._open is not None and tag == "option" and self._open["fields"]:
-            self._open["fields"][-1]["options"].append(a.get("value", ""))
-
-    def handle_endtag(self, tag):
-        if tag == "form":
-            self._open = None
-        elif tag == "textarea":
-            self._textarea = None
-
-    def handle_data(self, data):
-        if self._textarea is not None:
-            self._textarea["value"] = (self._textarea["value"] or "") + data
-
-
-def forms_on(html):
-    p = FormReader()
-    p.feed(html)
-    return p.forms
-
-
-def links_on(html, pattern):
-    """Every href on the page matching a pattern, in document order."""
-    return [h for h in re.findall(r'href="([^"]+)"', html) if re.match(pattern, h)]
-
-
-def fill(form, answers):
-    """What a browser would submit for this form, given answers by field name.
-
-    Only fields the form RENDERS are sent. That is the whole point: if the
-    route needs something the template never draws, nothing supplies it here
-    either, and the booking fails the way it would for a guest.
-    """
-    data = {}
-    for f in form["fields"]:
-        name = f["name"]
-        if f["type"] in ("submit", "button", "image", "reset"):
-            continue
-        if f["type"] in ("checkbox", "radio"):
-            if name in answers:                        # unchecked boxes send nothing
-                data[name] = answers[name]
-            continue
-        if name in answers:
-            data[name] = answers[name]
-        elif f["type"] == "select":
-            picks = [o for o in f["options"] if o]
-            if picks:
-                data[name] = picks[0]
-        elif f["value"]:
-            data[name] = f["value"]                    # hidden fields, prefills
-        elif f["required"]:
-            data[name] = ""                            # rendered, required, unanswered
-    return data
 
 
 def _clean(conn):

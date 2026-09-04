@@ -21,6 +21,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+from html.parser import HTMLParser
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -372,6 +373,107 @@ def coverage_knocked_only():
 
 def db():
     return m.get_db()
+
+
+# ---------------------------------------------------------------------------
+# Reading a page the way a browser roughly would.
+#
+# Every booking test in this suite posts the field names the ROUTE expects,
+# which is right for testing the route and proves nothing about the form. These
+# read the form out of the rendered HTML instead, so a template that renames or
+# drops a field fails the way it would for a guest.
+#
+# They live here rather than in the suite that first needed them because two
+# suites need them now, and two copies of a parser is two things to keep in
+# step. Stdlib html.parser: this app has no build step and no third-party HTML
+# library, and a test is not a reason to acquire one.
+# ---------------------------------------------------------------------------
+
+class FormReader(HTMLParser):
+    """Every <form> on a page, with the fields it actually renders.
+
+    Deliberately forgiving about malformed markup: the job is to see roughly
+    what a browser would, not to validate. test_links and the template checks
+    own whether the markup itself is correct.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.forms = []
+        self._open = None
+        self._textarea = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "form":
+            self._open = {"action": a.get("action"),
+                          "method": (a.get("method") or "get").lower(),
+                          "id": a.get("id"), "fields": []}
+            self.forms.append(self._open)
+        elif self._open is not None and tag in ("input", "select", "textarea"):
+            if not a.get("name"):
+                return
+            self._open["fields"].append({
+                "tag": tag, "name": a["name"],
+                "type": (a.get("type") or ("select" if tag == "select" else "text")).lower(),
+                "value": a.get("value", ""), "required": "required" in a,
+                "options": [],
+            })
+            if tag == "textarea":
+                self._textarea = self._open["fields"][-1]
+        elif self._open is not None and tag == "option" and self._open["fields"]:
+            self._open["fields"][-1]["options"].append(a.get("value", ""))
+
+    def handle_endtag(self, tag):
+        if tag == "form":
+            self._open = None
+        elif tag == "textarea":
+            self._textarea = None
+
+    def handle_data(self, data):
+        if self._textarea is not None:
+            self._textarea["value"] = (self._textarea["value"] or "") + data
+
+
+def forms_on(html):
+    """Every form on a page, in document order."""
+    p = FormReader()
+    p.feed(html)
+    return p.forms
+
+
+def links_on(html, pattern):
+    """Every href on the page matching a pattern, in document order."""
+    return [h for h in re.findall(r'href="([^"]+)"', html) if re.match(pattern, h)]
+
+
+def fill(form, answers):
+    """What a browser would submit for this form, given answers by field name.
+
+    Only fields the form RENDERS are sent. That is the whole point: if a route
+    needs something the template never draws, nothing supplies it here either,
+    and the submission fails the way it would for a guest.
+    """
+    data = {}
+    for f in form["fields"]:
+        name = f["name"]
+        if f["type"] in ("submit", "button", "image", "reset"):
+            continue
+        if f["type"] in ("checkbox", "radio"):
+            if name in answers:          # an unchecked box sends nothing at all
+                data[name] = answers[name]
+            continue
+        if name in answers:
+            data[name] = answers[name]
+        elif f["type"] == "select":
+            picks = [o for o in f["options"] if o]
+            if picks:
+                data[name] = picks[0]
+        elif f["value"]:
+            data[name] = f["value"]      # hidden fields, and anything prefilled
+        elif f["required"]:
+            data[name] = ""              # rendered, required, and unanswered
+    return data
 
 
 def flashes(response):
