@@ -122,6 +122,7 @@ import csv
 import sqlite3
 import hmac
 import calendar
+import inspect
 import hashlib
 import json
 import secrets
@@ -4076,6 +4077,15 @@ def init_db():
         ("pos_orders_receipt_emailed_at", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_at TEXT"),
         ("pos_orders_merged_into", "ALTER TABLE pos_orders ADD COLUMN merged_into_order_id INTEGER REFERENCES pos_orders(id) ON DELETE SET NULL"),
         ("pos_orders_reopened_at", "ALTER TABLE pos_orders ADD COLUMN reopened_at TEXT"),
+        # What the bill was first settled at, and for how much. Both written
+        # once with COALESCE: settling a reopened tab overwrites closed_at
+        # and settled_total, so without these the original is simply gone,
+        # and "reopened and re-settled for ninety euros less" is a sentence
+        # nobody could ever have written.
+        ("pos_orders_first_settled_at",
+         "ALTER TABLE pos_orders ADD COLUMN first_settled_at TEXT"),
+        ("pos_orders_first_settled_total",
+         "ALTER TABLE pos_orders ADD COLUMN first_settled_total REAL"),
         ("pos_orders_deposit_credit", "ALTER TABLE pos_orders ADD COLUMN deposit_credit REAL NOT NULL DEFAULT 0"),
 
         # ---- Dated menus ---------------------------------------------------
@@ -5772,6 +5782,7 @@ NAV_AREAS = {
         "admin_table_utilisation", "export_table_utilisation_csv",
         "admin_wastage_rate", "export_wastage_rate_csv",
         "admin_voids", "export_voids_csv",
+        "admin_reopened_bills", "export_reopened_csv",
         "kitchen_dietary", "export_dietary_csv",
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
@@ -5929,6 +5940,7 @@ AREA_TITLES = {
 # Till. A page missing from BOTH this and NAV_AREAS is a mistake a test
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
+    "reports_index": "management",
     "admin_access_levels": "management",
     # Reading these was already owner-only and writing them was not, which
     # is the asymmetry the wrong way round: the dangerous act is not seeing
@@ -14710,9 +14722,16 @@ def pos_close_if_settled(conn, order_id, method, *, user_id=None):
         "ORDER BY id", (order_id,)).fetchall() if (r["reference"] or "").strip()]
     conn.execute(
         """UPDATE pos_orders SET status = 'paid', settled_total = ?, payment_method = ?,
-           payment_reference = ?, closed_at = ? WHERE id = ?""",
+           payment_reference = ?, closed_at = ?,
+           first_settled_at = COALESCE(first_settled_at, ?),
+           first_settled_total = COALESCE(first_settled_total, ?)
+           WHERE id = ?""",
         (after["total"], method, ", ".join(refs) or None,
-         datetime.now(timezone.utc).isoformat(), order_id))
+         datetime.now(timezone.utc).isoformat(),
+         # COALESCE, so a bill settled a second time keeps the first figure.
+         # Overwriting it is how "reopened and re-settled for less" stopped
+         # being answerable.
+         datetime.now(timezone.utc).isoformat(), after["total"], order_id))
     log_audit(conn, "pos_tab_settled", target=after["order"]["table_label"],
               details=f"€{after['total']:.2f}")
     pos_journal_append(conn, "tab_settled", {
@@ -22122,6 +22141,82 @@ def covers_ahead(conn, days=21, today=None):
     return out
 
 
+def reopen_report(conn, *, start=None, end=None, today=None):
+    """Bills that were settled and then opened again.
+
+    Scoped on the order's SERVICE DATE, the same as the voids report, so a
+    tab reopened at half past one stays on the night it was served rather
+    than moving onto the next day's figures on its own.
+
+    THE NUMBER IS THE DIFFERENCE. A bill reopened to add a forgotten coffee
+    is ordinary and finishes larger. One that finishes smaller is money coming
+    back off a sale that was complete, and that is the row worth reading.
+    Rows written before first_settled_total existed cannot answer it, and say
+    so rather than reporting a difference of nought -- which would read as a
+    bill that did not change.
+    """
+    today = today or house_today()
+    if end is None:
+        end = today
+    if start is None:
+        start = end - timedelta(days=30)
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+
+    rows = []
+    for o in conn.execute(
+            """SELECT pos_orders.*, users.name AS opened_by
+                 FROM pos_orders
+                 LEFT JOIN users ON users.id = pos_orders.opened_by_user_id
+                WHERE pos_orders.reopened_at IS NOT NULL
+                  AND pos_orders.service_date >= ?
+                  AND pos_orders.service_date <= ?
+                ORDER BY pos_orders.service_date DESC,
+                         pos_orders.reopened_at DESC""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        first_at = parse_datetime_iso(o["first_settled_at"])
+        again = parse_datetime_iso(o["reopened_at"])
+        # How long the bill had been settled before somebody opened it. A
+        # correction thirty seconds later is somebody noticing; one the next
+        # morning is a different act, and the gap is the only thing that
+        # tells them apart.
+        held = round((again - first_at).total_seconds() / 60.0, 1) \
+            if (first_at and again) else None
+        was = o["first_settled_total"]
+        now = o["settled_total"] if o["status"] == "paid" else None
+        moved = (round(now - was, 2)
+                 if (was is not None and now is not None) else None)
+        rows.append({
+            "order": o, "table": o["table_label"] or "",
+            "service_date": o["service_date"],
+            "who": o["opened_by"] or "nobody recorded",
+            "reopened_at": o["reopened_at"],
+            "minutes_settled": held,
+            "was": was, "now": now, "moved": moved,
+            # Still open. Not an accusation -- somebody is mid-correction --
+            # but a tab that has been sitting reopened since Tuesday is one
+            # nobody went back to, and it is not on any cash-up.
+            "still_open": o["status"] == "open",
+            "unanswerable": was is None,
+        })
+
+    down = [r for r in rows if r["moved"] is not None and r["moved"] < -0.005]
+    return {
+        "start": start, "end": end, "rows": rows, "reopens": len(rows),
+        "down": len(down),
+        "given_back": round(-sum(r["moved"] for r in down), 2),
+        "still_open": sum(1 for r in rows if r["still_open"]),
+        "unanswerable": sum(1 for r in rows if r["unanswerable"]),
+        "csv": [{"service_date": r["service_date"], "table": r["table"],
+                 "who": r["who"], "reopened_at": r["reopened_at"],
+                 "minutes_after_settling": r["minutes_settled"],
+                 "settled_first_at": r["was"], "settled_finally_at": r["now"],
+                 "difference": r["moved"]} for r in rows],
+    }
+
+
 def void_report(conn, *, start=None, end=None, today=None):
     """Every voided line in the window, and what the pattern says.
 
@@ -22148,7 +22243,8 @@ def void_report(conn, *, start=None, end=None, today=None):
     lines = conn.execute(
         """SELECT pos_order_lines.*, pos_orders.service_date,
                   pos_orders.status AS order_status,
-                  pos_orders.closed_at, pos_orders.table_label,
+                  pos_orders.closed_at, pos_orders.reopened_at,
+                  pos_orders.first_settled_at, pos_orders.table_label,
                   voider.name AS voided_by, adder.name AS added_by
              FROM pos_order_lines
              JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
@@ -22187,9 +22283,18 @@ def void_report(conn, *, start=None, end=None, today=None):
         # Voided after the bill was settled. parse rather than compare the
         # strings: closed_at and voided_at are both UTC moments, and one of
         # them can be absent.
-        closed = parse_datetime_iso(line["closed_at"])
+        # The EARLIEST evidence that this bill had been settled, not the
+        # current closed_at. Reopening a tab clears closed_at and settling it
+        # again moves it forward, so on its own it would call a void after
+        # settlement ordinary -- and pressing Reopen first would switch this
+        # signal off entirely while the page went on looking healthy.
+        settled = min(
+            [t for t in (parse_datetime_iso(line["first_settled_at"]),
+                         parse_datetime_iso(line["closed_at"]),
+                         parse_datetime_iso(line["reopened_at"]))
+             if t is not None], default=None)
         struck = parse_datetime_iso(line["voided_at"])
-        after_close = bool(closed and struck and struck > closed)
+        after_close = bool(settled and struck and struck > settled)
         same_person = bool(line["voided_by_user_id"]
                            and line["voided_by_user_id"] == line["added_by_user_id"])
         rows.append({
@@ -27648,6 +27753,42 @@ def pos_pay_link(order_id):
 # (label, endpoint, keywords). Keywords exist so "keys" finds the access
 # register and "vat"/"accountant" finds the payroll pack — people search for
 # what a page is FOR, not what it is called.
+def report_catalogue():
+    """Every page the palette knows about, described and grouped.
+
+    Reads the DOCSTRING off each view rather than keeping a second list of
+    descriptions. A description held apart from the code it describes drifts
+    from it, and a page being different from what somebody believes it is is
+    the exact failure this page exists to fix.
+
+    Grouped by the area a page already belongs to, so the grouping cannot
+    disagree with the navigation: both read NAV_AREA_OF.
+    """
+    out = []
+    for label, endpoint, keywords in PALETTE_PAGES:
+        view = app.view_functions.get(endpoint)
+        if view is None:
+            # The palette is checked against the url_map by its own test, so
+            # this should never fire. Skipped rather than crashed: an index
+            # that 500s because one report was renamed takes all the others
+            # down with it.
+            continue
+        doc = (inspect.getdoc(view) or "").strip()
+        first = doc.split("\n\n")[0].replace("\n", " ").strip() if doc else ""
+        area = NAV_AREA_OF.get(endpoint) or "other"
+        out.append({
+            "label": label,
+            "endpoint": endpoint,
+            "what": first,
+            "described": bool(first),
+            "area": area,
+            "area_title": AREA_TITLES.get(area, area.title()),
+            "keywords": keywords,
+            "owner_only": endpoint in OWNER_ONLY_ENDPOINTS,
+        })
+    return out
+
+
 PALETTE_PAGES = [
     ("Home", "dashboard", "dashboard today"),
     ("Revenue to send", "revenue_to_send",
@@ -27742,6 +27883,12 @@ PALETTE_PAGES = [
      "no show did not turn up restaurant table missed cover deposit"),
     ("Table utilisation", "admin_table_utilisation",
      "covers seats full restaurant capacity utilisation how busy"),
+    ("All the reports", "reports_index",
+     "reports index list every report all reports what can i see find a "
+     "report contents directory"),
+    ("Reopened bills", "admin_reopened_bills",
+     "reopen reopened tab bill settled again unsettled corrected after paying "
+     "till pos control"),
     ("Voids", "admin_voids",
      "void voids voided struck off comped taken off bill till pos theft "
      "control who voided"),
@@ -29779,6 +29926,11 @@ def whats_on():
 @app.route("/admin/whats-on")
 @owner_required
 def admin_whats_on():
+    """The market days, fairs and festivals guests are told about.
+
+    Shown on the public pages and in the arrival notes, so it is the house's
+    answer to "what is on while we are here" rather than a diary of its own.
+    """
     conn = get_db()
     events = conn.execute("SELECT * FROM whats_on ORDER BY sort_order, id").fetchall()
     conn.close()
@@ -33045,8 +33197,12 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
     if bill and bill["outstanding"] <= 0.01 and bill["order"]["status"] == "open":
         conn.execute(
             """UPDATE pos_orders SET status = 'paid', settled_total = ?,
-               payment_method = 'card_link', closed_at = ? WHERE id = ?""",
-            (bill["total"], datetime.now(timezone.utc).isoformat(), order_id))
+               payment_method = 'card_link', closed_at = ?,
+               first_settled_at = COALESCE(first_settled_at, ?),
+               first_settled_total = COALESCE(first_settled_total, ?)
+               WHERE id = ?""",
+            (bill["total"], datetime.now(timezone.utc).isoformat(),
+             datetime.now(timezone.utc).isoformat(), bill["total"], order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
                   details=f"€{bill['total']:.2f} by card link")
         pos_journal_append(conn, "tab_settled", {
@@ -47904,6 +48060,75 @@ def admin_wastage_rate():
     data = wastage_rate(conn, days)
     conn.close()
     return render_template("admin_wastage_rate.html", data=data, days=days)
+
+
+@app.route("/reports")
+@owner_required
+def reports_index():
+    """Every report the house has, and what each one answers.
+
+    Thirty-six of them were reachable only through the command palette, which
+    is no use to somebody who does not already know the report exists.
+    """
+    rows = report_catalogue()
+    lv = list_view(
+        rows, request.args,
+        search=["label", "what", "keywords"],
+        search_hint="Search what you want to know, not what the page is called",
+        facets=[
+            facet("area", "Part of the house", lambda r: r["area_title"],
+                  limit=14),
+        ],
+        sorts=[
+            sort_option("area", "By part of the house",
+                        lambda r: (r["area_title"], r["label"])),
+            sort_option("name", "By name", lambda r: r["label"]),
+        ],
+        default_sort="area",
+    )
+    # Grouped for display, from the filtered rows, so a search narrows the
+    # groups rather than leaving fourteen headings over four results.
+    groups = {}
+    for row in lv["rows"]:
+        groups.setdefault(row["area_title"], []).append(row)
+    undescribed = [r for r in rows if not r["described"]]
+    overview = [
+        overview_cell("Reports", len(rows)),
+        overview_cell("Parts of the house",
+                      len({r["area_title"] for r in rows})),
+        overview_cell("Without a description", len(undescribed),
+                      alert=bool(undescribed),
+                      hint="a page nobody can describe"),
+    ]
+    return render_template(
+        "reports_index.html", lv=lv,
+        groups=sorted(groups.items()), overview=overview,
+        undescribed=sorted(r["label"] for r in undescribed))
+
+
+@app.route("/admin/restaurant/reopened")
+@owner_required
+def admin_reopened_bills():
+    """Bills that were settled, then opened again, and what changed."""
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = reopen_report(conn, start=start, end=end)
+    conn.close()
+    return render_template("admin_reopened.html", data=data)
+
+
+@app.route("/admin/restaurant/reopened.csv")
+@owner_required
+def export_reopened_csv():
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = reopen_report(conn, start=start, end=end)
+    conn.close()
+    return csv_response(
+        ["service_date", "table", "who", "reopened_at",
+         "minutes_after_settling", "settled_first_at", "settled_finally_at",
+         "difference"], data["csv"],
+        f"reopened_{start.isoformat()}_to_{end.isoformat()}.csv")
 
 
 @app.route("/admin/restaurant/voids")

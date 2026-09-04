@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Reopened bills{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Bills opened again after they were settled</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_voids') }}" class="btn-ghost">Voids</a>
+    <a href="{{ url_for('pos_home') }}" class="btn-ghost">The till</a>
+    <a href="{{ url_for('export_reopened_csv') }}" class="btn-ghost">Export CSV</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  The till has always recorded a reopening and refused one inside a day that
+  has been closed off. Nothing read it back. A bill reopened to add a
+  forgotten coffee finishes larger; one that finishes smaller is money coming
+  off a sale that was already complete.
+</p>
+
+<form method="get" class="search-bar" style="margin-bottom:16px;">
+  <div>
+    <label class="field-label" for="from">From</label>
+    <input type="date" id="from" name="from" value="{{ data.start.isoformat() }}">
+  </div>
+  <div>
+    <label class="field-label" for="to">To</label>
+    <input type="date" id="to" name="to" value="{{ data.end.isoformat() }}">
+  </div>
+  <button type="submit" class="btn-primary">Show</button>
+</form>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.reopens }}</span>
+    <span class="stat-tile-label">Bills reopened</span></span></div>
+  <div class="stat-tile {{ 'overview-cell-alert' if data.down }}"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.down }}</span>
+    <span class="stat-tile-label">Finished smaller</span></span></div>
+  <div class="stat-tile {{ 'overview-cell-alert' if data.given_back }}"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ euro(data.given_back) }}</span>
+    <span class="stat-tile-label">Came back off settled bills</span></span></div>
+  <div class="stat-tile {{ 'overview-cell-alert' if data.still_open }}"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.still_open }}</span>
+    <span class="stat-tile-label">Still sitting open</span></span></div>
+</div>
+
+{% if data.still_open %}
+<div class="flash flash-error" style="margin:16px 0;">
+  <strong>{{ data.still_open }} reopened bill{{ '' if data.still_open == 1 else 's' }}
+  never got settled again.</strong> A tab left open is on no cash-up and in no
+  day's takings. Somebody meant to come back to it.
+</div>
+{% endif %}
+
+{% if data.rows %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Night</th><th>Table</th><th>Who opened it</th>
+          <th class="num">After settling</th><th class="num">Settled at</th>
+          <th class="num">Finished at</th><th class="num">Difference</th></tr>
+    </thead>
+    <tbody>
+      {% for r in data.rows %}
+      <tr>
+        <td>{{ r.service_date|date_short }}</td>
+        <td>{{ r.table }}</td>
+        <td>{{ r.who }}</td>
+        <td class="num">
+          {% if r.minutes_settled is not none %}
+            {% if r.minutes_settled < 60 %}{{ r.minutes_settled|round|int }} min
+            {% else %}{{ (r.minutes_settled / 60)|round(1) }} hr{% endif %}
+          {% else %}&mdash;{% endif %}
+        </td>
+        <td class="num">
+          {% if r.was is not none %}{{ euro(r.was) }}
+          {% else %}<span class="g-hint">not recorded</span>{% endif %}
+        </td>
+        <td class="num">
+          {% if r.still_open %}<span class="mini-status status-pending">Still open</span>
+          {% elif r.now is not none %}{{ euro(r.now) }}
+          {% else %}&mdash;{% endif %}
+        </td>
+        <td class="num">
+          {% if r.moved is none %}
+            <span class="g-hint">{{ 'settled before this was recorded' if r.unanswerable else '—' }}</span>
+          {% elif r.moved < -0.005 %}
+            <span class="mini-status status-overdue">{{ euro(r.moved) }}</span>
+          {% elif r.moved > 0.005 %}
+            +{{ euro(r.moved) }}
+          {% else %}
+            <span class="g-hint">no change</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if data.unanswerable %}
+<p class="upload-hint">
+  {{ data.unanswerable }} of these were settled before the till started keeping
+  the first figure, so what the bill changed by cannot be worked out for them.
+  Said plainly rather than shown as no change, which would read as a bill that
+  did not move.
+</p>
+{% endif %}
+
+{% else %}
+<div class="empty-state">No bill was reopened between
+  {{ data.start.isoformat()|date_short }} and {{ data.end.isoformat()|date_short }}.</div>
+{% endif %}
+
+{% endblock %}
