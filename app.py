@@ -259,6 +259,7 @@ LEAVE_SETTING_DEFAULTS = {
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_weather_enabled": "1",
+    "automation_photo_mirror_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
@@ -61040,6 +61041,73 @@ def record_job_run(conn, job_name, ok, message):
     conn.commit()
 
 
+# How long one run may spend fetching, and how long to leave a photograph
+# alone after it refused to come down. The first keeps a tick from hanging on
+# a slow CDN; the second keeps a dead address from being asked for twenty-four
+# times a day for ever.
+PHOTO_MIRROR_JOB_SECONDS = 60
+PHOTO_MIRROR_RETRY_HOURS = 24
+
+
+def run_photo_mirror_job(conn):
+    """Take a copy of any photograph the site shows and the house does not hold.
+
+    The button on /admin/photo-mirror does this in twenty-second bites because
+    a browser is waiting. Nothing is waiting here, which matters: the whole
+    point of the mirror is that the house stops depending on somebody else's
+    account, and a safeguard that depends on the owner remembering to press a
+    button several times is a safeguard for the fortnight after it is built.
+
+    Hourly rather than daily. An idle run costs one directory listing and a
+    cached template scan -- about a millisecond and a half -- and the day it is
+    not idle is the day a handover added a photograph, which is the day it
+    should be held rather than the day after.
+
+    A photograph that refused to come down is left alone for a day. Retrying a
+    dead address every hour is twenty-four requests at somebody else's CDN for
+    an answer that will not change, and it would bury the ones that might.
+    """
+    cover = mirror_coverage(conn)
+    if not cover["missing"]:
+        return "all %d held" % len(cover["wanted"])
+
+    recent = set()
+    try:
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(hours=PHOTO_MIRROR_RETRY_HOURS)).isoformat()
+        recent = {r["source_url"] for r in conn.execute(
+            """SELECT source_url FROM mirrored_images
+                WHERE last_error IS NOT NULL AND last_error != ''
+                  AND fetched_at >= ?""", (cutoff,)).fetchall()}
+    except sqlite3.OperationalError:
+        pass
+
+    todo = [u for u in cover["missing"] if u not in recent]
+    started = time.monotonic()
+    done = failed = 0
+    for url in todo:
+        if time.monotonic() - started > PHOTO_MIRROR_JOB_SECONDS:
+            break
+        try:
+            filename, size, ctype = fetch_one_image(url, timeout=15)
+            record_mirror(conn, url, filename, size, ctype)
+            done += 1
+        except Exception as exc:          # noqa: BLE001 - one failure is one image
+            record_mirror(conn, url, error=str(exc)[:200])
+            failed += 1
+        conn.commit()
+
+    mirror_cache_clear()
+    left = len(mirror_coverage(conn)["missing"])
+    if not todo:
+        return "%d still missing, all of them tried within the day" % len(cover["missing"])
+    parts = ["copied %d" % done]
+    if failed:
+        parts.append("%d would not come down" % failed)
+    parts.append("%d left" % left if left else "the site is now held here")
+    return ", ".join(parts)
+
+
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
     # Hourly. The page reads a cache and never the network, so a slow morning
@@ -61058,6 +61126,11 @@ AUTOMATION_JOBS = [
     # Daily. Everything here has weeks of notice, so a missed run costs
     # nothing and nothing is ever raised at short notice.
     ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
+    # Hourly. An idle run is a directory listing and a cached scan; the run
+    # that is not idle is the one after a handover added a photograph, and the
+    # house holding its own copy of that within the hour is the whole point.
+    ("photo_mirror", "automation_photo_mirror_enabled", None, 3600,
+     run_photo_mirror_job),
     # Daily, early. The whole argument for the morning note is that it arrives
     # rather than waiting to be looked up, and until it was registered here it
     # was waiting to be looked up.
@@ -61238,6 +61311,8 @@ AUTOMATION_JOB_LABELS = {
     "backup_email": "Automated backup email (database + uploads, to the owner)",
     "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
     "maintenance": "Estate upkeep (raise tasks for work falling due)",
+    "photo_mirror": "Keep our own copy of the site's photographs "
+                    "(so the château stops depending on an account it no longer publishes from)",
     "watch_tasks": "Blocking findings (raise a task, and close it when it stops being true)",
     # Runnable but unlabelled until now, so it never appeared here at all —
     # the one job whose whole purpose is a promise made in the privacy notice.
