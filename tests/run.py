@@ -284,6 +284,8 @@ SUITES = [
     "test_party_bill",
     "test_split_bill",
     "test_correspondence",
+    "test_review_invitation",
+    "test_itinerary",
     "test_guest_record_fields",
     "test_guest_management",
     "test_merge_tags",

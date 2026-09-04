@@ -1,0 +1,54 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}Your days here — {{ booking['reference_code'] }}{% endblock %}
+{# One guest's own stay, named room and all, reached by their manage link.
+   Never indexed, for the same reason their bill is not. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+
+<div class="page-head">
+  <h1>Your days here</h1>
+</div>
+
+<p class="g-p">
+  {{ booking['room_name'] }} · {{ booking['arrival_date'] }} to
+  {{ booking['departure_date'] }} · {{ booking['reference_code'] }}
+</p>
+
+{% if days %}
+{# Day by day, because that is how somebody plans a drive and a dinner. Built
+   only from what the house actually knows — nothing here invents a time the
+   château has not stated, since a guest will plan around it. #}
+{% for entry in days %}
+<div class="g-mb-note">
+  <span class="g-mb-dt">{{ entry.day.strftime('%A %d %B') }}</span>
+  {% if entry.entries %}
+  <ul>
+    {% for item in entry.entries %}
+    <li>
+      <strong>{{ item.what }}</strong>{% if item.detail %} — {{ item.detail }}{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="g-hint">Nothing arranged — the valley is yours.</p>
+  {% endif %}
+</div>
+{% endfor %}
+
+<p class="g-hint">
+  Anything you would like to add — a table for dinner, a place on an atelier —
+  is on <a href="{{ url_for('manage_booking', manage_token=booking['manage_token']) }}">your booking page</a>.
+</p>
+{% else %}
+<p class="g-p">
+  There is nothing to show yet. Once your dates are settled this page will
+  fill in.
+</p>
+{% endif %}
+
+</div></section>
+
+{% endblock %}

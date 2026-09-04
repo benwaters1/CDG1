@@ -293,6 +293,9 @@ AUTOMATION_SETTING_DEFAULTS = {
     "automation_morning_digest_enabled": "1",
     "automation_workshop_decision_enabled": "1",
     "automation_room_feedback_enabled": "1",
+    # On, but harmless until a review page is set: with none it writes to
+    # nobody and says so.
+    "automation_review_invitation_enabled": "1",
     "automation_checkin_text_enabled": "1",
     "automation_checkout_text_enabled": "1",
     "automation_backup_interval_hours": "24",
@@ -373,6 +376,19 @@ ROOM_PAYMENT_DEFAULTS = {
     # setting only governs what the guest is offered.
     "room_part_payment_allowed": "0",
 }
+
+# Where a guest is sent to say it publicly. Empty until the house pastes its
+# own Google or TripAdvisor page in, and nothing is ever sent while it is
+# empty -- an invitation to review that lands on a broken link is worse than
+# no invitation.
+REVIEW_LINK_SETTING = "review_link_url"
+# Nobody below this is asked. Four out of five, so a guest who was politely
+# lukewarm in private is not then asked to say it where everyone can read it.
+REVIEW_INVITE_MIN_RATING = 4
+# And not the same day. The private answer has just been read by the house; a
+# second email an hour later reads as a machine, and if something was wrong
+# there has to be time for a person to see it first.
+REVIEW_INVITE_DAYS_AFTER = 2
 EMPLOYER_LEGAL_NAME = "SCI Torrents"
 
 
@@ -1131,6 +1147,13 @@ DEFAULT_EMAIL_TEMPLATES = [
      "Hi {guest_name},\n\nA friendly reminder that the balance of €{balance_amount} for {workshop_title} "
      "({dates}) is due by {balance_due_date}.\n"
      "Manage your registration and pay online: {manage_url}\n\n— Château de Gudanes"),
+    ("review_invitation", "Rooms: Would you say so publicly?",
+     "Would you tell somebody else about Ch\u00e2teau de Gudanes?",
+     "Hi {guest_name},\n\nThank you for telling us how your stay went \u2014 it "
+     "meant a lot to read.\n\nIf you have another minute, saying the same thing "
+     "where other people can read it helps us more than almost anything "
+     "else:\n{review_url}\n\nAnd if you would rather not, that is perfectly "
+     "all right \u2014 we will not ask again.\n\n\u2014 Ch\u00e2teau de Gudanes"),
     ("room_feedback_request", "Rooms: How was your stay?",
      "How was your stay at Ch\u00e2teau de Gudanes?",
      "Hi {guest_name},\n\nWe hope the ch\u00e2teau treated you well. If you have a "
@@ -4219,6 +4242,12 @@ def init_db():
         # for his parents: the payer and the guest were the same record, so the
         # arrival details went to whoever was paying and the bill went to
         # whoever was sleeping here.
+        # Stamped when a guest has been asked to review the house publicly.
+        # On the feedback row and not the booking, because the ask follows the
+        # ANSWER: nobody is invited who has not first said, in private, that it
+        # went well.
+        ("guest_feedback_review_invited_at",
+         "ALTER TABLE guest_feedback ADD COLUMN review_invited_at TEXT"),
         ("bookings_booked_by_name", "ALTER TABLE bookings ADD COLUMN booked_by_name TEXT"),
         ("bookings_booked_by_email", "ALTER TABLE bookings ADD COLUMN booked_by_email TEXT"),
         ("waitlist_offered_at", "ALTER TABLE waitlist_entries ADD COLUMN offered_at TEXT"),
@@ -5312,7 +5341,7 @@ NAV_AREAS = {
     "guests": [
         "mark_booking_no_show", "undo_booking_no_show", "rebook_guest",
         "party_statement",
-        "booking_correspondence",
+        "booking_correspondence", "save_review_link", "ask_for_a_review",
         "arrivals_sheet_page", "issue_access_code", "access_code_returned",
         "walk_in_booking", "arrival_card",
         "add_guest_note_route", "set_guest_caution", "merge_guest",
@@ -32318,6 +32347,128 @@ def booking_stripe_success():
     return redirect(url_for("manage_booking", manage_token=manage_token))
 
 
+def stay_itinerary(conn, booking):
+    """Their days here, and what is happening on each of them.
+
+    A guest knew their arrival date and nothing else. Whether the restaurant
+    served on the Tuesday, whether there was an atelier on while they were
+    here, what they had already booked themselves -- all of it was in the app
+    and none of it was on one page in front of the person it concerned. So it
+    was asked by email, one question at a time.
+
+    Built only from what the house actually knows. Nothing here invents a time
+    the château has not stated: a made-up arrival hour on a guest's own
+    itinerary is worse than no itinerary, because they will plan a drive round
+    it.
+
+    WHAT IS DELIBERATELY NOT HERE: private events. A wedding, a shoot or a
+    hire is somebody else's day at the house, and putting it on a stranger's
+    itinerary tells them who is getting married here and when. "What's on"
+    means what this guest may join, not everything in the diary.
+    """
+    arrival, departure = parse_date(booking["arrival_date"]), parse_date(booking["departure_date"])
+    if not arrival or not departure or departure <= arrival:
+        return []
+    first, last = arrival.isoformat(), departure.isoformat()
+    email = (booking["guest_email"] or "").strip().casefold()
+
+    # Their own dinner reservations, and the house's dinner service.
+    dinners = {}
+    for row in conn.execute(
+            """SELECT * FROM restaurant_bookings
+                WHERE LOWER(guest_email) = ? AND dinner_date >= ? AND dinner_date <= ?
+                  AND status IN ('pending', 'confirmed')""",
+            (email, first, last)).fetchall():
+        dinners[row["dinner_date"]] = row
+    settings = conn.execute("SELECT * FROM restaurant_settings WHERE id = 1").fetchone()
+    dinner_time = (settings["dinner_time"] if settings else "") or ""
+    serving = bool(settings and settings["enabled"])
+
+    # Ateliers running while they are here. Active workshops only, and the
+    # session has to actually overlap the stay -- a course that starts the day
+    # after they leave is not something on during their stay.
+    sessions = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title AS title,
+                  workshops.active AS active
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshops.active = 1
+              AND workshop_sessions.start_date <= ?
+              AND workshop_sessions.end_date >= ?
+            ORDER BY workshop_sessions.start_date""", (last, first)).fetchall()
+    theirs = {row["session_id"] for row in conn.execute(
+        """SELECT session_id FROM workshop_bookings
+            WHERE LOWER(guest_email) = ? AND status IN ('pending', 'confirmed')""",
+        (email,)).fetchall()}
+
+    days = []
+    day = arrival
+    while day <= departure:
+        iso = day.isoformat()
+        entries = []
+        if iso == first:
+            note = "Arriving"
+            if (booking["estimated_arrival_time"] or "").strip():
+                note += f", around {booking['estimated_arrival_time'].strip()}"
+            entries.append({"kind": "arrival", "what": note,
+                            "detail": booking["room_name"]})
+            if booking_has_transfer(booking):
+                bits = [b for b in (
+                    (booking["transfer_flight_number"] or "").strip(),
+                    (booking["transfer_arrival_time"] or "").strip()) if b]
+                entries.append({"kind": "transfer", "what": "We are collecting you",
+                                "detail": " · ".join(bits)})
+        if iso == last:
+            entries.append({"kind": "departure", "what": "Leaving", "detail": ""})
+        # Dinner. Their own booking wins over the general note -- a guest who
+        # has a table does not need to be told the restaurant exists.
+        if iso in dinners:
+            row = dinners[iso]
+            entries.append({
+                "kind": "dinner_yours",
+                "what": f"Dinner here, table for {row['party_size']}"
+                        + (f" at {dinner_time}" if dinner_time else ""),
+                "detail": ("confirmed" if row["status"] == "confirmed"
+                           else "we have your request")})
+        elif serving and iso != last:
+            # Not on the departure evening: they have gone by then.
+            entries.append({
+                "kind": "dinner_open",
+                "what": "Dinner is served" + (f" at {dinner_time}" if dinner_time else ""),
+                "detail": "if you would like a table"})
+        for session in sessions:
+            if not (session["start_date"] <= iso <= session["end_date"]):
+                continue
+            entries.append({
+                "kind": "atelier_yours" if session["id"] in theirs else "atelier",
+                "what": session["title"],
+                "detail": ("you are booked on this" if session["id"] in theirs
+                           else "on at the château while you are here")})
+        days.append({"date": iso, "day": day, "entries": entries})
+        day += timedelta(days=1)
+    return days
+
+
+@app.route("/book/manage/<manage_token>/itinerary")
+def stay_itinerary_page(manage_token):
+    """Their own days, on one page they can print or keep on a phone.
+
+    On their manage link and nothing else -- it names their room and what they
+    have booked, so it is theirs the way the bill is theirs.
+    """
+    conn = get_db()
+    booking = conn.execute(
+        """SELECT bookings.*, rooms.name AS room_name FROM bookings
+           JOIN rooms ON rooms.id = bookings.room_id WHERE manage_token = ?""",
+        (manage_token,)).fetchone()
+    if not booking:
+        conn.close()
+        abort(404)
+    days = stay_itinerary(conn, booking)
+    conn.close()
+    return render_template("stay_itinerary.html", booking=booking, days=days)
+
+
 @app.route("/book/manage/<manage_token>", methods=["GET", "POST"])
 def manage_booking(manage_token):
     conn = get_db()
@@ -32874,8 +33025,16 @@ def guest_feedback(token):
                     conn, rating=rating, guest_name=booking["guest_name"],
                     comment=comment, what=f"their stay ({booking['reference_code']})",
                     where=url_for("admin_feedback", _external=True))
+            # THE BEST MOMENT TO ASK IS THE MOMENT THEY HAVE JUST SAID IT WAS
+            # GOOD -- they are here, they are warm, and no email is involved.
+            # The same rule as the job: only somebody who said it went well,
+            # and only if the house has a page to send them to.
+            offer_review = (rating >= REVIEW_INVITE_MIN_RATING
+                            and bool(review_link(conn)))
+            link = review_link(conn) if offer_review else ""
             conn.close()
-            return render_template("guest_feedback_submitted.html")
+            return render_template("guest_feedback_submitted.html",
+                                   review_url=link)
 
     conn.close()
     return render_template(
@@ -35399,6 +35558,89 @@ def run_morning_digest_job(conn, today=None):
     return f"sent — {subject}"
 
 
+def review_link(conn):
+    """The house's own review page, or empty. Never a default.
+
+    A guessed URL sends guests to somebody else's listing, so this stays blank
+    until the owner pastes theirs in, and everything that would use it checks.
+    """
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (REVIEW_LINK_SETTING,)).fetchone()
+    value = ((row["value"] if row else "") or "").strip()
+    return value if value.startswith(("http://", "https://")) else ""
+
+
+def may_ask_for_a_review(feedback):
+    """Whether this answer is one to follow up in public.
+
+    The whole design in one line: THE PUBLIC ASK IS GATED ON THE PRIVATE
+    ANSWER. Sending "would you review us?" to everybody who stayed is how a
+    house ends up soliciting the review of the guest whose boiler failed --
+    and that guest has already told us, on the form, that it failed.
+    """
+    try:
+        rating = int(feedback["rating"] or 0)
+    except (TypeError, ValueError):
+        return False
+    return rating >= REVIEW_INVITE_MIN_RATING
+
+
+def run_review_invitation_job(conn, days_after=None):
+    """Ask the guests who said it was good to say so where people can read it.
+
+    Skipped rather than asked, and none of these is an error: a guest who has
+    already been invited, one who asked not to be written to, one whose answer
+    was anything less than good, and every guest at all while the house has not
+    said where its review page is.
+    """
+    link = review_link(conn)
+    if not link:
+        return ("no review page is set, so nobody was asked — paste yours "
+                "under Settings")
+    days = REVIEW_INVITE_DAYS_AFTER if days_after is None else days_after
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    answers = conn.execute(
+        """SELECT guest_feedback.*, bookings.guest_email AS email,
+                  bookings.reference_code AS reference_code
+             FROM guest_feedback
+             JOIN bookings ON bookings.id = guest_feedback.booking_id
+            WHERE guest_feedback.review_invited_at IS NULL
+              AND guest_feedback.submitted_at <= ?
+              AND COALESCE(bookings.guest_email, '') != ''
+              AND LOWER(bookings.guest_email) NOT IN
+                  (SELECT LOWER(email) FROM email_optouts)""",
+        (cutoff,)).fetchall()
+    asked = 0
+    for answer in answers:
+        if not may_ask_for_a_review(answer):
+            # Stamped anyway, so the job does not reconsider the same
+            # disappointed guest every morning for ever. The stamp means "we
+            # have decided about this one", not "we wrote to them".
+            conn.execute(
+                "UPDATE guest_feedback SET review_invited_at = ? WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(), answer["id"]))
+            conn.commit()
+            continue
+        subject, body = render_email_template(conn, "review_invitation", {
+            "guest_name": (answer["guest_name"] or "").strip().split(" ")[0] or "there",
+            "review_url": link,
+        })
+        if not subject:
+            continue
+        # Stamped before the send and committed per guest, for the two reasons
+        # this app has learned the hard way: a stamp held open stops the next
+        # message being queued at all, and stamping only on success asks
+        # everybody again the day a provider is connected.
+        conn.execute("UPDATE guest_feedback SET review_invited_at = ? WHERE id = ?",
+                     (datetime.now(timezone.utc).isoformat(), answer["id"]))
+        conn.commit()
+        send_email(answer["email"], subject, body)
+        asked += 1
+    if not answers:
+        return "nobody new to ask"
+    return f"asked {asked} of {len(answers)} guest(s) for a public review"
+
+
 def run_room_feedback_job(conn, days_after=None):
     """Ask departed room guests how it was.
 
@@ -36008,6 +36250,7 @@ EMAIL_TEMPLATE_TAGS = {
                                         "manage_url", "party_size", "price_block",
                                         "reference_code", "refund_note"),
     "restaurant_waitlist_opening": ("book_url", "desired_date", "name", "party_size"),
+    "review_invitation": ("guest_name", "review_url"),
     "room_feedback_request": ("feedback_url", "guest_name", "room_name"),
     "room_waitlist_opening": ("book_url", "desired_arrival", "desired_departure", "name"),
     "workshop_balance_reminder": ("balance_amount", "balance_due_date", "balance_line",
@@ -38370,6 +38613,8 @@ def admin_feedback():
     ).fetchall()
     avg_rating = conn.execute("SELECT AVG(rating) AS a FROM guest_feedback").fetchone()["a"]
     permissions = publishable_reviews(conn)
+    # Read before the close, like everything else on this page.
+    link = review_link(conn)
     conn.close()
 
     def verdict(e):
@@ -38393,6 +38638,13 @@ def admin_feedback():
             # Three states, not two. "Featured" used to mean published;
             # it now means chosen, and the difference between chosen and
             # published is a letter somebody has to write.
+            # Whether they have been asked to say it in public, which is
+            # not the same question as whether we put it on our own site.
+            facet("review", "Public review",
+                  lambda e: ("Asked" if e["review_invited_at"]
+                             else ("Not one to ask" if not may_ask_for_a_review(e)
+                                   else "Could be asked")),
+                  order=["Could be asked", "Asked", "Not one to ask"]),
             facet("featured", "On the website",
                   lambda e: ("Not featured" if not e["featured"]
                              else ("Published" if e["publish_consent"] == 1
@@ -38414,7 +38666,84 @@ def admin_feedback():
         "admin_feedback.html", entries=lv["rows"], lv=lv,
         avg_rating=round(avg_rating, 1) if avg_rating is not None else None,
         unasked=len(permissions["unasked"]),
+        review_url=link, may_ask=may_ask_for_a_review,
     )
+
+
+@app.route("/admin/feedback/review-link", methods=["POST"])
+@owner_required
+def save_review_link():
+    """Where guests are sent to review the house publicly.
+
+    Blank until somebody pastes theirs in, and blank means nobody is asked --
+    an invitation to review that lands on a broken link is worse than no
+    invitation, and a guessed URL sends guests to another house's listing.
+    """
+    link = (request.form.get("review_link_url", "") or "").strip()[:400]
+    if link and not link.startswith(("http://", "https://")):
+        flash("That does not look like a web address — it needs to start "
+              "http:// or https://.", "error")
+        return redirect(url_for("admin_feedback"))
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (REVIEW_LINK_SETTING, link))
+    conn.commit()
+    conn.close()
+    flash("Saved. Guests who say it went well are asked to review the house "
+          "there." if link else
+          "Cleared. Nobody will be asked for a public review.", "success")
+    return redirect(url_for("admin_feedback"))
+
+
+@app.route("/admin/feedback/<int:feedback_id>/ask-for-a-review", methods=["POST"])
+@owner_required
+def ask_for_a_review(feedback_id):
+    """Send one guest the invitation by hand.
+
+    The job does this daily; this is for the guest somebody remembers, or the
+    one whose invitation was skipped while the review page was still blank.
+
+    It will not send to a guest who did not say it went well. That rule lives
+    in one function so the button and the job cannot come to differ -- and it
+    is exactly the mistake this feature exists to avoid.
+    """
+    conn = get_db()
+    answer = conn.execute(
+        """SELECT guest_feedback.*, bookings.guest_email AS email
+             FROM guest_feedback
+             LEFT JOIN bookings ON bookings.id = guest_feedback.booking_id
+            WHERE guest_feedback.id = ?""", (feedback_id,)).fetchone()
+    if not answer:
+        conn.close()
+        abort(404)
+    link = review_link(conn)
+    problem = None
+    if not link:
+        problem = ("There is no review page set yet, so there is nowhere to "
+                   "send them.")
+    elif not (answer["email"] or "").strip():
+        problem = "There is no email address on that booking."
+    elif not may_ask_for_a_review(answer):
+        problem = (f"{answer['guest_name']} gave the house "
+                   f"{answer['rating']} out of 5. Asking them to say that in "
+                   "public is not a favour to anybody.")
+    if problem:
+        conn.close()
+        flash(problem, "error")
+        return redirect(url_for("admin_feedback"))
+    subject, body = render_email_template(conn, "review_invitation", {
+        "guest_name": (answer["guest_name"] or "").strip().split(" ")[0] or "there",
+        "review_url": link,
+    })
+    conn.execute("UPDATE guest_feedback SET review_invited_at = ? WHERE id = ?",
+                 (datetime.now(timezone.utc).isoformat(), feedback_id))
+    conn.commit()
+    conn.close()
+    send_email(answer["email"], subject, body)
+    flash(f"Asked {answer['guest_name']} for a public review.", "success")
+    return redirect(url_for("admin_feedback"))
 
 
 @app.route("/admin/feedback/<int:feedback_id>/reply", methods=["POST"])
@@ -57647,6 +57976,10 @@ AUTOMATION_JOBS = [
     # so the guests were being asked by nobody.
     ("room_feedback_request", "automation_room_feedback_enabled", None, 24 * 3600,
      run_room_feedback_job),
+    # Daily, and downstream of the one above: it only ever writes to a guest
+    # who has already answered, and only if they answered well.
+    ("review_invitation", "automation_review_invitation_enabled", None, 24 * 3600,
+     run_review_invitation_job),
     # The two guest texts. Daily: each stamps per booking, so a run that
     # happens twice sends nothing twice, and a day missed is a guest who was
     # not told where to go.
@@ -57802,6 +58135,7 @@ AUTOMATION_JOB_LABELS = {
     "room_balance_reminder": "Room balance-due reminders (before the guest travels)",
     "event_balance_reminder": "Event balance-due reminders (a wedding balance is a bank transfer, not a tap)",
     "workshop_feedback_request": "Workshop feedback requests",
+    "review_invitation": "Ask a delighted guest for a public review (nobody else)",
     "email_inbox_scan": "Inbox scan (unanswered + pricing/availability flags)",
     "stale_shift_cleanup": "Stale shift cleanup (forgot to clock out)",
     "hr_escalation": "HR chase-ups (overdue approvals, reviews, certificates)",
