@@ -272,6 +272,7 @@ SUITES = [
     "test_owner_edits",
     "test_provider_off",
     "test_stale_mail",
+    "test_awaiting_answer",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
