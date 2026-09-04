@@ -8,6 +8,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
+{% from '_exclusive.html' import exclusive %}
 {% from '_notify.html' import notify %}
 {% from '_before.html' import honest, terms_upfront, packing, arriving %}
 {% from '_animals.html' import animals, animals_note %}
@@ -18,8 +20,6 @@
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
-
-
 
 {% from '_marks.html' import mark, monogram %}
 {# Nights for the whole page, from the dates already in scope. Computed here
@@ -35,8 +35,6 @@
 {% endif %}
 
 {% from '_emblems.html' import emblem %}
-
-
 
 <section class="g-hero">
 <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
@@ -60,13 +58,10 @@
 </div>
 {% endif %}
 
-
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
 <div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Availability</span>Five bedrooms, of ninety-four rooms. They open one at a time, as the restoration reaches them.</p></div>
-
-
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-two">
@@ -290,7 +285,6 @@
 {{ room_pick(rooms) }}
 
 
-
 <!-- ============ LA CUISINE ============ -->
 {# Matches the workshops page — same voice, same claims, adjusted for a
    nightly guest who books dinner rather than cooks it. #}
@@ -388,8 +382,6 @@
   <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
   <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
 </div></section>
-
-
 
 <!-- ============ COMPARE THE ROOMS ============ -->
 {# Driven by the same `rooms` the cards above use, so it can never disagree
@@ -623,6 +615,7 @@
   </details>
 </div></section>
 
+
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
    across all six categories. Short quotes, attributed, nothing invented. #}
@@ -700,14 +693,14 @@
   </p>
 </div></section>
 
+{{ animals() }}
+
 
 <div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
   <path d="M2 28h60"/><path d="M6 28V12l26-9 26 9v16"/>
   <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
   <path d="M20 8v-3M32 5v-3M44 8v-3"/>
 </svg></div>
-
-
 
 {% from '_faq.html' import faq %}
 {{ faq([
@@ -733,7 +726,6 @@
    'Charged locally on arrival, as French law requires. It is the only thing not in the rate.')
 ], 'Before You Book', 'The Questions That Come Up') }}
 
-
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
@@ -753,9 +745,7 @@
   </div>
 </div></section>
 
-
 <div class="g-wrap g-mark__wrap">{{ mark('key') }}</div>
-
 
 <!-- ============ WHERE THIS IS ============ -->
 {# The map lives on Contact. These pages need the geography stated, because
@@ -796,26 +786,36 @@
   </div>
 </div></section>
 
-
-
-
 <!-- ============ WHAT A NIGHT INCLUDES ============ -->
 
+<!-- ============ THE ROOMS, AS FACTS ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Les cinq chambres<span class="g-fr__en">The five rooms</span></p>
+  <p class="g-eyebrow">Side By Side</p>
+  <h2 class="g-place">All Five, In Numbers</h2>
+  <p class="g-p">Five rooms, no two alike, because the restoration kept the original layout rather than imposing a plan on it. Each is named rather than numbered — Émeraude for the green silk found under the later paper, Cerise for the cherry trees below its window.</p>
 
-
-
-
-<!-- ============ COMPARE ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Deciding Between Two</p>
-  <h2 class="g-place">Side By Side</h2>
-  <p class="g-p">Five rooms, and most people are choosing between two of them. Put any two next to each other.</p>
-  {{ compare_rooms(rooms) }}
+  <ul class="g-tiers">
+    {% for r in rooms %}
+    <li class="g-tier">
+      <h3 class="g-tier__t">{{ room_name(r['name']) }}</h3>
+      {% if room_note(r['name']) %}<p class="g-tier__n">{{ room_note(r['name']) }}</p>{% endif %}
+      <p class="g-tier__p"><b>From €{{ '%.0f'|format(r['price_per_night']) }}</b> a night</p>
+      <dl class="g-tier__f">
+        <div><dt>Sleeps</dt><dd>{{ r['max_occupancy'] or 2 }}</dd></div>
+        <div><dt>Bathroom</dt><dd>{%- if 'Shared' in r['name'] %}Shared with one other room{% else %}Private, along the corridor{%- endif %}</dd></div>
+        <div><dt>Breakfast</dt><dd>Included</dd></div>
+        <div><dt>Minimum</dt><dd>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</dd></div>
+      </dl>
+      <p class="g-tier__a"><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn">See this room</a></p>
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="g-limit"><span class="g-limit__k">On top</span>The taxe de séjour is set by the commune, not by us, and charged per adult per night{% if settings and settings['tourist_tax'] %} — €{{ '%.2f'|format(settings['tourist_tax']) }}{% endif %}. It is the only thing added to the rates above.</p>
+  <p class="g-limit"><span class="g-limit__k">No ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class.</p>
 </div></section>
 
-
 <!-- ============ NO DATES YET ============ -->
-
 
 <!-- ============ KEY INFORMATION ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -852,7 +852,6 @@
 
 <div class="g-mono__wrap">{{ monogram() }}</div>
 
-
 <div class="g-wrap">
   <p class="g-devise">
     <span class="g-devise__fr">« Cinq chambres prêtes. Quatre-vingt-neuf attendent. »</span>
@@ -874,30 +873,22 @@
   </div>
 </div></section>
 
-
+{{ exclusive(settings) }}
 
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
 {{ avail_cal(booked_dates, 2) }}
 
-{# The animals, and the allergy note that has to travel with them. This was
-   cut from here and added to the confirmation page instead, which is the
-   wrong way round: by the time somebody reads the confirmation they have
-   already paid. The charming half of the house cannot be on the page where
-   people decide while the half that matters to somebody with a cat allergy
-   is on the page after. test_animals is the ratchet. #}
-{{ animals() }}
-
 {{ flexible() }}
-
-
 
 {{ week_cost(rooms, settings) }}
 
 {{ honest() }}
 
 {{ notify() }}
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script type="application/ld+json">
 {

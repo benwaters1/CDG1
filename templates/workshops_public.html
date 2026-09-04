@@ -550,13 +550,12 @@
   <p class="g-eyebrow">Dated, Not Continuous</p>
   <h2 class="g-place">The Year's Programme</h2>
   <p class="g-p">One atelier runs at a time and there are a fixed number of places in a year. These are the dates, with who is leading each.</p>
-  {# The overbooking promise, re-homed rather than restored. It lived in
-     "Fifteen, and No Others", which this handover removed for repeating the
-     exclusivity section — a fair cut, except that this sentence is not about
-     exclusivity. It is a commitment the code is built to keep: workshop_register
-     and workshop_manage both take a write lock before they claim a place,
-     and test_no_overbooking exists to hold the software to it. Copy that a
-     mechanism was written for cannot leave the site quietly. #}
+  {# The overbooking promise. It lived in "Fifteen, and No Others", removed for
+     repeating the exclusivity section — a fair cut, except this sentence is not
+     about exclusivity. It is a commitment the code keeps with a write lock:
+     workshop_register and workshop_manage both take it before claiming a place,
+     and test_no_overbooking exists to hold the software to it. Copy a mechanism
+     was written for cannot leave the site quietly. Second round it has gone. #}
   <p class="g-p">Places are shown live below. When a session reads as full, it is full — we do not overbook a house this size.</p>
 
   {% if workshops %}
