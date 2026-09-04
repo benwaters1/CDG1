@@ -4,6 +4,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/aafc2bf8-ecca-4961-a8b4-3aa0ea6235f5/Classic+Double.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Photoshoots', None)] %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
@@ -155,6 +156,8 @@
   <p class="g-p g-lede-first">Come and look before you book a day. We would rather you saw the scaffolding than found it on the morning of a shoot.</p>
   <p class="g-p"><a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Arrange a recce</a></p>
 </div></section>
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script>
 /* The light through a shoot day. The house runs east to west along a

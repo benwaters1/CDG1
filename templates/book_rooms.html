@@ -8,6 +8,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
+{% from '_exclusive.html' import exclusive %}
 {% from '_notify.html' import notify %}
 {% from '_before.html' import honest, terms_upfront, packing, arriving %}
 {% from '_animals.html' import animals, animals_note %}
@@ -18,8 +20,6 @@
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_compare_rooms.html' import compare_rooms %}
-
-
 
 {% from '_marks.html' import mark, monogram %}
 {# Nights for the whole page, from the dates already in scope. Computed here
@@ -35,8 +35,6 @@
 {% endif %}
 
 {% from '_emblems.html' import emblem %}
-
-
 
 <section class="g-hero">
 <img loading="lazy" decoding="async" class="g-hero__img" src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1152eda0-220a-4d22-8fce-f9f82879739e/Chambre+des+Fleurs+1.jpg?format=1500w" alt="A bedroom, walls left as found">
@@ -54,19 +52,16 @@
 <div class="g-wrap">
   <p class="g-welcome">
     <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
-    {% if returning_guest['last_room'] %}You stayed in {{ room_name(returning_guest['last_room']) }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}
-    <a href="{{ url_for('find_booking') }}">Your past stays</a>
+    <span class="g-welcome__t">{% if returning_guest['last_room'] %}You stayed in {{ room_name(returning_guest['last_room']) }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}</span>
+  <a href="{{ url_for('find_booking') }}">Your past stays</a>
   </p>
 </div>
 {% endif %}
-
 
 <!-- ============ THE CONSTRAINT, STATED EARLY ============ -->
 {# The full scarcity block sits near the foot of the page, which is too late
    to frame a decision. This is the same fact, one line, near the top. #}
 <div class="g-wrap"><p class="g-limit"><span class="g-limit__k">Availability</span>Five bedrooms, of ninety-four rooms. They open one at a time, as the restoration reaches them.</p></div>
-
-
 
 <section class="g-sec"><div class="g-wrap">
   <div class="g-two">
@@ -105,6 +100,22 @@
 </div></section>
 
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="A bedroom under restoration, bare walls and new linen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="Chambre Emeraude" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="Bathrooms - After Work" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"></div>
+
+<!-- ============ WHY THE WALLS STAY ============ -->
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-fr">Ce que la loi protège<span class="g-fr__en">What the law protects</span></p>
+  <p class="g-eyebrow">Not a Compromise</p>
+  <h2 class="g-place">Why the Walls Stay As They Are</h2>
+  <p class="g-p g-lede-first">The bare plaster in these rooms is not unfinished work. It is protected, and putting a modern surface over it would be illegal.</p>
+  <p class="g-p">Every intervention here is applied for and approved by the Monuments Historiques before a tool is lifted. Drawings, materials, methods and the people doing it are all reviewed. The process is long and it is strict, and it should be — this is one of fewer than fifteen hundred buildings in France holding the highest grade of protection, and it will outlast everyone currently arguing about it.</p>
+  <p class="g-p">What that buys you is a room nobody could build. The plaster you sleep beside was laid in the eighteenth century and has been read, recorded and consolidated rather than replaced. A hotel could give you a smooth wall tomorrow. Nobody can give you this one.</p>
+  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
+    <div><dt>Reversible</dt><dd>New work is done so it could one day be removed without harming what was there</dd></div>
+    <div><dt>Recorded first</dt><dd>Every surface is photographed and documented before anyone touches it</dd></div>
+    <div><dt>Lime, not cement</dt><dd>The building has to breathe. Cement traps water and destroys what it covers</dd></div>
+    <div><dt>Approved, then done</dt><dd>Not the other way round. Unauthorised work on a Class I monument is a criminal offence</dd></div>
+  </dl></div></div>
+</div></section>
 
 <section class="g-sec"><div class="g-wrap">
   <h2 id="rooms" class="g-place">Les Chambres</h2>
@@ -271,6 +282,8 @@
 {% endif %}
 </div></section>
 
+{{ room_pick(rooms) }}
+
 
 <!-- ============ LA CUISINE ============ -->
 {# Matches the workshops page — same voice, same claims, adjusted for a
@@ -361,7 +374,111 @@
   </p>
 </div></section>
 
-<section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
+
+
+<section class="g-sec g-sec--tight" data-fold><div class="g-wrap g-wrap--narrow">
+  <h2 class="g-place">What the Rooms Are Made Of</h2>
+  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. Most bathrooms sit together in a central area, though each is privately allocated to its room, aside from the shared rooms, which share a bathroom between the two.</p>
+  <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
+  <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
+</div></section>
+
+<!-- ============ COMPARE THE ROOMS ============ -->
+{# Driven by the same `rooms` the cards above use, so it can never disagree
+   with them. Scrolls sideways on a phone rather than shrinking to nothing. #}
+{% if rooms and rooms|length > 1 %}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">Side by Side</p>
+  <h2 class="g-place">Which Room Is Yours</h2>
+  <p class="g-p">Five rooms, each different. This is the quickest way to see which suits.</p>
+
+  <div class="g-compare-wrap">
+    <div class="table-wrap">
+      <table class="g-compare">
+      <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
+      <thead>
+        <tr>
+          <th scope="col">Room</th>
+          <th scope="col">From</th>
+          <th scope="col">Sleeps</th>
+          <th scope="col">Bathroom</th>
+          <th scope="col">Minimum stay</th>
+          <th scope="col"><span class="g-vh">Book</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rooms %}
+        <tr>
+          <th scope="row">{{ room_name(r['name']) }}</th>
+          <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
+          <td>{{ r['max_occupancy'] or '—' }}</td>
+          <td>
+            {%- set am = (r['amenities'] or '')|lower -%}
+            {%- if r['bathroom'] %}{{ r['bathroom']|capitalize }}
+            {%- elif 'shared' in am %}Shared
+            {%- elif 'private' in am %}Private
+            {%- else %}&mdash;{% endif -%}
+          </td>
+          <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
+          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
+</div></section>
+{% endif %}
+
+<div class="g-iron" aria-hidden="true"></div>
+
+<!-- ============ WHAT THE PRICE INCLUDES ============ -->
+{# The commonest reason a luxury booking is abandoned is not knowing what the
+   number covers. Both columns, stated before anyone reaches a payment page.
+   Every line below is checked against what the app actually does. #}
+<section class="g-sec g-sec--sand"><div class="g-wrap">
+  <p class="g-eyebrow">No Surprises</p>
+  <h2 class="g-place">What You Are Paying For</h2>
+
+  <div class="g-ledger">
+    <div class="g-ledger__col g-ledger--in">
+      <p class="g-ledger__h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>
+        Included
+      </p>
+      <ul>
+        <li><b>Breakfast</b> — continental, every morning</li>
+        <li><b>The grounds</b> — pool, tennis, six acres of parkland</li>
+        <li><b>The salons</b> — drawing room, music room, both dining rooms</li>
+        <li><b>Tea and coffee</b> — laid out through the day</li>
+        <li><b>Wi-Fi and parking</b> — Starlink in select areas, parking free</li>
+        <li><b>Laundry</b> — available throughout your stay</li>
+      </ul>
+    </div>
+    <div class="g-ledger__col g-ledger--out">
+      <p class="g-ledger__h">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        Arranged separately
+      </p>
+      <ul>
+        <li>Dinner at La Table — booked in advance, priced per person</li>
+        <li>Transfers from Toulouse or the train at Foix — we will arrange the car</li>
+        <li>Carriage rides, market mornings, brocante tours</li>
+        <li>Tourist tax — charged locally, as French law requires</li>
+      </ul>
+    </div>
+    <p class="g-ledger__note">Rates are per room per night. Nothing above appears on your bill unless you ask for it.</p>
+      <p style="margin-top:var(--s6)">
+      <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
+    </p>
+  </div>
+</div></section>
+
+<section class="g-sec"><div class="g-wrap">
+  <details class="g-extras-fold">
+    <summary>Things you can add to a stay — private dinners, riding, transfers, and more</summary>
+    <section class="g-sec" style="background:var(--blue-pale)"><div class="g-wrap">
   <h2 class="g-place">Things to Do With the Days</h2>
   <p class="g-p">Optional experiences to add to your stay — chosen when you book, subject to season and an additional charge.</p>
   <div class="g-extras" style="margin-top:var(--s7)">
@@ -495,107 +612,9 @@
     <a href="#book" class="g-btn g-btn--solid">Check dates</a>
   </p>
 </div></section>
-
-<section class="g-sec g-sec--tight"><div class="g-wrap g-wrap--narrow">
-  <h2 class="g-place">What the Rooms Are Made Of</h2>
-  <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. Most bathrooms sit together in a central area, though each is privately allocated to its room, aside from the shared rooms, which share a bathroom between the two.</p>
-  <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
-  <p class="g-p"><em>Estate grounds of approximately six acres, in the Ariège, at the foot of the Pyrénées.</em></p>
+  </details>
 </div></section>
 
-
-
-<!-- ============ COMPARE THE ROOMS ============ -->
-{# Driven by the same `rooms` the cards above use, so it can never disagree
-   with them. Scrolls sideways on a phone rather than shrinking to nothing. #}
-{% if rooms and rooms|length > 1 %}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">Side by Side</p>
-  <h2 class="g-place">Which Room Is Yours</h2>
-  <p class="g-p">Five rooms, each different. This is the quickest way to see which suits.</p>
-
-  <div class="g-compare-wrap">
-    <div class="table-wrap">
-      <table class="g-compare">
-      <caption class="g-vh">Comparison of the château rooms by rate, occupancy and amenities</caption>
-      <thead>
-        <tr>
-          <th scope="col">Room</th>
-          <th scope="col">From</th>
-          <th scope="col">Sleeps</th>
-          <th scope="col">Bathroom</th>
-          <th scope="col">Minimum stay</th>
-          <th scope="col"><span class="g-vh">Book</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in rooms %}
-        <tr>
-          <th scope="row">{{ room_name(r['name']) }}</th>
-          <td>{% if r['price_per_night'] %}<span class="g-fig" data-eur="{{ r['price_per_night']|int }}">€{{ '%.0f'|format(r['price_per_night']) }}</span>{% else %}—{% endif %}</td>
-          <td>{{ r['max_occupancy'] or '—' }}</td>
-          <td>
-            {%- set am = (r['amenities'] or '')|lower -%}
-            {%- if r['bathroom'] %}{{ r['bathroom']|capitalize }}
-            {%- elif 'shared' in am %}Shared
-            {%- elif 'private' in am %}Private
-            {%- else %}&mdash;{% endif -%}
-          </td>
-          <td>{{ r['min_nights'] or 1 }} night{{ '' if (r['min_nights'] or 1) == 1 else 's' }}</td>
-          <td><a href="{{ url_for('book_room', room_id=r['id']) }}" class="g-btn g-btn--sm">Check dates</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-      </table>
-    </div>
-  </div>
-  <p class="g-hint">Rates are per night and include breakfast. Scroll the table sideways on a small screen.</p>
-</div></section>
-{% endif %}
-
-<div class="g-iron" aria-hidden="true"></div>
-
-<!-- ============ WHAT THE PRICE INCLUDES ============ -->
-{# The commonest reason a luxury booking is abandoned is not knowing what the
-   number covers. Both columns, stated before anyone reaches a payment page.
-   Every line below is checked against what the app actually does. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-eyebrow">No Surprises</p>
-  <h2 class="g-place">What You Are Paying For</h2>
-
-  <div class="g-ledger">
-    <div class="g-ledger__col g-ledger--in">
-      <p class="g-ledger__h">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>
-        Included
-      </p>
-      <ul>
-        <li><b>Breakfast</b> — continental, every morning</li>
-        <li><b>The grounds</b> — pool, tennis, six acres of parkland</li>
-        <li><b>The salons</b> — drawing room, music room, both dining rooms</li>
-        <li><b>Tea and coffee</b> — laid out through the day</li>
-        <li><b>Wi-Fi and parking</b> — Starlink in select areas, parking free</li>
-        <li><b>Laundry</b> — available throughout your stay</li>
-      </ul>
-    </div>
-    <div class="g-ledger__col g-ledger--out">
-      <p class="g-ledger__h">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-        Arranged separately
-      </p>
-      <ul>
-        <li>Dinner at La Table — booked in advance, priced per person</li>
-        <li>Transfers from Toulouse or the train at Foix — we will arrange the car</li>
-        <li>Carriage rides, market mornings, brocante tours</li>
-        <li>Tourist tax — charged locally, as French law requires</li>
-      </ul>
-    </div>
-    <p class="g-ledger__note">Rates are per room per night. Nothing above appears on your bill unless you ask for it.</p>
-      <p style="margin-top:var(--s6)">
-      <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
-    </p>
-  </div>
-</div></section>
 
 <!-- ============ WHAT GUESTS SAY ============ -->
 {# Verbatim from the château's own Booking.com listing, which scores 10/10
@@ -659,20 +678,31 @@
     </figure>
   </div>
 
+  {# Six hardcoded 10s. A perfect score on every category is the least
+     believable thing you can put in front of a guest — a 9.6 with one 8.9
+     reads as real, six 10s read as invented, and nobody can update these
+     without editing a template. From settings, and only what is supplied. #}
+  {%- set SC = [('Location','score_location'), ('Cleanliness','score_cleanliness'),
+                ('Comfort','score_comfort'), ('Staff','score_staff'),
+                ('Facilities','score_facilities'), ('Value','score_value')] -%}
+  {%- set shown = SC | selectattr('1') | list -%}
+  {% if settings and (settings['score_location'] or settings['score_overall']) %}
   <div class="g-scores">
-    <div class="g-score"><b>10</b><span>Location</span></div>
-    <div class="g-score"><b>10</b><span>Cleanliness</span></div>
-    <div class="g-score"><b>10</b><span>Comfort</span></div>
-    <div class="g-score"><b>10</b><span>Staff</span></div>
-    <div class="g-score"><b>10</b><span>Facilities</span></div>
-    <div class="g-score"><b>10</b><span>Value</span></div>
+    {% for label, key in SC %}{% if settings[key] %}
+    <div class="g-score"><b>{{ settings[key] }}</b><span>{{ label }}</span></div>
+    {% endif %}{% endfor %}
   </div>
-  <p class="g-hint" style="margin-top:var(--s5)">Guest ratings on Booking.com.</p>
+  <p class="g-hint" style="margin-top:var(--s5)">
+    {% if settings['score_overall'] %}{{ settings['score_overall'] }} overall on Booking.com{% else %}Guest ratings on Booking.com{% endif %}{% if settings['review_count'] %}, from {{ '{:,}'.format(settings['review_count']|int) }} reviews{% endif %}.
+  </p>
+  {% endif %}
 
   <p style="margin-top:var(--s7);text-align:center">
     <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
   </p>
 </div></section>
+
+{{ animals() }}
 
 
 <div class="g-wrap"><svg class="g-house" viewBox="0 0 64 30" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true">
@@ -680,8 +710,6 @@
   <path d="M6 12h52"/><path d="M14 28v-8h5v8M27 28v-8h5v8M40 28v-8h5v8"/>
   <path d="M20 8v-3M32 5v-3M44 8v-3"/>
 </svg></div>
-
-
 
 {% from '_faq.html' import faq %}
 {{ faq([
@@ -707,7 +735,6 @@
    'Charged locally on arrival, as French law requires. It is the only thing not in the rate.')
 ], 'Before You Book', 'The Questions That Come Up') }}
 
-
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
@@ -727,14 +754,12 @@
   </div>
 </div></section>
 
-
 <div class="g-wrap g-mark__wrap">{{ mark('key') }}</div>
-
 
 <!-- ============ WHERE THIS IS ============ -->
 {# The map lives on Contact. These pages need the geography stated, because
    this is where a guest decides whether the journey is worth it. #}
-<section class="g-sec g-sec--tight"><div class="g-wrap">
+<section class="g-sec g-sec--tight" data-fold><div class="g-wrap">
   <p class="g-eyebrow">Where This Is</p>
   <h2 class="g-place">Two Hours From Toulouse, Three Minutes From the Village</h2>
   <div class="g-facts-list">
@@ -753,7 +778,7 @@
 {# Every figure verified against the system: five bedrooms of ninety-four rooms, one sitting a
    night in the kitchen, one event at a time, fifteen on an atelier. The
    constraint is the product, and the site had never said so. #}
-<section class="g-sec g-scarce"><div class="g-wrap">
+<section class="g-sec g-scarce" data-fold><div class="g-wrap">
   <div class="g-scarce__in">
     <p class="g-eyebrow">Worth Knowing</p>
     <h2 class="g-scarce__h">How Small This Is</h2>
@@ -770,12 +795,7 @@
   </div>
 </div></section>
 
-
-
-
 <!-- ============ WHAT A NIGHT INCLUDES ============ -->
-
-
 
 <!-- ============ THE ROOMS, AS FACTS ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
@@ -804,20 +824,10 @@
   <p class="g-limit"><span class="g-limit__k">No ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class.</p>
 </div></section>
 
-<!-- ============ COMPARE ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">Deciding Between Two</p>
-  <h2 class="g-place">Side By Side</h2>
-  <p class="g-p">Five rooms, and most people are choosing between two of them. Put any two next to each other.</p>
-  {{ compare_rooms(rooms) }}
-</div></section>
-
-
 <!-- ============ NO DATES YET ============ -->
 
-
 <!-- ============ KEY INFORMATION ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+<section class="g-sec g-sec--sand" data-fold><div class="g-wrap">
   <p class="g-eyebrow">Practical</p>
   <h2 class="g-place">Key Information</h2>
   <div class="g-key">
@@ -851,7 +861,6 @@
 
 <div class="g-mono__wrap">{{ monogram() }}</div>
 
-
 <div class="g-wrap">
   <p class="g-devise">
     <span class="g-devise__fr">« Cinq chambres prêtes. Quatre-vingt-neuf attendent. »</span>
@@ -873,44 +882,22 @@
   </div>
 </div></section>
 
-
+{{ exclusive(settings) }}
 
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
 {{ avail_cal(booked_dates, 2) }}
 
-{{ animals() }}
-
 {{ flexible() }}
-
-<!-- ============ WHY THE WALLS STAY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Ce que la loi protège<span class="g-fr__en">What the law protects</span></p>
-  <p class="g-eyebrow">Not a Compromise</p>
-  <h2 class="g-place">Why the Walls Stay As They Are</h2>
-  <p class="g-p g-lede-first">The bare plaster in these rooms is not unfinished work. It is protected, and putting a modern surface over it would be illegal.</p>
-  <p class="g-p">Every intervention here is applied for and approved by the Monuments Historiques before a tool is lifted. Drawings, materials, methods and the people doing it are all reviewed. The process is long and it is strict, and it should be — this is one of fewer than fifteen hundred buildings in France holding the highest grade of protection, and it will outlast everyone currently arguing about it.</p>
-  <p class="g-p">What that buys you is a room nobody could build. The plaster you sleep beside was laid in the eighteenth century and has been read, recorded and consolidated rather than replaced. A hotel could give you a smooth wall tomorrow. Nobody can give you this one.</p>
-  <div class="g-plate"><div class="g-plate__row"><dl class="g-plate__l">
-    <div><dt>Reversible</dt><dd>New work is done so it could one day be removed without harming what was there</dd></div>
-    <div><dt>Recorded first</dt><dd>Every surface is photographed and documented before anyone touches it</dd></div>
-    <div><dt>Lime, not cement</dt><dd>The building has to breathe. Cement traps water and destroys what it covers</dd></div>
-    <div><dt>Approved, then done</dt><dd>Not the other way round. Unauthorised work on a Class I monument is a criminal offence</dd></div>
-  </dl></div></div>
-</div></section>
-
-{{ room_pick(rooms) }}
 
 {{ week_cost(rooms, settings) }}
 
 {{ honest() }}
 
-{{ arriving(settings) }}
-
-{{ packing() }}
-
 {{ notify() }}
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script type="application/ld+json">
 {

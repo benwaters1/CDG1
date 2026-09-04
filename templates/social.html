@@ -1,4 +1,5 @@
 {% extends "public_base.html" %}
+{% block og_image %}{{ site_image('chateau.facade') or super() }}{% endblock %}
 {% block title %}From Instagram{% endblock %}
 {% block description %}What is open at Château de Gudanes right now — rooms, ateliers, the table, and what has just come out from under the plaster.{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}

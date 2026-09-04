@@ -572,7 +572,36 @@
     var y = window.scrollY || document.documentElement.scrollTop || 0;
     /* Without a hero the header is always solid — white text on cream is the
        failure this whole mechanism exists to prevent. */
-    var overHero = hasHero && y < (hero ? hero.offsetHeight - 90 : 80);
+    /* The old test kept the header transparent for the whole height of the
+       hero. On a phone the hero is 600px+ and the title sits near the top of
+       it, so the title scrolled under a transparent header and collided with
+       the logo and the Book button — three things drawn on top of each other.
+
+       What matters is not whether the hero is still on screen but whether
+       anything is passing BEHIND the header. Measure the hero's own content
+       instead: once its lowest text has reached the header, go solid. */
+    var head = top.offsetHeight || 86;
+    var mark = null;
+    if (hasHero && hero) {
+      /* The header must be opaque from the moment the FIRST piece of hero text
+         reaches it — anything later and that text is drawn through a
+         see-through header, over the logo and the Book button. Taking the
+         lowest element (my first attempt) made it worse, because the search
+         panel sits low and kept the header clear for longer. */
+      var parts = hero.querySelectorAll('.g-hero__title, h1, .g-hero__motto, .g-hero__lede, .g-herosearch');
+      var highest = Infinity;
+      for (var i = 0; i < parts.length; i++) {
+        var r0 = parts[i].getBoundingClientRect();
+        if (r0.height === 0) continue;
+        var tp = r0.top + y;
+        if (tp < highest) highest = tp;
+      }
+      mark = isFinite(highest) ? highest : (hero.offsetHeight - 90);
+    }
+    var overHero = hasHero && mark !== null && y < (mark - head - 8);
+    /* mark is now the top of the highest hero text, in page coordinates.
+       Once the page has scrolled past (mark - head) that text is under
+       the header. */
     top.classList.toggle('is-solid', !overHero);
     document.body.classList.toggle('at-top', overHero);
   }
@@ -1062,6 +1091,33 @@
   }
   apply();
   if (mq.addEventListener) mq.addEventListener('change', apply);
+})();
+</script>
+
+<script>
+/* Reference sections fold on a phone. A <section> cannot be a <details>, so
+   the heading toggles a class. Desktop never runs this — the sections are
+   open there and the length is affordable. */
+(function(){
+  if (!window.matchMedia('(max-width: 44rem)').matches) return;
+  document.querySelectorAll('.g-sec[data-fold]').forEach(function(s){
+    s.setAttribute('tabindex','0');
+    s.setAttribute('role','button');
+    s.setAttribute('aria-expanded','false');
+    var t = s.querySelector('h2');
+    if (t) s.setAttribute('aria-label', t.textContent.trim());
+    function go(){
+      var open = s.classList.toggle('is-open');
+      s.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    s.addEventListener('click', function(e){
+      if (e.target.closest('a,button,input,select,summary')) return;
+      go();
+    });
+    s.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
+  });
 })();
 </script>
 </body>

@@ -4,6 +4,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Press', None)] %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel %}
 {% from '_marks.html' import mark, monogram %}
 
@@ -78,5 +79,7 @@
   </p>
   <p class="g-hint">Someone at the château answers it, usually the same day.</p>
 </div></section>
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 {% endblock %}

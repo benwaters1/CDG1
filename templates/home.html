@@ -5,12 +5,11 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/dad4e216-bf37-4b43-ba54-68c807d13273/thumbnail_autumn.jpg?format=1200w{% endblock %}
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
 {% from '_stay_panel.html' import stay_panel %}
 {% from '_room_copy.html' import room_copy, room_name, room_note %}
 {% from '_marks.html' import mark, monogram %}
 {% from '_emblems.html' import emblem %}
-{% from '_proof.html' import credential, proof %}
-<div class="g-wrap">{{ proof(settings) }}</div>
 
 
 <section class="g-hero">
@@ -58,16 +57,14 @@
 <div class="g-wrap">
   <p class="g-pricenote">
     <span class="g-pricenote__k">Staying</span>
-    Five bedrooms, from <b>€220</b> a night, breakfast included.
-    Dinner at one sitting on the nights it runs, if you want it.
+    <span class="g-pricenote__t">Five bedrooms, from <b>€220</b>&nbsp;a night, breakfast included. Dinner at one sitting on the nights it runs, if you want it.</span>
     <a href="{{ url_for('book_rooms') }}">See the rooms</a>
   </p>
 </div>
 <div class="g-wrap">
   <p class="g-family">
     <span class="g-family__k">Whose house it is</span>
-    Karina Waters bought a château she had barely seen, and lives here still.
-    When you stay, you are in someone's home rather than a hotel.
+    <span class="g-family__t">Karina Waters bought a château she had barely seen, and lives here still. When you stay, you are in someone's home rather than a hotel.</span>
     <a href="{{ url_for('story') }}">How it happened</a>
   </p>
 </div>
@@ -76,6 +73,8 @@
 
 
 {{ stay_panel() }}
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script>
 (function(){

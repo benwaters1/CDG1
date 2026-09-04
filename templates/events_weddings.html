@@ -6,6 +6,7 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
 {% block content %}
+{% from '_proof.html' import credential, proof %}
 {% from '_bits.html' import event_tabs, fact_strip %}
 {% from '_marks.html' import mark %}
 
@@ -193,6 +194,8 @@
   <p class="g-p"><a href="{{ url_for('events_info') }}#enquire" class="g-btn g-btn--solid">Send an enquiry</a></p>
   <p class="g-limit"><span class="g-limit__k">One at a time</span>Only one event runs at the château at once, and only a handful are taken each year.</p>
 </div></section>
+
+<div class="g-wrap">{{ proof(settings) }}</div>
 
 <script>
 /* What is in flower, month by month. Everything listed grows in the gardens

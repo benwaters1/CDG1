@@ -118,7 +118,7 @@
 .g-wrap{ max-width: var(--wrap); margin: 0 auto; padding: 0 var(--s5); }
 .g-wrap--narrow{ max-width: var(--wrap-narrow); }
 
-.g-sec{ padding: clamp(48px, 6vw, 84px) 0; }
+.g-sec{ padding: clamp(36px, 4vw, 60px) 0; }
 .g-sec--sand{ background: var(--sand-2); }
 .g-sec--tight{ padding: var(--s6) 0; }
 .g-sec--flush{ padding: 0; }
@@ -5670,10 +5670,10 @@ html, body{ margin: 0; padding: 0; }
 }
 /* Over a hero it belongs to the hero, not floating between it and the
    breadcrumb. */
-body.has-hero .g-cred{
-  background: rgba(14,28,48,.55);
-  backdrop-filter: saturate(140%) blur(2px);
-}
+/* The translucent version put the gilt label at 1.61:1 over a photograph —
+   unreadable, and unpredictably so, since the contrast depended on whatever
+   the image was doing behind it. Solid, as it is everywhere else. */
+body.has-hero .g-cred{ background: var(--blue-deep); }
 .g-cred__m{
   font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gilt);
 }
@@ -5980,7 +5980,7 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
   font-variant-numeric: lining-nums; }
 .g-wk__tot{ border-bottom: 0 !important; margin-top: var(--s2); padding-top: var(--s3) !important;
   border-top: 1px solid var(--gilt) !important; }
-.g-wk__tot dt{ color: var(--gilt) !important; }
+.g-wk__tot dt{ color: var(--gilt-on-dark) !important; }
 .g-wk__tot dd{ font-family: var(--display); font-size: var(--t-h2) !important; }
 .g-wk__n{ margin: var(--s4) 0 var(--s4); font-size: var(--t-sm); line-height: 1.55; color: #A9BCCD; }
 .g-wk__a{ margin: 0; }
@@ -6485,26 +6485,11 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 .g-gal__go:hover{ text-decoration: underline; }
 .g-gal__go:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
 
-/* ==========================================================================
-   THE HEADER — TWO FAULTS VISIBLE ON THE LIVE SITE
-   ==========================================================================
-
-   1. THE LOGO IS A WHITE PNG
-   `Logo_white.png` is the only logo file, and on a cream header it is
-   invisible — which is what you see at the top left of every page that has a
-   breadcrumb. There is no dark version to swap to, so the white one is
-   inverted back to ink wherever the header is not sitting over a photograph.
-   The moment a dark logo file exists, delete this rule and point at it.        */
-body:not(.at-top) .g-logo img,
-body:not(.has-hero) .g-logo img,
-body.has-hero:has(main > .g-crumbs:first-child) .g-logo img{
-  filter: invert(19%) sepia(28%) saturate(1600%) hue-rotate(190deg) brightness(94%);
-}
-/* Over a photograph it stays white, and gains a shadow so it survives a pale
-   image behind it. */
-body.at-top.has-hero:not(:has(main > .g-crumbs:first-child)) .g-logo img{
-  filter: drop-shadow(0 1px 6px rgba(0,0,0,.45));
-}
+/* The logo needed no work from me. The wrapper takes a background colour and
+   uses the logo file as a CSS mask, so the mark paints in ink on a light
+   header and white over a photograph — which is the right technique and was
+   already there. My invert filter did the same job worse and fought it.
+   Removed. */
 
 /* 2. THE BOOK BUTTON SAT ON TOP OF "CONTACT"
    `.g-booksel` was positioned rather than laid out, so it landed at x1089
@@ -6671,3 +6656,282 @@ body.at-top.has-hero:not(:has(main > .g-crumbs:first-child)) .g-logo img{
   border: 0; background: none; padding: 0; min-height: 40px;
   font-variant-numeric: lining-nums;
 }
+
+/* The optional extras were 4.3 screens of add-ons between the price and the
+   reviews — more page than the rooms themselves. Folded, so the people who
+   want a private dinner can find it and everyone else scrolls past one line. */
+.g-extras-fold > summary{
+  cursor: pointer; min-height: 48px; display: flex; align-items: center;
+  padding: var(--s3) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep);
+}
+.g-extras-fold > summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
+.g-extras-fold[open] > summary{ border-bottom-color: var(--gilt); }
+.g-extras-fold .g-sec{ padding-top: var(--s5); border: 0; }
+
+/* ==========================================================================
+   THE PHONE — items 1, 2 and 3
+   Every length I measured this session was desktop. On a phone Stay is 42
+   screens and Restoration 37, because a two-column block becomes two stacked
+   blocks and a wide table becomes a tall one.
+
+   None of this changes the desktop layout. It changes what a phone has to
+   scroll past to reach the thing it came for.
+   ========================================================================== */
+@media (max-width: 44rem){
+
+  /* 2 — the long reference sections fold. Someone on a phone who wants the
+     FAQ can open it; everyone else scrolls one line instead of eight screens.
+     Desktop keeps them open, because there the length is affordable. */
+  .g-faq2, .g-keyinfo, .g-extras-fold, .g-plate--long,
+  .g-sec[data-fold] > .g-wrap > :not(h2):not(.g-eyebrow):not(.g-fr){
+    display: none;
+  }
+  .g-sec[data-fold]{ padding-bottom: var(--s5); }
+  .g-sec[data-fold] > .g-wrap::after{
+    content: "Tap to read"; display: block; margin-top: var(--s3);
+    font-family: var(--ui); font-size: var(--t-sm); color: var(--gilt);
+  }
+  .g-sec[data-fold].is-open > .g-wrap > *{ display: revert; }
+  .g-sec[data-fold].is-open > .g-wrap::after{ content: "Tap to close"; }
+  .g-sec[data-fold]{ cursor: pointer; }
+  .g-sec[data-fold]:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2px; }
+
+  /* Sections carried desktop padding on a phone, so every one of thirty cost
+     an extra third of a screen in whitespace alone. */
+  .g-sec{ padding-top: var(--s6); padding-bottom: var(--s6); }
+  .g-sec--tight{ padding-top: var(--s5); padding-bottom: var(--s5); }
+
+  /* Marks are a desktop grace note. On a phone thirty of them are thirty
+     scroll events for no information. */
+  .g-mark__wrap{ display: none; }
+
+  /* A two-column plate stacks to double height. The label goes inline. */
+  .g-plate__l > div{ grid-template-columns: 1fr; gap: 1px; }
+  .g-plate__l dt{ font-size: var(--t-sm); }
+
+  /* The site's own .g-stickybar already does this, and does it better —
+     it changes by page type and stays quiet for a guest who already holds a
+     booking. Main only needs clearing of it. */
+  main{ padding-bottom: 5.5rem; }
+}
+
+/* On a phone the five room cards are 5.3 screens and the numbers table 3.2 —
+   more than a fifth of the page between them, and both are lists a phone
+   reads badly as a tall column. */
+@media (max-width: 44rem){
+
+  /* The cards swipe sideways instead of stacking. Five rooms becomes one
+     screen with four more a thumb away, which is how a phone expects a set
+     of options to behave. */
+  .g-cards{
+    display: grid; grid-auto-flow: column;
+    grid-auto-columns: min(92%, 22rem);
+    gap: var(--s4);
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    padding-bottom: var(--s4);
+    margin-inline: calc(-1 * var(--s5));
+    padding-inline: var(--s5);
+    scrollbar-width: none;
+  }
+  .g-cards::-webkit-scrollbar{ display: none; }
+  .g-cards > .g-card{ scroll-snap-align: start; grid-column: auto !important; }
+  .g-cards > .g-card:last-child:nth-child(odd){ grid-column: auto !important; }
+  .g-cards__hint{
+    display: block; margin-top: var(--s2);
+    font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft);
+  }
+
+  /* The comparison table scrolls rather than wrapping every cell onto four
+     lines. The room name stays put so a column still means something. */
+  main table{ display: block; overflow-x: auto; white-space: nowrap; }
+  main tbody th{ position: sticky; left: 0; background: var(--sand); z-index: 1; white-space: normal; min-width: 9rem; }
+  main thead th{ position: static; }
+}
+@media (min-width: 44.01rem){ .g-cards__hint{ display: none; } }
+
+/* ==========================================================================
+   THE LABEL STACK
+   A section opens with a French line and its English gloss, then an eyebrow,
+   then the heading — 84px of label above an 80px heading, repeated down every
+   page. On a phone that is more than half a screen of preamble per section,
+   and there are twenty-six of them on Stay.
+
+   The French line is a grace note; it belongs where there is room for it.
+   Below 44rem the eyebrow carries the section on its own.
+   ========================================================================== */
+@media (max-width: 44rem){
+  .g-fr{ display: none; }
+  .g-eyebrow{ margin-bottom: var(--s2); }
+  .g-place, .g-h2{ margin-top: 0; }
+}
+
+/* Even on desktop the two sat as separate blocks with a full gap between
+   them. They are one label; they read as one line. */
+@media (min-width: 44.01rem){
+  .g-fr + .g-eyebrow{ margin-top: calc(-1 * var(--s3)); }
+}
+
+/* ==========================================================================
+   A LIGHT PLATE INSIDE A DARK SECTION
+   `.g-sec--dark` recolours its descendants for a navy background, but the
+   plate carries its own cream panel — so the dd inherited the pale colour and
+   landed cream-on-cream at 1.18:1. Effectively invisible, and it is the block
+   listing what an atelier week includes.
+
+   The plate keeps its own colours wherever it appears.
+   ========================================================================== */
+.g-sec--dark .g-plate{ background: var(--white); border: 1px solid var(--line); }
+.g-sec--dark .g-plate dt{ color: var(--gilt); }
+.g-sec--dark .g-plate dd,
+.g-sec--dark .g-plate .g-p,
+.g-sec--dark .g-plate li{ color: var(--ink); }
+.g-sec--dark .g-plate a:not(.g-btn){ color: var(--blue-deep); }
+
+/* Same for any light panel dropped into a dark section. */
+.g-sec--dark .g-terms{ background: var(--white); }
+.g-sec--dark .g-terms dt{ color: var(--blue-deep); }
+.g-sec--dark .g-terms dd{ color: var(--ink-soft); }
+
+/* The action after a dark section's plate was gilt-on-navy and squashed
+   against the left edge with a stray rule beside it. */
+.g-sec--dark .g-plate + p,
+.g-sec--dark .g-plate + .g-p{ margin-top: var(--s5); }
+.g-sec--dark .g-btn--solid{ background: var(--white); color: var(--blue-deep); border-color: var(--white); }
+.g-sec--dark .g-btn--solid:hover{ background: var(--sand); }
+
+/* ==========================================================================
+   GILT ON NAVY IS 1.91:1
+   The gilt is a beautiful colour on sand — 6.3:1, comfortably legible. On the
+   navy it drops to 1.91:1, which is below every accessibility floor and, more
+   plainly, hard to read. It appears on every dark section, every dark panel
+   and the credential band on all thirteen public pages.
+
+   A lighter gilt keeps the colour and reaches 5.6:1. Same family, readable.
+   ========================================================================== */
+:root{ --gilt-on-dark: #C6A66E; }
+
+.g-sec--dark .g-eyebrow,
+.g-sec--dark .g-fr,
+.g-sec--dark .g-limit__k,
+.g-cred__m,
+.g-aside .g-eyebrow,
+.g-wk__out .g-wk__tot dt,
+.g-mobar__p,
+.g-stickybar .g-eyebrow{
+  color: var(--gilt-on-dark);
+}
+/* Rules and borders in the same position take it too, so a gilt line does not
+   vanish next to a label that no longer does. */
+.g-sec--dark .g-limit,
+.g-sec--dark .g-fr::after{ border-color: var(--gilt-on-dark); }
+
+/* Three more places where gilt or a pale ink sits on a dark ground and my
+   first pass did not reach: the cost builder's total row, the pre-submit
+   review block, and a dark panel whose own background rule had been
+   overridden so pale text was landing on cream. */
+.g-wk__out .g-wk__tot dt,
+.g-wk__out dt,
+.g-review__h,
+.g-review dt{ color: var(--gilt-on-dark); }
+
+.g-panel--dark{ background: var(--blue-deep); }
+.g-panel--dark .g-p,
+.g-panel--dark p,
+.g-panel--dark li,
+.g-panel--dark dd{ color: #DCD5C8; }
+.g-panel--dark .g-eyebrow,
+.g-panel--dark dt{ color: var(--gilt-on-dark); }
+.g-panel--dark h2, .g-panel--dark h3, .g-panel--dark .g-place{ color: #fff; }
+
+/* ==========================================================================
+   PROSE INSIDE A FLEX ROW
+   The price note and the family note put a whole sentence as loose text
+   between flex children. Each run of text becomes its own anonymous flex
+   item, so the line broke at arbitrary points — "Five bedrooms, from €220"
+   and then a break before "a night".
+
+   The sentence is now one item and wraps as prose does.
+   ========================================================================== */
+.g-pricenote__t, .g-family__t{
+  flex: 1 1 24rem; min-width: 0;
+  font-size: var(--t-lede); line-height: 1.55; color: var(--blue-deep);
+  max-width: 68ch;
+}
+.g-pricenote__t b, .g-family__t b{
+  font-family: var(--display); font-weight: 400; font-size: 1.15em;
+  font-variant-numeric: lining-nums; white-space: nowrap;
+}
+/* A price and its unit are one thing and must never be split. */
+.g-pricenote__t b + *, .g-pricenote b{ white-space: nowrap; }
+.g-welcome__t{ flex: 1 1 22rem; min-width: 0; max-width: 62ch; }
+.g-backtoform__t{ flex: 1 1 22rem; min-width: 0; max-width: 62ch; }
+
+/* ==========================================================================
+   THE HEADER FADE IS A HOLE
+   The header fades between transparent and solid over 300ms. Going out that
+   is fine. Coming in it means a third of a second where the hero title is
+   sliding underneath a header that is only half there — the logo, the Book
+   button and the title all drawn over each other, which is what an iPhone
+   screenshot showed.
+
+   Fade out slowly, arrive instantly.
+   ========================================================================== */
+body.has-hero .g-top{ transition: background .28s ease, border-color .28s ease; }
+body.has-hero .g-top.is-solid{
+  background: var(--sand); border-bottom-color: var(--line);
+  transition: none;
+}
+
+/* Belt and braces: while the header is transparent, hero text that reaches it
+   is clipped rather than drawn through it. */
+body.has-hero:not(.at-top) .g-hero__title,
+body.has-hero:not(.at-top) .g-hero__lede,
+body.has-hero:not(.at-top) .g-hero__motto{ position: relative; z-index: 1; }
+.g-top{ z-index: 40; }
+
+/* ==========================================================================
+   THE GAPS
+   Measured across the site: the median distance from the last line of one
+   section to the first line of the next is 168px, and the worst is 394px —
+   nearly half a screen of nothing, twenty-eight times on one page.
+
+   It comes from stacking: 84px of top padding on every section, plus 40–84px
+   of bottom padding on the one above, plus each block's own margin. Three
+   spacing systems adding up, none of them wrong on its own.
+
+   Sections are separated by a single scale step, not three. The rhythm holds;
+   the holes go.
+   ========================================================================== */
+/* The clamp above is the single source. These only handle the special
+   cases — a dark section earns more air, a tight one less. */
+main > .g-sec--tight{ padding-top: var(--s5); padding-bottom: var(--s5); }
+main > .g-sec--dark{ padding-top: var(--s7); padding-bottom: var(--s7); }
+
+/* A section that follows one with the same background does not need both
+   paddings — the seam is a hairline, not a chasm. */
+/* A drawn mark or a band sits between sections, so `+` misses most of them.
+   Every section after the first takes the smaller top padding. */
+main > .g-sec ~ .g-sec{ padding-top: var(--s5); }
+
+/* The last child of a wrap carries a trailing margin that lands on top of the
+   section's own padding. */
+main > section > .g-wrap > :last-child{ margin-bottom: 0; }
+main > section > .g-wrap > :first-child{ margin-top: 0; }
+
+/* The journal block was 789px for six lines and a form. */
+.g-journal__in{ padding: 0; }
+.g-journal__form{ gap: var(--s3); }
+.g-journal__p{ margin-bottom: var(--s4); }
+
+@media (max-width: 44rem){
+  main > section,
+  main > .g-sec--sand{ padding-top: var(--s6); padding-bottom: var(--s6); }
+  main > .g-sec + .g-sec{ padding-top: var(--s5); }
+  main > .g-sec--dark{ padding-top: var(--s6); padding-bottom: var(--s6); }
+}
+
+/* A .g-wrap with nothing in it still takes its own padding — 80px of nothing
+   on The Estate. If there is no content there is no block. */
+main > .g-wrap:empty{ display: none; }
