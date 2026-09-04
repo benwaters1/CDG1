@@ -3980,6 +3980,28 @@ def init_db():
         # instalment has been met is worked out from what the event has
         # actually received, oldest first, so there is exactly one record of
         # what came in and the schedule cannot drift out of step with it.
+        # WHO IS ACTUALLY COMING, and what they cannot eat.
+        #
+        # final_numbers was one integer. The kitchen sheet already gathers
+        # every dietary and medical note in the house for a day -- for rooms
+        # and for ateliers -- and a wedding's eighty covers had none of it, so
+        # the caterer got a headcount and a telephone call.
+        #
+        # Health data, held only to cook for somebody safely. Cleared by
+        # purge_health_notes once the event is over, which is what makes the
+        # privacy notice true rather than aspirational.
+        ("event_guests_table", """CREATE TABLE IF NOT EXISTS event_guests (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             name TEXT NOT NULL,
+             seating TEXT,
+             dietary_notes TEXT,
+             note TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_event_guests_event",
+         "CREATE INDEX IF NOT EXISTS idx_event_guests_event ON event_guests(event_id)"),
+
         ("event_instalments_table", """CREATE TABLE IF NOT EXISTS event_instalments (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
              event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
@@ -5813,6 +5835,8 @@ NAV_AREAS = {
         
     ],
     "events": [
+        "event_margin_page", "event_guest_list_page", "add_event_guest",
+        "paste_event_guests", "delete_event_guest",
         "save_event_staffing", "assign_shift_to_event",
         "save_event_supplier_cost",
         "event_agreement", "new_event_quote", "send_event_quote",
@@ -17645,6 +17669,181 @@ def event_supplier_readiness(conn, event_id):
         "not_on_the_list": [r["row"]["name"] for r in rows if not r["row"]["vendor_id"]],
         "papers_missing": [r["row"]["name"] for r in rows
                            if r["papers"] and not r["papers"]["ok"]],
+    }
+
+
+def event_labour(conn, event_id):
+    """What the people on an event cost, by the house's one definition.
+
+    Same precedence as labour_cost_breakdown, because there is one definition
+    of labour cost and this is not a second one:
+
+      1. a typed wage record in force on the day -> a figure
+      2. otherwise the free-text estimate        -> a figure, marked estimated
+      3. otherwise nothing                       -> UNPRICED, never zero
+
+    Hours come from the shifts attached to the event, not from every shift on
+    the day: costing the housekeeper who was doing the rooms against the
+    wedding would make every event look worse than it is.
+
+    A MONTHLY SALARY IS NOT CHARGED TO AN EVENT. Somebody on a monthly wage is
+    paid whether the wedding happens or not, so their hours are reported and
+    their cost is not attributed -- inventing a day-rate out of a salary would
+    put a figure on the page that is not the château's marginal cost and is
+    not their pay either.
+    """
+    staffing = event_staffing(conn, event_id)
+    if not staffing:
+        return None
+    employer_pct = wage_setting(conn, "payroll_employer_contribution_percent")
+    people = {}
+    for sh in staffing["assigned"]:
+        start, end = (sh["start_time"] or ""), (sh["end_time"] or "")
+        hours = 0.0
+        try:
+            if start and end:
+                sh_start = datetime.strptime(start[:5], "%H:%M")
+                sh_end = datetime.strptime(end[:5], "%H:%M")
+                span = (sh_end - sh_start).total_seconds() / 3600.0
+                # A shift that ends after midnight is the ordinary case at a
+                # wedding, and a negative span would quietly subtract hours.
+                hours = span if span > 0 else span + 24
+        except ValueError:
+            hours = 0.0
+        row = people.setdefault(sh["user_id"], {
+            "name": sh["who"], "hours": 0.0, "gross": None,
+            "source": "unpriced", "basis": None})
+        row["hours"] = round(row["hours"] + hours, 2)
+
+    gross_total, salaried, unpriced = 0.0, [], []
+    for user_id, row in people.items():
+        wage = wage_on(conn, user_id, staffing["days"][-1] if staffing["days"] else house_today())
+        if wage and wage["basis"] == "hourly":
+            row["basis"] = "hourly"
+            row["gross"] = round(wage_gross_for_period(wage, row["hours"], []) or 0, 2)
+            row["source"] = "wage on file"
+            gross_total = round(gross_total + row["gross"], 2)
+            continue
+        if wage:
+            # Salaried. Reported, not charged.
+            row["basis"] = wage["basis"]
+            row["source"] = "salaried"
+            salaried.append(row["name"])
+            continue
+        estimate = estimated_hourly_cost(
+            row["hours"],
+            (conn.execute("SELECT pay_rate FROM users WHERE id = ?",
+                          (user_id,)).fetchone() or {"pay_rate": None})["pay_rate"],
+            (conn.execute("SELECT pay_type FROM users WHERE id = ?",
+                          (user_id,)).fetchone() or {"pay_type": None})["pay_type"])
+        if estimate is not None:
+            row["gross"] = estimate
+            row["source"] = "estimated"
+            gross_total = round(gross_total + estimate, 2)
+        else:
+            unpriced.append(row["name"])
+    # ZERO MEANS NOT SET. wage_setting always returns a number -- it falls
+    # back to the documented default of 0 -- so a None check here was dead
+    # code, and the page would have claimed employer contributions were
+    # included while adding nothing for them. The default is 0 precisely
+    # because the real French figure depends on the contract, and a number the
+    # app invented would read as one the app knows.
+    employer = (round(gross_total * employer_pct / 100.0, 2)
+                if employer_pct else None)
+    return {
+        "people": sorted(people.values(), key=lambda r: r["name"]),
+        "hours": round(sum(r["hours"] for r in people.values()), 2),
+        # GROSS unless employer contributions are configured, and never added
+        # into one unlabelled number if they are.
+        "gross": gross_total,
+        "employer": employer,
+        "total": round(gross_total + (employer or 0), 2),
+        "employer_percent": employer_pct,
+        "salaried": salaried,
+        "unpriced": unpriced,
+    }
+
+
+def event_margin(conn, event_id):
+    """What an event made, with everything it does not know named.
+
+    Rooms have night margin, break-even and room economics. An event had a
+    quoted price and nothing else, so the most expensive thing the house sells
+    was the one thing nobody could say made money.
+
+    THE ROWS ADD UP TO THE TOTAL, and anything missing from them is named
+    rather than treated as zero -- a margin that quietly omits the caterer and
+    two salaried staff is worse than no margin, because somebody will price
+    the next wedding off it.
+    """
+    bill = event_bill(conn, event_id)
+    if not bill:
+        return None
+    suppliers = event_supplier_readiness(conn, event_id)
+    labour = event_labour(conn, event_id)
+    revenue = bill["quoted"]
+    supplier_cost = suppliers["cost"] if suppliers else 0.0
+    labour_cost = labour["total"] if labour else 0.0
+    lines = [
+        {"label": "Agreed with the couple", "amount": revenue, "kind": "revenue"},
+        {"label": "Suppliers", "amount": -supplier_cost, "kind": "cost"},
+    ]
+    if labour and labour["employer"] is not None:
+        lines.append({"label": "Staff, gross", "amount": -labour["gross"], "kind": "cost"})
+        lines.append({"label": f"Employer contributions at {labour['employer_percent']}%",
+                      "amount": -labour["employer"], "kind": "cost"})
+    else:
+        lines.append({"label": "Staff, gross", "amount": -labour_cost, "kind": "cost"})
+    margin = round(sum(l["amount"] for l in lines), 2)
+    # Everything the figure does not include, named. The list being empty is
+    # the only state in which the margin is the whole story.
+    caveats = []
+    if suppliers and suppliers["unpriced"]:
+        caveats.append("no cost recorded for " + ", ".join(suppliers["unpriced"]))
+    if labour and labour["salaried"]:
+        caveats.append("salaried and not charged to the event: "
+                       + ", ".join(labour["salaried"]))
+    if labour and labour["unpriced"]:
+        caveats.append("no wage on file for " + ", ".join(labour["unpriced"]))
+    if labour and labour["employer"] is None:
+        caveats.append("employer contributions are not set, so this is gross pay only")
+    return {
+        "event": bill["event"], "bill": bill, "lines": lines,
+        "revenue": revenue, "supplier_cost": supplier_cost,
+        "labour": labour, "margin": margin,
+        "percent": round(margin / revenue * 100, 1) if revenue else None,
+        "caveats": caveats,
+    }
+
+
+def event_guests(conn, event_id):
+    return conn.execute(
+        """SELECT * FROM event_guests WHERE event_id = ?
+            ORDER BY COALESCE(NULLIF(seating, ''), 'zzz'), name""",
+        (event_id,)).fetchall()
+
+
+def event_guest_list(conn, event_id):
+    """Who is coming, and how that squares with the number they told us.
+
+    A list and a number that disagree is the thing worth showing: eighty
+    confirmed and sixty-two names is either eighteen people nobody has written
+    down or a number that is out of date, and both are worth knowing before
+    the caterer is told.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None
+    rows = event_guests(conn, event_id)
+    told = event["final_numbers"] if event["final_numbers"] is not None else event["guest_count"]
+    with_diets = [r for r in rows if (r["dietary_notes"] or "").strip()]
+    return {
+        "event": event, "guests": rows, "named": len(rows),
+        "told": told,
+        "gap": (told - len(rows)) if told is not None else None,
+        "dietary": with_diets,
+        "seatings": sorted({(r["seating"] or "").strip() for r in rows if (r["seating"] or "").strip()}),
     }
 
 
@@ -48176,6 +48375,109 @@ def delete_event_supplier(event_id, supplier_id):
     return redirect(url_for("event_run_sheet_page", event_id=event_id))
 
 
+@app.route("/admin/events/<int:event_id>/margin")
+@owner_required
+def event_margin_page(event_id):
+    """What one event made, with everything the figure leaves out named."""
+    conn = get_db()
+    data = event_margin(conn, event_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("event_margin.html", data=data)
+
+
+@app.route("/admin/events/<int:event_id>/guests")
+@owner_required
+def event_guest_list_page(event_id):
+    """Who is coming, where they are sitting, and what they cannot eat."""
+    conn = get_db()
+    data = event_guest_list(conn, event_id)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("event_guests.html", data=data)
+
+
+@app.route("/admin/events/<int:event_id>/guests/add", methods=["POST"])
+@owner_required
+def add_event_guest(event_id):
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    name = (request.form.get("name", "") or "").strip()[:120]
+    if not name:
+        conn.close()
+        flash("A guest needs a name.", "error")
+        return redirect(url_for("event_guest_list_page", event_id=event_id))
+    conn.execute(
+        """INSERT INTO event_guests (event_id, name, seating, dietary_notes,
+           note, created_at) VALUES (?, ?, ?, ?, ?, ?)""",
+        (event_id, name,
+         (request.form.get("seating", "") or "").strip()[:60] or None,
+         (request.form.get("dietary_notes", "") or "").strip()[:300] or None,
+         (request.form.get("note", "") or "").strip()[:300] or None,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash(f"{name} is on the list.", "success")
+    return redirect(url_for("event_guest_list_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/guests/paste", methods=["POST"])
+@owner_required
+def paste_event_guests(event_id):
+    """A whole guest list at once, because that is how it arrives.
+
+    Eighty names come from the couple as a list, and typing them one at a time
+    is how a feature goes unused. One name per line, optionally
+    `Name, table, dietary` -- and it says how many it read rather than
+    reporting a cheerful total, so a line it could not make sense of is
+    visible rather than lost.
+    """
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    text = (request.form.get("names", "") or "").strip()
+    added, skipped = [], []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        bits = [b.strip() for b in line.split(",")]
+        name = bits[0][:120]
+        if not name:
+            skipped.append((line[:40], "no name on the line"))
+            continue
+        conn.execute(
+            """INSERT INTO event_guests (event_id, name, seating, dietary_notes,
+               created_at) VALUES (?, ?, ?, ?, ?)""",
+            (event_id, name,
+             (bits[1][:60] if len(bits) > 1 and bits[1] else None),
+             (", ".join(bits[2:])[:300] if len(bits) > 2 else None),
+             datetime.now(timezone.utc).isoformat()))
+        added.append(name)
+    conn.commit()
+    conn.close()
+    # The one reporter, so a line nobody could read is NAMED rather than
+    # quietly dropped out of a cheerful total.
+    flash(*bulk_message("Added", "guest", len(added), skipped))
+    return redirect(url_for("event_guest_list_page", event_id=event_id))
+
+
+@app.route("/admin/events/guest/<int:guest_id>/delete", methods=["POST"])
+@owner_required
+def delete_event_guest(guest_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM event_guests WHERE id = ?", (guest_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM event_guests WHERE id = ?", (guest_id,))
+    conn.commit()
+    conn.close()
+    flash("Off the list.", "success")
+    return redirect(url_for("event_guest_list_page", event_id=row["event_id"]))
+
+
 @app.route("/admin/events/<int:event_id>/staffing", methods=["POST"])
 @owner_required
 def save_event_staffing(event_id):
@@ -56450,6 +56752,20 @@ def purge_health_notes(conn, today=None):
         (iso,)).rowcount
     cleared["restaurant_bookings"] = n
 
+    # A wedding's guest list. The notes are the reason it exists -- to cook
+    # for eighty people safely -- and there is no reason to hold them
+    # afterwards. Dated through the event, which carries the date, the same
+    # way a workshop registration is dated through its session.
+    n = conn.execute(
+        """UPDATE event_guests SET dietary_notes = NULL
+            WHERE dietary_notes IS NOT NULL AND TRIM(dietary_notes) != ''
+              AND event_id IN (
+                    SELECT id FROM event_inquiries
+                     WHERE COALESCE(end_date, preferred_date) IS NOT NULL
+                       AND COALESCE(end_date, preferred_date) < ?)""",
+        (iso,)).rowcount
+    cleared["event_guests"] = n
+
     # Workshops date through their session rather than carrying one.
     n = conn.execute(
         """UPDATE workshop_bookings
@@ -61030,6 +61346,28 @@ def redeem_voucher_against_booking(conn, voucher_id, booking_id, amount, *,
     return True, message, taken
 
 
+def event_kitchen_notes(conn, day):
+    """Dietary notes from any event running on a day.
+
+    The kitchen sheet gathers every note in the house for a day -- rooms,
+    dinners, ateliers -- and a wedding's eighty covers were not in it, so the
+    one service with the most people had the least information.
+    """
+    iso = day.isoformat() if hasattr(day, "isoformat") else str(day)
+    return [dict(r) for r in conn.execute(
+        """SELECT event_guests.name, event_guests.seating,
+                  event_guests.dietary_notes, event_inquiries.event_type,
+                  event_inquiries.contact_name
+             FROM event_guests
+             JOIN event_inquiries ON event_inquiries.id = event_guests.event_id
+            WHERE event_inquiries.status = 'confirmed'
+              AND event_inquiries.preferred_date <= ?
+              AND COALESCE(event_inquiries.end_date, event_inquiries.preferred_date) >= ?
+              AND COALESCE(event_guests.dietary_notes, '') != ''
+            ORDER BY event_guests.seating, event_guests.name""",
+        (iso, iso)).fetchall()]
+
+
 def kitchen_sheet(conn, day):
     """Every dietary and medical note in the house for one day, in one place.
 
@@ -61135,6 +61473,15 @@ def kitchen_sheet(conn, day):
             rows.append({"who": event["contact_name"],
                          "where": event["event_type"] or "event",
                          "party": event["guest_count"], "notes": notes})
+    # AND THE NAMED GUESTS, one line each. Until the guest list existed the
+    # kitchen got a headcount and the couple's original message, on the one
+    # service in the house with the most people in it.
+    for g in event_kitchen_notes(conn, day_iso):
+        notes = clean(g["dietary_notes"])
+        if notes:
+            rows.append({"who": g["name"],
+                         "where": (g["seating"] or g["event_type"] or "event"),
+                         "party": 1, "notes": notes})
     sections.append({"title": "Events", "covers": covers, "rows": rows,
                      "kind": "event"})
 
