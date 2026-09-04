@@ -24811,9 +24811,6 @@ def directory():
     """Everybody who works here, and how to reach them."""
     user = current_user()
     conn = get_db()
-    status_filter = request.args.get("status", "").strip()
-    q = request.args.get("q", "").strip()
-
     period = period_from_request()
     overview = None
     if user["role"] == "owner":
@@ -24835,17 +24832,31 @@ def directory():
     }
     conn.close()
 
-    if status_filter:
-        employees = [e for e in employees if e["status"] == status_filter]
-    if q:
-        needle = q.lower()
-        employees = [
-            e for e in employees
-            if needle in e["name"].lower() or needle in (e["job_role"] or "").lower()
-        ]
-
+    lv = list_view(
+        employees, request.args,
+        search=["name", "job_role", "phone"],
+        search_hint="Name, job or telephone",
+        facets=[
+            facet("status", "Where they stand",
+                  lambda e: (e["status"] or "active").capitalize(),
+                  order=["Active", "Onboarding", "Left"]),
+            facet("job", "Job", lambda e: (e["job_role"] or "").strip() or None,
+                  limit=10),
+            # Who is clocked in right now. On a staff list that is the thing
+            # somebody is actually looking for half the time.
+            facet("here", "On shift",
+                  lambda e: "On now" if e["id"] in on_shift_ids else None),
+        ],
+        sorts=[
+            sort_option("name", "By name", lambda e: (e["name"] or "").lower()),
+            sort_option("status", "By where they stand",
+                        lambda e: ((e["status"] or ""), (e["name"] or "").lower())),
+        ],
+        default_sort="name",
+    )
     return render_template(
-        "directory.html", employees=employees, status_filter=status_filter, q=q, on_shift_ids=on_shift_ids,
+        "directory.html", employees=lv["rows"], lv=lv,
+        on_shift_ids=on_shift_ids,
         overview=overview, period=period,
     )
 
@@ -53377,15 +53388,39 @@ def vendors():
         owed[r["vendor_id"]] = {"total": round(r["total"] or 0, 2), "count": r["n"],
                                 "soonest": r["soonest"]}
     conn.close()
-    if q:
-        needle = q.lower()
-        rows = [
-            v for v in rows
-            if needle in v["name"].lower() or needle in (v["contact_person"] or "").lower()
-        ]
-    return render_template("vendors.html", vendors=rows, q=q,
+    today_iso = house_today_iso()
+    lv = list_view(
+        rows, request.args,
+        search=["name", "contact_person", "email", "phone", "notes"],
+        search_hint="Name, contact, telephone or a note",
+        facets=[
+            # What the house owes them, which is the question this page is
+            # opened to answer. Bucketed rather than listed: forty suppliers
+            # is forty chips, and forty chips is a second list to read.
+            facet("owing", "What we owe", lambda v: (
+                "Overdue" if (owed.get(v["id"], {}).get("soonest") or "9999")
+                < today_iso else
+                ("Owed" if owed.get(v["id"]) else None)),
+                  order=["Overdue", "Owed"]),
+            facet("terms", "Payment terms",
+                  lambda v: (v["payment_terms"] or "").strip() or None, limit=8),
+            facet("using", "Still used",
+                  lambda v: "Retired" if not v["active"] else None),
+        ],
+        sorts=[
+            sort_option("name", "By name", lambda v: (v["name"] or "").lower()),
+            sort_option("owed", "Most owed first",
+                        lambda v: owed.get(v["id"], {}).get("total", 0),
+                        reverse=True),
+            sort_option("spend", "Most spent with",
+                        lambda v: spend_by_vendor.get(v["name"], 0),
+                        reverse=True),
+        ],
+        default_sort="name",
+    )
+    return render_template("vendors.html", vendors=lv["rows"], lv=lv,
                            spend_by_vendor=spend_by_vendor, owed=owed,
-                           today=house_today_iso())
+                           today=today_iso)
 
 
 @app.route("/management/vendors/new", methods=["POST"])

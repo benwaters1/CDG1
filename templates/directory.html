@@ -24,27 +24,13 @@
 {% with cells = overview %}{% include "_overview_band.html" %}{% endwith %}
 {% endif %}
 
-<form method="get" class="search-bar">
-  {% if user['role'] == 'owner' %}
-  <div>
-    <label class="field-label">{{ t('Status') }}</label>
-    <select name="status">
-      <option value="">{{ t('All') }}</option>
-      <option value="active" {{ 'selected' if status_filter == 'active' }}>{{ t('Active') }}</option>
-      <option value="inactive" {{ 'selected' if status_filter == 'inactive' }}>{{ t('Inactive') }}</option>
-    </select>
-  </div>
-  {% endif %}
-  <div>
-    <label class="field-label">{{ t('Search') }}</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Name or role">
-  </div>
-  <button type="submit" class="btn-mini">{{ t('Filter') }}</button>
-  {% if status_filter or q %}<a href="{{ url_for('directory') }}" class="small-link" style="color:var(--steel); align-self:center;">{{ t('Clear') }}</a>{% endif %}
-</form>
+{# The toolbar every other list uses. The status dropdown and the search box
+   were doing half its job between them, with no counts on either — and "who
+   is on shift right now" is what somebody is looking for half the time. #}
+{% include "_list_toolbar.html" %}
 
 {% if not employees %}
-  <div class="empty-state">{% if status_filter or q %}No employees match those filters.{% else %}No employees added yet.{% endif %}</div>
+  <div class="empty-state">{% if lv.q or lv.chosen %}No employees match those filters.{% else %}No employees added yet.{% endif %}</div>
 {% else %}
   <div class="card-grid profile-grid">
     {% for person in employees %}
