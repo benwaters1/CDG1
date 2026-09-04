@@ -19599,6 +19599,7 @@ CAMPAIGN_SEGMENTS = {
 @app.route("/admin/emails")
 @owner_required
 def admin_emails():
+    """Campaigns and templates for writing to guests in numbers."""
     conn = get_db()
     templates = conn.execute(
         "SELECT * FROM campaign_templates ORDER BY area, name").fetchall()
@@ -20342,6 +20343,7 @@ def discard_email_outbox(outbox_id):
 @app.route("/admin/reports")
 @owner_required
 def admin_reports():
+    """The figures behind the house: what it earned, filled, paid and heard back."""
     period = period_from_request()
     conn = get_db()
     # A headline figure per report so the index is useful on its own rather
@@ -24220,6 +24222,7 @@ def owner_home_next_up(conn, today, day_rows):
 
 @app.route("/")
 def dashboard():
+    """What needs attention today, for whoever is looking."""
     # Two audiences, one address. A visitor gets the château's front page; a
     # signed-in member of staff gets their dashboard. The public header links the
     # brand to "/", so without this a guest clicking the château's own name
@@ -24654,6 +24657,7 @@ def staff_dashboard():
 
 @app.route("/admin/display")
 def office_display():
+    """The wall screen: today's arrivals, jobs and covers, for a room nobody is sitting in."""
     # A kiosk device authenticates with ?token=OFFICE_DISPLAY_TOKEN instead of a
     # login session, since it's meant to sit on a wall reloading itself
     # unattended for weeks. Anyone with a normal owner session still gets in
@@ -24804,6 +24808,7 @@ def search():
 @app.route("/directory")
 @login_required
 def directory():
+    """Everybody who works here, and how to reach them."""
     user = current_user()
     conn = get_db()
     status_filter = request.args.get("status", "").strip()
@@ -25342,6 +25347,7 @@ def delete_equipment_item(user_id, item_id):
 @app.route("/equipment")
 @owner_required
 def equipment_overview():
+    """Kit the house has lent to somebody, and whether it came back."""
     conn = get_db()
     issued = conn.execute(
         """SELECT equipment_items.*, users.name AS employee_name FROM equipment_items
@@ -25375,6 +25381,7 @@ def export_equipment_csv():
 @app.route("/candidates")
 @owner_required
 def candidates():
+    """People who have applied, and where each application has got to."""
     status_filter = request.args.get("status", "").strip()
     conn = get_db()
     query = "SELECT * FROM candidates"
@@ -25514,6 +25521,7 @@ def delete_check_in_note(user_id, note_id):
 @app.route("/admin/hr")
 @owner_required
 def admin_hr():
+    """Certifications, absence, reviews and working time, per person."""
     conn = get_db()
     today = house_today()
     period = period_from_request()
@@ -26022,6 +26030,7 @@ def ask_hr():
 @app.route("/admin/hr-notes")
 @owner_required
 def admin_hr_notes():
+    """Questions people have put to HR, and whether they were answered."""
     conn = get_db()
     notes = conn.execute(
         """SELECT hr_notes.*, users.name AS employee_name FROM hr_notes
@@ -26088,6 +26097,7 @@ def timesheet_query(conn, employee_id, start, end):
 @app.route("/admin/timesheets")
 @owner_required
 def admin_timesheets():
+    """Hours worked, from the clock rather than from memory."""
     conn = get_db()
     today = house_today()
     employee_id = request.args.get("employee_id", "").strip()
@@ -26270,6 +26280,7 @@ def flag_timesheet_entry(entry_id):
 @app.route("/admin/timesheets/corrections")
 @owner_required
 def admin_timesheet_corrections():
+    """Clock-ins and clock-outs that were wrong, and what they were changed to."""
     conn = get_db()
     corrections = conn.execute(
         """SELECT timesheet_corrections.*, time_entries.clock_in_at, time_entries.clock_out_at,
@@ -26290,6 +26301,7 @@ def admin_timesheet_corrections():
 @app.route("/admin/incidents")
 @owner_required
 def admin_incidents():
+    """Accidents and injuries, as the register the law expects."""
     conn = get_db()
     today = house_today()
     status_filter = request.args.get("status", "open")
@@ -26421,6 +26433,7 @@ def update_incident(incident_id):
 @app.route("/admin/compliance")
 @owner_required
 def admin_compliance():
+    """Which certificates each role needs, and who is short of one."""
     conn = get_db()
     today = house_today()
     gaps = role_compliance(conn, today)
@@ -29007,6 +29020,7 @@ def api_palette():
 @app.route("/admin/assets")
 @owner_required
 def admin_assets():
+    """The furniture, art and antiques the house owns, and what they are insured for."""
     conn = get_db()
     today = house_today()
     category = request.args.get("category", "")
@@ -29205,6 +29219,7 @@ def export_assets_csv():
 @app.route("/admin/access")
 @owner_required
 def admin_access():
+    """Who holds a key, a fob or a code, and what it opens."""
     conn = get_db()
     items = conn.execute(
         """SELECT access_items.*,
@@ -29305,6 +29320,7 @@ def return_access_item(holding_id):
 @app.route("/admin/payroll")
 @owner_required
 def admin_payroll():
+    """Hours, wages and the figures the accountant needs to run payroll."""
     conn = get_db()
     period = period_from_request()
     rows = payroll_period_rows(conn, period)
@@ -29879,6 +29895,7 @@ def manual_last_updated(conn):
 @app.route("/manual")
 @login_required
 def manual():
+    """How the house does things, written down so it does not live in one person's head."""
     user = current_user()
     conn = get_db()
     sections = conn.execute(
@@ -30001,6 +30018,7 @@ def contacts_list_view(conn, args):
 @app.route("/contacts")
 @login_required
 def contacts():
+    """Telephone numbers for the house, its suppliers and the people who work here."""
     conn = get_db()
     lv = contacts_list_view(conn, request.args)
     conn.close()
@@ -30086,6 +30104,7 @@ def current_announcements(conn, today):
 @app.route("/announcements")
 @login_required
 def announcements():
+    """Notices for everybody who works here, and who has read them."""
     conn = get_db()
     today = house_today()
     user = current_user()
@@ -30225,6 +30244,7 @@ def delete_announcement(announcement_id):
 @app.route("/shopping")
 @login_required
 def shopping_list():
+    """What the house needs bought, and what has been."""
     conn = get_db()
     items = conn.execute(
         "SELECT * FROM shopping_items ORDER BY bought, COALESCE(category, 'zzz'), name"
@@ -30297,6 +30317,7 @@ def clear_bought_items():
 @app.route("/breakfast")
 @login_required
 def breakfast():
+    """Who is eating breakfast tomorrow, and what they cannot eat."""
     conn = get_db()
     # The house's date, not the server's. A morning checklist and who is
     # sleeping here are both French calendar facts, and for the two hours
@@ -32045,6 +32066,7 @@ def admin_tax():
 @app.route("/admin/terms", methods=["GET", "POST"])
 @owner_required
 def admin_terms():
+    """The terms a guest agrees to, and what version they agreed to."""
     conn = get_db()
     if request.method == "POST":
         text = request.form.get("text", "").strip()
@@ -32607,6 +32629,7 @@ def save_expense_file(file):
 @app.route("/expenses")
 @owner_required
 def expenses():
+    """Every bill and receipt, whether it was approved, and whether the accountant has it."""
     status_filter = request.args.get("status", "").strip()
     q = request.args.get("q", "").strip()
 
@@ -33275,6 +33298,7 @@ def join_waitlist():
 @app.route("/admin/waitlist")
 @owner_required
 def admin_waitlist():
+    """Guests waiting for a night that is full, and who has been offered one."""
     conn = get_db()
     entries = conn.execute(
         "SELECT * FROM waitlist_entries ORDER BY (status != 'open'), created_at DESC"
@@ -35748,6 +35772,7 @@ def event_stripe_success(manage_token):
 @app.route("/admin/events")
 @owner_required
 def admin_events():
+    """Weddings and private hire: every enquiry, and where each one stands."""
     conn = get_db()
     status_filter = request.args.get("status", "")
     query = "SELECT * FROM event_inquiries"
@@ -40096,6 +40121,7 @@ def room_photo(filename):
 @app.route("/admin/rooms")
 @owner_required
 def admin_rooms():
+    """The bedrooms the house lets, and everything a guest is told about them."""
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
     sources_by_room, ics_urls, blocks_by_room = {}, {}, {}
@@ -40127,6 +40153,7 @@ def admin_rooms():
 @app.route("/room-issues")
 @login_required
 def room_issues():
+    """What is broken in which room, and whether it is fixed."""
     conn = get_db()
     status_filter = request.args.get("status", "open")
     query = (
@@ -40589,6 +40616,7 @@ def api_owner_digest():
 @app.route("/admin/calendar")
 @owner_required
 def admin_calendar():
+    """Every night of the year, and what is in the house on it."""
     today = house_today()
     try:
         year, month = map(int, request.args.get("month", "").split("-"))
@@ -41396,6 +41424,7 @@ def delete_room_block(block_id):
 @app.route("/admin/feedback")
 @owner_required
 def admin_feedback():
+    """What guests said about their stay, and whether anybody has answered."""
     conn = get_db()
     entries = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code, rooms.name AS room_name
@@ -41677,6 +41706,7 @@ def export_workshop_feedback_csv():
 @app.route("/admin/bookings")
 @owner_required
 def admin_bookings():
+    """Every stay: who is coming, what they owe, and what still needs doing."""
     status_filter = request.args.get("status", "").strip()
     room_filter = request.args.get("room_id", "").strip()
     q = request.args.get("q", "").strip()
@@ -43941,6 +43971,7 @@ def restaurant_profit_share(conn, year, month):
 @app.route("/admin/restaurant")
 @owner_required
 def admin_restaurant():
+    """Reservations, covers and what the dining room is doing."""
     conn = get_db()
     period = period_from_request()
     overview = restaurant_overview(conn, period, house_today())
@@ -44281,6 +44312,7 @@ def export_restaurant_csv():
 @app.route("/admin/restaurant/settings", methods=["GET", "POST"])
 @owner_required
 def admin_restaurant_settings():
+    """How many the room seats, what a cover costs, and when it serves."""
     conn = get_db()
     if request.method == "POST":
         opening_date = request.form.get("opening_date", "").strip()
@@ -44377,6 +44409,7 @@ def delete_restaurant_rate_override(rate_id):
 @app.route("/admin/deposit-rules")
 @owner_required
 def admin_deposit_rules():
+    """What a guest is asked for up front, and when that changes."""
     conn = get_db()
     rules = conn.execute("SELECT * FROM deposit_rules ORDER BY category, start_date IS NULL, start_date").fetchall()
     restaurant_settings = get_restaurant_settings(conn)
@@ -44494,6 +44527,7 @@ COURSE_TO_CATEGORY = {
 @app.route("/admin/restaurant/menu")
 @owner_required
 def admin_restaurant_menu():
+    """The dishes, their courses, their prices and what is in them."""
     conn = get_db()
     items = conn.execute(
         "SELECT * FROM menu_items ORDER BY sort_order, name").fetchall()
@@ -45320,6 +45354,7 @@ PROMO_APPLIES_TO = ["all", "room", "restaurant", "workshop", "event"]
 @app.route("/admin/promo-codes")
 @owner_required
 def admin_promo_codes():
+    """Discount codes, what each is worth, and who has used one."""
     conn = get_db()
     codes = conn.execute("SELECT * FROM promo_codes ORDER BY active DESC, created_at DESC").fetchall()
     # Why each code would be refused right now, for the owner. Guests are told
@@ -46266,6 +46301,7 @@ def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
 @app.route("/admin/workshops")
 @owner_required
 def admin_workshops():
+    """The ateliers the house runs, their sessions, and how each is filling."""
     conn = get_db()
     workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
     today = house_today()
@@ -46952,6 +46988,7 @@ def workshop_running_sheet(session_id):
 @app.route("/admin/workshops/registrations")
 @owner_required
 def admin_workshop_registrations():
+    """Who is booked onto which session, and what each of them owes."""
     conn = get_db()
     status_filter = request.args.get("status", "")
     session_filter = request.args.get("session_id", "")
@@ -47556,6 +47593,7 @@ def export_guests_csv():
 @app.route("/management")
 @owner_required
 def management():
+    """Everything the owner can set, in one place."""
     conn = get_db()
     doc_count = conn.execute("SELECT COUNT(*) AS c FROM company_documents").fetchone()["c"]
     vault_count = conn.execute("SELECT COUNT(*) AS c FROM vault_entries").fetchone()["c"]
@@ -47586,6 +47624,7 @@ def management():
 @app.route("/management/money-ahead")
 @owner_required
 def money_ahead_page():
+    """What is already booked to come in, and how long the house can run on it."""
     days = request.args.get("days", "90")
     days = int(days) if days.isdigit() else 90
     conn = get_db()
@@ -50803,6 +50842,7 @@ def chase_outstanding_balance(booking_id):
 @app.route("/management/financials")
 @owner_required
 def management_financials():
+    """What the house took, what it spent, and what is left."""
     today = house_today()
     conn = get_db()
     months = []
@@ -50845,6 +50885,7 @@ def management_financials():
 @app.route("/management/financials/annual-summary")
 @owner_required
 def annual_summary():
+    """Twelve months of takings and costs, as the accountant wants them."""
     try:
         year = int(request.args.get("year", "") or datetime.now(timezone.utc).year)
     except ValueError:
@@ -52982,6 +53023,7 @@ def management_budget():
 @app.route("/management/recurring-costs")
 @owner_required
 def management_recurring_costs():
+    """What the house pays every month whether or not anybody stays."""
     conn = get_db()
     costs = conn.execute(
         """SELECT recurring_costs.*, vendors.name AS vendor_name,
@@ -53310,6 +53352,7 @@ def delete_insurance_policy(policy_id):
 @app.route("/management/vendors")
 @owner_required
 def vendors():
+    """Who the house buys from, and what has been agreed with each."""
     conn = get_db()
     q = request.args.get("q", "").strip()
     rows = conn.execute("SELECT * FROM vendors ORDER BY name").fetchall()
@@ -53777,6 +53820,7 @@ def save_proof_figures():
 @app.route("/management/social")
 @owner_required
 def management_social():
+    """What is going out on Instagram and Facebook, and when."""
     status_filter = request.args.get("status", "").strip()
     platform_filter = request.args.get("platform", "").strip()
     conn = get_db()
@@ -56521,6 +56565,7 @@ def delete_maintenance_schedule(schedule_id):
 @app.route("/management/vehicles")
 @owner_required
 def management_vehicles():
+    """The cars and the van: papers, fuel, mileage and the contrôle technique."""
     conn = get_db()
     vehicles = conn.execute("SELECT * FROM vehicles ORDER BY name").fetchall()
 
@@ -57033,6 +57078,7 @@ def delete_vehicle_transfer(transfer_id):
 @app.route("/management/documents")
 @owner_required
 def management_documents():
+    """The house's own files, kept where somebody can find them."""
     conn = get_db()
     docs = conn.execute("SELECT * FROM company_documents ORDER BY uploaded_at DESC").fetchall()
     conn.close()
@@ -57180,6 +57226,7 @@ def template_state(row, defaults):
 @app.route("/management/email-templates")
 @owner_required
 def management_email_templates():
+    """What each automatic email says, and the merge tags it fills in."""
     conn = get_db()
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
     conn.close()
@@ -57290,6 +57337,7 @@ def edit_email_template(template_key):
 @app.route("/management/company-info", methods=["GET", "POST"])
 @owner_required
 def management_company_info():
+    """The legal facts about the business, and the papers that prove them."""
     conn = get_db()
     if request.method == "POST":
         fields = [
@@ -57333,6 +57381,7 @@ def management_company_info():
 @app.route("/management/bank-details")
 @owner_required
 def management_bank_details():
+    """The accounts the house is paid into and pays from."""
     conn = get_db()
     entries = conn.execute("SELECT * FROM bank_details ORDER BY label").fetchall() if vault_enabled() else None
     conn.close()
@@ -57455,6 +57504,7 @@ def reveal_bank_details(entry_id):
 @app.route("/management/vault")
 @owner_required
 def management_vault():
+    """Passwords and secrets the house cannot afford to lose."""
     if not vault_enabled():
         return render_template("management_vault.html", entries=None)
     conn = get_db()
@@ -57654,6 +57704,7 @@ def audit_list_view(conn, args):
 @app.route("/admin/audit-log")
 @owner_required
 def audit_log():
+    """Who did what, and when."""
     conn = get_db()
     lv = audit_list_view(conn, request.args)
     conn.close()
@@ -57943,6 +57994,7 @@ def readiness_checks(conn):
 @app.route("/admin/readiness")
 @owner_required
 def admin_readiness():
+    """Everything that has to be configured before the house goes live, and what is not."""
     conn = get_db()
     checks = readiness_checks(conn)
     conn.close()
@@ -58385,6 +58437,7 @@ def ops_calendar():
 @app.route("/admin/overview")
 @owner_required
 def admin_overview():
+    """What has happened across the house lately, newest first."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
@@ -58418,6 +58471,7 @@ def admin_overview_status():
 @app.route("/admin/tasks")
 @owner_required
 def admin_tasks():
+    """Everything somebody has to do, and who it belongs to."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
@@ -59264,6 +59318,7 @@ def build_shift_week(conn, anchor):
 @app.route("/admin/shifts")
 @owner_required
 def admin_shifts():
+    """Who is rostered, when, and where the gaps are."""
     anchor = parse_date(request.args.get("date", "")) or house_today()
     today = house_today()
     conn = get_db()
@@ -59677,6 +59732,7 @@ def cancel_leave_request(request_id):
 @app.route("/admin/approvals")
 @owner_required
 def admin_approvals():
+    """Expenses and time off waiting on a decision."""
     conn = get_db()
     period = period_from_request()
     overview = financial_overview(conn, period, house_today())
@@ -59826,6 +59882,7 @@ def save_leave_settings():
 @app.route("/admin/leave")
 @owner_required
 def admin_leave():
+    """Who has asked for time off, who has it, and what is left."""
     conn = get_db()
     requests_ = conn.execute(
         """SELECT leave_requests.*, users.name AS employee_name FROM leave_requests
@@ -60117,6 +60174,7 @@ def access_code_returned(code_id):
 @app.route("/admin/today-sheet")
 @owner_required
 def today_sheet():
+    """One page for today: who arrives, who leaves, what is on and who is in."""
     # Named for the day it is at the house, so that is the day it asks about.
     today = house_today()
     conn = get_db()
@@ -61828,6 +61886,7 @@ AUTOMATION_JOB_LABELS = {
 @app.route("/admin/automation")
 @owner_required
 def admin_automation():
+    """The nightly jobs: whether each one ran, and how it went."""
     conn = get_db()
     settings = get_automation_settings(conn)
     last_runs = {r["job_name"]: r for r in conn.execute(
@@ -61980,6 +62039,7 @@ def run_automation_job_now(job_name):
 @app.route("/admin/inbox-flags")
 @owner_required
 def admin_inbox_flags():
+    """Messages nobody has answered yet."""
     conn = get_db()
     status_filter = request.args.get("status", "open")
     kind_filter = request.args.get("kind", "all")

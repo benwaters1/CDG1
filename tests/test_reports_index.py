@@ -33,10 +33,11 @@ import _harness
 
 m = _harness.m
 
-# Where it stands today. It may fall; it must not rise. A page added without
-# a first line of its own would otherwise join the list silently, which is
-# how the list got to sixty-one.
-UNDESCRIBED_TODAY = 61
+# Nought, and it must stay nought. It was sixty-one when the index was built:
+# the index named them rather than showing blanks, and then they were written.
+# A page added without a first line of its own would otherwise join a list
+# nobody is looking at any more, which is how it got to sixty-one.
+UNDESCRIBED_TODAY = 0
 
 
 def _linked_endpoints():
@@ -106,25 +107,39 @@ def run():
 
     s.section("It says which pages cannot describe themselves")
     undescribed = [r for r in rows if not r["described"]]
-    s.check("the ones with no first line are counted",
+    s.check("every page can say what it does",
             len(undescribed) <= UNDESCRIBED_TODAY,
-            detail=f"{len(undescribed)} against a pinned {UNDESCRIBED_TODAY} — "
-                   "this number may fall and must not rise")
-    # The direct one. The ceiling above passes when the number falls, which
-    # is what a ceiling is for -- so "described = True" for everything read
-    # as sixty-one pages having been documented overnight, and nothing said
-    # otherwise. A view with no docstring has to come back undescribed.
-    blank = [r["endpoint"] for r in rows
-             if not (inspect.getdoc(m.app.view_functions[r["endpoint"]]) or "").strip()]
-    s.check("a page with no docstring is reported as having none",
-            blank and all(not next(r for r in rows if r["endpoint"] == e)["described"]
-                          for e in blank),
-            detail=f"{len(blank)} view(s) carry no docstring at all; every one "
-                   "of them must be named rather than shown blank")
-    s.check("and the page names them out loud",
-            "cannot say what they do" in oc.get("/reports").get_data(as_text=True),
-            detail="a blank line reads as a report that does nothing; a named "
-                   "one is a job somebody can finish in a minute")
+            detail=f"{len(undescribed)} against a pinned {UNDESCRIBED_TODAY}: "
+                   f"{[r['label'] for r in undescribed][:6]} — a page that "
+                   "cannot describe itself is one nobody can find by "
+                   "searching for what they want to know")
+    # The direct one, and it needs a blank page to look at. There are none
+    # left -- there were sixty-one when this index was built -- so one is
+    # made briefly and put back, the same way the live-docstring check works.
+    #
+    # It is the property that let sixty-one build up in the first place: the
+    # index saying a page is described when it is not. The ceiling above
+    # cannot catch that, because a ceiling passes when the number falls.
+    view = m.app.view_functions["admin_voids"]
+    was_doc = view.__doc__
+    try:
+        view.__doc__ = None
+        with m.app.test_request_context("/reports"):
+            blanked = m.report_catalogue()
+        hit = next(r for r in blanked if r["endpoint"] == "admin_voids")
+        s.check("a page with no docstring is reported as having none",
+                hit["described"] is False and not hit["what"],
+                detail=str(hit)[:150])
+        s.check("and the page names it out loud",
+                "cannot say what they do"
+                in oc.get("/reports").get_data(as_text=True),
+                detail="a blank line reads as a report that does nothing; a "
+                       "named one is a job somebody can finish in a minute")
+    finally:
+        view.__doc__ = was_doc
+    s.check("and the docstring is put back",
+            bool((inspect.getdoc(view) or "").strip()),
+            detail="every suite after this one reads the same module")
 
     s.check("and every report a page does not link to can describe itself",
             not [r for r in rows
