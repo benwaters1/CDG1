@@ -59,4 +59,35 @@
 {% else %}
 <div class="empty-state">Everybody who has said something has heard back.</div>
 {% endif %}
+
+{# The page reported an average wait and listed only the people still waiting,
+   so the average had nothing behind it — and who answered a complaint could
+   not be asked at all, though the name has been recorded on every
+   acknowledgement since the column existed. Capped: every reply the house has
+   ever sent is a log, and the recent ones are what somebody is looking at
+   when they ask whether the average is fair. #}
+<h2 class="section-heading">Answered</h2>
+{% if data.answered %}
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th style="text-align:left;">Guest</th><th class="num">Rating</th>
+    <th style="text-align:left;">Said</th><th class="num">Days to answer</th>
+    <th style="text-align:left;">Answered by</th></tr></thead>
+    <tbody>
+      {% for a in data.answered %}
+      <tr>
+        <th scope="row" style="text-align:left;">{{ a.who }}</th>
+        <td class="num">{{ a.rating or '&mdash;'|safe }}</td>
+        <td>{{ a.said }}</td>
+        <td class="num">{{ a.days }}</td>
+        <td>{{ a.answered_by or 'nobody recorded' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty-state">Nothing has been answered in this window.</div>
+{% endif %}
+
 {% endblock %}

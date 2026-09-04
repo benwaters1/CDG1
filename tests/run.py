@@ -290,6 +290,7 @@ SUITES = [
     "test_house_facts_on_pages",
     "test_final_numbers_moved",
     "test_one_off_search_boxes",
+    "test_who_decided",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",

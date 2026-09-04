@@ -18002,11 +18002,20 @@ def breakage_recovery(conn, start=None, end=None):
     start = start or (house_today() - timedelta(days=365))
     end = end or house_today()
     rows = conn.execute(
-        """SELECT breakages.*, rooms.name AS room_name, bookings.guest_name
+        """SELECT breakages.*, rooms.name AS room_name, bookings.guest_name,
+                  decider.name AS decided_by
              FROM breakages
              LEFT JOIN rooms ON rooms.id = breakages.room_id
              LEFT JOIN bookings ON bookings.id = breakages.booking_id
-            WHERE breakages.found_on >= ? AND breakages.found_on < ?
+             -- Who decided a guest should pay for it. That is a judgement
+             -- about somebody else's money and it has been anonymous.
+             LEFT JOIN users AS decider
+                    ON decider.id = breakages.decided_by_user_id
+            -- <= end, not <. With end defaulting to today, a strict
+            -- comparison silently dropped everything broken this morning --
+            -- which is the thing somebody looking at this page is looking
+            -- for. Caught by a fixture dated today.
+            WHERE breakages.found_on >= ? AND breakages.found_on <= ?
             ORDER BY breakages.found_on DESC""",
         (start.isoformat(), end.isoformat())).fetchall()
 
@@ -18026,6 +18035,10 @@ def breakage_recovery(conn, start=None, end=None):
             "replacement": round(replacement, 2), "charged": round(recovered, 2),
             "decision": {"charged": "charged", "let_it_go": "let it go"}.get(
                 decision, "not decided"),
+            # Who decided it. Deciding whether a guest pays for a broken thing
+            # is a judgement about somebody else's money, and it has been
+            # anonymous since the column was added.
+            "decided_by": r["decided_by"],
             "written_off": round(replacement - recovered, 2),
         })
     return {
@@ -18942,10 +18955,18 @@ def review_reply_times(conn, days=365):
     """
     since = (house_today() - timedelta(days=max(1, days))).isoformat()
     rows = conn.execute(
-        """SELECT guest_name, rating, comment, submitted_at, reply, replied_at,
-                  acknowledged_at
+        """SELECT guest_feedback.guest_name, guest_feedback.rating,
+                  guest_feedback.comment, guest_feedback.submitted_at,
+                  guest_feedback.reply, guest_feedback.replied_at,
+                  guest_feedback.acknowledged_at,
+                  -- Who said it had been dealt with. On a complaint that is
+                  -- somebody speaking for the house, and it was anonymous.
+                  users.name AS answered_by
              FROM guest_feedback
-            WHERE DATE(submitted_at) >= ? ORDER BY submitted_at DESC""",
+             LEFT JOIN users
+                    ON users.id = guest_feedback.acknowledged_by_user_id
+            WHERE DATE(guest_feedback.submitted_at) >= ?
+            ORDER BY guest_feedback.submitted_at DESC""",
         (since,)).fetchall()
 
     waits, waiting, answered = [], [], []
@@ -18956,7 +18977,8 @@ def review_reply_times(conn, days=365):
             continue
         item = {"who": r["guest_name"] or "A guest", "rating": r["rating"],
                 "said": (r["comment"] or "")[:140], "when": asked.isoformat(),
-                "poor": (r["rating"] or 5) <= 3}
+                "poor": (r["rating"] or 5) <= 3,
+                "answered_by": r["answered_by"]}
         answered_at = house_date(r["replied_at"]) or house_date(r["acknowledged_at"])
         if answered_at:
             item["days"] = (answered_at - asked).days
@@ -28265,7 +28287,13 @@ def pos_journal_page():
     # inspector asks first.
     gaps = receipt_sequence_gaps(conn)
     closures = conn.execute(
-        "SELECT * FROM pos_closures ORDER BY closed_at DESC LIMIT 30").fetchall()
+        # Who cashed up. Recorded on every closure since the table existed
+        # and joined by nothing, so the question an accountant asks first --
+        # who counted this -- had no answer on the page that shows it.
+        """SELECT pos_closures.*, users.name AS closed_by
+             FROM pos_closures
+             LEFT JOIN users ON users.id = pos_closures.closed_by_user_id
+            ORDER BY pos_closures.closed_at DESC LIMIT 30""").fetchall()
     perpetual = pos_perpetual_total(conn)
     total_events = conn.execute("SELECT COUNT(*) AS c FROM pos_journal").fetchone()["c"]
     conn.close()
@@ -51304,9 +51332,16 @@ def mileage():
         return redirect(url_for("mileage"))
 
     is_owner = user["role"] == "owner"
-    query = """SELECT mileage_claims.*, users.name AS who
+    # Two names, not one. `who` is the person who made the journey; the
+    # decision to pay for it is somebody else's, recorded since the column
+    # existed and joined by nothing -- so "who approved this" had no answer
+    # on the page that shows the approval.
+    query = """SELECT mileage_claims.*, users.name AS who,
+                      decider.name AS decided_by
                  FROM mileage_claims
-                 LEFT JOIN users ON users.id = mileage_claims.user_id"""
+                 LEFT JOIN users ON users.id = mileage_claims.user_id
+                 LEFT JOIN users AS decider
+                        ON decider.id = mileage_claims.decided_by_user_id"""
     params = []
     if not is_owner:
         query += " WHERE mileage_claims.user_id = ?"

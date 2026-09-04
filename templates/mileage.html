@@ -67,6 +67,9 @@
             </form>
             {% else %}
             {{ c['status'] }}
+            {# Who decided it. A journey approved by nobody in particular is a
+               payment nobody can be asked about. #}
+            {% if c['decided_by'] %}<span class="upload-hint">by {{ c['decided_by'] }}</span>{% endif %}
             {% if is_owner and c['status'] == 'approved' %}
             <form method="post" action="{{ url_for('decide_mileage', claim_id=c['id']) }}" style="display:inline;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
