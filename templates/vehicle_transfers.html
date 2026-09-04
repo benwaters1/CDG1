@@ -41,6 +41,13 @@
       <option value="{{ d['id'] }}">{{ d['name'] }}</option>
       {% endfor %}
     </select>
+    {# TRANSFER_TYPES: eight kinds of journey, defined and never asked, so
+       every run the house has ever made is recorded as an airport transfer. #}
+    <select name="transfer_type">
+      {% for key, label in transfer_types.items() %}
+      <option value="{{ key }}">{{ label }}</option>
+      {% endfor %}
+    </select>
     <input type="text" name="notes" placeholder="Notes (optional)">
     <button type="submit" class="btn-mini">Log transfer</button>
   </form>

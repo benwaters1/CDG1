@@ -16,6 +16,16 @@
       {% endfor %}
     </datalist>
     {% endif %}
+    {# EXPENSE_DOC_TYPES has been defined and handed to every template since it
+       was written, and offered on no form — so every document in the database
+       is filed as a bill the house still owes, including receipts for things
+       already paid for, which then age in the payables figure. #}
+    <label class="field-label" for="ex_doc_type">What kind of document</label>
+    <select id="ex_doc_type" name="doc_type">
+      {% for key, label in expense_doc_types.items() %}
+      <option value="{{ key }}">{{ label }}</option>
+      {% endfor %}
+    </select>
     <label class="field-label">Description</label>
     <textarea name="description" required placeholder="What was purchased and why"></textarea>
     <label class="field-label" for="ex_amount">Amount (€)</label>

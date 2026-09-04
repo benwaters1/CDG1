@@ -32355,11 +32355,14 @@ def submit_expense():
         conn = get_db()
         conn.execute(
             """INSERT INTO expenses
-               (kind, submitted_by_user_id, vendor_name, description, amount, filename, vehicle_id, restaurant_related, spent_on, submitted_at)
-               VALUES ('staff_expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (kind, submitted_by_user_id, vendor_name, description, amount,
+                filename, vehicle_id, restaurant_related, spent_on, doc_type,
+                submitted_at)
+               VALUES ('staff_expense', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user["id"], vendor_name or None, description, amount, stored_name,
              vehicle_id or None, restaurant_related,
              spent_on.isoformat() if spent_on else None,
+             expense_doc_type(request.form.get("doc_type")),
              datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -56151,11 +56154,17 @@ def edit_vehicle(vehicle_id):
                else None)
     conn.execute(
         """UPDATE vehicles SET name = ?, vehicle_type = ?, fuel_type = ?, license_plate = ?,
-           next_service_due = ?, ct_expires_on = ?, odometer_km = ?,
+           next_service_due = ?, ct_expires_on = ?, ct_note = ?, odometer_km = ?,
            odometer_read_at = COALESCE(?, odometer_read_at), off_road = ?,
            notes = ? WHERE id = ?""",
         (name, vehicle_type or None, fuel_type or None, license_plate or None,
-         next_service_due or None, ct_expires_on or None, odometer, read_at, off_road,
+         next_service_due or None, ct_expires_on or None,
+         # What the last contrôle technique actually said. The date has been
+         # asked for and warned about since this was built; the note beside it
+         # was asked for by nothing -- and it is the half that matters between
+         # tests, because the advisories are what fail it next time.
+         (request.form.get("ct_note", "") or "").strip()[:400] or None,
+         odometer, read_at, off_road,
          notes or None, vehicle_id),
     )
     log_audit(conn, "vehicle_edited", target=name)
@@ -56486,10 +56495,18 @@ def new_vehicle_transfer(vehicle_id):
         return redirect(url_for("vehicle_transfers_page", vehicle_id=vehicle_id))
     conn = get_db()
     conn.execute(
-        """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction, scheduled_at, driver_user_id, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction,
+                   scheduled_at, driver_user_id, notes, transfer_type, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (vehicle_id, guest_name or None, direction, scheduled_at_utc,
          int(driver_user_id) if driver_user_id.isdigit() else None, notes or None,
+         # Eight kinds of journey were defined and every row was filed as an
+         # airport run, because no form asked. Falls back to the column's own
+         # default rather than to nothing, so an old client posting without
+         # the field behaves exactly as it did.
+         (request.form.get("transfer_type", "") or "").strip()
+         if (request.form.get("transfer_type", "") or "").strip()
+         in TRANSFER_TYPES else "airport",
          datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
@@ -63042,6 +63059,26 @@ def staff_reimbursements_owed(conn, today=None):
             "total": round(sum(p["total"] for p in by_person.values()), 2)}
 
 
+def expense_doc_type(raw):
+    """A document type from a form, or the safe default.
+
+    'bill_to_pay' when the answer is missing or unrecognised, deliberately.
+    Every row written before this was asked carries that value, and treating
+    an unanswered question as "already paid" would quietly remove real
+    liabilities from what the house believes it owes -- the same error as
+    counting paid receipts, in the direction nobody notices.
+    """
+    value = (raw or "").strip()
+    return value if value in EXPENSE_DOC_TYPES else "bill_to_pay"
+
+
+# The document types that are actually money the house still owes. A receipt
+# for a small purchase and a bill already settled are records, not debts, and
+# counting them makes the payables figure too high -- which is the number
+# somebody looks at before paying something twice.
+PAYABLE_DOC_TYPES = ("bill_to_pay",)
+
+
 def payables_ageing(conn, today=None):
     """What the house owes suppliers, and how late it is.
 
@@ -63057,7 +63094,15 @@ def payables_ageing(conn, today=None):
             WHERE expenses.kind = 'supplier_invoice'
               AND expenses.status IN ('pending', 'approved')
               AND expenses.paid_at IS NULL
-            ORDER BY COALESCE(expenses.due_date, '9999-12-31'), expenses.id""").fetchall()
+              -- Only the documents that ARE bills. A photograph of a receipt
+              -- for something settled at the counter was ageing in here as an
+              -- outstanding payable until somebody marked a paid_at on a bill
+              -- that had never been owed.
+              AND COALESCE(expenses.doc_type, 'bill_to_pay') IN
+                  ({payable_marks})
+            ORDER BY COALESCE(expenses.due_date, '9999-12-31'), expenses.id""".format(
+            payable_marks=",".join("?" * len(PAYABLE_DOC_TYPES))),
+        PAYABLE_DOC_TYPES).fetchall()
     for r in rows:
         due = parse_date(r["due_date"]) if r["due_date"] else None
         if not due:
