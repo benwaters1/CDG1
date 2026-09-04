@@ -1,0 +1,31 @@
+# Old Squarespace paths → new routes
+#
+# These are still in Google, in old newsletters and on other people's blogs.
+# The 404 page lists them for a human; this is the machine-readable version.
+# Add to app.py as permanent (301) redirects.
+#
+# old path              new endpoint
+/rooms                  book_rooms
+/accommodation          book_rooms
+/bedrooms               book_rooms
+/stay                   book_rooms
+/book                   book_rooms
+/workshops              workshops_public
+/courses                workshops_public
+/retreats               workshops_public
+/ateliers               workshops_public
+/dining                 restaurant_info
+/food                   restaurant_info
+/restaurant             restaurant_info
+/la-table               restaurant_info
+/the-chateau            restoration_page
+/about                  restoration_page
+/history                restoration_page
+/blog                   gallery_page
+/journal                gallery_page
+/news                   gallery_page
+/gallery                gallery_page
+/weddings               events_weddings
+/events                 events_info
+/contact-us             contact_page
+/visit                  facilities_page

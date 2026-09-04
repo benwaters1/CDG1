@@ -61748,6 +61748,97 @@ def preview_home():
     return render_template('home.html')
 
 
+# ---------------------------------------------------------------------------
+# The addresses the site used to have
+# ---------------------------------------------------------------------------
+#
+# Twenty-four Squarespace paths that are still in Google, in old newsletters
+# and on other people's blogs. Every one of them has been a 404 since the site
+# moved, which loses the visit and the ranking with it.
+#
+# The list is REDIRECTS.txt, which the design side maintains and hands over
+# with the templates -- read at boot rather than copied in here, because a
+# second copy is a second thing to update and only one of them would be.
+#
+# A path that is already a real route is skipped rather than overriding it.
+# Five of the twenty-four are in that position: /book, /workshops, /restaurant,
+# /gallery and /events already resolve to the page the list wants, so a
+# redirect would at best do nothing and at worst claim an address a working
+# view already answers on. Two routes claiming one address is a fault this
+# app has had before and it does not announce itself.
+
+REDIRECTS_FILE = os.path.join(BASE_DIR, "REDIRECTS.txt")
+
+
+def read_old_paths(path=None):
+    """[(old_path, endpoint)] from the handover file. Never raises.
+
+    Deliberately forgiving: a malformed line is skipped rather than taking the
+    site down at import. The file arrives from outside this repository, and a
+    stray line in it is not a reason for the château to stop answering.
+    """
+    out = []
+    try:
+        body = io.open(path or REDIRECTS_FILE, encoding="utf-8").read()
+    except OSError:
+        return out
+    for line in body.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        old, endpoint = parts
+        if old.startswith("/") and endpoint.isidentifier():
+            out.append((old, endpoint))
+    return out
+
+
+def register_old_paths(entries=None, dry_run=False):
+    """Wire each old address to a 301. Returns what it did.
+
+    301 rather than 302 on purpose: a search engine only moves the ranking
+    across for a permanent one, and moving the ranking is most of the point.
+
+    `entries` and `dry_run` exist for the test. The interesting branch here is
+    the one that refuses a line naming a page that does not exist -- without
+    it, url_for raises BuildError and one bad line in a handed-over file is a
+    500 on that address. That branch cannot be reached by the live file, which
+    is correct, so it can only be checked by asking about a made-up one; and
+    asking must not leave a route behind, because a suite that runs after this
+    one would then be measuring an app this test invented.
+    """
+    live = {r.rule for r in app.url_map.iter_rules()}
+    known = {r.endpoint for r in app.url_map.iter_rules()}
+    added, skipped = [], []
+
+    for old, endpoint in (read_old_paths() if entries is None else entries):
+        if old in live:
+            skipped.append((old, endpoint, "already a route"))
+            continue
+        if endpoint not in known:
+            # Named a page that does not exist. Says so rather than failing at
+            # boot: the file is written by hand somewhere else, and a typo in
+            # it should cost one redirect, not the site.
+            skipped.append((old, endpoint, "no such endpoint"))
+            continue
+
+        def _go(_endpoint=endpoint):
+            return redirect(url_for(_endpoint), code=301)
+
+        _go.__name__ = "old_path_%s" % old.strip("/").replace("-", "_")
+        if not dry_run:
+            app.add_url_rule(old, _go.__name__, _go)
+        live.add(old)
+        added.append((old, endpoint))
+
+    return {"added": added, "skipped": skipped}
+
+
+OLD_PATHS = register_old_paths()
+
+
 @app.errorhandler(404)
 def not_found(e):
     """A mistyped address, or a manage link that has expired.

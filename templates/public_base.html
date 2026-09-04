@@ -1064,5 +1064,45 @@
   if (mq.addEventListener) mq.addEventListener('change', apply);
 })();
 </script>
+
+{# A phone reaching screen 19 of 42 to find the booking action is a phone that
+   has already left. This appears the moment the hero scrolls away. #}
+{# book_ROOMS as well as book_room. The list had the single-room page but
+   not the one at /book, so the bar sat on the booking page offering
+   "Check dates" as a link to the page it was already on. #}
+{% if request and request.endpoint not in
+     ('book_rooms','book_room','booking_confirmation','find_booking') %}
+<div class="g-mobar" role="complementary" aria-label="Book">
+  <p class="g-mobar__p"><b>From €220</b> a night, breakfast included</p>
+  <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check dates</a>
+</div>
+{% endif %}
+
+<script>
+/* Reference sections fold on a phone. A <section> cannot be a <details>, so
+   the heading toggles a class. Desktop never runs this — the sections are
+   open there and the length is affordable. */
+(function(){
+  if (!window.matchMedia('(max-width: 44rem)').matches) return;
+  document.querySelectorAll('.g-sec[data-fold]').forEach(function(s){
+    s.setAttribute('tabindex','0');
+    s.setAttribute('role','button');
+    s.setAttribute('aria-expanded','false');
+    var t = s.querySelector('h2');
+    if (t) s.setAttribute('aria-label', t.textContent.trim());
+    function go(){
+      var open = s.classList.toggle('is-open');
+      s.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    s.addEventListener('click', function(e){
+      if (e.target.closest('a,button,input,select,summary')) return;
+      go();
+    });
+    s.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+    });
+  });
+})();
+</script>
 </body>
 </html>

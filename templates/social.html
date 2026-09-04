@@ -1,4 +1,11 @@
 {% extends "public_base.html" %}
+{# Both halves of this were wrong when it arrived: 'chateau.facade' is not
+   one of the fifteen slots, and img/og-default.jpg has never existed. So
+   the tag resolved to a 404 and every share of this page showed a broken
+   preview -- which nothing reports, because the URL is only ever fetched
+   by somebody else's server. home.hero is the real slot; the file beside
+   it is the one that is actually in static/img. #}
+{% block og_image %}{{ site_image('home.hero') or url_for('static', filename='img/chateau_facade_formal.jpg', _external=True) }}{% endblock %}
 {% block title %}From Instagram{% endblock %}
 {% block description %}What is open at Château de Gudanes right now — rooms, ateliers, the table, and what has just come out from under the plaster.{% endblock %}
 {% block robots %}<meta name="robots" content="noindex, follow">{% endblock %}

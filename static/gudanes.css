@@ -6683,3 +6683,97 @@ body.at-top.has-hero:not(:has(main > .g-crumbs:first-child)) .g-logo img{
 .g-extras-fold > summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
 .g-extras-fold[open] > summary{ border-bottom-color: var(--gilt); }
 .g-extras-fold .g-sec{ padding-top: var(--s5); border: 0; }
+
+/* ==========================================================================
+   THE PHONE — items 1, 2 and 3
+   Every length I measured this session was desktop. On a phone Stay is 42
+   screens and Restoration 37, because a two-column block becomes two stacked
+   blocks and a wide table becomes a tall one.
+
+   None of this changes the desktop layout. It changes what a phone has to
+   scroll past to reach the thing it came for.
+   ========================================================================== */
+@media (max-width: 44rem){
+
+  /* 2 — the long reference sections fold. Someone on a phone who wants the
+     FAQ can open it; everyone else scrolls one line instead of eight screens.
+     Desktop keeps them open, because there the length is affordable. */
+  .g-faq2, .g-keyinfo, .g-extras-fold, .g-plate--long,
+  .g-sec[data-fold] > .g-wrap > :not(h2):not(.g-eyebrow):not(.g-fr){
+    display: none;
+  }
+  .g-sec[data-fold]{ padding-bottom: var(--s5); }
+  .g-sec[data-fold] > .g-wrap::after{
+    content: "Tap to read"; display: block; margin-top: var(--s3);
+    font-family: var(--ui); font-size: var(--t-sm); color: var(--gilt);
+  }
+  .g-sec[data-fold].is-open > .g-wrap > *{ display: revert; }
+  .g-sec[data-fold].is-open > .g-wrap::after{ content: "Tap to close"; }
+  .g-sec[data-fold]{ cursor: pointer; }
+  .g-sec[data-fold]:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2px; }
+
+  /* Sections carried desktop padding on a phone, so every one of thirty cost
+     an extra third of a screen in whitespace alone. */
+  .g-sec{ padding-top: var(--s6); padding-bottom: var(--s6); }
+  .g-sec--tight{ padding-top: var(--s5); padding-bottom: var(--s5); }
+
+  /* Marks are a desktop grace note. On a phone thirty of them are thirty
+     scroll events for no information. */
+  .g-mark__wrap{ display: none; }
+
+  /* A two-column plate stacks to double height. The label goes inline. */
+  .g-plate__l > div{ grid-template-columns: 1fr; gap: 1px; }
+  .g-plate__l dt{ font-size: var(--t-sm); }
+
+  /* 3 — the one booking action was at screen 19 of 42, which on a phone means
+     it does not exist. A bar that appears once the hero has gone. */
+  .g-mobar{
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    display: flex; align-items: center; gap: var(--s3);
+    padding: var(--s3) var(--s4);
+    padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom, 0px));
+    background: var(--blue-deep); color: #fff;
+    transform: translateY(110%); transition: transform .22s ease;
+  }
+  body:not(.at-top) .g-mobar{ transform: translateY(0); }
+  .g-mobar__p{ margin: 0; flex: 1 1 auto; font-family: var(--ui); font-size: var(--t-sm); color: #C9D4DF; }
+  .g-mobar__p b{ display: block; font-family: var(--display); font-size: var(--t-lede); color: #fff; }
+  .g-mobar .g-btn{ flex: 0 0 auto; min-height: 46px; }
+  main{ padding-bottom: 5rem; }   /* clear of the bar */
+}
+@media (min-width: 44.01rem){ .g-mobar{ display: none; } }
+
+/* On a phone the five room cards are 5.3 screens and the numbers table 3.2 —
+   more than a fifth of the page between them, and both are lists a phone
+   reads badly as a tall column. */
+@media (max-width: 44rem){
+
+  /* The cards swipe sideways instead of stacking. Five rooms becomes one
+     screen with four more a thumb away, which is how a phone expects a set
+     of options to behave. */
+  .g-cards{
+    display: grid; grid-auto-flow: column;
+    grid-auto-columns: min(92%, 22rem);
+    gap: var(--s4);
+    overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    padding-bottom: var(--s4);
+    margin-inline: calc(-1 * var(--s5));
+    padding-inline: var(--s5);
+    scrollbar-width: none;
+  }
+  .g-cards::-webkit-scrollbar{ display: none; }
+  .g-cards > .g-card{ scroll-snap-align: start; grid-column: auto !important; }
+  .g-cards > .g-card:last-child:nth-child(odd){ grid-column: auto !important; }
+  .g-cards__hint{
+    display: block; margin-top: var(--s2);
+    font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft);
+  }
+
+  /* The comparison table scrolls rather than wrapping every cell onto four
+     lines. The room name stays put so a column still means something. */
+  main table{ display: block; overflow-x: auto; white-space: nowrap; }
+  main tbody th{ position: sticky; left: 0; background: var(--sand); z-index: 1; white-space: normal; min-width: 9rem; }
+  main thead th{ position: static; }
+}
+@media (min-width: 44.01rem){ .g-cards__hint{ display: none; } }

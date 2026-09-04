@@ -89,6 +89,8 @@ SUITES = [
     "test_card_and_rate",
     "test_seven_gaps",
     "test_photo_mirror",
+    "test_old_paths",
+    "test_booking_bar",
     "test_house_day",
     "test_house_operations",
     "test_house_reports",
