@@ -192,6 +192,37 @@ def run():
 
     _cleanup(conn)
     conn.close()
+    s.section("The room deposit never comes from the restaurant's settings")
+    # `settings` on a room page is the RESTAURANT settings row, and it has a
+    # deposit_percent column of its own. A template reading it there is not
+    # reading a missing key -- it is reading the wrong half of the business.
+    # It is None today, which is why the fallback fired instead; set a dinner
+    # deposit and the room page would quietly start quoting it at people
+    # booking a bed. Twice now a new component has done this.
+    import glob as _g
+    import os as _o
+    import re as _re
+    ROOM_PAGES = ("book_room.html", "book_rooms.html", "_before.html",
+                  "_nights_calc.html", "_paydates.html", "_weekcost.html",
+                  "_stay_panel.html", "home.html")
+    wrong = []
+    for path in _g.glob(_o.path.join(_harness.ROOT, "templates", "*.html")):
+        name = _o.path.basename(path)
+        if name not in ROOM_PAGES:
+            continue
+        body = open(path, encoding="utf-8").read()
+        # Only inside a Jinja expression. The comment explaining why this is
+        # wrong names the string, and a check that fails on its own
+        # explanation is one somebody deletes.
+        for expr in _re.findall(r"\{[{%](.*?)[}%]\}", body, _re.S):
+            if "settings['deposit_percent']" in expr:
+                wrong.append(name)
+                break
+    s.check("no room page reads a deposit out of the restaurant settings",
+            not wrong,
+            detail=", ".join(wrong) + " — the room figure comes from the route, "
+                   "through deposit_percent_to_show")
+
     return s
 
 

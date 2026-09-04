@@ -714,7 +714,11 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var f=document.getElementById('book-form'), box=document.querySelector('[data-review]');
   if(!f||!box) return;
   var RATE = Number(box.dataset.rate || {{ (room['price_per_night'] or 0)|int }});
-  var PCT  = Number({{ (settings['deposit_percent'] if settings and settings['deposit_percent'] else 30)|int }});
+  {# From the route, like the panel above it. This read the RESTAURANT's
+     deposit -- `settings` on a room page is the restaurant settings row --
+     and fell back to 30 when it was unset, so the calculator quoted a
+     deposit this house does not take. #}
+  var PCT  = Number({{ (deposit_shown or 0)|round|int }});
   var eur = function(n){ return '€' + Math.round(n).toLocaleString('en-GB'); };
   var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   var fmt = function(iso){

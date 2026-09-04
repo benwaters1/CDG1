@@ -774,32 +774,7 @@
 
 
 <!-- ============ WHAT A NIGHT INCLUDES ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">In the Rate</p>
-  <h2 class="g-place">What a Night Actually Includes</h2>
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">Included</h3>
-      <ul class="g-ticks">
-        <li>Breakfast, cooked, not a buffet</li>
-        <li>The gardens, the pool and the tennis court</li>
-        <li>Wi-fi in the finished rooms</li>
-        <li>Parking on the gravel</li>
-        <li>Someone to meet you at the gates</li>
-      </ul>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Extra</h3>
-      <ul class="g-ticks g-ticks--no">
-        <li>Dinner at La Table — one sitting, on the nights it runs</li>
-        <li>Anything from the thirteen additions below</li>
-        <li>The taxe de séjour, charged per adult per night</li>
-        <li>Transfers from Toulouse</li>
-      </ul>
-    </div>
-  </div>
-  <p class="g-limit"><span class="g-limit__k">Ensuites</span>Bathrooms are private but along the corridor. Ensuites are not permitted in a monument of this class, and we would rather say so before you arrive.</p>
-</div></section>
+
 
 
 <!-- ============ THE ROOMS, AS FACTS ============ -->
@@ -839,44 +814,7 @@
 
 
 <!-- ============ NO DATES YET ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-fr">Pas encore de dates<span class="g-fr__en">No dates yet</span></p>
-  <p class="g-eyebrow">If You Are Still Deciding</p>
-  <h2 class="g-place">Tell Us Roughly When</h2>
-  <p class="g-p g-lede-first">Most people arrive here knowing the month and not the week. That is a real enquiry and there was nowhere to put it — until now.</p>
 
-  <form class="g-nodate" method="post" action="{{ url_for('contact_page') }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="subject" value="Rough dates">
-    <div class="g-row">
-      <p class="g-field g-field--narrow">
-        <label for="nd_month">Roughly when</label>
-        <select id="nd_month" name="rough_month" required>
-          <option value="">— choose —</option>
-          {% for m in ['January','February','March','April','May','June','July',
-                       'August','September','October','November','December'] %}
-          <option value="{{ m }}">{{ m }}</option>
-          {% endfor %}
-          <option value="Flexible">I am flexible</option>
-        </select>
-      </p>
-      <p class="g-field g-field--narrow">
-        <label for="nd_nights">How many nights</label>
-        <input type="number" id="nd_nights" name="rough_nights" min="1" max="21" value="3" inputmode="numeric">
-      </p>
-      <p class="g-field g-field--narrow">
-        <label for="nd_people">How many of you</label>
-        <input type="number" id="nd_people" name="rough_people" min="1" max="15" value="2" inputmode="numeric">
-      </p>
-    </div>
-    <p class="g-field">
-      <label for="nd_email">Where to write back</label>
-      <input type="email" id="nd_email" name="email" required autocomplete="email">
-    </p>
-    <button type="submit" class="g-btn g-btn--solid">Send this</button>
-    <p class="g-hint">We will come back with what is free around then, and what it costs. No newsletter attached.</p>
-  </form>
-</div></section>
 
 <!-- ============ KEY INFORMATION ============ -->
 <section class="g-sec g-sec--sand"><div class="g-wrap">
