@@ -62,6 +62,14 @@ os.environ["GUDANES_DB_PATH"] = SCRATCH_DB
 # stops the tests littering a directory the app itself uses.
 SCRATCH_UPLOADS = tempfile.mkdtemp(prefix="gudanes_test_uploads_")
 os.environ["GUDANES_UPLOAD_DIR"] = SCRATCH_UPLOADS
+
+# The mirrored photographs get it too, for the reason above and one more: the
+# copies are the ONLY copy. A test writing a stub file under the name of a real
+# photograph would silently replace it, the coverage page would go on saying
+# the house holds that picture, and the page would show eighteen bytes of
+# nothing where the salon used to be.
+SCRATCH_MIRROR = tempfile.mkdtemp(prefix="gudanes_test_mirror_")
+os.environ["GUDANES_MIRROR_DIR"] = SCRATCH_MIRROR
 # Never let a test reach the payment provider, whatever is in .env.
 for _k in ("STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"):
     os.environ.pop(_k, None)
@@ -78,6 +86,7 @@ def _cleanup():
     # on Windows is not worth failing a finished run over, and the directory is
     # under the system temp folder either way.
     shutil.rmtree(SCRATCH_UPLOADS, ignore_errors=True)
+    shutil.rmtree(SCRATCH_MIRROR, ignore_errors=True)
 
 
 import app as m  # noqa: E402  — must follow the env setup above
@@ -193,6 +202,14 @@ m.anthropic.Anthropic = _refuse(
     "every call costs money and ships the document off this machine; stand in "
     "for the helper the route calls, not for claude_configured")
 
+# The photograph mirror. This one needs no key and costs nothing, which is the
+# category that gets left out -- the same argument as the weather, and it is
+# worse here: a run that reached it would pull ninety-three images down and
+# write them to the data volume as a side effect of testing a coverage figure.
+m.fetch_one_image = _refuse(
+    "the Squarespace CDN",
+    "stand in for fetch_one_image in the test; a real run downloads 93 images")
+
 # Proof, rather than the assumption this file used to make. Each of these was
 # true only by accident of what happens to be in .env on one machine.
 assert not m.stripe_enabled(), "Stripe is still enabled under test"
@@ -206,6 +223,9 @@ assert m.fetch_weather.__name__ == "_blocked", (
     "nothing, which is why it is the one that gets forgotten")
 assert m.webpush.__name__ == "_blocked", (
     "the browser push send is not blocked under test")
+assert m.fetch_one_image.__name__ == "_blocked", (
+    "the photograph mirror is not blocked under test — it needs no key, which "
+    "is why it is the kind that gets forgotten")
 assert not m.claude_configured(), (
     "ANTHROPIC_API_KEY is still set under test — app.py read it into a module "
     "global at import, and _load_dotenv puts the environment variable back, so "
@@ -236,6 +256,11 @@ assert m.DB_PATH == SCRATCH_DB, (
 assert m.UPLOAD_DIR == SCRATCH_UPLOADS, (
     f"tests would have written uploads into {m.UPLOAD_DIR} — refusing. "
     "The GUDANES_UPLOAD_DIR override in app.py is missing or was overwritten."
+)
+
+assert m.MIRROR_DIR == SCRATCH_MIRROR, (
+    f"tests would have written into {m.MIRROR_DIR} — refusing. That directory "
+    "holds the only copy of the site's photographs."
 )
 
 

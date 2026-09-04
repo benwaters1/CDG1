@@ -9,6 +9,11 @@
 # Uploaded files — move to a Railway persistent volume, not the repo
 uploads/
 room_photos/
+# Copies of the site's photographs, taken so the house stops depending on
+# a Squarespace account it no longer publishes from. Ninety-three images
+# is not a repository anybody can clone — they belong on the volume
+# beside the database, which is where DATA_DIR puts them.
+mirrored/
 
 # Local runtime / logs
 __pycache__/

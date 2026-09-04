@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}The site's photographs{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>The site's photographs</h1>
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('admin_images') }}" class="btn-ghost">Change a picture</a>
+    <a href="{{ url_for('admin_readiness') }}" class="btn-ghost">Go-live checklist</a>
+  </div>
+</div>
+
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Every photograph on the public pages &mdash; and the logo at the top of all of them &mdash; is
+  loaded from a Squarespace account the ch&acirc;teau no longer publishes from. Nothing is wrong
+  with that until the day the account lapses, and then the site loses all of them in the same
+  minute. This page takes a copy of each one onto the ch&acirc;teau's own server and serves that
+  copy instead. The pages are not edited to do it, so the next redesign cannot undo it.
+</p>
+
+<p class="pay-disclaimer">
+  This is not the page for <em>changing</em> a picture &mdash; that is
+  <a href="{{ url_for('admin_images') }}">Change a picture</a>, where each place on the site is
+  named and you upload what should be there. This page is about not losing the ones nobody has
+  changed.
+</p>
+
+<div class="stat-tiles">
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.percent }}%</span>
+    <span class="stat-tile-label">Of the site would survive that account closing</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ data.held }}</span>
+    <span class="stat-tile-label">Of {{ data.wanted|length }} photographs held here</span></span></div>
+  <div class="stat-tile"><span class="stat-tile-body">
+    <span class="stat-tile-value">{{ (data.bytes / 1048576)|round(1) }} MB</span>
+    <span class="stat-tile-label">On the ch&acirc;teau's disk</span></span></div>
+</div>
+
+{% if not data.wanted %}
+  <p class="empty-state">
+    Nothing on the site points at a server the ch&acirc;teau does not control. That is the end
+    state this page exists to reach.
+  </p>
+{% elif data.safe %}
+  <p class="empty-state">
+    All {{ data.wanted|length }} are held here. The public pages would look exactly the same
+    tomorrow if that account were closed tonight.
+  </p>
+{% else %}
+  <form method="post" action="{{ url_for('fetch_photo_mirror') }}" style="margin:18px 0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="btn-primary">
+      Copy the {{ data.missing|length }} remaining onto our server
+    </button>
+    <span class="pay-disclaimer" style="display:block; margin-top:8px;">
+      This fetches for about twenty seconds and then comes back, however many that turns out to
+      be, so the page cannot time out mid-way. Press it again to carry on.
+    </span>
+  </form>
+{% endif %}
+
+{% if data.errors %}
+<h2 style="margin-top:28px;">Would not come down</h2>
+<p class="pay-disclaimer">
+  These were asked for and refused. A photograph already deleted from that account is one the
+  ch&acirc;teau has lost either way &mdash; better to know now than on the day the site goes blank.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Photograph</th><th>What happened</th></tr></thead>
+    <tbody>
+      {% for e in data.errors %}
+      <tr>
+        <td style="word-break:break-all; font-size:0.85em;">{{ e.source_url }}</td>
+        <td>{{ e.last_error }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if data.orphans %}
+<h2 style="margin-top:28px;">No longer on the site</h2>
+<p class="pay-disclaimer">
+  {{ data.orphans|length }} photograph{{ '' if data.orphans|length == 1 else 's' }} the
+  ch&acirc;teau holds a copy of that no page asks for any more &mdash; dropped in a redesign, or
+  the address corrected. They are kept, not deleted: a picture taken out of the site is still a
+  picture of the house, and once that account goes this may be the only copy of it left. They do
+  not count towards the figure above.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Photograph</th></tr></thead>
+    <tbody>
+      {% for u in data.orphans %}
+      <tr><td style="word-break:break-all; font-size:0.85em;">{{ u }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if data.missing %}
+<h2 style="margin-top:28px;">Not held yet</h2>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>Photograph</th></tr></thead>
+    <tbody>
+      {% for u in data.missing %}
+      <tr><td style="word-break:break-all; font-size:0.85em;">{{ u }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<p class="pay-disclaimer" style="margin-top:28px;">
+  Copies live on the data volume beside the room photographs, not in the code &mdash;
+  {{ data.wanted|length }} photographs is a repository nobody could clone. To do the whole lot at
+  once without a browser waiting on it, run <code>python tools/mirror_images.py</code> on the
+  server.
+</p>
+
+{% endblock %}
