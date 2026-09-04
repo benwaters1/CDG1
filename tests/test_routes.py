@@ -106,11 +106,10 @@ def run():
         # A data endpoint that requires query parameters answers 400 without
         # them, and that is the correct answer, not a broken page. Everything
         # else must still land in the normal range.
-        # 301 belongs here as much as 302 does. The old Squarespace
-        # addresses answer permanently, because a search engine only
-        # moves the ranking across for a permanent one -- and this list
-        # accepting the temporary code but not the permanent one was an
-        # omission, not a rule.
+        #
+        # 301 included since the old Squarespace addresses were wired up. A
+        # permanent redirect is the most definite answer in the file, and it
+        # was reading here as a page that had broken.
         allowed = ((200, 301, 302, 304, 400, 404) if path.startswith("/api/")
                    else (200, 301, 302, 304, 404))
         if code >= 500 or code not in allowed:

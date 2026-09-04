@@ -1,0 +1,97 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}Your quote — Château de Gudanes{% endblock %}
+{# One couple's money and one couple's day, on a link they were sent. Never
+   indexed, the same rule as a guest's bill. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+
+<div class="page-head">
+  <h1>Your quote</h1>
+</div>
+
+<p class="g-p">
+  {{ event['event_type']|capitalize }} for {{ event['contact_name'] }}
+  {%- if event['preferred_date'] %} on {{ event['preferred_date'] }}
+  {%- if event['end_date'] and event['end_date'] != event['preferred_date'] %} to {{ event['end_date'] }}{% endif %}{% endif %}
+  · {{ event['reference_code'] }}
+  {%- if quote['version'] > 1 %} · quote {{ quote['version'] }}{% endif %}
+</p>
+
+<div class="statement">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">
+            The day
+            {%- if quote['guest_count'] %}, {{ quote['guest_count'] }} guests{% endif %}
+          </th>
+          <td>&euro;{{ '%.2f'|format(quote['quoted_price']) }}</td>
+        </tr>
+        {% if quote['discount_amount'] %}
+        <tr><th scope="row">Discount</th><td>&minus;&euro;{{ '%.2f'|format(quote['discount_amount']) }}</td></tr>
+        {% endif %}
+        <tr><th scope="row"><strong>Total</strong></th><td><strong>&euro;{{ '%.2f'|format(net) }}</strong></td></tr>
+        {% if quote['deposit_amount'] %}
+        <tr><th scope="row">To accept, the deposit</th><td>&euro;{{ '%.2f'|format(quote['deposit_amount']) }}</td></tr>
+        {% endif %}
+        {% if quote['balance_due_date'] %}
+        <tr><th scope="row">The rest, by</th><td>{{ quote['balance_due_date'] }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if quote['spaces'] or quote['arrival_time'] or quote['carriages_time'] %}
+  <p class="g-hint">
+    {%- if quote['spaces'] %}{{ quote['spaces'] }}{% endif %}
+    {%- if quote['arrival_time'] %} · from {{ quote['arrival_time'] }}{% endif %}
+    {%- if quote['carriages_time'] %} · until {{ quote['carriages_time'] }}{% endif %}
+  </p>
+  {% endif %}
+
+  {% if quote['includes'] %}
+  <h2>What it covers</h2>
+  <p class="g-p" style="white-space:pre-wrap;">{{ quote['includes'] }}</p>
+  {% endif %}
+
+  {# The words that were in front of them the day they accepted. Copied onto
+     the quote rather than looked up when it is read, so editing the house
+     wording can never change what somebody already agreed to. #}
+  <h2>The terms</h2>
+  <p class="g-hint" style="white-space:pre-wrap;">{{ quote['terms'] }}</p>
+
+  {% if quote['status'] == 'accepted' %}
+  <p class="g-p">
+    <strong>Accepted{% if quote['accepted_name'] %} by {{ quote['accepted_name'] }}{% endif %}
+    on {{ quote['accepted_at']|house_day }}.</strong>
+    We will be in touch about the deposit. Nothing further is needed from you
+    today.
+  </p>
+  {% elif quote['status'] == 'superseded' %}
+  <p class="g-hint">
+    This quote has been replaced by a newer one, so it can no longer be
+    accepted. It is kept here so you can see what it said. If you have not had
+    the new one, do tell us.
+  </p>
+  {% else %}
+  <form method="post" action="{{ url_for('event_quote', token=quote['token']) }}">
+    <label class="field-label" for="accepted_name">Your name</label>
+    <input type="text" id="accepted_name" name="accepted_name" maxlength="120" required
+           placeholder="The name this is agreed in">
+    <p class="g-hint">
+      Typing your name and accepting is what makes this the agreement between
+      us. We keep the date and your name against it.
+    </p>
+    <button type="submit" class="g-btn g-btn--solid">Accept this quote</button>
+  </form>
+  {% endif %}
+</div>
+
+</div></section>
+
+{% endblock %}

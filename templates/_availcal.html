@@ -10,17 +10,18 @@
    Reads the same booked_dates list the picker uses. With no data it renders
    nothing rather than an empty calendar implying everything is free.
    ========================================================================== #}
-{% macro avail_cal(booked, months=2) %}
+{% macro avail_cal(booked, months=2, dinner_dates=none) %}
 {% if booked is not none %}
 <section class="g-sec"><div class="g-wrap">
   <p class="g-eyebrow">At a Glance</p>
   <h2 class="g-place">What Is Free</h2>
-  <p class="g-p">Struck-through nights are taken. Everything else is open, and the rate is the same on every one of them — we do not price by day of the week.</p>
+  <p class="g-p">Struck-through nights are taken. Everything else is open, and the rate is the same on every one of them — we do not price by day of the week.{% if dinner_dates %} A dot marks a night La Table is cooking.{% endif %}</p>
 
   <div class="g-avc" data-avc data-months="{{ months }}"></div>
   <p class="g-avc__k">
     <span class="g-avc__ks"><i class="g-avc__free"></i> Free</span>
     <span class="g-avc__ks"><i class="g-avc__taken"></i> Taken</span>
+    {% if dinner_dates %}<span class="g-avc__ks"><i class="g-avc__dot"></i> Dinner at La Table</span>{% endif %}
   </p>
   <noscript><p class="g-hint">Choose dates in the form above to check a specific stay.</p></noscript>
 </div></section>
@@ -30,6 +31,10 @@
   var host=document.querySelector('[data-avc]'); if(!host) return;
   var el=document.getElementById('booked-dates');
   var TAKEN=[]; try{ TAKEN=JSON.parse(el.textContent)||[]; }catch(e){}
+  /* Dinner is not every night. The kitchen publishes a menu per date, so a
+     published menu IS an open night — no second schedule to keep in step. */
+  var DIN=[]; var dEl=document.getElementById('dinner-dates');
+  if(dEl){ try{ DIN=JSON.parse(dEl.textContent)||[]; }catch(e){} }
   var MONTHS=Number(host.dataset.months||2);
   var MN=['January','February','March','April','May','June','July',
           'August','September','October','November','December'];
@@ -48,8 +53,10 @@
     for(var d=1;d<=last.getDate();d++){
       var day=new Date(y,mo,d), k=iso(day);
       var past = day<today, taken = TAKEN.indexOf(k)>-1;
-      var cls='g-avc__d'+(past?' is-past':'')+(taken?' is-taken':'');
-      var label = d+' '+MN[mo]+(taken?', taken':(past?', past':', free'));
+      var dinner = DIN.indexOf(k)>-1;
+      var cls='g-avc__d'+(past?' is-past':'')+(taken?' is-taken':'')+(dinner?' has-dinner':'');
+      var label = d+' '+MN[mo]+(taken?', taken':(past?', past':', free'))
+                + (dinner?', dinner at La Table':'');
       out+='<span role="listitem" class="'+cls+'" aria-label="'+label+'">'+d+'</span>';
     }
     out+='</div></div>';

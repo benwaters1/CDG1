@@ -84,6 +84,13 @@ held rather than sent. It goes out on its own once one is.</p>
           <span class="mini-status status-inactive">Still to pay</span>
           {% if r['due_date'] %}<span class="g-hint">due {{ r['due_date']|date_short }}</span>{% endif %}
           {% endif %}
+          {# The card was refused. Said here rather than left to the state,
+             because it changes what to do: this guest has already been asked
+             and already been told, and the app will not try again. #}
+          {% if r['card_refused'] %}
+          <span class="mini-status status-overdue">Card refused</span>
+          {% if r['refused_at'] %}<span class="g-hint">{{ r['refused_at']|house_day|date_short }}</span>{% endif %}
+          {% endif %}
         </td>
         <td class="num">€{{ '%.2f'|format(r['total']) }}</td>
         <td class="num">€{{ '%.2f'|format(r['paid']) }}</td>
@@ -126,6 +133,10 @@ held rather than sent. It goes out on its own once one is.</p>
           {# An event has its own payment route and no manage page;
              the enquiry itself is where its money is recorded. #}
           <a href="{{ url_for('admin_events') }}" class="btn-mini">On the enquiry</a>
+          {% elif r['kind'] == 'workshop' %}
+          {# The registration's own page takes a payment and shows the
+             ledger, which is where this is settled. #}
+          <a href="{{ url_for('admin_workshop_registrations') }}" class="btn-mini">On the registration</a>
           {% else %}
           <span class="g-hint">No email on file</span>
           {% endif %}

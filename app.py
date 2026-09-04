@@ -122,6 +122,7 @@ import csv
 import sqlite3
 import hmac
 import calendar
+import inspect
 import hashlib
 import json
 import secrets
@@ -376,6 +377,30 @@ ROOM_PAYMENT_DEFAULTS = {
     # setting only governs what the guest is offered.
     "room_part_payment_allowed": "0",
 }
+
+# How long a date is held for while somebody decides. Three weeks: long enough
+# for a couple to see the place twice and talk to their families, short enough
+# that a season is not closed by a conversation nobody followed up.
+EVENT_HOLD_DAYS_DEFAULT = 21
+
+# The papers a supplier working here should hold, and what each one is for.
+# Named rather than free text so the page can say what is missing instead of
+# listing what happens to have been recorded.
+VENDOR_DOCUMENT_KINDS = {
+    "public_liability": "Public liability insurance",
+    "attestation_vigilance": "Attestation de vigilance (URSSAF)",
+    "insurance_other": "Other insurance",
+    "certification": "Trade certification",
+    "other": "Other document",
+}
+
+# Public liability is asked of anybody working on the house. The attestation is
+# a legal requirement on the CLIENT -- the château -- for a contract at or over
+# this figure, and not asking for it is the château's exposure rather than the
+# supplier's. The threshold is the statutory one and is a constant here for
+# that reason: it is not a house preference to tune.
+VENDOR_DOCS_ALWAYS_REQUIRED = ("public_liability",)
+ATTESTATION_REQUIRED_FROM_EUR = 5000.0
 
 # Where a guest is sent to say it publicly. Empty until the house pastes its
 # own Google or TripAdvisor page in, and nothing is ever sent while it is
@@ -3849,6 +3874,125 @@ def init_db():
              note TEXT,
              created_at TEXT NOT NULL
          )"""),
+        # WHAT WAS AGREED, AND WHO AGREED IT.
+        #
+        # An enquiry carried a price and a note, and nothing was ever signed.
+        # The figure could be re-typed by anybody at any time, and a couple
+        # asking "what did we agree about the marquee" had only an email
+        # thread to go on -- on the most expensive thing the house sells.
+        #
+        # A quote is a version, not a field. Re-quoting supersedes rather than
+        # overwrites, so the price somebody accepted in March is still
+        # readable in September when they ask why it changed.
+        # WHICH SHIFT IS FOR THE WEDDING.
+        #
+        # The run sheet could say who was rostered that DAY, and that is all
+        # anybody could know: a wedding for eighty and four rooms let on the
+        # same night were one undifferentiated list of names, so "are we
+        # staffed for the wedding" had no answer. And how many people the day
+        # needs was in somebody's head.
+        ("shifts_event_id",
+         "ALTER TABLE shifts ADD COLUMN event_id INTEGER REFERENCES event_inquiries(id) ON DELETE SET NULL"),
+        ("event_inquiries_staff_needed",
+         "ALTER TABLE event_inquiries ADD COLUMN staff_needed INTEGER"),
+
+        # THE PAPERS A SUPPLIER MUST HOLD.
+        #
+        # Staff certifications expire and are chased. A florist, a band and a
+        # caterer each work on a listed monument for a day and nothing asked
+        # them for anything -- and in France a contract over about five
+        # thousand euros needs an attestation de vigilance from URSSAF, which
+        # the house is liable for not having asked for.
+        #
+        # On the VENDOR, not the event row: the same shape as a staff
+        # certification, and one insurance certificate rather than one per
+        # wedding they work.
+        ("vendor_documents_table", """CREATE TABLE IF NOT EXISTS vendor_documents (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+             kind TEXT NOT NULL,
+             reference TEXT,
+             issued_on TEXT,
+             expires_on TEXT,
+             note TEXT,
+             created_at TEXT NOT NULL,
+             recorded_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+         )"""),
+        ("idx_vendor_documents_vendor",
+         "CREATE INDEX IF NOT EXISTS idx_vendor_documents_vendor ON vendor_documents(vendor_id, kind)"),
+
+        ("event_quotes_table", """CREATE TABLE IF NOT EXISTS event_quotes (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             version INTEGER NOT NULL DEFAULT 1,
+             token TEXT UNIQUE,
+             quoted_price REAL NOT NULL DEFAULT 0,
+             discount_amount REAL,
+             deposit_amount REAL,
+             balance_due_date TEXT,
+             spaces TEXT,
+             arrival_time TEXT,
+             carriages_time TEXT,
+             guest_count INTEGER,
+             includes TEXT,
+             terms TEXT,
+             status TEXT NOT NULL DEFAULT 'draft',
+             created_at TEXT NOT NULL,
+             created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             sent_at TEXT,
+             accepted_at TEXT,
+             accepted_name TEXT,
+             superseded_at TEXT
+         )"""),
+        ("idx_event_quotes_event",
+         "CREATE INDEX IF NOT EXISTS idx_event_quotes_event ON event_quotes(event_id)"),
+
+        # A DATE PROMISED BUT NOT YET CONFIRMED.
+        #
+        # The house only had free or confirmed. A date held verbally for three
+        # weeks while a couple decided was, as far as the app knew, free -- so
+        # a room booking could take it, and did not know it had.
+        #
+        # Confirming already blocks the date (see is_range_available). A hold
+        # blocks it the same way and lapses on its own, which is what stops a
+        # promise nobody wrote down from quietly closing a month of rooms.
+        ("event_holds_table", """CREATE TABLE IF NOT EXISTS event_holds (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             start_date TEXT NOT NULL,
+             end_date TEXT NOT NULL,
+             expires_at TEXT NOT NULL,
+             note TEXT,
+             created_at TEXT NOT NULL,
+             created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             released_at TEXT,
+             released_reason TEXT
+         )"""),
+        ("idx_event_holds_dates",
+         "CREATE INDEX IF NOT EXISTS idx_event_holds_dates ON event_holds(start_date, end_date)"),
+
+        # A WEDDING IS PAID IN THREE OR FOUR GOES OVER A YEAR.
+        #
+        # One deposit and one dated balance cannot say that, so a twenty-five
+        # thousand euro event had a single figure falling due once and the
+        # instalments in between lived in somebody's diary.
+        #
+        # A PLAN, NOT A SECOND LEDGER. Nothing here records money. Whether an
+        # instalment has been met is worked out from what the event has
+        # actually received, oldest first, so there is exactly one record of
+        # what came in and the schedule cannot drift out of step with it.
+        ("event_instalments_table", """CREATE TABLE IF NOT EXISTS event_instalments (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
+             label TEXT NOT NULL DEFAULT '',
+             amount REAL NOT NULL,
+             due_date TEXT NOT NULL,
+             reminder_sent_at TEXT,
+             created_at TEXT NOT NULL
+         )"""),
+        ("idx_event_instalments_event",
+         "CREATE INDEX IF NOT EXISTS idx_event_instalments_event ON event_instalments(event_id, due_date)"),
+
         ("event_suppliers_table", """CREATE TABLE IF NOT EXISTS event_suppliers (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
              event_id INTEGER NOT NULL REFERENCES event_inquiries(id) ON DELETE CASCADE,
@@ -3861,6 +4005,22 @@ def init_db():
              note TEXT,
              created_at TEXT NOT NULL
          )"""),
+        # WHAT THE SUPPLIERS COST, which decided whether an event made money.
+        #
+        # event_suppliers recorded who was coming and whether they had
+        # confirmed. Not what they charged and not whether they had been paid
+        # -- so no event had a margin, and a florist chasing an invoice was a
+        # search through somebody's email.
+        ("event_suppliers_cost", "ALTER TABLE event_suppliers ADD COLUMN cost REAL"),
+        ("event_suppliers_invoice_ref",
+         "ALTER TABLE event_suppliers ADD COLUMN invoice_ref TEXT"),
+        ("event_suppliers_paid_at", "ALTER TABLE event_suppliers ADD COLUMN paid_at TEXT"),
+        # Linked to the supplier list where they are on it, so a florist who
+        # works five weddings has their papers recorded once rather than five
+        # times.
+        ("event_suppliers_vendor_id",
+         "ALTER TABLE event_suppliers ADD COLUMN vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL"),
+
         ("event_inquiries_final_numbers",
          "ALTER TABLE event_inquiries ADD COLUMN final_numbers INTEGER"),
         ("event_inquiries_final_numbers_at",
@@ -3915,6 +4075,15 @@ def init_db():
         ("pos_orders_receipt_emailed_at", "ALTER TABLE pos_orders ADD COLUMN receipt_emailed_at TEXT"),
         ("pos_orders_merged_into", "ALTER TABLE pos_orders ADD COLUMN merged_into_order_id INTEGER REFERENCES pos_orders(id) ON DELETE SET NULL"),
         ("pos_orders_reopened_at", "ALTER TABLE pos_orders ADD COLUMN reopened_at TEXT"),
+        # What the bill was first settled at, and for how much. Both written
+        # once with COALESCE: settling a reopened tab overwrites closed_at
+        # and settled_total, so without these the original is simply gone,
+        # and "reopened and re-settled for ninety euros less" is a sentence
+        # nobody could ever have written.
+        ("pos_orders_first_settled_at",
+         "ALTER TABLE pos_orders ADD COLUMN first_settled_at TEXT"),
+        ("pos_orders_first_settled_total",
+         "ALTER TABLE pos_orders ADD COLUMN first_settled_total REAL"),
         ("pos_orders_deposit_credit", "ALTER TABLE pos_orders ADD COLUMN deposit_credit REAL NOT NULL DEFAULT 0"),
 
         # ---- Dated menus ---------------------------------------------------
@@ -5580,6 +5749,9 @@ NAV_AREAS = {
         "revenue_to_send", "send_revenue_to_pennylane", "send_pos_day_revenue",
         "send_workshop_revenue",
         "record_manual_booking_payment",
+        # The papers a supplier must hold live with the supplier list, which
+        # is the buying side.
+        "new_vendor_document", "delete_vendor_document",
         # Splitting a bill is moving money about, so it sits with the rest of
         # the money rather than with the guest record.
         "split_bill", "add_bill_share", "split_bill_evenly", "edit_bill_share",
@@ -5607,6 +5779,8 @@ NAV_AREAS = {
         "management_turned_away", "export_turned_away_csv",
         "admin_table_utilisation", "export_table_utilisation_csv",
         "admin_wastage_rate", "export_wastage_rate_csv",
+        "admin_voids", "export_voids_csv",
+        "admin_reopened_bills", "export_reopened_csv",
         "kitchen_dietary", "export_dietary_csv",
         "admin_dining_tables", "new_dining_table", "save_dining_table",
         "retire_dining_table", "restore_dining_table",
@@ -5670,6 +5844,11 @@ NAV_AREAS = {
         
     ],
     "events": [
+        "save_event_staffing", "assign_shift_to_event",
+        "save_event_supplier_cost",
+        "event_agreement", "new_event_quote", "send_event_quote",
+        "new_event_hold", "release_event_hold", "new_event_instalment",
+        "delete_event_instalment", "save_event_terms",
         "admin_events", "export_events_csv", "update_event_inquiry",
         "event_run_sheet_page", "export_event_run_sheet_csv",
         "add_event_moment", "delete_event_moment",
@@ -5758,6 +5937,7 @@ AREA_TITLES = {
 # Till. A page missing from BOTH this and NAV_AREAS is a mistake a test
 # can see, which is how 181 of them accumulated unnoticed.
 OWNER_ONLY_AREAS = {
+    "reports_index": "management",
     "admin_access_levels": "management",
     # Reading these was already owner-only and writing them was not, which
     # is the asymmetry the wrong way round: the dangerous act is not seeing
@@ -9962,16 +10142,44 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
         if w_start and w_end and arrival <= w_end and w_start < departure:
             return False, f"Those dates are held for a workshop ({row['title']})."
 
-    # A confirmed event (wedding, photoshoot, etc.) takes over the château
-    # for that day the same way a workshop does — event_inquiries only ever
-    # stores a single preferred_date, not a range, so this blocks just that
-    # one day rather than a multi-day span.
+    # A confirmed event (wedding, photoshoot, etc.) takes over the château for
+    # its run, the same way a workshop does.
+    #
+    # THE WHOLE RUN, NOT THE FIRST DAY. This read preferred_date alone with a
+    # comment saying event_inquiries had no range -- and end_date had been
+    # added since, so a three-day wedding blocked one day and left the rest of
+    # itself on sale.
     for row in conn.execute(
-        "SELECT preferred_date, event_type FROM event_inquiries WHERE status = 'confirmed' AND preferred_date IS NOT NULL"
+        """SELECT preferred_date, end_date, event_type FROM event_inquiries
+            WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""
     ).fetchall():
-        e_date = parse_date(row["preferred_date"])
-        if e_date and arrival <= e_date < departure:
+        e_start = parse_date(row["preferred_date"])
+        e_end = parse_date(row["end_date"]) or e_start
+        if e_end and e_start and e_end < e_start:
+            e_end = e_start
+        if e_start and arrival <= e_end and e_start < departure:
             return False, f"That date is held for a confirmed event ({row['event_type']})."
+
+    # And a date PROMISED but not yet confirmed. The house only had free or
+    # confirmed, so a date held verbally for three weeks while somebody
+    # decided was, as far as this function knew, free -- and a room booking
+    # could take it without anybody noticing until the wedding was confirmed
+    # on top of it.
+    #
+    # Named as provisional, deliberately. "Not available" sends whoever is at
+    # the desk looking for a booking that does not exist; "held while somebody
+    # decides" tells them there is a person to ring.
+    for row in conn.execute(
+        """SELECT event_holds.start_date, event_holds.end_date,
+                  event_inquiries.event_type AS kind
+             FROM event_holds
+             JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+            WHERE event_holds.released_at IS NULL AND event_holds.expires_at > ?""",
+        (datetime.now(timezone.utc).isoformat(),)).fetchall():
+        h_start, h_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+        if h_start and h_end and arrival <= h_end and h_start < departure:
+            return False, (f"Those dates are provisionally held for a "
+                           f"{row['kind']} while somebody decides.")
 
     return True, None
 
@@ -11925,6 +12133,35 @@ def cover_gaps(conn, start, end):
             day(cur.isoformat())["workshops"].append(r["title"])
             cur += timedelta(days=1)
 
+    # A CONFIRMED EVENT IS WORK, and this page did not know events existed. A
+    # wedding for eighty on a day with no rooms let and no dinner booked read
+    # as a day with nothing happening, so the one day of the year the house
+    # most needs people on it was the one day this page said nothing about.
+    #
+    # `needs` is what somebody has typed as the headcount for the day. Left
+    # blank it stays None rather than becoming a guess -- the day still shows
+    # as work, which is the part that was missing.
+    for r in conn.execute(
+        """SELECT id, event_type, contact_name, preferred_date, end_date, staff_needed
+             FROM event_inquiries
+            WHERE status = 'confirmed' AND preferred_date IS NOT NULL
+              AND preferred_date <= ?
+              AND COALESCE(end_date, preferred_date) >= ?""",
+        (hi, lo)).fetchall():
+        a = parse_date(r["preferred_date"])
+        z = parse_date(r["end_date"]) or a
+        if not a:
+            continue
+        if z < a:
+            a, z = z, a
+        cur = max(a, start)
+        while cur <= min(z, end):
+            d = day(cur.isoformat())
+            d.setdefault("events", []).append({
+                "id": r["id"], "what": r["event_type"],
+                "who": r["contact_name"], "needs": r["staff_needed"]})
+            cur += timedelta(days=1)
+
     # Active staff only. Deactivating somebody does not delete their future
     # shifts, so a leftover one counted as real cover and a day with guests in
     # the house and nobody actually employed on it read as staffed. The clash
@@ -11950,7 +12187,8 @@ def cover_gaps(conn, start, end):
     for key in sorted(days):
         d = days[key]
         d["work"] = (d["arrivals"] + d["departures"] + d["dinners"]
-                     + len(d["workshops"]) + (1 if d["in_house"] else 0))
+                     + len(d["workshops"]) + len(d.get("events") or [])
+                     + (1 if d["in_house"] else 0))
         if not d["work"]:
             continue
         d["people_count"] = len(d["people"])
@@ -12244,9 +12482,77 @@ def outstanding_balances(conn, *, today=None):
             "link_endpoint": "admin_events",
             "link_args": {},
         })
+    # And the ateliers. A registration carries a deposit, a dated balance and
+    # a ledger, so an unpaid one is money owed in exactly the sense the rest
+    # of this list means -- it simply was never asked for here.
+    for reg in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title,
+                      workshop_sessions.start_date, workshop_sessions.end_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions
+                      ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status = 'confirmed'
+                ORDER BY workshop_sessions.start_date""").fetchall():
+        owed, charged, paid = workshop_balance_due(conn, reg["id"])
+        if owed <= 0.005:
+            continue
+        ended = (reg["end_date"] or reg["start_date"] or "") < iso
+        due_date = reg["balance_due_date"]
+        # Aged from the balance due date if one was set, otherwise from the
+        # day the session STARTED -- debtor_ageing's own rule, kept when this
+        # moved here: "a place on a workshop that has already run and is still
+        # unpaid is late whatever the paperwork says". Ageing from the end
+        # would quietly forgive the length of the session.
+        anchor = due_date or reg["start_date"]
+        if ended:
+            state = "gone"
+            days = _days_between(anchor, iso) if anchor else 0
+        elif due_date and due_date < iso:
+            state, days = "overdue", _days_between(due_date, iso)
+        else:
+            state, days = "due", 0
+        days = max(0, days)
+        rows.append({
+            "booking": reg, "owed": owed, "total": charged, "paid": paid,
+            "state": state, "days_late": days, "due_date": due_date,
+            "departed": ended,
+            "kind": "workshop",
+            "who": reg["guest_name"],
+            "what": reg["title"] or "Workshop",
+            "when": reg["start_date"] or "date to confirm",
+            "reference": reg["reference_code"] or f"WS-{reg['id']}",
+            "email": reg["guest_email"],
+            "link_endpoint": "workshop_manage",
+            "link_args": {"manage_token": reg["manage_token"]},
+            # THE CARD WAS REFUSED, which is a different job from chasing
+            # somebody who forgot: this one has already been asked, already
+            # been told, and still has not paid. The job tries once and never
+            # again on purpose, so nothing else will happen unprompted.
+            "card_refused": bool(reg["autocharge_failed_at"]),
+            "refused_at": reg["autocharge_failed_at"],
+        })
+
+    # Everything that is not an atelier answers False rather than nothing, so
+    # a page can ask every row the same question.
+    for row in rows:
+        row.setdefault("card_refused", False)
+        row.setdefault("refused_at", None)
+
     order = {"gone": 0, "overdue": 1, "due": 2}
     rows.sort(key=lambda r: (order[r["state"]], -r["days_late"], -r["owed"]))
     return rows
+
+
+def refused_card_arrears(conn, *, today=None):
+    """What is owed where the card was refused and nobody has been back.
+
+    A subset of outstanding_balances rather than its own query, so the two can
+    never disagree about what "owed" means -- the figure comes from the same
+    ledger either way.
+    """
+    return [r for r in outstanding_balances(conn, today=today)
+            if r["card_refused"]]
 
 
 def balance_request_email(booking, bill, *, departed):
@@ -14413,9 +14719,16 @@ def pos_close_if_settled(conn, order_id, method, *, user_id=None):
         "ORDER BY id", (order_id,)).fetchall() if (r["reference"] or "").strip()]
     conn.execute(
         """UPDATE pos_orders SET status = 'paid', settled_total = ?, payment_method = ?,
-           payment_reference = ?, closed_at = ? WHERE id = ?""",
+           payment_reference = ?, closed_at = ?,
+           first_settled_at = COALESCE(first_settled_at, ?),
+           first_settled_total = COALESCE(first_settled_total, ?)
+           WHERE id = ?""",
         (after["total"], method, ", ".join(refs) or None,
-         datetime.now(timezone.utc).isoformat(), order_id))
+         datetime.now(timezone.utc).isoformat(),
+         # COALESCE, so a bill settled a second time keeps the first figure.
+         # Overwriting it is how "reopened and re-settled for less" stopped
+         # being answerable.
+         datetime.now(timezone.utc).isoformat(), after["total"], order_id))
     log_audit(conn, "pos_tab_settled", target=after["order"]["table_label"],
               details=f"€{after['total']:.2f}")
     pos_journal_append(conn, "tab_settled", {
@@ -17210,6 +17523,171 @@ SUPPLIER_KINDS = ["Florist", "Band or DJ", "Photographer", "Celebrant",
                   "Hire", "Cake", "Transport", "Other"]
 
 
+def event_days(event):
+    """Every day an event occupies, inclusive of both ends."""
+    start = parse_date(event["preferred_date"])
+    if not start:
+        return []
+    end = parse_date(event["end_date"]) or start
+    if end < start:
+        start, end = end, start
+    out, day = [], start
+    while day <= end:
+        out.append(day)
+        day += timedelta(days=1)
+    return out
+
+
+def event_staffing(conn, event_id):
+    """How many people the day needs, and who is actually down for it.
+
+    THE QUESTION THAT HAD NO ANSWER. The run sheet could say who was rostered
+    that DAY and nothing more, so a wedding for eighty and four rooms let the
+    same night were one undifferentiated list of names. "Are we staffed for
+    the wedding" could not be asked, let alone answered.
+
+    A shift belongs to the event or it does not. Anybody else on that day is
+    still shown, because they are in the building and they are the people who
+    could be moved onto it -- but they are not counted as cover for it, which
+    is the distinction the whole thing turns on.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None
+    days = event_days(event)
+    isos = [d.isoformat() for d in days]
+    needed = event["staff_needed"] or 0
+
+    assigned, others = [], []
+    if isos:
+        marks = ",".join("?" * len(isos))
+        for row in conn.execute(
+                f"""SELECT shifts.*, users.name AS who, users.status AS status
+                      FROM shifts JOIN users ON users.id = shifts.user_id
+                     WHERE shifts.shift_date IN ({marks})
+                     ORDER BY shifts.shift_date, shifts.start_time, users.name""",
+                tuple(isos)).fetchall():
+            # A deactivated employee's future shifts are not deleted, and one
+            # left behind counted as cover once before. Same rule as
+            # cover_gaps.
+            if row["status"] != "active":
+                continue
+            (assigned if row["event_id"] == event_id else others).append(dict(row))
+
+    per_day = {iso: len({r["user_id"] for r in assigned if r["shift_date"] == iso})
+               for iso in isos}
+    thinnest = min(per_day.values()) if per_day else 0
+    return {
+        "event": event, "days": days, "needed": needed,
+        "assigned": assigned, "elsewhere": others,
+        "per_day": per_day,
+        # Short by the WORST day, not the total. Three people across three
+        # days is not three people on the day of the wedding.
+        "short": max(needed - thinnest, 0) if needed else 0,
+        "thinnest": thinnest,
+    }
+
+
+def vendor_documents(conn, vendor_id):
+    return conn.execute(
+        """SELECT * FROM vendor_documents WHERE vendor_id = ?
+            ORDER BY COALESCE(expires_on, '9999-12-31'), kind""",
+        (vendor_id,)).fetchall()
+
+
+def vendor_paper_state(conn, vendor_id, *, on_day=None, contract_value=None):
+    """Which papers this supplier holds, which are out of date, which are missing.
+
+    Judged AGAINST THE DAY THEY WORK, not against today: a certificate that
+    expires the week before the wedding is missing for the wedding, and
+    finding that out in March is much cheaper than on the morning.
+
+    The attestation de vigilance is required by the amount, because the law
+    puts the obligation on the client at a contract value rather than on every
+    supplier. Not asking for it is the château's exposure, not the florist's.
+    """
+    on_day = on_day or house_today()
+    if isinstance(on_day, str):
+        on_day = parse_date(on_day) or house_today()
+    required = set(VENDOR_DOCS_ALWAYS_REQUIRED)
+    try:
+        if contract_value is not None and float(contract_value) >= ATTESTATION_REQUIRED_FROM_EUR:
+            required.add("attestation_vigilance")
+    except (TypeError, ValueError):
+        pass
+
+    held, expired = {}, {}
+    for row in (vendor_documents(conn, vendor_id) if vendor_id else []):
+        expires = parse_date(row["expires_on"]) if row["expires_on"] else None
+        # No expiry means it does not expire, which is true of a trade
+        # certification and is not something to invent a date for.
+        if expires and expires < on_day:
+            expired.setdefault(row["kind"], row)
+            continue
+        held.setdefault(row["kind"], row)
+    missing = sorted(k for k in required if k not in held)
+    return {
+        "required": sorted(required),
+        "held": held,
+        "expired": {k: v for k, v in expired.items() if k not in held},
+        "missing": missing,
+        "ok": not missing and not [k for k in expired if k in required and k not in held],
+    }
+
+
+def event_supplier_readiness(conn, event_id):
+    """Every supplier on an event, what they cost, and whether they may work.
+
+    One list rather than three, because the three questions are asked at the
+    same moment: has this person confirmed, what are they charging, and are
+    they insured. Splitting them across pages is how a wedding arrives with an
+    uninsured band nobody thought to check.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None
+    day = parse_date(event["preferred_date"]) or house_today()
+    rows = []
+    cost = 0.0
+    unpriced = []
+    unpaid = 0.0
+    for s in conn.execute(
+            """SELECT event_suppliers.*, vendors.name AS vendor_name
+                 FROM event_suppliers
+                 LEFT JOIN vendors ON vendors.id = event_suppliers.vendor_id
+                WHERE event_suppliers.event_id = ?
+                ORDER BY COALESCE(NULLIF(event_suppliers.arriving_at, ''), '99:99'),
+                         event_suppliers.name""", (event_id,)).fetchall():
+        their_cost = s["cost"]
+        if their_cost is None:
+            unpriced.append(s["name"])
+        else:
+            cost = round(cost + float(their_cost), 2)
+            if not s["paid_at"]:
+                unpaid = round(unpaid + float(their_cost), 2)
+        papers = (vendor_paper_state(conn, s["vendor_id"], on_day=day,
+                                     contract_value=their_cost)
+                  if s["vendor_id"] else None)
+        rows.append({"row": s, "papers": papers,
+                     "cost": None if their_cost is None else round(float(their_cost), 2)})
+    return {
+        "event": event, "suppliers": rows,
+        # Keyed as well as listed, so the run sheet can put the cost and the
+        # papers on the row it already draws for each supplier rather than
+        # drawing a second table beside it.
+        "by_id": {r["row"]["id"]: r for r in rows},
+        "cost": cost, "unpaid": unpaid,
+        # NAMED, not counted. A total with four suppliers missing from it is a
+        # total somebody trusts and should not.
+        "unpriced": unpriced,
+        "not_on_the_list": [r["row"]["name"] for r in rows if not r["row"]["vendor_id"]],
+        "papers_missing": [r["row"]["name"] for r in rows
+                           if r["papers"] and not r["papers"]["ok"]],
+    }
+
+
 def event_run_sheet(conn, event_id, today=None):
     """One page that says how the day runs.
 
@@ -17272,9 +17750,15 @@ def event_run_sheet(conn, event_id, today=None):
             (day.isoformat(), day.isoformat())).fetchone()["c"]
 
     bill = event_bill(conn, event_id)
+    # Who is down FOR THE WEDDING, what the suppliers cost, and whether they
+    # are allowed to work. All three were questions this page could not
+    # answer, and all three are asked on the same morning.
+    staffing = event_staffing(conn, event_id)
+    readiness = event_supplier_readiness(conn, event_id)
     return {
         "event": dict(event), "day": day, "end": end, "days_away": days_away,
         "timeline": timeline, "suppliers": suppliers,
+        "staffing": staffing, "readiness": readiness,
         "unconfirmed": unconfirmed,
         "expected": expected,
         "quoted_for": event["guest_count"],
@@ -17650,6 +18134,11 @@ def supplier_scorecard(conn, days=365):
             (v["name"], since)).fetchone()
         items = conn.execute(
             "SELECT id, name FROM stock_items WHERE vendor_id = ?", (v["id"],)).fetchall()
+        # The papers they hold. Here because this is the page about suppliers
+        # as people the house deals with, rather than one wedding's list --
+        # a florist who works five weddings has one certificate, not five.
+        papers = vendor_paper_state(conn, v["id"])
+        documents = vendor_documents(conn, v["id"])
         moved = [price_moves[i["id"]] for i in items if i["id"] in price_moves]
         risen = [m for m in moved if m["pct"] > 0]
         rows.append({
@@ -17665,6 +18154,7 @@ def supplier_scorecard(conn, days=365):
             # A supplier the house buys from and has no invoice for is either
             # paid another way or not being recorded, and both are worth a look.
             "no_invoices": spend["invoices"] == 0 and bool(items),
+            "papers": papers, "documents": documents,
         })
     rows.sort(key=lambda r: -r["spend"])
     return {
@@ -19796,6 +20286,29 @@ def create_booking_from_stripe_session(conn, session):
         "SELECT id FROM bookings WHERE reference_code = ?", (reference_code,)).fetchone()
     if paid_row:
         received = (sval(session, "amount_total") or 0) / 100.0
+        # A ROW SAYING HOW IT ARRIVED, not only that it did.
+        #
+        # Every other way money reaches a stay writes one -- the balance paid
+        # online, cash at the desk, a voucher spent, all of them go in as a
+        # booking_payments row AND through record_booking_payment. This path,
+        # the first payment on a brand-new booking, only ever did the second
+        # half. So a stay showed as paid with nothing to account for it, and
+        # the card-fee report reads booking_payments: the fees the house pays
+        # on the one kind of payment that always carries a fee were the fees
+        # it could not see.
+        #
+        # The UNIQUE session id is the guard, exactly as in
+        # mark_booking_payment_paid: the success redirect and the webhook can
+        # be in flight together, and losing that race is the correct outcome
+        # rather than a 500 for a guest who has just paid.
+        try:
+            conn.execute(
+                """INSERT INTO booking_payments (booking_id, amount, method,
+                   stripe_session_id, created_at) VALUES (?, ?, 'stripe', ?, ?)""",
+                (paid_row["id"], round(received, 2), session["id"],
+                 datetime.now(timezone.utc).isoformat()))
+        except sqlite3.IntegrityError:
+            pass
         record_booking_payment(conn, paid_row["id"], received,
                                reference=sval(session, "payment_intent"))
     if not available:
@@ -19992,6 +20505,156 @@ def is_viewable(filename):
     if not filename or "." not in filename:
         return False
     return filename.rsplit(".", 1)[-1].lower() in VIEWABLE_EXTENSIONS
+
+
+# How far ahead the public calendars look. Two months are drawn and the date
+# picker can be paged, so a year covers anything a guest can reach without
+# loading every booking the house has ever taken into every public page.
+PUBLIC_CALENDAR_DAYS = 400
+
+
+def nights_already_taken(conn, *, days=None):
+    """Every night the house cannot sell, as ISO dates.
+
+    THE LIST THE PICKER HAS ALWAYS ASKED FOR. `booked_dates` is read in three
+    places -- the date picker's JSON block in public_base, the availability
+    calendar, and the room search -- and was supplied by nothing. All three
+    read it as `booked_dates or []`, so the picker struck out no nights and the
+    calendar drew an empty grid, on a page that rendered perfectly.
+
+    Everything that blocks a night is here, not just bookings: a workshop takes
+    the whole house for its run, a confirmed event takes its own days, and a
+    provisional hold takes the dates somebody has been promised. A guest
+    offered a night the desk would then refuse has been told something untrue
+    by the calendar that exists to prevent exactly that.
+    """
+    days = PUBLIC_CALENDAR_DAYS if days is None else max(0, int(days))
+    today = house_today()
+    horizon = today + timedelta(days=days)
+    taken = set()
+
+    def _span(start_iso, end_iso, *, inclusive_end):
+        start, end = parse_date(start_iso), parse_date(end_iso)
+        if not start:
+            return
+        end = end or start
+        if end < start:
+            start, end = end, start
+        day = max(start, today)
+        last = min(end, horizon)
+        while day <= last:
+            # A departure day is sellable again; an event's last day is not.
+            if inclusive_end or day < end:
+                taken.add(day.isoformat())
+            day += timedelta(days=1)
+
+    # A night is only unsellable when EVERY room is gone, so rooms are counted
+    # per night rather than added to the set one booking at a time.
+    total_rooms = conn.execute(
+        "SELECT COUNT(*) AS c FROM rooms WHERE active = 1").fetchone()["c"] or 0
+    per_night = {}
+    for row in conn.execute(
+            """SELECT arrival_date, departure_date FROM bookings
+                WHERE status IN ('pending', 'confirmed')
+                  AND COALESCE(departure_date, '') >= ?
+                  AND COALESCE(arrival_date, '') <= ?""",
+            (today.isoformat(), horizon.isoformat())).fetchall():
+        start, end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+        if not start or not end:
+            continue
+        day = max(start, today)
+        while day < min(end, horizon + timedelta(days=1)):
+            per_night[day.isoformat()] = per_night.get(day.isoformat(), 0) + 1
+            day += timedelta(days=1)
+    if total_rooms:
+        taken.update(d for d, n in per_night.items() if n >= total_rooms)
+
+    for row in conn.execute(
+            """SELECT start_date, end_date FROM workshop_sessions
+                WHERE end_date >= ? AND start_date <= ?""",
+            (today.isoformat(), horizon.isoformat())).fetchall():
+        _span(row["start_date"], row["end_date"], inclusive_end=True)
+    for row in conn.execute(
+            """SELECT preferred_date, end_date FROM event_inquiries
+                WHERE status = 'confirmed' AND preferred_date IS NOT NULL""").fetchall():
+        _span(row["preferred_date"], row["end_date"], inclusive_end=True)
+    for row in conn.execute(
+            """SELECT start_date, end_date FROM event_holds
+                WHERE released_at IS NULL AND expires_at > ?""",
+            (datetime.now(timezone.utc).isoformat(),)).fetchall():
+        _span(row["start_date"], row["end_date"], inclusive_end=True)
+    for row in conn.execute(
+            """SELECT start_date, end_date FROM room_blocks
+                WHERE end_date >= ? AND start_date <= ?""",
+            (today.isoformat(), horizon.isoformat())).fetchall():
+        _span(row["start_date"], row["end_date"], inclusive_end=False)
+    return sorted(taken)
+
+
+def nights_la_table_is_cooking(conn, *, days=None):
+    """Every night with a published dinner menu, as ISO dates.
+
+    THE PUBLISHED MENU IS THE SCHEDULE. `menus` already carries a service_date
+    and a published status and the kitchen already works from it, so the night
+    opens when the menu is published and there is no second list for anybody
+    to keep in step. A separate "open nights" table would have drifted out of
+    step with the kitchen inside a month.
+    """
+    days = PUBLIC_CALENDAR_DAYS if days is None else max(0, int(days))
+    today = house_today().isoformat()
+    horizon = (house_today() + timedelta(days=days)).isoformat()
+    return [r["service_date"] for r in conn.execute(
+        """SELECT DISTINCT service_date FROM menus
+            WHERE service = 'dinner' AND status = 'published'
+              AND service_date >= ? AND service_date <= ?
+            ORDER BY service_date""", (today, horizon)).fetchall()]
+
+
+def page_draws_a_calendar(endpoint):
+    """Whether this page could possibly want the public date lists.
+
+    Asked of the app's own map of back-end pages rather than guessed from the
+    URL. A named function rather than a condition inside the context processor
+    so it can be checked directly: the version of this check that read the
+    rendered HTML proved only that admin pages do not extend public_base,
+    which they would not do whatever this rule said.
+    """
+    return not (endpoint in NAV_AREA_OF or endpoint in OWNER_ONLY_ENDPOINTS)
+
+
+@app.context_processor
+def inject_calendar_dates():
+    """Give every public page the two date lists its calendars ask for.
+
+    A context processor rather than an argument threaded through every public
+    route: the date picker lives in public_base, which every public page
+    extends, so wiring it per route means remembering it on the next page
+    somebody adds -- and the version of this that forgot has been shipping an
+    empty calendar and a picker that struck out nothing.
+
+    SKIPPED FOR THE BACK END, by asking the app's own map which endpoints are
+    back-end pages. Every one of the 480-odd admin pages would otherwise pay
+    for two queries it has no calendar to draw on. Not done lazily: public_base
+    serialises booked_dates straight into the page with tojson, which reads a
+    list's contents directly and cannot be talked out of it, so anything
+    clever here would only look lazy.
+
+    Wrapped in its own try, like the saved-views processor beside it: a context
+    processor that raises takes down every page in the app.
+    """
+    empty = {"booked_dates": [], "dinner_dates": []}
+    try:
+        if not page_draws_a_calendar(request.endpoint or ""):
+            return empty
+        conn = get_db()
+        try:
+            return {"booked_dates": nights_already_taken(conn),
+                    "dinner_dates": nights_la_table_is_cooking(conn)}
+        finally:
+            conn.close()
+    except Exception:
+        # A public page with no calendar on it beats no public page.
+        return empty
 
 
 @app.context_processor
@@ -21528,6 +22191,217 @@ def covers_ahead(conn, days=21, today=None):
     return out
 
 
+def reopen_report(conn, *, start=None, end=None, today=None):
+    """Bills that were settled and then opened again.
+
+    Scoped on the order's SERVICE DATE, the same as the voids report, so a
+    tab reopened at half past one stays on the night it was served rather
+    than moving onto the next day's figures on its own.
+
+    THE NUMBER IS THE DIFFERENCE. A bill reopened to add a forgotten coffee
+    is ordinary and finishes larger. One that finishes smaller is money coming
+    back off a sale that was complete, and that is the row worth reading.
+    Rows written before first_settled_total existed cannot answer it, and say
+    so rather than reporting a difference of nought -- which would read as a
+    bill that did not change.
+    """
+    today = today or house_today()
+    if end is None:
+        end = today
+    if start is None:
+        start = end - timedelta(days=30)
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+
+    rows = []
+    for o in conn.execute(
+            """SELECT pos_orders.*, users.name AS opened_by
+                 FROM pos_orders
+                 LEFT JOIN users ON users.id = pos_orders.opened_by_user_id
+                WHERE pos_orders.reopened_at IS NOT NULL
+                  AND pos_orders.service_date >= ?
+                  AND pos_orders.service_date <= ?
+                ORDER BY pos_orders.service_date DESC,
+                         pos_orders.reopened_at DESC""",
+            (start.isoformat(), end.isoformat())).fetchall():
+        first_at = parse_datetime_iso(o["first_settled_at"])
+        again = parse_datetime_iso(o["reopened_at"])
+        # How long the bill had been settled before somebody opened it. A
+        # correction thirty seconds later is somebody noticing; one the next
+        # morning is a different act, and the gap is the only thing that
+        # tells them apart.
+        held = round((again - first_at).total_seconds() / 60.0, 1) \
+            if (first_at and again) else None
+        was = o["first_settled_total"]
+        now = o["settled_total"] if o["status"] == "paid" else None
+        moved = (round(now - was, 2)
+                 if (was is not None and now is not None) else None)
+        rows.append({
+            "order": o, "table": o["table_label"] or "",
+            "service_date": o["service_date"],
+            "who": o["opened_by"] or "nobody recorded",
+            "reopened_at": o["reopened_at"],
+            "minutes_settled": held,
+            "was": was, "now": now, "moved": moved,
+            # Still open. Not an accusation -- somebody is mid-correction --
+            # but a tab that has been sitting reopened since Tuesday is one
+            # nobody went back to, and it is not on any cash-up.
+            "still_open": o["status"] == "open",
+            "unanswerable": was is None,
+        })
+
+    down = [r for r in rows if r["moved"] is not None and r["moved"] < -0.005]
+    return {
+        "start": start, "end": end, "rows": rows, "reopens": len(rows),
+        "down": len(down),
+        "given_back": round(-sum(r["moved"] for r in down), 2),
+        "still_open": sum(1 for r in rows if r["still_open"]),
+        "unanswerable": sum(1 for r in rows if r["unanswerable"]),
+        "csv": [{"service_date": r["service_date"], "table": r["table"],
+                 "who": r["who"], "reopened_at": r["reopened_at"],
+                 "minutes_after_settling": r["minutes_settled"],
+                 "settled_first_at": r["was"], "settled_finally_at": r["now"],
+                 "difference": r["moved"]} for r in rows],
+    }
+
+
+def void_report(conn, *, start=None, end=None, today=None):
+    """Every voided line in the window, and what the pattern says.
+
+    Scoped on the ORDER'S SERVICE DATE rather than on when the line was
+    voided. A service running past midnight belongs to the night it started
+    -- service_day winds back past 05:00 for exactly this -- and a void at
+    half past one would otherwise land on the following day's figures while
+    the sale it cancels sits on the night before.
+
+    Values are GROSS, as rung, which is the basis what_sells uses. A void is
+    compared against sales here, and two bases would make the share wrong.
+    """
+    today = today or house_today()
+    if end is None:
+        end = today
+    if start is None:
+        start = end - timedelta(days=30)
+    if isinstance(start, str):
+        start = parse_date(start)
+    if isinstance(end, str):
+        end = parse_date(end)
+    a, b = start.isoformat(), end.isoformat()
+
+    lines = conn.execute(
+        """SELECT pos_order_lines.*, pos_orders.service_date,
+                  pos_orders.status AS order_status,
+                  pos_orders.closed_at, pos_orders.reopened_at,
+                  pos_orders.first_settled_at, pos_orders.table_label,
+                  voider.name AS voided_by, adder.name AS added_by
+             FROM pos_order_lines
+             JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+             LEFT JOIN users AS voider
+                    ON voider.id = pos_order_lines.voided_by_user_id
+             LEFT JOIN users AS adder
+                    ON adder.id = pos_order_lines.added_by_user_id
+            WHERE COALESCE(pos_order_lines.voided, 0) = 1
+              AND pos_orders.service_date >= ? AND pos_orders.service_date <= ?
+            ORDER BY pos_orders.service_date DESC,
+                     pos_order_lines.voided_at DESC""", (a, b)).fetchall()
+
+    # What each person rang up over the same window, so a void count can be
+    # read against the work it came out of. Voided lines excluded, the same
+    # as what_sells: a line struck off was not sold.
+    sold_by = {}
+    for row in conn.execute(
+            """SELECT pos_order_lines.added_by_user_id AS uid,
+                      COALESCE(SUM(pos_order_lines.quantity
+                                   * pos_order_lines.unit_price), 0) AS took
+                 FROM pos_order_lines
+                 JOIN pos_orders ON pos_orders.id = pos_order_lines.order_id
+                WHERE COALESCE(pos_order_lines.voided, 0) = 0
+                  AND pos_orders.service_date >= ?
+                  AND pos_orders.service_date <= ?
+                GROUP BY pos_order_lines.added_by_user_id""", (a, b)).fetchall():
+        sold_by[row["uid"]] = round(float(row["took"] or 0), 2)
+
+    rows, by_person, by_reason = [], {}, {}
+    for line in lines:
+        value = round((line["unit_price"] or 0) * (line["quantity"] or 0), 2)
+        # Sent to the kitchen before it was struck off, so it was made. The
+        # route already knows this at the moment of voiding and says so in
+        # the audit line; this is the same fact, kept.
+        after_sent = bool(line["sent_at"])
+        # Voided after the bill was settled. parse rather than compare the
+        # strings: closed_at and voided_at are both UTC moments, and one of
+        # them can be absent.
+        # The EARLIEST evidence that this bill had been settled, not the
+        # current closed_at. Reopening a tab clears closed_at and settling it
+        # again moves it forward, so on its own it would call a void after
+        # settlement ordinary -- and pressing Reopen first would switch this
+        # signal off entirely while the page went on looking healthy.
+        settled = min(
+            [t for t in (parse_datetime_iso(line["first_settled_at"]),
+                         parse_datetime_iso(line["closed_at"]),
+                         parse_datetime_iso(line["reopened_at"]))
+             if t is not None], default=None)
+        struck = parse_datetime_iso(line["voided_at"])
+        after_close = bool(settled and struck and struck > settled)
+        same_person = bool(line["voided_by_user_id"]
+                           and line["voided_by_user_id"] == line["added_by_user_id"])
+        rows.append({
+            "line": line, "value": value, "when": line["voided_at"],
+            "service_date": line["service_date"], "what": line["name"],
+            "reason": line["void_reason"] or "no reason recorded",
+            "who": line["voided_by"] or "nobody recorded",
+            "added_by": line["added_by"] or "",
+            "table": line["table_label"] or "",
+            "after_sent": after_sent, "after_close": after_close,
+            "same_person": same_person,
+        })
+        uid = line["voided_by_user_id"]
+        p = by_person.setdefault(uid, {
+            "who": line["voided_by"] or "nobody recorded", "voids": 0,
+            "value": 0.0, "after_sent": 0, "after_close": 0,
+            "sold": sold_by.get(uid, 0.0)})
+        p["voids"] += 1
+        p["value"] = round(p["value"] + value, 2)
+        p["after_sent"] += 1 if after_sent else 0
+        p["after_close"] += 1 if after_close else 0
+        r = by_reason.setdefault(line["void_reason"] or "no reason recorded",
+                                 {"reason": line["void_reason"]
+                                  or "no reason recorded",
+                                  "voids": 0, "value": 0.0})
+        r["voids"] += 1
+        r["value"] = round(r["value"] + value, 2)
+
+    for p in by_person.values():
+        # None, not nought, when they rang up nothing at all: a share of
+        # nothing is not a small share, it is not a share. The same
+        # distinction the no-show rate and the attach rate both make.
+        p["share"] = (round(p["value"] / p["sold"] * 100, 1)
+                      if p["sold"] > 0.005 else None)
+
+    total_value = round(sum(r["value"] for r in rows), 2)
+    total_sold = round(sum(sold_by.values()), 2)
+    return {
+        "start": start, "end": end,
+        "rows": rows,
+        "people": sorted(by_person.values(),
+                         key=lambda p: (-p["value"], -p["voids"])),
+        "reasons": sorted(by_reason.values(), key=lambda r: -r["value"]),
+        "voids": len(rows),
+        "value": total_value,
+        "sold": total_sold,
+        "share": (round(total_value / total_sold * 100, 1)
+                  if total_sold > 0.005 else None),
+        "after_sent": sum(1 for r in rows if r["after_sent"]),
+        "after_close": sum(1 for r in rows if r["after_close"]),
+        "csv": [{"service_date": r["service_date"], "what": r["what"],
+                 "value": r["value"], "reason": r["reason"], "who": r["who"],
+                 "after_kitchen": int(r["after_sent"]),
+                 "after_close": int(r["after_close"])} for r in rows],
+    }
+
+
 def what_sells(conn, *, days=90, today=None, limit=None):
     """Every dish the till has sold, most first.
 
@@ -22135,6 +23009,51 @@ def owner_home_warnings(conn, today):
     # arrive -- a shortfall found the evening before is not a warning.
     # A filing that is late is already costing money, so it goes above the
     # things that are merely coming.
+    # A card the house tried and could not take. The job tries once and never
+    # again -- rightly, because "a declined card retried daily is a guest with
+    # six bank alerts who still has not paid" -- so from that moment nothing
+    # further happens on its own. The guest was emailed and so was the house,
+    # but an email is a moment and this is a state, and the state was written
+    # to a column nothing read.
+    refused = refused_card_arrears(conn, today=today)
+    if refused:
+        worst = max(refused, key=lambda r: r["owed"])
+        owed_total = sum(r["owed"] for r in refused)
+        add("blocker",
+            f"{len(refused)} card{'' if len(refused) == 1 else 's'} refused, "
+            f"{euro(owed_total)} still owed",
+            f"{worst['who']} \u2014 {euro(worst['owed'])} on {worst['what']}"
+            + (f", refused {format_date_short(house_date_iso(worst['refused_at']))}"
+               if worst["refused_at"] else "")
+            + ". They have been emailed a link to pay it themselves and the "
+              "app will not try the card again, so nothing more happens "
+              "unless somebody follows it up.",
+            len(refused), "management_outstanding")
+
+    # Lines taken off a bill that was already settled. The till records who
+    # voided what, when and why, and has done since it was written; until the
+    # voids page there was nowhere to read any of it, so this is a fortnight
+    # of that record arriving rather than waiting to be asked for.
+    #
+    # Not every void -- there are always voids, and a line that is always
+    # here is furniture. This one is rare and it is objective: the money had
+    # been taken when the line went.
+    voids = void_report(conn, start=today - timedelta(days=14), end=today)
+    settled_after = [r for r in voids["rows"] if r["after_close"]]
+    if settled_after:
+        worst = max(settled_after, key=lambda r: r["value"])
+        add("attention",
+            f"{len(settled_after)} line{'' if len(settled_after) == 1 else 's'} "
+            "voided after the bill was settled",
+            f"{worst['who']} took {euro(worst['value'])} off "
+            f"{worst['what']}"
+            + (f" on {format_date_short(worst['service_date'])}"
+               if worst["service_date"] else "")
+            + f" \u2014 {worst['reason']}."
+            + " Correcting a closed order can be perfectly honest; the point"
+              " is that until now nobody could see it had happened.",
+            len(settled_after), "admin_voids")
+
     # A guest waiting for an answer the booking page promised within a day.
     # First, because everything else on this panel is about the house and
     # this one is about somebody who is waiting -- and because if nobody gets
@@ -26920,6 +27839,42 @@ def pos_pay_link(order_id):
 # (label, endpoint, keywords). Keywords exist so "keys" finds the access
 # register and "vat"/"accountant" finds the payroll pack — people search for
 # what a page is FOR, not what it is called.
+def report_catalogue():
+    """Every page the palette knows about, described and grouped.
+
+    Reads the DOCSTRING off each view rather than keeping a second list of
+    descriptions. A description held apart from the code it describes drifts
+    from it, and a page being different from what somebody believes it is is
+    the exact failure this page exists to fix.
+
+    Grouped by the area a page already belongs to, so the grouping cannot
+    disagree with the navigation: both read NAV_AREA_OF.
+    """
+    out = []
+    for label, endpoint, keywords in PALETTE_PAGES:
+        view = app.view_functions.get(endpoint)
+        if view is None:
+            # The palette is checked against the url_map by its own test, so
+            # this should never fire. Skipped rather than crashed: an index
+            # that 500s because one report was renamed takes all the others
+            # down with it.
+            continue
+        doc = (inspect.getdoc(view) or "").strip()
+        first = doc.split("\n\n")[0].replace("\n", " ").strip() if doc else ""
+        area = NAV_AREA_OF.get(endpoint) or "other"
+        out.append({
+            "label": label,
+            "endpoint": endpoint,
+            "what": first,
+            "described": bool(first),
+            "area": area,
+            "area_title": AREA_TITLES.get(area, area.title()),
+            "keywords": keywords,
+            "owner_only": endpoint in OWNER_ONLY_ENDPOINTS,
+        })
+    return out
+
+
 PALETTE_PAGES = [
     ("Home", "dashboard", "dashboard today"),
     ("Revenue to send", "revenue_to_send",
@@ -27014,6 +27969,15 @@ PALETTE_PAGES = [
      "no show did not turn up restaurant table missed cover deposit"),
     ("Table utilisation", "admin_table_utilisation",
      "covers seats full restaurant capacity utilisation how busy"),
+    ("All the reports", "reports_index",
+     "reports index list every report all reports what can i see find a "
+     "report contents directory"),
+    ("Reopened bills", "admin_reopened_bills",
+     "reopen reopened tab bill settled again unsettled corrected after paying "
+     "till pos control"),
+    ("Voids", "admin_voids",
+     "void voids voided struck off comped taken off bill till pos theft "
+     "control who voided"),
     ("Wastage", "admin_wastage_rate",
      "wastage waste share thrown away stock bin spoilage percentage"),
     ("Workload", "admin_workload",
@@ -29051,6 +30015,11 @@ def whats_on():
 @app.route("/admin/whats-on")
 @owner_required
 def admin_whats_on():
+    """The market days, fairs and festivals guests are told about.
+
+    Shown on the public pages and in the arrival notes, so it is the house's
+    answer to "what is on while we are here" rather than a diary of its own.
+    """
     conn = get_db()
     events = conn.execute("SELECT * FROM whats_on ORDER BY sort_order, id").fetchall()
     conn.close()
@@ -32317,8 +33286,12 @@ def settle_pos_from_stripe_session(conn, stripe_session, meta):
     if bill and bill["outstanding"] <= 0.01 and bill["order"]["status"] == "open":
         conn.execute(
             """UPDATE pos_orders SET status = 'paid', settled_total = ?,
-               payment_method = 'card_link', closed_at = ? WHERE id = ?""",
-            (bill["total"], datetime.now(timezone.utc).isoformat(), order_id))
+               payment_method = 'card_link', closed_at = ?,
+               first_settled_at = COALESCE(first_settled_at, ?),
+               first_settled_total = COALESCE(first_settled_total, ?)
+               WHERE id = ?""",
+            (bill["total"], datetime.now(timezone.utc).isoformat(),
+             datetime.now(timezone.utc).isoformat(), bill["total"], order_id))
         log_audit(conn, "pos_tab_settled", target=bill["order"]["table_label"],
                   details=f"€{bill['total']:.2f} by card link")
         pos_journal_append(conn, "tab_settled", {
@@ -33099,6 +34072,7 @@ def manage_booking(manage_token):
                 # nights they moved to, at what those nights cost.
                 stamp_room_total(conn, booking["id"], new_room_portion,
                                  new_arrival.isoformat(), new_departure.isoformat())
+                restamp_stay(conn, booking["id"])
                 conn.commit()
                 owner_to = owner_email(conn)
                 if owner_to:
@@ -33178,6 +34152,8 @@ def manage_booking(manage_token):
                     conn, booking["id"],
                     quoted_room_total(conn, booking, room) + added,
                     booking["arrival_date"], new_departure.isoformat())
+                # More nights is more taxe de sejour and a bigger balance.
+                restamp_stay(conn, booking["id"])
                 log_audit(conn, "guest_extended_stay", target=booking["reference_code"],
                           details=f"+{nights} night(s), +€{added:.2f}")
                 owner_to = owner_email(conn)
@@ -34026,6 +35002,8 @@ def admin_events():
     # nothing on this page linked to it, so the only way to use it was to
     # know the URL.
     bills = {e["id"]: event_bill(conn, e["id"]) for e in inquiries}
+    # Read before the close, like everything else on this page.
+    terms_text = event_terms(conn)
     conn.close()
 
     # Split by whether the event has actually happened yet. Previously one
@@ -34048,6 +35026,7 @@ def admin_events():
         status_filter=status_filter, today=house_today(),
         new_count=new_count, confirmed_count=confirmed_count, event_types=types,
         bills=bills, payment_methods=MANUAL_PAYMENT_METHODS,
+        event_terms_text=terms_text,
     )
 
 
@@ -34765,6 +35744,331 @@ def event_payment_setting(conn, key, cast=float):
         return cast(EVENT_PAYMENT_DEFAULTS[key])
 
 
+# The wording a couple is agreeing to. Held as a setting because it is a
+# commercial term the owner changes with their insurer and their accountant,
+# not a code change -- the same reason the email templates and the terms of
+# booking are data.
+EVENT_TERMS_SETTING = "event_quote_terms"
+EVENT_TERMS_DEFAULT = (
+    "This quote holds the date named above for the party named above.\n\n"
+    "The deposit is payable to accept it and is not refundable: the date is "
+    "taken off the market the moment it is accepted, and the ch\u00e2teau "
+    "cannot sell it twice.\n\n"
+    "The balance falls due by the date shown. Final numbers are needed no "
+    "later than fourteen days before the event; the quote is based on the "
+    "number of guests shown and will be re-quoted if that changes "
+    "materially.\n\n"
+    "Music outdoors stops at midnight. The house is a listed monument and "
+    "nothing may be fixed to the walls, floors or trees.")
+
+
+def event_terms(conn):
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?",
+                       (EVENT_TERMS_SETTING,)).fetchone()
+    return ((row["value"] if row else "") or "").strip() or EVENT_TERMS_DEFAULT
+
+
+def event_quotes(conn, event_id):
+    """Every quote ever put to this event, newest first."""
+    return conn.execute(
+        """SELECT * FROM event_quotes WHERE event_id = ?
+            ORDER BY version DESC, id DESC""", (event_id,)).fetchall()
+
+
+def live_event_quote(conn, event_id):
+    """The one quote that can still be accepted, if there is one.
+
+    Superseded and accepted quotes are kept and are readable; neither can be
+    accepted again. Re-quoting is how a price changes, so exactly one quote is
+    ever open.
+    """
+    return conn.execute(
+        """SELECT * FROM event_quotes
+            WHERE event_id = ? AND status IN ('draft', 'sent')
+            ORDER BY version DESC, id DESC LIMIT 1""", (event_id,)).fetchone()
+
+
+def create_event_quote(conn, event_id, fields, user_id=None):
+    """Put a quote to a couple. (quote, error).
+
+    Supersedes whatever was open. A quote is a VERSION rather than a set of
+    columns on the enquiry, so the price somebody accepted in March is still
+    readable in September when they ask why it has changed -- and so an
+    accepted one can never be edited into saying something else.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None, "That enquiry no longer exists."
+    if event["status"] in ("cancelled", "declined"):
+        return None, "That enquiry is closed, so there is nothing to quote for."
+    try:
+        price = round(float(str(fields.get("quoted_price", "")).replace(",", ".").strip() or 0), 2)
+    except (TypeError, ValueError):
+        return None, "That is not a price."
+    if price <= 0:
+        return None, "A quote needs a price."
+    discount = 0.0
+    try:
+        discount = round(float(str(fields.get("discount_amount", "") or 0).replace(",", ".")), 2)
+    except (TypeError, ValueError):
+        discount = 0.0
+    discount = max(0.0, min(discount, price))
+    deposit = None
+    raw_deposit = str(fields.get("deposit_amount", "") or "").replace(",", ".").strip()
+    if raw_deposit:
+        try:
+            deposit = round(float(raw_deposit), 2)
+        except (TypeError, ValueError):
+            return None, "That is not a deposit."
+        if deposit < 0 or deposit > price - discount + 0.005:
+            return None, "The deposit cannot be more than the quote."
+    due = (fields.get("balance_due_date", "") or "").strip() or None
+    if due and not parse_date(due):
+        return None, "That is not a date."
+    # Nothing is asked for that the enquiry does not already know, so a quote
+    # can be raised in one click and edited before it goes.
+    guests = fields.get("guest_count")
+    try:
+        guests = int(guests) if str(guests or "").strip() else (event["guest_count"] or None)
+    except (TypeError, ValueError):
+        guests = event["guest_count"] or None
+    version = (conn.execute(
+        "SELECT COALESCE(MAX(version), 0) AS v FROM event_quotes WHERE event_id = ?",
+        (event_id,)).fetchone()["v"] or 0) + 1
+    conn.execute(
+        """UPDATE event_quotes SET status = 'superseded', superseded_at = ?
+            WHERE event_id = ? AND status IN ('draft', 'sent')""",
+        (datetime.now(timezone.utc).isoformat(), event_id))
+    token = secrets.token_urlsafe(24)
+    conn.execute(
+        """INSERT INTO event_quotes (event_id, version, token, quoted_price,
+           discount_amount, deposit_amount, balance_due_date, spaces,
+           arrival_time, carriages_time, guest_count, includes, terms,
+           status, created_at, created_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)""",
+        (event_id, version, token, price, discount or None, deposit, due,
+         (fields.get("spaces", "") or event["spaces"] or "").strip()[:300] or None,
+         (fields.get("arrival_time", "") or event["arrival_time"] or "").strip()[:40] or None,
+         (fields.get("carriages_time", "") or event["carriages_time"] or "").strip()[:40] or None,
+         guests,
+         (fields.get("includes", "") or "").strip()[:4000] or None,
+         # The terms are COPIED onto the quote, not looked up when it is read.
+         # A couple agreed to the words in front of them that day; changing the
+         # setting must not change what an accepted quote says.
+         event_terms(conn),
+         datetime.now(timezone.utc).isoformat(), user_id))
+    conn.commit()
+    return conn.execute("SELECT * FROM event_quotes WHERE token = ?", (token,)).fetchone(), None
+
+
+def accept_event_quote(conn, quote):
+    """Record that a couple accepted this quote, and make it the agreement.
+
+    The accepted figures are copied onto the enquiry, because everything
+    downstream -- event_bill, the reminder, the invoice -- reads the enquiry.
+    The quote stays as the record of WHAT was agreed and WHEN.
+
+    Accepting does NOT confirm the event. Confirming blocks the date against
+    every room booking in the diary, and that is the house's act rather than
+    the guest's -- somebody has to look at the calendar. The owner is told
+    instead, and a hold is what keeps the date safe in the meantime.
+    """
+    if quote["status"] not in ("draft", "sent"):
+        return False, "That quote is no longer open."
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """UPDATE event_quotes SET status = 'accepted', accepted_at = ?,
+           accepted_name = ? WHERE id = ?""",
+        (now, (quote["accepted_name"] or "")[:120] or None, quote["id"]))
+    conn.execute(
+        """UPDATE event_inquiries SET quoted_price = ?, discount_amount = ?,
+           deposit_amount = ?, balance_due_date = COALESCE(?, balance_due_date),
+           spaces = COALESCE(?, spaces), arrival_time = COALESCE(?, arrival_time),
+           carriages_time = COALESCE(?, carriages_time)
+            WHERE id = ?""",
+        (quote["quoted_price"], quote["discount_amount"], quote["deposit_amount"],
+         quote["balance_due_date"], quote["spaces"], quote["arrival_time"],
+         quote["carriages_time"], quote["event_id"]))
+    conn.commit()
+    return True, None
+
+
+def event_holds(conn, event_id=None, *, live_only=True):
+    """Dates promised but not yet confirmed."""
+    sql = "SELECT * FROM event_holds WHERE 1 = 1"
+    args = []
+    if event_id is not None:
+        sql += " AND event_id = ?"
+        args.append(event_id)
+    if live_only:
+        sql += " AND released_at IS NULL AND expires_at > ?"
+        args.append(datetime.now(timezone.utc).isoformat())
+    return conn.execute(sql + " ORDER BY start_date", tuple(args)).fetchall()
+
+
+def place_event_hold(conn, event_id, start_iso, end_iso, *, days=None,
+                     note=None, user_id=None):
+    """Hold a date while somebody decides. (hold, error).
+
+    Refused when a room booking, a workshop or another event already has those
+    dates: a hold that overlaps something sold is a promise the house cannot
+    keep, and finding that out in March is much cheaper than in August.
+    """
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not event:
+        return None, "That enquiry no longer exists."
+    start, end = parse_date(start_iso), parse_date(end_iso)
+    if not start or not end or end < start:
+        return None, "Those dates do not make sense."
+    # The whole house, so any room answers for all of them.
+    room = conn.execute("SELECT id FROM rooms WHERE active = 1 ORDER BY id LIMIT 1").fetchone()
+    if room:
+        ok, why = is_range_available(conn, room["id"], start, end + timedelta(days=1))
+        if not ok:
+            return None, f"Those dates are not free: {why}"
+    try:
+        days = int(days) if days else EVENT_HOLD_DAYS_DEFAULT
+    except (TypeError, ValueError):
+        days = EVENT_HOLD_DAYS_DEFAULT
+    days = max(1, min(days, 365))
+    expires = datetime.now(timezone.utc) + timedelta(days=days)
+    conn.execute(
+        """INSERT INTO event_holds (event_id, start_date, end_date, expires_at,
+           note, created_at, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (event_id, start.isoformat(), end.isoformat(), expires.isoformat(),
+         (note or "").strip()[:300] or None,
+         datetime.now(timezone.utc).isoformat(), user_id))
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM event_holds WHERE event_id = ? ORDER BY id DESC LIMIT 1",
+        (event_id,)).fetchone(), None
+
+
+def lapse_event_holds(conn, *, now=None):
+    """Let go of a date nobody came back about, and say so.
+
+    A hold blocks every room in the house for its span. Left to stand it would
+    close a month on the strength of a conversation somebody forgot, so it has
+    an end and this is what enforces it.
+    """
+    now = now or datetime.now(timezone.utc)
+    stale = conn.execute(
+        """SELECT event_holds.*, event_inquiries.reference_code AS ref,
+                  event_inquiries.event_type AS kind,
+                  event_inquiries.contact_name AS who
+             FROM event_holds
+             JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+            WHERE event_holds.released_at IS NULL AND event_holds.expires_at <= ?""",
+        (now.isoformat(),)).fetchall()
+    if not stale:
+        return {"event holds lapsed": 0}
+    conn.execute(
+        """UPDATE event_holds SET released_at = ?, released_reason = 'it ran out'
+            WHERE released_at IS NULL AND expires_at <= ?""",
+        (now.isoformat(), now.isoformat()))
+    conn.commit()
+    # The owner is TOLD. A date coming back on the market is news -- it is a
+    # weekend that can be sold again, and nobody would otherwise know.
+    to_address = owner_email(conn)
+    if to_address:
+        lines = "\n".join(
+            f"- {h['start_date']} to {h['end_date']} — {h['kind']} for "
+            f"{h['who']} ({h['ref']})" for h in stale)
+        send_email(
+            to_address, "Dates back on the market",
+            "These provisional holds have run out, so the dates are free "
+            f"again:\n\n{lines}\n\nIf any of them is still live, place the "
+            "hold again from the event.\n\n— Château de Gudanes")
+    return {"event holds lapsed": len(stale)}
+
+
+def event_instalments(conn, event_id):
+    """The payment plan for an event, in date order.
+
+    A PLAN, NOT A LEDGER. Nothing here records money: whether an instalment
+    has been met is worked out below from what the event has actually
+    received, oldest first. So there is one record of what came in, and a
+    schedule that cannot disagree with it.
+    """
+    return conn.execute(
+        """SELECT * FROM event_instalments WHERE event_id = ?
+            ORDER BY due_date, id""", (event_id,)).fetchall()
+
+
+def event_schedule(conn, event_id):
+    """The plan with what has been received applied against it.
+
+    Each instalment comes back with how much of it is covered and whether it
+    is met, settled oldest first -- which is what somebody means when they say
+    "the second payment has come in".
+    """
+    bill = event_bill(conn, event_id)
+    if not bill:
+        return None
+    rows = event_instalments(conn, event_id)
+    left = bill["paid"]
+    out = []
+    for row in rows:
+        amount = round(float(row["amount"] or 0), 2)
+        covered = round(min(left, amount), 2)
+        left = round(max(left - amount, 0.0), 2)
+        out.append({
+            "row": row, "amount": amount, "covered": covered,
+            "outstanding": round(amount - covered, 2),
+            "met": covered + 0.005 >= amount,
+            "overdue": bool(covered + 0.005 < amount
+                            and (row["due_date"] or "") < house_today_iso()),
+        })
+    planned = round(sum(x["amount"] for x in out), 2)
+    return {
+        "bill": bill,
+        "instalments": out,
+        "planned": planned,
+        # What the quote asks for and the plan does not yet cover. Nought means
+        # the plan adds up to the agreement.
+        "unplanned": round(max(bill["quoted"] - planned, 0.0), 2),
+        "next_due": next((x for x in out if not x["met"]), None),
+    }
+
+
+def add_event_instalment(conn, event_id, label, amount, due_date):
+    """One dated stage of the plan. (row, error).
+
+    Refused rather than clamped if it would take the plan over the quote: this
+    is somebody dividing an agreed figure into stages, and silently shrinking
+    a stage to fit is how a plan stops adding up to the agreement.
+    """
+    state = event_schedule(conn, event_id)
+    if not state:
+        return None, "That enquiry no longer exists."
+    if state["bill"]["event"]["status"] in ("cancelled", "declined"):
+        return None, "That event is closed, so there is nothing to schedule."
+    try:
+        amount = round(float(str(amount).replace(",", ".").strip()), 2)
+    except (TypeError, ValueError):
+        return None, "That is not an amount."
+    if amount <= 0:
+        return None, "An instalment has to be more than nothing."
+    if amount > state["unplanned"] + 0.005:
+        return None, ("Only EUR %.2f of this quote is unscheduled, so an "
+                      "instalment of EUR %.2f would take the plan over what "
+                      "was agreed." % (state["unplanned"], amount))
+    due = parse_date((due_date or "").strip())
+    if not due:
+        return None, "An instalment needs a date it falls due."
+    conn.execute(
+        """INSERT INTO event_instalments (event_id, label, amount, due_date,
+           created_at) VALUES (?, ?, ?, ?, ?)""",
+        (event_id, (label or "").strip()[:120], amount, due.isoformat(),
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM event_instalments WHERE event_id = ? ORDER BY id DESC LIMIT 1",
+        (event_id,)).fetchone(), None
+
+
 def event_payment_terms(conn, quoted, event_date_iso, party_size=None):
     """The deposit to ask for on an event, and when the balance falls due.
 
@@ -34861,6 +36165,98 @@ def room_payment_schedule(conn, arrival, total_price, party_size=None):
     if due < today:
         due = today
     return deposit, balance, due.isoformat()
+
+
+def restamp_stay(conn, booking_id):
+    """Move everything stamped on a stay to match the stay it is now.
+
+    THE FAULT THIS EXISTS FOR, which was a grid rather than a bug. Three
+    figures are stamped on a room booking and never derived -- the taxe de
+    sejour, the deposit, and the dated balance -- and three paths move a stay:
+    the owner editing it, the guest changing their own dates, and the guest
+    adding nights on the end. One cell of those nine was covered. The tax was
+    re-stamped on the owner edit, with a comment saying exactly why it had to
+    be, and nothing else was re-stamped anywhere.
+
+    What it cost, measured: a stay moved from October to the following April
+    kept a balance falling due on 30 September. The reminder job selects on
+    balance_due_date, so that guest was chased seven months early -- and
+    because the reminder is sent once per booking and stamps itself, they were
+    then never chased again. Nobody asks in April. The money turns up as a
+    conversation at reception, which is the exact thing the reminder was
+    written to prevent.
+
+    A deposit already taken is not re-quoted: what was charged is history, and
+    restating it would move a figure a card has already been debited for. Only
+    what is left, and when it falls due, follow the stay. The workshop side has
+    worked this way since it was written and is the precedent here.
+    """
+    booking = conn.execute("SELECT * FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    if not booking:
+        return
+    arrival = parse_date(booking["arrival_date"])
+    departure = parse_date(booking["departure_date"])
+    if not arrival or not departure:
+        return
+    nights = (departure - arrival).days
+    party = booking["party_size"] or 1
+    under_18 = booking["guests_under_18"] or 0
+
+    # The tax follows the stay. A night added or a guest removed changes what
+    # the commune is owed, and leaving the stamped figure behind puts the
+    # declaration out by the difference with nothing looking wrong on the page.
+    #
+    # ONLY A STAY THAT WAS ACTUALLY CHARGED ONE. booking_bill reads the stamped
+    # figure and deliberately never falls back to a computation, for the reason
+    # written there: a stay taken before the tax existed was never charged it
+    # and cannot be now, so inventing one would move what an existing guest
+    # owes for a stay already agreed -- in some cases already paid in full. An
+    # edit is not the moment to start charging somebody a tax nobody quoted
+    # them.
+    #
+    # A ZERO is indistinguishable from a never, because the column is NOT NULL
+    # DEFAULT 0: a stay predating the tax and a stay whose party is all
+    # children look identical on the row. So a nil tax stays nil, and the cost
+    # of that is the rarer, smaller error -- a party of children that gains an
+    # adult is not re-taxed until somebody sets the figure by hand, rather than
+    # every historical stay gaining a charge the moment anybody edits it.
+    #
+    # Found by test_booking_bill, which extends a stay that was paid in full
+    # and expects to see the extra night and nothing else on the bill. The
+    # first version of this check tested for NULL, which the column cannot
+    # hold -- so it was dead code that read as a guard.
+    if not booking["city_tax"]:
+        city_tax = booking["city_tax"]
+    else:
+        city_tax, _adults, _rate = compute_city_tax(conn, party, under_18, nights)
+
+    total = round(float(booking["total_price"] or 0), 2)
+    deposit, balance, due = room_payment_schedule(conn, arrival, total, party)
+    if booking["deposit_paid_at"]:
+        deposit = round(float(booking["deposit_amount"] or 0), 2)
+        balance = round(max(total - deposit, 0.0), 2)
+        if balance <= 0:
+            due = None
+
+    # A reminder that went out for a date that no longer exists has to be able
+    # to go out again, whichever way the date moved. Later, and the guest was
+    # told about a moment that has gone away from them while the real one is
+    # still ahead. Nearer, and they were told a deadline that is now sooner
+    # than the one they wrote down, which is the more urgent of the two.
+    #
+    # Only when it actually MOVES. An edit that leaves the dates alone is not
+    # a reason to write to anybody, and the job itself still only sends inside
+    # its own window, so nobody is chased for a balance that is months off.
+    was_due = booking["balance_due_date"] or None
+    reset_reminder = bool(booking["balance_reminder_sent_at"] and due != was_due)
+    conn.execute(
+        """UPDATE bookings SET city_tax = ?, deposit_amount = ?, balance_amount = ?,
+           balance_due_date = ? WHERE id = ?""",
+        (city_tax, deposit or None, balance or 0.0, due, booking_id))
+    if reset_reminder:
+        conn.execute(
+            "UPDATE bookings SET balance_reminder_sent_at = NULL WHERE id = ?",
+            (booking_id,))
 
 
 def compute_restaurant_deposit(total_price, deposit_percent):
@@ -41465,28 +42861,26 @@ def edit_booking(booking_id):
         new_total = new_room_portion + extras_portion
         new_total = new_total or None
 
-        # The tax follows the stay. Moving a booking a night longer or adding a
-        # guest changes what the commune is owed, and leaving the stamped figure
-        # behind would put the declaration out by the difference without anything
-        # looking wrong on the page.
         typed_source = (request.form.get("source", "") or "").strip()
         source = typed_source if typed_source in BOOKING_SOURCES else booking["source"]
         under_18 = int(under_18_raw) if under_18_raw.isdigit() else (booking["guests_under_18"] or 0)
         under_18 = max(0, min(under_18, party_size))
-        new_city_tax, _a, _r = compute_city_tax(
-            conn, party_size, under_18, (departure - arrival).days)
 
         conn.execute(
             """UPDATE bookings SET arrival_date=?, departure_date=?, party_size=?, guest_phone=?,
-               special_requests=?, total_price=?, guests_under_18=?, city_tax=?,
+               special_requests=?, total_price=?, guests_under_18=?,
                source=?, booked_by_name=?, booked_by_email=? WHERE id=?""",
             (arrival.isoformat(), departure.isoformat(), party_size, guest_phone or None,
-             special_requests or None, new_total, under_18, new_city_tax, source,
+             special_requests or None, new_total, under_18, source,
              booked_by_name or None, booked_by_email or None,
              booking_id),
         )
         stamp_room_total(conn, booking_id, new_room_portion,
                          arrival.isoformat(), departure.isoformat())
+        # The tax AND the payment schedule, in one place all three paths call.
+        # The tax used to be recomputed inline right here and the schedule not
+        # at all, which is how one of nine cells came to be covered.
+        restamp_stay(conn, booking_id)
         conn.commit()
 
         # No guest-row date sync any more: the booking IS the record of when
@@ -46897,6 +48291,99 @@ def admin_wastage_rate():
     return render_template("admin_wastage_rate.html", data=data, days=days)
 
 
+@app.route("/reports")
+@owner_required
+def reports_index():
+    """Every report the house has, and what each one answers.
+
+    Thirty-six of them were reachable only through the command palette, which
+    is no use to somebody who does not already know the report exists.
+    """
+    rows = report_catalogue()
+    lv = list_view(
+        rows, request.args,
+        search=["label", "what", "keywords"],
+        search_hint="Search what you want to know, not what the page is called",
+        facets=[
+            facet("area", "Part of the house", lambda r: r["area_title"],
+                  limit=14),
+        ],
+        sorts=[
+            sort_option("area", "By part of the house",
+                        lambda r: (r["area_title"], r["label"])),
+            sort_option("name", "By name", lambda r: r["label"]),
+        ],
+        default_sort="area",
+    )
+    # Grouped for display, from the filtered rows, so a search narrows the
+    # groups rather than leaving fourteen headings over four results.
+    groups = {}
+    for row in lv["rows"]:
+        groups.setdefault(row["area_title"], []).append(row)
+    undescribed = [r for r in rows if not r["described"]]
+    overview = [
+        overview_cell("Reports", len(rows)),
+        overview_cell("Parts of the house",
+                      len({r["area_title"] for r in rows})),
+        overview_cell("Without a description", len(undescribed),
+                      alert=bool(undescribed),
+                      hint="a page nobody can describe"),
+    ]
+    return render_template(
+        "reports_index.html", lv=lv,
+        groups=sorted(groups.items()), overview=overview,
+        undescribed=sorted(r["label"] for r in undescribed))
+
+
+@app.route("/admin/restaurant/reopened")
+@owner_required
+def admin_reopened_bills():
+    """Bills that were settled, then opened again, and what changed."""
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = reopen_report(conn, start=start, end=end)
+    conn.close()
+    return render_template("admin_reopened.html", data=data)
+
+
+@app.route("/admin/restaurant/reopened.csv")
+@owner_required
+def export_reopened_csv():
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = reopen_report(conn, start=start, end=end)
+    conn.close()
+    return csv_response(
+        ["service_date", "table", "who", "reopened_at",
+         "minutes_after_settling", "settled_first_at", "settled_finally_at",
+         "difference"], data["csv"],
+        f"reopened_{start.isoformat()}_to_{end.isoformat()}.csv")
+
+
+@app.route("/admin/restaurant/voids")
+@owner_required
+def admin_voids():
+    """What came off the bills, and the pattern in it."""
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = void_report(conn, start=start, end=end)
+    conn.close()
+    return render_template("admin_voids.html", data=data)
+
+
+@app.route("/admin/restaurant/voids.csv")
+@owner_required
+def export_voids_csv():
+    conn = get_db()
+    start, end = _window_from_request(default_days=30)
+    data = void_report(conn, start=start, end=end)
+    conn.close()
+    return csv_response(
+        ["service_date", "what", "value", "reason", "who", "after_kitchen",
+         "after_close"], data["csv"],
+        f"voids_{start.isoformat()}_to_{end.isoformat()}.csv")
+
+
 @app.route("/admin/wastage.csv")
 @owner_required
 def export_wastage_rate_csv():
@@ -46949,6 +48436,257 @@ def export_breakage_recovery_csv():
     conn.close()
     return csv_response(["what", "room", "found_on", "replacement", "charged",
                          "written_off"], data["csv"], "breakage-recovery.csv")
+
+
+@app.route("/admin/events/<int:inquiry_id>/agreement")
+@owner_required
+def event_agreement(inquiry_id):
+    """What was agreed, what is promised, and how it will be paid for.
+
+    One page for the three things an enquiry had nowhere to keep: the quote
+    somebody actually accepted, the dates being held while they decide, and
+    the instalments the money arrives in.
+    """
+    conn = get_db()
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (inquiry_id,)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    quotes = event_quotes(conn, inquiry_id)
+    live = live_event_quote(conn, inquiry_id)
+    schedule = event_schedule(conn, inquiry_id)
+    holds = event_holds(conn, inquiry_id, live_only=False)
+    # Read before the close, like everything else on a page in this app.
+    quote_links = {q["id"]: url_for("event_quote", token=q["token"], _external=True)
+                   for q in quotes if q["token"]}
+    hold_days = EVENT_HOLD_DAYS_DEFAULT
+    conn.close()
+    return render_template("event_agreement.html", event=event, quotes=quotes,
+                           live=live, schedule=schedule, holds=holds,
+                           quote_links=quote_links,
+                           hold_days=hold_days, today=house_today_iso())
+
+
+@app.route("/admin/events/<int:inquiry_id>/quote", methods=["POST"])
+@owner_required
+def new_event_quote(inquiry_id):
+    conn = get_db()
+    quote, error = create_event_quote(
+        conn, inquiry_id, request.form.to_dict(), user_id=session.get("user_id"))
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+    log_audit(conn, "event_quote_raised", target=str(inquiry_id),
+              details=f"v{quote['version']} at €{quote['quoted_price']:.2f}")
+    conn.commit()
+    conn.close()
+    flash(f"Quote {quote['version']} raised. Send them the link when you are "
+          "ready — nothing goes out on its own.", "success")
+    return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+
+
+@app.route("/admin/events/quote/<int:quote_id>/send", methods=["POST"])
+@owner_required
+def send_event_quote(quote_id):
+    """Put the quote in front of the couple.
+
+    Separate from raising it on purpose: a quote for the largest thing the
+    house sells should be readable and correctable before anybody sees it.
+    """
+    conn = get_db()
+    quote = conn.execute("SELECT * FROM event_quotes WHERE id = ?", (quote_id,)).fetchone()
+    if not quote:
+        conn.close()
+        abort(404)
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (quote["event_id"],)).fetchone()
+    if quote["status"] not in ("draft", "sent"):
+        conn.close()
+        flash("That quote is no longer open, so there is nothing to send.", "error")
+        return redirect(url_for("event_agreement", inquiry_id=quote["event_id"]))
+    link = url_for("event_quote", token=quote["token"], _external=True)
+    net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
+    sent = send_email(
+        event["contact_email"],
+        f"Your quote for Ch\u00e2teau de Gudanes",
+        f"Dear {event['contact_name']},\n\n"
+        f"Your quote for {event['event_type']} at Ch\u00e2teau de Gudanes "
+        f"comes to EUR {net:.2f}.\n\n"
+        f"Everything it covers, the terms, and a button to accept it are "
+        f"here:\n{link}\n\n"
+        "Nothing is agreed until you accept it, and we are glad to talk any "
+        "of it through first.\n\n\u2014 Ch\u00e2teau de Gudanes")
+    if sent:
+        conn.execute(
+            "UPDATE event_quotes SET status = 'sent', sent_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), quote_id))
+        conn.commit()
+    conn.close()
+    flash(f"Quote {quote['version']} sent to {event['contact_email']}." if sent
+          else "That message could not be sent.", "success" if sent else "error")
+    return redirect(url_for("event_agreement", inquiry_id=quote["event_id"]))
+
+
+@app.route("/admin/events/<int:inquiry_id>/hold", methods=["POST"])
+@owner_required
+def new_event_hold(inquiry_id):
+    conn = get_db()
+    hold, error = place_event_hold(
+        conn, inquiry_id,
+        request.form.get("start_date", ""),
+        request.form.get("end_date", "") or request.form.get("start_date", ""),
+        days=request.form.get("days", ""),
+        note=request.form.get("note", ""), user_id=session.get("user_id"))
+    if error:
+        conn.close()
+        flash(error, "error")
+        return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+    log_audit(conn, "event_hold_placed", target=str(inquiry_id),
+              details=f"{hold['start_date']} to {hold['end_date']} until {hold['expires_at'][:10]}")
+    conn.commit()
+    conn.close()
+    flash(f"Held {hold['start_date']} to {hold['end_date']}. No room can be "
+          f"sold on those dates until it runs out on {hold['expires_at'][:10]}.",
+          "success")
+    return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+
+
+@app.route("/admin/events/hold/<int:hold_id>/release", methods=["POST"])
+@owner_required
+def release_event_hold(hold_id):
+    conn = get_db()
+    hold = conn.execute("SELECT * FROM event_holds WHERE id = ?", (hold_id,)).fetchone()
+    if not hold:
+        conn.close()
+        abort(404)
+    if hold["released_at"]:
+        conn.close()
+        flash("That hold has already gone.", "error")
+        return redirect(url_for("event_agreement", inquiry_id=hold["event_id"]))
+    conn.execute(
+        """UPDATE event_holds SET released_at = ?, released_reason = 'let go by the house'
+            WHERE id = ?""", (datetime.now(timezone.utc).isoformat(), hold_id))
+    conn.commit()
+    conn.close()
+    flash(f"{hold['start_date']} to {hold['end_date']} is back on the market.",
+          "success")
+    return redirect(url_for("event_agreement", inquiry_id=hold["event_id"]))
+
+
+@app.route("/admin/events/<int:inquiry_id>/instalment", methods=["POST"])
+@owner_required
+def new_event_instalment(inquiry_id):
+    conn = get_db()
+    row, error = add_event_instalment(
+        conn, inquiry_id, request.form.get("label", ""),
+        request.form.get("amount", ""), request.form.get("due_date", ""))
+    conn.close()
+    flash(error if error else
+          f"EUR {row['amount']:.2f} falls due {row['due_date']}.",
+          "error" if error else "success")
+    return redirect(url_for("event_agreement", inquiry_id=inquiry_id))
+
+
+@app.route("/admin/events/instalment/<int:instalment_id>/delete", methods=["POST"])
+@owner_required
+def delete_event_instalment(instalment_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM event_instalments WHERE id = ?",
+                       (instalment_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM event_instalments WHERE id = ?", (instalment_id,))
+    conn.commit()
+    conn.close()
+    flash("That stage is off the plan. Nothing about what has actually been "
+          "received has changed.", "success")
+    return redirect(url_for("event_agreement", inquiry_id=row["event_id"]))
+
+
+@app.route("/admin/events/terms", methods=["POST"])
+@owner_required
+def save_event_terms():
+    """The wording a couple agrees to.
+
+    Data rather than code, like the email templates: a commercial term the
+    owner changes with their insurer, not a deploy. An accepted quote keeps
+    the words that were in front of the person who accepted it, so editing
+    this never changes what anybody already agreed to.
+    """
+    text = (request.form.get("terms", "") or "").strip()[:8000]
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO app_settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+        (EVENT_TERMS_SETTING, text))
+    conn.commit()
+    conn.close()
+    flash("Saved. Quotes raised from now on carry this wording; ones already "
+          "accepted keep what they said." if text else
+          "Cleared, so quotes carry the house wording again.", "success")
+    return redirect(url_for("admin_events"))
+
+
+@app.route("/events/quote/<token>", methods=["GET", "POST"])
+@csrf.exempt
+def event_quote(token):
+    """The quote itself, as the couple sees it.
+
+    Their own money and their own day on a link they were sent, so it is never
+    indexed. CSRF-exempt for the same reason the statement and the share pages
+    are: whoever opens it has no session, and the worst a forged POST can do is
+    accept a quote that was already put to them, which is recorded with the
+    name typed into it.
+    """
+    conn = get_db()
+    quote = conn.execute("SELECT * FROM event_quotes WHERE token = ?", (token,)).fetchone()
+    if not quote:
+        conn.close()
+        abort(404)
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (quote["event_id"],)).fetchone()
+    if not event:
+        conn.close()
+        abort(404)
+    if request.method == "POST" and quote["status"] in ("draft", "sent"):
+        who = (request.form.get("accepted_name", "") or "").strip()[:120]
+        if not who:
+            conn.close()
+            flash("Please type your name to accept.", "error")
+            return redirect(url_for("event_quote", token=token))
+        conn.execute("UPDATE event_quotes SET accepted_name = ? WHERE id = ?",
+                     (who, quote["id"]))
+        quote = conn.execute("SELECT * FROM event_quotes WHERE id = ?",
+                             (quote["id"],)).fetchone()
+        ok, problem = accept_event_quote(conn, quote)
+        if ok:
+            log_audit(conn, "event_quote_accepted", target=event["reference_code"],
+                      details=f"v{quote['version']} by {who}")
+            conn.commit()
+            to_address = owner_email(conn)
+            conn.close()
+            if to_address:
+                send_email(
+                    to_address,
+                    f"Quote accepted \u2014 {event['event_type']} ({event['reference_code']})",
+                    f"{who} has accepted quote {quote['version']} for "
+                    f"{event['event_type']} on {event['preferred_date']}, at "
+                    f"EUR {float(quote['quoted_price'] or 0):.2f}.\n\n"
+                    "The date is NOT blocked yet \u2014 confirming the event is "
+                    "what does that, and it is worth looking at the calendar "
+                    "first.\n\n\u2014 Ch\u00e2teau de Gudanes")
+            flash("Thank you \u2014 that is accepted. We will be in touch to "
+                  "settle the deposit.", "success")
+            return redirect(url_for("event_quote", token=token))
+        conn.close()
+        flash(problem or "That quote is no longer open.", "error")
+        return redirect(url_for("event_quote", token=token))
+    net = round(float(quote["quoted_price"] or 0) - float(quote["discount_amount"] or 0), 2)
+    conn.close()
+    return render_template("event_quote.html", quote=quote, event=event, net=net)
 
 
 @app.route("/admin/events/<int:event_id>/run-sheet")
@@ -47089,6 +48827,179 @@ def delete_event_supplier(event_id, supplier_id):
     conn.commit()
     conn.close()
     return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/staffing", methods=["POST"])
+@owner_required
+def save_event_staffing(event_id):
+    """How many people the day needs."""
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    raw = (request.form.get("staff_needed", "") or "").strip()
+    needed = None
+    if raw:
+        try:
+            needed = max(0, min(int(raw), 200))
+        except ValueError:
+            conn.close()
+            flash("How many people is a number.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    conn.execute("UPDATE event_inquiries SET staff_needed = ? WHERE id = ?",
+                 (needed, event_id))
+    conn.commit()
+    conn.close()
+    flash(f"The day needs {needed} on it." if needed
+          else "Cleared. The day still shows as work on the rota; it just does "
+               "not say how many.", "success")
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/<int:event_id>/staffing/assign", methods=["POST"])
+@owner_required
+def assign_shift_to_event(event_id):
+    """Put an existing shift on the wedding, or take it off again.
+
+    Assigning rather than creating: the rota is where shifts are made, and a
+    second place to make them is a second place for them to disagree. This
+    says which of the shifts already on that day is for the event.
+    """
+    conn = get_db()
+    _event_or_404(conn, event_id)
+    raw = (request.form.get("shift_id", "") or "").strip()
+    if not raw.isdigit():
+        conn.close()
+        flash("Choose a shift.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    shift = conn.execute("SELECT * FROM shifts WHERE id = ?", (int(raw),)).fetchone()
+    if not shift:
+        conn.close()
+        abort(404)
+    detach = bool(request.form.get("off"))
+    # Only a shift on one of the event's own days can be for it. A shift in
+    # another week attached to a wedding is a rota nobody can read.
+    event = conn.execute("SELECT * FROM event_inquiries WHERE id = ?",
+                         (event_id,)).fetchone()
+    if not detach and shift["shift_date"] not in [d.isoformat() for d in event_days(event)]:
+        conn.close()
+        flash("That shift is not on one of the event's days.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=event_id))
+    conn.execute("UPDATE shifts SET event_id = ? WHERE id = ?",
+                 (None if detach else event_id, shift["id"]))
+    conn.commit()
+    conn.close()
+    flash("Taken off the event." if detach else "On the event.", "success")
+    return redirect(url_for("event_run_sheet_page", event_id=event_id))
+
+
+@app.route("/admin/events/supplier/<int:supplier_id>/cost", methods=["POST"])
+@owner_required
+def save_event_supplier_cost(supplier_id):
+    """What a supplier charges, whether they have been paid, and who they are.
+
+    Recorded against the event so it can be costed, and linked to the supplier
+    list where they are on it -- which is what lets one insurance certificate
+    cover the five weddings a florist works.
+    """
+    conn = get_db()
+    row = conn.execute("SELECT * FROM event_suppliers WHERE id = ?",
+                       (supplier_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    cost = None
+    raw = (request.form.get("cost", "") or "").strip().replace(",", ".")
+    if raw:
+        try:
+            cost = round(float(raw), 2)
+        except ValueError:
+            conn.close()
+            flash("That is not an amount.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=row["event_id"]))
+        if cost < 0:
+            conn.close()
+            flash("A cost cannot be negative.", "error")
+            return redirect(url_for("event_run_sheet_page", event_id=row["event_id"]))
+    vendor_raw = (request.form.get("vendor_id", "") or "").strip()
+    vendor_id = int(vendor_raw) if vendor_raw.isdigit() else None
+    if vendor_id and missing_row(conn, "vendors", vendor_id):
+        conn.close()
+        flash("That supplier is no longer on the list.", "error")
+        return redirect(url_for("event_run_sheet_page", event_id=row["event_id"]))
+    paid = bool(request.form.get("paid"))
+    conn.execute(
+        """UPDATE event_suppliers SET cost = ?, invoice_ref = ?, vendor_id = ?,
+           paid_at = CASE WHEN ? THEN COALESCE(paid_at, ?) ELSE NULL END
+            WHERE id = ?""",
+        (cost, (request.form.get("invoice_ref", "") or "").strip()[:80] or None,
+         vendor_id, 1 if paid else 0, datetime.now(timezone.utc).isoformat(),
+         supplier_id))
+    conn.commit()
+    conn.close()
+    flash("Saved.", "success")
+    return redirect(url_for("event_run_sheet_page", event_id=row["event_id"]))
+
+
+@app.route("/admin/vendors/<int:vendor_id>/document", methods=["POST"])
+@owner_required
+def new_vendor_document(vendor_id):
+    """Record a paper a supplier holds, and when it runs out.
+
+    On the vendor rather than the event, so a florist who works five weddings
+    has one insurance certificate on file. Judged against the day they work,
+    not against today -- a certificate expiring the week before a wedding is
+    missing for that wedding.
+    """
+    conn = get_db()
+    if missing_row(conn, "vendors", vendor_id):
+        conn.close()
+        abort(404)
+    kind = (request.form.get("kind", "") or "").strip()
+    if kind not in VENDOR_DOCUMENT_KINDS:
+        conn.close()
+        flash("Choose what kind of document it is.", "error")
+        return redirect(request.referrer or url_for("management_buying"))
+    expires = (request.form.get("expires_on", "") or "").strip() or None
+    if expires and not parse_date(expires):
+        conn.close()
+        flash("That is not a date.", "error")
+        return redirect(request.referrer or url_for("management_buying"))
+    issued = (request.form.get("issued_on", "") or "").strip() or None
+    if issued and not parse_date(issued):
+        conn.close()
+        flash("That is not a date.", "error")
+        return redirect(request.referrer or url_for("management_buying"))
+    conn.execute(
+        """INSERT INTO vendor_documents (vendor_id, kind, reference, issued_on,
+           expires_on, note, created_at, recorded_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (vendor_id, kind,
+         (request.form.get("reference", "") or "").strip()[:120] or None,
+         issued, expires,
+         (request.form.get("note", "") or "").strip()[:300] or None,
+         datetime.now(timezone.utc).isoformat(), session.get("user_id")))
+    conn.commit()
+    conn.close()
+    flash(f"{VENDOR_DOCUMENT_KINDS[kind]} recorded"
+          + (f", runs out {expires}." if expires else ", with no expiry."),
+          "success")
+    return redirect(request.referrer or url_for("management_buying"))
+
+
+@app.route("/admin/vendors/document/<int:document_id>/delete", methods=["POST"])
+@owner_required
+def delete_vendor_document(document_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM vendor_documents WHERE id = ?",
+                       (document_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    conn.execute("DELETE FROM vendor_documents WHERE id = ?", (document_id,))
+    conn.commit()
+    conn.close()
+    flash("Removed. Anything that required it now reads as missing again.",
+          "success")
+    return redirect(request.referrer or url_for("management_buying"))
 
 
 @app.route("/admin/events/<int:event_id>/run-sheet/details", methods=["POST"])
@@ -47255,7 +49166,8 @@ def management_supplier_scorecard():
     conn = get_db()
     data = supplier_scorecard(conn)
     conn.close()
-    return render_template("management_supplier_scorecard.html", data=data)
+    return render_template("management_supplier_scorecard.html", data=data,
+                           document_kinds=VENDOR_DOCUMENT_KINDS)
 
 
 @app.route("/management/suppliers-scorecard.csv")
@@ -47513,6 +49425,12 @@ def management_outstanding():
                 "gone": "Left owing", "overdue": "Overdue", "due": "Still to pay",
             }[r["state"]]),
             facet("kind", "Kind", lambda r: r["kind"].title()),
+            # Worth its own chip rather than only a marker on the row: "three
+            # of these were refused" is the number that decides whether this
+            # page is opened this morning, and a counted chip says it without
+            # anybody reading the rows.
+            facet("card", "Card", lambda r: "Refused" if r["card_refused"]
+                  else "Not refused"),
         ],
         sorts=[
             sort_option("worst", "Most overdue first",
@@ -55331,6 +57249,10 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    # Not a purge either, but the same daily pass: a date held on the strength
+    # of a conversation nobody followed up has to come back on the market, and
+    # nothing else was going to notice.
+    cleared.update(lapse_event_holds(conn))
     # Not a purge, but the same daily pass: an offer that has run out has to be
     # taken back before the next person can be told, and nothing else was going
     # to notice.
@@ -57764,6 +59686,20 @@ def run_room_balance_reminder_job(conn, days_before):
     send returns true, so a run with no email provider configured leaves the
     booking un-stamped and tries again once one exists — rather than marking
     everybody reminded and telling nobody.
+
+    THE WINDOW IS BOUNDED BY THE STAY, NOT BY THE DUE DATE. It used to require
+    the due date to be today or later, which quietly undid the retry above: a
+    balance that fell due while the provider was down, or on a stay whose
+    schedule was re-cut to a date already behind us, dropped out of the window
+    for ever. Measured: a guest owing €420 on a stay three weeks away, due
+    three days ago, was never written to and never would be — and the job
+    reported "1 of 1 guest(s) with a balance outstanding", because it could
+    not see them.
+
+    An overdue balance is exactly the one worth chasing, so the only floor is
+    that the stay has not happened yet. Somebody who came and went owing money
+    is a debt for a person to chase, not an automated email; the debtors page
+    is where that lives. The event version has always worked this way.
     """
     horizon = (house_today() + timedelta(days=days_before)).isoformat()
     today = house_today_iso()
@@ -57775,7 +59711,7 @@ def run_room_balance_reminder_job(conn, days_before):
            WHERE bookings.status = 'confirmed'
              AND bookings.balance_reminder_sent_at IS NULL
              AND bookings.guest_email IS NOT NULL AND bookings.guest_email != ''
-             AND COALESCE(bookings.balance_due_date, bookings.arrival_date) >= ?
+             AND bookings.arrival_date >= ?
              AND COALESCE(bookings.balance_due_date, bookings.arrival_date) <= ?
            ORDER BY COALESCE(bookings.balance_due_date, bookings.arrival_date)""",
         (today, horizon)).fetchall()
@@ -57851,18 +59787,49 @@ def run_event_balance_reminder_job(conn, days_before):
     contact's send is what stops queue_undelivered keeping their copy.
     """
     cutoff = (house_today() + timedelta(days=days_before)).isoformat()
+    # EVERY CONFIRMED EVENT, then decided one at a time below.
+    #
+    # It used to select on balance_due_date alone, which cannot see a payment
+    # plan: an event paid in four stages has four dates and this column holds
+    # one of them, or none. Choosing per event costs nothing -- a house runs
+    # tens of weddings, not thousands -- and means the plan and the single
+    # balance are read by the same job rather than by two that can disagree.
     due = conn.execute(
         """SELECT * FROM event_inquiries
             WHERE status = 'confirmed'
-              AND balance_reminder_sent_at IS NULL
               AND contact_email IS NOT NULL AND contact_email != ''
-              AND balance_due_date IS NOT NULL AND balance_due_date <= ?
-            ORDER BY balance_due_date""", (cutoff,)).fetchall()
+            ORDER BY COALESCE(preferred_date, '9999-12-31')""").fetchall()
     sent, owing = 0, 0
     for event in due:
         bill = event_bill(conn, event["id"])
         if not bill or bill["owed"] <= 0.005:
             continue
+        # WHICH DATE IS THE ONE TO CHASE, and what it is worth.
+        #
+        # With a plan: the earliest stage not yet met, and only its own
+        # shortfall -- a couple who have paid two of four instalments are
+        # asked for the third, not for everything left. Its own stamp, so the
+        # fourth can still be chased after the third has been.
+        #
+        # Without one: the single dated balance, exactly as before.
+        schedule = event_schedule(conn, event["id"])
+        instalment = None
+        if schedule and schedule["instalments"]:
+            instalment = next(
+                (x for x in schedule["instalments"]
+                 if not x["met"] and (x["row"]["due_date"] or "") <= cutoff
+                 and not x["row"]["reminder_sent_at"]), None)
+            if not instalment:
+                continue
+            chase_amount = instalment["outstanding"]
+            chase_date = instalment["row"]["due_date"]
+        else:
+            if (event["balance_reminder_sent_at"]
+                    or not event["balance_due_date"]
+                    or event["balance_due_date"] > cutoff):
+                continue
+            chase_amount = bill["owed"]
+            chase_date = event["balance_due_date"]
         owing += 1
         try:
             manage_url = url_for("event_manage", manage_token=event["manage_token"],
@@ -57874,17 +59841,25 @@ def run_event_balance_reminder_job(conn, days_before):
             "event_type": event["event_type"] or "event",
             "event_date": format_date_human(event["preferred_date"])
                           if event["preferred_date"] else "the agreed date",
-            "balance_amount": f"{bill['owed']:.2f}",
-            "balance_due_date": format_date_human(event["balance_due_date"]),
+            "balance_amount": f"{chase_amount:.2f}",
+            "balance_due_date": format_date_human(chase_date),
             "manage_url": manage_url,
             "reference_code": event["reference_code"] or "",
         })
         if not subject:
             continue
         if send_email(event["contact_email"], subject, body):
-            conn.execute(
-                "UPDATE event_inquiries SET balance_reminder_sent_at = ? WHERE id = ?",
-                (datetime.now(timezone.utc).isoformat(), event["id"]))
+            # The STAGE is stamped when there is a plan, so the next one can
+            # still be chased. Stamping the event would have meant one
+            # reminder per wedding rather than one per instalment.
+            if instalment:
+                conn.execute(
+                    "UPDATE event_instalments SET reminder_sent_at = ? WHERE id = ?",
+                    (datetime.now(timezone.utc).isoformat(), instalment["row"]["id"]))
+            else:
+                conn.execute(
+                    "UPDATE event_inquiries SET balance_reminder_sent_at = ? WHERE id = ?",
+                    (datetime.now(timezone.utc).isoformat(), event["id"]))
             conn.commit()
             sent += 1
     if not owing:
@@ -60861,35 +62836,27 @@ def debtor_ageing(conn, today=None):
     day = today or house_today()
     if isinstance(day, str):
         day = parse_date(day)
+    # ONE SOURCE. outstanding_balances carries stays, events and ateliers, so
+    # this asks it once rather than adding a query of its own -- which, now
+    # that the list holds workshops, would count every unpaid registration
+    # twice and hand an accountant a receivables figure that is double.
+    #
+    # And it reads the DISPLAY fields, not a stay's own columns. Those exist
+    # for exactly this reason, stated where they are set: "so the page does
+    # not have to know what kind of thing owes the money". Reading
+    # b["room_name"] off every row crashed the moment one of them was not a
+    # stay, which is how this was found.
     items = []
     for row in outstanding_balances(conn, today=day):
-        b = row["booking"]
         items.append({
-            "kind": "room", "who": b["guest_name"], "email": b["guest_email"],
-            "reference": b["reference_code"], "what": b["room_name"] or "Room",
+            "kind": row["kind"], "who": row["who"], "email": row["email"],
+            "reference": row["reference"], "what": row["what"] or "",
             "owed": round(float(row["owed"]), 2),
-            "days_late": int(row["days_late"] or 0), "state": row["state"],
-        })
-    for wb in conn.execute(
-            """SELECT workshop_bookings.*, workshops.title AS workshop_title,
-                      workshop_sessions.start_date AS session_start
-                 FROM workshop_bookings
-                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-                WHERE workshop_bookings.status IN ('confirmed', 'pending')""").fetchall():
-        owed, _charged, _paid = workshop_balance_due(conn, wb["id"])
-        if owed <= 0.005:
-            continue
-        # Late from the balance due date if one was set, otherwise from the day
-        # the session started — a place on a workshop that has already run and
-        # is still unpaid is late whatever the paperwork says.
-        anchor = wb["balance_due_date"] or wb["session_start"]
-        late = _days_between(anchor, day.isoformat()) if anchor else 0
-        items.append({
-            "kind": "workshop", "who": wb["guest_name"], "email": wb["guest_email"],
-            "reference": wb["reference_code"], "what": wb["workshop_title"],
-            "owed": round(float(owed), 2), "days_late": max(0, int(late)),
-            "state": "gone" if late > 0 else "due",
+            "days_late": max(0, int(row["days_late"] or 0)),
+            "state": row["state"],
+            # Carried through so an ageing report can say which of the oldest
+            # debts the house has already tried to collect and failed.
+            "card_refused": bool(row.get("card_refused")),
         })
 
     buckets = {key: [] for key, _label, _floor in DEBTOR_BUCKETS}
@@ -61748,95 +63715,76 @@ def preview_home():
     return render_template('home.html')
 
 
-# ---------------------------------------------------------------------------
-# The addresses the site used to have
-# ---------------------------------------------------------------------------
+# The addresses this site had on Squarespace, and where each one goes now.
 #
-# Twenty-four Squarespace paths that are still in Google, in old newsletters
-# and on other people's blogs. Every one of them has been a 404 since the site
-# moved, which loses the visit and the ranking with it.
+# PERMANENT, mostly. A 301 is what hands the old page's search ranking to the
+# new one, which is the only reason to do this rather than let them 404. The
+# cost is that browsers cache a 301 more or less forever: a path sent
+# permanently somewhere is hard to take back, so anything the house might
+# plausibly want as a page of its own later is marked False and goes out as a
+# temporary redirect instead. /journal above all, on a house that has kept a
+# Captain's Log for a decade.
 #
-# The list is REDIRECTS.txt, which the design side maintains and hands over
-# with the templates -- read at boot rather than copied in here, because a
-# second copy is a second thing to update and only one of them would be.
-#
-# A path that is already a real route is skipped rather than overriding it.
-# Five of the twenty-four are in that position: /book, /workshops, /restaurant,
-# /gallery and /events already resolve to the page the list wants, so a
-# redirect would at best do nothing and at worst claim an address a working
-# view already answers on. Two routes claiming one address is a fault this
-# app has had before and it does not announce itself.
+# The five paths that are already real routes are NOT here -- /book,
+# /workshops, /restaurant, /gallery and /events are the pages themselves, and
+# a redirect would either be refused or shadow them. register_legacy_paths
+# checks that rather than trusting this list to stay right.
+LEGACY_PATHS = [
+    ("/rooms", "book_rooms", True),
+    ("/accommodation", "book_rooms", True),
+    ("/bedrooms", "book_rooms", True),
+    ("/stay", "book_rooms", True),
+    ("/courses", "workshops_public", True),
+    ("/retreats", "workshops_public", True),
+    ("/ateliers", "workshops_public", True),
+    ("/dining", "restaurant_info", True),
+    ("/food", "restaurant_info", True),
+    ("/la-table", "restaurant_info", True),
+    ("/the-chateau", "restoration_page", True),
+    ("/about", "restoration_page", True),
+    ("/history", "restoration_page", True),
+    # The house writes. If it ever publishes that writing at its own address,
+    # a 301 cached in every returning reader's browser would be in the way.
+    ("/blog", "gallery_page", False),
+    ("/journal", "gallery_page", False),
+    ("/news", "gallery_page", False),
+    ("/weddings", "events_weddings", True),
+    ("/contact-us", "contact_page", True),
+    ("/visit", "facilities_page", True),
+]
 
-REDIRECTS_FILE = os.path.join(BASE_DIR, "REDIRECTS.txt")
 
+def register_legacy_paths():
+    """Wire up LEGACY_PATHS, refusing to shadow anything that already exists.
 
-def read_old_paths(path=None):
-    """[(old_path, endpoint)] from the handover file. Never raises.
+    Skipped rather than raised. This runs at import, so a hard failure here
+    would take the whole site down the day somebody adds a real /news -- over
+    a redirect, which is the least important thing in the file. It is a test
+    that fails on a shadowed path, where failing loudly costs nothing.
 
-    Deliberately forgiving: a malformed line is skipped rather than taking the
-    site down at import. The file arrives from outside this repository, and a
-    stray line in it is not a reason for the château to stop answering.
+    The query string is carried across. An old newsletter link is
+    /rooms?utm_source=... and dropping the tail turns every arrival from a
+    campaign the house paid for into an anonymous one.
     """
-    out = []
-    try:
-        body = io.open(path or REDIRECTS_FILE, encoding="utf-8").read()
-    except OSError:
-        return out
-    for line in body.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) != 2:
-            continue
-        old, endpoint = parts
-        if old.startswith("/") and endpoint.isidentifier():
-            out.append((old, endpoint))
-    return out
-
-
-def register_old_paths(entries=None, dry_run=False):
-    """Wire each old address to a 301. Returns what it did.
-
-    301 rather than 302 on purpose: a search engine only moves the ranking
-    across for a permanent one, and moving the ranking is most of the point.
-
-    `entries` and `dry_run` exist for the test. The interesting branch here is
-    the one that refuses a line naming a page that does not exist -- without
-    it, url_for raises BuildError and one bad line in a handed-over file is a
-    500 on that address. That branch cannot be reached by the live file, which
-    is correct, so it can only be checked by asking about a made-up one; and
-    asking must not leave a route behind, because a suite that runs after this
-    one would then be measuring an app this test invented.
-    """
-    live = {r.rule for r in app.url_map.iter_rules()}
-    known = {r.endpoint for r in app.url_map.iter_rules()}
-    added, skipped = [], []
-
-    for old, endpoint in (read_old_paths() if entries is None else entries):
-        if old in live:
-            skipped.append((old, endpoint, "already a route"))
-            continue
-        if endpoint not in known:
-            # Named a page that does not exist. Says so rather than failing at
-            # boot: the file is written by hand somewhere else, and a typo in
-            # it should cost one redirect, not the site.
-            skipped.append((old, endpoint, "no such endpoint"))
+    taken = {str(rule.rule) for rule in app.url_map.iter_rules()}
+    wired = []
+    for path, endpoint, permanent in LEGACY_PATHS:
+        if path in taken:
             continue
 
-        def _go(_endpoint=endpoint):
-            return redirect(url_for(_endpoint), code=301)
+        def view(_endpoint=endpoint, _permanent=permanent):
+            target = url_for(_endpoint)
+            if request.query_string:
+                target += "?" + request.query_string.decode("utf-8", "ignore")
+            return redirect(target, code=301 if _permanent else 302)
 
-        _go.__name__ = "old_path_%s" % old.strip("/").replace("-", "_")
-        if not dry_run:
-            app.add_url_rule(old, _go.__name__, _go)
-        live.add(old)
-        added.append((old, endpoint))
-
-    return {"added": added, "skipped": skipped}
+        app.add_url_rule(path, "legacy_" + path.strip("/").replace("-", "_"),
+                         view)
+        wired.append(path)
+    return wired
 
 
-OLD_PATHS = register_old_paths()
+LEGACY_WIRED = register_legacy_paths()
 
 
 @app.errorhandler(404)

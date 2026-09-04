@@ -1,23 +1,25 @@
-"""The bar that offers the booking action on a phone.
+"""The bar that follows a guest down the page offering the next step.
 
-One CTA at screen 19 of 42 is one a phone never reaches, so a bar now follows
-the page and offers "Check dates" once the hero has scrolled away.
+`.g-stickybar` is the one that survived. A second fixed bar was proposed in a
+handover and rejected here, with the reason written into the stylesheet: this
+one already does the job and does it better, because it changes by page type --
+dinner offers a table, an atelier offers dates, a bedroom offers a booking --
+and it can be switched off per page.
 
-Which pages it must NOT appear on is the whole of this file, because that is
-the half that renders perfectly while being wrong. The bar arrived excluding
-`book_room` -- a single room's page -- but not `book_rooms`, which is /book
-itself. So on the booking page the bar sat there offering a link to the page
-it was already on. Nothing errors, nothing looks broken, and the one page
-where the guest is already doing the thing is the page that nags them to go
-and do it.
+Which pages switch it OFF is the whole of this file, because that is the half
+that renders perfectly while being wrong. `book_room.html` and
+`booking_confirmation.html` both set it to none. `book_rooms.html`, which is
+/book itself, did not -- so on the page where a guest is already choosing a
+room, a bar sat across the bottom offering "Book" as a link to that page.
+Nothing errors and nothing looks broken.
 
-The exclusions are not decoration either. Somebody reading their own
-confirmation, or looking up a booking they already hold, should not be sold a
-room; the comment in public_base says so, and this is what holds the markup to
-it.
+The per-page wording is checked too. A bar is only worth its space if it
+offers the thing this page is about; one that says "Stay the Night" on the
+wedding pages is furniture with a cost.
 """
 from _harness import Suite
 
+import html as html_mod
 import io
 import os
 import re
@@ -26,13 +28,19 @@ import _harness
 
 m = _harness.m
 
-# endpoint -> a URL that reaches it
-MUST_NOT_CARRY = ["book_rooms", "book_room", "booking_confirmation", "find_booking"]
-SHOULD_CARRY = ["/", "/restoration", "/workshops", "/restaurant", "/facilities"]
+# endpoint -> the wording and destination the bar should carry there
+EXPECTED = {
+    "restaurant_info": ("Dine at La Table", "restaurant_book"),
+    "workshops_public": ("Château Ateliers", "workshops_public"),
+    "events_weddings": ("Weddings & Celebrations", "events_info"),
+    "facilities_page": ("Stay the Night", "book_rooms"),
+}
+
+# Pages where the guest is already doing the thing, so it must be silent.
+SILENT = ["book_rooms", "book_room", "booking_confirmation"]
 
 
-def _url_for_endpoint(endpoint, conn):
-    """A real URL for an endpoint, filling any parameter from real data."""
+def _url(endpoint, conn):
     with m.app.test_request_context():
         rule = next((r for r in m.app.url_map.iter_rules()
                      if r.endpoint == endpoint), None)
@@ -52,37 +60,53 @@ def _url_for_endpoint(endpoint, conn):
     return None
 
 
+def _bar(html):
+    """The stickybar's markup, or "" if the page does not carry one."""
+    at = html.find('class="g-stickybar"')
+    return html[at:at + 700] if at >= 0 else ""
+
+
 def run():
-    s = Suite("the booking bar")
+    s = Suite("the sticky bar")
     anon = m.app.test_client()
     conn = m.get_db()
 
-    s.section("It is there where somebody has not started yet")
+    s.section("It offers what the page is about")
 
-    carried = 0
-    for path in SHOULD_CARRY:
-        r = anon.get(path)
-        if r.status_code != 200:
+    for endpoint, (wording, goes_to) in EXPECTED.items():
+        url = _url(endpoint, conn)
+        if not url:
             continue
-        body = r.get_data(as_text=True)
-        has = 'class="g-mobar"' in body
-        if has:
-            carried += 1
-        s.check("%s offers the booking action" % path, has,
-                detail="a phone reaching screen 19 of 42 to find it has left")
-    s.check("it is on more than one page", carried >= 3, detail=str(carried))
+        r = anon.get(url)
+        if r.status_code != 200:
+            s.check("%s answers so the bar can be read" % endpoint, False,
+                    detail="HTTP %s" % r.status_code)
+            continue
+        bar = _bar(r.get_data(as_text=True))
+        s.check("%s carries a bar" % endpoint, bool(bar),
+                detail="no g-stickybar on %s" % url)
+        if not bar:
+            continue
+        # Unescaped first: the wording goes through Jinja, so "Weddings &
+        # Celebrations" arrives as "Weddings &amp; Celebrations" and a raw
+        # comparison fails on a page that is perfectly correct.
+        s.check("%s: it says %r" % (endpoint, wording),
+                wording in html_mod.unescape(bar),
+                detail=re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", bar))[:90])
+        with m.app.test_request_context():
+            wants = m.url_for(goes_to)
+        # An anchor is allowed on the end. The atelier bar points at
+        # /workshops#dates precisely so that, on the workshops page itself, it
+        # goes somewhere rather than nowhere.
+        found = re.findall(r'href="([^"]+)" class="g-btn g-stickybar__cta"', bar)
+        s.check("%s: and it goes to %s" % (endpoint, goes_to),
+                any(h == wants or h.startswith(wants + "#") for h in found),
+                detail="%s, found %s" % (wants, found))
 
-    # It must point somewhere other than here, or it is furniture.
-    body = anon.get("/restoration").get_data(as_text=True)
-    with m.app.test_request_context():
-        wants = m.url_for("book_rooms")
-    s.check("and it points at the rooms", wants in body.split('class="g-mobar"')[-1][:400],
-            detail="expected a link to %s" % wants)
+    s.section("And it is silent where they are already doing it")
 
-    s.section("And absent where they are already doing it")
-
-    for endpoint in MUST_NOT_CARRY:
-        url = _url_for_endpoint(endpoint, conn)
+    for endpoint in SILENT:
+        url = _url(endpoint, conn)
         if not url:
             s.check("%s could not be reached to check" % endpoint, False,
                     detail="no route, or no record to build one with")
@@ -92,46 +116,47 @@ def run():
             s.check("%s answers so it can be checked" % endpoint, False,
                     detail="HTTP %s at %s" % (r.status_code, url))
             continue
-        s.check("%s does not carry it" % endpoint,
-                'class="g-mobar"' not in r.get_data(as_text=True),
+        s.check("%s is quiet" % endpoint, not _bar(r.get_data(as_text=True)),
                 detail="%s — the guest is already here" % url)
 
-    # The specific fault this file was written for, said plainly: a CTA whose
-    # destination is the page it is drawn on.
     s.section("Nothing offers a link to the page it is already on")
 
-    for endpoint in ["book_rooms"]:
-        url = _url_for_endpoint(endpoint, conn)
+    # The fault this file was written for. It is not enough that the pages
+    # above are quiet: any page carrying the bar must send the guest somewhere
+    # other than where they are.
+    for endpoint in ["book_rooms", "restaurant_info", "workshops_public",
+                     "facilities_page", "events_weddings"]:
+        url = _url(endpoint, conn)
+        if not url:
+            continue
         r = anon.get(url)
-        body = r.get_data(as_text=True)
-        after = body.split('class="g-mobar"')[-1][:400] if 'class="g-mobar"' in body else ""
+        if r.status_code != 200:
+            continue
+        bar = _bar(r.get_data(as_text=True))
+        # An anchor makes it a different destination: /workshops#dates from
+        # /workshops moves the guest to the dates. A bare self-link does not.
+        found = re.findall(r'href="([^"]+)" class="g-btn g-stickybar__cta"', bar)
         s.check("%s does not nag a guest to go where they are" % url,
-                'href="%s"' % url not in after,
-                detail="the bar links to this very page")
+                url not in found,
+                detail="the bar on this page links to this page: %s" % found)
 
-    s.section("It is a phone thing, and the stylesheet says so")
+    s.section("It is a real mechanism, not a decoration")
 
-    with io.open(os.path.join(m.BASE_DIR, "static", "gudanes.css"),
+    with io.open(os.path.join(m.BASE_DIR, "templates", "public_base.html"),
                  encoding="utf-8") as fh:
-        css = fh.read()
-
-    s.check("the stylesheet was read", ".g-mobar" in css,
-            detail="nothing below this proves anything if it was not")
-    # Looked for as a min-width rule that hides it, not as the two strings
-    # appearing somewhere in 320KB. The first version of this check was
-    # `".g-mobar" in css and "display: none" in css`, which is true of almost
-    # any stylesheet and passed with the desktop rule deleted.
-    desktop_hides = re.search(
-        r"@media\s*\(\s*min-width[^)]*\)\s*\{[^}]*\.g-mobar\s*\{[^}]*display:\s*none",
-        css)
-    s.check("the bar is hidden on a wide screen", bool(desktop_hides),
-            detail="a fixed bar across the foot of a desktop page is a mistake")
-    # It reveals by taking a class OFF the body, so if the class is never
-    # applied the bar is simply always there, which is the other failure.
-    s.check("and reveals by the class the header already maintains",
-            "body:not(.at-top) .g-mobar" in css,
-            detail="a second scroll listener with its own flag is how the "
-                   "header ended up with two fighting over one class")
+        base = fh.read()
+    s.check("the base draws it", 'class="g-stickybar"' in base)
+    # Switched off by a page saying so, which is what makes the silence above
+    # a decision each page takes rather than a coincidence of its markup.
+    s.check("and a page can switch it off by name",
+            "sticky_bar | default(none)" in base or "sticky_bar|default(none)" in base,
+            detail="no per-page control; the silence above is accidental")
+    s.check("the pages that are quiet say so themselves",
+            all("sticky_bar = 'none'" in io.open(
+                os.path.join(m.BASE_DIR, "templates", tpl), encoding="utf-8").read()
+                for tpl in ("book_rooms.html", "book_room.html",
+                            "booking_confirmation.html")),
+            detail="one of them is quiet for some other reason")
 
     conn.close()
     return s

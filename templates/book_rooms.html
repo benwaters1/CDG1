@@ -1,4 +1,8 @@
 {% extends "public_base.html" %}
+{# The bar offers "Stay the Night — Book", which on this page is a link to
+   the page it is drawn on. book_room and booking_confirmation already say
+   none for the same reason: the guest is here, doing it. #}
+{% set sticky_bar = 'none' %}
 {% set crumbs = [('Stay', None)] %}
 {% block title_fr %}Séjourner au château{% endblock %}
 {% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. À partir de 220 € la nuit, petit-déjeuner compris.{% endblock %}
@@ -52,8 +56,8 @@
 <div class="g-wrap">
   <p class="g-welcome">
     <span class="g-welcome__k">Welcome back{% if returning_guest['name'] %}, {{ returning_guest['name'].split(' ')[0] }}{% endif %}</span>
-    {% if returning_guest['last_room'] %}You stayed in {{ room_name(returning_guest['last_room']) }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}
-    <a href="{{ url_for('find_booking') }}">Your past stays</a>
+    <span class="g-welcome__t">{% if returning_guest['last_room'] %}You stayed in {{ room_name(returning_guest['last_room']) }}{% if returning_guest['last_year'] %} in {{ returning_guest['last_year'] }}{% endif %}. It is still here, and so is the work.{% else %}Since you were last here, more of the house has opened.{% endif %}</span>
+  <a href="{{ url_for('find_booking') }}">Your past stays</a>
   </p>
 </div>
 {% endif %}
@@ -678,15 +682,24 @@
     </figure>
   </div>
 
+  {# Six hardcoded 10s. A perfect score on every category is the least
+     believable thing you can put in front of a guest — a 9.6 with one 8.9
+     reads as real, six 10s read as invented, and nobody can update these
+     without editing a template. From settings, and only what is supplied. #}
+  {%- set SC = [('Location','score_location'), ('Cleanliness','score_cleanliness'),
+                ('Comfort','score_comfort'), ('Staff','score_staff'),
+                ('Facilities','score_facilities'), ('Value','score_value')] -%}
+  {%- set shown = SC | selectattr('1') | list -%}
+  {% if settings and (settings['score_location'] or settings['score_overall']) %}
   <div class="g-scores">
-    <div class="g-score"><b>10</b><span>Location</span></div>
-    <div class="g-score"><b>10</b><span>Cleanliness</span></div>
-    <div class="g-score"><b>10</b><span>Comfort</span></div>
-    <div class="g-score"><b>10</b><span>Staff</span></div>
-    <div class="g-score"><b>10</b><span>Facilities</span></div>
-    <div class="g-score"><b>10</b><span>Value</span></div>
+    {% for label, key in SC %}{% if settings[key] %}
+    <div class="g-score"><b>{{ settings[key] }}</b><span>{{ label }}</span></div>
+    {% endif %}{% endfor %}
   </div>
-  <p class="g-hint" style="margin-top:var(--s5)">Guest ratings on Booking.com.</p>
+  <p class="g-hint" style="margin-top:var(--s5)">
+    {% if settings['score_overall'] %}{{ settings['score_overall'] }} overall on Booking.com{% else %}Guest ratings on Booking.com{% endif %}{% if settings['review_count'] %}, from {{ '{:,}'.format(settings['review_count']|int) }} reviews{% endif %}.
+  </p>
+  {% endif %}
 
   <p style="margin-top:var(--s7);text-align:center">
     <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
@@ -878,7 +891,7 @@
 {# Room-level structured data. The organisation markup already exists in the
    base; this is what actually puts rooms and prices into rich results. Built
    from the same values the page renders, so it cannot drift. #}
-{{ avail_cal(booked_dates, 2) }}
+{{ avail_cal(booked_dates, 2, dinner_dates=dinner_dates) }}
 
 {{ flexible() }}
 

@@ -97,8 +97,17 @@ def run():
                 detail=f"expected {ahead['title']!r}")
         # Raw ISO on the front page is the symptom of the date filters not
         # being registered, which has happened before.
+        #
+        # THE PROSE ONLY. public_base carries a machine-readable block of
+        # booked dates for the date picker, which is ISO on purpose and is not
+        # read by anybody -- so searching the whole body started failing on
+        # data doing its job. Stripped rather than the check weakened: a raw
+        # date in the copy is still a fault.
+        import re as _re
+        prose = _re.sub(r'<script[^>]*application/json[^>]*>.*?</script>', "",
+                        body, flags=_re.S)
         s.check("its date is written out, not left as ISO",
-                ahead["start_date"] not in body,
+                ahead["start_date"] not in prose,
                 detail=f"{ahead['start_date']} printed raw")
     if ahead:
         s.check("the sitting cards are still marked the way this test expects",

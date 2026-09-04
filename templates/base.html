@@ -325,6 +325,9 @@
       <button type="button" class="nav-dropdown-toggle" aria-label="Show Management submenu" onclick="toggleNavDropdown(event, this)">▾</button>
       <div class="nav-dropdown-menu">
         <a href="{{ url_for('management') }}" class="{{ 'active' if request.endpoint=='management' }}">{{ icon('management') }}All settings</a>
+        {# The way into the thirty-six reports that were reachable only by
+           knowing they existed and opening the command palette. #}
+        <a href="{{ url_for('reports_index') }}" class="{{ 'active' if request.endpoint=='reports_index' }}">{{ icon('eye') }}All the reports</a>
         <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company &amp; Insurance</a>
         <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
 
