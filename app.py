@@ -4048,6 +4048,12 @@ def init_db():
          "ALTER TABLE event_inquiries ADD COLUMN final_numbers INTEGER"),
         ("event_inquiries_final_numbers_at",
          "ALTER TABLE event_inquiries ADD COLUMN final_numbers_at TEXT"),
+        # The FIRST figure given, kept beside the first date. Without it a
+        # headcount that moved from eighty to a hundred and twenty reads
+        # exactly like one that was eighty all along -- and an event is
+        # priced per head, so that is forty dinners nobody re-quoted.
+        ("event_inquiries_final_numbers_first",
+         "ALTER TABLE event_inquiries ADD COLUMN final_numbers_first INTEGER"),
         ("event_inquiries_run_sheet_note",
          "ALTER TABLE event_inquiries ADD COLUMN run_sheet_note TEXT"),
         ("event_inquiries_arrival_time",
@@ -18421,6 +18427,26 @@ def event_run_sheet(conn, event_id, today=None):
     numbers_overdue = bool(
         day and not numbers_confirmed and days_away is not None
         and days_away <= FINAL_NUMBERS_DAYS and days_away >= 0)
+    # When the number was fixed, and whether it is still the number. Both
+    # were recorded and neither was read, so a headcount that moved after the
+    # deadline looked exactly like one that never moved -- in the same green.
+    numbers_fixed_on = house_date(event["final_numbers_at"])
+    first_numbers = event["final_numbers_first"]
+    numbers_moved = (
+        first_numbers is not None and event["final_numbers"] is not None
+        and int(first_numbers) != int(event["final_numbers"]))
+    # Moved AFTER the deadline is the one somebody has to re-price rather
+    # than simply note: the kitchen has ordered and the quote is out.
+    #
+    # Asked as "has the deadline passed", not "was the first figure given
+    # before it". The first version compared numbers_fixed_on against
+    # numbers_due and called a change ninety days out late, because a figure
+    # given today is trivially earlier than a deadline seventy-six days from
+    # now -- so every correction, however early, asked somebody to re-price.
+    # A warning that fires on the harmless case is one nobody reads on the
+    # day it is right.
+    numbers_moved_late = bool(
+        numbers_moved and numbers_due and today > numbers_due)
 
     unconfirmed = [s for s in suppliers if not s["confirmed_at"]]
 
@@ -18460,6 +18486,13 @@ def event_run_sheet(conn, event_id, today=None):
         "numbers_confirmed": numbers_confirmed,
         "numbers_due": numbers_due,
         "numbers_overdue": numbers_overdue,
+        # Recorded since the columns existed and read by nothing, so a
+        # headcount that moved after the deadline looked exactly like one
+        # that never moved — and an event is priced per head.
+        "numbers_fixed_on": numbers_fixed_on,
+        "first_numbers": first_numbers,
+        "numbers_moved": numbers_moved,
+        "numbers_moved_late": numbers_moved_late,
         "on_shift": on_shift,
         "rooms_that_night": rooms_that_night,
         "bill": bill,
@@ -50021,9 +50054,16 @@ def save_event_run_details(event_id):
               SET final_numbers = ?,
                   final_numbers_at = CASE WHEN ? IS NULL THEN NULL
                                           ELSE COALESCE(final_numbers_at, ?) END,
+                  -- The first figure, kept the same way the first date is.
+                  -- Clearing the numbers clears both, so re-entering them
+                  -- starts a fresh record rather than comparing against a
+                  -- figure from a different conversation.
+                  final_numbers_first = CASE WHEN ? IS NULL THEN NULL
+                                             ELSE COALESCE(final_numbers_first, ?) END,
                   arrival_time = ?, carriages_time = ?, run_sheet_note = ?
             WHERE id = ?""",
         (numbers, numbers, datetime.now(timezone.utc).isoformat(),
+         numbers, numbers,
          (request.form.get("arrival_time", "") or "").strip() or None,
          (request.form.get("carriages_time", "") or "").strip() or None,
          (request.form.get("run_sheet_note", "") or "").strip()[:2000] or None,
