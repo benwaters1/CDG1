@@ -510,23 +510,7 @@
 
 <div class="g-wrap g-mark__wrap">{{ mark('brushgild') }}</div>
 
-<!-- ============ THE WORK ITSELF ============ -->
-<section class="g-sec"><div class="g-wrap">
-  <p class="g-eyebrow">The Work</p>
-  <h2 class="g-place">What You Will Actually Do</h2>
 
-  <div class="g-two" style="margin-top:var(--s7)">
-    <div>
-      <p class="g-p g-lede-first">The front rooms were cleared to make the restoration workshop. The table in them was built from trees the wind brought down on the estate.</p>
-      <p class="g-p">On a restoration atelier you work on eighteenth-century wall frescoes under supervision — lifting overpaint, consolidating what is loose, cleaning what centuries of smoke have covered. It is slow, and a good morning is measured in centimetres.</p>
-      <p class="g-p">Running workshops for paying guests required permission. This is a Class I Historic Monument, and letting people touch it was not a decision anyone made lightly.</p>
-    </div>
-    <figure class="g-fig-block">
-      <img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1582799762807-88XQQSIAXWOEHIA2UVSO/restoration+1.jpg?format=1000w" alt="Work on a fresco" loading="lazy">
-      <figcaption>What comes off is overpaint. What is underneath has not been seen since it was covered.</figcaption>
-    </figure>
-  </div>
-</div></section>
 
 
 
@@ -559,21 +543,7 @@
 </div></section>
 
 
-<!-- ============ FIFTEEN ============ -->
-<section class="g-sec g-scarce"><div class="g-wrap">
-  <div class="g-scarce__in">
-    <p class="g-eyebrow">Worth Knowing</p>
-    <h2 class="g-scarce__h">Fifteen, and No Others</h2>
-    <p class="g-scarce__p">While an atelier runs, the château takes no other guests. The building is yours and the conservators are working in it.</p>
-    <div class="g-scarce__grid">
-      <div class="g-scarce__i"><b class="g-fig">15</b><span>Guests at most</span></div>
-      <div class="g-scarce__i"><b class="g-fig">0</b><span>Other guests in the building</span></div>
-      <div class="g-scarce__i"><b class="g-fig">94</b><span>Rooms, for fifteen people</span></div>
-      <div class="g-scarce__i"><b class="g-fig">5</b><span>Ateliers a year, at most</span></div>
-    </div>
-    <p class="g-scarce__note">Places are shown live above. When a session reads as full, it is full — we do not overbook a house this size.</p>
-  </div>
-</div></section>
+
 
 
 
@@ -587,6 +557,13 @@
   <p class="g-eyebrow">Dated, Not Continuous</p>
   <h2 class="g-place">The Year's Programme</h2>
   <p class="g-p">One atelier runs at a time and there are a fixed number of places in a year. These are the dates, with who is leading each.</p>
+  {# The overbooking promise, third round of putting it back. It lived in
+     "Fifteen, and No Others", cut for repeating the exclusivity section — fair,
+     except this sentence is not about exclusivity. It is a commitment the code
+     keeps with a write lock: workshop_register and workshop_manage both take it
+     before claiming a place, and test_no_overbooking exists to hold the
+     software to it. Copy a mechanism was written for cannot leave quietly. #}
+  <p class="g-p">Places are shown live below. When a session reads as full, it is full — we do not overbook a house this size.</p>
 
   {% if workshops %}
   <ol class="g-programme">

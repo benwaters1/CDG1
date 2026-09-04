@@ -50,6 +50,24 @@ def run():
     now = datetime.now(timezone.utc).isoformat()
     today = datetime.now(m.LOCAL_TZ).date()
 
+    # The panel carries a line about photographs the site loads from a server
+    # the house does not control, and under test the copies live in a fresh
+    # empty directory -- so it would be on every list this suite builds and the
+    # panel could never be empty, which is the one thing "The panel can be
+    # empty" below exists to prove. Silenced by saying the site has no such
+    # photograph, which is the end state that feature is working towards
+    # anyway. Put back at the end: this is a module global and every suite in
+    # the run shares it.
+    real_hotlinked = m.hotlinked_urls
+    m.hotlinked_urls = lambda: []
+    try:
+        return _run(s, oc, conn, now, today)
+    finally:
+        m.hotlinked_urls = real_hotlinked
+
+
+def _run(s, oc, conn, now, today):
+
     s.section("A clash reaches the front page")
     conn.execute(
         """INSERT INTO users (email, password_hash, role, name, job_role, status,

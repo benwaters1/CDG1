@@ -259,6 +259,7 @@ LEAVE_SETTING_DEFAULTS = {
 AUTOMATION_SETTING_DEFAULTS = {
     "automation_housekeeping_enabled": "1",
     "automation_weather_enabled": "1",
+    "automation_photo_mirror_enabled": "1",
     "automation_daily_digest_enabled": "1",
     "automation_ical_sync_enabled": "1",
     "automation_ical_sync_interval_hours": "6",
@@ -4053,6 +4054,26 @@ def init_db():
          "ALTER TABLE event_inquiries ADD COLUMN arrival_time TEXT"),
         ("event_inquiries_carriages_time",
          "ALTER TABLE event_inquiries ADD COLUMN carriages_time TEXT"),
+        # Photographs the site shows but does not own.
+        #
+        # 256 img tags across 40 templates -- including the masthead -- point
+        # at a Squarespace CDN belonging to an account the house no longer
+        # publishes from. If it lapses the site loses every photograph and its
+        # logo in the same minute, and there is no version of that which is
+        # recoverable in an afternoon.
+        #
+        # This is the index of the ones a copy has been taken of. The copies
+        # live on the data volume beside the room photographs, not in git: 93
+        # photographs is a repository nobody can clone.
+        ("mirrored_images_table", """CREATE TABLE IF NOT EXISTS mirrored_images (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             source_url TEXT NOT NULL UNIQUE,
+             filename TEXT NOT NULL,
+             bytes INTEGER,
+             content_type TEXT,
+             fetched_at TEXT NOT NULL,
+             last_error TEXT
+         )"""),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
         # What has already been sent to the accountant.
         #
@@ -5884,7 +5905,8 @@ NAV_AREAS = {
         "supplier_agreements_page",
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
-        "admin_readiness", "admin_terms", "audit_log", "delete_company_document",
+        "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
+        "admin_terms", "audit_log", "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
         "download_company_document", "edit_company_document", "edit_insurance_policy",
         "edit_vendor", "export_audit_log_csv", "export_insurance_csv",
@@ -8775,6 +8797,57 @@ def stays_with_status(conn, today, statuses=("confirmed",)):
     return stays
 
 
+def photo_declines(conn, today=None):
+    """Guests in the house right now who would rather not be photographed.
+
+    Read off the GUEST PROFILE rather than the booking: the answer belongs to
+    a person and travels with them across stays, which is the whole reason
+    guests is a profile table and bookings are the truth about dates. Somebody
+    who declined in March has not re-consented by booking again in July.
+
+    Matched by the LINK where there is one and the EMAIL where there is not,
+    which is the pair the app already uses everywhere it lists a guest's own
+    bookings. Not profile_id alone: not one booking in the real database
+    carries a linked_guest_id, because linking happens when somebody edits a
+    guest by hand, so a version reading only the link would have run clean,
+    shown an empty list on all three pages and honoured nobody -- which is the
+    worst shape a consent feature can take, because it looks like it works.
+
+    A stay with neither is not guessed at. A name is not an identity, and
+    treating "J. Martin" as the J. Martin who declined would attach somebody
+    else's refusal to the wrong person.
+    """
+    today = today or house_today()
+    here = guests_in_residence(conn, today)
+    if not here:
+        return []
+    said_no = conn.execute(
+        "SELECT * FROM guests WHERE photo_consent = 'no'").fetchall()
+    by_id = {r["id"]: r for r in said_no}
+    by_email = {(r["email"] or "").strip().lower(): r
+                for r in said_no if (r["email"] or "").strip()}
+    out = []
+    for b in here:
+        # The link when there is one, the email when there is not -- the same
+        # pair the app uses everywhere it lists a guest's bookings. Reading
+        # profile_id alone found nobody: not one booking in the real database
+        # carries a linked_guest_id, because linking happens when somebody
+        # edits a guest by hand.
+        profile = (by_id.get(b["profile_id"])
+                   or by_email.get((b["email"] or "").strip().lower()))
+        if not profile:
+            continue
+        out.append({
+            "who": profile["name"] or b["name"],
+            "email": (profile["email"] or "").strip().lower(),
+            "room": b["room_name"] or "",
+            "reference": b["reference_code"],
+            "asked_at": profile["photo_consent_at"],
+            "booking_id": b["booking_id"],
+        })
+    return out
+
+
 def guests_in_residence(conn, today):
     """Just the stays covering today -- the common case for every 'who's here'
     panel across the app."""
@@ -11571,6 +11644,42 @@ def things_still_out(conn, *, today=None):
             "note": r["notes"], "issued_by": r["issued_by"],
         })
 
+    # A key handed to a GUEST. Written by the arrivals sheet, read until now
+    # only for guests who had not arrived yet -- so a key that left with
+    # somebody three weeks ago was on no page in the building.
+    #
+    # Keys only. A code is not returned, it is revoked, and blanking it is a
+    # nightly job's business; listing every code ever issued here would bury
+    # the keys that genuinely are out.
+    for r in conn.execute(
+        """SELECT booking_access_codes.id, booking_access_codes.value,
+                  booking_access_codes.issued_to, booking_access_codes.issued_at,
+                  booking_access_codes.good_until, booking_access_codes.note,
+                  bookings.guest_name, bookings.reference_code,
+                  bookings.departure_date, issuer.name AS issued_by
+             FROM booking_access_codes
+             JOIN bookings ON bookings.id = booking_access_codes.booking_id
+             LEFT JOIN users AS issuer
+                    ON issuer.id = booking_access_codes.issued_by_user_id
+            WHERE booking_access_codes.returned_at IS NULL
+              AND booking_access_codes.kind = 'key'""").fetchall():
+        # "Gone" means the same thing it means for a member of staff who has
+        # left: this is a person outside the house who can open a door. The
+        # date is good_until, which the issue route has always written and
+        # nothing has ever read.
+        leaves = parse_date(r["good_until"] or r["departure_date"] or "")
+        out.append({
+            "sort": "guest_key", "id": r["id"],
+            "what": r["value"] or "Key",
+            "kind": "guest key",
+            "who": r["issued_to"] or r["guest_name"] or "\u2014",
+            "user_id": None,
+            "gone": bool(leaves and leaves < today),
+            "days": age(r["issued_at"]), "issued_at": r["issued_at"],
+            "note": r["note"], "issued_by": r["issued_by"],
+            "reference": r["reference_code"], "good_until": r["good_until"],
+        })
+
     for r in conn.execute(
         """SELECT equipment_items.id, equipment_items.label, equipment_items.notes,
                   equipment_items.issued_at, users.id AS user_id, users.name AS holder,
@@ -11590,6 +11699,8 @@ def things_still_out(conn, *, today=None):
 
     for row in out:
         row["stale"] = bool(row["days"] and row["days"] > LOAN_STALE_DAYS)
+        row.setdefault("good_until", None)
+        row.setdefault("reference", None)
 
     out.sort(key=lambda r: (not r["gone"], -(r["days"] or 0)))
     return {
@@ -11600,7 +11711,11 @@ def things_still_out(conn, *, today=None):
         "lent": out,
         "with_leavers": [r for r in out if r["gone"]],
         "stale": [r for r in out if r["stale"] and not r["gone"]],
-        "people": len({r["user_id"] for r in out if r["user_id"]}),
+        # Counted by HOLDER, not by user_id. A guest has no user row, so a
+        # register showing four keys out with four departed guests read
+        # "With people: 0" -- a tile disagreeing with the table under it.
+        "people": len({r["user_id"] and ("staff", r["user_id"])
+                       or ("guest", r["who"]) for r in out}),
     }
 
 
@@ -14655,7 +14770,13 @@ def pos_allocate_receipt_number(conn, order_id):
                          (order_id,)).fetchone()
     if order and order["receipt_number"]:
         return order["receipt_number"]
-    year = datetime.now(timezone.utc).year
+    # The year the HOUSE is in. datetime.now(timezone.utc).year is a
+    # different year for an hour every New Year's morning: at 00:30 in the
+    # Ariege it is still December in UTC, so a receipt printed on the first
+    # of January would be numbered into a sequence the accounts had already
+    # closed. One receipt a year, on the one night of the year when the
+    # numbering matters most.
+    year = house_today().year
     row = conn.execute(
         "SELECT receipt_number FROM pos_orders WHERE receipt_number LIKE ? "
         "ORDER BY receipt_number DESC LIMIT 1", (f"{year}-%",)).fetchone()
@@ -14663,6 +14784,54 @@ def pos_allocate_receipt_number(conn, order_id):
     number = f"{year}-{nxt:06d}"
     conn.execute("UPDATE pos_orders SET receipt_number = ? WHERE id = ?", (number, order_id))
     return number
+
+
+def receipt_sequence_gaps(conn):
+    """Holes in the receipt numbering, per year, worst first.
+
+    The counterpart to pos_journal_verify. That one answers "has anything been
+    altered"; this one answers "is anything MISSING", which is the question an
+    inspector asks first and the one the numbering exists to answer.
+
+    Per year because the sequence restarts each year. A run reported across a
+    year boundary would be one enormous false gap every January.
+
+    Reports RANGES rather than every number in the hole. "2026-000104 to
+    2026-000131" is a sentence somebody can look into; twenty-eight lines
+    saying one number each is a page nobody reads to the bottom of.
+    """
+    out = []
+    by_year = {}
+    for r in conn.execute(
+            "SELECT receipt_number FROM pos_orders "
+            "WHERE receipt_number IS NOT NULL AND receipt_number != '' "
+            "ORDER BY receipt_number").fetchall():
+        raw = r["receipt_number"]
+        year, _sep, num = raw.partition("-")
+        if not num.isdigit():
+            # A number that does not parse is its own kind of problem, and a
+            # silent skip would hide it. Reported as a malformed one rather
+            # than counted as a gap, because they need different answers.
+            out.append({"year": year or "?", "kind": "malformed",
+                        "from": raw, "to": raw, "missing": 0})
+            continue
+        by_year.setdefault(year, []).append(int(num))
+
+    for year, numbers in sorted(by_year.items()):
+        numbers.sort()
+        # Starting anywhere but one is itself a gap: the sequence is supposed
+        # to begin at 000001 each year, and starting at 47 means forty-six
+        # receipts that ought to exist and do not.
+        expect = 1
+        for n in numbers:
+            if n > expect:
+                out.append({"year": year, "kind": "gap",
+                            "from": f"{year}-{expect:06d}",
+                            "to": f"{year}-{n - 1:06d}",
+                            "missing": n - expect})
+            expect = max(expect, n + 1)
+    out.sort(key=lambda g: -g["missing"])
+    return out
 
 
 def pos_perpetual_total(conn):
@@ -18973,6 +19142,234 @@ def turned_away(conn, days=365, today=None):
     }
 
 
+MIRROR_DIR = os.environ.get("GUDANES_MIRROR_DIR") or os.path.join(DATA_DIR, "mirrored")
+# Only this host. "Download whatever the templates point at" is a fetcher
+# aimed by whoever last edited a template, which is a different and much worse
+# tool than a mirror of one CDN.
+MIRROR_HOSTS = ("images.squarespace-cdn.com",)
+MIRROR_MAX_BYTES = 12 * 1024 * 1024
+MIRROR_ALLOWED_TYPES = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+    "image/gif": ".gif", "image/avif": ".avif",
+}
+# Braces are excluded along with the quotes, and that is not tidiness. Eighteen
+# of these sit in `{% block og_image %}...{% endblock %}` with nothing between
+# the URL and the tag, so a class that allowed a brace read the opening of the
+# next Jinja tag as part of the address -- and the fetch came back 400 Bad
+# Request on a photograph that was perfectly fine.
+_MIRROR_URL_RE = re.compile(
+    r"https://(?:" + "|".join(re.escape(h) for h in MIRROR_HOSTS)
+    + r")/[^\s\'\"(){}<>\\]+")
+
+
+def mirror_name(url):
+    """A stable filename for one URL.
+
+    The whole URL is hashed, query string included: Squarespace sizes with
+    ?format=1500w, so two sizes of one photograph are two files and the site
+    asks for both.
+    """
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()
+
+
+_MIRROR_SCANNED = {"signature": None, "urls": []}
+_MIRROR_SCAN_FOLDERS = ((("templates",), ".html"), (("static",), ".css"))
+
+
+def _template_signature():
+    """A cheap fingerprint of the files the scan would read.
+
+    Name, size and modification time for each, which on both platforms comes
+    off the directory entry itself: 0.67ms against the 28ms it takes to open
+    and read all 340 of them.
+    """
+    sig = []
+    for parts, ext in _MIRROR_SCAN_FOLDERS:
+        folder = os.path.join(BASE_DIR, *parts)
+        if not os.path.isdir(folder):
+            continue
+        try:
+            with os.scandir(folder) as entries:
+                for entry in entries:
+                    if entry.name.endswith(ext):
+                        stat = entry.stat()
+                        sig.append((entry.name, stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            return None          # unreadable -> never claim a cache hit
+    return tuple(sorted(sig))
+
+
+def hotlinked_urls():
+    """Every image the site shows from a host the house does not control.
+
+    Read out of the templates rather than kept in a list. These files are
+    rewritten by hand most weeks and arrive as whole-file replacements, so a
+    list would be a second copy that goes stale the first time somebody adds
+    a photograph -- and going stale quietly is the failure this exists to
+    prevent.
+
+    Cached against a fingerprint of those files rather than on a timer.
+    owner_home_warnings asks for this on every load of the owner home, and
+    reading all 340 templates took 28ms -- nearly triple the whole panel's
+    16ms budget, for an answer that changes when somebody edits a template
+    and at no other moment. A timer would also have broken the check that a
+    photograph added to a template is noticed, which is the property worth
+    having.
+    """
+    signature = _template_signature()
+    if signature is not None and signature == _MIRROR_SCANNED["signature"]:
+        return _MIRROR_SCANNED["urls"]
+    found = set()
+    for parts, ext in _MIRROR_SCAN_FOLDERS:
+        folder = os.path.join(BASE_DIR, *parts)
+        if not os.path.isdir(folder):
+            continue
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(ext):
+                continue
+            try:
+                body = io.open(os.path.join(folder, name), encoding="utf-8").read()
+            except OSError:
+                continue
+            found.update(_MIRROR_URL_RE.findall(body))
+    urls = sorted(found)
+    if signature is not None:
+        _MIRROR_SCANNED["signature"] = signature
+        _MIRROR_SCANNED["urls"] = urls
+    return urls
+
+
+def mirrored_index(conn):
+    """{source_url: filename} for every copy actually on the disk.
+
+    Checked against the disk, not only the table. A row whose file has gone
+    would swap a working remote URL for a 404 of our own making, which is the
+    one outcome worse than hotlinking.
+    """
+    out = {}
+    try:
+        rows = conn.execute(
+            "SELECT source_url, filename FROM mirrored_images WHERE filename != ''"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return out
+    # One listing rather than a stat per row. Asking the disk about each of a
+    # hundred files separately cost 4ms, and owner_home_warnings asks for this
+    # on every load of the owner home against a 16ms budget for the whole panel.
+    try:
+        on_disk = set(os.listdir(MIRROR_DIR))
+    except OSError:
+        return out               # no directory yet -> nothing is held
+    for r in rows:
+        if r["filename"] in on_disk:
+            out[r["source_url"]] = r["filename"]
+    return out
+
+
+def mirror_coverage(conn):
+    """How much of the site would survive that account being closed.
+
+    `held` is how many of the photographs the site ASKS FOR are held, not how
+    many files are on the disk. Those are different numbers and the difference
+    grows: correcting two mistyped addresses left eight copies behind that
+    nothing points at any more, and counting the disk reported 109% coverage.
+    A percentage that can exceed a hundred is a number nobody can act on.
+
+    The ones nothing points at are reported rather than removed. Deleting a
+    photograph is the single thing this whole feature exists to prevent, and a
+    picture dropped from the site in a redesign is still a picture of the
+    house -- often the only copy left, once the account it came from is gone.
+    """
+    wanted = hotlinked_urls()
+    have = mirrored_index(conn)
+    missing = [u for u in wanted if u not in have]
+    held = [u for u in wanted if u in have]
+    orphans = sorted(set(have) - set(wanted))
+    errors, total_bytes = [], 0
+    try:
+        errors = [dict(r) for r in conn.execute(
+            """SELECT source_url, last_error FROM mirrored_images
+                WHERE last_error IS NOT NULL AND last_error != ''""").fetchall()]
+        total_bytes = conn.execute(
+            "SELECT COALESCE(SUM(bytes), 0) AS b FROM mirrored_images "
+            "WHERE filename != ''").fetchone()["b"]
+    except sqlite3.OperationalError:
+        pass
+    # A failure recorded against an address the site no longer uses is not a
+    # problem anybody should be asked to look at.
+    errors = [e for e in errors if e["source_url"] in wanted]
+    return {
+        "wanted": wanted, "held": len(held), "missing": missing, "errors": errors,
+        "orphans": orphans, "bytes": total_bytes,
+        "percent": round(len(held) / len(wanted) * 100) if wanted else 100,
+        "safe": bool(wanted) and not missing,
+    }
+
+
+def fetch_one_image(url, timeout=20):
+    """Take a copy of one photograph. (filename, bytes, content_type) or raises.
+
+    Stdlib only, like every other outbound call here. Refuses anything that is
+    not an image and anything over the cap, and measures what actually arrived
+    rather than believing the header.
+    """
+    host = urlparse(url).netloc
+    if host not in MIRROR_HOSTS:
+        raise ValueError("not a host this mirrors: %s" % host)
+    req = Request(url, headers={"User-Agent": "gudanes-mirror/1"})
+    with urlopen(req, timeout=timeout) as resp:
+        ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype not in MIRROR_ALLOWED_TYPES:
+            raise ValueError("not an image: %s" % (ctype or "no content type"))
+        data = resp.read(MIRROR_MAX_BYTES + 1)
+    if len(data) > MIRROR_MAX_BYTES:
+        raise ValueError("over %d MB" % (MIRROR_MAX_BYTES // (1024 * 1024)))
+    if not data:
+        raise ValueError("empty response")
+    os.makedirs(MIRROR_DIR, exist_ok=True)
+    filename = mirror_name(url) + MIRROR_ALLOWED_TYPES[ctype]
+    with open(os.path.join(MIRROR_DIR, filename), "wb") as fh:
+        fh.write(data)
+    return filename, len(data), ctype
+
+
+def record_mirror(conn, url, filename="", size=0, ctype="", error=""):
+    conn.execute(
+        """INSERT INTO mirrored_images (source_url, filename, bytes, content_type,
+             fetched_at, last_error)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(source_url) DO UPDATE SET
+             filename = excluded.filename, bytes = excluded.bytes,
+             content_type = excluded.content_type,
+             fetched_at = excluded.fetched_at, last_error = excluded.last_error""",
+        (url, filename, size, ctype, datetime.now(timezone.utc).isoformat(),
+         error or None))
+
+
+def swap_mirrored(html, index):
+    """Point the page at the house's copies instead of theirs.
+
+    Done to the response rather than to the templates, on purpose. The public
+    templates are rewritten by hand most weeks and arrive as whole files, so an
+    edit to 256 img tags would be undone by the next handover -- and a fix that
+    depends on everybody remembering it is not a fix. This one needs nothing
+    from anybody.
+
+    Only URLs a file is actually held for are swapped, so a half-finished
+    mirror leaves the rest pointing where they always did rather than breaking
+    the photographs it has not reached yet.
+    """
+    if not index:
+        return html
+    # One pass over the document, not one per photograph. The home page is
+    # 190KB and carries 23 of these; scanning it 93 times to swap 23 of them
+    # is 18MB of string work on every request, and this runs on every page the
+    # public sees.
+    return _MIRROR_URL_RE.sub(
+        lambda m: ("/mirrored-photo/" + index[m.group(0)]) if m.group(0) in index
+        else m.group(0), html)
+
+
 def report_labour(conn, period):
     # Same helper the financial summary costs labour with, so the two pages
     # cannot disagree about the same shifts.
@@ -19372,7 +19769,14 @@ def campaign_unsubscribe(token):
 @app.route("/admin/gallery")
 @owner_required
 def admin_gallery():
+    """The public photograph gallery, section by section."""
     conn = get_db()
+    # Who is in the house right now and has said they would rather not
+    # appear. Not a block: the software cannot tell who is in a photograph,
+    # so a rule that refused would refuse the wrong ones and be switched off
+    # inside a week. It is the answer the house already holds, put in front
+    # of the person about to publish.
+    no_photos = photo_declines(conn, house_today())
     sections = conn.execute(
         "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
     photos = conn.execute(
@@ -19396,7 +19800,8 @@ def admin_gallery():
         overview_cell("Newsletter", subs, sub=f"{pending} unconfirmed" if pending else None),
     ]
     return render_template("admin_gallery.html", sections=sections,
-                           by_section=by_section, overview=overview)
+                           by_section=by_section, overview=overview,
+                           no_photos=no_photos)
 
 
 @app.route("/admin/gallery/<int:section_id>/photos", methods=["POST"])
@@ -21966,7 +22371,18 @@ def supplier_agreements(conn, today=None):
              FROM supplier_agreements
              LEFT JOIN vendors ON vendors.id = supplier_agreements.vendor_id
             WHERE supplier_agreements.active = 1""").fetchall()
-    out = [dict(agreement_state(r, today), row=r) for r in rows]
+    out = []
+    for r in rows:
+        state = dict(agreement_state(r, today), row=r)
+        # How long it has run. started_on has been written by the form since
+        # this was built and read by nothing -- yet an agreement in its first
+        # year and one in its ninth are different conversations with the same
+        # supplier, and the second is the one worth having.
+        began = parse_date(r["started_on"] or "")
+        state["running_days"] = (today - began).days if began else None
+        state["running_years"] = (round((today - began).days / 365.25, 1)
+                                  if began else None)
+        out.append(state)
     out.sort(key=lambda x: (x["deadline"] is None,
                             x["deadline"] or today, x["row"]["what"]))
     return out
@@ -23531,6 +23947,42 @@ def owner_home_warnings(conn, today):
             f"{worst['day'].strftime('%A %d %B')} — {worst['count']} rooms out "
             "and in again",
             len(turn["heavy"]), "admin_turnarounds")
+
+    # Photographs the site shows and does not hold a copy of.
+    #
+    # Two different problems, and they deserve different sentences. One is that
+    # a photograph has not been copied yet: not urgent on any particular
+    # morning, which is exactly why it needs saying on one of them, because the
+    # day it matters is the day the account lapses. The other is that a
+    # photograph CANNOT be fetched at all, and that one is happening now — the
+    # address on the page is wrong or dead, so a guest looking at that page is
+    # already seeing a blank where a picture should be. A broken <img> renders
+    # as nothing and reports nothing; this is the only thing that says so.
+    #
+    # Both close themselves: copy the photograph, or correct the address, and
+    # the line goes.
+    # 1.5ms against the panel's 16ms budget: the template scan is cached on a
+    # fingerprint of the template files, and the disk check is one listing
+    # rather than a stat per photograph. Both mattered -- together they were
+    # 30ms, nearly twice the whole panel.
+    pictures = mirror_coverage(conn)
+    if pictures["errors"]:
+        n = len(pictures["errors"])
+        add("blocker",
+            f"{n} photograph{'' if n == 1 else 's'} on the site cannot be "
+            "fetched at all",
+            f"{pictures['errors'][0]['source_url'].rsplit('/', 1)[-1][:40]} — "
+            "the address is wrong or the picture has gone. Anyone on that page "
+            "is looking at a blank space.",
+            n, "admin_photo_mirror")
+    uncopied = [u for u in pictures["missing"]
+                if u not in {e["source_url"] for e in pictures["errors"]}]
+    if uncopied:
+        n = len(uncopied)
+        add("warn", f"{n} of the site's photographs are on somebody else's server",
+            f"{pictures['held']} of {len(pictures['wanted'])} are held here. "
+            "If that account closes, the rest go — the logo among them.",
+            n, "admin_photo_mirror")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -27718,6 +28170,10 @@ def pos_journal_page():
         default_sort="recent",
     )
     chain = pos_journal_verify(conn)
+    # The other half of the same question. The chain answers 'has anything
+    # been altered'; this answers 'is anything missing', which is the one an
+    # inspector asks first.
+    gaps = receipt_sequence_gaps(conn)
     closures = conn.execute(
         "SELECT * FROM pos_closures ORDER BY closed_at DESC LIMIT 30").fetchall()
     perpetual = pos_perpetual_total(conn)
@@ -27727,10 +28183,15 @@ def pos_journal_page():
         overview_cell("Entries", total_events),
         overview_cell("Chain", "Broken" if chain else "Verified", alert=bool(chain),
                       sub=chain["problem"] if chain else "recomputed just now"),
+        overview_cell("Receipt numbers",
+                      "Gaps" if gaps else "Unbroken", alert=bool(gaps),
+                      sub=(f"{sum(g['missing'] for g in gaps)} missing"
+                           if gaps else "none missing")),
         overview_cell("Taken since the start", euro(perpetual), hint="never resets"),
         overview_cell("Periods closed", len(closures)),
     ]
-    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"], chain=chain,
+    return render_template("admin_pos_journal.html", lv=lv, events=lv["rows"],
+                           chain=chain, gaps=gaps,
                            closures=closures, overview=overview, perpetual=perpetual)
 
 
@@ -28399,6 +28860,9 @@ PALETTE_PAGES = [
     ("Inbox flags", "admin_inbox_flags", "unanswered email"),
     ("Vault", "management_vault", "passwords secrets"),
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
+    ("Photographs we do not own", "admin_photo_mirror",
+     "images photos squarespace cdn hotlink mirror logo pictures gallery "
+     "who hosts our pictures"),
     ("Audit log", "audit_log", "who did what history"),
     ("Terms & conditions", "admin_terms", "legal policy"),
     ("Restaurant", "admin_restaurant", "dinner covers reservations"),
@@ -39322,6 +39786,146 @@ def room_ics_feed(token):
     return app.response_class(body, mimetype="text/calendar")
 
 
+# The index is read from the database and checked against the disk, which is
+# 93 stat calls -- too much to do on every response and far too little to be
+# worth a cache invalidation protocol. Five minutes is the delay between
+# fetching a photograph and it appearing, and the admin page clears it by hand
+# so that never actually happens to anybody watching.
+_MIRROR_CACHE = {"at": 0.0, "index": {}}
+_MIRROR_CACHE_SECONDS = 300
+_MIRROR_CACHE_LOCK = threading.Lock()
+
+
+def mirror_cache_clear():
+    with _MIRROR_CACHE_LOCK:
+        _MIRROR_CACHE["at"] = 0.0
+        _MIRROR_CACHE["index"] = {}
+
+
+def mirror_cache_index():
+    now = time.monotonic()
+    with _MIRROR_CACHE_LOCK:
+        if _MIRROR_CACHE["at"] and now - _MIRROR_CACHE["at"] < _MIRROR_CACHE_SECONDS:
+            return _MIRROR_CACHE["index"]
+    conn = get_db()
+    try:
+        index = mirrored_index(conn)
+    finally:
+        conn.close()
+    with _MIRROR_CACHE_LOCK:
+        _MIRROR_CACHE["at"] = now
+        _MIRROR_CACHE["index"] = index
+    return index
+
+
+@app.after_request
+def serve_our_own_photographs(response):
+    """Send the house's copy of a photograph wherever one is held.
+
+    Done to the response rather than to the templates. The public templates
+    are rewritten by hand most weeks and arrive as whole-file replacements, so
+    256 edited img tags would survive until the next handover and no longer.
+    Here it needs nothing from anybody and cannot be reverted by accident.
+
+    Measured, not guessed. The restoration page is 111KB and carries 17 of
+    these: swapping them costs 0.08ms. A response with none -- the whole
+    employee side, every form post, every CSV -- pays 0.0005ms for the
+    substring test and nothing else.
+    """
+    # Any HTML answer, not only a 200. The not-found page is a full public page
+    # with the masthead and four photographs on it, and guests reach it from
+    # every stale link and mistyped address there is -- so restricting this to
+    # 200 left the one page somebody arrives at by accident still pointing at
+    # an account the house does not own. The content-type test below is what
+    # keeps redirects and JSON out; the status never told us anything.
+    if response.direct_passthrough:
+        return response
+    if not (response.content_type or "").startswith("text/html"):
+        return response
+    # Tested against the bytes before anything is decoded. Most pages have no
+    # such photograph on them at all, and a substring test over a byte string
+    # is a memory scan where decoding 190KB to text is real work done on the
+    # way to finding out there was nothing to do.
+    raw = response.get_data()
+    if b"squarespace-cdn.com" not in raw:
+        return response
+    body = raw.decode("utf-8", "replace")
+    swapped = swap_mirrored(body, mirror_cache_index())
+    if swapped != body:
+        response.set_data(swapped)
+    return response
+
+
+@app.route("/mirrored-photo/<filename>")
+def mirrored_photo(filename):
+    """A photograph the house holds its own copy of.
+
+    Public on purpose: these are the pictures on the public pages, and half of
+    them are on the page somebody sees before they have any login at all.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}\.(jpg|png|webp|gif|avif)", filename or ""):
+        abort(404)
+    resp = send_from_directory(MIRROR_DIR, filename)
+    # The filename is a hash of the source URL, so a different photograph is a
+    # different name. Nothing served here is ever rewritten in place.
+    resp.headers["Cache-Control"] = "public, max-age=2592000"
+    return resp
+
+
+@app.route("/admin/photo-mirror")
+@owner_required
+def admin_photo_mirror():
+    """Which of the site's photographs the house actually owns a copy of."""
+    conn = get_db()
+    data = mirror_coverage(conn)
+    conn.close()
+    return render_template("admin_photo_mirror.html", data=data)
+
+
+@app.route("/admin/photo-mirror/fetch", methods=["POST"])
+@owner_required
+def fetch_photo_mirror():
+    """Take a copy of the ones not held yet, for as long as a page can wait.
+
+    Bounded by the clock rather than by a count. 93 photographs at up to eight
+    seconds each is a request that times out and reports nothing, having
+    actually done most of the work -- so it stops at twenty seconds, says how
+    many are left, and the button can be pressed again. `tools/mirror_images.py`
+    does the whole lot in one go without a browser waiting on it.
+    """
+    conn = get_db()
+    missing = mirror_coverage(conn)["missing"]
+    started = time.monotonic()
+    done = failed = 0
+    first_error = ""
+    for url in missing:
+        if time.monotonic() - started > 20:
+            break
+        try:
+            filename, size, ctype = fetch_one_image(url, timeout=8)
+            record_mirror(conn, url, filename, size, ctype)
+            done += 1
+        except Exception as exc:          # noqa: BLE001 - any failure is one image
+            record_mirror(conn, url, error=str(exc)[:200])
+            failed += 1
+            first_error = first_error or str(exc)[:120]
+    conn.commit()
+    left = len(mirror_coverage(conn)["missing"])
+    conn.close()
+    mirror_cache_clear()
+
+    if not missing:
+        flash("Every photograph on the site is already held here.", "success")
+    elif done and not left:
+        flash(f"Copied {done}. The site no longer depends on that account.",
+              "success")
+    elif done:
+        flash(f"Copied {done}, {left} still to do — press it again.", "success")
+    if failed:
+        flash(f"{failed} could not be fetched. First: {first_error}", "error")
+    return redirect(url_for("admin_photo_mirror"))
+
+
 @app.route("/room-photos/<filename>")
 def room_photo(filename):
     return send_from_directory(ROOM_PHOTO_DIR, filename)
@@ -47602,6 +48206,43 @@ def revenue_to_send():
                        "total": round(float(bill["quoted"] if bill else 0), 2),
                        "sent": pennylane_already_sent(conn, "event", event["id"])})
 
+    # And the other direction. This page's own docstring says why it exists:
+    # "Only expenses ever reached Pennylane -- money going out." That half was
+    # true and unmeasured. The expenses page shows a tick per row and nothing
+    # counts them, so "how many costs is the accountant still missing" was a
+    # question you answered by scrolling.
+    costs = []
+    for e in conn.execute(
+            """SELECT expenses.*, vendors.name AS linked_vendor
+                 FROM expenses
+                 LEFT JOIN vendors ON vendors.id = expenses.vendor_id
+                -- 'rejected', which is what the CHECK constraint on this
+                -- column actually allows. It was written as 'declined' and
+                -- excluded a status that cannot exist, so every refused cost
+                -- was on the list of things the accountant had not been given.
+                WHERE COALESCE(expenses.status, 'approved') != 'rejected'
+                ORDER BY COALESCE(expenses.spent_on, expenses.submitted_at) DESC
+                LIMIT 300""").fetchall():
+        went = parse_datetime_iso(e["pennylane_synced_at"])
+        paid = parse_date(e["spent_on"] or "")
+        # How long it sat here before the accountant saw it. Recorded since
+        # the column existed and read by nothing, so nobody could say whether
+        # the lag was a day or a quarter.
+        lag = ((went.astimezone(LOCAL_TZ).date() - paid).days
+               if (went and paid) else None)
+        costs.append({
+            "row": e, "what": e["description"] or "Cost",
+            # expenses carries a free-text vendor_name AND a vendor_id. The
+            # typed one wins where there is one, because the free-text field
+            # is whatever somebody put on the receipt.
+            "vendor": e["linked_vendor"] or e["vendor_name"] or "",
+            "total": round(float(e["amount"] or 0), 2),
+            "spent_on": e["spent_on"],
+            "sent": bool(e["pennylane_invoice_id"]),
+            "sent_at": e["pennylane_synced_at"],
+            "lag_days": lag,
+        })
+
     # Read before the close, like the stays above it.
     days = []
     for closure in conn.execute(
@@ -47612,11 +48253,19 @@ def revenue_to_send():
                      "sent": pennylane_already_sent(conn, "pos_day", closure["id"])})
     conn.close()
     waiting = [r for r in rows if not r["sent"] and r["total"] > 0]
+    costs_waiting = [c for c in costs if not c["sent"] and c["total"] > 0]
+    # The lag on the ones that DID go. Reported as a median rather than a
+    # mean: one expense sent eight months late would otherwise make a
+    # perfectly good quarter look bad.
+    lags = sorted(c["lag_days"] for c in costs
+                  if c["lag_days"] is not None and c["lag_days"] >= 0)
+    typical_lag = lags[len(lags) // 2] if lags else None
     days_waiting = [d for d in days if not d["sent"] and d["total"] > 0]
     ateliers_waiting = [w for w in ateliers if not w["sent"] and w["total"] > 0]
     events_waiting = [e for e in events if not e["sent"] and e["total"] > 0]
     return render_template(
         "revenue_to_send.html", rows=rows, waiting=waiting, days=days,
+        costs=costs, costs_waiting=costs_waiting, typical_lag=typical_lag,
         days_waiting=days_waiting, ateliers=ateliers,
         ateliers_waiting=ateliers_waiting,
         waiting_total=round(sum(r["total"] for r in waiting)
@@ -47831,6 +48480,7 @@ def admin_images():
     """Every photograph on the public site, in one place, by where it sits."""
     conn = get_db()
     stored = {r["slot"]: r for r in conn.execute("SELECT * FROM site_images").fetchall()}
+    no_photos = photo_declines(conn, house_today())
     conn.close()
     groups = []
     for g in IMAGE_SLOT_GROUPS:
@@ -47841,7 +48491,8 @@ def admin_images():
                                        if row else None),
                           "updated_at": row["updated_at"] if row else None})
         groups.append({**g, "slots": slots})
-    return render_template("admin_images.html", image_slots=groups)
+    return render_template("admin_images.html", image_slots=groups,
+                           no_photos=no_photos)
 
 
 @app.route("/admin/images/upload", methods=["POST"])
@@ -53978,7 +54629,16 @@ def guest_record(conn, guest_id):
     The money is summed from each booking's own bill rather than recomputed,
     so there is one definition of what a stay costs and this is not a second.
     """
-    guest = conn.execute("SELECT * FROM guests WHERE id = ?", (guest_id,)).fetchone()
+    guest = conn.execute(
+        # The person who put the caution on. Written since the column existed
+        # and read by nothing, so the strongest statement this app can make
+        # about a guest carried a date and no author -- and whether it can be
+        # overturned by whoever is on tonight depends entirely on who it was.
+        """SELECT guests.*, setter.name AS caution_set_by
+             FROM guests
+             LEFT JOIN users AS setter
+                    ON setter.id = guests.caution_set_by_user_id
+            WHERE guests.id = ?""", (guest_id,)).fetchone()
     if not guest:
         return None
     email = (guest["email"] or "").strip().lower()
@@ -59297,6 +59957,10 @@ def today_sheet():
         (today.isoformat(), today.isoformat()),
     ).fetchall()
     guests_here = guests_in_residence(conn, today)
+    # The people who might take the photograph are the ones on this page.
+    # Telling only whoever publishes is how a picture gets taken correctly
+    # and used anyway.
+    no_photos = photo_declines(conn, today)
     breakfast_items = conn.execute(
         "SELECT * FROM breakfast_items ORDER BY COALESCE(category, 'zzz'), name"
     ).fetchall()
@@ -59336,7 +60000,7 @@ def today_sheet():
     ).fetchall()
     conn.close()
     return render_template(
-        "today_sheet.html", today=today, open_tasks=open_tasks, todays_shifts=todays_shifts,
+        "today_sheet.html", no_photos=no_photos, today=today, open_tasks=open_tasks, todays_shifts=todays_shifts,
         off_today=off_today, guests_here=guests_here, breakfast_items=breakfast_items,
         breakfast_checked_today=breakfast_checked_today, vehicles=vehicles,
         vehicle_usage_by_id=vehicle_usage_by_id, tonights_dinners=tonights_dinners,
@@ -60691,6 +61355,73 @@ def record_job_run(conn, job_name, ok, message):
     conn.commit()
 
 
+# How long one run may spend fetching, and how long to leave a photograph
+# alone after it refused to come down. The first keeps a tick from hanging on
+# a slow CDN; the second keeps a dead address from being asked for twenty-four
+# times a day for ever.
+PHOTO_MIRROR_JOB_SECONDS = 60
+PHOTO_MIRROR_RETRY_HOURS = 24
+
+
+def run_photo_mirror_job(conn):
+    """Take a copy of any photograph the site shows and the house does not hold.
+
+    The button on /admin/photo-mirror does this in twenty-second bites because
+    a browser is waiting. Nothing is waiting here, which matters: the whole
+    point of the mirror is that the house stops depending on somebody else's
+    account, and a safeguard that depends on the owner remembering to press a
+    button several times is a safeguard for the fortnight after it is built.
+
+    Hourly rather than daily. An idle run costs one directory listing and a
+    cached template scan -- about a millisecond and a half -- and the day it is
+    not idle is the day a handover added a photograph, which is the day it
+    should be held rather than the day after.
+
+    A photograph that refused to come down is left alone for a day. Retrying a
+    dead address every hour is twenty-four requests at somebody else's CDN for
+    an answer that will not change, and it would bury the ones that might.
+    """
+    cover = mirror_coverage(conn)
+    if not cover["missing"]:
+        return "all %d held" % len(cover["wanted"])
+
+    recent = set()
+    try:
+        cutoff = (datetime.now(timezone.utc)
+                  - timedelta(hours=PHOTO_MIRROR_RETRY_HOURS)).isoformat()
+        recent = {r["source_url"] for r in conn.execute(
+            """SELECT source_url FROM mirrored_images
+                WHERE last_error IS NOT NULL AND last_error != ''
+                  AND fetched_at >= ?""", (cutoff,)).fetchall()}
+    except sqlite3.OperationalError:
+        pass
+
+    todo = [u for u in cover["missing"] if u not in recent]
+    started = time.monotonic()
+    done = failed = 0
+    for url in todo:
+        if time.monotonic() - started > PHOTO_MIRROR_JOB_SECONDS:
+            break
+        try:
+            filename, size, ctype = fetch_one_image(url, timeout=15)
+            record_mirror(conn, url, filename, size, ctype)
+            done += 1
+        except Exception as exc:          # noqa: BLE001 - one failure is one image
+            record_mirror(conn, url, error=str(exc)[:200])
+            failed += 1
+        conn.commit()
+
+    mirror_cache_clear()
+    left = len(mirror_coverage(conn)["missing"])
+    if not todo:
+        return "%d still missing, all of them tried within the day" % len(cover["missing"])
+    parts = ["copied %d" % done]
+    if failed:
+        parts.append("%d would not come down" % failed)
+    parts.append("%d left" % left if left else "the site is now held here")
+    return ", ".join(parts)
+
+
 AUTOMATION_JOBS = [
     ("housekeeping", "automation_housekeeping_enabled", None, 600, run_housekeeping_job),
     # Hourly. The page reads a cache and never the network, so a slow morning
@@ -60709,6 +61440,11 @@ AUTOMATION_JOBS = [
     # Daily. Everything here has weeks of notice, so a missed run costs
     # nothing and nothing is ever raised at short notice.
     ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
+    # Hourly. An idle run is a directory listing and a cached scan; the run
+    # that is not idle is the one after a handover added a photograph, and the
+    # house holding its own copy of that within the hour is the whole point.
+    ("photo_mirror", "automation_photo_mirror_enabled", None, 3600,
+     run_photo_mirror_job),
     # Daily, early. The whole argument for the morning note is that it arrives
     # rather than waiting to be looked up, and until it was registered here it
     # was waiting to be looked up.
@@ -60889,6 +61625,8 @@ AUTOMATION_JOB_LABELS = {
     "backup_email": "Automated backup email (database + uploads, to the owner)",
     "social_schedule": "Social schedule (turn plans into dated posts and tasks)",
     "maintenance": "Estate upkeep (raise tasks for work falling due)",
+    "photo_mirror": "Keep our own copy of the site's photographs "
+                    "(so the château stops depending on an account it no longer publishes from)",
     "watch_tasks": "Blocking findings (raise a task, and close it when it stops being true)",
     # Runnable but unlabelled until now, so it never appeared here at all —
     # the one job whose whole purpose is a promise made in the privacy notice.

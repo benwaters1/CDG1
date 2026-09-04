@@ -32,6 +32,14 @@
             {{ a.row['what'] }}
             {% if a.row['vendor_name'] %}<div class="upload-hint">{{ a.row['vendor_name'] }}</div>{% endif %}
             {% if a.row['reference'] %}<div class="upload-hint">{{ a.row['reference'] }}</div>{% endif %}
+            {# How long it has run. started_on was written by the form and read
+               by nothing — and an agreement in its first year and one in its
+               ninth are different conversations with the same supplier. #}
+            {% if a.running_years is not none %}
+            <div class="upload-hint">running {{ a.running_years }} year{{ '' if a.running_years == 1 else 's' }}</div>
+            {% else %}
+            <div class="upload-hint">no start date on it</div>
+            {% endif %}
           </th>
           <td>
             {% if a.deadline %}{{ a.deadline.isoformat() }}
