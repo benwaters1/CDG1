@@ -282,6 +282,7 @@ SUITES = [
     "test_old_addresses",
     "test_reports_index",
     "test_reopened_bills",
+    "test_guest_keys_and_photos",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",

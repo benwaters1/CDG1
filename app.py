@@ -8477,6 +8477,57 @@ def stays_with_status(conn, today, statuses=("confirmed",)):
     return stays
 
 
+def photo_declines(conn, today=None):
+    """Guests in the house right now who would rather not be photographed.
+
+    Read off the GUEST PROFILE rather than the booking: the answer belongs to
+    a person and travels with them across stays, which is the whole reason
+    guests is a profile table and bookings are the truth about dates. Somebody
+    who declined in March has not re-consented by booking again in July.
+
+    Matched by the LINK where there is one and the EMAIL where there is not,
+    which is the pair the app already uses everywhere it lists a guest's own
+    bookings. Not profile_id alone: not one booking in the real database
+    carries a linked_guest_id, because linking happens when somebody edits a
+    guest by hand, so a version reading only the link would have run clean,
+    shown an empty list on all three pages and honoured nobody -- which is the
+    worst shape a consent feature can take, because it looks like it works.
+
+    A stay with neither is not guessed at. A name is not an identity, and
+    treating "J. Martin" as the J. Martin who declined would attach somebody
+    else's refusal to the wrong person.
+    """
+    today = today or house_today()
+    here = guests_in_residence(conn, today)
+    if not here:
+        return []
+    said_no = conn.execute(
+        "SELECT * FROM guests WHERE photo_consent = 'no'").fetchall()
+    by_id = {r["id"]: r for r in said_no}
+    by_email = {(r["email"] or "").strip().lower(): r
+                for r in said_no if (r["email"] or "").strip()}
+    out = []
+    for b in here:
+        # The link when there is one, the email when there is not -- the same
+        # pair the app uses everywhere it lists a guest's bookings. Reading
+        # profile_id alone found nobody: not one booking in the real database
+        # carries a linked_guest_id, because linking happens when somebody
+        # edits a guest by hand.
+        profile = (by_id.get(b["profile_id"])
+                   or by_email.get((b["email"] or "").strip().lower()))
+        if not profile:
+            continue
+        out.append({
+            "who": profile["name"] or b["name"],
+            "email": (profile["email"] or "").strip().lower(),
+            "room": b["room_name"] or "",
+            "reference": b["reference_code"],
+            "asked_at": profile["photo_consent_at"],
+            "booking_id": b["booking_id"],
+        })
+    return out
+
+
 def guests_in_residence(conn, today):
     """Just the stays covering today -- the common case for every 'who's here'
     panel across the app."""
@@ -11273,6 +11324,42 @@ def things_still_out(conn, *, today=None):
             "note": r["notes"], "issued_by": r["issued_by"],
         })
 
+    # A key handed to a GUEST. Written by the arrivals sheet, read until now
+    # only for guests who had not arrived yet -- so a key that left with
+    # somebody three weeks ago was on no page in the building.
+    #
+    # Keys only. A code is not returned, it is revoked, and blanking it is a
+    # nightly job's business; listing every code ever issued here would bury
+    # the keys that genuinely are out.
+    for r in conn.execute(
+        """SELECT booking_access_codes.id, booking_access_codes.value,
+                  booking_access_codes.issued_to, booking_access_codes.issued_at,
+                  booking_access_codes.good_until, booking_access_codes.note,
+                  bookings.guest_name, bookings.reference_code,
+                  bookings.departure_date, issuer.name AS issued_by
+             FROM booking_access_codes
+             JOIN bookings ON bookings.id = booking_access_codes.booking_id
+             LEFT JOIN users AS issuer
+                    ON issuer.id = booking_access_codes.issued_by_user_id
+            WHERE booking_access_codes.returned_at IS NULL
+              AND booking_access_codes.kind = 'key'""").fetchall():
+        # "Gone" means the same thing it means for a member of staff who has
+        # left: this is a person outside the house who can open a door. The
+        # date is good_until, which the issue route has always written and
+        # nothing has ever read.
+        leaves = parse_date(r["good_until"] or r["departure_date"] or "")
+        out.append({
+            "sort": "guest_key", "id": r["id"],
+            "what": r["value"] or "Key",
+            "kind": "guest key",
+            "who": r["issued_to"] or r["guest_name"] or "\u2014",
+            "user_id": None,
+            "gone": bool(leaves and leaves < today),
+            "days": age(r["issued_at"]), "issued_at": r["issued_at"],
+            "note": r["note"], "issued_by": r["issued_by"],
+            "reference": r["reference_code"], "good_until": r["good_until"],
+        })
+
     for r in conn.execute(
         """SELECT equipment_items.id, equipment_items.label, equipment_items.notes,
                   equipment_items.issued_at, users.id AS user_id, users.name AS holder,
@@ -11292,6 +11379,8 @@ def things_still_out(conn, *, today=None):
 
     for row in out:
         row["stale"] = bool(row["days"] and row["days"] > LOAN_STALE_DAYS)
+        row.setdefault("good_until", None)
+        row.setdefault("reference", None)
 
     out.sort(key=lambda r: (not r["gone"], -(r["days"] or 0)))
     return {
@@ -11302,7 +11391,11 @@ def things_still_out(conn, *, today=None):
         "lent": out,
         "with_leavers": [r for r in out if r["gone"]],
         "stale": [r for r in out if r["stale"] and not r["gone"]],
-        "people": len({r["user_id"] for r in out if r["user_id"]}),
+        # Counted by HOLDER, not by user_id. A guest has no user row, so a
+        # register showing four keys out with four departed guests read
+        # "With people: 0" -- a tile disagreeing with the table under it.
+        "people": len({r["user_id"] and ("staff", r["user_id"])
+                       or ("guest", r["who"]) for r in out}),
     }
 
 
@@ -19302,7 +19395,14 @@ def campaign_unsubscribe(token):
 @app.route("/admin/gallery")
 @owner_required
 def admin_gallery():
+    """The public photograph gallery, section by section."""
     conn = get_db()
+    # Who is in the house right now and has said they would rather not
+    # appear. Not a block: the software cannot tell who is in a photograph,
+    # so a rule that refused would refuse the wrong ones and be switched off
+    # inside a week. It is the answer the house already holds, put in front
+    # of the person about to publish.
+    no_photos = photo_declines(conn, house_today())
     sections = conn.execute(
         "SELECT * FROM gallery_sections ORDER BY sort_order, id").fetchall()
     photos = conn.execute(
@@ -19326,7 +19426,8 @@ def admin_gallery():
         overview_cell("Newsletter", subs, sub=f"{pending} unconfirmed" if pending else None),
     ]
     return render_template("admin_gallery.html", sections=sections,
-                           by_section=by_section, overview=overview)
+                           by_section=by_section, overview=overview,
+                           no_photos=no_photos)
 
 
 @app.route("/admin/gallery/<int:section_id>/photos", methods=["POST"])
@@ -47940,6 +48041,7 @@ def admin_images():
     """Every photograph on the public site, in one place, by where it sits."""
     conn = get_db()
     stored = {r["slot"]: r for r in conn.execute("SELECT * FROM site_images").fetchall()}
+    no_photos = photo_declines(conn, house_today())
     conn.close()
     groups = []
     for g in IMAGE_SLOT_GROUPS:
@@ -47950,7 +48052,8 @@ def admin_images():
                                        if row else None),
                           "updated_at": row["updated_at"] if row else None})
         groups.append({**g, "slots": slots})
-    return render_template("admin_images.html", image_slots=groups)
+    return render_template("admin_images.html", image_slots=groups,
+                           no_photos=no_photos)
 
 
 @app.route("/admin/images/upload", methods=["POST"])
@@ -59394,6 +59497,10 @@ def today_sheet():
         (today.isoformat(), today.isoformat()),
     ).fetchall()
     guests_here = guests_in_residence(conn, today)
+    # The people who might take the photograph are the ones on this page.
+    # Telling only whoever publishes is how a picture gets taken correctly
+    # and used anyway.
+    no_photos = photo_declines(conn, today)
     breakfast_items = conn.execute(
         "SELECT * FROM breakfast_items ORDER BY COALESCE(category, 'zzz'), name"
     ).fetchall()
@@ -59433,7 +59540,7 @@ def today_sheet():
     ).fetchall()
     conn.close()
     return render_template(
-        "today_sheet.html", today=today, open_tasks=open_tasks, todays_shifts=todays_shifts,
+        "today_sheet.html", no_photos=no_photos, today=today, open_tasks=open_tasks, todays_shifts=todays_shifts,
         off_today=off_today, guests_here=guests_here, breakfast_items=breakfast_items,
         breakfast_checked_today=breakfast_checked_today, vehicles=vehicles,
         vehicle_usage_by_id=vehicle_usage_by_id, tonights_dinners=tonights_dinners,
