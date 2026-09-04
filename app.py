@@ -12188,9 +12188,77 @@ def outstanding_balances(conn, *, today=None):
             "link_endpoint": "admin_events",
             "link_args": {},
         })
+    # And the ateliers. A registration carries a deposit, a dated balance and
+    # a ledger, so an unpaid one is money owed in exactly the sense the rest
+    # of this list means -- it simply was never asked for here.
+    for reg in conn.execute(
+            """SELECT workshop_bookings.*, workshops.title,
+                      workshop_sessions.start_date, workshop_sessions.end_date
+                 FROM workshop_bookings
+                 JOIN workshop_sessions
+                      ON workshop_sessions.id = workshop_bookings.session_id
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+                WHERE workshop_bookings.status = 'confirmed'
+                ORDER BY workshop_sessions.start_date""").fetchall():
+        owed, charged, paid = workshop_balance_due(conn, reg["id"])
+        if owed <= 0.005:
+            continue
+        ended = (reg["end_date"] or reg["start_date"] or "") < iso
+        due_date = reg["balance_due_date"]
+        # Aged from the balance due date if one was set, otherwise from the
+        # day the session STARTED -- debtor_ageing's own rule, kept when this
+        # moved here: "a place on a workshop that has already run and is still
+        # unpaid is late whatever the paperwork says". Ageing from the end
+        # would quietly forgive the length of the session.
+        anchor = due_date or reg["start_date"]
+        if ended:
+            state = "gone"
+            days = _days_between(anchor, iso) if anchor else 0
+        elif due_date and due_date < iso:
+            state, days = "overdue", _days_between(due_date, iso)
+        else:
+            state, days = "due", 0
+        days = max(0, days)
+        rows.append({
+            "booking": reg, "owed": owed, "total": charged, "paid": paid,
+            "state": state, "days_late": days, "due_date": due_date,
+            "departed": ended,
+            "kind": "workshop",
+            "who": reg["guest_name"],
+            "what": reg["title"] or "Workshop",
+            "when": reg["start_date"] or "date to confirm",
+            "reference": reg["reference_code"] or f"WS-{reg['id']}",
+            "email": reg["guest_email"],
+            "link_endpoint": "workshop_manage",
+            "link_args": {"manage_token": reg["manage_token"]},
+            # THE CARD WAS REFUSED, which is a different job from chasing
+            # somebody who forgot: this one has already been asked, already
+            # been told, and still has not paid. The job tries once and never
+            # again on purpose, so nothing else will happen unprompted.
+            "card_refused": bool(reg["autocharge_failed_at"]),
+            "refused_at": reg["autocharge_failed_at"],
+        })
+
+    # Everything that is not an atelier answers False rather than nothing, so
+    # a page can ask every row the same question.
+    for row in rows:
+        row.setdefault("card_refused", False)
+        row.setdefault("refused_at", None)
+
     order = {"gone": 0, "overdue": 1, "due": 2}
     rows.sort(key=lambda r: (order[r["state"]], -r["days_late"], -r["owed"]))
     return rows
+
+
+def refused_card_arrears(conn, *, today=None):
+    """What is owed where the card was refused and nobody has been back.
+
+    A subset of outstanding_balances rather than its own query, so the two can
+    never disagree about what "owed" means -- the figure comes from the same
+    ledger either way.
+    """
+    return [r for r in outstanding_balances(conn, today=today)
+            if r["card_refused"]]
 
 
 def balance_request_email(booking, bill, *, departed):
@@ -21788,6 +21856,27 @@ def owner_home_warnings(conn, today):
     # arrive -- a shortfall found the evening before is not a warning.
     # A filing that is late is already costing money, so it goes above the
     # things that are merely coming.
+    # A card the house tried and could not take. The job tries once and never
+    # again -- rightly, because "a declined card retried daily is a guest with
+    # six bank alerts who still has not paid" -- so from that moment nothing
+    # further happens on its own. The guest was emailed and so was the house,
+    # but an email is a moment and this is a state, and the state was written
+    # to a column nothing read.
+    refused = refused_card_arrears(conn, today=today)
+    if refused:
+        worst = max(refused, key=lambda r: r["owed"])
+        owed_total = sum(r["owed"] for r in refused)
+        add("blocker",
+            f"{len(refused)} card{'' if len(refused) == 1 else 's'} refused, "
+            f"{euro(owed_total)} still owed",
+            f"{worst['who']} \u2014 {euro(worst['owed'])} on {worst['what']}"
+            + (f", refused {format_date_short(house_date_iso(worst['refused_at']))}"
+               if worst["refused_at"] else "")
+            + ". They have been emailed a link to pay it themselves and the "
+              "app will not try the card again, so nothing more happens "
+              "unless somebody follows it up.",
+            len(refused), "management_outstanding")
+
     # A guest waiting for an answer the booking page promised within a day.
     # First, because everything else on this panel is about the house and
     # this one is about somebody who is waiting -- and because if nobody gets
@@ -46961,6 +47050,12 @@ def management_outstanding():
                 "gone": "Left owing", "overdue": "Overdue", "due": "Still to pay",
             }[r["state"]]),
             facet("kind", "Kind", lambda r: r["kind"].title()),
+            # Worth its own chip rather than only a marker on the row: "three
+            # of these were refused" is the number that decides whether this
+            # page is opened this morning, and a counted chip says it without
+            # anybody reading the rows.
+            facet("card", "Card", lambda r: "Refused" if r["card_refused"]
+                  else "Not refused"),
         ],
         sorts=[
             sort_option("worst", "Most overdue first",
@@ -60309,35 +60404,27 @@ def debtor_ageing(conn, today=None):
     day = today or house_today()
     if isinstance(day, str):
         day = parse_date(day)
+    # ONE SOURCE. outstanding_balances carries stays, events and ateliers, so
+    # this asks it once rather than adding a query of its own -- which, now
+    # that the list holds workshops, would count every unpaid registration
+    # twice and hand an accountant a receivables figure that is double.
+    #
+    # And it reads the DISPLAY fields, not a stay's own columns. Those exist
+    # for exactly this reason, stated where they are set: "so the page does
+    # not have to know what kind of thing owes the money". Reading
+    # b["room_name"] off every row crashed the moment one of them was not a
+    # stay, which is how this was found.
     items = []
     for row in outstanding_balances(conn, today=day):
-        b = row["booking"]
         items.append({
-            "kind": "room", "who": b["guest_name"], "email": b["guest_email"],
-            "reference": b["reference_code"], "what": b["room_name"] or "Room",
+            "kind": row["kind"], "who": row["who"], "email": row["email"],
+            "reference": row["reference"], "what": row["what"] or "",
             "owed": round(float(row["owed"]), 2),
-            "days_late": int(row["days_late"] or 0), "state": row["state"],
-        })
-    for wb in conn.execute(
-            """SELECT workshop_bookings.*, workshops.title AS workshop_title,
-                      workshop_sessions.start_date AS session_start
-                 FROM workshop_bookings
-                 JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
-                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id
-                WHERE workshop_bookings.status IN ('confirmed', 'pending')""").fetchall():
-        owed, _charged, _paid = workshop_balance_due(conn, wb["id"])
-        if owed <= 0.005:
-            continue
-        # Late from the balance due date if one was set, otherwise from the day
-        # the session started — a place on a workshop that has already run and
-        # is still unpaid is late whatever the paperwork says.
-        anchor = wb["balance_due_date"] or wb["session_start"]
-        late = _days_between(anchor, day.isoformat()) if anchor else 0
-        items.append({
-            "kind": "workshop", "who": wb["guest_name"], "email": wb["guest_email"],
-            "reference": wb["reference_code"], "what": wb["workshop_title"],
-            "owed": round(float(owed), 2), "days_late": max(0, int(late)),
-            "state": "gone" if late > 0 else "due",
+            "days_late": max(0, int(row["days_late"] or 0)),
+            "state": row["state"],
+            # Carried through so an ageing report can say which of the oldest
+            # debts the house has already tried to collect and failed.
+            "card_refused": bool(row.get("card_refused")),
         })
 
     buckets = {key: [] for key, _label, _floor in DEBTOR_BUCKETS}
