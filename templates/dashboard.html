@@ -58,9 +58,12 @@
 var onBreak = {{ 'true' if my_open_break else 'false' }};
 function toggleBreak() {
   var url = onBreak ? '/breaks/end' : '/breaks/start';
-  fetch(url, { method: 'POST' })
-    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
-    .then(function(data) {
+  // Kept if it cannot go: a break started in the cellar and ended in the
+  // courtyard is two taps in two places with no signal, and losing either
+  // one is an hour on somebody's timesheet.
+  gudanes.take(url, onBreak ? 'Ended a break' : 'Started a break')
+    .then(function(res) {
+      var data = res.held ? { on_break: !onBreak, started_at: 'just now' } : res.data;
       onBreak = data.on_break;
       var statusEl = document.getElementById('break-status');
       var btn = document.getElementById('break-btn');
@@ -73,8 +76,7 @@ function toggleBreak() {
         statusEl.style.display = 'none';
         btn.textContent = 'Start break';
       }
-    })
-    .catch(function() { alert('Could not update your break status — check your connection and try again.'); });
+    });
 }
 </script>
 
