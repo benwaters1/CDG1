@@ -24230,6 +24230,21 @@ def tell_the_house_about_a_review(conn, *, rating, guest_name, comment, what, wh
     return True
 
 
+# The readiness checks that belong on the front page rather than only on the
+# readiness page, and the sentence each gets there. Keyed by the check's own
+# label, which is unique; a renamed check therefore goes red in the test
+# rather than quietly falling off the front page.
+#
+# Deliberately three of fourteen. The others are decisions the house has not
+# taken (Stripe) or genuinely optional (the tokens), and a morning panel that
+# lists everything is one nobody reads.
+FRONT_PAGE_READINESS = {
+    "Outbound email": "Nothing can send email",
+    "Terms & conditions": "Guests are agreeing to a placeholder",
+    "Public web address": "Links in guest email go nowhere",
+}
+
+
 def owner_home_warnings(conn, today):
     """Things nobody has told the owner, each linking to the page that says more.
 
@@ -24574,6 +24589,23 @@ def owner_home_warnings(conn, today):
             f"{pictures['held']} of {len(pictures['wanted'])} are held here. "
             "If that account closes, the rest go — the logo among them.",
             n, "admin_photo_mirror")
+
+    # What the deployment itself is missing. readiness_checks has known
+    # these all along; nothing carried them to a page the owner opens every
+    # morning, so the front page reported 483 held messages for weeks and
+    # never once that nothing could send.
+    #
+    # Three of the fourteen, not all of them. Stripe being unconfigured is a
+    # decision the house has not taken rather than a fault, and the optional
+    # tokens are optional; a panel that lists everything gets scrolled past,
+    # which is the failure it exists to avoid. Each closes itself the moment
+    # the setting arrives.
+    for check in readiness_checks(conn):
+        if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
+            continue
+        add("blocker" if check["severity"] == "blocker" else "warn",
+            FRONT_PAGE_READINESS[check["label"]], check["detail"], 1,
+            "admin_readiness")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
