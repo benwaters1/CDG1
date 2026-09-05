@@ -331,6 +331,7 @@
         <a href="{{ url_for('reports_index') }}" class="{{ 'active' if request.endpoint=='reports_index' }}">{{ icon('eye') }}All the reports</a>
         <a href="{{ url_for('management_company_info') }}" class="{{ 'active' if request.endpoint=='management_company_info' }}">{{ icon('building') }}Company &amp; Insurance</a>
         <a href="{{ url_for('management_documents') }}" class="{{ 'active' if request.endpoint=='management_documents' }}">{{ icon('folder') }}Documents</a>
+        <a href="{{ url_for('meetings_page') }}" class="{{ 'active' if request.endpoint in ('meetings_page', 'meeting_page') }}">{{ icon('calendar') }}Meetings</a>
 
         <a href="{{ url_for('vendors') }}" class="{{ 'active' if request.endpoint=='vendors' }}">{{ icon('contacts') }}Vendors</a>
         <a href="{{ url_for('admin_promo_codes') }}" class="{{ 'active' if request.endpoint=='admin_promo_codes' }}">{{ icon('receipt') }}Promo Codes</a>

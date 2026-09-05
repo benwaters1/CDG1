@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Meetings{% endblock %}
+{% block content %}
+
+<div class="page-head">
+  <h1>Meetings</h1>
+  <a href="{{ url_for('management') }}" class="small-link" style="color:var(--steel);">← Management</a>
+</div>
+<p class="pay-disclaimer" style="margin-top:-10px;">
+  Staff, owners, contractors and suppliers. Write notes as you go, turn them
+  into minutes, and anything somebody agrees to lands on their own list and on
+  the calendar.
+  {% if summary.held_90 %}{{ summary.held_90 }} held in the last ninety days.{% endif %}
+</p>
+
+{% with cells = summary.cells %}{% include "_overview_band.html" %}{% endwith %}
+
+<details class="refund-box" style="margin-bottom:18px;">
+  <summary>Put a meeting in the diary</summary>
+  <form method="post" action="{{ url_for('new_meeting') }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="m_title">What it is about</label>
+        <input id="m_title" type="text" name="title" required
+               placeholder="Weekly staff catch-up">
+      </div>
+      <div>
+        <label class="field-label" for="m_kind">Kind</label>
+        <select id="m_kind" name="kind">
+          {% for key, label in kinds.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="m_date">Date</label>
+        <input id="m_date" type="date" name="meeting_date" required
+               value="{{ today }}">
+      </div>
+      <div>
+        <label class="field-label" for="m_where">Where</label>
+        <input id="m_where" type="text" name="location"
+               placeholder="The kitchen, or a telephone call">
+      </div>
+    </div>
+    <div class="field-row-2">
+      <div>
+        <label class="field-label" for="m_from">Starts</label>
+        <input id="m_from" type="time" name="start_time">
+      </div>
+      <div>
+        <label class="field-label" for="m_to">Ends</label>
+        <input id="m_to" type="time" name="end_time">
+      </div>
+    </div>
+    <label class="field-label" for="m_agenda">What needs covering</label>
+    <textarea id="m_agenda" name="agenda" rows="3"
+              placeholder="One line per thing to get through."></textarea>
+    <button type="submit" class="btn-primary" style="margin-top:10px;">Add it</button>
+  </form>
+</details>
+
+{% if summary.no_minutes or summary.unreminded %}
+<div class="refund-box" style="margin-bottom:14px;">
+  {% if summary.no_minutes %}
+  <p style="margin:0 0 4px;">
+    <strong>{{ summary.no_minutes }}</strong> meeting{{ '' if summary.no_minutes == 1 else 's' }}
+    happened and {{ 'has' if summary.no_minutes == 1 else 'have' }} never been written up.
+    Nothing agreed at {{ 'it' if summary.no_minutes == 1 else 'them' }} is on anybody's list.
+  </p>
+  {% endif %}
+  {% if summary.unreminded %}
+  <p style="margin:0;">
+    <strong>{{ summary.unreminded }}</strong> open action{{ '' if summary.unreminded == 1 else 's' }}
+    {{ 'is' if summary.unreminded == 1 else 'are' }} owned by somebody with no
+    account here — a contractor or a visitor. There is no list they can appear
+    on, so {{ 'it needs' if summary.unreminded == 1 else 'they need' }} a
+    telephone call rather than a reminder.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% include "_list_toolbar.html" %}
+
+{% if not meetings %}
+  <div class="empty-state">
+    {% if lv.q %}No meetings match that search.{% else %}No meetings yet. The first one goes in above.{% endif %}
+  </div>
+{% else %}
+  <div class="doc-list">
+    {% for m in meetings %}
+    <div class="doc-row" style="align-items:flex-start; flex-direction:column; gap:3px; padding:11px 12px;">
+      <div style="display:flex; align-items:center; width:100%; gap:8px; flex-wrap:wrap;">
+        <a href="{{ url_for('meeting_page', meeting_id=m['id']) }}"
+           style="font-weight:600; flex:1; min-width:200px;">{{ m['title'] }}</a>
+        <span class="mini-status">{{ kinds.get(m['kind'], m['kind']) }}</span>
+        {% if m['status'] == 'cancelled' %}
+          <span class="mini-status status-inactive">Cancelled</span>
+        {% elif m['status'] == 'held' %}
+          {% if not (m['minutes'] or '').strip() %}
+            <span class="mini-status status-pending">No minutes</span>
+          {% endif %}
+        {% elif m['meeting_date'] >= today %}
+          <span class="mini-status status-pending">Coming up</span>
+        {% endif %}
+        {% if m['overdue'] %}
+          <span class="mini-status status-declined">{{ m['overdue'] }} overdue</span>
+        {% elif m['open_actions'] %}
+          <span class="mini-status status-pending">{{ m['open_actions'] }} to do</span>
+        {% endif %}
+      </div>
+      <span class="upload-hint">
+        {{ m['meeting_date']|date_human }}{% if m['start_time'] %} at {{ m['start_time'] }}{% endif %}
+        {%- if m['location'] %} · {{ m['location'] }}{% endif %}
+        · {{ m['attendee_count'] }} there
+        {%- if m['called_by_name'] %} · called by {{ m['called_by_name'] }}
+        {%- elif m['created_by_name'] %} · put in the diary by {{ m['created_by_name'] }}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% endblock %}
