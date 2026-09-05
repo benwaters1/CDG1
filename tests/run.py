@@ -294,6 +294,7 @@ SUITES = [
     "test_rate_limit_retention",
     "test_nightly_machinery",
     "test_nightly_jobs",
+    "test_who_did_it",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
