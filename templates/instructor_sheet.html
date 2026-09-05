@@ -1,0 +1,99 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% block title %}{{ data.session['title'] }} — teaching notes{% endblock %}
+{# Somebody's guests and what they cannot eat, on a link the house sent to one
+   person. Never indexed, the same rule as a guest's own bill. #}
+{% block robots %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}
+
+<section class="g-sec g-short"><div class="g-wrap g-wrap--narrow">
+
+<div class="page-head">
+  <h1>{{ data.session['title'] }}</h1>
+</div>
+
+<p class="g-p">
+  {{ data.session['start_date'] }}
+  {%- if data.session['end_date'] and data.session['end_date'] != data.session['start_date'] %} to {{ data.session['end_date'] }}{% endif %}
+  · {{ data.heads }} {{ 'person' if data.heads == 1 else 'people' }}
+  {%- if data.session['instructor_name'] %} · {{ data.session['instructor_name'] }}{% endif %}
+</p>
+
+{% if data.session['cancelled_at'] %}
+<p class="g-p"><strong>This sitting is not running.</strong>
+  {{ data.session['cancelled_reason'] or '' }}</p>
+{% endif %}
+
+{# WHO IS IN THE ROOM. Deliberately narrow: no money, no other sittings, and
+   nobody else's guests. What somebody teaching a plaster course needs to know
+   is who is coming and what they cannot eat. #}
+<h2>Who is coming</h2>
+{% if data.people %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Who</th><th scope="col">People</th>
+      <th scope="col">Cannot eat</th></tr></thead>
+    <tbody>
+      {% for p in data.people %}
+      <tr>
+        <th scope="row">{{ p['guest_name'] }}
+          {%- if p['notes'] %}<br><span class="g-hint">{{ p['notes'] }}</span>{% endif %}</th>
+        <td>{{ p['party_size'] or 1 }}</td>
+        <td>{{ p['dietary_notes'] or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="g-p">Nobody has a confirmed place yet.</p>
+{% endif %}
+
+{% if data.dietary %}
+<p class="g-hint">
+  {{ data.dietary|length }} of them
+  {{ 'has' if data.dietary|length == 1 else 'have' }} something they cannot
+  eat. The kitchen has the same list.
+</p>
+{% endif %}
+
+{% if data.materials %}
+<h2>Materials</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">What</th><th scope="col">Needed</th></tr></thead>
+    <tbody>
+      {% for line in data.materials %}
+      <tr>
+        <th scope="row">{{ line.material['name'] }}</th>
+        <td>{{ line.need }}{% if line.material['unit'] %} {{ line.material['unit'] }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if data.rooming %}
+<h2>Where they are sleeping</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">Who</th><th scope="col">Room</th></tr></thead>
+    <tbody>
+      {% for r in data.rooming %}
+      <tr><th scope="row">{{ r['guest_name'] }}</th><td>{{ r['room_name'] }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<p class="g-hint">
+  This page is read-only and shows only this sitting. If something on it is
+  wrong, tell the château rather than working around it &mdash; the same list
+  goes to the kitchen.
+</p>
+
+</div></section>
+
+{% endblock %}

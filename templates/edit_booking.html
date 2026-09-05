@@ -10,6 +10,7 @@
         this stay owes and is a thing somebody does once per booking. -#}
     · <a class="small-link" href="{{ url_for('split_bill', booking_id=booking['id']) }}">Split the bill</a>
     · <a class="small-link" href="{{ url_for('booking_correspondence', booking_id=booking['id']) }}">What we've said</a>
+    · <a class="small-link" href="{{ url_for('record_history_page', kind='booking', record_id=booking['id']) }}">What changed</a>
   </p>
 
   {% if booking['payment_status'] == 'paid' %}
@@ -60,6 +61,22 @@
            value="{{ booking['booked_by_email'] or '' }}">
     <p class="field-hint">The statement and anything about money goes to them.
       Everything about the stay itself still goes to the guest.</p>
+
+    {# A COPY, NOT A REDIRECTION. The one above replaces the guest on the money
+       side; this one replaces nobody. The assistant who arranged it, or the
+       daughter who wants to see what we sent, gets everything the guest gets
+       -- the confirmation, the bill, a refusal, a change of dates -- so they
+       are never a version behind. #}
+    <label class="field-label" for="second_contact_email">Copy somebody else in</label>
+    <input type="text" id="second_contact_name" name="second_contact_name" maxlength="120"
+           placeholder="Their name"
+           value="{{ booking['second_contact_name'] or '' }}">
+    <input type="email" id="second_contact_email" name="second_contact_email" maxlength="200"
+           placeholder="Where the copy should go"
+           value="{{ booking['second_contact_email'] or '' }}">
+    <p class="field-hint">They get a copy of everything we send about this
+      stay, with a line saying who asked us to write to them. Clear the address
+      to stop it.</p>
 
     {# The app stamps this from the door the booking came through, which it
        always knows. The one thing it cannot know is that a walk-in first saw

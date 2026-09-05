@@ -235,7 +235,6 @@ def run():
             detail="the old box searched name and contact; the toolbar "
                    "searches the telephone and the notes as well")
 
-    conn.execute("DELETE FROM expenses WHERE description LIKE ?", (TAG + "%",))
     conn.execute("DELETE FROM vendors WHERE name LIKE ?", (TAG + "%",))
     conn.commit()
     s.check("and the suppliers are taken away again",
@@ -256,10 +255,42 @@ def run():
                    "different people")
     s.check("and the document type from this morning's work",
             'facet-label">What it is<' in e)
+    # NOW the expenses go. Deleted before the four checks above, they left an
+    # empty list, and list_view draws no chips over no rows.
+    conn.execute("DELETE FROM expenses WHERE description LIKE ?", (TAG + "%",))
+    conn.commit()
+    s.check("and the invoices are taken away again",
+            not conn.execute("SELECT 1 FROM expenses WHERE description LIKE ?",
+                             (TAG + "%",)).fetchone(),
+            detail="every suite after this one reads the same table")
     s.check("a chip narrows it",
             oc.get("/expenses?sent=Not+sent").status_code == 200)
 
     s.section("The guest list can be asked who has stayed before")
+    # BOTH SIDES OF THE CHIP, seeded here. This read the chips off whatever
+    # profiles the database happened to hold, and list_view draws none over an
+    # empty list -- so on a copy with no guests the page was right and the test
+    # was wrong. One profile who has stayed and one who has not is also the
+    # only way "Been before" and "First time" are shown to be told apart.
+    now = m.datetime.now(m.timezone.utc).isoformat()
+    conn.execute("INSERT INTO guests (name, email, created_at) VALUES (?, ?, ?)",
+                 (TAG + " Returning Guest", TAG.lower() + "back@example.com", now))
+    conn.execute("INSERT INTO guests (name, email, created_at) VALUES (?, ?, ?)",
+                 (TAG + " Brand New Guest", TAG.lower() + "new@example.com", now))
+    conn.commit()
+    back_id = conn.execute("SELECT id FROM guests WHERE name = ?",
+                           (TAG + " Returning Guest",)).fetchone()["id"]
+    room_id = conn.execute("SELECT id FROM rooms ORDER BY id").fetchone()["id"]
+    conn.execute(
+        """INSERT INTO bookings (room_id, reference_code, manage_token, guest_name,
+                   guest_email, arrival_date, departure_date, status,
+                   linked_guest_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?)""",
+        (room_id, TAG + "REF1", TAG + "TOK1", TAG + " Returning Guest",
+         TAG.lower() + "back@example.com",
+         (m.house_today() - m.timedelta(days=400)).isoformat(),
+         (m.house_today() - m.timedelta(days=397)).isoformat(), back_id, now))
+    conn.commit()
     g = " ".join(oc.get("/guests").get_data(as_text=True).split())
     s.check("that is a chip", 'facet-label">Have they stayed<' in g,
             detail="one of the two questions actually asked of a guest list, "
@@ -268,11 +299,33 @@ def run():
             _chip_count(g, "Have they stayed", "First time") is not None
             or _chip_count(g, "Have they stayed", "Been before") is not None,
             detail=g[g.find("Have they stayed"):][:150])
+    been = _chip_count(g, "Have they stayed", "Been before") or 0
+    first = _chip_count(g, "Have they stayed", "First time") or 0
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.commit()
+    g2 = " ".join(oc.get("/guests").get_data(as_text=True).split())
+    s.check("and it tells the two apart",
+            (_chip_count(g2, "Have they stayed", "Been before") or 0) == been - 1
+            and (_chip_count(g2, "Have they stayed", "First time") or 0) == first + 1,
+            detail="the same profile with its one stay taken away has to move "
+                   "from one chip to the other; a chip that does not move has "
+                   "not asked the question. Was %d/%d, now %s/%s" % (
+                       been, first,
+                       _chip_count(g2, "Have they stayed", "Been before"),
+                       _chip_count(g2, "Have they stayed", "First time")))
     s.check("and one search narrows the whole page",
             "lv.q" in open("templates/guests.html", encoding="utf-8").read()
             or oc.get("/guests?q=zzz-nobody").status_code == 200,
             detail="the who-is-here lists above the profiles follow the same "
                    "box, so it does not narrow half a page")
+
+    conn.execute("DELETE FROM bookings WHERE reference_code LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM guests WHERE name LIKE ?", (TAG + "%",))
+    conn.commit()
+    s.check("and the two profiles are taken away again",
+            not conn.execute("SELECT 1 FROM guests WHERE name LIKE ?",
+                             (TAG + "%",)).fetchone(),
+            detail="every suite after this one reads the same table")
 
     s.section("The asset register keeps the pool and gains the chips")
     # Built, because the register is empty. With no rows the facets correctly

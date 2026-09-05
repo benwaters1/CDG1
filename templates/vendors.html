@@ -28,6 +28,7 @@
         {% if spend_by_vendor.get(v['name']) %}<span class="mini-status status-pending">€{{ '%.0f'|format(spend_by_vendor[v['name']]) }} lifetime</span>{% endif %}
         <a href="{{ url_for('submit_expense', vendor=v['name']) }}" class="small-link" style="color:var(--steel);">Log expense</a>
         <span class="small-link" style="color:var(--steel); cursor:pointer;" onclick="toggleVendorEdit({{ v['id'] }})">Edit</span>
+        <a href="{{ url_for('record_history_page', kind='vendor', record_id=v['id']) }}" class="small-link" style="color:var(--steel);">What changed</a>
         <form method="post" action="{{ url_for('delete_vendor', vendor_id=v['id']) }}" onsubmit="return confirm('Remove this vendor?');">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="doc-delete">×</button>
