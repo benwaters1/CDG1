@@ -176,6 +176,18 @@ DATA_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or BASE_DIR
 UPLOAD_DIR = os.environ.get("GUDANES_UPLOAD_DIR") or os.path.join(DATA_DIR, "uploads")
 ROOM_PHOTO_DIR = os.environ.get("GUDANES_ROOM_PHOTO_DIR") or os.path.join(DATA_DIR, "room_photos")
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
+# Kept separate from the list above on purpose: a photograph upload has no
+# business accepting a .docx, and a document upload has none accepting a .heic.
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
+# EVERY IPHONE SHOOTS THESE BY DEFAULT, AND NO BROWSER HERE WILL SHOW ONE.
+#
+# So they are refused with a sentence that says what to do, rather than stored.
+# Converting them would mean Pillow and pillow-heif -- an imaging dependency,
+# in an app that is deliberately `git clone`, `python app.py`, and runs. The
+# alternative was to keep the file and let the page show a broken picture
+# nobody can fix, which is worse than a refusal that explains itself: the
+# person uploading is standing at their phone and can change one setting.
+REFUSED_IMAGE_EXTENSIONS = {"heic", "heif"}
 # Not RFC-5322-exhaustive — just enough shape-checking to reject garbage
 # and control characters (a public, unauthenticated form is the only place
 # this matters; \s excludes the \r/\n that broke send_email() on a crafted
@@ -3770,6 +3782,14 @@ def init_db():
         ("workshops_itinerary", "ALTER TABLE workshops ADD COLUMN itinerary TEXT"),
         ("social_posts_plan_id", "ALTER TABLE social_posts ADD COLUMN plan_id INTEGER REFERENCES social_plans(id) ON DELETE SET NULL"),
         ("social_posts_task_id", "ALTER TABLE social_posts ADD COLUMN task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL"),
+        # A post was a sentence with nothing attached. The alt text lives on the
+        # POST rather than on the file because the same photograph is used twice
+        # and means something different each time -- the salon as a room, and
+        # the salon as a place the plaster came off.
+        ("social_posts_image", "ALTER TABLE social_posts ADD COLUMN image_filename TEXT"),
+        ("social_posts_alt", "ALTER TABLE social_posts ADD COLUMN alt_text TEXT"),
+        ("social_posts_room", "ALTER TABLE social_posts ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL"),
+        ("social_posts_offer_site", "ALTER TABLE social_posts ADD COLUMN offer_for_site INTEGER NOT NULL DEFAULT 0"),
         # One post per plan per date. The generator relies on this rather
         # than on checking first: two ticks landing together cannot both
         # insert, because only one can win the unique index.
@@ -6153,6 +6173,7 @@ NAV_AREAS = {
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
+        "photo_intake", "uploaded_file",
         "admin_terms", "audit_log", "record_history_page",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
@@ -29779,6 +29800,8 @@ PALETTE_PAGES = [
     ("Inbox flags", "admin_inbox_flags", "unanswered email"),
     ("Vault", "management_vault", "passwords secrets"),
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
+    ("A photograph in", "photo_intake",
+     "photo intake upload picture social post instagram slot schedule alt text"),
     ("Photographs we do not own", "admin_photo_mirror",
      "images photos squarespace cdn hotlink mirror logo pictures gallery "
      "who hosts our pictures"),
@@ -41173,6 +41196,107 @@ def pass_message():
                            "the screen only." if urgent else "")),
           "success")
     return redirect(url_for("pass_screen"))
+
+
+@app.route("/uploads/<filename>")
+@login_required
+def uploaded_file(filename):
+    """One uploaded file, by its stored name.
+
+    login_required, and that is the whole security model here: UPLOAD_DIR holds
+    signed contracts, expense receipts and doctors' notes beside the
+    photographs, so this must never be the open door it looks like. The name is
+    checked as well -- send_from_directory refuses a traversal, but a stored
+    name is one this app wrote, and anything else has no business being asked
+    for.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}", filename or ""):
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
+@app.route("/admin/photos", methods=["GET", "POST"])
+@owner_required
+def photo_intake():
+    """A photograph in, on a real date, without anybody opening a calendar.
+
+    A social post was a sentence with nothing attached. This takes the picture,
+    puts it against a plan, and works out the next slot that plan has free --
+    which is the drudgery: the date, the slot, and the alt text nobody fills in.
+
+    IT DOES NOT WRITE THE CAPTION. A generated sentence about a French chateau
+    reads like every other generated sentence, and the writing is the reason
+    the site works. Blank caption means the post is filed as an IDEA rather
+    than a draft, so dropping a photograph in leaves an honest thing to finish
+    instead of a post that looks done.
+    """
+    conn = get_db()
+    if request.method == "POST":
+        photo = request.files.get("photo")
+        ok, why = allowed_image(photo.filename if photo else "")
+        if not (photo and photo.filename):
+            flash("No photograph was chosen.", "error")
+            conn.close()
+            return redirect(url_for("photo_intake"))
+        if not ok:
+            conn.close()
+            flash(why, "error")
+            return redirect(url_for("photo_intake"))
+
+        safe = secure_filename(photo.filename)
+        name = "photo_%s_%s" % (secrets.token_hex(6), safe)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        photo.save(os.path.join(UPLOAD_DIR, name))
+
+        plan_id = request.form.get("plan_id") or None
+        try:
+            plan_id = int(plan_id) if plan_id else None
+        except ValueError:
+            plan_id = None
+        when = (request.form.get("scheduled_date") or "").strip() or None
+        # A plan and no date means "put it wherever this plan next has room",
+        # which is the point of the page.
+        if plan_id and not when:
+            when = next_free_slot(conn, plan_id)
+        caption = (request.form.get("caption") or "").strip()
+        room_id = request.form.get("room_id") or None
+        try:
+            room_id = int(room_id) if room_id else None
+        except ValueError:
+            room_id = None
+        plan = conn.execute("SELECT * FROM social_plans WHERE id = ?",
+                            (plan_id,)).fetchone() if plan_id else None
+
+        conn.execute(
+            """INSERT INTO social_posts (platform, caption, image_filename, alt_text,
+                 plan_id, room_id, offer_for_site, scheduled_date, status,
+                 created_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ((plan["platform"] if plan else "instagram"), caption, name,
+             (request.form.get("alt_text") or "").strip() or None,
+             plan_id, room_id,
+             1 if request.form.get("use_on_site") else 0,
+             when, "drafted" if caption else "idea",
+             session.get("user_id"), datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash("Photograph saved." + (" Slotted for %s." % when if when else
+                                     " No date yet — it is on the list as an idea."),
+              "success")
+        return redirect(url_for("photo_intake"))
+
+    plans = conn.execute(
+        "SELECT * FROM social_plans WHERE active = 1 ORDER BY name").fetchall()
+    rooms = conn.execute(
+        "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall()
+    recent = conn.execute(
+        """SELECT image_filename, alt_text, scheduled_date, status
+             FROM social_posts
+            WHERE image_filename IS NOT NULL AND image_filename != ''
+            ORDER BY id DESC LIMIT 12""").fetchall()
+    conn.close()
+    return render_template("admin_photo_intake.html", social_plans=plans,
+                           rooms=rooms, recent=recent)
 
 
 @app.route("/room-photos/<filename>")
@@ -55059,6 +55183,41 @@ def close_social_task(conn, post_id):
            WHERE id = ? AND status != 'done'""",
         (datetime.now(timezone.utc).isoformat(), row["task_id"]))
     return True
+
+
+def allowed_image(filename):
+    """(ok, reason). A reason rather than a bare False, because the commonest
+    refusal is one the person can fix in ten seconds if they are told how."""
+    ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+    if ext in ALLOWED_IMAGE_EXTENSIONS:
+        return True, ""
+    if ext in REFUSED_IMAGE_EXTENSIONS:
+        return False, ("That is an iPhone HEIC photograph, which no browser here "
+                       "will display. On the phone: Settings, Camera, Formats, "
+                       "Most Compatible \u2014 or send it to yourself first and it "
+                       "arrives as a JPEG.")
+    if not ext:
+        return False, "That file has no extension, so there is no telling what it is."
+    return False, "A .%s is not a photograph this can store." % ext
+
+
+def next_free_slot(conn, plan_id, today=None):
+    """The next date this plan posts on that has nothing against it yet.
+
+    Built on social_plan_next_dates rather than beside it: the cadence rules --
+    weekly on a weekday, monthly on a day, and what happens when the month is
+    short -- already live there, and a second walk over the same calendar would
+    agree with the first until the day it did not.
+    """
+    plan = conn.execute("SELECT * FROM social_plans WHERE id = ?", (plan_id,)).fetchone()
+    if not plan:
+        return None
+    taken = {str(r["scheduled_date"])[:10] for r in conn.execute(
+        "SELECT scheduled_date FROM social_posts WHERE plan_id = ?", (plan_id,)).fetchall()}
+    for day in social_plan_next_dates(plan, count=24, today=today):
+        if day.isoformat() not in taken:
+            return day.isoformat()
+    return None
 
 
 def social_plan_next_dates(plan, count=3, today=None):

@@ -77,7 +77,12 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # GET rules whose arguments are not ids of anything this can look
 # up — a filename, a slug, a month. A ceiling, so a new page
 # behind an unknown argument is noticed rather than skipped.
-NO_RULE = 5
+#
+# It did that: uploaded_file was added for the photograph intake and takes a
+# stored filename, which is the same shape as room_photo and mirrored_photo
+# beside it. Six now, and the six are export_report_csv, mirrored_photo,
+# room_ics_feed, room_photo, set_language and uploaded_file.
+NO_RULE = 6
 
 # What the sweep fetched and could not read.
 #
