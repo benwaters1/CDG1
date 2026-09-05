@@ -301,6 +301,7 @@ SUITES = [
     "test_empty_form_crashes",
     "test_rendered_markup",
     "test_outbox_retention",
+    "test_orphan_pages",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",

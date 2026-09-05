@@ -148,6 +148,8 @@ FR = {
     "Gallery": "Galerie",
     "Follow": "Nous suivre",
     "Manage a booking": "Gérer une réservation",
+    "Find an enquiry": "Retrouver une demande",
+    "Photographs": "Photographies",
     "Stay the Night": "Passez la nuit",
     "Book": "Réserver",
     # The quick-booking heading in public_base, which arrived with a design
@@ -743,6 +745,8 @@ ES = {
     "Gallery": "Galería",
     "Follow": "Síganos",
     "Manage a booking": "Gestionar una reserva",
+    "Find an enquiry": "Buscar una solicitud",
+    "Photographs": "Fotografías",
     "Stay the Night": "Pase la noche",
     "Book": "Reservar",
     "Display currency": "Moneda",
