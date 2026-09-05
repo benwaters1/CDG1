@@ -89,4 +89,30 @@ when. It does not change what the guest is charged — handing over a hamper is 
 reason to charge for it, not to stop.</p>
 {% endif %}
 
+
+{% if done %}
+<h2 class="section-h">Done tonight</h2>
+<p class="upload-hint" style="margin-top:-6px;">
+  The name and the time have been recorded on every delivery since this was
+  built and shown nowhere &mdash; so when a guest said something never came,
+  the only answer was that somebody ticked it off at some point.
+</p>
+<div class="table-wrap">
+  <table class="data-table">
+    <thead><tr><th>What</th><th>Who for</th><th>Room</th><th>Ticked off by</th><th>When</th></tr></thead>
+    <tbody>
+      {% for d in done %}
+      <tr>
+        <td>{{ d['name'] }}{% if d['quantity'] and d['quantity'] > 1 %} &times;{{ d['quantity'] }}{% endif %}</td>
+        <td>{{ d['guest_name'] }}</td>
+        <td>{{ d['room_name'] or '&mdash;'|safe }}</td>
+        <td>{{ d['delivered_by'] or 'nobody recorded' }}</td>
+        <td>{{ local_time_str(d['when']) if d['when'] else '&mdash;'|safe }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% endblock %}

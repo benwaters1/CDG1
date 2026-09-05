@@ -65,7 +65,13 @@
         <td>{{ r.found_on }}</td>
         <td class="num">{{ euro(r.replacement) }}</td>
         <td class="num">{{ euro(r.charged) }}</td>
-        <td>{{ r.decision }}</td>
+        <td>
+          {{ r.decision }}
+          {# Who decided. A judgement about somebody else's money with nobody's
+             name on it is one nobody can be asked about. #}
+          {% if r.decided_by %}<span class="g-hint">{{ r.decided_by }}</span>
+          {% elif r.decision != 'not decided' %}<span class="g-hint">nobody recorded</span>{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

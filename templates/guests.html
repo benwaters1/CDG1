@@ -47,14 +47,10 @@
   {% endif %}
 </div>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label">Search</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Name, email, phone or notes">
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if q %}<a href="{{ url_for('guests') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{# The chips are the two questions actually asked of a guest list:
+   who has stayed before, and who carries a standing instruction.
+   Neither could be asked at all before. #}
+{% include "_list_toolbar.html" %}
 
 {# Who is actually here comes from confirmed bookings, not from the profiles
    below — that separation is what stops a cancelled booking leaving a phantom
@@ -115,7 +111,7 @@
 <h2 class="section-heading">Guest profiles{% if profiles %} — {{ profiles|length }}{% endif %}</h2>
 <p class="upload-hint" style="margin-top:-6px;">Standing records that persist between visits — preferences, dietary needs and contact details. Stay dates live on the booking.</p>
 {% if not profiles %}
-  <div class="empty-state">{% if q %}No profiles match that search.{% else %}No guest profiles yet — one is created automatically whenever you confirm a booking.{% endif %}</div>
+  <div class="empty-state">{% if lv.q %}No profiles match that search.{% else %}No guest profiles yet — one is created automatically whenever you confirm a booking.{% endif %}</div>
 {% else %}
 <div class="manual-layout">
   {% for g in profiles %}

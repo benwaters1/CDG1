@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ data.person['name'] }} — {{ data.start.strftime('%B %Y') }}{% endblock %}
+{% block content %}
+
+{# ONE PERSON, ONE MONTH, ITEMISED.
+
+   Before this, the answer to "what did Marie cost in July" was a CSV of the
+   whole team. Every figure here comes from labour_cost_breakdown, so this is a
+   view of the one costing rather than a second one — a pay statement and a
+   labour report disagreeing about one person is exactly what that rule exists
+   to prevent.
+
+   And it is NOT a bulletin de paie. That is a legal document with mandatory
+   headings, the employee's net, the employee-side contributions line by line
+   and a declaration behind it. Producing something that looked like one would
+   be worse than producing nothing: it would be filed, and it would be wrong.
+   So the page says what it is, at the top, before the numbers. #}
+
+<div class="page-head">
+  <h1>{{ data.person['name'] }}</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    <a href="{{ url_for('admin_payroll') }}" class="btn-ghost">The payroll pack</a>
+    <a href="{{ url_for('profile', user_id=data.person['id']) }}" class="btn-ghost">Their profile</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  {{ data.start.strftime('%B %Y') }} ·
+  {{ data.start.isoformat() }} to {{ data.end.isoformat() }}
+  {%- if data.person['job_role'] %} · {{ data.person['job_role'] }}{% endif %}
+</p>
+
+<p class="pay-disclaimer">
+  <strong>This is not a bulletin de paie.</strong> It is every figure the person
+  who produces one has to ask for, in one place, with its working shown. It
+  carries no employee-side contributions and no net pay, and nothing here has
+  been declared to anybody.
+</p>
+
+{% if data.row %}
+<div class="stat-tiles">
+  <div class="stat-tile">
+    <span class="stat-tile-label">Hours worked</span>
+    <span class="stat-tile-value">{{ data.row.hours }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Gross</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.gross) }}</span>
+  </div>
+  {% if data.employer_rate %}
+  <div class="stat-tile">
+    <span class="stat-tile-label">Employer at {{ data.employer_rate }}%</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.employer) }}</span>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-tile-label">Cost to the house</span>
+    <span class="stat-tile-value">&euro;{{ '%.2f'|format(data.total) }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">What</th><th scope="col">Amount</th></tr></thead>
+    <tbody>
+      {% for line in data.lines %}
+      <tr>
+        <th scope="row">{{ line.label }}</th>
+        <td>&euro;{{ '%.2f'|format(line.amount) }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <th scope="row"><strong>Gross</strong></th>
+        <td><strong>&euro;{{ '%.2f'|format(data.gross) }}</strong></td>
+      </tr>
+      {% if data.employer_rate %}
+      {# GROSS AND EMPLOYER NEVER ADDED INTO ONE UNLABELLED NUMBER. #}
+      <tr>
+        <th scope="row">Employer contributions at {{ data.employer_rate }}%</th>
+        <td>&euro;{{ '%.2f'|format(data.employer) }}</td>
+      </tr>
+      <tr>
+        <th scope="row"><strong>Cost to the house</strong></th>
+        <td><strong>&euro;{{ '%.2f'|format(data.total) }}</strong></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{% if not data.employer_rate %}
+<p class="upload-hint">
+  No employer contribution rate is set, so the gross above is the whole of what
+  this page can say. It is not what the person costs.
+</p>
+{% endif %}
+
+{% if data.row.unsocial and (data.row.unsocial.sunday or data.row.unsocial.night or data.row.unsocial.holiday) %}
+<h2>The unsocial hours</h2>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th scope="col">When</th><th scope="col">Hours</th>
+      <th scope="col">Rate</th><th scope="col">Worth</th></tr></thead>
+    <tbody>
+      {% for key, label in [('sunday', 'Sunday'), ('night', 'Night'), ('holiday', 'Public holiday')] %}
+      {% if data.row.unsocial[key] %}
+      <tr>
+        <th scope="row">{{ label }}</th>
+        <td>{{ data.row.unsocial[key] }}</td>
+        <td>{% if data.row.premiums.get(key) %}+{{ data.row.premiums[key].percent }}%{% else %}<span class="mini-status status-pending">no rate set</span>{% endif %}</td>
+        <td>{% if data.row.premiums.get(key) %}&euro;{{ '%.2f'|format(data.row.premiums[key].amount) }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="upload-hint">
+  A single hour can attract more than one of these &mdash; a Sunday night in
+  August is all three &mdash; and each is counted in its own row. How they
+  combine is a question for your convention collective, not for this page.
+</p>
+{% endif %}
+
+{% if data.unrated %}
+{# NAMED, NOT DROPPED. A statement that quietly omits the Sunday hours is one
+   the accountant will produce a bulletin from. #}
+<p class="pay-disclaimer">
+  Worked but not priced: {% for u in data.unrated %}{{ u }}{% if not loop.last %}; {% endif %}{% endfor %}.
+</p>
+{% endif %}
+
+{% else %}
+<p class="empty-state">
+  {{ data.person['name'] }} has no clocked hours in {{ data.start.strftime('%B %Y') }},
+  so there is nothing to itemise. A salaried person with no clock entries still
+  gets paid &mdash; that is a conversation with your accountant, not something
+  this page should invent.
+</p>
+{% endif %}
+
+{% if data.leave and data.leave.entitlement is not none %}
+<h2>Leave, as at the end of the month</h2>
+<p class="g-hint">
+  {{ data.leave.used }} of {{ data.leave.entitlement }} days taken in the leave
+  year to {{ data.leave.year_end.isoformat() }}, so
+  {{ data.leave.remaining }} left.
+</p>
+{% endif %}
+
+{% endblock %}
