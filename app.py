@@ -4493,6 +4493,17 @@ def init_db():
               room_total_quoted_for = arrival_date || '|' || departure_date
             WHERE room_total_quoted IS NULL AND total_price IS NOT NULL
               AND COALESCE(arrival_date, '') != '' AND COALESCE(departure_date, '') != ''"""),
+        # A session that was called off is a FACT, not an absence. Deleting it
+        # loses why it did not run, which is the one thing worth knowing when
+        # deciding whether to put the same atelier on again.
+        ("workshop_sessions_cancelled_at",
+         "ALTER TABLE workshop_sessions ADD COLUMN cancelled_at TEXT"),
+        ("workshop_sessions_cancelled_reason",
+         "ALTER TABLE workshop_sessions ADD COLUMN cancelled_reason TEXT"),
+        # A read-only link for whoever is teaching. Minted per session on
+        # first use, so a link exists only where somebody asked for one.
+        ("workshop_sessions_instructor_token",
+         "ALTER TABLE workshop_sessions ADD COLUMN instructor_token TEXT"),
         ("guest_feedback_review_invited_at",
          "ALTER TABLE guest_feedback ADD COLUMN review_invited_at TEXT"),
         ("bookings_booked_by_name", "ALTER TABLE bookings ADD COLUMN booked_by_name TEXT"),
@@ -5830,6 +5841,7 @@ NAV_AREAS = {
         
     ],
     "workshops": [
+        "call_off_workshop_session", "workshop_instructor_link",
         "admin_workshop_feedback", "admin_workshop_registrations", "admin_workshop_waitlist",
         "admin_workshops", "cancel_workshop_registration_admin",
         "confirm_workshop_registration", "decline_workshop_registration", "delete_workshop",
@@ -46477,6 +46489,97 @@ def consume_workshop_materials(session_id):
     return redirect(url_for("admin_workshops"))
 
 
+@app.route("/admin/workshops/session/<int:session_id>/call-off", methods=["POST"])
+@owner_required
+def call_off_workshop_session(session_id):
+    """Decide a sitting is not running, and act on it once.
+
+    The job that spots a session which will not reach its number has been
+    warning for a while and there was nothing to do about it: deleting a
+    session refuses while anybody is registered, and says "cancel them first"
+    -- one at a time, on the day somebody has decided not to run it.
+    """
+    conn = get_db()
+    result = call_off_session(conn, session_id,
+                              reason=request.form.get("reason", ""),
+                              user_id=session.get("user_id"))
+    if result is None:
+        conn.close()
+        abort(404)
+    conn.close()
+    if result["already"]:
+        flash("That sitting was already called off.", "error")
+        return redirect(url_for("admin_workshops"))
+    # The one reporter, so anybody it could not cancel is NAMED.
+    message, category = bulk_message("Cancelled", "place", len(result["done"]),
+                                     result["skipped"])
+    extra = []
+    if result["untold"]:
+        extra.append(", ".join(result["untold"])
+                     + " asked not to be written to, so they have not been "
+                       "told — tell them yourself")
+    if result["waitlist"]:
+        extra.append(f"{result['waitlist']} on the waiting list told it is not "
+                     "running")
+    if result["refunds"]:
+        owed = sum(r["amount"] for r in result["refunds"])
+        # NAMED AND NOT MOVED. Refunds in this house are a deliberate
+        # case-by-case decision, so this says who is owed what and leaves the
+        # money where it is.
+        extra.append(f"EUR {owed:.2f} owed back across "
+                     f"{len(result['refunds'])} registration(s): "
+                     + ", ".join(r["name"] for r in result["refunds"])
+                     + " — refund each from their registration")
+    if extra:
+        message = message.rstrip(".") + ". " + ". ".join(extra) + "."
+    flash(message, category)
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/admin/workshops/session/<int:session_id>/instructor-link", methods=["POST"])
+@owner_required
+def workshop_instructor_link(session_id):
+    """Make, or take away, the read-only link for whoever is teaching."""
+    conn = get_db()
+    row = conn.execute("SELECT * FROM workshop_sessions WHERE id = ?",
+                       (session_id,)).fetchone()
+    if not row:
+        conn.close()
+        abort(404)
+    if request.form.get("off"):
+        conn.execute("UPDATE workshop_sessions SET instructor_token = NULL WHERE id = ?",
+                     (session_id,))
+        conn.commit()
+        conn.close()
+        flash("The link no longer works. Anyone you sent it to will see "
+              "nothing.", "success")
+        return redirect(url_for("admin_workshops"))
+    token = row["instructor_token"] or secrets.token_urlsafe(24)
+    conn.execute("UPDATE workshop_sessions SET instructor_token = ? WHERE id = ?",
+                 (token, session_id))
+    conn.commit()
+    conn.close()
+    flash("Send them this: "
+          + url_for("instructor_page", token=token, _external=True), "success")
+    return redirect(url_for("admin_workshops"))
+
+
+@app.route("/workshops/teaching/<token>")
+def instructor_page(token):
+    """Everything the person teaching needs, and nothing else.
+
+    Their own link, so it is never indexed. No money on it and nobody else's
+    guests: what somebody teaching a plaster course needs is who is in the
+    room and what they cannot eat.
+    """
+    conn = get_db()
+    data = instructor_sheet(conn, token)
+    conn.close()
+    if not data:
+        abort(404)
+    return render_template("instructor_sheet.html", data=data)
+
+
 @app.route("/admin/workshops/<int:workshop_id>/sessions/new", methods=["POST"])
 @owner_required
 def new_workshop_session(workshop_id):
@@ -47034,18 +47137,13 @@ def cancel_workshop_registration_admin(registration_id):
     if not booking:
         conn.close()
         abort(404)
-    cur = conn.execute(
-        "UPDATE workshop_bookings SET status = 'cancelled', decided_at = ? WHERE id = ? AND status IN ('pending', 'confirmed')",
-        (datetime.now(timezone.utc).isoformat(), registration_id),
-    )
-    if cur.rowcount == 0:
+    # Through the shared follow-up, so a session called off does exactly what
+    # cancelling one place does. This used to be written out here, which is
+    # how the bulk version of every other action in this app came to skip it.
+    cancelled, notified, _refund, _told = cancel_one_registration_and_follow_up(conn, booking)
+    if not cancelled:
         conn.close()
         abort(404)
-    log_audit(conn, "workshop_registration_cancelled", target=booking["reference_code"])
-    conn.commit()
-    send_workshop_email(conn, booking, "workshop_cancelled", workshop_email_context(booking))
-    conn.commit()
-    notified = notify_workshop_waitlist_opening(conn, booking["session_id"])
     if notified:
         waitlist_note = f" Notified {len(notified)} waitlist guest{'s' if len(notified) != 1 else ''} automatically."
     else:
@@ -47054,6 +47152,173 @@ def cancel_workshop_registration_admin(registration_id):
     conn.close()
     flash("Registration cancelled." + waitlist_note, "success")
     return redirect(url_for("admin_workshop_registrations"))
+
+
+def cancel_one_registration_and_follow_up(conn, registration, *,
+                                          offer_waitlist=True, reason=None):
+    """Cancel one place, and do everything that has to follow it.
+
+    THE RULE THIS EXISTS FOR. A bulk action must be the same action done many
+    times, and every one in this app started as a loop over the core helper --
+    so the behaviour that lived in the single-item ROUTE never happened in
+    bulk. Declining ten room bookings one at a time worked the waitlist ten
+    times; declining the same ten together worked it not at all.
+
+    So the email and the waitlist live here, where a loop cannot miss them.
+
+    `offer_waitlist` is False when the whole session is being called off:
+    offering somebody a place on an atelier that is not running is worse than
+    saying nothing, and they are told it is off separately.
+
+    Returns (cancelled, notified, refund_due).
+    """
+    cur = conn.execute(
+        """UPDATE workshop_bookings SET status = 'cancelled', decided_at = ?
+            WHERE id = ? AND status IN ('pending', 'confirmed')""",
+        (datetime.now(timezone.utc).isoformat(), registration["id"]))
+    if cur.rowcount == 0:
+        return False, [], 0.0, False
+    log_audit(conn, "workshop_registration_cancelled",
+              target=registration["reference_code"], details=reason or "")
+    conn.commit()
+    send_workshop_email(conn, registration, "workshop_cancelled",
+                        workshop_email_context(registration))
+    conn.commit()
+    # WHAT THEY ARE OWED, worked out and reported -- never moved. Refunds are
+    # a deliberate case-by-case call by the owner in this house, and a job
+    # that quietly issued them would be moving real money on a schedule.
+    refund_due = refundable_amount(conn, "workshop", registration)
+    notified = (notify_workshop_waitlist_opening(conn, registration["session_id"])
+                if offer_waitlist else [])
+    return True, notified, refund_due, not registration["do_not_email"]
+
+
+def call_off_session(conn, session_id, reason=None, user_id=None):
+    """Call a whole sitting off: everybody cancelled, everybody told, once.
+
+    The job that spots a session which will not reach its number has existed
+    for a while, and there was nothing to DO about it: delete_workshop_session
+    refuses while anybody is registered and says "cancel them first", which is
+    one at a time, in a hurry, on the day somebody has decided not to run it.
+
+    Every place goes through the same follow-up as a single cancellation, so
+    the letter and the audit line cannot come apart from the act. Anything
+    skipped is NAMED rather than counted -- ten ticked, six done, "Cancelled
+    6" is exactly the shape this app has a rule against.
+    """
+    session = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.id = ?""", (session_id,)).fetchone()
+    if not session:
+        return None
+    if session["cancelled_at"]:
+        return {"already": True, "session": session, "done": [], "skipped": [],
+                "refunds": [], "waitlist": 0}
+    people = conn.execute(
+        """SELECT workshop_bookings.*, workshop_sessions.start_date,
+                  workshop_sessions.end_date, workshops.title
+             FROM workshop_bookings
+             JOIN workshop_sessions ON workshop_sessions.id = workshop_bookings.session_id
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_bookings.session_id = ?
+              AND workshop_bookings.status IN ('pending', 'confirmed')
+            ORDER BY workshop_bookings.guest_name""", (session_id,)).fetchall()
+    done, skipped, refunds, untold = [], [], [], []
+    for person in people:
+        cancelled, _notified, refund_due, told = cancel_one_registration_and_follow_up(
+            conn, person, offer_waitlist=False, reason=reason)
+        if not cancelled:
+            # Defensive: call_off_session only selects live places, so this is
+            # a row that changed underneath us rather than an ordinary case.
+            skipped.append((person["guest_name"], "it was already off"))
+            continue
+        done.append(person["guest_name"])
+        # CANCELLED BUT NOT TOLD. send_workshop_email quietly skips anybody who
+        # has asked not to be written to -- correctly, it is their choice --
+        # so without this the flash would say "Cancelled 3 places" while one of
+        # the three never heard that their atelier is not running.
+        if not told:
+            untold.append(person["guest_name"])
+        if refund_due > 0.005:
+            refunds.append({"name": person["guest_name"],
+                            "reference": person["reference_code"],
+                            "email": person["guest_email"], "amount": refund_due})
+    # The waiting list is told it is NOT running, rather than offered a place
+    # on something that is not happening.
+    waiting = conn.execute(
+        """SELECT * FROM workshop_waitlist
+            WHERE session_id = ? AND status = 'open'""", (session_id,)).fetchall()
+    for entry in waiting:
+        if (entry["email"] or "").strip():
+            send_email(
+                entry["email"],
+                f"{session['title']} is not running",
+                f"Dear {entry['name'] or 'there'},\n\n"
+                f"{session['title']} on {session['start_date']} will not be "
+                "running, so we are letting the waiting list know rather than "
+                "leaving you waiting for a place that is not coming.\n\n"
+                + ((reason.strip() + "\n\n") if (reason or "").strip() else "")
+                + "We will write again when the next dates are set.\n\n"
+                  "-- Chateau de Gudanes")
+    conn.execute(
+        "UPDATE workshop_waitlist SET status = 'closed' WHERE session_id = ? AND status = 'open'",
+        (session_id,))
+    conn.execute(
+        """UPDATE workshop_sessions SET cancelled_at = ?, cancelled_reason = ?
+            WHERE id = ?""",
+        (datetime.now(timezone.utc).isoformat(),
+         (reason or "").strip()[:300] or None, session_id))
+    log_audit(conn, "workshop_session_called_off", target=str(session_id),
+              details=f"{len(done)} place(s), {len(waiting)} waiting")
+    conn.commit()
+    return {"already": False, "session": session, "done": done,
+            "skipped": skipped, "refunds": refunds, "untold": untold,
+            "waitlist": len(waiting)}
+
+
+def instructor_sheet(conn, token):
+    """What the person teaching needs, and nothing else.
+
+    A workshop has an instructor and there was no page for them: who is
+    coming, what they cannot eat, the materials, the rooming. So it was asked
+    for by email every time, and answered with a screenshot.
+
+    DELIBERATELY NARROW. No money, no other sessions, nobody else's guests.
+    What somebody teaching a plaster course needs to know is who is in the
+    room and what they cannot eat -- not what anybody paid, and not that this
+    is a revenue share, which it is not.
+    """
+    session = conn.execute(
+        """SELECT workshop_sessions.*, workshops.title, workshops.instructor_name,
+                  workshops.description
+             FROM workshop_sessions
+             JOIN workshops ON workshops.id = workshop_sessions.workshop_id
+            WHERE workshop_sessions.instructor_token = ?""", (token,)).fetchone()
+    if not session:
+        return None
+    people = conn.execute(
+        """SELECT guest_name, party_size, dietary_notes, notes, status
+             FROM workshop_bookings
+            WHERE session_id = ? AND status = 'confirmed'
+            ORDER BY guest_name""", (session["id"],)).fetchall()
+    plan = session_materials(conn, session["id"])
+    rooming = conn.execute(
+        """SELECT workshop_bookings.guest_name, rooms.name AS room_name
+             FROM workshop_bookings
+             LEFT JOIN rooms ON rooms.id = workshop_bookings.assigned_room_id
+            WHERE workshop_bookings.session_id = ?
+              AND workshop_bookings.status = 'confirmed'
+              AND workshop_bookings.assigned_room_id IS NOT NULL
+            ORDER BY rooms.name""", (session["id"],)).fetchall()
+    return {
+        "session": session, "people": people,
+        "heads": sum((p["party_size"] or 1) for p in people),
+        "dietary": [p for p in people if (p["dietary_notes"] or "").strip()],
+        "materials": plan["lines"] if plan else [],
+        "rooming": rooming,
+    }
 
 
 def workshop_room_conflict(conn, room_id, session_start, session_end, session_id, exclude_registration_id=None):

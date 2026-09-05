@@ -120,7 +120,21 @@ def run():
     # as returning would make a good week of forward bookings look like loyalty.
     _raw("Past", source="direct", email="zzsrc.web@example.invalid",
          arrival=house_today() - timedelta(days=40), nights=2, price=400)
-    again = house_today() + timedelta(days=90)
+    def _bookable(from_day, nights=2):
+        conn2 = db()
+        try:
+            day = from_day
+            for _ in range(200):
+                ok, _why = m.is_range_available(
+                    conn2, room["id"], day, day + timedelta(days=nights))
+                if ok:
+                    return day
+                day += timedelta(days=3)
+            raise AssertionError("no bookable window")
+        finally:
+            conn2.close()
+
+    again = _bookable(house_today() + timedelta(days=90))
     anon2 = m.app.test_client()
     anon2.post(f"/book/{room['id']}", data={
         "arrival_date": again.isoformat(),

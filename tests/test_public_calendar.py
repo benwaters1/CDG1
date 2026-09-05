@@ -43,6 +43,7 @@ def _cleanup():
     conn.execute("""DELETE FROM event_holds WHERE event_id IN
                     (SELECT id FROM event_inquiries WHERE contact_name LIKE ?)""", (TAG + "%",))
     conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_sessions WHERE created_at = ?", (TAG,))
     conn.commit()
     conn.close()
 
@@ -78,10 +79,15 @@ def run():
     # single free day is not enough: the seeded ateliers close whole weeks, so
     # base+60 landed inside one and a check about a lapsed hold failed on a
     # date that was never free in the first place.
-    def _clear(from_day):
+    claimed = set()
+
+    def _clear(from_day, span=4):
         day = from_day
-        while any((day + timedelta(days=n)).isoformat() in before for n in range(4)):
+        while any((day + timedelta(days=n)).isoformat() in before
+                  or (day + timedelta(days=n)) in claimed for n in range(span)):
             day += timedelta(days=1)
+        for n in range(span):
+            claimed.add(day + timedelta(days=n))
         return day
 
     base = _clear(m.house_today() + timedelta(days=250))
@@ -126,7 +132,7 @@ def run():
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
            capacity, created_at) VALUES (?, ?, ?, 10, ?)""",
         (workshop["id"], ws_day.isoformat(),
-         (ws_day + timedelta(days=2)).isoformat(), now))
+         (ws_day + timedelta(days=2)).isoformat(), TAG))
     ev_day = _clear(base + timedelta(days=40))
     conn.execute(
         """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
