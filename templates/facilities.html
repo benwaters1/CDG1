@@ -7,7 +7,7 @@
 {% block bodyclass %} has-hero{% endblock %}
 {% block content %}
 {% from '_animals.html' import animals, animals_note %}
-{% from '_stay_panel.html' import stay_panel %}
+{% from '_stay_panel.html' import stay_panel with context %}
 {% from '_weather.html' import season_note %}
 {% from '_marks.html' import mark %}
 {# Needs: @app.route("/facilities") -> render_template("facilities.html") #}
@@ -216,10 +216,6 @@
     <div><dt>Getting there</dt><dd>We will arrange the car, or the equipment, or both</dd></div>
     <div><dt>Coming back</dt><dd>The fire is lit, the kitchen is warm, and dinner is at the usual hour</dd></div>
   </dl>
-
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-  </p>
 </div></section>
 
 <div class="g-band">
@@ -285,7 +281,7 @@
 {# From the château's own record: terraced gardens down to le parc, the lost
    ironwork known only from old photographs, and the pool and court below the
    terrace steps. #}
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+<section class="g-sec g-sec--sand g-sec--terre"><div class="g-wrap">
   <p class="g-eyebrow">Outside</p>
   <h2 class="g-place">The Gardens Are Terraced</h2>
 
@@ -393,51 +389,9 @@
 
 
 
-<!-- ============ THE NEIGHBOURS ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Le voisinage<span class="g-fr__en">The neighbourhood</span></p>
-  <p class="g-eyebrow">Not Ours, But Close</p>
-  <h2 class="g-place">Who Else Is In the Valley</h2>
-  <p class="g-p g-lede-first">The château is not a resort and does not pretend to be one. Most of what makes a week here belongs to other people, and they are worth naming.</p>
 
-  <div class="g-grid g-grid--2">
-    <div class="g-panel">
-      <h3 class="g-h3">Les Cabannes</h3>
-      <p class="g-p">Three minutes down the hill. The Sunday market, a boulangerie worth the walk, and the station. This is where the kitchen shops.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Tarascon-sur-Ariège</h3>
-      <p class="g-p">Fifteen minutes north, and much bigger. Wednesday and Saturday markets, and the town most guests end up in for an afternoon.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Ax-les-Thermes</h3>
-      <p class="g-p">A spa town since the thirteenth century. The hot springs still run through the middle of it and the basins in the square are free.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Plateau de Beille</h3>
-      <p class="g-p">Twenty minutes up. Cross-country skiing and sledging in winter, walking and mountain biking once the snow goes.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">The painted caves</h3>
-      <p class="g-p">Niaux is half an hour away. Its bison were drawn roughly thirteen thousand years before Gabriel drew the façade — book ahead, numbers are limited by law.</p>
-    </div>
-    <div class="g-panel">
-      <h3 class="g-h3">Mirepoix</h3>
-      <p class="g-p">An hour, and the one to plan a day around. A medieval arcaded square, and the fair where anything large is worth buying.</p>
-    </div>
-  </div>
 
-  <p class="g-limit"><span class="g-limit__k">Ask us</span>We eat in these places ourselves. Tell us what you are after and we will say where to go rather than list everything.</p>
-</div></section>
 
-<!-- ============ THE SEASON ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
-  <p class="g-fr">Ce que fait la saison<span class="g-fr__en">What the season does</span></p>
-  <p class="g-eyebrow">Nine Hundred Metres Up</p>
-  <h2 class="g-place">What the Valley Is Like Then</h2>
-  <p class="g-p">Not a forecast — a forecast is useless six months out. This is what the month actually does here, which is what people are really asking.</p>
-  {{ season_note() }}
-</div></section>
 
 <!-- ============ THE CLOSE ============ -->
 {# The page ended with nothing to do. Written for this page rather than

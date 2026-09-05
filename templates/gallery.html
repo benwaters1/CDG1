@@ -5,7 +5,7 @@
 {% block og_desc %}Château de Gudanes photographed over a decade of restoration — by Vogue, AD Italia, Zimmermann, and the people living in the middle of the work.{% endblock %}
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/115c409a-1d7f-445b-97e2-dd7a7b74ce87/DJI_0275-2-Edit.jpg?format=1200w{% endblock %}
 {% block content %}
-{% from '_stay_panel.html' import stay_panel %}
+{% from '_stay_panel.html' import stay_panel with context %}
 {% from '_lightbox.html' import lightbox %}
 {% from '_beforeafter.html' import before_after, before_after_script %}
 {% from '_marks.html' import mark %}
@@ -232,9 +232,7 @@
         <p class="g-story__d">Four rooms of ninety-four could be entered. Everything photographed here has happened since.</p>
       </div>
     </div>
-      <p style="margin-top:var(--s6)">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Check availability</a>
-    </p>
+  
   </div>
 </div></section>
 
@@ -316,7 +314,7 @@
     <div class="g-panel">
       <h3 class="g-h3">For anyone reading along</h3>
       <p class="g-p">The archive is the long version of the journal. Ninety-four rooms, five finished, and every one of the others photographed as it was found.</p>
-      <p class="g-p"><a href="{{ url_for('restoration_page') }}" class="g-btn">The restoration</a></p>
+      
     </div>
     <div class="g-panel">
       <h3 class="g-h3">For location scouts</h3>
@@ -356,18 +354,7 @@
   <p class="g-limit"><span class="g-limit__k">If you would rather not</span>The journal goes out a few times a year by email, and carries the same things without an account.</p>
 </div></section>
 
-<!-- ============ THE CLOSE ============ -->
-{# The page ended with nothing to do. Written for this page rather than
-   generic, and set on navy so it reads as a full stop. #}
-<section class="g-sec g-close"><div class="g-wrap">
-  <img class="g-close__mark" src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/1480689245381-82ZX1U44W7ONSXA7L54J/Logo_white.png?format=750w" alt="The château across the parkland" loading="lazy">
-  <h2 class="g-close__h">Photographs only go so far</h2>
-  <p class="g-close__p">None of this reads on a screen the way it does from the drive. Come and stand in it.</p>
-  <div class="g-close__acts">
-      <a href="{{ url_for('book_rooms') }}" class="g-btn g-btn--solid">Stay the night</a>
-      <a href="{{ url_for('workshops_public') }}" class="g-btn g-btn">Join an atelier</a>
-  </div>
-</div></section>
+
 
 {{ before_after_script() }}
 {{ lightbox() }}

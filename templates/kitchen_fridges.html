@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Fridge temperatures{% endblock %}
 {% block content %}
+{% from '_kitchenwall.html' import wall_mode %}
+{{ wall_mode() }}
 
 <div class="page-head">
   <h1>Fridge temperatures</h1>
