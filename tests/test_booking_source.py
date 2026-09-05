@@ -120,7 +120,38 @@ def run():
     # as returning would make a good week of forward bookings look like loyalty.
     _raw("Past", source="direct", email="zzsrc.web@example.invalid",
          arrival=house_today() - timedelta(days=40), nights=2, price=400)
-    again = house_today() + timedelta(days=90)
+    # Nights this room can actually take, asked of the same function the
+    # booking route refuses on. They used to be house_today() + 90, + 120 and
+    # + 150, and as the calendar rolled the first of those walked into the
+    # Christmas atelier: the booking was refused, no row was written, and a
+    # check about how a source is decided failed on a booking that never
+    # happened. A fixed offset into a real calendar is a date that is free
+    # until one day it is not.
+    def _free(after, nights=2):
+        # Its own connection, opened and closed, like every other helper here:
+        # this suite keeps none open across a check, and one held while the
+        # test client writes through another is how a reader sees a stay that
+        # is not there yet.
+        c = db()
+        try:
+            day = after
+            for _ in range(600):
+                with m.app.test_request_context():
+                    # (ok, reason), not a bool. A bare `if` on this is always
+                    # true -- a two-element tuple is truthy whichever way the
+                    # answer went -- so the first version of this helper handed
+                    # back the very first day it was asked about, workshop and
+                    # all, and the refusal read exactly as it had before.
+                    ok, _why = m.is_range_available(
+                        c, room["id"], day, day + timedelta(days=nights))
+                    if ok:
+                        return day
+                day += timedelta(days=1)
+        finally:
+            c.close()
+        raise AssertionError("no free %d nights in 600 days from %s" % (nights, after))
+
+    again = _free(house_today() + timedelta(days=90))
     anon2 = m.app.test_client()
     anon2.post(f"/book/{room['id']}", data={
         "arrival_date": again.isoformat(),
@@ -130,23 +161,40 @@ def run():
         "special_requests": "", "agree_terms": "on",
     }, follow_redirects=False)
     second = _booked(f"{TAG} Website Again")
+    # When there is no row at all the source is not the story -- the booking
+    # was refused and the reason is on the page. Saying "None" instead sends
+    # whoever reads this looking at how a source is decided, which is not
+    # where the fault is.
+    if second is None:
+        page = anon2.post(f"/book/{room['id']}", data={
+            "arrival_date": again.isoformat(),
+            "departure_date": (again + timedelta(days=2)).isoformat(),
+            "guest_name": f"{TAG} Website Again", "guest_email": "zzsrc.web@example.invalid",
+            "guest_phone": "", "party_size": "2", "guests_under_18": "0",
+            "special_requests": "", "agree_terms": "on",
+        }, follow_redirects=True)
+        why = "; ".join(flashes(page)[:2]) or "refused, and said nothing"
+    else:
+        why = repr(second["source"])
     s.check("it reads as returning", second and second["source"] == "returning",
-            detail=f"{second['source'] if second else None!r} — counted as direct "
-                   "it is impossible to tell growth from retention")
+            detail=f"{why} — counted as direct it is impossible to tell "
+                   "growth from retention")
 
     s.section("But a second booking before the first stay is not")
+    planner_one = _free(again + timedelta(days=30))
     anon3 = m.app.test_client()
     anon3.post(f"/book/{room['id']}", data={
-        "arrival_date": (again + timedelta(days=30)).isoformat(),
-        "departure_date": (again + timedelta(days=32)).isoformat(),
+        "arrival_date": planner_one.isoformat(),
+        "departure_date": (planner_one + timedelta(days=2)).isoformat(),
         "guest_name": f"{TAG} Planner", "guest_email": "zzsrc.plan@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "0",
         "special_requests": "", "agree_terms": "on",
     }, follow_redirects=False)
+    planner_two = _free(planner_one + timedelta(days=30))
     anon4 = m.app.test_client()
     anon4.post(f"/book/{room['id']}", data={
-        "arrival_date": (again + timedelta(days=60)).isoformat(),
-        "departure_date": (again + timedelta(days=62)).isoformat(),
+        "arrival_date": planner_two.isoformat(),
+        "departure_date": (planner_two + timedelta(days=2)).isoformat(),
         "guest_name": f"{TAG} Planner Two", "guest_email": "zzsrc.plan@example.invalid",
         "guest_phone": "", "party_size": "2", "guests_under_18": "0",
         "special_requests": "", "agree_terms": "on",

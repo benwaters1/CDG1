@@ -61109,11 +61109,6 @@ AUTOMATION_JOBS = [
     # Daily. Everything here has weeks of notice, so a missed run costs
     # nothing and nothing is ever raised at short notice.
     ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
-    # Hourly. An idle run is a directory listing and a cached scan; the run
-    # that is not idle is the one after a handover added a photograph, and the
-    # house holding its own copy of that within the hour is the whole point.
-    ("photo_mirror", "automation_photo_mirror_enabled", None, 3600,
-     run_photo_mirror_job),
     # Daily, early. The whole argument for the morning note is that it arrives
     # rather than waiting to be looked up, and until it was registered here it
     # was waiting to be looked up.
@@ -61151,6 +61146,15 @@ AUTOMATION_JOBS = [
     # stopped being true, so the list mirrors the house rather than its history.
     ("watch_tasks", "automation_watch_tasks_enabled", None, 24 * 3600,
      run_watch_tasks_job),
+    # LAST ON PURPOSE. These run one after another in a single background
+    # thread, so everything below a job waits for it -- and this one is the
+    # only one that spends up to a minute on somebody else's network. It was
+    # written in above maintenance, which put nine jobs behind it including
+    # the text that tells a guest where to go on the day they arrive and the
+    # one that charges a workshop balance. Fetching photographs is not more
+    # urgent than either. Anything added after this will wait behind it.
+    ("photo_mirror", "automation_photo_mirror_enabled", None, 3600,
+     run_photo_mirror_job),
 ]
 
 
