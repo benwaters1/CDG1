@@ -175,9 +175,12 @@
           {% set cfg = hr_action_types.get(r['item_type'], {}) %}
           <tr>
             <td>{{ cfg.get('label', r['item_type']) }}</td>
-            <td class="num"><input type="number" name="sla_{{ r['id'] }}" min="1" step="1" value="{{ r['sla_days']|int }}" style="width:70px; font-size:12px;"> <span class="upload-hint">d</span></td>
-            <td class="num"><input type="number" name="esc_{{ r['id'] }}" min="1" step="1" value="{{ r['escalate_after_days']|int }}" style="width:70px; font-size:12px;"> <span class="upload-hint">d</span></td>
-            <td><input type="checkbox" name="active_{{ r['id'] }}" value="1" {{ 'checked' if r['active'] }}></td>
+            <td class="num"><input type="number" name="sla_{{ r['id'] }}" min="1" step="1"
+                 aria-label="Answer within, days — {{ cfg.get('label', r['item_type']) }}" value="{{ r['sla_days']|int }}" style="width:70px; font-size:12px;"> <span class="upload-hint">d</span></td>
+            <td class="num"><input type="number" name="esc_{{ r['id'] }}" min="1" step="1"
+                 aria-label="Escalate after, days — {{ cfg.get('label', r['item_type']) }}" value="{{ r['escalate_after_days']|int }}" style="width:70px; font-size:12px;"> <span class="upload-hint">d</span></td>
+            <td><input type="checkbox" name="active_{{ r['id'] }}" value="1"
+                 aria-label="In use — {{ cfg.get('label', r['item_type']) }}" {{ 'checked' if r['active'] }}></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -389,7 +392,8 @@
           <form method="post" enctype="multipart/form-data" style="margin:4px 0 0;"
                 action="{{ url_for('upload_absence_note', absence_id=a['id']) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="file" name="note" style="font-size:11px; max-width:150px;">
+            <input type="file" name="note" style="font-size:11px; max-width:150px;"
+                 aria-label="Doctor's note for this absence">
             <button type="submit" class="btn-mini">Attach</button>
           </form>
           {% endif %}
@@ -400,7 +404,8 @@
           {% else %}
           <form method="post" action="{{ url_for('absence_return_to_work', absence_id=a['id']) }}" class="search-bar" style="margin:0;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="return_to_work_note" placeholder="Notes" style="font-size:12px;">
+            <input type="text" name="return_to_work_note" placeholder="Notes"
+                 aria-label="Return-to-work notes" style="font-size:12px;">
             <button type="submit" class="btn-mini">Mark done</button>
           </form>
           {% endif %}

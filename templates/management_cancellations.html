@@ -113,7 +113,8 @@
             <form method="post" action="{{ url_for('set_cancel_reason', booking_id=b['id']) }}"
                   style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <select name="reason" onchange="this.form.submit()">
+              <select name="reason" onchange="this.form.submit()"
+                  aria-label="Why {{ b['guest_name'] }} cancelled">
                 <option value="">Not said</option>
                 {% for key, label in choices.items() %}
                 <option value="{{ key }}" {{ 'selected' if key == b['cancel_reason'] }}>{{ label }}</option>

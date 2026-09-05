@@ -83,7 +83,8 @@
             <form method="post" action="{{ url_for('decide_breakage', breakage_id=b['id']) }}"
                   style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="text" name="charged_amount" placeholder="Amount" style="width:90px;">
+              <input type="text" name="charged_amount" placeholder="Amount"
+                 aria-label="Amount charged for {{ b['what'] }}" style="width:90px;">
               <button type="submit" name="decision" value="charged" class="small-link"
                       style="background:none;border:0;cursor:pointer;color:var(--steel);">Charge</button>
               <button type="submit" name="decision" value="let_it_go" class="small-link"

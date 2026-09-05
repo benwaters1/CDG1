@@ -38,11 +38,15 @@
     <div class="task-list">
       {% for i in items %}
       <div class="task-row {{ 'task-done' if i['bought'] }}" data-item-id="{{ i['id'] }}">
-        <button type="button" class="task-check" onclick="toggleShoppingItem({{ i['id'] }}, this)">{{ '✓' if i['bought'] }}</button>
+        <button type="button" class="task-check"
+                aria-pressed="{{ 'true' if i['bought'] else 'false' }}"
+                aria-label="{{ 'Bought' if i['bought'] else 'Still to buy' }}: {{ i['name'] }}"
+                onclick="toggleShoppingItem({{ i['id'] }}, this)">{{ '✓' if i['bought'] }}</button>
         <span class="task-title">{{ i['name'] }}{% if i['store'] %} <span class="upload-hint">— {{ i['store'] }}</span>{% endif %}</span>
         <form method="post" action="{{ url_for('delete_shopping_item', item_id=i['id']) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="doc-delete">×</button>
+          <button type="submit" class="doc-delete"
+                  aria-label="Remove {{ i['name'] }} from the list">×</button>
         </form>
       </div>
       {% endfor %}

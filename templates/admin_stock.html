@@ -108,8 +108,10 @@
                 style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="text" name="quantity" inputmode="decimal" placeholder="qty"
+                 aria-label="How much of {{ r.item['name'] }}"
                    style="width:70px;" required>
-            <select name="reason" style="width:auto;">
+            <select name="reason" style="width:auto;"
+                  aria-label="Why the {{ r.item['name'] }} count changed">
               {% for k, v in stock_reasons.items() %}
               {% if k != 'sale' %}<option value="{{ k }}">{{ v }}</option>{% endif %}
               {% endfor %}

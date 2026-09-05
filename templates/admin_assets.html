@@ -172,7 +172,7 @@
     {% if a['description'] %}<p class="manual-body">{{ a['description'] }}</p>{% endif %}
     {% if a['notes'] %}<p class="upload-hint">{{ a['notes'] }}</p>{% endif %}
     {% if a['photo_filename'] %}
-    <a href="{{ url_for('asset_photo', asset_id=a['id']) }}" target="_blank" class="small-link">View photograph</a>
+    <a href="{{ url_for('asset_photo', asset_id=a['id']) }}" target="_blank" rel="noopener" class="small-link">View photograph</a>
     {% endif %}
 
     <details style="margin-top:8px;">

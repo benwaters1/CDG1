@@ -10,7 +10,10 @@
         <div class="task-list">
           {% for t in entry.tasks %}
           <div class="task-row {{ 'task-done' if t['status'] == 'done' }}" data-task-id="{{ t['id'] }}">
-            <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
+            <button type="button" class="task-check"
+                    aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}"
+                    aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}"
+                    onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' }}</button>
             <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
             <span class="task-title">{{ t['title'] }}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
           </div>

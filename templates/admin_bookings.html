@@ -104,7 +104,7 @@
            is the ones with no email that need it: everything else the house
            sends them travels by email, so without one they have no route to
            their own bill at all. #}
-        · <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link" target="_blank">card</a>
+        · <a href="{{ url_for('arrival_card', booking_id=b['id']) }}" class="small-link" target="_blank" rel="noopener">card</a>
         {%- if not (b['guest_email'] or '').strip() %} <span class="mini-status status-pending">no email</span>{% endif %}
         {#- A caution is read HERE, before a room is given, rather than found
             afterwards in a notes field nobody opened. -#}

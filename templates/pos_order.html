@@ -78,7 +78,7 @@
      for expenses, or who has already left, cannot be handed paper. #}
   {% if bill.live %}
   <div class="till-receipt">
-    <a href="{{ url_for('pos_receipt', order_id=order['id']) }}" class="btn-ghost" target="_blank">Print receipt</a>
+    <a href="{{ url_for('pos_receipt', order_id=order['id']) }}" class="btn-ghost" target="_blank" rel="noopener">Print receipt</a>
     <form method="post" action="{{ url_for('pos_email_receipt', order_id=order['id']) }}"
           class="till-receipt__email">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

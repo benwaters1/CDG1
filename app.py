@@ -5218,6 +5218,16 @@ def init_db():
         "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
+        # The owner home asks "when was the last backup?" — filtered on
+        # action, ordered by time. An index on created_at alone cannot
+        # serve that, so it read all of audit_log five times per load,
+        # and audit_log is never pruned: it only gets slower.
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created "
+        "ON audit_log(action, created_at)",
+        # And "how many are waiting to go out?", which counted by
+        # reading every message the outbox has ever held.
+        "CREATE INDEX IF NOT EXISTS idx_email_outbox_sent_at "
+        "ON email_outbox(sent_at)",
         "CREATE INDEX IF NOT EXISTS idx_room_issues_status ON room_issues(status)",
         "CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_vehicle_id ON vehicle_maintenance(vehicle_id)",
         "CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_status ON vehicle_maintenance(status)",
@@ -21021,6 +21031,34 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
 # Stated in templates/privacy.html, which is a set of testable claims about
 # this code rather than marketing copy -- change one and change the other.
 GUEST_MESSAGE_KEEP_MONTHS = 24
+
+
+def purge_sent_outbox(conn, *, now=None):
+    """Messages the outbox has held past the two years the house promises.
+
+    email_outbox is the failure queue: a message that could not be sent is
+    filed here with its whole body, and sending it later sets sent_at and
+    leaves the row where it is. Nothing deleted one except the owner pressing
+    a button, so the same words purge_guest_messages clears after two years
+    sat here indefinitely.
+
+    Sent or unsent, deliberately. After two years a message the house never
+    managed to send is not going to be sent, and keeping its text is the thing
+    the notice says the house does not do. The owner still sees a failure
+    while it is recent, which is when it is worth seeing — held_mail_split
+    already refuses to send anything past EMAIL_OUTBOX_STALE_DAYS.
+
+    Keyed on the SAME constant as the guest-message purge rather than one of
+    its own: two retention numbers for the same words are two numbers that
+    drift apart, and the notice states only one.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))
+              ).isoformat()
+    cur = conn.execute(
+        "DELETE FROM email_outbox WHERE COALESCE(sent_at, created_at) < ?",
+        (cutoff,))
+    return {"outbox_messages": cur.rowcount or 0}
 
 
 def booking_for_contact(conn, address=None, phone=None):
@@ -49781,10 +49819,17 @@ def walk_in_booking():
     # is what somebody at the desk is nearly always asking about; changing them
     # re-asks the same question of the same page rather than needing a script.
     source = request.form if request.method == "POST" else request.args
-    arrival = parse_date((source.get("arrival_date", "") or "").strip()) or today
-    departure = (parse_date((source.get("departure_date", "") or "").strip())
-                 or (arrival + timedelta(days=1)))
-    options = walk_in_options(conn, rooms, arrival, departure)
+    # Named separately from the strict pair below, which overwrites `arrival`
+    # and `departure` on POST. The room tiles are built from THESE, so the
+    # label above them has to read these too — it used to read the strict
+    # pair, and so announced dates the tiles underneath were not for.
+    shown_arrival = parse_date(
+        (source.get("arrival_date", "") or "").strip()) or today
+    shown_departure = (
+        parse_date((source.get("departure_date", "") or "").strip())
+        or (shown_arrival + timedelta(days=1)))
+    arrival, departure = shown_arrival, shown_departure
+    options = walk_in_options(conn, rooms, shown_arrival, shown_departure)
 
     if request.method == "POST":
         room_raw = (request.form.get("room_id", "") or "").strip()
@@ -49849,9 +49894,11 @@ def walk_in_booking():
         if problem:
             conn.close()
             flash(problem, "error")
-            return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                                   options=options, arrival=arrival,
-                                   departure=departure, form=request.form)
+            return render_template(
+                "walk_in_booking.html", rooms=rooms, today=today,
+                options=options, arrival=arrival, departure=departure,
+                shown_arrival=shown_arrival, shown_departure=shown_departure,
+                form=request.form)
 
         rack = compute_room_total(conn, room, arrival, departure)
         charge_raw = (request.form.get("total_price", "") or "").strip().replace(",", ".")
@@ -49910,9 +49957,10 @@ def walk_in_booking():
                         if not taken else url_for("admin_bookings"))
 
     conn.close()
-    return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                           options=options, arrival=arrival, departure=departure,
-                           form=request.args)
+    return render_template(
+        "walk_in_booking.html", rooms=rooms, today=today, options=options,
+        arrival=arrival, departure=departure, shown_arrival=shown_arrival,
+        shown_departure=shown_departure, form=request.args)
 
 
 @app.route("/admin/images")
@@ -59915,6 +59963,7 @@ def run_health_notes_purge_job(conn):
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
+    cleared.update(purge_sent_outbox(conn))
     # Not a purge either, but the same daily pass: a date held on the strength
     # of a conversation nobody followed up has to come back on the market, and
     # nothing else was going to notice.

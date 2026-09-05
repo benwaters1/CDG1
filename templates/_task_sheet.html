@@ -21,7 +21,7 @@
         <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
           <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
                  aria-label="Select {{ t['title'] }}">
-          <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
+          <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
           <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
           <span class="task-title">
             {{ t['title'] }}
@@ -71,7 +71,7 @@
     <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }}" data-task-id="{{ t['id'] }}">
       <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
                  aria-label="Select {{ t['title'] }}">
-      <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
+      <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
       <span class="task-title">{{ t['title'] }}{% if t['room_note'] %} <span class="upload-hint">— {{ t['room_note'] }}</span>{% endif %}</span>
       {% if t['due_date'] %}<span class="upload-hint">{{ t['due_date'] }}</span>{% endif %}
@@ -110,7 +110,7 @@
     <div class="task-row" data-task-id="{{ t['id'] }}">
       <input type="checkbox" class="task-pick" value="{{ t['id'] }}"
                  aria-label="Select {{ t['title'] }}">
-      <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)"></button>
+      <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="toggleTask({{ t['id'] }}, this)"></button>
       <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
       <span class="task-title">{{ t['title'] }} <span class="upload-hint">— {{ t['employee_name'] }}</span></span>
       <form method="post" action="{{ url_for('delete_task', task_id=t['id']) }}" onsubmit="return confirm('Remove this task?');">

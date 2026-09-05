@@ -70,11 +70,13 @@
             <form method="post" action="{{ url_for('add_dish_ingredient', item_id=d.item['id']) }}"
                   style="display:flex; gap:6px; margin-top:4px;">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <select name="stock_item_id" style="font-size:12px;">
+              <select name="stock_item_id" style="font-size:12px;"
+                  aria-label="Ingredient to add">
                 <option value="">Add&hellip;</option>
                 {% for st in stock %}<option value="{{ st['id'] }}">{{ st['name'] }} ({{ st['unit'] }})</option>{% endfor %}
               </select>
-              <input type="text" name="quantity" placeholder="How much" style="width:80px; font-size:12px;">
+              <input type="text" name="quantity" placeholder="How much"
+                 aria-label="How much of it" style="width:80px; font-size:12px;">
               <button type="submit" class="btn-mini">+</button>
             </form>
             {% endif %}

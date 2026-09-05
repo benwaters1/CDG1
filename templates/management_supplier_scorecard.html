@@ -82,7 +82,8 @@
               {% for key, label in document_kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
             </select>
             <input type="date" name="expires_on" aria-label="Runs out">
-            <input type="text" name="reference" placeholder="Reference" style="max-width:120px;">
+            <input type="text" name="reference" placeholder="Reference"
+                 aria-label="Reference for this delivery" style="max-width:120px;">
             <button type="submit" class="btn-mini">Record it</button>
           </form>
         </td>

@@ -78,7 +78,7 @@
         {%- if sc.last_visit['cost'] %} · €{{ '%.2f'|format(sc.last_visit['cost']) }}{% endif %}
         {%- if sc.last_visit['certificate_filename'] %}
           · <a href="{{ url_for('maintenance_certificate', visit_id=sc.last_visit['id']) }}"
-               target="_blank">certificate</a>
+               target="_blank" rel="noopener">certificate</a>
         {%- else %} · no certificate kept{% endif %}
         {%- if sc.visit_count > 1 %} · {{ sc.visit_count }} recorded in all{% endif %}
       {% else %}

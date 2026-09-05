@@ -31,7 +31,10 @@
     <div class="task-list">
       {% for i in items %}
       <div class="task-row {{ 'task-done' if i['id'] in checked_today }}" data-item-id="{{ i['id'] }}" id="view-breakfast-{{ i['id'] }}">
-        <button type="button" class="task-check" onclick="toggleBreakfastItem({{ i['id'] }}, this)">{{ '✓' if i['id'] in checked_today }}</button>
+        <button type="button" class="task-check"
+                aria-pressed="{{ 'true' if i['id'] in checked_today else 'false' }}"
+                aria-label="{{ 'Served' if i['id'] in checked_today else 'Not yet served' }}: {{ i['name'] }}"
+                onclick="toggleBreakfastItem({{ i['id'] }}, this)">{{ '✓' if i['id'] in checked_today }}</button>
         <span class="task-title">{{ i['name'] }}</span>
         {% if i['low_stock'] %}<span class="mini-status status-inactive">low stock</span>{% endif %}
         {% if user['role'] == 'owner' %}
