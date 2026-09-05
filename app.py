@@ -2735,6 +2735,31 @@ def init_db():
             granted_at TEXT NOT NULL
         );
 
+        -- WHAT THE PHONE ALREADY DID. The château sits in a valley behind a
+        -- metre of stone and the signal dies room by room, so a housekeeper on
+        -- the third floor ticks a room off and the POST never leaves the
+        -- handset. Until now that tick was gone and the page said "check your
+        -- connection and try again", which is true and useless: they are
+        -- standing in the room, they have done the work, and there is no
+        -- connection to check.
+        --
+        -- So the phone keeps the action and sends it when the signal comes
+        -- back. This table is the other half of that bargain: the key the
+        -- phone generated when the person tapped, and what happened the first
+        -- time it arrived. A replay finds its key here and gets the ORIGINAL
+        -- answer back rather than doing the work twice -- which on a clock-in
+        -- is a second shift and on a stock movement is stock that never
+        -- moved.
+        CREATE TABLE IF NOT EXISTS action_keys (
+            key TEXT PRIMARY KEY,
+            endpoint TEXT NOT NULL,
+            user_id INTEGER,
+            taken_at TEXT,
+            applied_at TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            body TEXT
+        );
+
         -- Held the same way mail is, and for the same reason: with no
         -- provider configured a message that cannot go now is kept rather
         -- than lost, and goes when there is a way to send it.
@@ -5838,6 +5863,150 @@ def login_required(view):
             return redirect(url_for("login"))
         return view(*args, **kwargs)
     return wrapped
+
+
+# WHAT A PHONE MAY DO WITH NO SIGNAL, and nothing else.
+#
+# An allowlist rather than "queue anything that fails", because the two are not
+# the same decision. Ticking a room off is a fact about work already done, and
+# holding it for ten minutes changes nothing. Confirming a booking, taking a
+# payment, declining a request or anything that writes to a guest is a DECISION,
+# and a decision taken on stale information and applied ten minutes later is
+# how somebody gets a room that was given away in between.
+#
+# So: small, reversible, staff-side, and about something that has already
+# happened. If an action is not on this list the phone does not keep it, and
+# the person is told plainly it did not go -- which is the honest answer for a
+# decision.
+#
+# The value is what the person sees in the waiting list, so it is written in
+# their words and in the past tense: it has happened, it is just not here yet.
+OFFLINE_ACTIONS = {
+    "complete_task": "Ticked a task off",
+    "toggle_breakfast_item": "Ticked off a breakfast",
+    "start_break": "Started a break",
+    "end_break": "Ended a break",
+}
+
+
+def action_key_seen(conn, key):
+    """What happened the first time this action arrived, or None."""
+    if not key:
+        return None
+    return conn.execute("SELECT * FROM action_keys WHERE key = ?", (key,)).fetchone()
+
+
+def remember_action_key(conn, key, endpoint, user_id, taken_at, status, body):
+    """Write down that this action has been applied, and what it answered.
+
+    INSERT OR IGNORE, not INSERT: two replays racing each other is exactly the
+    case this exists for, and the second one losing the insert is the correct
+    outcome rather than a 500.
+    """
+    if not key:
+        return
+    conn.execute(
+        """INSERT OR IGNORE INTO action_keys
+               (key, endpoint, user_id, taken_at, applied_at, status_code, body)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (key, endpoint, user_id, taken_at,
+         datetime.now(timezone.utc).isoformat(), status, body))
+    conn.commit()
+
+
+def repeatable(view):
+    """Make one action safe to send twice.
+
+    The phone generates a key when the person taps, keeps it with the action,
+    and sends it with every attempt. The first arrival does the work and files
+    the answer; every later arrival gets that same answer back without the work
+    happening again.
+
+    THE REASON THIS IS NOT OPTIONAL. A queued action is retried by definition:
+    the phone cannot tell "the server never heard me" from "the server heard me
+    and the reply was lost". Without a key the second is indistinguishable from
+    the first, and a clock-in becomes two shifts, a stock movement moves stock
+    twice, and net_hours quietly poisons a payslip.
+
+    Only the endpoints on OFFLINE_ACTIONS get this. A route that is not on the
+    list and sends a key is refused rather than quietly ignored -- a key that
+    does nothing is worse than no key, because the phone believes it is safe
+    to retry.
+    """
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        key = (request.headers.get("X-Action-Key")
+               or request.form.get("action_key") or "").strip()[:80]
+        if not key:
+            return view(*args, **kwargs)
+        endpoint = request.endpoint or view.__name__
+        user = current_user()
+        conn = get_db()
+        try:
+            seen = action_key_seen(conn, key)
+        finally:
+            conn.close()
+        if seen:
+            # The SAME answer, not a fresh one. The phone is showing whatever
+            # this said the first time, and a different reply now would make
+            # the screen disagree with itself.
+            return app.response_class(
+                seen["body"] or "", status=seen["status_code"],
+                mimetype="application/json")
+        response = view(*args, **kwargs)
+        out = app.make_response(response)
+        # Only a real outcome is remembered. A 500 is not an outcome, and
+        # filing one would mean the retry that would have worked never runs.
+        if out.status_code < 500:
+            conn = get_db()
+            try:
+                remember_action_key(
+                    conn, key, endpoint, user["id"] if user else None,
+                    (request.headers.get("X-Action-Taken-At") or "")[:40],
+                    out.status_code, out.get_data(as_text=True)[:4000])
+            finally:
+                conn.close()
+        return out
+    return wrapped
+
+
+@app.before_request
+def refuse_unheld_action_keys():
+    """A key sent to something the app does not hold offline is refused.
+
+    HERE RATHER THAN IN THE DECORATOR, and the difference is the whole rule.
+    A route that is not on the list does not wear @repeatable, so a check
+    inside the decorator could only ever fire for routes that were already
+    allowed -- it would pass its own test and refuse nothing.
+
+    Quietly ignoring the key is the dangerous answer. The handset only holds
+    an action because it believes the retry is safe, and that belief is the
+    key being honoured. Ignored, the same decision is applied twice and
+    nothing anywhere says so.
+    """
+    key = (request.headers.get("X-Action-Key")
+           or (request.form.get("action_key") if request.form else "") or "")
+    if not key.strip():
+        return None
+    if request.endpoint in OFFLINE_ACTIONS:
+        return None
+    return jsonify(
+        error="that is not something this app holds when you are offline",
+        endpoint=request.endpoint), 400
+
+
+def purge_action_keys(conn, days=30):
+    """Forget keys once no phone could still be holding the action.
+
+    A queue on a handset does not survive a month of being switched off, and a
+    table of every tap the house has ever made is a table nobody needs. Kept
+    long enough that a phone left in a drawer over a holiday still replays
+    safely.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cur = conn.execute("DELETE FROM action_keys WHERE applied_at < ?", (cutoff,))
+    conn.commit()
+    return cur.rowcount
 
 
 # Which part of the business each admin page belongs to.
@@ -21889,6 +22058,18 @@ def house_windows():
 
 
 @app.context_processor
+def inject_offline_actions():
+    """The allowlist, for the page that has to know it.
+
+    Given to every template rather than to the two that use it, because the
+    alternative is remembering to pass it on each new page that takes an
+    action -- and the failure of forgetting is silent: the handset holds
+    nothing and the tap is lost exactly as before.
+    """
+    return {"offline_actions": OFFLINE_ACTIONS}
+
+
+@app.context_processor
 def inject_calendar_dates():
     """Give every public page the two date lists its calendars ask for.
 
@@ -31236,6 +31417,7 @@ def breakfast():
 
 @app.route("/breakfast/<int:item_id>/toggle", methods=["POST"])
 @login_required
+@repeatable
 def toggle_breakfast_item(item_id):
     user = current_user()
     conn = get_db()
@@ -60223,6 +60405,10 @@ def run_health_notes_purge_job(conn):
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
     cleared.update(purge_sent_outbox(conn))
+    # The keys that make an offline action safe to send twice. No handset is
+    # still holding a tap from a month ago, and a row per tap for ever is a
+    # table somebody eventually clears out in a hurry.
+    cleared["action keys"] = purge_action_keys(conn)
     # Not a purge either, but the same daily pass: a date held on the strength
     # of a conversation nobody followed up has to come back on the market, and
     # nothing else was going to notice.
@@ -60792,6 +60978,7 @@ def staff_today():
 
 @app.route("/tasks/<int:task_id>/complete", methods=["POST"])
 @login_required
+@repeatable
 def complete_task(task_id):
     """Tick a task off, or untick it. Two states, on purpose.
 
@@ -60989,6 +61176,7 @@ def reject_task(task_id):
 
 @app.route("/breaks/start", methods=["POST"])
 @login_required
+@repeatable
 def start_break():
     user = current_user()
     conn = get_db()
@@ -61018,6 +61206,7 @@ def start_break():
 
 @app.route("/breaks/end", methods=["POST"])
 @login_required
+@repeatable
 def end_break():
     user = current_user()
     conn = get_db()
