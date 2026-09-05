@@ -28,17 +28,29 @@
           {% endfor %}
         </select>
       </p>
-      <p class="g-field">
-        <label for="wk_nights">Nights <output data-wk-no>5</output></label>
-        <input type="range" id="wk_nights" min="1" max="14" value="5" data-wk-nights>
+      <p class="g-field wk-step">
+        <label for="wk_nights">Nights <output class="g-vh" data-wk-no></output></label>
+        <span class="wk-step__row">
+          <button type="button" class="wk-step__b" data-step="wk_nights" data-by="-1" aria-label="Fewer">&minus;</button>
+          <input type="number" id="wk_nights" min="1" max="14" value="5" inputmode="numeric" class="wk-step__n" data-wk-nights>
+          <button type="button" class="wk-step__b" data-step="wk_nights" data-by="1" aria-label="More">+</button>
+        </span>
       </p>
-      <p class="g-field">
-        <label for="wk_adults">Adults <output data-wk-ao>2</output></label>
-        <input type="range" id="wk_adults" min="1" max="6" value="2" data-wk-adults>
+      <p class="g-field wk-step">
+        <label for="wk_adults">Adults <output class="g-vh" data-wk-ao></output></label>
+        <span class="wk-step__row">
+          <button type="button" class="wk-step__b" data-step="wk_adults" data-by="-1" aria-label="Fewer">&minus;</button>
+          <input type="number" id="wk_adults" min="1" max="6" value="2" inputmode="numeric" class="wk-step__n" data-wk-adults>
+          <button type="button" class="wk-step__b" data-step="wk_adults" data-by="1" aria-label="More">+</button>
+        </span>
       </p>
-      <p class="g-field">
-        <label for="wk_dinners">Dinners at La Table <output data-wk-do>2</output></label>
-        <input type="range" id="wk_dinners" min="0" max="7" value="2" data-wk-dinners>
+      <p class="g-field wk-step">
+        <label for="wk_dinners">Dinners at La Table <output class="g-vh" data-wk-do></output></label>
+        <span class="wk-step__row">
+          <button type="button" class="wk-step__b" data-step="wk_dinners" data-by="-1" aria-label="Fewer">&minus;</button>
+          <input type="number" id="wk_dinners" min="0" max="7" value="2" inputmode="numeric" class="wk-step__n" data-wk-dinners>
+          <button type="button" class="wk-step__b" data-step="wk_dinners" data-by="1" aria-label="More">+</button>
+        </span>
       </p>
       <p class="g-field g-field--check">
         <label><input type="checkbox" data-wk-transfer> Transfer from Toulouse, both ways — €700</label>
@@ -93,4 +105,41 @@
   paint();
 })();
 </script>
+<script>
+/* The steppers. The existing calculator listens for `input` on these fields,
+   so the buttons set the value and dispatch the same event — the maths is
+   untouched. min and max still hold, and the number stays typeable. */
+(function(){
+  document.querySelectorAll('.wk-step__b').forEach(function(b){
+    b.addEventListener('click', function(){
+      var f = document.getElementById(b.dataset.step);
+      if (!f) return;
+      var lo = +f.min || 0, hi = +f.max || 99;
+      var v = (+f.value || lo) + (+b.dataset.by);
+      f.value = Math.max(lo, Math.min(hi, v));
+      f.dispatchEvent(new Event('input', {bubbles:true}));
+      f.dispatchEvent(new Event('change', {bubbles:true}));
+      /* Grey the button that can no longer do anything, rather than letting
+         someone press a dead control. */
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('.wk-step__b').forEach(function(b){
+      var f = document.getElementById(b.dataset.step);
+      if (!f) return;
+      var v = +f.value, lo = +f.min || 0, hi = +f.max || 99;
+      b.disabled = (+b.dataset.by < 0) ? v <= lo : v >= hi;
+    });
+  }
+  document.querySelectorAll('.wk-step__n').forEach(function(f){
+    f.addEventListener('input', paint);
+  });
+  /* The room select changes the adult maximum, so repaint after it too. */
+  var room = document.querySelector('[data-wk-room]');
+  if (room) room.addEventListener('change', function(){ setTimeout(paint, 0); });
+  paint();
+})();
+</script>
+
 {% endmacro %}
