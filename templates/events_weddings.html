@@ -6,9 +6,8 @@
 {% block og_image %}https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/5456fd29-19d9-4d09-97fb-06a652b6024f/ex+chef+room.jpg?format=1200w{% endblock %}
 {% set crumbs = [('Events', url_for('events_info')), ('Weddings', None)] %}
 {# Without this the page falls through to the default and offers a guest
-   reading about weddings a bedroom -- which is the one thing the comment
-   on the bar in public_base says it exists to avoid. events_info.html
-   already said it; these three never did. #}
+   reading about weddings a bedroom -- the one thing the comment on that
+   bar in public_base says it exists to avoid. #}
 {% set sticky_bar = 'events' %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}

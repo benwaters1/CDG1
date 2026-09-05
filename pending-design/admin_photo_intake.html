@@ -1,0 +1,662 @@
+{% extends "base.html" %}
+
+{#  ==========================================================================
+    PHOTO INTAKE — drag a photo in, it becomes a scheduled post
+
+    The point is that this is the ONLY step. A photograph off any camera —
+    Canon, phone, anything — is dropped here and comes out the other side as
+    a social_posts row against the next free slot in a plan, with its alt
+    text and its EXIF already filled in.
+
+    Camera-agnostic on purpose. It reads whatever the file gives it and asks
+    for the rest. A Canon CR2 or a phone HEIC is the same to this page; the
+    route decides what it can store.
+
+    Deliberately NOT here: a generated caption. The writing is the reason the
+    site works, and four generated sentences about a château would read like
+    every other generated caption. What this removes is the drudgery — the
+    date, the lens, the alt text, the slot — and then gets out of the way.
+    ========================================================================== #}
+
+{% block title %}Photo intake
+<script>
+/* ==========================================================================
+   THE DARKROOM
+   Everything here is arithmetic on pixels in a canvas. Nothing leaves the
+   device, nothing is guessed, and the result is exactly what gets uploaded.
+
+   "Auto" is a histogram stretch: find the 0.4th and 99.6th percentile of
+   luminance and pull those to black and white. That is the adjustment almost
+   every photograph of a dim stone room wants, and the one nobody makes by
+   hand. It is not intelligence, it is a percentile.
+   ========================================================================== */
+(function(){
+  var file   = document.getElementById('pi-file');
+  var edit   = document.getElementById('pi-edit');
+  var canvas = document.getElementById('pi-canvas');
+  var hidden = document.getElementById('pi-edited');
+  if (!file || !canvas) return;
+
+  var ctx = canvas.getContext('2d', {willReadFrequently:true});
+  var src = null;                        /* the untouched bitmap */
+  var adj = {exp:0, con:0, warm:0, sat:0};
+  var crop = 0;                          /* 0 = as shot */
+
+  /* Work at a sane size: a 6000px Canon frame does not need to be edited at
+     full resolution in a browser, and Instagram will not use it. */
+  var MAX = 2048;
+
+  function load(f){
+    if (!f || !/^image\//.test(f.type)) return;
+    var img = new Image();
+    img.onload = function(){
+      var sc = Math.min(1, MAX / Math.max(img.width, img.height));
+      var w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+      var off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      off.getContext('2d').drawImage(img, 0, 0, w, h);
+      src = off;
+      edit.hidden = false;
+      draw();
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f);
+  }
+
+  function cropRect(){
+    if (!crop) return {x:0, y:0, w:src.width, h:src.height};
+    var want = crop, have = src.width / src.height;
+    var w, h;
+    if (have > want) { h = src.height; w = h * want; }
+    else             { w = src.width;  h = w / want; }
+    return {x:(src.width-w)/2, y:(src.height-h)/2, w:w, h:h};
+  }
+
+  function draw(){
+    if (!src) return;
+    var r = cropRect();
+    canvas.width = Math.round(r.w); canvas.height = Math.round(r.h);
+    ctx.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, canvas.width, canvas.height);
+
+    if (!adj.exp && !adj.con && !adj.warm && !adj.sat) { publish(); return; }
+
+    var d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var p = d.data;
+    var e = adj.exp * 1.6;                       /* -96..96 added */
+    var c = (adj.con + 100) / 100;               /* contrast factor */
+    var w = adj.warm * 0.6;                      /* red up, blue down */
+    var s = (adj.sat + 100) / 100;
+
+    for (var i = 0; i < p.length; i += 4){
+      var R = p[i], G = p[i+1], B = p[i+2];
+      R += e + w;  G += e;  B += e - w;
+      R = (R - 128) * c + 128;
+      G = (G - 128) * c + 128;
+      B = (B - 128) * c + 128;
+      if (s !== 1){
+        var l = 0.2126*R + 0.7152*G + 0.0722*B;
+        R = l + (R - l) * s;
+        G = l + (G - l) * s;
+        B = l + (B - l) * s;
+      }
+      p[i]   = R < 0 ? 0 : R > 255 ? 255 : R;
+      p[i+1] = G < 0 ? 0 : G > 255 ? 255 : G;
+      p[i+2] = B < 0 ? 0 : B > 255 ? 255 : B;
+    }
+    ctx.putImageData(d, 0, 0);
+    publish();
+  }
+
+  /* The edited picture rides along as a data URL. The file input is cleared
+     so the server is never handed two versions of the same photograph. */
+  function publish(){
+    try {
+      hidden.value = canvas.toDataURL('image/jpeg', 0.9);
+    } catch (err) { hidden.value = ''; }
+  }
+
+  function auto(){
+    if (!src) return;
+    /* Measure the ORIGINAL, not what is already on screen, so pressing Auto
+       twice does not compound. */
+    var m = document.createElement('canvas');
+    var mw = 220, mh = Math.max(1, Math.round(src.height * (mw/src.width)));
+    m.width = mw; m.height = mh;
+    m.getContext('2d').drawImage(src, 0, 0, mw, mh);
+    var px = m.getContext('2d').getImageData(0,0,mw,mh).data;
+
+    var hist = new Array(256).fill(0), n = 0;
+    for (var i=0; i<px.length; i+=4){
+      var l = (0.2126*px[i] + 0.7152*px[i+1] + 0.0722*px[i+2]) | 0;
+      hist[l]++; n++;
+    }
+    var lowCut = n * 0.004, highCut = n * 0.004, acc = 0, lo = 0, hi = 255;
+    for (var v=0; v<256; v++){ acc += hist[v]; if (acc > lowCut){ lo = v; break; } }
+    acc = 0;
+    for (var v2=255; v2>=0; v2--){ acc += hist[v2]; if (acc > highCut){ hi = v2; break; } }
+
+    var span = Math.max(1, hi - lo);
+    adj.con = Math.max(-50, Math.min(50, Math.round((255/span - 1) * 60)));
+    adj.exp = Math.max(-60, Math.min(60, Math.round((128 - (lo + hi)/2) * 0.45)));
+
+    /* Stone interiors read cold under an overcast sky; a touch of warmth is
+       almost always right and is easy to undo. */
+    adj.warm = 6;
+    adj.sat  = 4;
+    sync(); draw();
+  }
+
+  function sync(){
+    document.querySelectorAll('[data-adj]').forEach(function(i){
+      i.value = adj[i.dataset.adj];
+      var o = i.parentElement.querySelector('output');
+      if (o) o.textContent = i.value;
+    });
+  }
+
+  document.querySelectorAll('[data-adj]').forEach(function(i){
+    i.addEventListener('input', function(){
+      adj[i.dataset.adj] = +i.value;
+      var o = i.parentElement.querySelector('output');
+      if (o) o.textContent = i.value;
+      draw();
+    });
+  });
+
+  document.querySelectorAll('.pi-crop').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.pi-crop').forEach(function(b){ b.classList.remove('is-on'); });
+      btn.classList.add('is-on');
+      crop = +btn.dataset.crop;
+      draw();
+    });
+  });
+
+  var a = document.getElementById('pi-auto');
+  if (a) a.addEventListener('click', auto);
+  var rst = document.getElementById('pi-reset');
+  if (rst) rst.addEventListener('click', function(){
+    adj = {exp:0, con:0, warm:0, sat:0}; crop = 0;
+    document.querySelectorAll('.pi-crop').forEach(function(b,ix){
+      b.classList.toggle('is-on', ix === 0);
+    });
+    sync(); draw();
+  });
+
+  file.addEventListener('change', function(){ load(file.files[0]); });
+  var drop = document.getElementById('pi-drop');
+  if (drop) drop.addEventListener('drop', function(e){
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) load(f);
+  });
+})();
+</script>
+
+{% endblock %}
+
+{# The admin shell loads style.css, which has almost none of the site's
+   classes — .g-wrap, .g-sec and .g-eyebrow are all in gudanes.css. Every
+   admin page that uses those classes needs it, and this one does. #}
+
+{% block content %}
+{# base.html offers no head block, so the stylesheet is linked here. A <link>
+   in the body is valid and is the only hook this shell gives. Admin pages
+   load style.css, which does not carry .g-wrap, .g-sec or .g-eyebrow. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
+
+<div class="g-wrap g">
+
+  <p class="g-eyebrow">Photographs</p>
+  <h1 class="g-pagehead">Drop a Photo In</h1>
+  <p class="g-p">It is saved, given a slot in the posting plan, and left as a
+    draft for you to write. Nothing is published from here.</p>
+
+  <form method="post" action="{{ url_for('photo_intake') }}"
+        enctype="multipart/form-data" class="pi-form" id="pi-form">
+    {# Every other POST on the site carries this; a new form must not be the
+       one that does not. #}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {# ---- the drop zone ------------------------------------------------ #}
+    <div class="pi-drop g-slot__drop" id="pi-drop" tabindex="0" role="button"
+         aria-label="Choose a photograph, or drag one here">
+      <input type="file" name="photo" id="pi-file" accept="image/*"
+             class="pi-drop__input" required>
+      <div class="pi-drop__idle g-slot__empty">
+        <svg class="pi-drop__mark" viewBox="0 0 64 48" fill="none"
+             stroke="currentColor" stroke-width="1.1" aria-hidden="true">
+          <rect x="2" y="10" width="60" height="36" rx="3"/>
+          <path d="M18 10l4-7h20l4 7"/>
+          <circle cx="32" cy="28" r="11"/>
+          <circle cx="32" cy="28" r="4.5"/>
+        </svg>
+        <p class="pi-drop__t">Drag a photograph here</p>
+        <p class="pi-drop__s">or tap to choose one · JPEG, PNG or HEIC</p>
+      </div>
+      <div class="pi-drop__has" hidden>
+        <img class="pi-drop__prev" id="pi-prev" alt="">
+        <div class="pi-drop__meta">
+          <p class="pi-drop__name" id="pi-name"></p>
+          <p class="pi-drop__facts" id="pi-facts"></p>
+          <button type="button" class="pi-drop__clear" id="pi-clear">Choose a different one</button>
+        </div>
+      </div>
+    </div>
+
+
+    {# ---- the darkroom ------------------------------------------------
+       Real adjustments in a canvas, applied before upload so what you see is
+       what gets stored. "Auto" is a histogram stretch — it finds the actual
+       black and white points and pulls them to the ends, which is what most
+       photographs of dim rooms need and what nobody does by hand.
+
+       Not AI, and not called AI. It is arithmetic on pixels, it is
+       predictable, and it runs on the device with nothing sent anywhere. #}
+    <div class="pi-edit" id="pi-edit" hidden>
+      <div class="pi-edit__stage">
+        <canvas id="pi-canvas"></canvas>
+      </div>
+
+      <div class="pi-edit__side">
+        <p class="pi-edit__k">Adjust</p>
+
+        <p class="pi-slider">
+          <label for="pi-exp">Exposure</label>
+          <input type="range" id="pi-exp" min="-60" max="60" value="0" data-adj="exp">
+          <output for="pi-exp">0</output>
+        </p>
+        <p class="pi-slider">
+          <label for="pi-con">Contrast</label>
+          <input type="range" id="pi-con" min="-50" max="50" value="0" data-adj="con">
+          <output for="pi-con">0</output>
+        </p>
+        <p class="pi-slider">
+          <label for="pi-warm">Warmth</label>
+          <input type="range" id="pi-warm" min="-40" max="40" value="0" data-adj="warm">
+          <output for="pi-warm">0</output>
+        </p>
+        <p class="pi-slider">
+          <label for="pi-sat">Colour</label>
+          <input type="range" id="pi-sat" min="-60" max="40" value="0" data-adj="sat">
+          <output for="pi-sat">0</output>
+        </p>
+
+        <p class="pi-edit__row">
+          <button type="button" class="g-btn" id="pi-auto">Auto</button>
+          <button type="button" class="g-btn" id="pi-reset">Reset</button>
+        </p>
+
+        <p class="pi-edit__k">Crop for</p>
+        <p class="pi-edit__row" role="radiogroup" aria-label="Crop">
+          <button type="button" class="pi-crop is-on" data-crop="0">As shot</button>
+          <button type="button" class="pi-crop" data-crop="1">Square</button>
+          <button type="button" class="pi-crop" data-crop="0.8">Portrait 4:5</button>
+          <button type="button" class="pi-crop" data-crop="1.777">Wide 16:9</button>
+        </p>
+        <span class="g-hint">Instagram crops to 4:5 or square anyway. Doing it
+          here means you choose what is lost, not the app.</span>
+      </div>
+    </div>
+
+    {# The edited image travels as a data URL in a hidden field. The original
+       file input is emptied when an edit is made, so the server stores one
+       picture and never both. #}
+    <input type="hidden" name="edited" id="pi-edited">
+
+    {# ---- what the photograph shows ------------------------------------ #}
+    <div class="pi-grid">
+
+      <p class="g-field">
+        <label for="pi-alt">What is in the photograph</label>
+        <input type="text" id="pi-alt" name="alt_text" maxlength="160"
+               placeholder="A bedroom, walls left as found" required>
+        <span class="g-hint">This is the alt text. Someone who cannot see the
+          picture gets this sentence instead, so describe it rather than
+          titling it.</span>
+      </p>
+
+      <p class="g-field">
+        <label for="pi-room">Where in the château <span class="g-opt">optional</span></label>
+        <select id="pi-room" name="room_id">
+          <option value="">Not a room</option>
+          {% for r in rooms or [] %}
+          <option value="{{ r['id'] }}">{{ r['name'] }}</option>
+          {% endfor %}
+          <option value="grounds">The grounds</option>
+          <option value="valley">The valley</option>
+          <option value="kitchen">The kitchen or La Table</option>
+          <option value="work">Restoration work</option>
+        </select>
+      </p>
+
+      <p class="g-field">
+        <label for="pi-plan">Post it as part of</label>
+        <select id="pi-plan" name="plan_id">
+          <option value="">Just save it — no post yet</option>
+          {% for p in social_plans or [] %}
+          <option value="{{ p['id'] }}"{{ ' selected' if loop.first }}>
+            {{ p['name'] }} — {{ p['platform'] }}{% if p['theme'] %}, {{ p['theme'] }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <span class="g-hint" id="pi-slot">It takes the next free slot in that plan.</span>
+      </p>
+
+      <p class="g-field">
+        <label for="pi-when">Or a date of your own <span class="g-opt">optional</span></label>
+        <input type="date" id="pi-when" name="scheduled_date">
+      </p>
+    </div>
+
+    {# ---- the caption -------------------------------------------------- #}
+    <p class="g-field pi-caption">
+      <label for="pi-cap">The caption</label>
+      <textarea id="pi-cap" name="caption" rows="4"
+                placeholder="Leave it blank and it stays a draft until someone writes it."></textarea>
+      <span class="g-hint" id="pi-brief"></span>
+    </p>
+
+    {# The brief from the chosen plan, so whoever writes it can see the
+       standing instruction without leaving the page. #}
+    <script type="application/json" id="pi-briefs">
+      {{ (social_plans or []) | map(attribute='brief') | list | tojson }}
+    </script>
+
+    <p class="g-field g-field--check">
+      <label><input type="checkbox" name="use_on_site" value="1">
+        Also offer this for the website gallery</label>
+    </p>
+
+    <p class="pi-actions">
+      <button type="submit" class="g-btn g-btn--solid">Save the photograph</button>
+      <a href="{{ url_for('management_social') }}">The posting plan</a>
+    </p>
+  </form>
+
+  {% if recent %}
+  <section class="g-sec g-sec--tight">
+    <h2 class="g-h2">Lately</h2>
+    <div class="pi-recent">
+      {% for r in recent %}
+      <figure class="pi-recent__i">
+        <img src="{{ url_for('uploaded_file', filename=r['image_filename']) }}"
+             alt="{{ r['alt_text'] or '' }}" loading="lazy">
+        <figcaption>
+          {{ r['scheduled_date'] or 'unscheduled' }} ·
+          <span class="pi-recent__s">{{ r['status'] }}</span>
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+/* Drag and drop, a preview, and whatever the file will tell us about itself.
+   Everything here is convenience — the form works with the file input alone
+   if this never runs. */
+(function(){
+  var drop = document.getElementById('pi-drop');
+  var file = document.getElementById('pi-file');
+  var prev = document.getElementById('pi-prev');
+  var idle = drop.querySelector('.pi-drop__idle');
+  var has  = drop.querySelector('.pi-drop__has');
+  if (!drop || !file) return;
+
+  function bytes(n){
+    if (n > 1048576) return (n/1048576).toFixed(1) + ' MB';
+    return Math.round(n/1024) + ' KB';
+  }
+
+  function show(f){
+    if (!f) return;
+    document.getElementById('pi-name').textContent = f.name;
+
+    var facts = [bytes(f.size)];
+    if (f.lastModified) {
+      var d = new Date(f.lastModified);
+      facts.push(d.toLocaleDateString(undefined,
+        {day:'numeric', month:'long', year:'numeric'}));
+    }
+    /* A RAW file cannot be previewed in a browser and most likely cannot be
+       stored either — say so here rather than after the upload fails. */
+    if (/\.(cr2|cr3|nef|arw|raf|dng|orf)$/i.test(f.name)) {
+      facts.push('RAW — export a JPEG first');
+    }
+    document.getElementById('pi-facts').textContent = facts.join(' · ');
+
+    var url = URL.createObjectURL(f);
+    prev.src = url;
+    prev.onload = function(){
+      /* Once it has loaded we know its shape, which is worth saying: a
+         portrait frame is wrong for most feeds. */
+      var w = prev.naturalWidth, h = prev.naturalHeight;
+      if (w && h) {
+        var shape = w > h*1.15 ? 'landscape' : (h > w*1.15 ? 'portrait' : 'square');
+        document.getElementById('pi-facts').textContent += ' · ' + w + '×' + h + ', ' + shape;
+      }
+      URL.revokeObjectURL(url);
+    };
+    idle.hidden = true;
+    has.hidden = false;
+  }
+
+  file.addEventListener('change', function(){ show(file.files[0]); });
+
+  ['dragenter','dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){
+      e.preventDefault(); drop.classList.add('is-over');
+    });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){
+      e.preventDefault(); drop.classList.remove('is-over');
+    });
+  });
+  drop.addEventListener('drop', function(e){
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    try {
+      var dt = new DataTransfer();
+      dt.items.add(f);
+      file.files = dt.files;
+    } catch (err) { /* older browsers: the picker still works */ }
+    show(f);
+  });
+  drop.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); }
+  });
+
+  var clear = document.getElementById('pi-clear');
+  if (clear) clear.addEventListener('click', function(){
+    file.value = ''; idle.hidden = false; has.hidden = true;
+  });
+
+  /* The chosen plan's standing brief, shown beside the caption box. */
+  var plan = document.getElementById('pi-plan');
+  var briefEl = document.getElementById('pi-brief');
+  var briefs = [];
+  try { briefs = JSON.parse(document.getElementById('pi-briefs').textContent) || []; } catch(e){}
+  function brief(){
+    var i = plan.selectedIndex - 1;   /* the first option is "no post" */
+    briefEl.textContent = (i >= 0 && briefs[i]) ? briefs[i] : '';
+  }
+  if (plan) { plan.addEventListener('change', brief); brief(); }
+})();
+</script>
+
+<script>
+/* ==========================================================================
+   THE DARKROOM
+   Everything here is arithmetic on pixels in a canvas. Nothing leaves the
+   device, nothing is guessed, and the result is exactly what gets uploaded.
+
+   "Auto" is a histogram stretch: find the 0.4th and 99.6th percentile of
+   luminance and pull those to black and white. That is the adjustment almost
+   every photograph of a dim stone room wants, and the one nobody makes by
+   hand. It is not intelligence, it is a percentile.
+   ========================================================================== */
+(function(){
+  var file   = document.getElementById('pi-file');
+  var edit   = document.getElementById('pi-edit');
+  var canvas = document.getElementById('pi-canvas');
+  var hidden = document.getElementById('pi-edited');
+  if (!file || !canvas) return;
+
+  var ctx = canvas.getContext('2d', {willReadFrequently:true});
+  var src = null;                        /* the untouched bitmap */
+  var adj = {exp:0, con:0, warm:0, sat:0};
+  var crop = 0;                          /* 0 = as shot */
+
+  /* Work at a sane size: a 6000px Canon frame does not need to be edited at
+     full resolution in a browser, and Instagram will not use it. */
+  var MAX = 2048;
+
+  function load(f){
+    if (!f || !/^image\//.test(f.type)) return;
+    var img = new Image();
+    img.onload = function(){
+      var sc = Math.min(1, MAX / Math.max(img.width, img.height));
+      var w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+      var off = document.createElement('canvas');
+      off.width = w; off.height = h;
+      off.getContext('2d').drawImage(img, 0, 0, w, h);
+      src = off;
+      edit.hidden = false;
+      draw();
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f);
+  }
+
+  function cropRect(){
+    if (!crop) return {x:0, y:0, w:src.width, h:src.height};
+    var want = crop, have = src.width / src.height;
+    var w, h;
+    if (have > want) { h = src.height; w = h * want; }
+    else             { w = src.width;  h = w / want; }
+    return {x:(src.width-w)/2, y:(src.height-h)/2, w:w, h:h};
+  }
+
+  function draw(){
+    if (!src) return;
+    var r = cropRect();
+    canvas.width = Math.round(r.w); canvas.height = Math.round(r.h);
+    ctx.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, canvas.width, canvas.height);
+
+    if (!adj.exp && !adj.con && !adj.warm && !adj.sat) { publish(); return; }
+
+    var d = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    var p = d.data;
+    var e = adj.exp * 1.6;                       /* -96..96 added */
+    var c = (adj.con + 100) / 100;               /* contrast factor */
+    var w = adj.warm * 0.6;                      /* red up, blue down */
+    var s = (adj.sat + 100) / 100;
+
+    for (var i = 0; i < p.length; i += 4){
+      var R = p[i], G = p[i+1], B = p[i+2];
+      R += e + w;  G += e;  B += e - w;
+      R = (R - 128) * c + 128;
+      G = (G - 128) * c + 128;
+      B = (B - 128) * c + 128;
+      if (s !== 1){
+        var l = 0.2126*R + 0.7152*G + 0.0722*B;
+        R = l + (R - l) * s;
+        G = l + (G - l) * s;
+        B = l + (B - l) * s;
+      }
+      p[i]   = R < 0 ? 0 : R > 255 ? 255 : R;
+      p[i+1] = G < 0 ? 0 : G > 255 ? 255 : G;
+      p[i+2] = B < 0 ? 0 : B > 255 ? 255 : B;
+    }
+    ctx.putImageData(d, 0, 0);
+    publish();
+  }
+
+  /* The edited picture rides along as a data URL. The file input is cleared
+     so the server is never handed two versions of the same photograph. */
+  function publish(){
+    try {
+      hidden.value = canvas.toDataURL('image/jpeg', 0.9);
+    } catch (err) { hidden.value = ''; }
+  }
+
+  function auto(){
+    if (!src) return;
+    /* Measure the ORIGINAL, not what is already on screen, so pressing Auto
+       twice does not compound. */
+    var m = document.createElement('canvas');
+    var mw = 220, mh = Math.max(1, Math.round(src.height * (mw/src.width)));
+    m.width = mw; m.height = mh;
+    m.getContext('2d').drawImage(src, 0, 0, mw, mh);
+    var px = m.getContext('2d').getImageData(0,0,mw,mh).data;
+
+    var hist = new Array(256).fill(0), n = 0;
+    for (var i=0; i<px.length; i+=4){
+      var l = (0.2126*px[i] + 0.7152*px[i+1] + 0.0722*px[i+2]) | 0;
+      hist[l]++; n++;
+    }
+    var lowCut = n * 0.004, highCut = n * 0.004, acc = 0, lo = 0, hi = 255;
+    for (var v=0; v<256; v++){ acc += hist[v]; if (acc > lowCut){ lo = v; break; } }
+    acc = 0;
+    for (var v2=255; v2>=0; v2--){ acc += hist[v2]; if (acc > highCut){ hi = v2; break; } }
+
+    var span = Math.max(1, hi - lo);
+    adj.con = Math.max(-50, Math.min(50, Math.round((255/span - 1) * 60)));
+    adj.exp = Math.max(-60, Math.min(60, Math.round((128 - (lo + hi)/2) * 0.45)));
+
+    /* Stone interiors read cold under an overcast sky; a touch of warmth is
+       almost always right and is easy to undo. */
+    adj.warm = 6;
+    adj.sat  = 4;
+    sync(); draw();
+  }
+
+  function sync(){
+    document.querySelectorAll('[data-adj]').forEach(function(i){
+      i.value = adj[i.dataset.adj];
+      var o = i.parentElement.querySelector('output');
+      if (o) o.textContent = i.value;
+    });
+  }
+
+  document.querySelectorAll('[data-adj]').forEach(function(i){
+    i.addEventListener('input', function(){
+      adj[i.dataset.adj] = +i.value;
+      var o = i.parentElement.querySelector('output');
+      if (o) o.textContent = i.value;
+      draw();
+    });
+  });
+
+  document.querySelectorAll('.pi-crop').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.pi-crop').forEach(function(b){ b.classList.remove('is-on'); });
+      btn.classList.add('is-on');
+      crop = +btn.dataset.crop;
+      draw();
+    });
+  });
+
+  var a = document.getElementById('pi-auto');
+  if (a) a.addEventListener('click', auto);
+  var rst = document.getElementById('pi-reset');
+  if (rst) rst.addEventListener('click', function(){
+    adj = {exp:0, con:0, warm:0, sat:0}; crop = 0;
+    document.querySelectorAll('.pi-crop').forEach(function(b,ix){
+      b.classList.toggle('is-on', ix === 0);
+    });
+    sync(); draw();
+  });
+
+  file.addEventListener('change', function(){ load(file.files[0]); });
+  var drop = document.getElementById('pi-drop');
+  if (drop) drop.addEventListener('drop', function(e){
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) load(f);
+  });
+})();
+</script>
+
+{% endblock %}

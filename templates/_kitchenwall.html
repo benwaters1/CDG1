@@ -1,0 +1,73 @@
+{# ==========================================================================
+   WALL MODE — for the screen in the kitchen
+   The kitchen sheets are read from across the room with wet hands. Nobody
+   taps them, so they must keep themselves current: none of the five screens
+   refreshes today, and a prep list showing yesterday is worse than no screen.
+
+   Add ?wall=1 to any kitchen URL. It scales the type up, hides the chrome,
+   reloads on a timer and shows when it last succeeded — so a stale screen
+   admits it rather than lying quietly.
+
+       {% from '_kitchenwall.html' import wall_mode %}
+       {{ wall_mode() }}
+   ========================================================================== #}
+
+{% macro wall_mode(every=180) %}
+{% if request and request.args.get('wall') %}
+<div class="kw-stamp" aria-live="polite">
+  <span class="kw-stamp__t" data-kw-time></span>
+  <span class="kw-stamp__s" data-kw-state>live</span>
+</div>
+<script>
+/* Reload on a timer. If the reload fails — Starlink drops, the server
+   restarts — the page keeps the last good content and the stamp turns to say
+   how old it is. A wall screen that silently shows yesterday is the failure
+   we are avoiding. */
+(function(){
+  var EVERY = {{ every }} * 1000;
+  var loaded = new Date();
+  var timeEl = document.querySelector('[data-kw-time]');
+  var stateEl = document.querySelector('[data-kw-state]');
+
+  function paint(){
+    var mins = Math.round((Date.now() - loaded) / 60000);
+    timeEl.textContent = loaded.toLocaleTimeString(undefined,
+      {hour:'2-digit', minute:'2-digit'});
+    if (mins > 12) {
+      stateEl.textContent = mins + ' min old — check the connection';
+      document.body.classList.add('kw-stale');
+    } else {
+      stateEl.textContent = 'live';
+      document.body.classList.remove('kw-stale');
+    }
+  }
+  paint();
+  setInterval(paint, 30000);
+
+  function refresh(){
+    fetch(location.href, {cache:'no-store'})
+      .then(function(r){ if(!r.ok) throw 0; return r.text(); })
+      .then(function(html){
+        /* Swap only the content, so a scrolled screen does not jump and the
+           timer keeps running. */
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var fresh = doc.querySelector('main'), here = document.querySelector('main');
+        if (fresh && here) here.innerHTML = fresh.innerHTML;
+        loaded = new Date(); paint();
+      })
+      .catch(function(){ /* keep what is on screen; the stamp will age */ });
+  }
+  setInterval(refresh, EVERY);
+
+  /* Stop the screen sleeping mid-service, where supported. */
+  if ('wakeLock' in navigator) {
+    var hold = function(){ navigator.wakeLock.request('screen').catch(function(){}); };
+    hold();
+    document.addEventListener('visibilitychange', function(){
+      if (document.visibilityState === 'visible') hold();
+    });
+  }
+})();
+</script>
+{% endif %}
+{% endmacro %}

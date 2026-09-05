@@ -50,19 +50,6 @@ def run():
     _cleanup(conn)
     now = m.datetime.now(m.timezone.utc)
     night = m.service_day()
-    opened = m.parse_datetime_iso(m.service_day_window(night)[0])
-
-    def tonight(hours_ago):
-        """A moment `hours_ago` before now, but never before this service began.
-
-        The window is 23, 24 or 25 hours long and starts at five in the
-        morning. Anchoring a fixture to "now minus two hours" puts it in
-        yesterday's service for the first two hours of every day -- which is a
-        suite that goes red at breakfast and green by nine, twice as confusing
-        as one that is simply wrong.
-        """
-        return max(now - timedelta(hours=hours_ago), opened + timedelta(minutes=1))
-
     room = ensure_room()["id"]
 
     conn.execute(
@@ -95,15 +82,20 @@ def run():
              now.isoformat()))
         conn.commit()
 
+    # Stamped INSIDE tonight's service window rather than "two hours ago".
+    # A service day runs 05:00 to 05:00, so between five and seven in the
+    # morning two hours ago is yesterday's service — this suite ran green for
+    # weeks and went red at 05:13 one morning.
+    opened_at = m.parse_datetime_iso(m.service_day_window(night)[0])
     extra("still-due", "confirmed")
     extra("champagne", "delivered",
-          delivered_at=tonight(2), by=porter)
+          delivered_at=opened_at + timedelta(hours=1), by=porter)
     extra("anonymous", "delivered",
-          delivered_at=tonight(1) + timedelta(minutes=1), by=None)
-    # Delivered a week ago. Today's list only — a running history of every
+          delivered_at=opened_at + timedelta(hours=2), by=None)
+    # Delivered a week ago. Tonight's list only — a running history of every
     # hamper the house has ever carried upstairs is a page nobody opens twice.
     extra("last-week", "delivered",
-          delivered_at=now - timedelta(days=7), by=porter)
+          delivered_at=opened_at - timedelta(days=7), by=porter)
 
     s.section("What was ticked off tonight, and by whom")
     done = m.extras_delivered_today(conn, night)

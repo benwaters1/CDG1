@@ -120,7 +120,7 @@
 
 {% if response_stats %}
 <details class="refund-box" style="margin-bottom:18px;">
-  <summary>Response times, last 30 days</summary>
+  <summary>Response times, last {{ windows.inbox_response_days }} days</summary>
   <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Inbox</th><th class="num">Replied</th><th class="num">Average</th><th class="num">Slowest</th><th class="num">Still waiting</th></tr></thead>

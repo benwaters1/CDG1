@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}What they cannot eat{% endblock %}
 {% block content %}
+{% from '_kitchenwall.html' import wall_mode %}
+{{ wall_mode() }}
 
 <div class="page-head">
   <h1>What they cannot eat &mdash; {{ data.day.strftime('%A %d %B') }}</h1>

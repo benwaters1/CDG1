@@ -36,6 +36,13 @@
       <div class="expense-head">
         <div>
           <strong>{{ e['title'] }}</strong>{% if e['username'] %} — {{ e['username'] }}{% endif %}
+          {# Who last changed it. A password altered with nobody's name
+             against it is one nobody can be asked about. #}
+          <div class="upload-hint">
+            {% if e['updated_by'] %}last changed by {{ e['updated_by'] }}
+            {% else %}last changed by nobody recorded{% endif %}
+            {% if e['updated_at'] %}&middot; {{ local_datetime_str(e['updated_at']) }}{% endif %}
+          </div>
         </div>
       </div>
       {% if e['url'] %}<p class="upload-hint"><a href="{{ e['url'] }}" target="_blank" rel="noopener" style="color:var(--steel);">{{ e['url'] }}</a></p>{% endif %}

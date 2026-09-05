@@ -165,7 +165,7 @@
             </span>
           </div>
           <button type="submit" class="g-btn g-btn--solid g-qbook__go">{{ t('Check availability') }}</button>
-          <p class="g-qbook__n">{{ t('Five rooms · from €220 a night · breakfast included') }}</p>
+          <p class="g-qbook__n">{{ t('Five rooms · from €{price} a night · breakfast included', price=(house_rooms.from_price if house_rooms else 220)) }}</p>
         </form>
 
         <p class="g-navwrap__group">{{ t('Stay') }}</p>
@@ -323,7 +323,7 @@
           <span class="g-bookmenu__txt">
             <b>{{ t('Stay Now') }}</b>
             <em>{{ t('A room, your own dates') }}</em>
-            <span class="g-bookmenu__meta">{{ t('Five rooms · from €220 a night · breakfast included') }}</span>
+            <span class="g-bookmenu__meta">{{ t('Five rooms · from €{price} a night · breakfast included', price=(house_rooms.from_price if house_rooms else 220)) }}</span>
           </span>
         </a>
 
@@ -490,8 +490,7 @@
     <a href="{{ url_for('events_info') }}#enquire" class="g-btn g-stickybar__cta">{{ t('Enquire') }}</a>
   {% elif _sb == 'atelier' %}
     {# #dates, because the atelier pages include the workshops page itself and
-       "See dates" there was a link to the page it was drawn on. From
-       anywhere else it still lands on the workshops page, at the dates. #}
+       "See dates" there was a link to the page it was drawn on. #}
     <a href="{{ url_for('workshops_public') }}#dates" class="g-btn g-stickybar__cta">{{ t('See dates') }}</a>
   {% else %}
     <a href="{{ url_for('book_rooms') }}" class="g-btn g-stickybar__cta">{{ t('Book') }}</a>

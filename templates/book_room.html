@@ -704,8 +704,6 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
 
 <div class="g-wrap">{{ animals_note() }}</div>
 
-{# deposit_shown, not settings. `settings` here is the restaurant's row and
-   its deposit belongs to a different half of the business. See _before.html. #}
 <div class="g-wrap">{{ terms_upfront(settings, room['min_nights'] if room else none, deposit_shown) }}</div>
 
 <script>
@@ -719,8 +717,8 @@ document.getElementById('promo_apply_btn').addEventListener('click', function() 
   var RATE = Number(box.dataset.rate || {{ (room['price_per_night'] or 0)|int }});
   {# From the route, like the panel above it. This read the RESTAURANT's
      deposit -- `settings` on a room page is the restaurant settings row --
-     and fell back to 30 when it was unset, so the calculator quoted a deposit
-     this house does not take. Third time it has been written that way. #}
+     and fell back to 30 when it was unset, so the calculator quoted a
+     deposit this house does not take. #}
   var PCT  = Number({{ (deposit_shown or 0)|round|int }});
   var eur = function(n){ return '€' + Math.round(n).toLocaleString('en-GB'); };
   var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];

@@ -202,7 +202,7 @@
 </div>
 {% endif %}
 <div class="flash flash-error" style="margin-bottom:14px;">
-  {{ certs_expiring|length }} certification{{ '' if certs_expiring|length == 1 else 's' }} expired or expiring within 60 days.
+  {{ certs_expiring|length }} certification{{ '' if certs_expiring|length == 1 else 's' }} expired or expiring within {{ windows.cert_warning_days }} days.
 </div>
 <div class="mini-list" style="margin-bottom:16px;">
   {% for c in certs_expiring %}
@@ -223,7 +223,7 @@
   {% endfor %}
 </div>
 {% else %}
-<div class="empty-state" style="margin-bottom:16px;">Nothing expiring in the next 60 days.</div>
+<div class="empty-state" style="margin-bottom:16px;">Nothing expiring in the next {{ windows.cert_warning_days }} days.</div>
 {% endif %}
 
 <details class="refund-box" style="margin-bottom:22px;">
@@ -415,10 +415,10 @@
 {% endif %}
 
 {# ---------------- Working time ---------------- #}
-<h2 class="section-heading">Working time, last 28 days</h2>
+<h2 class="section-heading">Working time, last {{ windows.working_time_days }} days</h2>
 <p class="upload-hint" style="margin-top:-6px;">Based on hours actually clocked, not the rota. Minimum {{ rest_hours }}h rest between shifts · maximum {{ max_days }} consecutive days · maximum {{ max_weekly }}h a week.</p>
 {% if not violations %}
-  <div class="empty-state" style="margin-bottom:26px;">No working-time issues in the last 28 days.</div>
+  <div class="empty-state" style="margin-bottom:26px;">No working-time issues in the last {{ windows.working_time_days }} days.</div>
 {% else %}
 <div class="mini-list" style="margin-bottom:26px;">
   {% for v in violations[:30] %}

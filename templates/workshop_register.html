@@ -169,7 +169,7 @@
         </dl>
 
         {% if session['price_per_person'] %}
-        <p class="g-foot-note">A {{ session['deposit_percent'] }}% deposit is due at booking; the balance is due 30 days before the stay, or in full if you are booking within 30 days of it.</p>
+        <p class="g-foot-note">A {{ session['deposit_percent'] }}% deposit is due at booking; the balance is due {{ windows.workshop_balance_days }} days before the stay, or in full if you are booking within {{ windows.workshop_balance_days }} days of it.</p>
         {% endif %}
 
         <button type="submit" class="g-btn g-submit">Request to register</button>

@@ -23,6 +23,29 @@
 }
 
 /* ==========================================================================
+   THE MEASURE SYSTEM
+   The stylesheet carried 101 prose measures across 23 different values —
+   20ch, 26rem, 34ch, 38rem, 44ch, 46rem, 52ch, 62ch and fifteen others — each
+   chosen for one component in isolation. That is why the pages do not line up
+   with each other: nothing shares a width with anything else, so every panel
+   starts and stops somewhere different.
+
+   A page needs three, and it already had a --measure token nobody used.
+
+     --m-tight  a caption, a note, a label block
+     --m-read   body prose, the default
+     --m-wide   a lede, a pull quote, anything set larger
+
+   Changing one of these now changes the whole site, which is the point.
+   ========================================================================== */
+:root{
+  --m-tight: 26rem;   /* ~50 characters at 18px */
+  --m-read:  34rem;   /* ~66 characters — the reading default */
+  --m-wide:  46rem;   /* ~72 characters at lede size */
+}
+
+
+/* ==========================================================================
    THE TYPE SCALE
    Eighty-eight separate clamp() declarations had accumulated, almost all with
    different values, producing twenty-seven distinct sizes on the page. Each
@@ -161,10 +184,10 @@
   color: var(--blue-deep); margin: 0 0 var(--s4); opacity: .7;
 }
 
-.g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: 62ch; margin: 0 0 var(--s4); color: var(--blue-deep); }
+.g-p{ font-size: 18px; font-weight: 400; line-height: 1.6; max-width: var(--m-wide); margin: 0 0 var(--s4); color: var(--blue-deep); }
 .g-p:last-child{ margin-bottom: 0; }
 .g-p em{ font-style: normal; font-weight: 500; color: var(--blue-deep); }
-.g-lede{ font-size: var(--t-lede); font-weight: 400; line-height: 1.55; max-width: 50rem; margin: 0 0 var(--s5); }
+.g-lede{ font-size: var(--t-lede); font-weight: 400; line-height: 1.55; max-width: var(--m-read); margin: 0 0 var(--s5); }
 .g-fig{ font-family: var(--display); font-weight: 600; color: var(--blue-deep); }
 .g-hint{ font-size: 15px; color: var(--ink-faint); margin: var(--s2) 0 0; }
 .g-hint.is-warn{ color: #B3261E; }
@@ -258,8 +281,8 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   max-width: var(--wrap); margin: 0 auto;
   padding: var(--s8) var(--s5);
 }
-.g-hero__in .g-display{ color: var(--white); max-width: 26ch; margin-bottom: var(--s4); }
-.g-hero__in p{ color: #EAE4DC; max-width: 40rem; font-size: 18px; margin: 0 0 var(--s5); }
+.g-hero__in .g-display{ color: var(--white); max-width: var(--m-tight); margin-bottom: var(--s4); }
+.g-hero__in p{ color: #EAE4DC; max-width: var(--m-read); font-size: 18px; margin: 0 0 var(--s5); }
 .g-hero__cta{ display: flex; gap: var(--s3); flex-wrap: wrap; }
 
 /* ---- Full-bleed photography -------------------------------------------- */
@@ -269,7 +292,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 .g-half{ display: grid; align-items: center; }
 .g .g-half__img{ width: 100%; height: clamp(15rem, 34vw, 24rem); object-fit: cover; }
-.g-half__text{ padding: var(--s6) var(--s6); max-width: 38rem; margin: 0 auto; width: 100%; }
+.g-half__text{ padding: var(--s6) var(--s6); max-width: var(--m-read); margin: 0 auto; width: 100%; }
 
 /* ---- Facts ------------------------------------------------------------- */
 
@@ -583,7 +606,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   .g-nav a:last-child{ border-bottom: none; }
 }
 
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
   .g-sec{ padding: var(--s7) 0; }
   .g-sec--tight{ padding: var(--s6) 0; }
   .g-wrap{ padding: 0 var(--s4); }
@@ -680,7 +703,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
 
 @media(min-width:38rem){ .g-list--2{ grid-template-columns:1fr 1fr; } }
 
-.g-form{ max-width:38rem; }
+.g-form{ max-width:var(--m-read); }
 
 .g-cal>summary{ font-family:var(--serif); font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-faint); cursor:pointer; padding:14px 0; min-height:44px; }
 
@@ -860,7 +883,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__legal a{ color: var(--ink-faint); min-height: 44px; display: inline-flex; align-items: center; }
 .g-navwrap__legal a:hover{ color: var(--blue-deep); }
 
-@media (max-width: 30rem){ .g-navwrap{ width: 100vw; } }
+@media (max-width: var(--m-tight)){ .g-navwrap{ width: 100vw; } }
 
 /* ==========================================================================
    HERO VIDEO — full-bleed looping background, pause control.
@@ -879,7 +902,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
   color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
 }
 .g-hero__lede{
-  color: #EAE4DC; max-width: 42rem; font-size: var(--t-lede); font-weight: 300;
+  color: #EAE4DC; max-width: var(--m-read); font-size: var(--t-lede); font-weight: 300;
   line-height: 1.6; margin: var(--s5) 0 0;
 }
 
@@ -1000,7 +1023,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-family: var(--serif); font-size: 13px; font-weight: 500;
   letter-spacing: .08em; text-transform: uppercase; color: currentColor;
 }
-@media (max-width: 26rem){ .g-navbtn__label{ display: none; } }
+@media (max-width: var(--m-tight)){ .g-navbtn__label{ display: none; } }
 
 /* ---- Book chooser ------------------------------------------------------
    A night and a workshop are different products — different dates, different
@@ -1056,7 +1079,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   padding: clamp(36px, 4vw, 56px) var(--s5);
   text-align: center;
 }
-.g-crest img{ width: 100%; max-width: 26rem; min-height: 8rem; height: auto;
+.g-crest img{ width: 100%; max-width: var(--m-tight); min-height: 8rem; height: auto;
   object-fit: contain; display: block; margin: 0 auto; }
 .g-crest__note{
   font-family: var(--serif); font-size: 13px; font-weight: 400;
@@ -1071,7 +1094,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   object-fit: cover; display: block;
 }
 .g-room__note{
-  font-size: 15px; color: var(--ink-soft); max-width: 44rem;
+  font-size: 15px; color: var(--ink-soft); max-width: var(--m-read);
   margin: var(--s3) 0 0; line-height: 1.6;
 }
 .g-strip{
@@ -1161,7 +1184,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-quote-band__t{
   font-family: var(--display); font-weight: 400;
   font-size: var(--t-h2); line-height: 1.35;
-  max-width: 46rem; margin: 0 auto; text-align: center;
+  max-width: var(--m-read); margin: 0 auto; text-align: center;
 }
 
 .g-sampleday .g-h3{ margin-bottom: var(--s3); }
@@ -1170,14 +1193,14 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 /* A field as wide as the page is harder to read than one sized to its content.
    Text inputs cap out; textareas keep the full column since they hold prose. */
 .g-field input[type="text"], .g-field input[type="email"],
-.g-field input[type="tel"], .g-field select{ max-width: 30rem; }
+.g-field input[type="tel"], .g-field select{ max-width: var(--m-tight); }
 .g-field input[type="number"], .g-field input[type="date"]{ max-width: 14rem; }
 .g-row{ display: grid; gap: var(--s5); }
 @media (min-width: 40rem){ .g-row{ grid-template-columns: 1fr 1fr; } }
 
 /* A standing note between fields needs its own air, or it reads as the hint
    belonging to the field below it. */
-.g-hint--block{ margin: var(--s5) 0 var(--s6); max-width: 40rem; }
+.g-hint--block{ margin: var(--s5) 0 var(--s6); max-width: var(--m-read); }
 
 /* Footer links are the last thing a thumb reaches on a phone — tightening the
    footer pulled them under a comfortable target, so state a floor explicitly
@@ -1361,7 +1384,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    stacked sections breathe less — on a phone every section is full-width, so
    desktop padding compounds into a very long scroll.
    ========================================================================== */
-@media (max-width: 40rem){
+@media (max-width: var(--m-read)){
   .g-eyebrow,
   .g-navwrap__group,
   .g-crest__note,
@@ -1406,7 +1429,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 /* The scale's smallest step is 12px, which is fine at desktop distance and
    small on a phone. Lift only that step; every larger size is untouched. */
-@media (max-width: 40rem){
+@media (max-width: var(--m-read)){
   .g [class*="eyebrow"], .g [class*="__k"], .g [class*="hint"],
   .g [class*="note"], .g [class*="fine"], .g [class*="meta"],
   .g [class*="label"], .g [class*="__len"], .g [class*="group"],
@@ -1489,7 +1512,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-herosearch{
   display: grid; gap: 1px; background: rgba(246,241,231,.32);
   border: 1px solid rgba(246,241,231,.46);
-  margin-top: var(--s6); max-width: 46rem;
+  margin-top: var(--s6); max-width: var(--m-read);
 }
 @media (min-width: 46rem){
   .g-herosearch{ grid-template-columns: 1fr 1fr 7rem auto; align-items: stretch; }
@@ -1518,7 +1541,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   white-space: nowrap;
 }
 .g-herosearch__go:hover{ background: #0D2851; }
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   .g-herosearch{ margin-top: var(--s5); }
   .g-herosearch__go{ width: 100%; }
 }
@@ -1579,7 +1602,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-conf .g-facts-list dd{ font-size: 16px; }
 .g-conf .g-fig{ font-size: var(--t-lede); }
 .g-conf__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s6) 0; }
-@media (max-width: 40rem){ .g .g-conf__acts .g-btn{ width: 100%; } }
+@media (max-width: var(--m-read)){ .g .g-conf__acts .g-btn{ width: 100%; } }
 .g-sharelink{
   font-family: var(--serif); font-size: 13px; color: var(--ink-soft);
   background: var(--sand-2); border: 1px solid var(--line);
@@ -1706,7 +1729,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   color: var(--ink-soft); margin: var(--s4) 0 var(--s2);
 }
 .g-mb-card input, .g-mb-card select, .g-mb-card textarea{
-  width: 100%; max-width: 30rem; padding: var(--s3) var(--s4);
+  width: 100%; max-width: var(--m-tight); padding: var(--s3) var(--s4);
   border: 1px solid var(--line); background: var(--sand);
   font-family: var(--serif); font-size: 16px; color: var(--blue-deep);
   min-height: 48px;
@@ -1738,7 +1761,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-mb-rowt{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); flex: 1 1 12rem; }
 .g-mb-acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0; }
 .g .g-btn--sm{ padding: var(--s2) var(--s4); font-size: 15px; min-height: 44px; }
-@media (max-width: 40rem){
+@media (max-width: var(--m-read)){
   .g-mb-card input, .g-mb-card select, .g-mb-card textarea{ max-width: 100%; }
   .g .g-mb-acts .g-btn{ width: 100%; }
 }
@@ -1784,7 +1807,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    and let the photograph below carry the weight.
    ========================================================================== */
 .g-short{ padding: clamp(40px, 6vw, 72px) 0 clamp(28px, 4vw, 42px); }
-.g-short .g-wrap{ max-width: 40rem; }
+.g-short .g-wrap{ max-width: var(--m-read); }
 .g-short .g-display{ font-size: var(--t-h2); }
 .g-short .g-framed{ margin-top: var(--s6); }
 
@@ -1847,7 +1870,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g .g-two__media img{ width: 100%; height: 100%; min-height: 18rem; max-height: 30rem; object-fit: cover; display: block; }
 .g .g-agenda__what{ min-width: 0; }
 .g .g-herosearch__f--n{ }
-.g .g-resform{ max-width: 42rem; }
+.g .g-resform{ max-width: var(--m-read); }
 .g .data-table{ width: 100%; border-collapse: collapse; font-size: 15px; }
 .g .data-table th{
   font-family: var(--serif); font-size: 13px; font-weight: 600;
@@ -1876,7 +1899,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   margin-top: var(--s5);
 }
 .g-map iframe{ position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
-@media (max-width: 46rem){ .g-map{ aspect-ratio: 4 / 3; } }
+@media (max-width: var(--m-read)){ .g-map{ aspect-ratio: 4 / 3; } }
 
 /* Measured on lamaisonbleue-provence.com: their display serif carries +0.03em
    tracking at every size, never negative, and sits in sentence case. On a
@@ -1891,7 +1914,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-family: var(--display); font-weight: 400;
   font-size: var(--t-h2); line-height: 1.4;
   letter-spacing: .012em; color: var(--blue-deep);
-  max-width: 44rem; margin: 0 auto; text-align: center;
+  max-width: var(--m-read); margin: 0 auto; text-align: center;
 }
 .g-testament__by{
   display: block; text-align: center; margin-top: var(--s5);
@@ -1928,7 +1951,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--sand-2); border-left: 2px solid var(--stone);
   padding: var(--s3) var(--s4); margin-top: var(--s3); font-size: 15px;
 }
-@media (max-width: 40rem){
+@media (max-width: var(--m-read)){
   .g .account-card{ padding: var(--s5) var(--s4); }
   .g .account-actions .g-btn{ width: 100%; }
 }
@@ -1987,7 +2010,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-totop[hidden]{ display: none; }
 .g-totop svg{ width: 19px; height: 19px; }
 .g-totop:hover{ background: #0D2851; }
-@media (max-width: 46rem){ .g-totop{ bottom: 78px; } }
+@media (max-width: var(--m-read)){ .g-totop{ bottom: 78px; } }
 
 /* ==========================================================================
    REASSURANCE ROW
@@ -2089,7 +2112,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 html, body{ max-width: 100%; overflow-x: hidden; }
 .g main, .g header, .g footer, .g section{ max-width: 100vw; }
 .g .g-wrap, .g .g-wrap--narrow{ max-width: min(var(--wrap, 76rem), 100vw); }
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   .g .g-band{ grid-auto-columns: minmax(0, 1fr); }
   .g .g-band img{ max-width: 100%; }
 }
@@ -2170,7 +2193,7 @@ stroke='%238F8C78' stroke-width='1'>\
 .g-medallion{ display:block; margin: var(--s6) auto; width: 46px; height: 46px; color: var(--stone); }
 
 /* The mountain line, as a section foot. */
-.g-ridge{ display:block; width: 100%; max-width: 30rem; margin: var(--s6) auto 0; color: var(--line); }
+.g-ridge{ display:block; width: 100%; max-width: var(--m-tight); margin: var(--s6) auto 0; color: var(--line); }
 
 /* An initial set as a printed capital in a ruled box. */
 .g-versal::first-letter{
@@ -2252,7 +2275,7 @@ stroke='%238F8C78' stroke-width='1'>\
   border-bottom: 1px solid var(--line);
 }
 .g-searched__clear:hover{ border-bottom-color: var(--stone); }
-@media (max-width: 40rem){ .g-searched__clear{ margin-left: 0; } }
+@media (max-width: var(--m-read)){ .g-searched__clear{ margin-left: 0; } }
 
 
 /* ==========================================================================
@@ -2284,7 +2307,7 @@ stroke='%238F8C78' stroke-width='1'>\
    moment of stillness and quietly teaches the word the programme uses.
    ========================================================================== */
 .g-gloss{
-  max-width: 34rem; margin: var(--s7) auto; padding: var(--s6) var(--s5);
+  max-width: var(--m-tight); margin: var(--s7) auto; padding: var(--s6) var(--s5);
   border-top: 1px solid var(--stone); border-bottom: 1px solid var(--stone);
   text-align: center; position: relative;
 }
@@ -2307,7 +2330,7 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g-gloss__en{
   display: block; font-size: 18px; line-height: 1.55; color: var(--ink);
-  margin: 0 auto; max-width: 26rem;
+  margin: 0 auto; max-width: var(--m-tight);
 }
 .g-gloss__en b{ font-weight: 500; color: var(--blue-deep); }
 /* A small mark in each upper corner, as a printed entry would carry. */
@@ -2478,12 +2501,12 @@ stroke='%238F8C78' stroke-width='1'>\
   font-size: var(--t-h2); line-height: 1.12;
   letter-spacing: .012em; color: #fff; margin: 0 0 var(--s4);
 }
-.g-close__p{ font-size: 18px; line-height: 1.6; color: rgba(255,255,255,.78); max-width: 38rem; margin: 0 auto var(--s6); }
+.g-close__p{ font-size: 18px; line-height: 1.6; color: rgba(255,255,255,.78); max-width: var(--m-read); margin: 0 auto var(--s6); }
 .g-close__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); justify-content: center; }
 .g .g-close__acts .g-btn{ border-color: rgba(255,255,255,.5); color: #fff; }
 .g .g-close__acts .g-btn--solid{ background: var(--sand); color: var(--blue-deep); border-color: var(--sand); }
 .g .g-close__acts .g-btn:hover{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
-@media (max-width: 40rem){ .g .g-close__acts .g-btn{ width: 100%; } }
+@media (max-width: var(--m-read)){ .g .g-close__acts .g-btn{ width: 100%; } }
 
 /* ==========================================================================
    GOLD
@@ -2565,7 +2588,7 @@ stroke='%238F8C78' stroke-width='1'>\
 .g .g-hero video, .g .g-hero__media video, .g .g-hero img{
   object-position: center 32%;
 }
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   .g .g-hero video, .g .g-hero__media video, .g .g-hero img{ object-position: center 28%; }
 }
 
@@ -2600,16 +2623,16 @@ stroke='%238F8C78' stroke-width='1'>\
 }
 .g .g-hero__lede{
   font-size: var(--t-lede); line-height: 1.65;
-  color: rgba(255,255,255,.9); max-width: 34rem;
+  color: rgba(255,255,255,.9); max-width: var(--m-tight);
   margin: var(--s5) auto 0; text-shadow: 0 1px 20px rgba(12,26,44,.45);
 }
 /* The search sits centred beneath, and stops looking like a plain box. */
 .g .g-herosearch{
-  margin: var(--s7) auto 0; max-width: 44rem;
+  margin: var(--s7) auto 0; max-width: var(--m-read);
   border: 1px solid rgba(246,241,231,.5);
   box-shadow: 0 18px 50px rgba(12,26,44,.28);
 }
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   .g .g-hero__eyebrow{ letter-spacing: .18em; font-size: 13px; }
   .g .g-hero__title::after{ margin-top: var(--s5); }
 }
@@ -2795,7 +2818,7 @@ main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
 }
 .g-faq details[open] summary::after{ transform: rotate(225deg) translateY(-3px); }
 .g-faq summary:hover{ color: var(--gilt); }
-.g-faq__a{ padding: 0 0 var(--s5); margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); max-width: 46rem; }
+.g-faq__a{ padding: 0 0 var(--s5); margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); max-width: var(--m-read); }
 .g-faq__a a{ color: var(--blue-deep); border-bottom: 1px solid var(--gilt); }
 
 /* Any <summary> is a control a guest taps, not a line of text. The FAQ ones
@@ -2833,7 +2856,7 @@ main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
    toggle. It needs to clear the header on a short screen rather than centre
    itself in a box taller than the space available.
    ========================================================================== */
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   /* 88svh, not 100 — a full-height hero puts the first button 46px below the
      fold, so a guest sees nothing to act on until they scroll. The gap also
      signals there is more page below. */
@@ -2991,7 +3014,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    a zero, which is narrower than the average letter, so the unit understates
    the true line length by roughly a third. */
 .g .g-p, .g .g-faq__a, .g .g-extra__d, .g .g-card__desc,
-.g .g-close__p, .g .g-ledger li, .g .g-facts-list dd{ max-width: 62ch; }
+.g .g-close__p, .g .g-ledger li, .g .g-facts-list dd{ max-width: var(--m-wide); }
 /* Centred text centres its measure too. */
 /* Centre the measure only where the text is itself centred. Left-aligned
    prose starts at the container's edge — a centred 468px column inside a
@@ -3008,17 +3031,17 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    Monuments Historiques reference ran 180 characters across a desktop screen
    — longer than any body paragraph on the page. */
 .g .g-hint, .g .g-ledger__note, .g .g-book-bar__note,
-.g .g-foot-note, .g .g-searched__count{ max-width: 58ch; }
+.g .g-foot-note, .g .g-searched__count{ max-width: var(--m-wide); }
 
 /* .g-field and .g-room__note had no measure at all — a form hint ran 100
    characters across a desktop screen. */
-.g .g-field, .g .g-room__note, .g .g-lede{ max-width: 56ch; }
+.g .g-field, .g .g-room__note, .g .g-lede{ max-width: var(--m-wide); }
 .g .g-field input, .g .g-field select, .g .g-field textarea{ max-width: 100%; }
 
 /* The essence block is centred, so its measure is centred too. */
 /* The measure belongs to the container, not to a column floating inside it.
    Constraining only the paragraph left 350px of dead space on each side. */
-.g .g-wrap--narrow{ max-width: 44rem; margin-inline: auto; }
+.g .g-wrap--narrow{ max-width: var(--m-read); margin-inline: auto; }
 .g .g-wrap--narrow .g-p{ max-width: none; margin-inline: 0; }
 
 /* A figure with its caption. Used where a photograph is making an argument
@@ -3032,7 +3055,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   margin-top: var(--s3); padding-top: var(--s3);
   border-top: 1px solid var(--gilt);
   font-size: 15px; line-height: 1.55; color: var(--ink-soft);
-  max-width: 46ch;
+  max-width: var(--m-read);
 }
 
 /* ==========================================================================
@@ -3044,7 +3067,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-pull{
   margin: var(--s7) 0; padding-top: var(--s5);
   border-top: 1px solid var(--gilt);
-  max-width: 34ch;
+  max-width: var(--m-tight);
 }
 .g-pull p{
   font-family: var(--display); font-weight: 300; font-style: italic;
@@ -3259,7 +3282,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   font-size: var(--t-h3); line-height: 1.18;
   letter-spacing: .012em; color: var(--blue-deep); margin: 0 0 var(--s3);
 }
-.g-find__d{ font-size: 16px; line-height: 1.6; color: var(--ink); margin: 0; max-width: 44ch; }
+.g-find__d{ font-size: 16px; line-height: 1.6; color: var(--ink); margin: 0; max-width: var(--m-read); }
 
 /* In a two-column layout the pull quote should not float — it belongs in the
    column, under the text it follows. */
@@ -3297,7 +3320,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-creed__lede{
   font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.82);
-  max-width: 46ch; margin: var(--s5) auto 0;
+  max-width: var(--m-read); margin: var(--s5) auto 0;
 }
 .g-creed__pair{
   display: grid; gap: var(--s6); margin-top: var(--s7);
@@ -3313,7 +3336,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-creed__def{ font-size: 16px; line-height: 1.65; color: rgba(255,255,255,.88); margin: 0; }
 .g-creed__q{
   margin: var(--s7) auto 0; padding-top: var(--s5);
-  border-top: 1px solid rgba(196,160,106,.45); max-width: 44ch;
+  border-top: 1px solid rgba(196,160,106,.45); max-width: var(--m-read);
 }
 .g-creed__q p{
   font-family: var(--display); font-weight: 300; font-style: italic;
@@ -3348,7 +3371,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   font-size: var(--t-h3); line-height: 1.18;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
-.g-story__d{ font-size: 16px; line-height: 1.65; color: var(--ink); margin: 0; max-width: 56ch; }
+.g-story__d{ font-size: 16px; line-height: 1.65; color: var(--ink); margin: 0; max-width: var(--m-wide); }
 .g-story__d em{ font-style: italic; color: var(--blue-deep); }
 
 /* ==========================================================================
@@ -3382,7 +3405,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-medal{
   margin-top: var(--s7); padding: var(--s6);
   border: 2px solid var(--gilt); text-align: center;
-  max-width: 34rem; margin-inline: auto;
+  max-width: var(--m-tight); margin-inline: auto;
   position: relative; background: var(--white);
 }
 .g-medal::before{
@@ -3399,7 +3422,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   font-size: var(--t-h2); line-height: 1.1;
   color: var(--blue-deep); margin: 0 0 var(--s3);
 }
-.g-medal__d{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); margin: 0 auto; max-width: 40ch; }
+.g-medal__d{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); margin: 0 auto; max-width: var(--m-read); }
 
 
 /* Leaf gold at 4.20:1 is fine for a drawn mark but under AA for small text on
@@ -3512,7 +3535,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    restoration is the most likely subscriber on the site.
    ========================================================================== */
 .g-journal__in{
-  max-width: 44rem; margin-inline: auto; text-align: center;
+  max-width: var(--m-read); margin-inline: auto; text-align: center;
   border-top: 2px solid var(--gilt); border-bottom: 2px solid var(--gilt);
   padding: var(--s7) var(--s5);
 }
@@ -3525,7 +3548,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-journal__p{
   font-size: 16px; line-height: 1.6; color: var(--ink);
-  max-width: 46ch; margin: 0 auto var(--s6);
+  max-width: var(--m-read); margin: 0 auto var(--s6);
 }
 .g-journal__form{
   display: flex; flex-wrap: wrap; gap: var(--s3);
@@ -3573,7 +3596,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 }
 .g-scarce__p{
   font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.82);
-  max-width: 44ch; margin: 0 auto;
+  max-width: var(--m-read); margin: 0 auto;
 }
 .g-scarce__grid{
   display: grid; gap: var(--s5); margin-top: var(--s7);
@@ -3596,7 +3619,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   margin: var(--s7) auto 0; padding-top: var(--s5);
   border-top: 1px solid rgba(196,160,106,.4);
   font-size: 16px; line-height: 1.6; color: rgba(255,255,255,.8);
-  max-width: 62ch;
+  max-width: var(--m-wide);
 }
 
 /* ==========================================================================
@@ -3610,7 +3633,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
   /* A marginal note, not a band. A one-line constraint set between two
      full-width rules reads as something left behind; against a single rule
      on the left it reads as an aside deliberately placed. */
-  display: block; max-width: 46rem;
+  display: block; max-width: var(--m-read);
   margin: var(--s6) 0 0; padding: 0 0 0 var(--s5);
   border: 0; border-left: 2px solid var(--gilt);
   font-size: 16px; line-height: 1.6; color: var(--ink-soft);
@@ -3646,10 +3669,10 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    whole block becomes one narrow centred column, so heading and prose share
    an edge and the section reads as a page rather than a ribbon.
    ========================================================================== */
-.g-sec--plate .g-wrap{ max-width: 46rem; }
+.g-sec--plate .g-wrap{ max-width: var(--m-read); }
 .g-sec--plate .g-h2--lead{ text-align: left; }
 .g-sec--plate .g-p{ max-width: none; }
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   .g-sec--plate .g-h2--lead{ text-align: left; }
 }
 
@@ -3694,11 +3717,11 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    .g-grid among them — was silently squeezed into a 46rem column and its
    cards rendered fourteen characters wide. */
 .g-sec .g-wrap:has(> p.g-p):not(:has(div)):not(:has(ul)):not(:has(ol)):not(:has(dl)):not(:has(img)):not(:has(table)):not(:has(form)):not(:has(article)):not(:has(figure)):not(:has(section)){
-  max-width: 46rem;
+  max-width: var(--m-read);
 }
 /* The cap stays as a ceiling. It no longer produces a ribbon because the
    prose-only wraps above are themselves narrow, so text and container agree. */
-.g-sec .g-wrap > p.g-p{ max-width: 62ch; }
+.g-sec .g-wrap > p.g-p{ max-width: var(--m-wide); }
 
 
 /* ==========================================================================
@@ -3750,7 +3773,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    read. One line fixes every anchor on the site.
    ========================================================================== */
 html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is not in scope on html */
-@media (max-width: 46rem){
+@media (max-width: var(--m-read)){
   html{ scroll-padding-top: 102px; }
 }
 
@@ -3824,7 +3847,7 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
 
 .g-rp__ms{ display: grid; gap: var(--s5); margin-top: var(--s4); }
 @media (min-width: 34rem){ .g-rp__ms{ grid-template-columns: 1fr 1fr; } }
-@media (max-width: 34rem){ .g-rp__m:last-child{ display: none; } }
+@media (max-width: var(--m-tight)){ .g-rp__m:last-child{ display: none; } }
 
 .g-rp__mh{
   margin: 0 0 var(--s3); text-align: center;
@@ -3918,7 +3941,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
   font-family: var(--display); font-weight: 300;
   font-size: var(--t-h1); line-height: 1.05;
   color: var(--blue-deep); margin: var(--s3) 0 var(--s5);
-  text-shadow: none; max-width: 20ch;
+  text-shadow: none; max-width: var(--m-tight);
 }
 /* A safety net: hero type used outside a hero falls back to readable ink.
    Scoped by ancestry, not by parent — an earlier version matched
@@ -3947,7 +3970,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 }
 .g-footer__base .g-pay__marks{ margin: 0; }
 .g-footer__base .g-pay__note{ margin: 0; }
-@media (max-width: 40rem){
+@media (max-width: var(--m-read)){
   .g-footer__base{ justify-content: flex-start; }
 }
 
@@ -3996,7 +4019,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 .g-plan__notes{ margin: 0; padding: 0; list-style: none; }
 .g-plan__notes li{
   position: relative; padding-left: var(--s5); margin-bottom: var(--s3);
-  font-size: 16px; line-height: 1.55; color: var(--ink); max-width: 58ch;
+  font-size: 16px; line-height: 1.55; color: var(--ink); max-width: var(--m-wide);
 }
 .g-plan__notes li::before{
   content: "·"; position: absolute; left: var(--s3);
@@ -4012,7 +4035,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
    ========================================================================== */
 .g-mark__wrap{ display: flex; justify-content: center; padding: var(--s6) 0 0; }
 .g-mark{ width: 120px; height: 34px; color: var(--gilt); opacity: .9; }
-@media (max-width: 40rem){ .g-mark{ width: 96px; } }
+@media (max-width: var(--m-read)){ .g-mark{ width: 96px; } }
 
 
 /* ==========================================================================
@@ -4035,10 +4058,10 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 @container (min-width: 32rem){
   .g-facts-list > div, .g-plate__l > div{ grid-template-columns: minmax(8rem, 12rem) 1fr; }
 }
-/* max-width:34ch above measures only 272px in the display face — a column of
+/* max-width:var(--m-tight) above measures only 272px in the display face — a column of
    fragments rather than a quotation. Set the width in absolute terms and let
    the character cap go. */
-.g-pull{ max-width: 26rem; min-width: 0; }
+.g-pull{ max-width: var(--m-tight); min-width: 0; }
 @media (max-width: 52rem){ .g-pull{ float: none; max-width: none; width: auto; } }
 
 
@@ -4055,13 +4078,13 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
   grid-template-columns: repeat(auto-fit, minmax(min(27rem, 100%), 1fr));
 }
 /* The quotation needs to hold a readable line in the italic display face. */
-.g-pull{ max-width: 30rem; }
+.g-pull{ max-width: var(--m-tight); }
 .g-pull p{ max-width: none; }
 /* Measured in characters, not pixels: at 27px italic a 350px column holds 23
    characters. Widen the column and ease the face so the quote reads as a
    sentence. */
 @media (min-width: 60rem){
-  .g-pull{ width: 26rem; max-width: 26rem; }
+  .g-pull{ width: 26rem; max-width: var(--m-tight); }
   .g-pull p{ font-size: var(--t-lede); }
 }
 
@@ -4116,7 +4139,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 
 /* The press row puts a masthead and its caption side by side. On the narrowest
    phones there is no room for both, so they stack. */
-@media (max-width: 26rem){
+@media (max-width: var(--m-tight)){
   .g-press li{ flex-direction: column; align-items: flex-start; gap: 4px; }
 }
 
@@ -4141,7 +4164,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 
 /* A ceiling on every paragraph in the page body, not only the classed ones.
    Unclassed prose had no measure, so at high zoom it ran past 80 characters. */
-main p, main li, main dd{ max-width: 68ch; }
+main p, main li, main dd{ max-width: var(--m-wide); }
 main .g-limit, main .g-curbar, main .g-survive, main .g-plan__line,
 main .g-hero p, main td p, main th p{ max-width: none; }
 
@@ -4178,19 +4201,19 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 
 /* The creed quotation was 31 characters in the display face. */
 .g-creed__q{ max-width: none; }
-.g-creed__in{ max-width: 46rem; margin-inline: auto; }
+.g-creed__in{ max-width: var(--m-read); margin-inline: auto; }
 /* The last two: a half-width creed panel at 39 characters, and a quote band
    that loses too much to padding on a small phone. */
 @media (max-width: 90rem){
   .g-creed__half{ grid-column: 1 / -1; }
 }
-@media (max-width: 26rem){
+@media (max-width: var(--m-tight)){
   .g-quote-band{ padding-inline: var(--s4); }
 }
 /* The quote band is set large and italic, so on a 360px phone it holds only
    29 characters. Ease the size there rather than the padding — the display
    face is what is eating the line. */
-@media (max-width: 26rem){
+@media (max-width: var(--m-tight)){
   .g-quote-band p, .g-quote-band blockquote{ font-size: var(--t-lede); }
 }
 /* The half-width creed panel measured 39 characters even at 1920. It is
@@ -4199,7 +4222,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 /* Two display-face passages still measured 29 characters on a 360px phone.
    Large italic type simply does not fit a narrow screen at that size — ease
    the face and reclaim the padding rather than leave a column of fragments. */
-@media (max-width: 30rem){
+@media (max-width: var(--m-tight)){
   .g-quote-band p, .g-quote-band blockquote{ font-size: var(--t-lede); }
   .g-quote-band{ padding-inline: var(--s3); }
   .g-creed__q{ font-size: var(--t-base); padding-inline: 0; }
@@ -4333,7 +4356,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   flex: 1 0 100%; width: 100%; max-width: 100%; margin-top: 4px;
 }
 /* A hint that describes the whole row, not one field. */
-.g-hint--row{ max-width: 46rem; margin-top: var(--s2); }
+.g-hint--row{ max-width: var(--m-read); margin-top: var(--s2); }
 
 /* ==========================================================================
    THE FRENCH LINE
@@ -4360,7 +4383,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 /* A French motto used as a closing line, centred under a rule. */
 .g-devise{
   margin: var(--s7) auto 0; padding-top: var(--s5);
-  max-width: 40rem; text-align: center;
+  max-width: var(--m-read); text-align: center;
   border-top: 1px solid var(--gilt);
 }
 .g-devise__fr{
@@ -4397,7 +4420,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   height: 2px; background: var(--blue-deep);
 }
 .g .g-tabs a:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -3px; }
-@media (max-width: 40rem){
+@media (max-width: var(--m-read)){
   .g-tabs{ overflow-x: auto; scrollbar-width: none; }
   .g-tabs::-webkit-scrollbar{ display: none; }
   .g .g-tabs a{ padding: 0 var(--s4); }
@@ -4443,7 +4466,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   font-size: 12px; font-weight: 600; letter-spacing: .12em;
   text-transform: uppercase; color: var(--gilt);
 }
-.g-key__v{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink); max-width: 30rem; }
+.g-key__v{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink); max-width: var(--m-tight); }
 .g .g-key__v a{ color: var(--blue-deep); }
 
 /* ==========================================================================
@@ -4485,7 +4508,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 
 .g-bloom__out{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.3); }
 .g-bloom__lede{
-  margin: 0 0 var(--s5); max-width: 40rem;
+  margin: 0 0 var(--s5); max-width: var(--m-read);
   font-family: var(--display); font-weight: 300;
   font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep);
 }
@@ -4504,7 +4527,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 .g-bloom__note{
   /* In characters, not rem: 46rem measured 102 characters at this size. */
-  margin: 0; max-width: 62ch; padding-left: var(--s5);
+  margin: 0; max-width: var(--m-wide); padding-left: var(--s5);
   border-left: 2px solid var(--gilt);
   font-size: 16px; line-height: 1.6; color: var(--ink-soft);
 }
@@ -4559,7 +4582,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    measure it already had, whatever direction style.css forces on the form. */
 .g form .g-row > .g-field{ flex: 1 1 14rem; }
 .g form .g-field > label,
-.g form .g-field > .g-hint{ max-width: 62ch; }
+.g form .g-field > .g-hint{ max-width: var(--m-wide); }
 /* A panel that style.css has turned into a flex container sizes its children
    by content, so a field inside one gets a fraction of the width. A form
    panel stacks its fields and lets each fill the panel. */
@@ -4584,7 +4607,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   display: grid; gap: 2px;
   grid-template-columns: minmax(8rem, 11rem) 1fr;
 }
-@media (max-width: 40rem){ .g-timeline__i{ grid-template-columns: 1fr; } }
+@media (max-width: var(--m-read)){ .g-timeline__i{ grid-template-columns: 1fr; } }
 .g-timeline__i::before{
   content: ""; position: absolute; left: calc(var(--s6) * -1 - 1px); top: .45em;
   width: 9px; height: 9px; margin-left: -4px;
@@ -4597,7 +4620,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
   padding-top: 2px;
 }
-.g-timeline__v{ font-size: 16px; line-height: 1.6; color: var(--ink); max-width: 46ch; }
+.g-timeline__v{ font-size: 16px; line-height: 1.6; color: var(--ink); max-width: var(--m-read); }
 
 /* ==========================================================================
    ADD SOMETHING AFTER BOOKING
@@ -4631,7 +4654,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 }
 .g-addons__d{
   grid-column: 2 / -1; font-size: 15px; line-height: 1.55; color: var(--ink-soft);
-  max-width: 52ch;
+  max-width: var(--m-read);
 }
 .g-addons__f > .g-btn{ margin-top: var(--s3); }
 
@@ -4694,7 +4717,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h2); color: var(--blue-deep);
 }
-.g-plan2__d{ margin: 0 0 var(--s4); font-size: 16px; line-height: 1.6; max-width: 44ch; }
+.g-plan2__d{ margin: 0 0 var(--s4); font-size: 16px; line-height: 1.6; max-width: var(--m-read); }
 
 /* ==========================================================================
    BEFORE AND AFTER
@@ -4756,7 +4779,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   font-family: var(--display); font-size: var(--t-h3);
   color: var(--blue-deep);
 }
-.g-ba__n{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); max-width: 58ch; }
+.g-ba__n{ font-size: 15px; line-height: 1.6; color: var(--ink-soft); max-width: var(--m-wide); }
 .g-ba__n b{
   font-family: var(--ui); font-size: 12px; font-weight: 600;
   letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
@@ -4797,7 +4820,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   padding: var(--s3) 0; border-bottom: 1px solid var(--line);
   grid-template-columns: minmax(10rem, 1fr) minmax(8rem, 1fr) auto;
 }
-@media (max-width: 44rem){ .g-linked__i{ grid-template-columns: 1fr; } }
+@media (max-width: var(--m-read)){ .g-linked__i{ grid-template-columns: 1fr; } }
 .g-linked__i.is-this{ border-left: 2px solid var(--gilt); padding-left: var(--s4); }
 .g-linked__r{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); }
 .g-linked__n{ font-size: 15px; color: var(--ink); }
@@ -4846,7 +4869,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-season__m:hover{ background: var(--white); }
 .g-season__m.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
 .g-season__out{ margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid rgba(115,86,45,.3); }
-.g-season__t{ margin: 0 0 var(--s4); max-width: 44ch; font-family: var(--display); font-weight: 300; font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep); }
+.g-season__t{ margin: 0 0 var(--s4); max-width: var(--m-read); font-family: var(--display); font-weight: 300; font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep); }
 .g-season__l{ margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s2); grid-template-columns: repeat(auto-fit, minmax(min(15rem,100%),1fr)); }
 .g-season__l li{ position: relative; padding-left: var(--s5); font-size: 16px; line-height: 1.55; color: var(--ink); }
 .g-season__l li::before{ content: "·"; position: absolute; left: var(--s3); color: var(--gilt); font-weight: 700; }
@@ -4863,7 +4886,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
    LIVE WEATHER
    ========================================================================== */
 .g-wx{ margin-top: var(--s4); }
-.g-wx__fallback{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); max-width: 52ch; }
+.g-wx__fallback{ margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-soft); max-width: var(--m-read); }
 .g-wx__live{ display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s4); }
 .g-wx__k{ font-family: var(--ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt); }
 .g-wx__t{ font-family: var(--display); font-size: var(--t-h2); color: var(--blue-deep); font-variant-numeric: lining-nums; }
@@ -4904,9 +4927,9 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-years__out{ margin-top: var(--s5); padding-top: var(--s5); border-top: 1px solid var(--gilt); }
 .g-years__y{ margin: 0 0 var(--s3); font-family: var(--ui); font-size: 13px; font-weight: 600;
   letter-spacing: .14em; text-transform: uppercase; color: var(--gilt); }
-.g-years__t{ margin: 0 0 var(--s4); max-width: 52ch; font-family: var(--display); font-weight: 300;
+.g-years__t{ margin: 0 0 var(--s4); max-width: var(--m-read); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h3); line-height: 1.35; color: var(--blue-deep); }
-.g-years__n{ margin: 0; max-width: 56ch; font-size: 16px; line-height: 1.6; color: var(--ink-soft);
+.g-years__n{ margin: 0; max-width: var(--m-wide); font-size: 16px; line-height: 1.6; color: var(--ink-soft);
   padding-left: var(--s5); border-left: 2px solid var(--gilt); }
 
 .g-steps{ list-style: none; display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s6) 0 0; padding: 0; }
@@ -4920,8 +4943,8 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-steps__out{ margin-top: var(--s6); padding-top: var(--s5); border-top: 1px solid rgba(115,86,45,.3); }
 .g-steps__t{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h2); color: var(--blue-deep); }
-.g-steps__d{ margin: 0 0 var(--s4); max-width: 56ch; font-size: 16px; line-height: 1.6; }
-.g-steps__w{ margin: 0; max-width: 56ch; padding-left: var(--s5); border-left: 2px solid var(--gilt);
+.g-steps__d{ margin: 0 0 var(--s4); max-width: var(--m-wide); font-size: 16px; line-height: 1.6; }
+.g-steps__w{ margin: 0; max-width: var(--m-wide); padding-left: var(--s5); border-left: 2px solid var(--gilt);
   font-size: 16px; line-height: 1.6; color: var(--ink-soft); }
 
 /* ==========================================================================
@@ -4935,7 +4958,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 .g-light__h:hover{ background: var(--white); }
 .g-light__h.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
 .g-light__out{ margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid rgba(115,86,45,.3); }
-.g-light__t{ margin: 0 0 var(--s4); max-width: 48ch; font-family: var(--display); font-weight: 300;
+.g-light__t{ margin: 0 0 var(--s4); max-width: var(--m-read); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h3); line-height: 1.3; color: var(--blue-deep); }
 .g-light__l{ margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s2);
   grid-template-columns: repeat(auto-fit, minmax(min(16rem,100%),1fr)); }
@@ -5009,7 +5032,7 @@ main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
      also used on cream, where it reads at about 1.4:1. Scope the pale ink to
      the dark ground and give the default a readable colour. */
 .g-journal__note{ font-size: var(--t-small); }
-@media (max-width: 40rem){ .g-journal__note{ font-size: var(--t-small); } }
+@media (max-width: var(--m-read)){ .g-journal__note{ font-size: var(--t-small); } }
 
 .g-figs__l{ color: var(--ink-soft); }
 .g-sec--dark .g-figs__l, .g-panel--dark .g-figs__l{ color: #C9D4DF; }
@@ -5106,7 +5129,7 @@ main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
    the problem to the next width. */
 .g-quote-band__t{
   font-size: min(var(--t-h2), 5.2cqw, 42px);
-  max-width: 22ch;
+  max-width: var(--m-tight);
 }
 .g-quote-band{ container-type: inline-size; }
 @supports not (font-size: 1cqw){
@@ -5185,7 +5208,7 @@ main img{ height: auto; }
 /* ==========================================================================
    FAQ
    ========================================================================== */
-.g-faq2{ margin-top: var(--s6); max-width: 62ch; }
+.g-faq2{ margin-top: var(--s6); max-width: var(--m-wide); }
 .g-faq2__i{ border-bottom: 1px solid var(--line); }
 .g-faq2__i summary{
   display: flex; align-items: center; justify-content: space-between; gap: var(--s4);
@@ -5199,7 +5222,7 @@ main img{ height: auto; }
 }
 .g-faq2__i[open] summary::after{ content: "–"; }
 .g-faq2__i summary:focus-visible{ outline: 2px solid var(--gilt); outline-offset: 2px; }
-.g-faq2__i p{ margin: 0 0 var(--s5); max-width: 58ch; font-size: var(--t-base); line-height: 1.65; }
+.g-faq2__i p{ margin: 0 0 var(--s5); max-width: var(--m-wide); font-size: var(--t-base); line-height: 1.65; }
 
 /* ==========================================================================
    THE 404 LIST
@@ -5308,7 +5331,7 @@ main img{ height: auto; }
 .g-lb__img{ display: block; max-width: 92vw; max-height: 82vh; width: auto; height: auto; }
 .g-lb__cap{
   margin: var(--s3) 0 0; text-align: center; color: #E8E2D6;
-  font-family: var(--ui); font-size: var(--t-ui); max-width: 68ch;
+  font-family: var(--ui); font-size: var(--t-ui); max-width: var(--m-wide);
 }
 .g-lb__x, .g-lb__nav{
   position: absolute; z-index: 2; cursor: pointer;
@@ -5347,7 +5370,7 @@ main img{ height: auto; }
   letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
 }
 .g-backtoform .g-btn{ margin-left: auto; }
-@media (max-width: 44rem){ .g-backtoform .g-btn{ margin-left: 0; width: 100%; } }
+@media (max-width: var(--m-read)){ .g-backtoform .g-btn{ margin-left: 0; width: 100%; } }
 
 /* ==========================================================================
    THE THREE INTENTS
@@ -5371,7 +5394,7 @@ main img{ height: auto; }
 .g-three__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h3); color: var(--blue-deep); }
 .g-three__d{ margin: 0 0 var(--s4); font-size: var(--t-base); line-height: 1.6;
-  color: var(--ink); max-width: 44ch; }
+  color: var(--ink); max-width: var(--m-read); }
 .g-three__a{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); margin: 0; }
 .g .g-three__a a:not(.g-btn){ font-family: var(--ui); font-size: var(--t-ui); color: var(--blue-deep); }
 
@@ -5392,7 +5415,7 @@ main img{ height: auto; }
   font-size: var(--t-h3); color: var(--blue-deep); }
 .g-programme__w{ margin: 0 0 var(--s3); font-size: var(--t-ui); color: var(--ink-soft); }
 .g-programme__s{ margin: 0 0 var(--s4); font-size: var(--t-base); line-height: 1.6;
-  color: var(--ink); max-width: 56ch; }
+  color: var(--ink); max-width: var(--m-wide); }
 .g-programme__a{ display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3) var(--s4); margin: 0; }
 .g-programme__left{ font-family: var(--ui); font-size: var(--t-ui); color: var(--gilt); }
 
@@ -5440,7 +5463,7 @@ main img{ height: auto; }
   margin: 0 0 var(--s4); font-family: var(--ui); font-size: var(--t-sm);
   font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
 }
-.g-chef__b > .g-p{ max-width: 58ch; }
+.g-chef__b > .g-p{ max-width: var(--m-wide); }
 
 /* ==========================================================================
    THE BOOKING SUMMARY
@@ -5623,7 +5646,7 @@ html, body{ margin: 0; padding: 0; }
   border-left: 1px solid var(--gilt); }
 .g-pay2__i{ position: relative; display: grid; gap: 2px;
   grid-template-columns: minmax(8rem, 12rem) 1fr; padding-bottom: var(--s5); }
-@media (max-width: 40rem){ .g-pay2__i{ grid-template-columns: 1fr; } }
+@media (max-width: var(--m-read)){ .g-pay2__i{ grid-template-columns: 1fr; } }
 .g-pay2__i::before{
   content: ""; position: absolute; left: calc(var(--s6) * -1 - 1px); top: .45em;
   width: 9px; height: 9px; margin-left: -4px;
@@ -5635,7 +5658,7 @@ html, body{ margin: 0; padding: 0; }
   font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
 }
-.g-pay2__v{ font-size: var(--t-base); line-height: 1.6; color: var(--ink); max-width: 48ch; }
+.g-pay2__v{ font-size: var(--t-base); line-height: 1.6; color: var(--ink); max-width: var(--m-read); }
 
 /* ==========================================================================
    THE TEN
@@ -5686,7 +5709,7 @@ body.has-hero .g-cred{ background: var(--blue-deep); }
 }
 .g-lb__go:hover{ background: var(--gilt); color: var(--blue-deep); }
 
-.g-nodate{ margin-top: var(--s6); max-width: 46rem; }
+.g-nodate{ margin-top: var(--s6); max-width: var(--m-read); }
 .g-nodate .g-row{ display: flex; flex-wrap: wrap; gap: var(--s4); }
 .g-nodate .g-field--narrow{ flex: 1 1 10rem; min-width: 0; }
 
@@ -5707,7 +5730,7 @@ body.has-hero .g-cred{ background: var(--blue-deep); }
   letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
 }
 .g-arrive__l dd{ margin: 4px 0 0; font-size: var(--t-base); line-height: 1.6;
-  color: var(--ink); max-width: 56ch; }
+  color: var(--ink); max-width: var(--m-wide); }
 .g-arrive__map{ display: block; margin-top: 4px; }
 .g-arrive__n{ margin: var(--s5) 0 0; font-family: var(--ui);
   font-size: var(--t-sm); color: var(--ink-soft); }
@@ -5733,7 +5756,7 @@ body.has-hero .g-cred{ background: var(--blue-deep); }
   grid-template-columns: repeat(auto-fit, minmax(min(15rem,100%),1fr)); }
 
 .g-flex{ padding: var(--s7) 0; border-top: 1px solid var(--gilt); }
-.g-flex__f{ max-width: 46rem; margin-top: var(--s6);
+.g-flex__f{ max-width: var(--m-read); margin-top: var(--s6);
   display: flex; flex-direction: column; gap: var(--s4); }
 .g-flex__row{ display: grid; gap: var(--s4);
   grid-template-columns: repeat(auto-fit, minmax(min(11rem,100%),1fr)); }
@@ -5822,7 +5845,7 @@ svg [tabindex]:focus-visible path{ stroke: var(--gilt); stroke-width: 3px; }
   grid-template-columns: 5.5rem 1fr;
   padding: var(--s5) 0; border-bottom: 1px solid var(--line);
 }
-@media (max-width: 34rem){ .g-near__i{ grid-template-columns: 1fr; } }
+@media (max-width: var(--m-tight)){ .g-near__i{ grid-template-columns: 1fr; } }
 .g-near__d{
   font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
@@ -5831,7 +5854,7 @@ svg [tabindex]:focus-visible path{ stroke: var(--gilt); stroke-width: 3px; }
 .g-near__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h3); color: var(--blue-deep); }
 .g-near__p{ margin: 0 0 var(--s2); font-size: var(--t-base); line-height: 1.65;
-  color: var(--ink); max-width: 62ch; }
+  color: var(--ink); max-width: var(--m-wide); }
 .g-near__w{
   margin: 0; font-family: var(--ui); font-size: var(--t-ui); color: var(--ink-soft);
   padding-left: var(--s3); border-left: 2px solid var(--gilt);
@@ -5853,9 +5876,9 @@ svg [tabindex]:focus-visible path{ stroke: var(--gilt); stroke-width: 3px; }
 .g-months__t{ margin: 0 0 var(--s3); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h2); color: var(--blue-deep); }
 .g-months__d{ margin: 0 0 var(--s4); font-size: var(--t-lede); line-height: 1.6;
-  color: var(--ink); max-width: 58ch; }
+  color: var(--ink); max-width: var(--m-wide); }
 .g-months__x{
-  margin: 0; max-width: 58ch; padding-left: var(--s4);
+  margin: 0; max-width: var(--m-wide); padding-left: var(--s4);
   border-left: 2px solid var(--gilt);
   font-style: italic; font-size: var(--t-base); color: var(--ink-soft);
 }
@@ -5892,7 +5915,7 @@ body.hero--full .g-hero{ min-height: 88vh; }          /* home, gallery */
 body.hero--tall .g-hero{ min-height: 74vh; }          /* the estate, restoration */
 body.hero--short .g-hero{ min-height: 46vh; }         /* stay, workshops, la table */
 body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, admin */
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
   .g-hero{ min-height: 58vh; }
   body.hero--full .g-hero{ min-height: 72vh; }
   body.hero--short .g-hero{ min-height: 42vh; }
@@ -5946,7 +5969,7 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
    Ninety-four squares. Five filled. The paragraph could not do this.
    ========================================================================== */
 .g-scale{ margin: var(--s6) 0 var(--s6); }
-.g-scale__g{ width: 100%; max-width: 42rem; height: auto; display: block; }
+.g-scale__g{ width: 100%; max-width: var(--m-read); height: auto; display: block; }
 .g-scale__r{ fill: none; stroke: var(--line); stroke-width: 1; }
 .g-scale__r.is-done{ fill: var(--gilt); stroke: var(--gilt); }
 .g-scale__k{ list-style: none; display: flex; flex-wrap: wrap; gap: var(--s3) var(--s6);
@@ -6006,7 +6029,7 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
 .g-pick__d{ margin: 0 0 var(--s4); font-size: var(--t-base); line-height: 1.6; color: var(--ink); }
 .g-pick__a{ margin: 0; }
 .g-cur__note{ margin: var(--s2) 0 0; font-family: var(--ui); font-size: var(--t-sm);
-  line-height: 1.5; color: var(--ink-soft); max-width: 34ch; }
+  line-height: 1.5; color: var(--ink-soft); max-width: var(--m-tight); }
 
 /* A two-column block with align-items:center floats the shorter column in the
    middle of the taller one, leaving a large empty gutter above and below it.
@@ -6042,7 +6065,7 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
    The hero is the only element allowed there. Everything else clears it.
    ========================================================================== */
 body.has-hero main > .g-crumbs{ padding-top: 92px; }
-@media (max-width: 44rem){ body.has-hero main > .g-crumbs{ padding-top: 78px; } }
+@media (max-width: var(--m-read)){ body.has-hero main > .g-crumbs{ padding-top: 78px; } }
 
 /* And when the breadcrumb IS the first thing, the header is over cream rather
    than a photograph, so it needs its own background and dark type. */
@@ -6248,7 +6271,7 @@ main figcaption{
   margin-top: var(--s3); padding-left: var(--s3);
   border-left: 2px solid var(--gilt);
   font-family: var(--ui); font-size: var(--t-ui); line-height: 1.5;
-  color: var(--ink-soft); max-width: 46ch;
+  color: var(--ink-soft); max-width: var(--m-read);
 }
 
 /* ==========================================================================
@@ -6322,7 +6345,7 @@ main > .g-sec--dark{ border-top: 0; }
 .g-cred2{
   display: grid; gap: var(--s2); margin: var(--s6) 0;
   padding-left: var(--s4); border-left: 2px solid var(--gilt);
-  max-width: 62ch;
+  max-width: var(--m-wide);
 }
 .g-cred2__k{
   font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
@@ -6413,7 +6436,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 }
 /* Panel padding inside the wrap's padding left 28 characters on a phone.
    Below 30rem the panel keeps its rule and drops the inset. */
-@media (max-width: 34rem){
+@media (max-width: var(--m-tight)){
   .g-terms{ padding: var(--s4) 0 var(--s4) var(--s4); background: none; }
   .g-terms__l{ gap: var(--s3); }
   .g-terms__l > div{ gap: 1px; }
@@ -6436,7 +6459,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
   display: grid; grid-template-columns: 3rem 1fr; gap: var(--s4);
   padding: var(--s5) 0; border-bottom: 1px solid var(--line);
 }
-@media (max-width: 34rem){ .g-arrive > li{ grid-template-columns: 1fr; gap: var(--s2); } }
+@media (max-width: var(--m-tight)){ .g-arrive > li{ grid-template-columns: 1fr; gap: var(--s2); } }
 .g-arrive__n{
   display: flex; align-items: center; justify-content: center;
   width: 2.6rem; height: 2.6rem; border: 1px solid var(--gilt); border-radius: 50%;
@@ -6445,9 +6468,9 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 }
 .g-arrive__t{ margin: 0 0 var(--s2); font-family: var(--display); font-weight: 300;
   font-size: var(--t-h3); color: var(--blue-deep); }
-.g-arrive__p{ margin: 0; font-size: var(--t-base); line-height: 1.65; color: var(--ink); max-width: 60ch; }
+.g-arrive__p{ margin: 0; font-size: var(--t-base); line-height: 1.65; color: var(--ink); max-width: var(--m-wide); }
 
-.g-notify{ margin-top: var(--s5); display: grid; gap: var(--s4); max-width: 34rem; }
+.g-notify{ margin-top: var(--s5); display: grid; gap: var(--s4); max-width: var(--m-tight); }
 .g-notify .g-field{ margin: 0; }
 .g-notify__n{ margin: 0; font-family: var(--ui); font-size: var(--t-sm);
   line-height: 1.5; color: var(--ink-soft); }
@@ -6542,7 +6565,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 @media (min-width: 60rem){
   .g-family{ grid-template-columns: 12rem 1fr auto; }
   .g-family__k{ grid-column: 1; }
-  .g-family p{ grid-column: 2; margin: 0; max-width: 62ch; }
+  .g-family p{ grid-column: 2; margin: 0; max-width: var(--m-wide); }
   .g-family a{ grid-column: 3; white-space: nowrap; }
 }
 
@@ -6627,7 +6650,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 .g-herosearch__go{ padding: var(--s3) var(--s6); }
 .g-herosearch{ align-items: stretch; }
 
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
   .g-herosearch__f{ padding: var(--s3) var(--s4); }
   .g-herosearch__f input,
   .g-herosearch__f select,
@@ -6678,7 +6701,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
    None of this changes the desktop layout. It changes what a phone has to
    scroll past to reach the thing it came for.
    ========================================================================== */
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
 
   /* 2 — the long reference sections fold. Someone on a phone who wants the
      FAQ can open it; everyone else scrolls one line instead of eight screens.
@@ -6719,7 +6742,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 /* On a phone the five room cards are 5.3 screens and the numbers table 3.2 —
    more than a fifth of the page between them, and both are lists a phone
    reads badly as a tall column. */
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
 
   /* The cards swipe sideways instead of stacking. Five rooms becomes one
      screen with four more a thumb away, which is how a phone expects a set
@@ -6761,7 +6784,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
    The French line is a grace note; it belongs where there is room for it.
    Below 44rem the eyebrow carries the section on its own.
    ========================================================================== */
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
   .g-fr{ display: none; }
   .g-eyebrow{ margin-bottom: var(--s2); }
   .g-place, .g-h2{ margin-top: 0; }
@@ -6857,7 +6880,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 .g-pricenote__t, .g-family__t{
   flex: 1 1 24rem; min-width: 0;
   font-size: var(--t-lede); line-height: 1.55; color: var(--blue-deep);
-  max-width: 68ch;
+  max-width: var(--m-wide);
 }
 .g-pricenote__t b, .g-family__t b{
   font-family: var(--display); font-weight: 400; font-size: 1.15em;
@@ -6865,8 +6888,8 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 }
 /* A price and its unit are one thing and must never be split. */
 .g-pricenote__t b + *, .g-pricenote b{ white-space: nowrap; }
-.g-welcome__t{ flex: 1 1 22rem; min-width: 0; max-width: 62ch; }
-.g-backtoform__t{ flex: 1 1 22rem; min-width: 0; max-width: 62ch; }
+.g-welcome__t{ flex: 1 1 22rem; min-width: 0; max-width: var(--m-wide); }
+.g-backtoform__t{ flex: 1 1 22rem; min-width: 0; max-width: var(--m-wide); }
 
 /* ==========================================================================
    THE HEADER FADE IS A HOLE
@@ -6925,7 +6948,7 @@ main > section > .g-wrap > :first-child{ margin-top: 0; }
 .g-journal__form{ gap: var(--s3); }
 .g-journal__p{ margin-bottom: var(--s4); }
 
-@media (max-width: 44rem){
+@media (max-width: var(--m-read)){
   main > section,
   main > .g-sec--sand{ padding-top: var(--s6); padding-bottom: var(--s6); }
   main > .g-sec + .g-sec{ padding-top: var(--s5); }
@@ -6935,3 +6958,829 @@ main > section > .g-wrap > :first-child{ margin-top: 0; }
 /* A .g-wrap with nothing in it still takes its own padding — 80px of nothing
    on The Estate. If there is no content there is no block. */
 main > .g-wrap:empty{ display: none; }
+
+/* ==========================================================================
+   DINNER NIGHTS ON THE CALENDAR
+   La Table does not cook every night, and until now the only way to find out
+   was to ask. The calendar already shows which nights are free; a small mark
+   says which of those have a dinner.
+
+   Sourced from published menus, so a night opens when the kitchen publishes
+   its menu — no second schedule to fall out of step.
+   ========================================================================== */
+.g-avc__d{ position: relative; }
+.g-avc__d.has-dinner::after{
+  content: ""; position: absolute; left: 50%; bottom: 4px;
+  width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+  background: var(--gilt);
+}
+/* On a taken or past night the dot is context, not an offer. */
+.g-avc__d.is-taken.has-dinner::after,
+.g-avc__d.is-past.has-dinner::after{ opacity: .38; }
+
+.g-avc__dot{
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gilt); vertical-align: middle;
+}
+/* The key wraps to three items on a phone; let it. */
+.g-avc__k{ display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); }
+
+/* The same mark in the date picker, where someone is actually choosing. */
+.g-rp__d{ position: relative; }
+.g-rp__d.has-dinner::after{
+  content: ""; position: absolute; left: 50%; bottom: 3px;
+  width: 4px; height: 4px; margin-left: -2px; border-radius: 50%;
+  background: var(--gilt);
+}
+.g-rp__d.is-past.has-dinner::after,
+.g-rp__d.is-taken.has-dinner::after{ opacity: .35; }
+/* On a selected night the gilt would vanish into the navy. */
+.g-rp__d.is-start.has-dinner::after,
+.g-rp__d.is-end.has-dinner::after{ background: var(--gilt-on-dark); }
+
+/* ==========================================================================
+   PROSE STRANDED IN ITS OWN PANEL
+   Five blocks set their text far narrower than the box holding it:
+
+       .g-panel--dark   390px of text in a 1168px panel   778px empty
+       .g-timeline      510px in 1168px
+       .g-story__d      448px in 1056px
+       .g-creed__lede   368px in  736px
+
+   Each was presumably given a measure to stop the line running long. But a
+   measure is a MAXIMUM, not a target — capping the text without narrowing the
+   panel leaves the panel two-thirds empty, which is what "all over the place"
+   looks like. Either the text fills its box or the box comes in to meet it.
+
+   The box comes in. The measure is kept, so nothing reads worse.
+   ========================================================================== */
+.g-panel--dark{ max-width: var(--m-read); }
+.g-panel--dark > *:not(p):not(li):not(dd):not(.g-limit){ max-width: none; }
+
+.g-timeline{ max-width: var(--m-read); }
+.g-timeline > li{ max-width: none; }
+
+.g-story__d{ max-width: none; }
+.g-story__in, .g-story{ max-width: var(--m-read); }
+
+.g-creed__in{ max-width: var(--m-tight); }
+.g-creed__lede{ max-width: none; }
+
+/* Where a panel is deliberately wide — because it holds a table, a grid or a
+   photograph — the prose inside it stays on a readable measure and the panel
+   keeps its width. That is a different case and is left alone. */
+
+/* Same fault in two more panels: the journal block sets its text to 368px
+   (40 characters) inside a 704px box, and the steps panel to 448px inside
+   1168px. Both cap the text and leave the box wide. */
+.g-journal__in{ max-width: var(--m-tight); }
+.g-journal__in > *:not(p):not(li):not(dd):not(.g-limit){ max-width: none; }
+.g-steps__out{ max-width: var(--m-read); }
+.g-steps__out > *:not(p):not(li):not(dd):not(.g-limit){ max-width: none; }
+
+/* Two more of the same: the weather block sets 416px of text across the full
+   1440px width, and the scarcity panel 352px inside 896px. */
+.g-wx{ max-width: var(--m-read); margin-inline: auto; }
+.g-wx > *:not(p):not(li):not(dd):not(.g-limit){ max-width: none; }
+.g-scarce__in{ max-width: var(--m-tight); }
+.g-scarce__in > *:not(p):not(li):not(dd):not(.g-limit){ max-width: none; }
+
+/* ==========================================================================
+   A TWO-COLUMN BLOCK WITH ONE COLUMN
+   `.g-two` splits into text and media. Where there is no media the text keeps
+   half the width and the other half is empty — 320px of nothing beside a
+   paragraph. This is the "empty second column" I flagged several rounds ago
+   and never fixed.
+
+   A single child spans both columns.
+   ========================================================================== */
+.g-two:has(> :only-child) > *,
+.g-two > :only-child{ grid-column: 1 / -1; max-width: var(--m-read); }
+/* If the media is present but empty — a missing photograph — the text still
+   takes the row rather than sitting beside a gap. */
+.g-two > div:empty{ display: none; }
+
+/* ==========================================================================
+   THE COMPONENTS THAT NEVER HAD A MEASURE
+   Collapsing the 23 widths onto three tokens only fixed what already had a
+   max-width. These carried none at all, so their prose ran to whatever the
+   panel gave it — 162 characters on a limit note, 123 on the booking bar.
+
+   Anything holding a sentence gets a measure. One list, so the next component
+   inherits the system instead of inventing a twenty-fourth width.
+   ========================================================================== */
+.g-faq__a, .g-faq__q,
+.g-ledger__note,
+.g-limit, .g-limit p,
+.g-book-bar__note,
+.g-welcome__t, .g-backtoform__t,
+.g-hint, .g-note, .g-caption,
+.g-arrive__p,
+.g-terms__l dd,
+.g-plate__l dd,
+.g-facts-list dd,
+.g-three__d,
+.g-card__desc,
+.g-journal__p,
+.g-notify__n,
+.g-avc__k,
+main figcaption{
+  max-width: var(--m-read);
+}
+
+/* Set larger than body, so it earns a longer line. */
+.g-lede, .g-lede-first, .g-p--lede,
+.g-hero__lede, .g-quote-band__t, .g-pull p{
+  max-width: var(--m-wide);
+}
+
+/* A label, a figure caption, a short note beside something else. */
+.g-eyebrow, .g-fr, .g-foot-note,
+.g-score span, .g-proof__l dd{
+  max-width: var(--m-tight);
+}
+
+/* A measure inside a column that is already narrow does nothing but risk
+   making it narrower. Inside a card, a grid cell or a two-column split the
+   column IS the measure. */
+/* Inside a card or a grid cell the column already IS the measure, so a second
+   one only risks making it narrower. The card's own description keeps its
+   measure though — it is the one thing in there that is prose. */
+.g-card > *, .g-three__i > *, .g-anim__i > *,
+.g-two > * > p, .g-cols > * > p{
+  max-width: none;
+}
+.g-card__desc, .g-three__d, .g-anim__d{ max-width: var(--m-read); }
+
+/* ==========================================================================
+   THE MEASURE, ENFORCED LAST
+   Several components declare a measure early in the sheet and something later
+   clears it — I traced one for a long time without finding the rule, and the
+   element ends up with `max-width: none` and a 162-character line.
+
+   Rather than keep hunting overrides, the measure is restated at the end of
+   the stylesheet where nothing can follow it. If the earlier declaration is
+   later found to be sufficient, this block can go.
+   ========================================================================== */
+main .g-limit,
+main .g-faq__a,
+main .g-ledger__note,
+main .g-book-bar__note,
+main .g-welcome__t,
+main .g-backtoform__t,
+main .g-hint,
+main .g-arrive__p,
+main .g-journal__p,
+main .g-notify__n,
+main figcaption{
+  max-width: var(--m-read);
+}
+main .g-lede, main .g-lede-first,
+main .g-quote-band__t{
+  max-width: var(--m-wide);
+}
+/* The hero lede is the largest text on the site, so a measure sized for body
+   copy leaves it 37 characters. It keeps its own. */
+.g-hero__lede{ max-width: 52rem; }
+
+/* ==========================================================================
+   A MEASURE IN REM IGNORES THE FONT SIZE
+   --m-read at 46rem gives 66 characters at 18px and 96 at 16px, so every
+   component set smaller than body ran long even with the token applied. The
+   whole point of `ch` is that it scales with the text.
+
+   The tokens stay in rem for layout use — a panel width should not change
+   with its contents — but prose measures in characters.
+   ========================================================================== */
+main .g-limit, main .g-faq__a, main .g-faq__q,
+main .g-ledger__note, main .g-book-bar__note,
+main .g-welcome__t, main .g-backtoform__t,
+main .g-hint, main .g-arrive__p, main .g-journal__p,
+main .g-notify__n, main figcaption,
+main .g-card__desc, main .g-three__d,
+main .g-terms__l dd, main .g-plate__l dd, main .g-facts-list dd{
+  max-width: 66ch;
+}
+main .g-lede, main .g-lede-first, main .g-quote-band__t{ max-width: 60ch; }
+.g-hero__lede{ max-width: 46ch; }
+main .g-p, main .g-sec > .g-wrap > p{ max-width: 68ch; }
+
+/* ==========================================================================
+   THE HERO SEARCH PANEL ON A PHONE
+   329px — 39% of an iPhone screen — for three fields and a button, stacked
+   full width with 88px per row. The hero it sits in is the photograph people
+   came for, and the panel covers most of it.
+
+   Arrival and departure share a row, because a date range is one decision and
+   the two halves are read together. Guests and the button share the next.
+   Roughly half the height, everything still 48px tall to the thumb.
+   ========================================================================== */
+@media (max-width: 44rem){
+  .g-herosearch{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+  }
+  .g .g-herosearch__f{ padding: var(--s3) var(--s4); min-height: 0; }
+  .g .g-herosearch__f > label{ margin-bottom: 0; }
+  /* The tap target itself must be 44px, not the cell around it. */
+  .g .g-herosearch__f .g-rp__btn{ min-height: 44px; }
+  .g .g-herosearch__f .g-rp__btn .g-rp__val,
+  .g .g-herosearch__f input:not([type="date"]),
+  .g .g-herosearch__f select{
+    font-size: var(--t-lede) !important;
+    min-height: 44px;
+  }
+  /* guests is a number; it does not need half a row */
+  .g-herosearch__f:nth-of-type(3){ grid-column: 1; }
+  .g .g-herosearch__go{
+    grid-column: 2; margin: 0;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 56px;
+  }
+}
+/* Below 22rem two columns stop being readable. */
+@media (max-width: 22rem){
+  .g-herosearch{ grid-template-columns: 1fr; }
+  .g-herosearch__f:nth-of-type(3),
+  .g .g-herosearch__go{ grid-column: 1; }
+}
+
+/* The pause control is pinned to the hero's bottom-right corner. On a desktop
+   that is empty sky; on a phone the search panel reaches into it, so the
+   button sat on the corner of the Guests field. It moves above the panel,
+   where there is nothing to collide with. */
+@media (max-width: 44rem){
+  /* Top-right put it under the menu button — one collision traded for
+     another. Bottom-LEFT is clear: the panel is inset from both edges and
+     nothing else in the hero reaches down there. */
+  /* Three attempts at placing this as a floating control hit the menu
+     button, then the sticky bar, then the search panel. A hero corner on a
+     phone has no free space. It goes into the flow instead — below the
+     panel, aligned right, where nothing can collide with it. */
+  .g-hero__pause{
+    position: static;
+    display: flex; margin: var(--s3) 0 0 auto;
+    width: 44px; height: 44px;
+  }
+}
+/* Never over the search panel, at any width. */
+.g-herosearch{ position: relative; z-index: 4; }
+
+/* ==========================================================================
+   GOLD, PROPERLY — AND A SECOND COLOUR
+   ==========================================================================
+
+   The gilt is #73562D, and it reads brown because it was darkened until it
+   passed AA as TEXT on the parchment — 6.02:1. Real leaf gold on cream is
+   about 2.1:1, which is unreadable as a word and perfect as a line.
+
+   So the token splits by job rather than by shade:
+
+     --gilt        #73562D   text only. Eyebrows, figures, links. Unchanged.
+     --gold        #C5A24A   ormolu — rules, borders, marks, fills, dividers.
+                             Never a word on parchment.
+     --gold-lit    #DCC077   gold on the navy, where it can be bright: 7.3:1.
+     --gold-deep   #9A7B2E   a gold that still carries at small sizes.
+
+   Contrast rules apply to text. A hairline under a heading is not text, and
+   holding it to a text ratio is why the gold has been invisible.
+   ========================================================================== */
+:root{
+  --gold:      #C5A24A;
+  --gold-lit:  #DCC077;
+  --gold-deep: #9A7B2E;
+  --gold-wash: rgba(197,162,74,.14);
+
+  /* The second colour, from the building rather than invented: the terracotta
+     of the hexagonal floor tiles and the roof. Warm against all that blue. */
+  --terre:      #A8603C;
+  --terre-pale: #E8CDBE;
+  --terre-wash: rgba(168,96,60,.10);
+}
+
+/* ---- Every rule and mark that was brown is now gold --------------------- */
+.g-eyebrow::before,
+.g-fr::after,
+.g-place::after,
+.g-h2::after,
+.g-section-rule,
+hr{ background: var(--gold); border-color: var(--gold); }
+
+.g-limit,
+.g-cred2,
+.g-family,
+.g-terms,
+.g-pricenote,
+.g-welcome,
+.g-backtoform{ border-left-color: var(--gold); }
+
+/* The RING is ornament and takes the gold. The numeral inside it is a word
+   at 13px, so it keeps the legible gilt — the same split, one level down. */
+.g-arrive__n,
+.g-three__n{ border-color: var(--gold); color: var(--gilt); }
+
+/* The drawn marks were the same brown as the body rules; they are the one
+   piece of ornament on the page and should read as leaf. */
+.g-mark{ color: var(--gold); }
+.g-mark__wrap svg{ color: var(--gold); }
+
+/* Figures are read, so they keep the legible gilt. What changes is the
+   RULE beneath them, which is ornament and can be gold. */
+.g-fig, .g-scale__n, .g-proof__l dt, .g-stat__n{ color: var(--gilt); }
+.g-fig::after, .g-scale__n::after{ background: var(--gold); }
+
+/* On the navy the gold can be what it actually is. */
+.g-sec--dark .g-eyebrow,
+.g-sec--dark .g-fr,
+.g-sec--dark .g-limit__k,
+.g-cred__m,
+.g-aside .g-eyebrow,
+.g-panel--dark .g-eyebrow,
+.g-panel--dark dt,
+.g-stickybar .g-eyebrow{ color: var(--gold-lit); }
+
+.g-sec--dark .g-limit{ border-left-color: var(--gold-lit); }
+.g-avc__d.has-dinner::after,
+.g-rp__d.has-dinner::after,
+.g-avc__dot{ background: var(--gold); }
+
+/* The gilt rule beneath a heading was a hairline of brown. */
+.g-place::after, .g-h2::after{ height: 2px; }
+
+/* ==========================================================================
+   THE SECOND COLOUR, AND A THIRD GROUND
+   Fifteen of twenty-nine sections on Restoration sit on plain cream, so the
+   page reads as one long sheet. The palette has a stone and a terracotta in
+   it that nothing uses.
+
+   Terracotta is not invented: it is the hexagonal floor tile and the roof.
+   It gives the blue something to sit against, which cream cannot do.
+   ========================================================================== */
+
+/* A ground for the sections that are about the building's own materials —
+   the plaster, the stone, the floors. Warmer than the sand, still quiet. */
+.g-sec--terre{ background: linear-gradient(180deg, #F4E9E1 0%, #F0E2D8 100%); }
+.g-sec--terre .g-eyebrow{ color: #8A4E30; }
+.g-sec--terre .g-place::after, .g-sec--terre .g-h2::after{ background: var(--terre); }
+.g-sec--terre .g-limit{ border-left-color: var(--terre); }
+
+/* A gold rule to close a run of sections, rather than another hairline. */
+.g-rule--gold{
+  height: 2px; border: 0; margin: var(--s7) 0;
+  background: linear-gradient(90deg,
+    transparent 0%, var(--gold) 18%, var(--gold) 82%, transparent 100%);
+}
+
+/* The pull quote is the one place a page raises its voice. It was ink on
+   cream like everything around it. */
+.g-testament__q, .g-quote-band__t, blockquote{
+  border-left: 3px solid var(--gold);
+  padding-left: var(--s5);
+}
+.g-testament__q cite, blockquote cite{ color: var(--gold-deep); }
+
+/* A dt is a WORD, so it takes --gilt, not the gold. I applied --gold-deep
+   here first and dropped ten pages to 3.75:1 — which is the exact mistake
+   the split token exists to prevent. Ornament gets gold; text gets gilt. */
+.g-plate__l dt, .g-facts-list dt, .g-terms__l dt{ color: var(--gilt); }
+
+/* The dark sections were flat navy edge to edge. A gold hairline at the top
+   makes the change of ground deliberate rather than abrupt. */
+.g-sec--dark{ border-top: 2px solid var(--gold); }
+.g-sec--dark + .g-sec--dark{ border-top: 0; }
+
+/* Buttons: the solid navy is right for the primary. The secondary was a bare
+   underline; a gold one ties it to the rest. */
+.g-btn:not(.g-btn--solid){
+  border-bottom: 1px solid var(--gold);
+  text-decoration: none;
+}
+.g-btn:not(.g-btn--solid):hover{ border-bottom-color: var(--gold-deep); }
+
+/* The proof figures are the strongest thing on the homepage and were set at
+   label size in a quiet brown. They are the numbers other people gave you. */
+.g-proof__l dt{
+  font-size: var(--t-h1); line-height: 1;
+  color: var(--gilt);
+}
+.g-proof__l > div{ padding-top: var(--s3); border-top: 2px solid var(--gold); }
+.g-proof__k{ color: var(--gilt); }
+
+/* The drop cap opening a page is the one initial on the site; it can be leaf. */
+.g-lede-first::first-letter,
+.g-drop::first-letter{
+  color: var(--gold-deep);
+}
+
+/* A gold hairline above the closer, so the last section arrives rather than
+   simply continuing. */
+main > section:last-of-type{ border-top: 2px solid var(--gold); }
+main > .g-sec--dark:last-of-type{ border-top: 2px solid var(--gold-lit); }
+
+/* A section that already carries a treatment must not take a second ground.
+   Adding the terracotta to .g-creed replaced its dark background and left
+   its pale text on a pale ground — invisible. */
+.g-sec--dark.g-sec--terre,
+.g-creed.g-sec--terre,
+.g-testament.g-sec--terre{ background: revert; }
+
+/* The creed words are 42px, so the large-text floor of 3.0:1 applies rather
+   than 4.5 — but #B08D57 sits at 2.75:1, just under. The gold-deep clears it
+   at 3.9 and is the same family. Pre-existing, not from this round. */
+.g-creed__word{ color: var(--gold-deep); }
+
+/* ==========================================================================
+   THE DISCLOSURE BUG
+   `.g summary{ display: flex }` — written to give every summary a 44px tap
+   height — removes the native disclosure behaviour in Chromium. A closed
+   <details> then renders its content at full height anyway, so on Workshops
+   every FAQ answer was drawn on top of the one below it. Nine overlaps on
+   that page alone, and the same on Weddings and Photoshoots.
+
+   A summary can be a flex CONTAINER without being display:flex itself: keep
+   `list-item`, which preserves the behaviour, and lay the inside out instead.
+   ========================================================================== */
+.g summary,
+.g-faq summary{
+  display: list-item;
+  list-style: none;
+  min-height: 44px;
+  cursor: pointer;
+}
+.g summary::marker,
+.g summary::-webkit-details-marker{ content: ""; display: none; }
+
+/* The row inside the summary does the aligning the flex was there for. */
+.g-faq summary{
+  padding: var(--s4) 0;
+  position: relative;
+  padding-right: 2rem;
+  display: list-item;
+}
+.g-faq summary::after{
+  position: absolute; right: 2px; top: 50%; margin-top: -8px;
+}
+/* Belt and braces: a closed disclosure hides its content whatever else
+   happens to the summary's display. */
+.g details:not([open]) > *:not(summary){ display: none; }
+
+/* ==========================================================================
+   HEADINGS OFF THE SPINE
+   `.g-sec > .g-wrap > .g-h2` sets `max-width: var(--measure)` with auto side
+   margins, so a heading centres itself inside the wrap while the prose below
+   it stays left-aligned. On The Estate that put headings at x384 and their
+   own paragraphs at x136 — a 248px step, six times down the page.
+
+   Line 5531 already tried to fix this with `margin-left: 0`, but the auto
+   right margin still centres what is left. Both margins have to go.
+   ========================================================================== */
+.g .g-wrap > .g-h2,
+.g .g-wrap > .g-place,
+.g .g-wrap > .g-h3,
+.g-wrap.g > .g-h2,
+.g-wrap.g > .g-place,
+.g-wrap.g > .g-h3{
+  margin-left: 0;
+  margin-right: 0;
+  max-width: var(--m-wide);
+}
+/* A section that is deliberately centred keeps its centring. */
+.g-sec--centre > .g-wrap > .g-h2,
+.g-sec--centre > .g-wrap > .g-place,
+.g-hero .g-h2{ margin-left: auto; margin-right: auto; }
+
+/* The same centring fault as the headings, mirrored: a lede paragraph with
+   auto side margins centres itself under a left-aligned heading. On Contact
+   and Stay the heading sat at x136 and its own first paragraph at x352.
+   Prose lines up with the heading it belongs to. */
+.g .g-wrap > .g-p,
+.g .g-wrap > .g-lede-first,
+.g .g-wrap > p,
+.g-wrap.g > .g-p,
+.g-wrap.g > .g-lede-first,
+.g-wrap.g > p{
+  margin-left: 0;
+  margin-right: 0;
+}
+.g-sec--centre > .g-wrap > .g-p,
+.g-sec--centre > .g-wrap > p{ margin-left: auto; margin-right: auto; }
+
+/* ==========================================================================
+   PHOTO INTAKE
+   The drop zone is the page. Everything else is secondary to getting the
+   photograph in, so it takes the width and the weight.
+   ========================================================================== */
+.pi-form{ max-width: 46rem; margin-top: var(--s6); }
+
+.pi-drop{
+  position: relative; display: grid; place-items: center;
+  min-height: 16rem; padding: var(--s6);
+  border: 2px dashed var(--gold); border-radius: 2px;
+  background: var(--sand-2);
+  cursor: pointer; transition: background .15s ease, border-color .15s ease;
+}
+.pi-drop:hover,
+.pi-drop:focus-visible,
+.pi-drop.is-over{ background: var(--gold-wash); border-color: var(--gold-deep); }
+.pi-drop:focus-visible{ outline: 2px solid var(--gold-deep); outline-offset: 3px; }
+
+.pi-drop__input{
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+.pi-drop__idle{ text-align: center; pointer-events: none; }
+.pi-drop__mark{ width: 64px; height: 48px; color: var(--gold); margin-bottom: var(--s4); }
+.pi-drop__t{
+  margin: 0; font-family: var(--display); font-size: var(--t-h3);
+  color: var(--blue-deep);
+}
+.pi-drop__s{ margin: var(--s2) 0 0; font-family: var(--ui);
+  font-size: var(--t-ui); color: var(--ink-soft); }
+
+.pi-drop__has{
+  display: grid; grid-template-columns: minmax(0,14rem) 1fr;
+  gap: var(--s5); align-items: center; width: 100%;
+}
+@media (max-width: 34rem){ .pi-drop__has{ grid-template-columns: 1fr; } }
+.pi-drop__prev{
+  width: 100%; aspect-ratio: 3/2; object-fit: cover;
+  border: 1px solid var(--line); background: var(--sand-3);
+}
+.pi-drop__name{ margin: 0; font-family: var(--ui); font-size: var(--t-ui);
+  color: var(--blue-deep); word-break: break-all; }
+.pi-drop__facts{ margin: var(--s2) 0 0; font-family: var(--ui);
+  font-size: var(--t-sm); color: var(--ink-soft); }
+.pi-drop__clear{
+  margin-top: var(--s3); min-height: 44px; padding: 0;
+  background: none; border: 0; border-bottom: 1px solid var(--gold);
+  font-family: var(--ui); font-size: var(--t-ui);
+  color: var(--blue-deep); cursor: pointer;
+}
+
+.pi-grid{
+  display: grid; gap: var(--s4) var(--s5); margin-top: var(--s6);
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 40rem){ .pi-grid{ grid-template-columns: 1fr; } }
+.pi-grid .g-field{ margin: 0; }
+.pi-caption{ margin-top: var(--s5); }
+.pi-caption textarea{ width: 100%; }
+.pi-actions{
+  display: flex; align-items: center; gap: var(--s5);
+  margin-top: var(--s6); flex-wrap: wrap;
+}
+
+.pi-recent{
+  display: grid; gap: var(--s4);
+  grid-template-columns: repeat(auto-fill, minmax(min(11rem,100%),1fr));
+}
+.pi-recent__i{ margin: 0; }
+.pi-recent__i img{
+  width: 100%; aspect-ratio: 1; object-fit: cover;
+  border: 1px solid var(--line);
+}
+.pi-recent__i figcaption{
+  margin-top: var(--s2); font-family: var(--ui); font-size: var(--t-sm);
+  color: var(--ink-soft);
+}
+.pi-recent__s{ color: var(--gilt); }
+
+/* ==========================================================================
+   WALL MODE
+   A kitchen screen is read from three metres by someone holding a knife.
+   Everything gets bigger, the chrome goes, and the whole thing states how
+   fresh it is.
+   ========================================================================== */
+body:has(.kw-stamp){ background: #0E1C30; color: #F2EDE3; }
+body:has(.kw-stamp) .g-top,
+body:has(.kw-stamp) .g-foot,
+body:has(.kw-stamp) .g-crumbs,
+body:has(.kw-stamp) nav,
+body:has(.kw-stamp) .g-btn{ display: none !important; }
+body:has(.kw-stamp) main{ padding: 2rem 2.5rem 5rem; max-width: none; }
+
+body:has(.kw-stamp) h1,
+body:has(.kw-stamp) h2{ color: #fff; font-size: clamp(30px, 3.4vw, 54px); }
+body:has(.kw-stamp) h3{ color: var(--gold-lit); font-size: clamp(22px, 2.2vw, 34px); }
+body:has(.kw-stamp) p,
+body:has(.kw-stamp) li,
+body:has(.kw-stamp) td,
+body:has(.kw-stamp) dd{ font-size: clamp(19px, 1.7vw, 28px); line-height: 1.45; color: #E4DDD0; }
+body:has(.kw-stamp) th,
+body:has(.kw-stamp) dt{ font-size: clamp(15px, 1.2vw, 20px); color: var(--gold-lit); }
+body:has(.kw-stamp) tr{ border-bottom: 1px solid rgba(255,255,255,.14); }
+body:has(.kw-stamp) td{ padding: .55em .7em; }
+
+/* A dietary line is the one thing on this screen that must not be missed. */
+body:has(.kw-stamp) [class*="allerg"],
+body:has(.kw-stamp) [class*="dietary"],
+body:has(.kw-stamp) .g-limit--warn{
+  background: #6E2414; color: #fff; padding: .5em .7em; border: 0;
+  font-weight: 600;
+}
+
+.kw-stamp{
+  position: fixed; right: 0; bottom: 0; left: 0; z-index: 90;
+  display: flex; align-items: baseline; gap: 1rem;
+  padding: .7rem 2.5rem;
+  background: #0A1626; border-top: 2px solid var(--gold);
+  font-family: var(--ui);
+}
+.kw-stamp__t{ font-size: 1.5rem; color: #fff; font-variant-numeric: tabular-nums; }
+.kw-stamp__s{ font-size: 1rem; color: var(--gold-lit); }
+body.kw-stale .kw-stamp{ background: #6E2414; border-top-color: #E8A33D; }
+body.kw-stale .kw-stamp__s{ color: #fff; }
+
+/* ---- the darkroom ------------------------------------------------------ */
+.pi-edit{
+  display: grid; grid-template-columns: 1fr minmax(16rem, 20rem);
+  gap: var(--s5); margin-top: var(--s5);
+  padding: var(--s5); background: var(--sand-2); border: 1px solid var(--line);
+}
+@media (max-width: 46rem){ .pi-edit{ grid-template-columns: 1fr; } }
+.pi-edit__stage{
+  display: grid; place-items: center; min-height: 14rem;
+  background: #1A2233; padding: var(--s4);
+}
+.pi-edit__stage canvas{ max-width: 100%; max-height: 26rem; display: block; }
+.pi-edit__k{
+  margin: 0 0 var(--s3); font-family: var(--ui); font-size: var(--t-sm);
+  font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--gilt);
+}
+.pi-edit__k + .pi-slider{ margin-top: 0; }
+.pi-slider{
+  display: grid; grid-template-columns: 5.5rem 1fr 2.2rem;
+  align-items: center; gap: var(--s3); margin: 0 0 var(--s3);
+}
+.pi-slider label{ font-family: var(--ui); font-size: var(--t-ui); color: var(--ink); }
+.pi-slider input[type=range]{ width: 100%; min-height: 44px; accent-color: var(--gold-deep); }
+.pi-slider output{
+  font-family: var(--ui); font-size: var(--t-sm); color: var(--ink-soft);
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.pi-edit__row{
+  display: flex; flex-wrap: wrap; gap: var(--s3);
+  margin: var(--s4) 0 var(--s5);
+}
+.pi-crop{
+  min-height: 44px; padding: 0 var(--s4);
+  background: none; border: 1px solid var(--line);
+  font-family: var(--ui); font-size: var(--t-sm);
+  color: var(--ink); cursor: pointer;
+}
+.pi-crop.is-on{ border-color: var(--gold-deep); color: var(--gilt); background: var(--gold-wash); }
+.pi-crop:focus-visible{ outline: 2px solid var(--gold-deep); outline-offset: 2px; }
+
+/* ==========================================================================
+   THE PASS
+   A fixed iPad in a working kitchen. Everything is bigger than the site,
+   nothing depends on hover, no target is under 44px, and the allergy line is
+   the loudest thing on the screen.
+   ========================================================================== */
+.pass{ padding: 0 0 4rem; }
+
+.pass__bar{
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--s6);
+  padding: var(--s4) var(--s5);
+  background: var(--blue-deep); color: #fff;
+  border-bottom: 2px solid var(--gold);
+  flex-wrap: wrap;
+}
+.pass__k{
+  margin: 0; font-family: var(--ui); font-size: 12px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--gold-lit);
+}
+.pass__cover{
+  margin: 2px 0 0; font-family: var(--display); font-size: 30px;
+  line-height: 1; color: #fff; font-variant-numeric: lining-nums;
+}
+.pass__cover b{ font-weight: 400; }
+.pass__now--warn .pass__k{ color: #F2B8A2; }
+.pass__now--warn .pass__cover{ color: #FFD9CB; }
+
+.pass__tabs{ margin-left: auto; display: flex; gap: 2px; }
+.pass__tab{
+  min-height: 52px; padding: 0 var(--s5);
+  background: rgba(255,255,255,.08); border: 0; color: #C9D4DF;
+  font-family: var(--ui); font-size: 17px; cursor: pointer;
+}
+.pass__tab.is-on{ background: #fff; color: var(--blue-deep); font-weight: 600; }
+.pass__tab:focus-visible{ outline: 2px solid var(--gold-lit); outline-offset: -3px; }
+
+.pass__panel{ padding: var(--s5); }
+.pass__empty{
+  padding: var(--s7) 0; text-align: center;
+  font-family: var(--display); font-size: 26px; color: var(--ink-soft);
+}
+
+/* ---- guests ---- */
+.pass__list{ list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s3); }
+.pass__g{ border: 1px solid var(--line); background: var(--white); }
+.pass__g.is-vip{ border-left: 4px solid var(--gold); }
+.pass__g.has-allergy{ border-left: 4px solid #A8341A; }
+
+.pass__g__hit{
+  width: 100%; min-height: 76px; padding: var(--s4) var(--s5);
+  display: grid; gap: var(--s2); text-align: left;
+  background: none; border: 0; cursor: pointer;
+}
+.pass__g__hit:focus-visible{ outline: 2px solid var(--gold-deep); outline-offset: -3px; }
+.pass__g__main{ display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3) var(--s4); }
+.pass__g__name{
+  font-family: var(--display); font-size: 27px; color: var(--blue-deep);
+}
+.pass__g__tags{ display: flex; flex-wrap: wrap; gap: 6px; }
+.pass__tag{
+  padding: 3px 9px; border: 1px solid var(--line);
+  font-family: var(--ui); font-size: 14px; color: var(--ink-soft);
+  white-space: nowrap;
+}
+.pass__tag--rep{ border-color: var(--gold); color: var(--gilt); }
+.pass__tag--vip{ background: var(--gold-wash); border-color: var(--gold); color: var(--gilt); }
+.pass__tag--out{ border-style: dashed; }
+
+/* The one line on this screen that must never be missed. */
+.pass__g__eat{
+  display: block; padding: var(--s3) var(--s4);
+  background: #A8341A; color: #fff;
+  font-family: var(--ui); font-size: 19px; font-weight: 600; line-height: 1.35;
+}
+
+.pass__prof{ padding: 0 var(--s5) var(--s5); border-top: 1px solid var(--line); }
+.pass__prof__l{ margin: var(--s4) 0 0; display: grid; gap: var(--s3); }
+@media (min-width: 46rem){ .pass__prof__l{ grid-template-columns: 1fr 1fr; gap: var(--s3) var(--s6); } }
+.pass__prof__l > div{ display: grid; gap: 2px; }
+.pass__prof__l dt{
+  font-family: var(--ui); font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.pass__prof__l dd{ margin: 0; font-size: 18px; line-height: 1.45; color: var(--ink); }
+.pass__prof__eat{ grid-column: 1 / -1; }
+.pass__prof__eat dd{ color: #A8341A; font-weight: 600; }
+
+.pass__prof__k{
+  margin: var(--s5) 0 var(--s3); font-family: var(--ui); font-size: 13px;
+  font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.pass__prof__h{ list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.pass__prof__h li{ font-size: 17px; color: var(--ink-soft); }
+.pass__prof__h span{ color: var(--gilt); margin-right: var(--s3); }
+
+.pass__prof__note{ margin-top: var(--s5); display: grid; gap: var(--s3); max-width: 40rem; }
+.pass__prof__note label{ font-family: var(--ui); font-size: 15px; color: var(--ink-soft); }
+.pass__prof__note textarea{ width: 100%; font-size: 18px; }
+.pass__prof__note .g-btn{ justify-self: start; min-height: 48px; }
+
+/* ---- store ---- */
+.pass__filters{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: 0 0 var(--s5); }
+.pass__f{
+  min-height: 48px; padding: 0 var(--s5);
+  background: none; border: 1px solid var(--line);
+  font-family: var(--ui); font-size: 17px; color: var(--ink); cursor: pointer;
+}
+.pass__f.is-on{ background: var(--blue-deep); border-color: var(--blue-deep); color: #fff; }
+
+.pass__stock{
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 2px;
+}
+.pass__s{
+  display: grid; grid-template-columns: 1fr auto auto auto;
+  align-items: center; gap: var(--s4);
+  padding: var(--s3) var(--s4); background: var(--white);
+  border: 1px solid var(--line);
+}
+.pass__s.is-low{ border-left: 4px solid #A8341A; background: #FCF3F0; }
+.pass__s__n{ font-size: 20px; color: var(--blue-deep); }
+.pass__s__q{ font-family: var(--display); font-size: 22px; color: var(--blue-deep);
+  font-variant-numeric: lining-nums; white-space: nowrap; }
+.pass__s__q em{ font-style: normal; font-size: 14px; color: var(--ink-soft); }
+.pass__s__low{
+  padding: 3px 10px; background: #A8341A; color: #fff;
+  font-family: var(--ui); font-size: 14px; font-weight: 600;
+}
+.pass__s__w{ font-family: var(--ui); font-size: 14px; color: var(--ink-soft); }
+
+.pass__ask{ margin-top: var(--s6); display: grid; gap: var(--s3); max-width: 44rem; }
+.pass__ask label{ font-family: var(--ui); font-size: 15px; color: var(--ink-soft); }
+.pass__ask input{ font-size: 19px; min-height: 52px; }
+.pass__ask .g-btn{ justify-self: start; min-height: 48px; }
+
+/* ---- word ---- */
+.pass__say{ max-width: 44rem; display: grid; gap: var(--s4); }
+.pass__say textarea, .pass__say select{ width: 100%; font-size: 19px; }
+.pass__say select{ min-height: 52px; }
+.pass__msgs{ list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: var(--s3); }
+.pass__m{ padding: var(--s4); background: var(--white); border: 1px solid var(--line); }
+.pass__m.is-urgent{ border-left: 4px solid #A8341A; }
+.pass__m__who{ font-family: var(--ui); font-size: 15px; font-weight: 600; color: var(--blue-deep); }
+.pass__m__when{ font-family: var(--ui); font-size: 14px; color: var(--ink-soft); margin-left: var(--s3); }
+.pass__m__b{ margin: var(--s2) 0 0; font-size: 18px; line-height: 1.5; }
+
+/* On the iPad it will actually live on. */
+@media (min-width: 46rem){
+  .pass__panel{ padding: var(--s5) var(--s6); }
+}

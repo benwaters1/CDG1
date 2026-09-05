@@ -184,6 +184,12 @@ def run():
             if have is None:
                 missing_macros.append(f"{rel} imports from {partial}, which is not a template")
                 continue
+            # `with context` / `without context` is a suffix on the import,
+            # not a macro. A partial whose macro reads something the route
+            # supplies has to be imported that way -- an imported macro sees
+            # none of the caller's context otherwise -- so reading it as a
+            # name meant the check failed on four correct pages.
+            names = re.sub(r"\s+with(?:out)?\s+context\s*$", "", names.strip())
             for want in [w.strip() for w in names.split(",") if w.strip()]:
                 want = want.split(" as ")[0].strip()
                 if want and want not in have:

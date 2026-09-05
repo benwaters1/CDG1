@@ -5,7 +5,7 @@
 {% set sticky_bar = 'none' %}
 {% set crumbs = [('Stay', None)] %}
 {% block title_fr %}Séjourner au château{% endblock %}
-{% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
+{% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms and house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
 {% block title %}Stay{% endblock %}
 {% block description %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_desc %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
@@ -106,7 +106,7 @@
 <div class="g-band"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1731560785352-PVDXL7V3QVW8X7C83ZEI/Chambre+du+Parc+1.jpg?format=1500w" alt="A bedroom under restoration, bare walls and new linen" loading="lazy"><img src="https://images.squarespace-cdn.com/content/53c3b576e4b02bad423517b8/1583285824858-UYGX2N1J4NZOY248SYRT/Chambre+Emeraude.jpg?format=1500w" alt="Chambre Emeraude" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/a048b9df-ef5b-4d02-aaf9-59901f18966f/Bathrooms+-+After+Work.jpg?format=1500w" alt="Bathrooms - After Work" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/edc68ec5-2523-4935-8d27-ad2bbda74d96/day_1_19.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"><img src="https://images.squarespace-cdn.com/content/v1/53c3b576e4b02bad423517b8/6799c065-af15-4138-8ad6-3c61ddcdd139/day_1_21.jpg?format=1500w" alt="The château de Gudanes" loading="lazy"></div>
 
 <!-- ============ WHY THE WALLS STAY ============ -->
-<section class="g-sec g-sec--sand"><div class="g-wrap">
+<section class="g-sec g-sec--sand g-sec--terre"><div class="g-wrap">
   <p class="g-fr">Ce que la loi protège<span class="g-fr__en">What the law protects</span></p>
   <p class="g-eyebrow">Not a Compromise</p>
   <h2 class="g-place">Why the Walls Stay As They Are</h2>
@@ -372,15 +372,11 @@
     <div><dt>Breakfast</dt><dd>Bread from the village, three minutes down the hill. Included</dd></div>
     <div><dt>Children</dt><dd>Eight and over. Original staircases and unrestored rooms make it unsuitable below that</dd></div>
   </dl>
-
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
-  </p>
 </div></section>
 
 
 
-<section class="g-sec g-sec--tight" data-fold><div class="g-wrap g-wrap--narrow">
+<section class="g-sec g-sec--tight g-sec--terre" data-fold><div class="g-wrap g-wrap--narrow">
   <h2 class="g-place">What the Rooms Are Made Of</h2>
   <p class="g-p">Château de Gudanes is under restoration, having been a ruin until recent years — work is ongoing throughout the estate. Most bathrooms sit together in a central area, though each is privately allocated to its room, aside from the shared rooms, which share a bathroom between the two.</p>
   <p class="g-p">The château is home to one resident French Bulldog — naturally — and a few cats.</p>
@@ -700,10 +696,6 @@
     {% if settings['score_overall'] %}{{ settings['score_overall'] }} overall on Booking.com{% else %}Guest ratings on Booking.com{% endif %}{% if settings['review_count'] %}, from {{ '{:,}'.format(settings['review_count']|int) }} reviews{% endif %}.
   </p>
   {% endif %}
-
-  <p style="margin-top:var(--s7);text-align:center">
-    <a href="#book" class="g-btn g-btn--solid">Check your dates</a>
-  </p>
 </div></section>
 
 {{ animals() }}
