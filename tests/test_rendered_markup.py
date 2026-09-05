@@ -50,6 +50,8 @@ import io
 import os
 import re
 
+from datetime import timedelta
+
 from _harness import Suite, clients, db
 import _harness
 
@@ -75,7 +77,46 @@ FIELD = re.compile(r"<(input|select|textarea)\b([^>]*)>", re.S | re.I)
 # GET rules whose arguments are not ids of anything this can look
 # up — a filename, a slug, a month. A ceiling, so a new page
 # behind an unknown argument is noticed rather than skipped.
-NO_RULE = 21
+NO_RULE = 5
+
+# What the sweep fetched and could not read. All seven today are a Stripe
+# return page needing a real session id -- which this suite will never have,
+# because nothing here calls Stripe -- plus the data-request export, which
+# answers 400 without an id. A ceiling rather than a list: a page that starts
+# answering comes off it for free, and one that stops answering has to be
+# looked at.
+DID_NOT_ANSWER = 7
+
+# The pages somebody who does not work here has to get through on their own.
+GUEST_FACING = [
+    ("guest_portal", "a guest's own portal is read"),
+    ("guest_account", "and the account page they are let into"),
+    ("guest_feedback", "the form asking how the stay was"),
+    ("pay_share", "the page one of a party pays their share on"),
+    ("event_quote", "the quote a client opens"),
+    ("workshop_feedback", "what somebody says about an atelier"),
+    ("instructor_page", "the sheet whoever is teaching is sent"),
+    ("supplier_invoice_submit", "a supplier's own upload form"),
+    ("onboard", "and a new colleague's first screen"),
+    ("newsletter_confirm", "confirming a newsletter"),
+    ("newsletter_unsubscribe", "and getting out of one"),
+    ("campaign_unsubscribe", "and out of the campaign email as well"),
+    # The other three kinds of booking have their own confirmation and manage
+    # screens, and every one of them was being fetched with a ROOM booking's
+    # manage token, answering 404, and dropped.
+    ("restaurant_confirmation", "the confirmation for a table"),
+    ("restaurant_manage", "and the page they change it on"),
+    ("workshop_confirmation", "the confirmation for an atelier place"),
+    ("workshop_manage", "and the page they change that on"),
+    ("event_confirmation", "the confirmation for an event"),
+    ("event_manage", "the page the client runs it from"),
+    # DELIBERATELY NOT the three pay pages — event_pay, workshop_pay_deposit
+    # and workshop_pay_balance. With Stripe pinned off, which _harness.py
+    # enforces at import and which must never stop being true here, they
+    # correctly redirect to the manage page rather than offering a button
+    # that cannot work. They are unread because of the harness, and the only
+    # way to change that would be to let a test run touch real payments.
+]
 
 
 def _attrs(raw):
@@ -168,6 +209,54 @@ ID_TABLES = {
     "vehicle_id": ("vehicles", "id"),
 }
 
+# THE GUEST-FACING SITE, which ID_TABLES cannot reach on its own. Ten routes
+# take an argument called `token` and every one of them reads a different
+# table -- so one rule per NAME could never serve them, and the twelve pages
+# an outsider actually opens were the twelve this sweep never read. Their
+# portal, their bill, the feedback form, the quote, the share to pay, the
+# teaching sheet: none of it.
+#
+# A sweep that reads every staff page and no guest page is the green-over-half
+# failure this house has a rule about, and it is worse here than most because
+# these are the pages people who do not work here have to get through.
+ENDPOINT_ARGS = {
+    ("campaign_unsubscribe", "token"): ("campaign_sends", "unsubscribe_token"),
+    ("event_quote", "token"): ("event_quotes", "token"),
+    ("guest_account", "token"): ("guest_sessions", "token"),
+    ("guest_feedback", "token"): ("bookings", "manage_token"),
+    ("guest_portal", "token"): ("guests", "portal_token"),
+    ("instructor_page", "token"): ("workshop_sessions", "instructor_token"),
+    ("newsletter_confirm", "token"): ("newsletter_subscribers", "token"),
+    ("newsletter_unsubscribe", "token"): ("newsletter_subscribers", "token"),
+    ("onboard", "token"): ("users", "invite_token"),
+    ("pay_share", "token"): ("booking_shares", "token"),
+    ("supplier_invoice_submit", "token"): ("vendors", "upload_token"),
+    ("workshop_feedback", "token"): ("workshop_bookings", "manage_token"),
+    ("chat_channel", "slug"): ("chat_channels", "slug"),
+    ("event_confirmation", "manage_token"): ("event_inquiries", "manage_token"),
+    ("event_manage", "manage_token"): ("event_inquiries", "manage_token"),
+    ("event_pay", "manage_token"): ("event_inquiries", "manage_token"),
+    ("event_stripe_success", "manage_token"): ("event_inquiries", "manage_token"),
+    ("restaurant_confirmation", "manage_token"): ("restaurant_bookings", "manage_token"),
+    ("restaurant_manage", "manage_token"): ("restaurant_bookings", "manage_token"),
+    ("workshop_confirmation", "manage_token"): ("workshop_bookings", "manage_token"),
+    ("workshop_manage", "manage_token"): ("workshop_bookings", "manage_token"),
+    ("workshop_pay_balance", "manage_token"): ("workshop_bookings", "manage_token"),
+    ("workshop_pay_deposit", "manage_token"): ("workshop_bookings", "manage_token"),
+    ("guest_booking_history", "email"): ("bookings", "guest_email"),
+    # Reports are keyed by a slug that is a key of REPORT_BUILDERS rather than
+    # a row anywhere, so it is a literal.
+    ("admin_report", "slug"): "financial",
+    ("pay_statement_page", "year"): "2026",
+    ("pay_statement_page", "month"): "1",
+}
+
+# Deliberately NOT taught: room_photo, mirrored_photo, room_ics_feed,
+# export_report_csv and set_language. The first four serve a file and the last
+# redirects, so teaching the sweep to reach them would raise the count of
+# pages "read" without reading a byte of markup -- which is the opposite of
+# what this file is for.
+
 
 def _one(conn, table, column):
     """A real value for this argument, or None if there is nothing to read."""
@@ -198,10 +287,10 @@ def _reachable(conn):
             continue
         values, missing_rule = {}, False
         for arg in r.arguments:
-            if arg not in ID_TABLES:
+            known = ENDPOINT_ARGS.get((r.endpoint, arg), ID_TABLES.get(arg))
+            if known is None:
                 missing_rule = True
                 break
-            known = ID_TABLES[arg]
             value = known if isinstance(known, str) else _one(conn, *known)
             if value is None:
                 break
@@ -220,25 +309,181 @@ def _reachable(conn):
     return rules, sorted(set(unreachable)), sorted(set(no_rule))
 
 
+# Not TAG: that is the tag-matching regex at the top of this file.
+SEEDED = "ZZRM"
+
+
+def _clear(conn):
+    for sql in (
+        "DELETE FROM booking_shares WHERE token LIKE ?",
+        "DELETE FROM bookings WHERE guest_name LIKE ?",
+        "DELETE FROM guests WHERE name LIKE ?",
+        "DELETE FROM guest_sessions WHERE token LIKE ?",
+        "DELETE FROM newsletter_subscribers WHERE token LIKE ?",
+        "DELETE FROM campaign_sends WHERE unsubscribe_token LIKE ?",
+        "DELETE FROM chat_channels WHERE slug LIKE ?",
+        "DELETE FROM workshop_bookings WHERE manage_token LIKE ?",
+        "DELETE FROM restaurant_bookings WHERE manage_token LIKE ?",
+        "DELETE FROM event_quotes WHERE token LIKE ?",
+        "DELETE FROM event_inquiries WHERE reference_code LIKE ?",
+        "DELETE FROM vendors WHERE upload_token LIKE ?",
+        "DELETE FROM users WHERE invite_token LIKE ?",
+        "UPDATE workshop_sessions SET instructor_token = NULL "
+        "WHERE instructor_token LIKE ?",
+    ):
+        try:
+            conn.execute(sql, (SEEDED + "%",))
+        except Exception:
+            pass
+    conn.commit()
+
+
+def _seed(conn):
+    """One row wherever a guest-facing page needs a token to exist.
+
+    WITHOUT THIS THE SWEEP READS WHATEVER THE OTHER SUITES LEFT BEHIND. Every
+    one of these tables is empty in a fresh copy of the database, so the pages
+    an outsider actually opens were reachable in principle and unread in fact
+    -- which is the same "it depends what is in the database" the bound on
+    this file already had to be rescued from.
+
+    Deliberately minimal, and taken away again at the end: this suite reads
+    pages, it does not own the database.
+    """
+    now = m.datetime.now(m.timezone.utc).isoformat()
+    _clear(conn)
+    room = conn.execute("SELECT * FROM rooms ORDER BY id").fetchone()
+    if room:
+        arrival = m.house_today() + timedelta(days=280)
+        conn.execute(
+            """INSERT INTO bookings (room_id, reference_code, manage_token,
+                       guest_name, guest_email, arrival_date, departure_date,
+                       party_size, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 2, 'confirmed', ?)""",
+            (room["id"], SEEDED + "REF", SEEDED + "manage", SEEDED + " Guest",
+             "zzrm.guest@example.invalid", arrival.isoformat(),
+             (arrival + timedelta(days=2)).isoformat(), now))
+        conn.commit()
+        bid = conn.execute("SELECT id FROM bookings WHERE reference_code = ?",
+                           (SEEDED + "REF",)).fetchone()["id"]
+        conn.execute(
+            """INSERT INTO booking_shares (booking_id, name, email, amount,
+                       token, status, created_at)
+               VALUES (?, ?, ?, 100.0, ?, 'open', ?)""",
+            (bid, SEEDED + " Sharer", "zzrm.share@example.invalid",
+             SEEDED + "share", now))
+    conn.execute(
+        "INSERT INTO guests (name, email, portal_token, created_at) VALUES (?, ?, ?, ?)",
+        (SEEDED + " Guest", "zzrm.guest@example.invalid", SEEDED + "portal", now))
+    conn.execute(
+        """INSERT INTO guest_sessions (email, token, created_at, expires_at)
+           VALUES (?, ?, ?, ?)""",
+        ("zzrm.guest@example.invalid", SEEDED + "session", now,
+         (m.datetime.now(m.timezone.utc) + timedelta(hours=6)).isoformat()))
+    conn.execute(
+        """INSERT INTO newsletter_subscribers (email, token, created_at)
+           VALUES (?, ?, ?)""",
+        ("zzrm.news@example.invalid", SEEDED + "news", now))
+    conn.execute(
+        """INSERT INTO campaign_sends (recipient_email, unsubscribe_token, created_at)
+           VALUES (?, ?, ?)""",
+        ("zzrm.campaign@example.invalid", SEEDED + "unsub", now))
+    conn.execute(
+        """INSERT INTO restaurant_bookings (reference_code, manage_token,
+                   guest_name, guest_email, party_size, dinner_date, status,
+                   created_at)
+           VALUES (?, ?, ?, ?, 2, ?, 'confirmed', ?)""",
+        (SEEDED + "RREF", SEEDED + "rmanage", SEEDED + " Guest",
+         "zzrm.guest@example.invalid",
+         (m.house_today() + timedelta(days=281)).isoformat(), now))
+    conn.execute(
+        "INSERT INTO chat_channels (slug, name, created_at) VALUES (?, ?, ?)",
+        (SEEDED + "-channel", SEEDED + " Channel", now))
+    # A supplier with a live upload link, a newcomer mid-invitation, and an
+    # event quote a client would open. All three are pages somebody OUTSIDE
+    # the house is sent and has to get through on their own.
+    conn.execute(
+        """INSERT INTO vendors (name, upload_token, active, created_at)
+           VALUES (?, ?, 1, ?)""",
+        (SEEDED + " Supplier", SEEDED + "upload", now))
+    # account_claimed = 0 because onboard is the page somebody uses BEFORE
+    # they have an account, and it refuses anybody who has already claimed one.
+    conn.execute(
+        """INSERT INTO users (email, password_hash, role, name, invite_token,
+                   account_claimed, status, created_at)
+           VALUES (?, 'x', 'employee', ?, ?, 0, 'active', ?)""",
+        ("zzrm.new@example.invalid", SEEDED + " Newcomer", SEEDED + "invite", now))
+    conn.execute(
+        """INSERT INTO event_inquiries (reference_code, manage_token, event_type,
+                   contact_name, contact_email, status, created_at)
+           VALUES (?, ?, 'wedding', ?, ?, 'new', ?)""",
+        (SEEDED + "EREF", SEEDED + "emanage", SEEDED + " Client",
+         "zzrm.client@example.invalid", now))
+    conn.commit()
+    event_row = conn.execute(
+        "SELECT id FROM event_inquiries WHERE reference_code = ?",
+        (SEEDED + "EREF",)).fetchone()
+    if event_row:
+        conn.execute(
+            """INSERT INTO event_quotes (event_id, token, quoted_price, created_at)
+               VALUES (?, ?, 4000.0, ?)""",
+            (event_row["id"], SEEDED + "quote", now))
+    session_row = conn.execute(
+        "SELECT id FROM workshop_sessions ORDER BY id").fetchone()
+    if session_row:
+        # The teaching sheet: a read-only link sent to whoever is running the
+        # atelier, and the one page in this set that shows somebody's guests.
+        conn.execute(
+            "UPDATE workshop_sessions SET instructor_token = ? WHERE id = ?",
+            (SEEDED + "teach", session_row["id"]))
+    if session_row:
+        conn.execute(
+            """INSERT INTO workshop_bookings (session_id, reference_code,
+                       manage_token, guest_name, guest_email, status, created_at)
+               VALUES (?, ?, ?, ?, ?, 'confirmed', ?)""",
+            (session_row["id"], SEEDED + "WREF", SEEDED + "wmanage", SEEDED + " Guest",
+             "zzrm.guest@example.invalid", now))
+    conn.commit()
+
+
+# What a page that was not read is, and whether anybody should do anything
+# about it. A redirect is a redirect and a CSV is a CSV; neither is markup and
+# neither is a gap. An HTML page that did not answer 200 is the only one worth
+# a bound.
+def _why_not(resp):
+    if resp.status_code in (301, 302, 303, 307, 308):
+        return "redirect"
+    if "html" not in resp.headers.get("Content-Type", ""):
+        return "not a page"
+    return "did not answer"
+
+
 def run():
     s = Suite("Rendered markup, read as a browser reads it")
     oc, _ec, _owner, _emp = clients()
     conn = db()
+    _seed(conn)
     rules, unreachable, no_rule = _reachable(conn)
     conn.close()
 
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     found = collections.defaultdict(list)
     pages = 0
+    skipped = collections.defaultdict(list)
+    read_endpoints = set()
     for endpoint, path in rules:
         try:
             resp = oc.get(path)
         except Exception:
+            skipped["did not answer"].append("%s (threw)" % endpoint)
             continue
         if resp.status_code != 200 or "html" not in resp.headers.get(
                 "Content-Type", ""):
+            skipped[_why_not(resp)].append(
+                "%s %s" % (endpoint, resp.status_code))
             continue
         pages += 1
+        read_endpoints.add(endpoint)
         _read(endpoint, resp.get_data(as_text=True), found)
 
     s.check("there are pages to read", pages > 250, detail="%d read" % pages)
@@ -268,6 +513,35 @@ def run():
             detail="%d page(s) not read: %d have no rule for an argument, "
                    "the rest have a rule and an empty table"
                    % (len(unreachable), len(no_rule)))
+
+    # AND THE ONES IT FETCHED AND DID NOT READ. Until now a page that answered
+    # 404 was dropped as silently as one it could not build a URL for: the
+    # sweep said "247 read" either way, and 247 of what was never stated. A
+    # redirect is a redirect and a CSV is not markup; neither is a gap. An
+    # HTML page that did not answer is the only one worth a bound.
+    did_not = sorted(skipped["did not answer"])
+    s.check("and the pages it fetched but could not read are named too",
+            len(did_not) <= DID_NOT_ANSWER,
+            detail="%d: %s" % (len(did_not), did_not[:8]))
+    s.check("with the redirects and the downloads told apart from them",
+            skipped["redirect"] and skipped["not a page"],
+            detail="%d redirect(s), %d not-a-page — counting either as a gap "
+                   "is how a bound stops meaning anything"
+                   % (len(skipped["redirect"]), len(skipped["not a page"])))
+
+    # THE GUEST-FACING PAGES, by name. The reason this suite grew fixtures:
+    # every one of these lives behind a token, every token table is empty in a
+    # fresh copy, and so the pages an outsider actually has to get through
+    # were the pages that were never read. Named individually rather than
+    # counted, because "16 guest pages read" goes on being true while any one
+    # of them quietly stops answering.
+    for endpoint, what in GUEST_FACING:
+        s.check(what, endpoint in read_endpoints,
+                detail="%s was not read: %s" % (
+                    endpoint,
+                    "no rule for its argument" if endpoint in no_rule
+                    else "nothing in its table" if endpoint in unreachable
+                    else "it answered, but not with a page"))
 
     for kind in ("control with no name", "_blank with no noopener",
                  "duplicate id", "image with no alt",
@@ -332,6 +606,17 @@ def run():
             chrome.append("%s: <%s%s>" % (name, tag, " ".join(raw.split())[:50]))
     s.check("and nothing in the chrome every page carries is unnamed",
             not chrome, detail="%d: %s" % (len(chrome), chrome[:3]))
+
+    conn = db()
+    _clear(conn)
+    left = conn.execute(
+        "SELECT COUNT(*) AS c FROM bookings WHERE guest_name LIKE ?",
+        (SEEDED + "%",)).fetchone()["c"]
+    conn.close()
+    s.check("and the pages it built itself are taken away again",
+            left == 0,
+            detail="every suite after this one reads the same tables, and a "
+                   "seeded stay left behind is a night somebody counts")
 
     # What is left, said plainly rather than pinned at a number that would
     # drift the same way the page count did: the row editors built from divs
