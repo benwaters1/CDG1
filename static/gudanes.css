@@ -7784,3 +7784,69 @@ body.kw-stale .kw-stamp__s{ color: #fff; }
 @media (min-width: 46rem){
   .pass__panel{ padding: var(--s5) var(--s6); }
 }
+
+/* ==========================================================================
+   STEPPERS INSTEAD OF SLIDERS
+   The cost builder used 450px range sliders to choose numbers between one
+   and five. A slider is for a value you feel your way to; a count of adults
+   is a value you know. The number is now the large thing, the buttons are
+   48px, and a button that can do nothing is visibly dead.
+   ========================================================================== */
+.wk-step{ display: grid; gap: var(--s2); }
+.wk-step label{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+.wk-step__row{
+  display: inline-grid; grid-template-columns: 48px 5rem 48px;
+  align-items: stretch; border: 1px solid var(--line); background: var(--white);
+}
+.wk-step__b{
+  min-height: 48px; background: none; border: 0;
+  font-family: var(--ui); font-size: 22px; line-height: 1;
+  color: var(--blue-deep); cursor: pointer;
+}
+.wk-step__b:hover:not(:disabled){ background: var(--gold-wash); }
+.wk-step__b:focus-visible{ outline: 2px solid var(--gold-deep); outline-offset: -2px; }
+.wk-step__b:disabled{ color: var(--line); cursor: default; }
+.wk-step__n{
+  min-height: 48px; width: 100%; border: 0;
+  border-left: 1px solid var(--line); border-right: 1px solid var(--line);
+  text-align: center; background: none;
+  font-family: var(--display); font-size: 26px; color: var(--blue-deep);
+  font-variant-numeric: lining-nums;
+  -moz-appearance: textfield;
+}
+.wk-step__n::-webkit-outer-spin-button,
+.wk-step__n::-webkit-inner-spin-button{ -webkit-appearance: none; margin: 0; }
+.wk-step__n:focus-visible{ outline: 2px solid var(--gold-deep); outline-offset: -2px; }
+
+/* The room select was the one browser-default control left in the panel. */
+.g-wk select{
+  min-height: 48px; padding: 0 var(--s4);
+  border: 1px solid var(--line); background: var(--white);
+  font-family: var(--display); font-size: 19px; color: var(--blue-deep);
+}
+
+/* The stepper sits in a grid cell, so inline-grid still stretched it across
+   the full column — a 450px box around a two-digit number, which is the
+   problem the sliders had. It stays its own width. */
+.wk-step__row{ justify-self: start; }
+
+/* The room label was the one left in sentence case among uppercase siblings. */
+.g-wk label{
+  font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
+}
+/* The checkbox line is a sentence, not a label. */
+.g-wk .g-field--check label,
+.g-wk label:has(input[type="checkbox"]){
+  font-family: var(--body); font-size: var(--t-base); font-weight: 400;
+  letter-spacing: 0; text-transform: none; color: var(--ink);
+}
+
+/* On the room page the booking form is a bare .g-wrap outside any section —
+   3.6 screens of it — so it takes none of the section rhythm and ends with
+   no bottom padding at all, butting straight into the next heading. */
+main > .g-wrap{ padding-bottom: var(--s6); }
+main > .g-wrap + .g-sec{ padding-top: var(--s6); }
