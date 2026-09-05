@@ -7,7 +7,7 @@
 <div style="max-width:460px; margin:0 auto;">
   <h1>That link has expired</h1>
   <p class="g-hint">
-    Account links last 48 hours, so an old email cannot be used to open your bookings later.
+    Account links last {{ windows.guest_session_hours }} hours, so an old email cannot be used to open your bookings later.
     Ask for a fresh one and it will arrive in a moment.
   </p>
   <a href="{{ url_for('guest_account_request') }}" class="g-btn g-btn--solid" style="display:inline-block;">

@@ -43,6 +43,7 @@ def _cleanup():
     conn.execute("""DELETE FROM event_holds WHERE event_id IN
                     (SELECT id FROM event_inquiries WHERE contact_name LIKE ?)""", (TAG + "%",))
     conn.execute("DELETE FROM event_inquiries WHERE contact_name LIKE ?", (TAG + "%",))
+    conn.execute("DELETE FROM workshop_sessions WHERE created_at = ?", (TAG,))
     conn.commit()
     conn.close()
 
@@ -140,8 +141,12 @@ def run():
     conn.execute(
         """INSERT INTO workshop_sessions (workshop_id, start_date, end_date,
            capacity, created_at) VALUES (?, ?, ?, 10, ?)""",
+        # Stamped with the tag so the cleanup can find it again. A workshop
+        # session closes the WHOLE chateau for its run, and this one was never
+        # deleted -- so it went on refusing bookings for every suite that ran
+        # after this one.
         (workshop["id"], ws_day.isoformat(),
-         (ws_day + timedelta(days=2)).isoformat(), now))
+         (ws_day + timedelta(days=2)).isoformat(), TAG))
     ev_day = _clear(base + timedelta(days=40))
     conn.execute(
         """INSERT INTO event_inquiries (reference_code, manage_token, event_type,

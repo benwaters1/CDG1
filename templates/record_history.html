@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}What changed — {{ data.title }}{% endblock %}
+{% block content %}
+
+{# WHAT CHANGED ON THIS ONE RECORD, AND WHO CHANGED IT.
+
+   The audit log has been written to faithfully for a long time and read back
+   exactly one way: a single page of everything the house has ever done. That
+   answers "who revealed a bank detail in March". It does not answer the
+   question people actually ask, which is asked while looking at one booking —
+   who moved these dates, and when.
+
+   Read-only, and deliberately so. Nothing on this page can change anything;
+   a record you can edit from is a record whose history you cannot trust. #}
+
+<div class="page-head">
+  <h1>What changed</h1>
+  <div style="display:flex; gap:10px; align-items:center;">
+    {% if data.kind == 'booking' %}
+    <a href="{{ url_for('edit_booking', booking_id=data.row['id']) }}" class="btn-ghost">The booking</a>
+    <a href="{{ url_for('booking_correspondence', booking_id=data.row['id']) }}" class="btn-ghost">What we've said</a>
+    {% elif data.kind == 'vendor' %}
+    <a href="{{ url_for('edit_vendor', vendor_id=data.row['id']) }}" class="btn-ghost">The supplier</a>
+    {% elif data.kind == 'employee' %}
+    <a href="{{ url_for('edit_employee', user_id=data.row['id']) }}" class="btn-ghost">The person</a>
+    {% endif %}
+    <a href="{{ url_for('audit_log') }}" class="btn-ghost">The whole log</a>
+  </div>
+</div>
+
+<p class="page-intro">
+  Every audited change to this {{ data.label }} — {{ data.title }} — newest
+  first.
+</p>
+
+{% if data.entries %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">When</th>
+        <th scope="col">What</th>
+        <th scope="col">Who</th>
+        <th scope="col">Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in data.entries %}
+      <tr>
+        <td style="white-space:nowrap;">{{ e['created_at'][:16]|replace('T', ' ') }}</td>
+        <th scope="row">{{ (e['action'] or '')|replace('_', ' ')|capitalize }}</th>
+        {# Nobody, not "the system". A change with no name against it was made
+           by a job or before there were accounts, and saying which is the
+           whole value of the column. #}
+        <td>{{ e['actor_name'] or 'A scheduled job' }}</td>
+        <td>{{ e['details'] or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+{# AN EMPTY HISTORY IS A REAL ANSWER, and it has to be able to be empty or the
+   page becomes furniture. Nothing audited has happened to this record — which
+   is what most records look like, and is worth saying plainly rather than
+   filling the space. #}
+<div class="empty-state">
+  Nothing audited has happened to this {{ data.label }} yet. Confirmations,
+  declines, refunds, deletions and changes to money all land here; ordinary
+  edits do not.
+</div>
+{% endif %}
+
+<p class="field-hint">
+  Found under {{ data.found_under|join(', ') }}. This is the audit record, not a list
+  of every keystroke: it holds the changes the house has decided are worth
+  being able to answer for.
+</p>
+
+{% endblock %}

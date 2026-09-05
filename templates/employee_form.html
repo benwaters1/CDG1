@@ -4,6 +4,11 @@
 
 <div class="narrow-card">
   <h1>{% if employee %}Edit {{ employee['name'] }}{% else %}Add Employee{% endif %}</h1>
+  {% if employee %}
+  {# Who changed this person's record, and when. Asked in earnest exactly
+     once — after a change nobody will own up to. #}
+  <p><a class="small-link" href="{{ url_for('record_history_page', kind='employee', record_id=employee['id']) }}">What changed on this record</a></p>
+  {% endif %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field-label">Full name</label>

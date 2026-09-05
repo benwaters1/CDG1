@@ -89,7 +89,7 @@
 </div>
 
 {% if outliers %}
-<h2 class="section-heading" style="margin-top:0;">Timesheet outliers (last 14 days)</h2>
+<h2 class="section-heading" style="margin-top:0;">Timesheet outliers (last {{ windows.timesheet_outlier_days }} days)</h2>
 <p class="pay-disclaimer" style="margin-top:-10px;">Unusually early/late clock-ins or long shifts — worth a quick look, not a policy violation.</p>
 <div class="mini-list" style="margin-bottom:22px;">
   {% for o in outliers %}

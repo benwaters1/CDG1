@@ -109,6 +109,29 @@
                    aria-label="Places on the session starting {{ s['start_date'] }}">
             <button type="submit" class="btn-mini">Save</button>
           </form>
+          {#- CALLING IT OFF, which deleting could never be. Deleting refuses
+              while anybody is registered and tells you to cancel them one at a
+              time; this cancels every place through the same follow-up as a
+              single cancellation, tells the waiting list it is not running,
+              and says who is owed money back without moving any. -#}
+          {% if s['cancelled_at'] %}
+          <span class="mini-status status-declined">called off {{ s['cancelled_at']|house_day }}{% if s['cancelled_reason'] %} — {{ s['cancelled_reason'] }}{% endif %}</span>
+          {% else %}
+          <form method="post" action="{{ url_for('call_off_workshop_session', session_id=s['id']) }}"
+                onsubmit="return confirm('Call this sitting off? Everybody registered is cancelled and written to, and the waiting list is told it is not running.');"
+                style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" name="reason" placeholder="Why (they are told)" style="max-width:180px;">
+            <button type="submit" class="btn-mini btn-danger">Call it off</button>
+          </form>
+          {% endif %}
+          {#- A read-only page for whoever is teaching: who is coming, what
+              they cannot eat, the materials. No money on it. -#}
+          <form method="post" action="{{ url_for('workshop_instructor_link', session_id=s['id']) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if s['instructor_token'] %}<input type="hidden" name="off" value="1">{% endif %}
+            <button type="submit" class="btn-mini">{{ 'Stop the teaching link' if s['instructor_token'] else 'Link for whoever teaches' }}</button>
+          </form>
           <form method="post" action="{{ url_for('delete_workshop_session', session_id=s['id']) }}" onsubmit="return confirm('Remove this session?');" style="display:inline;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="doc-delete">×</button>
