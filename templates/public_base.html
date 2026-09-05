@@ -230,7 +230,11 @@
         <a href="/restoration" class="g-navwrap__item g-navwrap__item--sm">
           {{ t('About & History') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
         </a>
-        <a href="/restoration#press" class="g-navwrap__item g-navwrap__item--sm">
+        {# The press PAGE, not a section of the restoration one. Both said
+           "Press" and went to different places, which is the fault
+           test_navigation is about -- one answer, two doors -- and a screen
+           reader listing the links hears the same word twice. #}
+        <a href="{{ url_for('press') }}" class="g-navwrap__item g-navwrap__item--sm">
           {{ t('Press') }} <svg class="g-navwrap__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M9 6l6 6-6 6"/></svg>
         </a>
 
@@ -271,7 +275,7 @@
 
         <div class="g-navwrap__linkgrid">
           <a href="mailto:experience@chateaugudanes.com">{{ t('Contact us') }}</a>
-          <a href="/restoration#press">Press</a>
+          <a href="{{ url_for('press') }}">{{ t('Press') }}</a>
           <a href="{{ url_for('workshops_public') }}">{{ t('Groups') }}</a>
           <a href="{{ url_for('find_booking') }}">{{ t('Change or cancel a reservation') }}</a>
         </div>
@@ -434,7 +438,13 @@
         </p>
       </div>
       <div>
-        <h4>{{ t('Visit') }}</h4>
+        {# h2, not h4. These are the footer's own section headings and the page
+           above them ends on an h2, so h4 skipped a level on every public page
+           at once -- a screen reader announces a missing level as a missing
+           section. The stylesheet accepts either tag, so this cannot look
+           wrong if a handover puts h4 back; the heading order is what a test
+           holds. #}
+        <h2>{{ t('Visit') }}</h2>
         <ul>
           <li><a href="{{ url_for('book_rooms') }}">{{ t('Nightly stays') }}</a></li>
           <li><a href="{{ url_for('workshops_public') }}">Workshops</a></li>
@@ -447,12 +457,14 @@
         </ul>
       </div>
       <div>
-        <h4>{{ t('Follow') }}</h4>
+        <h2>{{ t('Follow') }}</h2>
         <ul>
+          <li><a href="{{ url_for('social_page') }}">{{ t('Photographs') }}</a></li>
           <li><a href="https://www.instagram.com/chateaugudanes/" rel="noopener">Instagram</a></li>
           <li><a href="https://www.facebook.com/chateaudegudanes/" rel="noopener">Facebook</a></li>
           <li><a href="/contact">{{ t('Contact') }}</a></li>
           <li><a href="{{ url_for('find_booking') }}">{{ t('Manage a booking') }}</a></li>
+          <li><a href="{{ url_for('event_find') }}">{{ t('Find an enquiry') }}</a></li>
           <li><a href="{{ url_for('terms_page') }}">{{ t('Terms & Conditions') }}</a></li>
         </ul>
       </div>

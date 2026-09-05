@@ -337,7 +337,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="g-vh" for="j-email-{{ range(1000,9999)|random }}">{{ t('Email address') }}</label>
       <input type="email" inputmode="email" name="email" id="j-email-{{ range(1000,9999)|random }}"
-             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required value="{{ prefill_email | default('') }}">
+             placeholder="{{ t('Your email') }}" aria-label="{{ t('Email address') }}" required value="{{ prefill_email | default('') }}" autocomplete="email">
         <fieldset class="g-interests">
           <legend>What would you like to hear about?</legend>
           <label><input type="checkbox" name="interests" value="stays" checked> Rooms and availability</label>
@@ -447,6 +447,7 @@
   <p class="g-close__p">A wedding, a birthday, a shoot. Describe it and we will come back with what it would involve and what it would cost.</p>
   <div class="g-close__acts">
       <a href="{{ url_for('events_info') }}" class="g-btn g-btn--solid">Make an enquiry</a>
+      <a href="{{ url_for('event_find') }}" class="g-btn g-btn">Find an enquiry you have made</a>
       <a href="{{ url_for('gallery_page') }}" class="g-btn g-btn">See the château</a>
   </div>
 </div></section>

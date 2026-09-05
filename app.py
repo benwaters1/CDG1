@@ -24230,6 +24230,21 @@ def tell_the_house_about_a_review(conn, *, rating, guest_name, comment, what, wh
     return True
 
 
+# The readiness checks that belong on the front page rather than only on the
+# readiness page, and the sentence each gets there. Keyed by the check's own
+# label, which is unique; a renamed check therefore goes red in the test
+# rather than quietly falling off the front page.
+#
+# Deliberately three of fourteen. The others are decisions the house has not
+# taken (Stripe) or genuinely optional (the tokens), and a morning panel that
+# lists everything is one nobody reads.
+FRONT_PAGE_READINESS = {
+    "Outbound email": "Nothing can send email",
+    "Terms & conditions": "Guests are agreeing to a placeholder",
+    "Public web address": "Links in guest email go nowhere",
+}
+
+
 def owner_home_warnings(conn, today):
     """Things nobody has told the owner, each linking to the page that says more.
 
@@ -24574,6 +24589,23 @@ def owner_home_warnings(conn, today):
             f"{pictures['held']} of {len(pictures['wanted'])} are held here. "
             "If that account closes, the rest go — the logo among them.",
             n, "admin_photo_mirror")
+
+    # What the deployment itself is missing. readiness_checks has known
+    # these all along; nothing carried them to a page the owner opens every
+    # morning, so the front page reported 483 held messages for weeks and
+    # never once that nothing could send.
+    #
+    # Three of the fourteen, not all of them. Stripe being unconfigured is a
+    # decision the house has not taken rather than a fault, and the optional
+    # tokens are optional; a panel that lists everything gets scrolled past,
+    # which is the failure it exists to avoid. Each closes itself the moment
+    # the setting arrives.
+    for check in readiness_checks(conn):
+        if check["ok"] or check["label"] not in FRONT_PAGE_READINESS:
+            continue
+        add("blocker" if check["severity"] == "blocker" else "warn",
+            FRONT_PAGE_READINESS[check["label"]], check["detail"], 1,
+            "admin_readiness")
 
     order = {"blocker": 0, "warn": 1}
     out.sort(key=lambda w: (order.get(w["severity"], 9), -w["count"]))
@@ -38155,8 +38187,15 @@ def restaurant_book():
     conn = get_db()
     settings = get_restaurant_settings(conn)
     if not settings or not settings["enabled"]:
+        # NOT a 404. The site links here from the bar on every restaurant page
+        # and from the restaurant page itself, so a guest who taps "Reserve"
+        # was being told the page does not exist -- which reads as a broken
+        # website rather than as a table that is not open for booking yet.
+        # A crawl of the public site as a stranger is what found it: every
+        # other page it reached answered, and this one, linked from two
+        # places, answered 404.
         conn.close()
-        abort(404)
+        return render_template("restaurant_closed.html"), 200
     min_date = parse_date(settings["opening_date"]) if settings["opening_date"] else house_today()
 
     if request.method == "POST":
@@ -66577,11 +66616,171 @@ def admin_outlook_addin():
 # stale page.
 # ---------------------------------------------------------------------------
 
-@app.route("/contact")
+MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
+               "August", "September", "October", "November", "December"]
+
+
+def contact_notify_me():
+    """"Tell me when that month opens" — one month, one address, one email back.
+
+    The same record as the flexible enquiry, because it is the same person: a
+    guest who looked in February for a September week and found nothing to do.
+    Kept as a waitlist entry over the whole month, so the nudge when a night
+    frees up finds them.
+    """
+    email = (request.form.get("notify_email") or "").strip().lower()
+    if not EMAIL_RE.match(email):
+        flash("That email address does not look right — we would have no way "
+              "to tell you.", "error")
+        return redirect(request.referrer or url_for("contact_page"))
+    name = (request.form.get("notify_month") or "").strip()
+    try:
+        year = int((request.form.get("notify_year") or "").strip())
+    except (TypeError, ValueError):
+        year = house_today().year
+    month_no = MONTH_NAMES.index(name) + 1 if name in MONTH_NAMES else 0
+    if not month_no:
+        flash("Please choose a month and we will tell you when it opens.", "error")
+        return redirect(request.referrer or url_for("contact_page"))
+    start = date(year, month_no, 1)
+    end = date(year + 1, 1, 1) if month_no == 12 else date(year, month_no + 1, 1)
+    wants_atelier = bool(request.form.get("notify_kind"))
+
+    conn = get_db()
+    if rate_limited(conn, "contact_enquiry", BOOKING_RATE_LIMIT_PER_HOUR):
+        conn.commit()
+        conn.close()
+        flash("That is a lot of requests from one connection — please give it "
+              "a few minutes.", "error")
+        return redirect(request.referrer or url_for("contact_page"))
+    notes = "Asked to be told when %s %d opens%s." % (
+        name, year, " — an atelier week rather than a stay" if wants_atelier else "")
+    conn.execute(
+        """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,
+             desired_departure, party_size, notes, status, created_at)
+           VALUES ('', ?, '', ?, ?, 2, ?, 'open', ?)""",
+        (email, start.isoformat(), end.isoformat(), notes,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash("We will write to you once, when %s %d opens. Nothing else."
+          % (name, year), "success")
+    return redirect(request.referrer or url_for("contact_page"))
+
+
+@app.route("/contact", methods=["GET", "POST"])
 def contact_page():
-    """How to reach the house. Named contact_page, not contact, because
-    contacts() is the staff CRM and two views cannot share a name."""
-    return render_template("contact.html")
+    """How to reach the house, and the enquiry from somebody without dates.
+
+    Named contact_page, not contact, because contacts() is the staff CRM and
+    two views cannot share a name.
+
+    THE POST HALF WAS MISSING AND THE FORM WAS LIVE. _flexible.html renders on
+    this page and on /book, its own comment says "posts action=flexible to
+    contact", and this route accepted GET only -- so a guest who filled it in
+    got a bare 405 and their enquiry went nowhere. Nothing errored: 405 is a
+    clean answer, it is not in any log as a fault, and the person who typed
+    the message simply never heard back.
+
+    The enquiry is deliberately not an availability lookup. Somebody who knows
+    a month and a rough length has a question, and the answer is a person
+    writing back -- so this records it, raises a task so it reaches the
+    calendar, and tells the house. Stored with status 'enquiry' rather than
+    'open': the waitlist offer flow matches on open and contacted, and a rough
+    month is not a date anybody should be offered against.
+    """
+    if request.method != "POST":
+        return render_template("contact.html")
+
+    # Two forms post here and they are not the same question. "Tell us
+    # roughly" is a month and a length; "tell me when" is a month and an
+    # address. Both end up as the same record -- somebody who wants to come in
+    # a month the house cannot sell them yet -- but reading only the first set
+    # of field names meant the second form was answered with "that email
+    # address does not look right", which is a rude way to say "I was not
+    # written to read you".
+    if (request.form.get("action") or "").strip() == "notify":
+        return contact_notify_me()
+
+    email = (request.form.get("email") or "").strip().lower()
+    month = (request.form.get("rough_month") or "").strip()
+    nights = (request.form.get("rough_nights") or "").strip()
+    guests = (request.form.get("rough_guests") or "").strip()
+    flex = (request.form.get("flexibility") or "").strip()
+    message = (request.form.get("message") or "").strip()[:2000]
+
+    if not EMAIL_RE.match(email):
+        flash("That email address does not look right — we would have no way "
+              "to answer you.", "error")
+        return redirect(url_for("contact_page"))
+
+    conn = get_db()
+    if rate_limited(conn, "contact_enquiry", BOOKING_RATE_LIMIT_PER_HOUR):
+        conn.commit()
+        conn.close()
+        flash("That is a lot of enquiries from one connection — please give it "
+              "a few minutes, or write to us directly.", "error")
+        return redirect(url_for("contact_page"))
+
+    # A month is what they typed; a pair of dates is what the column holds, so
+    # the range is the WHOLE MONTH rather than a guessed window inside it.
+    # matching_waitlist_entries overlaps this against a night that frees up and
+    # nudges somebody to go and check -- it does not write to the guest -- so a
+    # month-wide range means the nudge fires for any night they might have
+    # wanted, and a five-night guess starting on the first would have missed
+    # most of them. The rough length and the flexibility stay in words, because
+    # "September, five nights, give or take a week" is the enquiry and any one
+    # pair of dates is a guess about it.
+    start = parse_date(month + "-01") if re.fullmatch(r"\d{4}-\d{2}", month) else None
+    month_end = None
+    if start:
+        month_end = (date(start.year + 1, 1, 1) if start.month == 12
+                     else date(start.year, start.month + 1, 1))
+    try:
+        n = max(1, min(60, int(nights)))
+    except (TypeError, ValueError):
+        n = 1
+    try:
+        party = max(1, min(40, int(guests)))
+    except (TypeError, ValueError):
+        party = 2
+
+    said = []
+    if month:
+        said.append("Around %s" % month)
+    said.append("%d night%s" % (n, "" if n == 1 else "s"))
+    said.append("%d guest%s" % (party, "" if party == 1 else "s"))
+    if flex:
+        said.append("flexible: %s" % flex)
+    if message:
+        said.append(message)
+    notes = ". ".join(said)
+
+    conn.execute(
+        """INSERT INTO waitlist_entries (name, email, phone, desired_arrival,
+             desired_departure, party_size, notes, status, created_at)
+           VALUES ('', ?, '', ?, ?, ?, ?, 'open', ?)""",
+        (email, start.isoformat() if start else None,
+         month_end.isoformat() if month_end else None,
+         party, notes, datetime.now(timezone.utc).isoformat()))
+    # A task, because anything that becomes a task reaches the calendar by
+    # itself. An enquiry that lives only in a list somebody has to remember to
+    # open is the shape this whole page was in five minutes ago.
+    conn.execute(
+        """INSERT INTO tasks (title, notes, priority, due_date, status, origin,
+             created_at)
+           VALUES (?, ?, 'normal', ?, 'open', 'enquiry', ?)""",
+        ("Answer an enquiry from %s" % email,
+         notes, house_today_iso(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    to = owner_email(conn)
+    conn.close()
+    if to:
+        send_email(to, "Someone asked about staying",
+                   "%s\n\nThey left this address: %s" % (notes, email))
+    flash("Thank you — that is exactly the kind of enquiry we would rather "
+          "have than nothing. We will write back.", "success")
+    return redirect(url_for("contact_page"))
 
 
 @app.route('/preview')
