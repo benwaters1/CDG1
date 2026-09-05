@@ -39,6 +39,15 @@
    Changing one of these now changes the whole site, which is the point.
    ========================================================================== */
 :root{
+/* A CUSTOM PROPERTY CANNOT BE USED IN A MEDIA QUERY CONDITION.
+   --m-tight and --m-read are declared just above and were written into
+   forty-two @media rules below, every one of which the browser then
+   discarded: custom properties are resolved at computed-value time,
+   long after a media query has been evaluated. So forty-two blocks of
+   phone layout -- the navigation label, the back-to-top position, full
+   width buttons on the confirmation page -- had never once applied,
+   and nothing anywhere reported it. The values are written out; the
+   variables stay for use in ordinary declarations, where they work. */
   --m-tight: 26rem;   /* ~50 characters at 18px */
   --m-read:  34rem;   /* ~66 characters — the reading default */
   --m-wide:  46rem;   /* ~72 characters at lede size */
@@ -606,7 +615,7 @@ body.has-hero .g-top:not(.is-solid) .g-nav a.is-on{ border-bottom-color: #fff; }
   .g-nav a:last-child{ border-bottom: none; }
 }
 
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-sec{ padding: var(--s7) 0; }
   .g-sec--tight{ padding: var(--s6) 0; }
   .g-wrap{ padding: 0 var(--s4); }
@@ -883,7 +892,7 @@ body.has-hero .g-top:not(.is-solid) .g-navbtn{ color: #fff; }
 .g-navwrap__legal a{ color: var(--ink-faint); min-height: 44px; display: inline-flex; align-items: center; }
 .g-navwrap__legal a:hover{ color: var(--blue-deep); }
 
-@media (max-width: var(--m-tight)){ .g-navwrap{ width: 100vw; } }
+@media (max-width: 26rem){ .g-navwrap{ width: 100vw; } }
 
 /* ==========================================================================
    HERO VIDEO — full-bleed looping background, pause control.
@@ -1023,7 +1032,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   font-family: var(--serif); font-size: 13px; font-weight: 500;
   letter-spacing: .08em; text-transform: uppercase; color: currentColor;
 }
-@media (max-width: var(--m-tight)){ .g-navbtn__label{ display: none; } }
+@media (max-width: 26rem){ .g-navbtn__label{ display: none; } }
 
 /* ---- Book chooser ------------------------------------------------------
    A night and a workshop are different products — different dates, different
@@ -1384,7 +1393,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
    stacked sections breathe less — on a phone every section is full-width, so
    desktop padding compounds into a very long scroll.
    ========================================================================== */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-eyebrow,
   .g-navwrap__group,
   .g-crest__note,
@@ -1429,7 +1438,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 
 /* The scale's smallest step is 12px, which is fine at desktop distance and
    small on a phone. Lift only that step; every larger size is untouched. */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g [class*="eyebrow"], .g [class*="__k"], .g [class*="hint"],
   .g [class*="note"], .g [class*="fine"], .g [class*="meta"],
   .g [class*="label"], .g [class*="__len"], .g [class*="group"],
@@ -1541,7 +1550,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   white-space: nowrap;
 }
 .g-herosearch__go:hover{ background: #0D2851; }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-herosearch{ margin-top: var(--s5); }
   .g-herosearch__go{ width: 100%; }
 }
@@ -1602,7 +1611,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-conf .g-facts-list dd{ font-size: 16px; }
 .g-conf .g-fig{ font-size: var(--t-lede); }
 .g-conf__acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s6) 0; }
-@media (max-width: var(--m-read)){ .g .g-conf__acts .g-btn{ width: 100%; } }
+@media (max-width: 34rem){ .g .g-conf__acts .g-btn{ width: 100%; } }
 .g-sharelink{
   font-family: var(--serif); font-size: 13px; color: var(--ink-soft);
   background: var(--sand-2); border: 1px solid var(--line);
@@ -1761,7 +1770,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-mb-rowt{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); flex: 1 1 12rem; }
 .g-mb-acts{ display: flex; flex-wrap: wrap; gap: var(--s3); margin: var(--s5) 0; }
 .g .g-btn--sm{ padding: var(--s2) var(--s4); font-size: 15px; min-height: 44px; }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-mb-card input, .g-mb-card select, .g-mb-card textarea{ max-width: 100%; }
   .g .g-mb-acts .g-btn{ width: 100%; }
 }
@@ -1899,7 +1908,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   margin-top: var(--s5);
 }
 .g-map iframe{ position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
-@media (max-width: var(--m-read)){ .g-map{ aspect-ratio: 4 / 3; } }
+@media (max-width: 34rem){ .g-map{ aspect-ratio: 4 / 3; } }
 
 /* Measured on lamaisonbleue-provence.com: their display serif carries +0.03em
    tracking at every size, never negative, and sits in sentence case. On a
@@ -1951,7 +1960,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
   background: var(--sand-2); border-left: 2px solid var(--stone);
   padding: var(--s3) var(--s4); margin-top: var(--s3); font-size: 15px;
 }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g .account-card{ padding: var(--s5) var(--s4); }
   .g .account-actions .g-btn{ width: 100%; }
 }
@@ -2010,7 +2019,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 .g-totop[hidden]{ display: none; }
 .g-totop svg{ width: 19px; height: 19px; }
 .g-totop:hover{ background: #0D2851; }
-@media (max-width: var(--m-read)){ .g-totop{ bottom: 78px; } }
+@media (max-width: 34rem){ .g-totop{ bottom: 78px; } }
 
 /* ==========================================================================
    REASSURANCE ROW
@@ -2112,7 +2121,7 @@ body.has-hero .g-top:not(.is-solid) .g-lang__opt.is-on{ color: #fff; border-bott
 html, body{ max-width: 100%; overflow-x: hidden; }
 .g main, .g header, .g footer, .g section{ max-width: 100vw; }
 .g .g-wrap, .g .g-wrap--narrow{ max-width: min(var(--wrap, 76rem), 100vw); }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g .g-band{ grid-auto-columns: minmax(0, 1fr); }
   .g .g-band img{ max-width: 100%; }
 }
@@ -2275,7 +2284,7 @@ stroke='%238F8C78' stroke-width='1'>\
   border-bottom: 1px solid var(--line);
 }
 .g-searched__clear:hover{ border-bottom-color: var(--stone); }
-@media (max-width: var(--m-read)){ .g-searched__clear{ margin-left: 0; } }
+@media (max-width: 34rem){ .g-searched__clear{ margin-left: 0; } }
 
 
 /* ==========================================================================
@@ -2506,7 +2515,7 @@ stroke='%238F8C78' stroke-width='1'>\
 .g .g-close__acts .g-btn{ border-color: rgba(255,255,255,.5); color: #fff; }
 .g .g-close__acts .g-btn--solid{ background: var(--sand); color: var(--blue-deep); border-color: var(--sand); }
 .g .g-close__acts .g-btn:hover{ background: var(--gilt); border-color: var(--gilt); color: var(--blue-deep); }
-@media (max-width: var(--m-read)){ .g .g-close__acts .g-btn{ width: 100%; } }
+@media (max-width: 34rem){ .g .g-close__acts .g-btn{ width: 100%; } }
 
 /* ==========================================================================
    GOLD
@@ -2588,7 +2597,7 @@ stroke='%238F8C78' stroke-width='1'>\
 .g .g-hero video, .g .g-hero__media video, .g .g-hero img{
   object-position: center 32%;
 }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g .g-hero video, .g .g-hero__media video, .g .g-hero img{ object-position: center 28%; }
 }
 
@@ -2632,7 +2641,7 @@ stroke='%238F8C78' stroke-width='1'>\
   border: 1px solid rgba(246,241,231,.5);
   box-shadow: 0 18px 50px rgba(12,26,44,.28);
 }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g .g-hero__eyebrow{ letter-spacing: .18em; font-size: 13px; }
   .g .g-hero__title::after{ margin-top: var(--s5); }
 }
@@ -2856,7 +2865,7 @@ main > .g-wrap > .g-hairs{ margin-top: 0; margin-bottom: 0; }
    toggle. It needs to clear the header on a short screen rather than centre
    itself in a box taller than the space available.
    ========================================================================== */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   /* 88svh, not 100 — a full-height hero puts the first button 46px below the
      fold, so a guest sees nothing to act on until they scroll. The gap also
      signals there is more page below. */
@@ -3672,7 +3681,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
 .g-sec--plate .g-wrap{ max-width: var(--m-read); }
 .g-sec--plate .g-h2--lead{ text-align: left; }
 .g-sec--plate .g-p{ max-width: none; }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-sec--plate .g-h2--lead{ text-align: left; }
 }
 
@@ -3773,7 +3782,7 @@ main > .g-sec:last-of-type{ padding-bottom: clamp(48px, 6vw, 84px); }
    read. One line fixes every anchor on the site.
    ========================================================================== */
 html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is not in scope on html */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   html{ scroll-padding-top: 102px; }
 }
 
@@ -3847,7 +3856,7 @@ html{ scroll-padding-top: 110px; }   /* 86px header + breathing room; --s4 is no
 
 .g-rp__ms{ display: grid; gap: var(--s5); margin-top: var(--s4); }
 @media (min-width: 34rem){ .g-rp__ms{ grid-template-columns: 1fr 1fr; } }
-@media (max-width: var(--m-tight)){ .g-rp__m:last-child{ display: none; } }
+@media (max-width: 26rem){ .g-rp__m:last-child{ display: none; } }
 
 .g-rp__mh{
   margin: 0 0 var(--s3); text-align: center;
@@ -3970,7 +3979,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 }
 .g-footer__base .g-pay__marks{ margin: 0; }
 .g-footer__base .g-pay__note{ margin: 0; }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-footer__base{ justify-content: flex-start; }
 }
 
@@ -4035,7 +4044,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
    ========================================================================== */
 .g-mark__wrap{ display: flex; justify-content: center; padding: var(--s6) 0 0; }
 .g-mark{ width: 120px; height: 34px; color: var(--gilt); opacity: .9; }
-@media (max-width: var(--m-read)){ .g-mark{ width: 96px; } }
+@media (max-width: 34rem){ .g-mark{ width: 96px; } }
 
 
 /* ==========================================================================
@@ -4139,7 +4148,7 @@ button.g-rp__d:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -2
 
 /* The press row puts a masthead and its caption side by side. On the narrowest
    phones there is no room for both, so they stack. */
-@media (max-width: var(--m-tight)){
+@media (max-width: 26rem){
   .g-press li{ flex-direction: column; align-items: flex-start; gap: 4px; }
 }
 
@@ -4207,13 +4216,13 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 @media (max-width: 90rem){
   .g-creed__half{ grid-column: 1 / -1; }
 }
-@media (max-width: var(--m-tight)){
+@media (max-width: 26rem){
   .g-quote-band{ padding-inline: var(--s4); }
 }
 /* The quote band is set large and italic, so on a 360px phone it holds only
    29 characters. Ease the size there rather than the padding — the display
    face is what is eating the line. */
-@media (max-width: var(--m-tight)){
+@media (max-width: 26rem){
   .g-quote-band p, .g-quote-band blockquote{ font-size: var(--t-lede); }
 }
 /* The half-width creed panel measured 39 characters even at 1920. It is
@@ -4222,7 +4231,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
 /* Two display-face passages still measured 29 characters on a 360px phone.
    Large italic type simply does not fit a narrow screen at that size — ease
    the face and reclaim the padding rather than leave a column of fragments. */
-@media (max-width: var(--m-tight)){
+@media (max-width: 26rem){
   .g-quote-band p, .g-quote-band blockquote{ font-size: var(--t-lede); }
   .g-quote-band{ padding-inline: var(--s3); }
   .g-creed__q{ font-size: var(--t-base); padding-inline: 0; }
@@ -4420,7 +4429,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   height: 2px; background: var(--blue-deep);
 }
 .g .g-tabs a:focus-visible{ outline: 2px solid var(--gilt); outline-offset: -3px; }
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-tabs{ overflow-x: auto; scrollbar-width: none; }
   .g-tabs::-webkit-scrollbar{ display: none; }
   .g .g-tabs a{ padding: 0 var(--s4); }
@@ -4607,7 +4616,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   display: grid; gap: 2px;
   grid-template-columns: minmax(8rem, 11rem) 1fr;
 }
-@media (max-width: var(--m-read)){ .g-timeline__i{ grid-template-columns: 1fr; } }
+@media (max-width: 34rem){ .g-timeline__i{ grid-template-columns: 1fr; } }
 .g-timeline__i::before{
   content: ""; position: absolute; left: calc(var(--s6) * -1 - 1px); top: .45em;
   width: 9px; height: 9px; margin-left: -4px;
@@ -4820,7 +4829,7 @@ main .g-hero p, main td p, main th p{ max-width: none; }
   padding: var(--s3) 0; border-bottom: 1px solid var(--line);
   grid-template-columns: minmax(10rem, 1fr) minmax(8rem, 1fr) auto;
 }
-@media (max-width: var(--m-read)){ .g-linked__i{ grid-template-columns: 1fr; } }
+@media (max-width: 34rem){ .g-linked__i{ grid-template-columns: 1fr; } }
 .g-linked__i.is-this{ border-left: 2px solid var(--gilt); padding-left: var(--s4); }
 .g-linked__r{ font-family: var(--display); font-size: 18px; color: var(--blue-deep); }
 .g-linked__n{ font-size: 15px; color: var(--ink); }
@@ -5032,7 +5041,7 @@ main .g-facts-list dt, main .g-facts-list dd{ font-size: var(--t-small); }
      also used on cream, where it reads at about 1.4:1. Scope the pale ink to
      the dark ground and give the default a readable colour. */
 .g-journal__note{ font-size: var(--t-small); }
-@media (max-width: var(--m-read)){ .g-journal__note{ font-size: var(--t-small); } }
+@media (max-width: 34rem){ .g-journal__note{ font-size: var(--t-small); } }
 
 .g-figs__l{ color: var(--ink-soft); }
 .g-sec--dark .g-figs__l, .g-panel--dark .g-figs__l{ color: #C9D4DF; }
@@ -5370,7 +5379,7 @@ main img{ height: auto; }
   letter-spacing: .12em; text-transform: uppercase; color: var(--gilt);
 }
 .g-backtoform .g-btn{ margin-left: auto; }
-@media (max-width: var(--m-read)){ .g-backtoform .g-btn{ margin-left: 0; width: 100%; } }
+@media (max-width: 34rem){ .g-backtoform .g-btn{ margin-left: 0; width: 100%; } }
 
 /* ==========================================================================
    THE THREE INTENTS
@@ -5646,7 +5655,7 @@ html, body{ margin: 0; padding: 0; }
   border-left: 1px solid var(--gilt); }
 .g-pay2__i{ position: relative; display: grid; gap: 2px;
   grid-template-columns: minmax(8rem, 12rem) 1fr; padding-bottom: var(--s5); }
-@media (max-width: var(--m-read)){ .g-pay2__i{ grid-template-columns: 1fr; } }
+@media (max-width: 34rem){ .g-pay2__i{ grid-template-columns: 1fr; } }
 .g-pay2__i::before{
   content: ""; position: absolute; left: calc(var(--s6) * -1 - 1px); top: .45em;
   width: 9px; height: 9px; margin-left: -4px;
@@ -5845,7 +5854,7 @@ svg [tabindex]:focus-visible path{ stroke: var(--gilt); stroke-width: 3px; }
   grid-template-columns: 5.5rem 1fr;
   padding: var(--s5) 0; border-bottom: 1px solid var(--line);
 }
-@media (max-width: var(--m-tight)){ .g-near__i{ grid-template-columns: 1fr; } }
+@media (max-width: 26rem){ .g-near__i{ grid-template-columns: 1fr; } }
 .g-near__d{
   font-family: var(--ui); font-size: var(--t-sm); font-weight: 600;
   letter-spacing: .1em; text-transform: uppercase; color: var(--gilt);
@@ -5915,7 +5924,7 @@ body.hero--full .g-hero{ min-height: 88vh; }          /* home, gallery */
 body.hero--tall .g-hero{ min-height: 74vh; }          /* the estate, restoration */
 body.hero--short .g-hero{ min-height: 46vh; }         /* stay, workshops, la table */
 body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, admin */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-hero{ min-height: 58vh; }
   body.hero--full .g-hero{ min-height: 72vh; }
   body.hero--short .g-hero{ min-height: 42vh; }
@@ -6065,7 +6074,7 @@ body.hero--band  .g-hero{ min-height: 30vh; }         /* forms, confirmations, a
    The hero is the only element allowed there. Everything else clears it.
    ========================================================================== */
 body.has-hero main > .g-crumbs{ padding-top: 92px; }
-@media (max-width: var(--m-read)){ body.has-hero main > .g-crumbs{ padding-top: 78px; } }
+@media (max-width: 34rem){ body.has-hero main > .g-crumbs{ padding-top: 78px; } }
 
 /* And when the breadcrumb IS the first thing, the header is over cream rather
    than a photograph, so it needs its own background and dark type. */
@@ -6436,7 +6445,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 }
 /* Panel padding inside the wrap's padding left 28 characters on a phone.
    Below 30rem the panel keeps its rule and drops the inset. */
-@media (max-width: var(--m-tight)){
+@media (max-width: 26rem){
   .g-terms{ padding: var(--s4) 0 var(--s4) var(--s4); background: none; }
   .g-terms__l{ gap: var(--s3); }
   .g-terms__l > div{ gap: 1px; }
@@ -6459,7 +6468,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
   display: grid; grid-template-columns: 3rem 1fr; gap: var(--s4);
   padding: var(--s5) 0; border-bottom: 1px solid var(--line);
 }
-@media (max-width: var(--m-tight)){ .g-arrive > li{ grid-template-columns: 1fr; gap: var(--s2); } }
+@media (max-width: 26rem){ .g-arrive > li{ grid-template-columns: 1fr; gap: var(--s2); } }
 .g-arrive__n{
   display: flex; align-items: center; justify-content: center;
   width: 2.6rem; height: 2.6rem; border: 1px solid var(--gilt); border-radius: 50%;
@@ -6650,7 +6659,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 .g-herosearch__go{ padding: var(--s3) var(--s6); }
 .g-herosearch{ align-items: stretch; }
 
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-herosearch__f{ padding: var(--s3) var(--s4); }
   .g-herosearch__f input,
   .g-herosearch__f select,
@@ -6701,7 +6710,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
    None of this changes the desktop layout. It changes what a phone has to
    scroll past to reach the thing it came for.
    ========================================================================== */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
 
   /* 2 — the long reference sections fold. Someone on a phone who wants the
      FAQ can open it; everyone else scrolls one line instead of eight screens.
@@ -6742,7 +6751,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
 /* On a phone the five room cards are 5.3 screens and the numbers table 3.2 —
    more than a fifth of the page between them, and both are lists a phone
    reads badly as a tall column. */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
 
   /* The cards swipe sideways instead of stacking. Five rooms becomes one
      screen with four more a thumb away, which is how a phone expects a set
@@ -6784,7 +6793,7 @@ body.at-top.has-hero .g-top:not(.is-solid) .g-nav a[aria-current="page"]{
    The French line is a grace note; it belongs where there is room for it.
    Below 44rem the eyebrow carries the section on its own.
    ========================================================================== */
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   .g-fr{ display: none; }
   .g-eyebrow{ margin-bottom: var(--s2); }
   .g-place, .g-h2{ margin-top: 0; }
@@ -6948,7 +6957,7 @@ main > section > .g-wrap > :first-child{ margin-top: 0; }
 .g-journal__form{ gap: var(--s3); }
 .g-journal__p{ margin-bottom: var(--s4); }
 
-@media (max-width: var(--m-read)){
+@media (max-width: 34rem){
   main > section,
   main > .g-sec--sand{ padding-top: var(--s6); padding-bottom: var(--s6); }
   main > .g-sec + .g-sec{ padding-top: var(--s5); }
@@ -7850,3 +7859,42 @@ body.kw-stale .kw-stamp__s{ color: #fff; }
    no bottom padding at all, butting straight into the next heading. */
 main > .g-wrap{ padding-bottom: var(--s6); }
 main > .g-wrap + .g-sec{ padding-top: var(--s6); }
+
+/* ==========================================================================
+   THE HEADER RAN OFF THE EDGE OF A PHONE
+   Logo 180 + Book 85 + Menu 113 = 378px of content in a 390px bar carrying
+   48px of padding. The row does not wrap, so "MENU" was clipped to "ME" on
+   every page at 390px — and worse on a 360px Android.
+
+   The logo is the flexible one: it is a wordmark that reads at any size, and
+   the two controls are targets that must not shrink.
+   ========================================================================== */
+@media (max-width: 30rem){
+  .g-top__in{ padding-left: var(--s4); padding-right: var(--s4); gap: var(--s3); }
+  .g .g-top__in .g-logo,
+  .g-top__in .g-logo,
+  .g-logo{ flex: 0 1 auto; min-width: 118px; max-width: 45vw; }
+  .g-logo img, .g-logo svg{ max-width: 100%; height: auto; }
+  .g-navbtn, .g-booksel{ flex: 0 0 auto; }
+  /* The word "Menu" beside a burger is decoration; the burger is the control.
+     Below 24rem it goes, and the button keeps its label for screen readers. */
+}
+/* Below 26rem the word gives way before the wordmark does. */
+@media (max-width: 26rem){
+  .g-navbtn__label{ position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; }
+  .g-navbtn{ gap: 0; }
+}
+
+/* ==========================================================================
+   THE BACK-TO-TOP SAT ON THE BOOK BUTTON
+   `.g-totop` is pinned bottom-right, which is exactly where the booking bar
+   puts its button. On a phone the arrow covered "Book" — the one control on
+   the page that has to work.
+   ========================================================================== */
+@media (max-width: 44rem){
+  /* Above the bar, not on it. */
+  body:has(.g-stickybar) .g-totop{ bottom: calc(clamp(14px, 2vw, 28px) + 76px); }
+  /* And left, so it never shares a corner with the primary action. */
+  .g-totop{ right: auto; left: clamp(14px, 2vw, 28px); }
+}

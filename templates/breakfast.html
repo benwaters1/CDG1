@@ -80,18 +80,24 @@
 <script>
 function toggleBreakfastItem(id, btn) {
   var row = btn.closest('.task-row');
-  fetch('/breakfast/' + id + '/toggle', { method: 'POST' })
-    .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
-    .then(function(data) {
-      if (data.checked) {
+  // Through gudanes.take, which keeps the tap if the send fails. Breakfast is
+  // ticked off walking between rooms, which is where the signal goes -- and
+  // "check your connection and try again" is no use to somebody standing in a
+  // corridor with a tray.
+  var wasDone = row.classList.contains('task-done');
+  gudanes.take('/breakfast/' + id + '/toggle', 'Ticked off a breakfast')
+    .then(function(res) {
+      // Held rather than sent: show what they did, because they did do it.
+      // The banner is what says it has not reached the house yet.
+      var done = res.held ? !wasDone : res.data.checked;
+      if (done) {
         row.classList.add('task-done');
         btn.textContent = '✓';
       } else {
         row.classList.remove('task-done');
         btn.textContent = '';
       }
-    })
-    .catch(function() { alert('Could not update that item — check your connection and try again.'); });
+    });
 }
 function toggleBreakfastEdit(id) {
   var view = document.getElementById('view-breakfast-' + id);

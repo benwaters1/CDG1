@@ -777,5 +777,12 @@ document.addEventListener('keydown', function(ev) {
 });
 </script>
 
+{# What this app may hold on to when there is no signal, decided in
+   OFFLINE_ACTIONS in app.py and rendered here so there is only ever one list.
+   |tojson escapes it for a script block; the values are the house's own
+   copy, not anything a guest can type. #}
+<script type="application/json" id="offline-actions">{{ offline_actions|tojson }}</script>
+<script src="{{ url_for('static', filename='actions.js') }}" defer></script>
+
 </body>
 </html>

@@ -176,6 +176,18 @@ DATA_DIR = os.path.dirname(os.path.abspath(DB_PATH)) or BASE_DIR
 UPLOAD_DIR = os.environ.get("GUDANES_UPLOAD_DIR") or os.path.join(DATA_DIR, "uploads")
 ROOM_PHOTO_DIR = os.environ.get("GUDANES_ROOM_PHOTO_DIR") or os.path.join(DATA_DIR, "room_photos")
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "docx", "doc", "txt"}
+# Kept separate from the list above on purpose: a photograph upload has no
+# business accepting a .docx, and a document upload has none accepting a .heic.
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif"}
+# EVERY IPHONE SHOOTS THESE BY DEFAULT, AND NO BROWSER HERE WILL SHOW ONE.
+#
+# So they are refused with a sentence that says what to do, rather than stored.
+# Converting them would mean Pillow and pillow-heif -- an imaging dependency,
+# in an app that is deliberately `git clone`, `python app.py`, and runs. The
+# alternative was to keep the file and let the page show a broken picture
+# nobody can fix, which is worse than a refusal that explains itself: the
+# person uploading is standing at their phone and can change one setting.
+REFUSED_IMAGE_EXTENSIONS = {"heic", "heif"}
 # Not RFC-5322-exhaustive — just enough shape-checking to reject garbage
 # and control characters (a public, unauthenticated form is the only place
 # this matters; \s excludes the \r/\n that broke send_email() on a crafted
@@ -2723,6 +2735,31 @@ def init_db():
             granted_at TEXT NOT NULL
         );
 
+        -- WHAT THE PHONE ALREADY DID. The château sits in a valley behind a
+        -- metre of stone and the signal dies room by room, so a housekeeper on
+        -- the third floor ticks a room off and the POST never leaves the
+        -- handset. Until now that tick was gone and the page said "check your
+        -- connection and try again", which is true and useless: they are
+        -- standing in the room, they have done the work, and there is no
+        -- connection to check.
+        --
+        -- So the phone keeps the action and sends it when the signal comes
+        -- back. This table is the other half of that bargain: the key the
+        -- phone generated when the person tapped, and what happened the first
+        -- time it arrived. A replay finds its key here and gets the ORIGINAL
+        -- answer back rather than doing the work twice -- which on a clock-in
+        -- is a second shift and on a stock movement is stock that never
+        -- moved.
+        CREATE TABLE IF NOT EXISTS action_keys (
+            key TEXT PRIMARY KEY,
+            endpoint TEXT NOT NULL,
+            user_id INTEGER,
+            taken_at TEXT,
+            applied_at TEXT NOT NULL,
+            status_code INTEGER NOT NULL,
+            body TEXT
+        );
+
         -- Held the same way mail is, and for the same reason: with no
         -- provider configured a message that cannot go now is kept rather
         -- than lost, and goes when there is a way to send it.
@@ -3770,6 +3807,14 @@ def init_db():
         ("workshops_itinerary", "ALTER TABLE workshops ADD COLUMN itinerary TEXT"),
         ("social_posts_plan_id", "ALTER TABLE social_posts ADD COLUMN plan_id INTEGER REFERENCES social_plans(id) ON DELETE SET NULL"),
         ("social_posts_task_id", "ALTER TABLE social_posts ADD COLUMN task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL"),
+        # A post was a sentence with nothing attached. The alt text lives on the
+        # POST rather than on the file because the same photograph is used twice
+        # and means something different each time -- the salon as a room, and
+        # the salon as a place the plaster came off.
+        ("social_posts_image", "ALTER TABLE social_posts ADD COLUMN image_filename TEXT"),
+        ("social_posts_alt", "ALTER TABLE social_posts ADD COLUMN alt_text TEXT"),
+        ("social_posts_room", "ALTER TABLE social_posts ADD COLUMN room_id INTEGER REFERENCES rooms(id) ON DELETE SET NULL"),
+        ("social_posts_offer_site", "ALTER TABLE social_posts ADD COLUMN offer_for_site INTEGER NOT NULL DEFAULT 0"),
         # One post per plan per date. The generator relies on this rather
         # than on checking first: two ticks landing together cannot both
         # insert, because only one can win the unique index.
@@ -5909,6 +5954,150 @@ def login_required(view):
     return wrapped
 
 
+# WHAT A PHONE MAY DO WITH NO SIGNAL, and nothing else.
+#
+# An allowlist rather than "queue anything that fails", because the two are not
+# the same decision. Ticking a room off is a fact about work already done, and
+# holding it for ten minutes changes nothing. Confirming a booking, taking a
+# payment, declining a request or anything that writes to a guest is a DECISION,
+# and a decision taken on stale information and applied ten minutes later is
+# how somebody gets a room that was given away in between.
+#
+# So: small, reversible, staff-side, and about something that has already
+# happened. If an action is not on this list the phone does not keep it, and
+# the person is told plainly it did not go -- which is the honest answer for a
+# decision.
+#
+# The value is what the person sees in the waiting list, so it is written in
+# their words and in the past tense: it has happened, it is just not here yet.
+OFFLINE_ACTIONS = {
+    "complete_task": "Ticked a task off",
+    "toggle_breakfast_item": "Ticked off a breakfast",
+    "start_break": "Started a break",
+    "end_break": "Ended a break",
+}
+
+
+def action_key_seen(conn, key):
+    """What happened the first time this action arrived, or None."""
+    if not key:
+        return None
+    return conn.execute("SELECT * FROM action_keys WHERE key = ?", (key,)).fetchone()
+
+
+def remember_action_key(conn, key, endpoint, user_id, taken_at, status, body):
+    """Write down that this action has been applied, and what it answered.
+
+    INSERT OR IGNORE, not INSERT: two replays racing each other is exactly the
+    case this exists for, and the second one losing the insert is the correct
+    outcome rather than a 500.
+    """
+    if not key:
+        return
+    conn.execute(
+        """INSERT OR IGNORE INTO action_keys
+               (key, endpoint, user_id, taken_at, applied_at, status_code, body)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (key, endpoint, user_id, taken_at,
+         datetime.now(timezone.utc).isoformat(), status, body))
+    conn.commit()
+
+
+def repeatable(view):
+    """Make one action safe to send twice.
+
+    The phone generates a key when the person taps, keeps it with the action,
+    and sends it with every attempt. The first arrival does the work and files
+    the answer; every later arrival gets that same answer back without the work
+    happening again.
+
+    THE REASON THIS IS NOT OPTIONAL. A queued action is retried by definition:
+    the phone cannot tell "the server never heard me" from "the server heard me
+    and the reply was lost". Without a key the second is indistinguishable from
+    the first, and a clock-in becomes two shifts, a stock movement moves stock
+    twice, and net_hours quietly poisons a payslip.
+
+    Only the endpoints on OFFLINE_ACTIONS get this. A route that is not on the
+    list and sends a key is refused rather than quietly ignored -- a key that
+    does nothing is worse than no key, because the phone believes it is safe
+    to retry.
+    """
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        key = (request.headers.get("X-Action-Key")
+               or request.form.get("action_key") or "").strip()[:80]
+        if not key:
+            return view(*args, **kwargs)
+        endpoint = request.endpoint or view.__name__
+        user = current_user()
+        conn = get_db()
+        try:
+            seen = action_key_seen(conn, key)
+        finally:
+            conn.close()
+        if seen:
+            # The SAME answer, not a fresh one. The phone is showing whatever
+            # this said the first time, and a different reply now would make
+            # the screen disagree with itself.
+            return app.response_class(
+                seen["body"] or "", status=seen["status_code"],
+                mimetype="application/json")
+        response = view(*args, **kwargs)
+        out = app.make_response(response)
+        # Only a real outcome is remembered. A 500 is not an outcome, and
+        # filing one would mean the retry that would have worked never runs.
+        if out.status_code < 500:
+            conn = get_db()
+            try:
+                remember_action_key(
+                    conn, key, endpoint, user["id"] if user else None,
+                    (request.headers.get("X-Action-Taken-At") or "")[:40],
+                    out.status_code, out.get_data(as_text=True)[:4000])
+            finally:
+                conn.close()
+        return out
+    return wrapped
+
+
+@app.before_request
+def refuse_unheld_action_keys():
+    """A key sent to something the app does not hold offline is refused.
+
+    HERE RATHER THAN IN THE DECORATOR, and the difference is the whole rule.
+    A route that is not on the list does not wear @repeatable, so a check
+    inside the decorator could only ever fire for routes that were already
+    allowed -- it would pass its own test and refuse nothing.
+
+    Quietly ignoring the key is the dangerous answer. The handset only holds
+    an action because it believes the retry is safe, and that belief is the
+    key being honoured. Ignored, the same decision is applied twice and
+    nothing anywhere says so.
+    """
+    key = (request.headers.get("X-Action-Key")
+           or (request.form.get("action_key") if request.form else "") or "")
+    if not key.strip():
+        return None
+    if request.endpoint in OFFLINE_ACTIONS:
+        return None
+    return jsonify(
+        error="that is not something this app holds when you are offline",
+        endpoint=request.endpoint), 400
+
+
+def purge_action_keys(conn, days=30):
+    """Forget keys once no phone could still be holding the action.
+
+    A queue on a handset does not survive a month of being switched off, and a
+    table of every tap the house has ever made is a table nobody needs. Kept
+    long enough that a phone left in a drawer over a holiday still replays
+    safely.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cur = conn.execute("DELETE FROM action_keys WHERE applied_at < ?", (cutoff,))
+    conn.commit()
+    return cur.rowcount
+
+
 # Which part of the business each admin page belongs to.
 #
 # Generated from the navigation groups, and used for two things: drawing the
@@ -6242,6 +6431,7 @@ NAV_AREAS = {
         "admin_automation", "admin_deposit_rules", "save_room_deposit_settings",
         "admin_outlook_addin", "admin_promo_codes",
         "admin_readiness", "admin_photo_mirror", "fetch_photo_mirror",
+        "photo_intake", "uploaded_file",
         "admin_terms", "audit_log", "record_history_page",
         "delete_company_document",
         "delete_insurance_policy", "delete_vendor",
@@ -21970,6 +22160,18 @@ def house_windows():
 
 
 @app.context_processor
+def inject_offline_actions():
+    """The allowlist, for the page that has to know it.
+
+    Given to every template rather than to the two that use it, because the
+    alternative is remembering to pass it on each new page that takes an
+    action -- and the failure of forgetting is silent: the handset holds
+    nothing and the tap is lost exactly as before.
+    """
+    return {"offline_actions": OFFLINE_ACTIONS}
+
+
+@app.context_processor
 def inject_calendar_dates():
     """Give every public page the two date lists its calendars ask for.
 
@@ -29881,6 +30083,8 @@ PALETTE_PAGES = [
     ("Inbox flags", "admin_inbox_flags", "unanswered email"),
     ("Vault", "management_vault", "passwords secrets"),
     ("Go-live checklist", "admin_readiness", "deploy setup ready configuration"),
+    ("A photograph in", "photo_intake",
+     "photo intake upload picture social post instagram slot schedule alt text"),
     ("Photographs we do not own", "admin_photo_mirror",
      "images photos squarespace cdn hotlink mirror logo pictures gallery "
      "who hosts our pictures"),
@@ -31315,6 +31519,7 @@ def breakfast():
 
 @app.route("/breakfast/<int:item_id>/toggle", methods=["POST"])
 @login_required
+@repeatable
 def toggle_breakfast_item(item_id):
     user = current_user()
     conn = get_db()
@@ -41275,6 +41480,107 @@ def pass_message():
                            "the screen only." if urgent else "")),
           "success")
     return redirect(url_for("pass_screen"))
+
+
+@app.route("/uploads/<filename>")
+@login_required
+def uploaded_file(filename):
+    """One uploaded file, by its stored name.
+
+    login_required, and that is the whole security model here: UPLOAD_DIR holds
+    signed contracts, expense receipts and doctors' notes beside the
+    photographs, so this must never be the open door it looks like. The name is
+    checked as well -- send_from_directory refuses a traversal, but a stored
+    name is one this app wrote, and anything else has no business being asked
+    for.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9._-]{1,120}", filename or ""):
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
+@app.route("/admin/photos", methods=["GET", "POST"])
+@owner_required
+def photo_intake():
+    """A photograph in, on a real date, without anybody opening a calendar.
+
+    A social post was a sentence with nothing attached. This takes the picture,
+    puts it against a plan, and works out the next slot that plan has free --
+    which is the drudgery: the date, the slot, and the alt text nobody fills in.
+
+    IT DOES NOT WRITE THE CAPTION. A generated sentence about a French chateau
+    reads like every other generated sentence, and the writing is the reason
+    the site works. Blank caption means the post is filed as an IDEA rather
+    than a draft, so dropping a photograph in leaves an honest thing to finish
+    instead of a post that looks done.
+    """
+    conn = get_db()
+    if request.method == "POST":
+        photo = request.files.get("photo")
+        ok, why = allowed_image(photo.filename if photo else "")
+        if not (photo and photo.filename):
+            flash("No photograph was chosen.", "error")
+            conn.close()
+            return redirect(url_for("photo_intake"))
+        if not ok:
+            conn.close()
+            flash(why, "error")
+            return redirect(url_for("photo_intake"))
+
+        safe = secure_filename(photo.filename)
+        name = "photo_%s_%s" % (secrets.token_hex(6), safe)
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        photo.save(os.path.join(UPLOAD_DIR, name))
+
+        plan_id = request.form.get("plan_id") or None
+        try:
+            plan_id = int(plan_id) if plan_id else None
+        except ValueError:
+            plan_id = None
+        when = (request.form.get("scheduled_date") or "").strip() or None
+        # A plan and no date means "put it wherever this plan next has room",
+        # which is the point of the page.
+        if plan_id and not when:
+            when = next_free_slot(conn, plan_id)
+        caption = (request.form.get("caption") or "").strip()
+        room_id = request.form.get("room_id") or None
+        try:
+            room_id = int(room_id) if room_id else None
+        except ValueError:
+            room_id = None
+        plan = conn.execute("SELECT * FROM social_plans WHERE id = ?",
+                            (plan_id,)).fetchone() if plan_id else None
+
+        conn.execute(
+            """INSERT INTO social_posts (platform, caption, image_filename, alt_text,
+                 plan_id, room_id, offer_for_site, scheduled_date, status,
+                 created_by_user_id, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ((plan["platform"] if plan else "instagram"), caption, name,
+             (request.form.get("alt_text") or "").strip() or None,
+             plan_id, room_id,
+             1 if request.form.get("use_on_site") else 0,
+             when, "drafted" if caption else "idea",
+             session.get("user_id"), datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        conn.close()
+        flash("Photograph saved." + (" Slotted for %s." % when if when else
+                                     " No date yet — it is on the list as an idea."),
+              "success")
+        return redirect(url_for("photo_intake"))
+
+    plans = conn.execute(
+        "SELECT * FROM social_plans WHERE active = 1 ORDER BY name").fetchall()
+    rooms = conn.execute(
+        "SELECT id, name FROM rooms WHERE active = 1 ORDER BY sort_order, id").fetchall()
+    recent = conn.execute(
+        """SELECT image_filename, alt_text, scheduled_date, status
+             FROM social_posts
+            WHERE image_filename IS NOT NULL AND image_filename != ''
+            ORDER BY id DESC LIMIT 12""").fetchall()
+    conn.close()
+    return render_template("admin_photo_intake.html", social_plans=plans,
+                           rooms=rooms, recent=recent)
 
 
 @app.route("/room-photos/<filename>")
@@ -55491,6 +55797,41 @@ def close_social_task(conn, post_id):
     return True
 
 
+def allowed_image(filename):
+    """(ok, reason). A reason rather than a bare False, because the commonest
+    refusal is one the person can fix in ten seconds if they are told how."""
+    ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+    if ext in ALLOWED_IMAGE_EXTENSIONS:
+        return True, ""
+    if ext in REFUSED_IMAGE_EXTENSIONS:
+        return False, ("That is an iPhone HEIC photograph, which no browser here "
+                       "will display. On the phone: Settings, Camera, Formats, "
+                       "Most Compatible \u2014 or send it to yourself first and it "
+                       "arrives as a JPEG.")
+    if not ext:
+        return False, "That file has no extension, so there is no telling what it is."
+    return False, "A .%s is not a photograph this can store." % ext
+
+
+def next_free_slot(conn, plan_id, today=None):
+    """The next date this plan posts on that has nothing against it yet.
+
+    Built on social_plan_next_dates rather than beside it: the cadence rules --
+    weekly on a weekday, monthly on a day, and what happens when the month is
+    short -- already live there, and a second walk over the same calendar would
+    agree with the first until the day it did not.
+    """
+    plan = conn.execute("SELECT * FROM social_plans WHERE id = ?", (plan_id,)).fetchone()
+    if not plan:
+        return None
+    taken = {str(r["scheduled_date"])[:10] for r in conn.execute(
+        "SELECT scheduled_date FROM social_posts WHERE plan_id = ?", (plan_id,)).fetchall()}
+    for day in social_plan_next_dates(plan, count=24, today=today):
+        if day.isoformat() not in taken:
+            return day.isoformat()
+    return None
+
+
 def social_plan_next_dates(plan, count=3, today=None):
     """The next few dates this plan would post on. Shown beside the plan so a
     weekday number and a cadence word turn into actual days."""
@@ -59587,17 +59928,30 @@ AUDIT_KINDS = [
 # (label, table, the columns whose values are keys), and the columns are read
 # from the row so a record renamed since is still found under the old name only
 # if the old name was what was logged, which is the truth and not a guess.
+# (label, table, key columns, the word an action about this kind contains).
+#
+# THE LAST FIELD EXISTS BECAUSE A NUMBER IS NOT A KEY. Ids are not unique
+# across tables -- vendor 47, workshop session 47 and expense 47 are three
+# different things -- and `target` is free text written at a hundred and
+# seventy-odd call sites, some of which write str(id). Matching a bare number
+# put one record's history on another's page: a supplier nobody had touched
+# came up with somebody else's changes against it, which is exactly the thing
+# record_history's own docstring says is worse than showing nothing.
+#
+# So a numeric key only counts when the action is about this kind of thing.
+# A reference code or a name is distinctive enough to stand on its own and is
+# matched whatever the action says.
 HISTORY_KINDS = {
-    "booking": ("stay", "bookings", ["reference_code", "id"]),
-    "vendor": ("supplier", "vendors", ["name", "id"]),
-    "employee": ("person", "users", ["name", "id"]),
-    "guest": ("guest", "guests", ["name", "id"]),
-    "expense": ("invoice or claim", "expenses", ["id"]),
-    "workshop_session": ("sitting", "workshop_sessions", ["id"]),
+    "booking": ("stay", "bookings", ["reference_code", "id"], "booking"),
+    "vendor": ("supplier", "vendors", ["name", "id"], "vendor"),
+    "employee": ("person", "users", ["name", "id"], "employee"),
+    "guest": ("guest", "guests", ["name", "id"], "guest"),
+    "expense": ("invoice or claim", "expenses", ["id"], "expense"),
+    "workshop_session": ("sitting", "workshop_sessions", ["id"], "workshop"),
 }
 
 
-def record_history(conn, keys, limit=60):
+def record_history(conn, keys, limit=60, about=None):
     """Every audited change to one record, newest first.
 
     The audit log has been written to faithfully for a long time and read back
@@ -59611,10 +59965,19 @@ def record_history(conn, keys, limit=60):
     a supplier called "Marie" is not the supplier called "Marie-Claire". A
     substring match would quietly attribute one record's history to another,
     which on a compliance record is worse than showing nothing.
+
+    AND A NUMBER IS NOT A KEY ON ITS OWN. Ids repeat across tables, so a bare
+    numeric key only matches when `about` -- the word an action about this
+    kind of record contains -- is in the action. Without that, vendor 47 was
+    shown workshop session 47's history, which is the same failure the
+    paragraph above is about, arriving by arithmetic instead of by spelling.
     """
     wanted = [str(k).strip() for k in keys if str(k or "").strip()]
     if not wanted:
         return []
+    words, numbers = [], []
+    for key in wanted:
+        (numbers if key.isdigit() else words).append(key)
     rows = conn.execute(
         """SELECT audit_log.*, users.name AS actor_name FROM audit_log
              LEFT JOIN users ON users.id = audit_log.actor_user_id
@@ -59624,7 +59987,12 @@ def record_history(conn, keys, limit=60):
     out = []
     for row in rows:
         target = (row["target"] or "").strip()
-        if any(target == k or k in target.split() for k in wanted):
+        pieces = target.split()
+        hit = any(target == k or k in pieces for k in words)
+        if not hit and numbers and about:
+            if about in (row["action"] or "").lower():
+                hit = any(target == k or k in pieces for k in numbers)
+        if hit:
             out.append(row)
             if len(out) >= limit:
                 break
@@ -59636,7 +60004,7 @@ def history_for(conn, kind, record_id):
     spec = HISTORY_KINDS.get(kind)
     if not spec:
         return None
-    label, table, columns = spec
+    label, table, columns, about = spec
     row = conn.execute(f"SELECT * FROM {table} WHERE id = ?", (record_id,)).fetchone()
     if not row:
         return None
@@ -59662,7 +60030,8 @@ def history_for(conn, kind, record_id):
     # data.keys is dict.keys -- the method -- and the page 500s on a name that
     # reads perfectly. Named for what it means instead.
     return {"kind": kind, "label": label, "row": row, "title": title,
-            "found_under": keys, "entries": record_history(conn, keys)}
+            "found_under": keys,
+            "entries": record_history(conn, keys, about=about)}
 
 
 def audit_kind(action):
@@ -60915,6 +61284,10 @@ def run_health_notes_purge_job(conn):
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
     cleared.update(purge_sent_outbox(conn))
+    # The keys that make an offline action safe to send twice. No handset is
+    # still holding a tap from a month ago, and a row per tap for ever is a
+    # table somebody eventually clears out in a hurry.
+    cleared["action keys"] = purge_action_keys(conn)
     # Not a purge either, but the same daily pass: a date held on the strength
     # of a conversation nobody followed up has to come back on the market, and
     # nothing else was going to notice.
@@ -61484,6 +61857,7 @@ def staff_today():
 
 @app.route("/tasks/<int:task_id>/complete", methods=["POST"])
 @login_required
+@repeatable
 def complete_task(task_id):
     """Tick a task off, or untick it. Two states, on purpose.
 
@@ -61681,6 +62055,7 @@ def reject_task(task_id):
 
 @app.route("/breaks/start", methods=["POST"])
 @login_required
+@repeatable
 def start_break():
     user = current_user()
     conn = get_db()
@@ -61710,6 +62085,7 @@ def start_break():
 
 @app.route("/breaks/end", methods=["POST"])
 @login_required
+@repeatable
 def end_break():
     user = current_user()
     conn = get_db()
