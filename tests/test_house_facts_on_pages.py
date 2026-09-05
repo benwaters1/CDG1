@@ -178,11 +178,37 @@ def run():
                     .get_data(as_text=True).split())
     s.check("the home page states it", str(facts["from_price"]) in home,
             detail=str(facts["from_price"]))
-    s.check("from the rooms rather than from the template",
-            "house_rooms.from_price" in open(
-                "templates/home.html", encoding="utf-8").read(),
+    # Asked of the whole design surface rather than of home.html, because the
+    # line moved: it lives in _stay_panel now, which five other pages show as
+    # well. Pinning the FILE meant a handover could shuffle the markup into a
+    # partial and the check would fail while the page was right -- or, worse,
+    # leave the string in home.html beside a figure typed in somewhere else.
+    #
+    # The property is what matters: the starting rate must be read from the
+    # rooms table wherever it is said, and written into a sentence nowhere.
+    reads_it, writes_it = [], []
+    for name in sorted(os.listdir("templates")):
+        if not name.endswith(".html"):
+            continue
+        body = open(os.path.join("templates", name), encoding="utf-8").read()
+        if "house_rooms.from_price" in body:
+            reads_it.append(name)
+        # Jinja comments skipped as BLOCKS, not by looking for "{#" at the
+        # start of a line: the first version of this flagged the explanation
+        # written directly above the fix, because a comment's middle lines
+        # begin with prose.
+        prose = re.sub(r"\{\#.*?\#\}", " ", body, flags=re.S)
+        for line in prose.splitlines():
+            if "house_rooms" in line:
+                continue
+            if re.search(r"(from|partir de)\s*<?b?>?\s*(&euro;|€|EUR)\s*%d"
+                         % facts["from_price"], line, re.I):
+                writes_it.append("%s: %s" % (name, line.strip()[:60]))
+    s.check("from the rooms rather than from the template", bool(reads_it),
             detail="a figure typed into a sentence is the deposit lie again, "
                    "on the line more people read than any other")
+    s.check("and no template writes the figure into a sentence", not writes_it,
+            detail="; ".join(writes_it[:3]))
     french = " ".join(m.app.test_client().get("/book")
                       .get_data(as_text=True).split())
     s.check("and so does the French description",

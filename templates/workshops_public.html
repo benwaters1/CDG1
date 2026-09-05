@@ -253,7 +253,8 @@
        with a default of 30, not a house rule, and this line printed it as one.
        And it left out the part that costs a guest money: inside the balance
        window the WHOLE amount is due at booking, so somebody reading "30% to
-       reserve" three weeks out was told one figure and charged another. #}
+       reserve" three weeks out was told one figure and charged another.
+       Reverted by a handover twice; the route supplies both numbers. #}
     <div><dt>Deposit</dt><dd>
       {% if deposit_pct %}{{ deposit_pct }}% to reserve; the balance
       {{ balance_days }} days before.
@@ -526,9 +527,6 @@
 
 
 
-
-
-
 <!-- ============ THE JOURNAL ============ -->
 {# The newsletter form was only in the menu panel. This is the same route,
    placed where a reader who has just finished the page will see it. #}
@@ -560,23 +558,17 @@
 
 
 
-
-
-
-
 <!-- ============ THE PROGRAMME ============ -->
 <section class="g-sec"><div class="g-wrap">
   <p class="g-fr">Le programme<span class="g-fr__en">The programme</span></p>
   <p class="g-eyebrow">Dated, Not Continuous</p>
   <h2 class="g-place">The Year's Programme</h2>
   <p class="g-p">One atelier runs at a time and there are a fixed number of places in a year. These are the dates, with who is leading each.</p>
-  {# The overbooking promise, third round of putting it back. It lived in
-     "Fifteen, and No Others", cut for repeating the exclusivity section — fair,
-     except this sentence is not about exclusivity. It is a commitment the code
-     keeps with a write lock: workshop_register and workshop_manage both take it
-     before claiming a place, and test_no_overbooking exists to hold the
-     software to it. Copy a mechanism was written for cannot leave quietly. #}
-  <p class="g-p">Places are shown live below. When a session reads as full, it is full — we do not overbook a house this size.</p>
+  {# The overbooking promise. Fifth round of putting it back. It is a
+     commitment the code keeps with a write lock -- workshop_register and
+     workshop_manage both take it before claiming a place -- and
+     test_no_overbooking exists to hold the software to it. #}
+  <p class="g-p">Places are shown live below. When a session reads as full, it is full &mdash; we do not overbook a house this size.</p>
 
   {% if workshops %}
   <ol class="g-programme">
@@ -785,7 +777,6 @@
 
   <p class="g-hint">Google reviews for the château cover the stay, the table and the ateliers together. We would rather separate them than let a review of the breakfast stand in for a review of the work.</p>
 </div></section>
-
 
 
 

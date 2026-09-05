@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{#  ==========================================================================
+    THE PASS — the screen the restaurant team lives on
+
+    A fixed iPad by the pass, on all service. It answers, without anyone
+    typing: who is in tonight, what they cannot eat, who has been before, how
+    long they are staying, what is in the store, and what needs saying to
+    whoever is not in the room.
+
+    Everything here already exists in the database. `guests` carries
+    dietary_notes, preferences and vip; `repeat_guests()` is written; there
+    are stock_items and stock_movements. What was missing is one screen that
+    puts it in front of a chef without them navigating an admin.
+
+    Built for a screen that is never scrolled by choice and often touched with
+    the back of a knuckle: nothing under 44px, no hover-only anything, and
+    the allergy line is the loudest thing on the page.
+    ========================================================================== #}
+
+{% block title %}The pass{% endblock %}
+
+{% block content %}
+{# The admin shell loads style.css, which does not carry the site's layout
+   classes. See admin_photo_intake.html for the same note. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='gudanes.css') }}">
+{% from '_kitchenwall.html' import wall_mode %}
+
+<div class="pass g">
+  {{ wall_mode(120) }}
+
+  {# ---- the bar: tonight in one line ---------------------------------- #}
+  <header class="pass__bar">
+    <div class="pass__now">
+      <p class="pass__k">Tonight</p>
+      <p class="pass__cover"><b>{{ covers|default(0) }}</b> covers</p>
+    </div>
+    <div class="pass__now">
+      <p class="pass__k">Service</p>
+      <p class="pass__cover">{{ service_time|default('20:00') }}</p>
+    </div>
+    {% if allergy_count %}
+    <div class="pass__now pass__now--warn">
+      <p class="pass__k">Cannot eat</p>
+      <p class="pass__cover"><b>{{ allergy_count }}</b> {{ 'guest' if allergy_count == 1 else 'guests' }}</p>
+    </div>
+    {% endif %}
+    <nav class="pass__tabs" aria-label="The pass">
+      <button type="button" class="pass__tab is-on" data-tab="guests">Guests</button>
+      <button type="button" class="pass__tab" data-tab="stock">Store</button>
+      <button type="button" class="pass__tab" data-tab="word">Word</button>
+    </nav>
+  </header>
+
+  {# ---- GUESTS -------------------------------------------------------- #}
+  <section class="pass__panel" data-panel="guests">
+    {% if not guests %}
+      <p class="pass__empty">Nobody in tonight.</p>
+    {% else %}
+    <ul class="pass__list">
+      {% for g in guests %}
+      <li class="pass__g{{ ' has-allergy' if g['dietary_notes'] }}{{ ' is-vip' if g['vip'] }}">
+        <button type="button" class="pass__g__hit" data-guest="{{ g['id'] }}"
+                aria-expanded="false"
+                aria-label="{{ g['name'] }} — open the profile">
+
+          <span class="pass__g__main">
+            <span class="pass__g__name">{{ g['name'] }}</span>
+
+            <span class="pass__g__tags">
+              {% if g['stay_count'] and g['stay_count'] > 1 %}
+              <span class="pass__tag pass__tag--rep">{{ g['stay_count'] }} stays</span>
+              {% else %}
+              <span class="pass__tag">First stay</span>
+              {% endif %}
+
+              {% if g['vip'] %}<span class="pass__tag pass__tag--vip">VIP</span>{% endif %}
+
+              {% if g['staying'] %}
+              <span class="pass__tag">{{ g['nights'] }} {{ 'night' if g['nights'] == 1 else 'nights' }}{% if g['room_name'] %} · {{ g['room_name'] }}{% endif %}</span>
+              {% else %}
+              <span class="pass__tag pass__tag--out">Dining only</span>
+              {% endif %}
+
+              {% if g['last_night'] %}<span class="pass__tag">Last night</span>{% endif %}
+            </span>
+          </span>
+
+          {# The allergy is not a tag. It is the reason this screen exists. #}
+          {% if g['dietary_notes'] %}
+          <span class="pass__g__eat">{{ g['dietary_notes'] }}</span>
+          {% endif %}
+        </button>
+
+        {# The profile, already on the page — a chef with wet hands should not
+           wait for a request. #}
+        <div class="pass__prof" hidden>
+          <dl class="pass__prof__l">
+            {% if g['dietary_notes'] %}
+            <div class="pass__prof__eat"><dt>Cannot eat</dt><dd>{{ g['dietary_notes'] }}</dd></div>
+            {% endif %}
+            {% if g['preferences'] %}<div><dt>Likes</dt><dd>{{ g['preferences'] }}</dd></div>{% endif %}
+            {% if g['stay_count'] and g['stay_count'] > 1 %}
+            <div><dt>Been before</dt><dd>{{ g['stay_count'] }} stays{% if g['last_stay'] %}, last in {{ g['last_stay'] }}{% endif %}</dd></div>
+            {% endif %}
+            {% if g['staying'] %}
+            <div><dt>Here</dt><dd>{{ g['arrive'] }} to {{ g['depart'] }}{% if g['room_name'] %}, {{ g['room_name'] }}{% endif %}</dd></div>
+            {% endif %}
+            {% if g['party'] %}<div><dt>Party</dt><dd>{{ g['party'] }}</dd></div>{% endif %}
+            {% if g['occasion'] %}<div><dt>Occasion</dt><dd>{{ g['occasion'] }}</dd></div>{% endif %}
+            {% if g['notes'] %}<div><dt>Noted</dt><dd>{{ g['notes'] }}</dd></div>{% endif %}
+          </dl>
+
+          {% if g['history'] %}
+          <p class="pass__prof__k">What they ate before</p>
+          <ul class="pass__prof__h">
+            {% for h in g['history'] %}
+            <li><span>{{ h['on'] }}</span> {{ h['what'] }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+
+          <form method="post" action="{{ url_for('pass_guest_note') }}" class="pass__prof__note">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="guest_id" value="{{ g['id'] }}">
+            <label for="note{{ g['id'] }}">Add something for next time</label>
+            <textarea id="note{{ g['id'] }}" name="note" rows="2"
+                      placeholder="Sat by the window. Did not touch the cheese."></textarea>
+            <button type="submit" class="g-btn g-btn--solid">Save it</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  {# ---- STORE --------------------------------------------------------- #}
+  <section class="pass__panel" data-panel="stock" hidden>
+    <p class="pass__filters" role="group" aria-label="Filter the store">
+      <button type="button" class="pass__f is-on" data-f="all">Everything</button>
+      <button type="button" class="pass__f" data-f="low">Running out</button>
+      <button type="button" class="pass__f" data-f="food">Food</button>
+      <button type="button" class="pass__f" data-f="drinks">Drinks</button>
+    </p>
+
+    {% if not stock %}
+      <p class="pass__empty">Nothing counted yet.</p>
+    {% else %}
+    <ul class="pass__stock">
+      {% for s in stock %}
+      {% set low = s['on_hand'] is not none and s['reorder_level'] and s['on_hand'] <= s['reorder_level'] %}
+      <li class="pass__s{{ ' is-low' if low }}"
+          data-cat="{{ s['category'] }}" data-low="{{ 1 if low else 0 }}">
+        <span class="pass__s__n">{{ s['name'] }}</span>
+        <span class="pass__s__q">
+          {{ s['on_hand'] if s['on_hand'] is not none else '—' }}
+          <em>{{ s['unit'] }}</em>
+        </span>
+        {% if low %}<span class="pass__s__low">Order</span>{% endif %}
+        {% if s['location'] %}<span class="pass__s__w">{{ s['location'] }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('pass_stock_ask') }}" class="pass__ask">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="pass-ask">Need something ordered</label>
+      <input type="text" id="pass-ask" name="want"
+             placeholder="Two cases of the Jurançon, and more butter">
+      <button type="submit" class="g-btn g-btn--solid">Send it</button>
+    </form>
+  </section>
+
+  {# ---- WORD ---------------------------------------------------------- #}
+  <section class="pass__panel" data-panel="word" hidden>
+    <form method="post" action="{{ url_for('pass_message') }}" class="pass__say">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <p class="g-field">
+        <label for="pass-to">To</label>
+        <select id="pass-to" name="to_user_id">
+          <option value="owner">Ben</option>
+          {% for u in staff or [] %}
+          <option value="{{ u['id'] }}">{{ u['name'] }}{% if u['role'] %} · {{ u['role'] }}{% endif %}</option>
+          {% endfor %}
+          <option value="all">Everyone</option>
+        </select>
+      </p>
+      <p class="g-field">
+        <label for="pass-msg">What needs saying</label>
+        <textarea id="pass-msg" name="body" rows="3"
+                  placeholder="The oven is running twenty degrees hot again."></textarea>
+      </p>
+      <p class="g-field g-field--check">
+        <label><input type="checkbox" name="urgent" value="1"> It cannot wait until tomorrow</label>
+      </p>
+      <p><button type="submit" class="g-btn g-btn--solid">Send</button></p>
+    </form>
+
+    {% if messages %}
+    <p class="pass__prof__k">Lately</p>
+    <ul class="pass__msgs">
+      {% for m in messages %}
+      <li class="pass__m{{ ' is-urgent' if m['urgent'] }}">
+        <span class="pass__m__who">{{ m['from_name'] }}</span>
+        <span class="pass__m__when">{{ m['when'] }}</span>
+        <p class="pass__m__b">{{ m['body'] }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+
+<script>
+/* Tabs and filters. No routing, no state, nothing to get stuck in — the
+   screen is on all evening and must never need rescuing. */
+(function(){
+  var root = document.querySelector('.pass');
+  if (!root) return;
+
+  root.querySelectorAll('.pass__tab').forEach(function(t){
+    t.addEventListener('click', function(){
+      root.querySelectorAll('.pass__tab').forEach(function(x){ x.classList.remove('is-on'); });
+      t.classList.add('is-on');
+      root.querySelectorAll('[data-panel]').forEach(function(p){
+        p.hidden = (p.dataset.panel !== t.dataset.tab);
+      });
+    });
+  });
+
+  /* A guest opens in place. One at a time, so the screen never becomes a
+     list of open drawers nobody closed. */
+  root.querySelectorAll('.pass__g__hit').forEach(function(hit){
+    hit.addEventListener('click', function(){
+      var prof = hit.nextElementSibling;
+      var open = !prof.hidden;
+      root.querySelectorAll('.pass__prof').forEach(function(p){ p.hidden = true; });
+      root.querySelectorAll('.pass__g__hit').forEach(function(h){
+        h.setAttribute('aria-expanded','false');
+      });
+      if (!open){ prof.hidden = false; hit.setAttribute('aria-expanded','true'); }
+    });
+  });
+
+  root.querySelectorAll('.pass__f').forEach(function(f){
+    f.addEventListener('click', function(){
+      root.querySelectorAll('.pass__f').forEach(function(x){ x.classList.remove('is-on'); });
+      f.classList.add('is-on');
+      var want = f.dataset.f;
+      root.querySelectorAll('.pass__s').forEach(function(li){
+        li.hidden = !(want === 'all'
+                   || (want === 'low' && li.dataset.low === '1')
+                   || li.dataset.cat === want);
+      });
+    });
+  });
+})();
+</script>
+{% endblock %}

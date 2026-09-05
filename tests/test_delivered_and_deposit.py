@@ -82,15 +82,24 @@ def run():
              now.isoformat()))
         conn.commit()
 
+    # Anchored to the SERVICE WINDOW, not to "now". These read `now - 2 hours`
+    # and `now - 1 hour`, which is inside tonight's service only if the clock
+    # is already two hours past the 05:00 rollover -- so the suite was green
+    # all day and went red at 05:07, when the service day had turned over
+    # seven minutes earlier and a delivery two hours ago belonged to the night
+    # before. The restaurant's day is exactly the thing this file is about,
+    # which is what makes it worth fixing rather than nudging.
+    window_start, window_end = m.service_day_window(night)
+    inside = m.parse_datetime_iso(window_start) + timedelta(hours=1)
+
     extra("still-due", "confirmed")
-    extra("champagne", "delivered",
-          delivered_at=now - timedelta(hours=2), by=porter)
+    extra("champagne", "delivered", delivered_at=inside, by=porter)
     extra("anonymous", "delivered",
-          delivered_at=now - timedelta(hours=1), by=None)
+          delivered_at=inside + timedelta(minutes=30), by=None)
     # Delivered a week ago. Today's list only — a running history of every
     # hamper the house has ever carried upstairs is a page nobody opens twice.
     extra("last-week", "delivered",
-          delivered_at=now - timedelta(days=7), by=porter)
+          delivered_at=inside - timedelta(days=7), by=porter)
 
     s.section("What was ticked off tonight, and by whom")
     done = m.extras_delivered_today(conn, night)

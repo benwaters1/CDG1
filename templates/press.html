@@ -5,7 +5,7 @@
 {% set crumbs = [('Press', None)] %}
 {% block content %}
 {% from '_proof.html' import credential, proof %}
-{% from '_stay_panel.html' import stay_panel %}
+{% from '_stay_panel.html' import stay_panel with context %}
 {% from '_marks.html' import mark, monogram %}
 
 <section class="g-sec g-sec--tight"><div class="g-wrap">

@@ -7,7 +7,7 @@
 {% set crumbs = [('The family', None)] %}
 {% block content %}
 {% from '_marks.html' import mark, monogram %}
-{% from '_stay_panel.html' import stay_panel %}
+{% from '_stay_panel.html' import stay_panel with context %}
 
 <section class="g-sec g-sec--tight"><div class="g-wrap">
   <p class="g-fr">Une famille, pas une société<span class="g-fr__en">A family, not a company</span></p>
