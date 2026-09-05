@@ -1,0 +1,30 @@
+{% extends "public_base.html" %}
+{% set sticky_bar = 'none' %}
+{% set crumbs = [('La Table', url_for('restaurant_info')), ('Reservations', None)] %}
+{% block title %}La Table — not yet taking reservations{% endblock %}
+{% block description %}La Table at Château de Gudanes is not open for online reservations yet. Write to us and we will tell you when it is.{% endblock %}
+{% block robots %}noindex{% endblock %}
+{% block content %}
+{# The page a guest reaches by tapping "Reserve" while the dining room is
+   switched off in settings. It used to be a 404, which tells somebody the
+   website is broken rather than that the table is not open yet — and the site
+   links here from the bar on every restaurant page, so it was not an address
+   anybody had to guess at. #}
+<div class="g-wrap" style="padding:clamp(2rem,8vw,5rem) 0;">
+  <p class="g-eyebrow">La Table</p>
+  <h1 class="g-place">Not taking reservations just yet</h1>
+  <p class="g-p g-lede-first">
+    The dining room is not open for online booking at the moment. It is not gone and nothing
+    has broken — the table simply is not taking reservations through the site yet.
+  </p>
+  <p class="g-p">
+    If you would like to eat here, write to us and say roughly when. Somebody answers, and we
+    will tell you the moment the table opens.
+  </p>
+  <p class="g-p">
+    <a href="{{ url_for('contact_page') }}" class="g-btn g-btn--solid">Write to us</a>
+    <a href="{{ url_for('restaurant_info') }}" class="g-btn">About La Table</a>
+    <a href="{{ url_for('book_rooms') }}" class="g-btn">Stay the night</a>
+  </p>
+</div>
+{% endblock %}

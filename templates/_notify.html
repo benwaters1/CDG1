@@ -12,6 +12,10 @@
   <h2 class="g-place">Tell Us When You Are Thinking Of</h2>
   <p class="g-p g-lede-first">Five rooms and a house that is still being finished means the calendar moves. Give us a month and we will write to you when it opens — once, not a newsletter.</p>
   <form method="post" action="{{ url_for('contact_page') }}" class="g-notify">
+    {# Every other public form here carries this. Without it, with CSRF on in
+       production, the form is not weakly protected -- it is unusable: the
+       guest presses "Let me know" and is handed the session-timeout page. #}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="action" value="notify">
     <p class="g-field">
       <label for="nf_month">Which month</label>

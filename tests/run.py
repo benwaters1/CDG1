@@ -93,6 +93,7 @@ SUITES = [
     "test_booking_journey",
     "test_funnel_forms",
     "test_pass",
+    "test_site_audit",
     "test_house_day",
     "test_house_operations",
     "test_house_reports",
