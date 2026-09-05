@@ -4080,6 +4080,23 @@ def init_db():
              fetched_at TEXT NOT NULL,
              last_error TEXT
          )"""),
+        # A word from the pass to the office, or to the rest of the team.
+        #
+        # The design side advised against building this and was right to: the
+        # kitchen has WhatsApp and it works, and an unused inbox in a kitchen
+        # is worse than none. What it does that WhatsApp cannot is put a note
+        # about a guest beside that guest, and make "urgent" arrive somewhere
+        # rather than on a phone face-down on a bench. So urgent EMAILS the
+        # owner -- see pass_message. A flag nobody sees is not a flag.
+        ("staff_messages_table", """CREATE TABLE IF NOT EXISTS staff_messages (
+             id           INTEGER PRIMARY KEY AUTOINCREMENT,
+             from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             to_user_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             body         TEXT NOT NULL,
+             urgent       INTEGER NOT NULL DEFAULT 0,
+             created_at   TEXT NOT NULL,
+             read_at      TEXT
+         )"""),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
         # What has already been sent to the accountant.
         #
@@ -5702,6 +5719,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "pass_screen", "pass_guest_note", "pass_stock_ask", "pass_message",
         "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
@@ -12059,6 +12077,142 @@ def room_economics(conn, *, months=12, today=None):
         "extras_revenue": round(sum(r["extras_revenue"] for r in out), 2),
         "nights": sum(r["nights"] for r in out),
         "never_sold": [r for r in live if not r["nights"]],
+    }
+
+
+def pass_service(conn, day=None):
+    """Everyone eating here tonight, staying or not, and what they cannot eat.
+
+    ONE LIST, TWO TABLES. A guest with a room and a local with a reservation
+    are the same person to a chef, and the screen this feeds is read from
+    three metres by somebody holding a pan. Two lists would mean checking two
+    places for an allergy, which is the way to miss one.
+
+    THE DAY IS THE SERVICE DAY, not the calendar day. Dinner served at half
+    past midnight belongs to the night it started, and the till, the covers
+    and this screen have to agree about which night that is or the pass shows
+    a different sitting from the one the kitchen is cooking.
+
+    A departure is exclusive, the same convention the booking side uses: a
+    guest who leaves this morning is not eating here tonight. `last_night` is
+    the other end of that -- somebody leaving tomorrow is on their last
+    evening, which is the one worth getting right.
+    """
+    day = day or service_day()
+    iso = day.isoformat()
+    tomorrow = (day + timedelta(days=1)).isoformat()
+
+    people = []
+    # Staying. linked_guest_id, not guest_id: a booking carries the name it was
+    # made in, and only points at a guest profile once somebody has tied them
+    # together. Both are read, because the profile is where the dietary note
+    # lives and the booking is where the name the chef will hear comes from.
+    for r in conn.execute(
+        """SELECT bookings.id AS booking_id, bookings.linked_guest_id AS guest_id,
+                  COALESCE(guests.name, bookings.guest_name) AS name,
+                  guests.dietary_notes, guests.preferences, guests.vip,
+                  guests.notes, guests.birthday, guests.anniversary,
+                  bookings.arrival_date AS arrive,
+                  bookings.departure_date AS depart,
+                  bookings.party_size AS party,
+                  bookings.special_requests,
+                  rooms.name AS room_name
+             FROM bookings
+             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date <= ?
+              AND bookings.departure_date > ?""", (iso, iso)).fetchall():
+        people.append(dict(r, staying=1,
+                           last_night=1 if str(r["depart"])[:10] == tomorrow else 0))
+
+    # Dining without a room. Its own dietary column, because somebody who has
+    # never stayed has no profile to carry one.
+    for r in conn.execute(
+        """SELECT restaurant_bookings.id AS res_id,
+                  restaurant_bookings.booking_id,
+                  restaurant_bookings.guest_name AS name,
+                  restaurant_bookings.dietary_notes,
+                  restaurant_bookings.party_size AS party,
+                  guests.id AS guest_id, guests.preferences, guests.vip,
+                  guests.notes, guests.birthday, guests.anniversary
+             FROM restaurant_bookings
+             LEFT JOIN guests ON guests.email = restaurant_bookings.guest_email
+                             AND restaurant_bookings.guest_email != ''
+            WHERE restaurant_bookings.status = 'confirmed'
+              AND restaurant_bookings.dinner_date = ?""", (iso,)).fetchall():
+        if r["booking_id"]:
+            continue          # already on the list above, with their room
+        people.append(dict(r, staying=0, last_night=0,
+                           arrive=None, depart=None, room_name=None))
+
+    # How often they have been, and when last. Asked once for everybody rather
+    # than once per person: forty covers is forty queries otherwise, on a page
+    # that reloads itself every two minutes all evening.
+    ids = [p["guest_id"] for p in people if p.get("guest_id")]
+    stays, last_stay = {}, {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for r in conn.execute(
+            """SELECT linked_guest_id AS gid, COUNT(*) AS n,
+                      MAX(departure_date) AS last_out
+                 FROM bookings
+                WHERE status = 'confirmed' AND departure_date <= ?
+                  AND linked_guest_id IN (%s)
+                GROUP BY linked_guest_id""" % marks, [iso] + ids).fetchall():
+            stays[r["gid"]] = r["n"]
+            last_stay[r["gid"]] = r["last_out"]
+
+    out = []
+    for p in people:
+        gid = p.get("guest_id")
+        nights = None
+        if p.get("arrive") and p.get("depart"):
+            a, d = parse_date(p["arrive"]), parse_date(p["depart"])
+            nights = (d - a).days if a and d else None
+        # A birthday or an anniversary falling tonight, which is the one thing
+        # a kitchen wants told rather than discovered. Compared on month and
+        # day: the year on a birthday is not tonight's business.
+        occasion = ""
+        for field, word in (("birthday", "birthday"), ("anniversary", "anniversary")):
+            when = parse_date(p.get(field)) if p.get(field) else None
+            if when and (when.month, when.day) == (day.month, day.day):
+                occasion = word
+        out.append({
+            "id": gid or 0,
+            "name": (p.get("name") or "").strip() or "A guest",
+            "dietary_notes": (p.get("dietary_notes") or "").strip(),
+            "preferences": (p.get("preferences") or "").strip(),
+            "vip": p.get("vip") or 0,
+            "notes": (p.get("notes") or "").strip(),
+            "arrive": p.get("arrive"), "depart": p.get("depart"),
+            "room_name": p.get("room_name"), "nights": nights,
+            "party": p.get("party") or 0,
+            "staying": p["staying"], "last_night": p["last_night"],
+            "stay_count": stays.get(gid, 0),
+            "last_stay": last_stay.get(gid),
+            "occasion": occasion,
+            # Optional in the template, and left out on purpose: the house does
+            # not record what an individual guest ate, and inventing it from
+            # the till would mean guessing which cover ordered which dish.
+            "history": [],
+        })
+    out.sort(key=lambda p: ((0 if p["dietary_notes"] else 1), p["name"].lower()))
+
+    levels = stock_levels(conn)
+    stock = [dict(r, on_hand=levels.get(r["id"])) for r in conn.execute(
+        """SELECT id, name, category, unit, reorder_level, location
+             FROM stock_items WHERE active = 1
+            ORDER BY category, name""").fetchall()]
+
+    settings = get_restaurant_settings(conn)
+    return {
+        "day": day,
+        "guests": out,
+        "stock": stock,
+        "allergy_count": sum(1 for p in out if p["dietary_notes"]),
+        "covers": sum(p["party"] or 1 for p in out),
+        "service_time": (settings["dinner_time"] if settings else "") or "",
     }
 
 
@@ -28755,6 +28909,9 @@ PALETTE_PAGES = [
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("The pass", "pass_screen",
+     "pass service tonight covers who is eating allergies dietary chef "
+     "kitchen ipad store running out"),
     ("What suppliers cost", "management_supplier_scorecard",
      "supplier vendor spend scorecard price rise invoices who we buy from"),
     ("How long people stay", "admin_tenure",
@@ -40249,6 +40406,152 @@ def fetch_photo_mirror():
     if failed:
         flash(f"{failed} could not be fetched. First: {first_error}", "error")
     return redirect(url_for("admin_photo_mirror"))
+
+
+@app.route("/pass")
+@login_required
+def pass_screen():
+    """The screen the restaurant team lives on, for tonight's service.
+
+    A fixed iPad by the pass, left on a charger, refreshing itself every two
+    minutes. It answers from three metres what the kitchen would otherwise ask
+    somebody: who is eating, what they cannot eat, who has been here before,
+    and what the store is short of.
+
+    login_required rather than an owner check. A chef is not an owner, and a
+    screen the kitchen cannot open is a screen that gets replaced by a printed
+    sheet nobody updates.
+    """
+    conn = get_db()
+    data = pass_service(conn)
+    team = conn.execute(
+        """SELECT id, name, role FROM users
+            WHERE status = 'active' AND id != ? ORDER BY name""",
+        (session.get("user_id") or 0,)).fetchall()
+    messages = conn.execute(
+        """SELECT staff_messages.body, staff_messages.urgent,
+                  staff_messages.created_at AS when_sent,
+                  COALESCE(users.name, 'Someone') AS from_name
+             FROM staff_messages
+             LEFT JOIN users ON users.id = staff_messages.from_user_id
+            WHERE staff_messages.created_at >= ?
+            ORDER BY staff_messages.id DESC LIMIT 12""",
+        ((datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),)).fetchall()
+    conn.close()
+    return render_template(
+        "pass.html", guests=data["guests"], stock=data["stock"],
+        allergy_count=data["allergy_count"], covers=data["covers"],
+        service_time=data["service_time"], staff=team,
+        messages=[dict(r, when=r["when_sent"]) for r in messages])
+
+
+@app.route("/pass/note", methods=["POST"])
+@login_required
+def pass_guest_note():
+    """A chef writing "did not touch the cheese" the moment they notice.
+
+    The valuable half of the screen. It goes on the guest's own record, so it
+    is there the next time they book rather than in somebody's memory of a
+    Tuesday.
+    """
+    conn = get_db()
+    try:
+        guest_id = int(request.form.get("guest_id") or 0)
+    except ValueError:
+        guest_id = 0
+    body = (request.form.get("note") or "").strip()[:2000]
+    if not body:
+        flash("Nothing to write down.", "error")
+    elif not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        # A guest with no profile -- a local dining who has never stayed --
+        # has nowhere to put this. Said plainly rather than dropped.
+        flash("That name has no guest record yet, so there is nowhere to keep "
+              "the note. Tie the booking to a guest first.", "error")
+    else:
+        conn.execute(
+            """INSERT INTO guest_notes (guest_id, body, written_by_user_id, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (guest_id, body, session.get("user_id"),
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        flash("Noted against them for next time.", "success")
+    conn.close()
+    return redirect(url_for("pass_screen"))
+
+
+@app.route("/pass/stock", methods=["POST"])
+@login_required
+def pass_stock_ask():
+    """Ask for something to be ordered, from the pass.
+
+    A task rather than a message, because anything that becomes a task appears
+    on the calendar by itself -- and a request to buy something that lives only
+    in an inbox is a request that gets read once and forgotten by Thursday.
+    """
+    want = (request.form.get("want") or "").strip()[:200]
+    if not want:
+        flash("Nothing asked for.", "error")
+        return redirect(url_for("pass_screen"))
+    conn = get_db()
+    who = conn.execute("SELECT name FROM users WHERE id = ?",
+                       (session.get("user_id") or 0,)).fetchone()
+    conn.execute(
+        """INSERT INTO tasks (title, notes, priority, due_date, status,
+             origin, created_at)
+           VALUES (?, ?, 'normal', ?, 'open', 'pass', ?)""",
+        ("Kitchen asked for: " + want,
+         "Asked for at the pass by %s." % ((who["name"] if who else None) or "the kitchen"),
+         service_day_iso(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash("Asked for. It is on the list for today.", "success")
+    return redirect(url_for("pass_screen"))
+
+
+@app.route("/pass/message", methods=["POST"])
+@login_required
+def pass_message():
+    """A word to the office or the team, without leaving the pass.
+
+    URGENT EMAILS THE OWNER, and that is the whole justification for this
+    existing beside WhatsApp. A flag that only marks a row red is a flag
+    nobody sees; the kitchen already has somewhere to type that does nothing,
+    and it is called a group chat.
+    """
+    body = (request.form.get("body") or "").strip()[:2000]
+    if not body:
+        flash("Nothing to say.", "error")
+        return redirect(url_for("pass_screen"))
+    try:
+        to_user_id = int(request.form.get("to_user_id") or 0) or None
+    except ValueError:
+        to_user_id = None
+    urgent = 1 if request.form.get("urgent") else 0
+
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO staff_messages (from_user_id, to_user_id, body, urgent, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (session.get("user_id"), to_user_id, body, urgent,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    sent_to = None
+    if urgent:
+        who = conn.execute("SELECT name FROM users WHERE id = ?",
+                           (session.get("user_id") or 0,)).fetchone()
+        sent_to = (conn.execute("SELECT email FROM users WHERE id = ?",
+                                (to_user_id,)).fetchone() or {}).get("email") \
+            if to_user_id else owner_email(conn)
+        if sent_to:
+            send_email(sent_to, "Urgent from the pass",
+                       "%s at the pass:\n\n%s"
+                       % ((who["name"] if who else None) or "The kitchen", body))
+    conn.close()
+    flash("Sent." + (" It has gone out by email as well." if urgent and sent_to
+                     else (" Nobody has an address to send it to, so it is on "
+                           "the screen only." if urgent else "")),
+          "success")
+    return redirect(url_for("pass_screen"))
 
 
 @app.route("/room-photos/<filename>")
