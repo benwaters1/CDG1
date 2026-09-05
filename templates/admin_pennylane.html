@@ -68,6 +68,7 @@
           </td>
           <td>
             <input type="text" name="revenue_{{ c['key'] }}" list="revenue-codes"
+               aria-label="Ledger account for {{ c['label'] }}"
                    value="{{ mapping[c['key']] }}" placeholder="e.g. 706" style="width:160px;"
                    {{ 'disabled' if not synced_count }}>
           </td>

@@ -57,6 +57,7 @@
     {% if user['role'] == 'owner' %}
     <form method="get" action="{{ url_for('search') }}" class="topbar-search" autocomplete="off">
       <input type="text" name="q" id="topbar-search-input" placeholder="Search or jump to… ( / )"
+             aria-label="Search the château, or jump to a page"
              value="{{ request.args.get('q', '') if request.endpoint == 'search' else '' }}"
              role="combobox" aria-expanded="false" aria-controls="palette-results">
       <div id="palette-results" class="palette-results" role="listbox" hidden></div>

@@ -111,7 +111,10 @@
   <div class="task-row {{ 'task-done' if r.status == 'done' }} {{ 'task-in-progress' if r.status == 'in_progress' }} {{ 'task-overdue' if r.status != 'done' and r.date and r.date < today.isoformat() }} {{ 'task-directed' if r.acknowledgment_status == 'pending' }}"
        data-task-id="{{ r.id }}" data-kind="task" data-lane="{{ r.lane }}" data-guest="{{ 'guest' if r.is_guest else 'employee' }}"
        data-scheduled="{{ '1' if r.scheduled else '0' }}" data-employee="{{ r.assignee_id or '' }}" data-status="{{ r.status }}">
-    <button type="button" class="task-check" onclick="toggleTask({{ r.id }}, this)">{{ '✓' if r.status == 'done' else ('…' if r.status == 'in_progress' else '') }}</button>
+    <button type="button" class="task-check"
+            aria-pressed="{{ 'true' if r.status == 'done' else 'false' }}"
+            aria-label="{{ r.status|replace('_', ' ')|capitalize }}: {{ r.title }}"
+            onclick="toggleTask({{ r.id }}, this)">{{ '✓' if r.status == 'done' else ('…' if r.status == 'in_progress' else '') }}</button>
     {% if r.priority %}<span class="priority-dot priority-{{ r.priority }}" title="{{ r.priority|capitalize }} priority"></span>{% endif %}
     <span class="lane-badge lane-{{ r.lane }}">{{ {'booking':'Booking','task':'Staff','owner':'Mine'}[r.lane] }}</span>
     <span class="task-title">

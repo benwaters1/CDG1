@@ -126,9 +126,12 @@
           <form method="post" action="{{ url_for('edit_bill_share', share_id=share['id']) }}"
                 style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" name="name" value="{{ share['name'] }}" placeholder="Whose share" style="max-width:200px;">
-            <input type="email" name="email" value="{{ share['email'] }}" placeholder="Their email" style="max-width:240px;">
-            <input type="text" name="note" value="{{ share['note'] or '' }}" placeholder="A line for them (optional)" style="max-width:260px;">
+            <input type="text" name="name" value="{{ share['name'] }}" placeholder="Whose share"
+                 aria-label="Whose share this is" style="max-width:200px;">
+            <input type="email" name="email" value="{{ share['email'] }}" placeholder="Their email"
+                 aria-label="Their email address" style="max-width:240px;">
+            <input type="text" name="note" value="{{ share['note'] or '' }}"
+                 aria-label="A line to send with their share" placeholder="A line for them (optional)" style="max-width:260px;">
             <button type="submit" class="btn-mini">Save</button>
           </form>
         </td>

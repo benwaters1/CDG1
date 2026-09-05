@@ -447,7 +447,10 @@ function toggleBreak() {
     <div class="task-list">
       {% for t in my_tasks %}
       <div class="task-row {{ 'task-done' if t['status'] == 'done' }} {{ 'task-in-progress' if t['status'] == 'in_progress' }} {{ 'task-overdue' if t['status'] != 'done' and t['due_date'] and t['due_date'] < today.isoformat() }} {{ 'task-directed' if t['acknowledgment_status'] == 'pending' }}" data-task-id="{{ t['id'] }}">
-        <button type="button" class="task-check" onclick="toggleTask({{ t['id'] }}, this)" title="{{ {'open': 'Mark in progress', 'in_progress': 'Mark done', 'done': 'Reopen'}[t['status']] }}">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
+        <button type="button" class="task-check"
+                aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}"
+                aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}"
+                onclick="toggleTask({{ t['id'] }}, this)" title="{{ {'open': 'Mark in progress', 'in_progress': 'Mark done', 'done': 'Reopen'}[t['status']] }}">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
         <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
         <span class="task-title">
           {{ t['title'] }}

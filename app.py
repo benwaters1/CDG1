@@ -4273,6 +4273,23 @@ def init_db():
              fetched_at TEXT NOT NULL,
              last_error TEXT
          )"""),
+        # A word from the pass to the office, or to the rest of the team.
+        #
+        # The design side advised against building this and was right to: the
+        # kitchen has WhatsApp and it works, and an unused inbox in a kitchen
+        # is worse than none. What it does that WhatsApp cannot is put a note
+        # about a guest beside that guest, and make "urgent" arrive somewhere
+        # rather than on a phone face-down on a bench. So urgent EMAILS the
+        # owner -- see pass_message. A flag nobody sees is not a flag.
+        ("staff_messages_table", """CREATE TABLE IF NOT EXISTS staff_messages (
+             id           INTEGER PRIMARY KEY AUTOINCREMENT,
+             from_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             to_user_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+             body         TEXT NOT NULL,
+             urgent       INTEGER NOT NULL DEFAULT 0,
+             created_at   TEXT NOT NULL,
+             read_at      TEXT
+         )"""),
         ("booking_payments_reference", "ALTER TABLE booking_payments ADD COLUMN reference TEXT"),
         # What has already been sent to the accountant.
         #
@@ -5201,6 +5218,16 @@ def init_db():
         "ON bookings(share_token) WHERE share_token IS NOT NULL",
         "CREATE INDEX IF NOT EXISTS idx_guest_feedback_submitted_at ON guest_feedback(submitted_at)",
         "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
+        # The owner home asks "when was the last backup?" — filtered on
+        # action, ordered by time. An index on created_at alone cannot
+        # serve that, so it read all of audit_log five times per load,
+        # and audit_log is never pruned: it only gets slower.
+        "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created "
+        "ON audit_log(action, created_at)",
+        # And "how many are waiting to go out?", which counted by
+        # reading every message the outbox has ever held.
+        "CREATE INDEX IF NOT EXISTS idx_email_outbox_sent_at "
+        "ON email_outbox(sent_at)",
         "CREATE INDEX IF NOT EXISTS idx_room_issues_status ON room_issues(status)",
         "CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_vehicle_id ON vehicle_maintenance(vehicle_id)",
         "CREATE INDEX IF NOT EXISTS idx_vehicle_maintenance_status ON vehicle_maintenance(status)",
@@ -5914,6 +5941,7 @@ NAV_AREAS = {
         "restaurant_covers", "restaurant_tables", "seat_restaurant_booking",
         "shift_handover", "mark_handover_read", "mileage",
         "kitchen_fridges", "kitchen_prep", "prep_item_done",
+        "pass_screen", "pass_guest_note", "pass_stock_ask", "pass_message",
         "room_access_page", "room_checks_page", "walk_room",
         "management_meters", "management_lost_property",
         "resolve_lost_property",
@@ -10701,8 +10729,103 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
     """
     conn.execute("UPDATE booking_write_lock SET held_at = ? WHERE id = 1",
                  (datetime.now(timezone.utc).isoformat(),))
+    # Rebuild under the lock. A picture cached earlier in this request was
+    # read BEFORE the lock was held, and answering a booking from it is how
+    # two guests get the same room.
+    _availability_picture(conn, fresh=True)
     return is_range_available(conn, room_id, arrival, departure,
                               exclude_booking_id, include_pending)
+
+
+def _availability_picture(conn, *, fresh=False):
+    """Everything that closes a date, read once and held for the request.
+
+    is_range_available used to ask six questions per call and three of them
+    took no parameters at all -- the workshops running, the events confirmed,
+    the dates provisionally held. next_free_nights calls it once per room per
+    day, so the public booking page asked those three seventy times each and
+    got the same answer seventy times. 476 queries; six distinct.
+
+    Held on `g`, so it lives exactly as long as one request. That is the
+    right lifetime: a booking taken by somebody else mid-request cannot make
+    the page wrong -- the page was already drawn from a moment in the past --
+    but a picture surviving into the NEXT request could, and a global cache
+    would need invalidating from eleven places that write bookings.
+
+    `fresh=True` rebuilds it. The write path passes it, because a check made
+    under the booking lock must not be answered from a read taken before the
+    lock was held.
+
+    Falls back to building afresh with no caching at all when there is no
+    request context -- the nightly jobs call this, and `g` does not exist
+    there.
+    """
+    if not fresh and has_request_context():
+        cached = getattr(g, "_availability_picture", None)
+        if cached is not None:
+            return cached
+
+    picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": []}
+
+    # Per room, but read for every room at once rather than one room at a
+    # time. Status and id are kept so the callers that exclude a booking or
+    # ignore pending ones can still do it, in Python.
+    for row in conn.execute(
+            """SELECT id, room_id, arrival_date, departure_date, status
+                 FROM bookings WHERE status IN ('pending', 'confirmed')"""):
+        picture["bookings"].setdefault(row["room_id"], []).append(
+            (row["id"], row["status"], parse_date(row["arrival_date"]),
+             parse_date(row["departure_date"])))
+    for row in conn.execute(
+            "SELECT room_id, start_date, end_date FROM blocked_dates"):
+        picture["blocked"].setdefault(row["room_id"], []).append(
+            (parse_date(row["start_date"]), parse_date(row["end_date"])))
+    for row in conn.execute(
+            "SELECT room_id, start_date, end_date FROM room_blocks"):
+        picture["manual"].setdefault(row["room_id"], []).append(
+            (parse_date(row["start_date"]), parse_date(row["end_date"])))
+
+    # House-wide: a workshop, a confirmed event or a live hold takes the
+    # whole château, so these apply to every room. Each carries the sentence
+    # a guest is shown, because "not available" sends whoever is at the desk
+    # hunting for a booking that does not exist.
+    #
+    # END-INCLUSIVE, like the code this replaces: a workshop finishing on the
+    # 5th still holds the 5th, where a booking departing on the 5th does not.
+    for row in conn.execute(
+            """SELECT workshop_sessions.start_date, workshop_sessions.end_date,
+                      workshops.title
+                 FROM workshop_sessions
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""):
+        picture["house"].append((
+            parse_date(row["start_date"]), parse_date(row["end_date"]),
+            f"Those dates are held for a workshop ({row['title']})."))
+    for row in conn.execute(
+            """SELECT preferred_date, end_date, event_type FROM event_inquiries
+                WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""):
+        e_start = parse_date(row["preferred_date"])
+        e_end = parse_date(row["end_date"]) or e_start
+        if e_end and e_start and e_end < e_start:
+            e_end = e_start
+        picture["house"].append((
+            e_start, e_end,
+            f"That date is held for a confirmed event ({row['event_type']})."))
+    for row in conn.execute(
+            """SELECT event_holds.start_date, event_holds.end_date,
+                      event_inquiries.event_type AS kind
+                 FROM event_holds
+                 JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+                WHERE event_holds.released_at IS NULL
+                  AND event_holds.expires_at > ?""",
+            (datetime.now(timezone.utc).isoformat(),)):
+        picture["house"].append((
+            parse_date(row["start_date"]), parse_date(row["end_date"]),
+            f"Those dates are provisionally held for a {row['kind']} "
+            f"while somebody decides."))
+
+    if has_request_context():
+        g._availability_picture = picture
+    return picture
 
 
 def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
@@ -10720,81 +10843,30 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
     if departure <= arrival:
         return False, "Departure must be after arrival."
 
-    statuses = "('pending','confirmed')" if include_pending else "('confirmed')"
-    query = f"""SELECT id, arrival_date, departure_date FROM bookings
-               WHERE room_id = ? AND status IN {statuses}"""
-    params = [room_id]
-    if exclude_booking_id:
-        query += " AND id != ?"
-        params.append(exclude_booking_id)
-    for row in conn.execute(query, params).fetchall():
-        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+    picture = _availability_picture(conn)
+
+    for bid, status, b_start, b_end in picture["bookings"].get(room_id, ()):
+        if not include_pending and status != "confirmed":
+            continue
+        if exclude_booking_id and bid == exclude_booking_id:
+            continue
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates overlap an existing booking."
 
-    for row in conn.execute(
-        "SELECT start_date, end_date FROM blocked_dates WHERE room_id = ?", (room_id,)
-    ).fetchall():
-        b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    for b_start, b_end in picture["blocked"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates are blocked on another booking channel."
 
-    for row in conn.execute(
-        "SELECT start_date, end_date FROM room_blocks WHERE room_id = ?", (room_id,)
-    ).fetchall():
-        b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    for b_start, b_end in picture["manual"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates aren't available."
 
-    # A workshop/retreat takes over the whole château for its run, not just
-    # one room — so every room is unavailable for the duration of any
-    # scheduled session, the same way a manual block would be.
-    for row in conn.execute(
-        "SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title "
-        "FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"
-    ).fetchall():
-        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
-        if w_start and w_end and arrival <= w_end and w_start < departure:
-            return False, f"Those dates are held for a workshop ({row['title']})."
-
-    # A confirmed event (wedding, photoshoot, etc.) takes over the château for
-    # its run, the same way a workshop does.
-    #
-    # THE WHOLE RUN, NOT THE FIRST DAY. This read preferred_date alone with a
-    # comment saying event_inquiries had no range -- and end_date had been
-    # added since, so a three-day wedding blocked one day and left the rest of
-    # itself on sale.
-    for row in conn.execute(
-        """SELECT preferred_date, end_date, event_type FROM event_inquiries
-            WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""
-    ).fetchall():
-        e_start = parse_date(row["preferred_date"])
-        e_end = parse_date(row["end_date"]) or e_start
-        if e_end and e_start and e_end < e_start:
-            e_end = e_start
-        if e_start and arrival <= e_end and e_start < departure:
-            return False, f"That date is held for a confirmed event ({row['event_type']})."
-
-    # And a date PROMISED but not yet confirmed. The house only had free or
-    # confirmed, so a date held verbally for three weeks while somebody
-    # decided was, as far as this function knew, free -- and a room booking
-    # could take it without anybody noticing until the wedding was confirmed
-    # on top of it.
-    #
-    # Named as provisional, deliberately. "Not available" sends whoever is at
-    # the desk looking for a booking that does not exist; "held while somebody
-    # decides" tells them there is a person to ring.
-    for row in conn.execute(
-        """SELECT event_holds.start_date, event_holds.end_date,
-                  event_inquiries.event_type AS kind
-             FROM event_holds
-             JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
-            WHERE event_holds.released_at IS NULL AND event_holds.expires_at > ?""",
-        (datetime.now(timezone.utc).isoformat(),)).fetchall():
-        h_start, h_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    # A workshop, a confirmed event or a live hold takes the whole château,
+    # so these apply to every room. End-inclusive: a workshop finishing on
+    # the 5th still holds the 5th.
+    for h_start, h_end, why in picture["house"]:
         if h_start and h_end and arrival <= h_end and h_start < departure:
-            return False, (f"Those dates are provisionally held for a "
-                           f"{row['kind']} while somebody decides.")
+            return False, why
 
     return True, None
 
@@ -12274,6 +12346,142 @@ def room_economics(conn, *, months=12, today=None):
         "extras_revenue": round(sum(r["extras_revenue"] for r in out), 2),
         "nights": sum(r["nights"] for r in out),
         "never_sold": [r for r in live if not r["nights"]],
+    }
+
+
+def pass_service(conn, day=None):
+    """Everyone eating here tonight, staying or not, and what they cannot eat.
+
+    ONE LIST, TWO TABLES. A guest with a room and a local with a reservation
+    are the same person to a chef, and the screen this feeds is read from
+    three metres by somebody holding a pan. Two lists would mean checking two
+    places for an allergy, which is the way to miss one.
+
+    THE DAY IS THE SERVICE DAY, not the calendar day. Dinner served at half
+    past midnight belongs to the night it started, and the till, the covers
+    and this screen have to agree about which night that is or the pass shows
+    a different sitting from the one the kitchen is cooking.
+
+    A departure is exclusive, the same convention the booking side uses: a
+    guest who leaves this morning is not eating here tonight. `last_night` is
+    the other end of that -- somebody leaving tomorrow is on their last
+    evening, which is the one worth getting right.
+    """
+    day = day or service_day()
+    iso = day.isoformat()
+    tomorrow = (day + timedelta(days=1)).isoformat()
+
+    people = []
+    # Staying. linked_guest_id, not guest_id: a booking carries the name it was
+    # made in, and only points at a guest profile once somebody has tied them
+    # together. Both are read, because the profile is where the dietary note
+    # lives and the booking is where the name the chef will hear comes from.
+    for r in conn.execute(
+        """SELECT bookings.id AS booking_id, bookings.linked_guest_id AS guest_id,
+                  COALESCE(guests.name, bookings.guest_name) AS name,
+                  guests.dietary_notes, guests.preferences, guests.vip,
+                  guests.notes, guests.birthday, guests.anniversary,
+                  bookings.arrival_date AS arrive,
+                  bookings.departure_date AS depart,
+                  bookings.party_size AS party,
+                  bookings.special_requests,
+                  rooms.name AS room_name
+             FROM bookings
+             LEFT JOIN guests ON guests.id = bookings.linked_guest_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+            WHERE bookings.status = 'confirmed'
+              AND bookings.arrival_date <= ?
+              AND bookings.departure_date > ?""", (iso, iso)).fetchall():
+        people.append(dict(r, staying=1,
+                           last_night=1 if str(r["depart"])[:10] == tomorrow else 0))
+
+    # Dining without a room. Its own dietary column, because somebody who has
+    # never stayed has no profile to carry one.
+    for r in conn.execute(
+        """SELECT restaurant_bookings.id AS res_id,
+                  restaurant_bookings.booking_id,
+                  restaurant_bookings.guest_name AS name,
+                  restaurant_bookings.dietary_notes,
+                  restaurant_bookings.party_size AS party,
+                  guests.id AS guest_id, guests.preferences, guests.vip,
+                  guests.notes, guests.birthday, guests.anniversary
+             FROM restaurant_bookings
+             LEFT JOIN guests ON guests.email = restaurant_bookings.guest_email
+                             AND restaurant_bookings.guest_email != ''
+            WHERE restaurant_bookings.status = 'confirmed'
+              AND restaurant_bookings.dinner_date = ?""", (iso,)).fetchall():
+        if r["booking_id"]:
+            continue          # already on the list above, with their room
+        people.append(dict(r, staying=0, last_night=0,
+                           arrive=None, depart=None, room_name=None))
+
+    # How often they have been, and when last. Asked once for everybody rather
+    # than once per person: forty covers is forty queries otherwise, on a page
+    # that reloads itself every two minutes all evening.
+    ids = [p["guest_id"] for p in people if p.get("guest_id")]
+    stays, last_stay = {}, {}
+    if ids:
+        marks = ",".join("?" * len(ids))
+        for r in conn.execute(
+            """SELECT linked_guest_id AS gid, COUNT(*) AS n,
+                      MAX(departure_date) AS last_out
+                 FROM bookings
+                WHERE status = 'confirmed' AND departure_date <= ?
+                  AND linked_guest_id IN (%s)
+                GROUP BY linked_guest_id""" % marks, [iso] + ids).fetchall():
+            stays[r["gid"]] = r["n"]
+            last_stay[r["gid"]] = r["last_out"]
+
+    out = []
+    for p in people:
+        gid = p.get("guest_id")
+        nights = None
+        if p.get("arrive") and p.get("depart"):
+            a, d = parse_date(p["arrive"]), parse_date(p["depart"])
+            nights = (d - a).days if a and d else None
+        # A birthday or an anniversary falling tonight, which is the one thing
+        # a kitchen wants told rather than discovered. Compared on month and
+        # day: the year on a birthday is not tonight's business.
+        occasion = ""
+        for field, word in (("birthday", "birthday"), ("anniversary", "anniversary")):
+            when = parse_date(p.get(field)) if p.get(field) else None
+            if when and (when.month, when.day) == (day.month, day.day):
+                occasion = word
+        out.append({
+            "id": gid or 0,
+            "name": (p.get("name") or "").strip() or "A guest",
+            "dietary_notes": (p.get("dietary_notes") or "").strip(),
+            "preferences": (p.get("preferences") or "").strip(),
+            "vip": p.get("vip") or 0,
+            "notes": (p.get("notes") or "").strip(),
+            "arrive": p.get("arrive"), "depart": p.get("depart"),
+            "room_name": p.get("room_name"), "nights": nights,
+            "party": p.get("party") or 0,
+            "staying": p["staying"], "last_night": p["last_night"],
+            "stay_count": stays.get(gid, 0),
+            "last_stay": last_stay.get(gid),
+            "occasion": occasion,
+            # Optional in the template, and left out on purpose: the house does
+            # not record what an individual guest ate, and inventing it from
+            # the till would mean guessing which cover ordered which dish.
+            "history": [],
+        })
+    out.sort(key=lambda p: ((0 if p["dietary_notes"] else 1), p["name"].lower()))
+
+    levels = stock_levels(conn)
+    stock = [dict(r, on_hand=levels.get(r["id"])) for r in conn.execute(
+        """SELECT id, name, category, unit, reorder_level, location
+             FROM stock_items WHERE active = 1
+            ORDER BY category, name""").fetchall()]
+
+    settings = get_restaurant_settings(conn)
+    return {
+        "day": day,
+        "guests": out,
+        "stock": stock,
+        "allergy_count": sum(1 for p in out if p["dietary_notes"]),
+        "covers": sum(p["party"] or 1 for p in out),
+        "service_time": (settings["dinner_time"] if settings else "") or "",
     }
 
 
@@ -20825,6 +21033,34 @@ def queue_undelivered(to_address, subject, body, ics_content, ics_filename, reas
 GUEST_MESSAGE_KEEP_MONTHS = 24
 
 
+def purge_sent_outbox(conn, *, now=None):
+    """Messages the outbox has held past the two years the house promises.
+
+    email_outbox is the failure queue: a message that could not be sent is
+    filed here with its whole body, and sending it later sets sent_at and
+    leaves the row where it is. Nothing deleted one except the owner pressing
+    a button, so the same words purge_guest_messages clears after two years
+    sat here indefinitely.
+
+    Sent or unsent, deliberately. After two years a message the house never
+    managed to send is not going to be sent, and keeping its text is the thing
+    the notice says the house does not do. The owner still sees a failure
+    while it is recent, which is when it is worth seeing — held_mail_split
+    already refuses to send anything past EMAIL_OUTBOX_STALE_DAYS.
+
+    Keyed on the SAME constant as the guest-message purge rather than one of
+    its own: two retention numbers for the same words are two numbers that
+    drift apart, and the notice states only one.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=int(GUEST_MESSAGE_KEEP_MONTHS * 30.44))
+              ).isoformat()
+    cur = conn.execute(
+        "DELETE FROM email_outbox WHERE COALESCE(sent_at, created_at) < ?",
+        (cutoff,))
+    return {"outbox_messages": cur.rowcount or 0}
+
+
 def booking_for_contact(conn, address=None, phone=None):
     """Which stay a message to this person is about. None if it is not a guest.
 
@@ -29222,6 +29458,9 @@ PALETTE_PAGES = [
      "fridge freezer temperature cold storage haccp log reading"),
     ("Prep list", "kitchen_prep",
      "prep mise en place kitchen board before service"),
+    ("The pass", "pass_screen",
+     "pass service tonight covers who is eating allergies dietary chef "
+     "kitchen ipad store running out"),
     ("What suppliers cost", "management_supplier_scorecard",
      "supplier vendor spend scorecard price rise invoices who we buy from"),
     ("How long people stay", "admin_tenure",
@@ -40724,6 +40963,152 @@ def fetch_photo_mirror():
     return redirect(url_for("admin_photo_mirror"))
 
 
+@app.route("/pass")
+@login_required
+def pass_screen():
+    """The screen the restaurant team lives on, for tonight's service.
+
+    A fixed iPad by the pass, left on a charger, refreshing itself every two
+    minutes. It answers from three metres what the kitchen would otherwise ask
+    somebody: who is eating, what they cannot eat, who has been here before,
+    and what the store is short of.
+
+    login_required rather than an owner check. A chef is not an owner, and a
+    screen the kitchen cannot open is a screen that gets replaced by a printed
+    sheet nobody updates.
+    """
+    conn = get_db()
+    data = pass_service(conn)
+    team = conn.execute(
+        """SELECT id, name, role FROM users
+            WHERE status = 'active' AND id != ? ORDER BY name""",
+        (session.get("user_id") or 0,)).fetchall()
+    messages = conn.execute(
+        """SELECT staff_messages.body, staff_messages.urgent,
+                  staff_messages.created_at AS when_sent,
+                  COALESCE(users.name, 'Someone') AS from_name
+             FROM staff_messages
+             LEFT JOIN users ON users.id = staff_messages.from_user_id
+            WHERE staff_messages.created_at >= ?
+            ORDER BY staff_messages.id DESC LIMIT 12""",
+        ((datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),)).fetchall()
+    conn.close()
+    return render_template(
+        "pass.html", guests=data["guests"], stock=data["stock"],
+        allergy_count=data["allergy_count"], covers=data["covers"],
+        service_time=data["service_time"], staff=team,
+        messages=[dict(r, when=r["when_sent"]) for r in messages])
+
+
+@app.route("/pass/note", methods=["POST"])
+@login_required
+def pass_guest_note():
+    """A chef writing "did not touch the cheese" the moment they notice.
+
+    The valuable half of the screen. It goes on the guest's own record, so it
+    is there the next time they book rather than in somebody's memory of a
+    Tuesday.
+    """
+    conn = get_db()
+    try:
+        guest_id = int(request.form.get("guest_id") or 0)
+    except ValueError:
+        guest_id = 0
+    body = (request.form.get("note") or "").strip()[:2000]
+    if not body:
+        flash("Nothing to write down.", "error")
+    elif not conn.execute("SELECT 1 FROM guests WHERE id = ?", (guest_id,)).fetchone():
+        # A guest with no profile -- a local dining who has never stayed --
+        # has nowhere to put this. Said plainly rather than dropped.
+        flash("That name has no guest record yet, so there is nowhere to keep "
+              "the note. Tie the booking to a guest first.", "error")
+    else:
+        conn.execute(
+            """INSERT INTO guest_notes (guest_id, body, written_by_user_id, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (guest_id, body, session.get("user_id"),
+             datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        flash("Noted against them for next time.", "success")
+    conn.close()
+    return redirect(url_for("pass_screen"))
+
+
+@app.route("/pass/stock", methods=["POST"])
+@login_required
+def pass_stock_ask():
+    """Ask for something to be ordered, from the pass.
+
+    A task rather than a message, because anything that becomes a task appears
+    on the calendar by itself -- and a request to buy something that lives only
+    in an inbox is a request that gets read once and forgotten by Thursday.
+    """
+    want = (request.form.get("want") or "").strip()[:200]
+    if not want:
+        flash("Nothing asked for.", "error")
+        return redirect(url_for("pass_screen"))
+    conn = get_db()
+    who = conn.execute("SELECT name FROM users WHERE id = ?",
+                       (session.get("user_id") or 0,)).fetchone()
+    conn.execute(
+        """INSERT INTO tasks (title, notes, priority, due_date, status,
+             origin, created_at)
+           VALUES (?, ?, 'normal', ?, 'open', 'pass', ?)""",
+        ("Kitchen asked for: " + want,
+         "Asked for at the pass by %s." % ((who["name"] if who else None) or "the kitchen"),
+         service_day_iso(), datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    conn.close()
+    flash("Asked for. It is on the list for today.", "success")
+    return redirect(url_for("pass_screen"))
+
+
+@app.route("/pass/message", methods=["POST"])
+@login_required
+def pass_message():
+    """A word to the office or the team, without leaving the pass.
+
+    URGENT EMAILS THE OWNER, and that is the whole justification for this
+    existing beside WhatsApp. A flag that only marks a row red is a flag
+    nobody sees; the kitchen already has somewhere to type that does nothing,
+    and it is called a group chat.
+    """
+    body = (request.form.get("body") or "").strip()[:2000]
+    if not body:
+        flash("Nothing to say.", "error")
+        return redirect(url_for("pass_screen"))
+    try:
+        to_user_id = int(request.form.get("to_user_id") or 0) or None
+    except ValueError:
+        to_user_id = None
+    urgent = 1 if request.form.get("urgent") else 0
+
+    conn = get_db()
+    conn.execute(
+        """INSERT INTO staff_messages (from_user_id, to_user_id, body, urgent, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (session.get("user_id"), to_user_id, body, urgent,
+         datetime.now(timezone.utc).isoformat()))
+    conn.commit()
+    sent_to = None
+    if urgent:
+        who = conn.execute("SELECT name FROM users WHERE id = ?",
+                           (session.get("user_id") or 0,)).fetchone()
+        sent_to = (conn.execute("SELECT email FROM users WHERE id = ?",
+                                (to_user_id,)).fetchone() or {}).get("email") \
+            if to_user_id else owner_email(conn)
+        if sent_to:
+            send_email(sent_to, "Urgent from the pass",
+                       "%s at the pass:\n\n%s"
+                       % ((who["name"] if who else None) or "The kitchen", body))
+    conn.close()
+    flash("Sent." + (" It has gone out by email as well." if urgent and sent_to
+                     else (" Nobody has an address to send it to, so it is on "
+                           "the screen only." if urgent else "")),
+          "success")
+    return redirect(url_for("pass_screen"))
+
+
 @app.route("/room-photos/<filename>")
 def room_photo(filename):
     return send_from_directory(ROOM_PHOTO_DIR, filename)
@@ -49427,10 +49812,17 @@ def walk_in_booking():
     # is what somebody at the desk is nearly always asking about; changing them
     # re-asks the same question of the same page rather than needing a script.
     source = request.form if request.method == "POST" else request.args
-    arrival = parse_date((source.get("arrival_date", "") or "").strip()) or today
-    departure = (parse_date((source.get("departure_date", "") or "").strip())
-                 or (arrival + timedelta(days=1)))
-    options = walk_in_options(conn, rooms, arrival, departure)
+    # Named separately from the strict pair below, which overwrites `arrival`
+    # and `departure` on POST. The room tiles are built from THESE, so the
+    # label above them has to read these too — it used to read the strict
+    # pair, and so announced dates the tiles underneath were not for.
+    shown_arrival = parse_date(
+        (source.get("arrival_date", "") or "").strip()) or today
+    shown_departure = (
+        parse_date((source.get("departure_date", "") or "").strip())
+        or (shown_arrival + timedelta(days=1)))
+    arrival, departure = shown_arrival, shown_departure
+    options = walk_in_options(conn, rooms, shown_arrival, shown_departure)
 
     if request.method == "POST":
         room_raw = (request.form.get("room_id", "") or "").strip()
@@ -49495,9 +49887,11 @@ def walk_in_booking():
         if problem:
             conn.close()
             flash(problem, "error")
-            return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                                   options=options, arrival=arrival,
-                                   departure=departure, form=request.form)
+            return render_template(
+                "walk_in_booking.html", rooms=rooms, today=today,
+                options=options, arrival=arrival, departure=departure,
+                shown_arrival=shown_arrival, shown_departure=shown_departure,
+                form=request.form)
 
         rack = compute_room_total(conn, room, arrival, departure)
         charge_raw = (request.form.get("total_price", "") or "").strip().replace(",", ".")
@@ -49556,9 +49950,10 @@ def walk_in_booking():
                         if not taken else url_for("admin_bookings"))
 
     conn.close()
-    return render_template("walk_in_booking.html", rooms=rooms, today=today,
-                           options=options, arrival=arrival, departure=departure,
-                           form=request.args)
+    return render_template(
+        "walk_in_booking.html", rooms=rooms, today=today, options=options,
+        arrival=arrival, departure=departure, shown_arrival=shown_arrival,
+        shown_departure=shown_departure, form=request.args)
 
 
 @app.route("/admin/images")
@@ -59561,6 +59956,7 @@ def run_health_notes_purge_job(conn):
     # The only one of these holding an identifier for people who never became
     # guests at all -- somebody who opened the availability calendar and left.
     cleared.update(purge_submission_log(conn))
+    cleared.update(purge_sent_outbox(conn))
     # Not a purge either, but the same daily pass: a date held on the strength
     # of a conversation nobody followed up has to come back on the market, and
     # nothing else was going to notice.

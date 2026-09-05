@@ -18,7 +18,7 @@
                aria-label="Select {{ t['title'] }}"
                onclick="event.stopPropagation();">
         <span class="priority-dot priority-{{ t['priority'] }}" title="{{ t['priority']|capitalize }} priority"></span>
-        <button type="button" class="task-check" onclick="event.stopPropagation(); toggleTask({{ t['id'] }}, this);">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
+        <button type="button" class="task-check" aria-pressed="{{ 'true' if t['status'] == 'done' else 'false' }}" aria-label="{{ t['status']|replace('_', ' ')|capitalize }}: {{ t['title'] }}" onclick="event.stopPropagation(); toggleTask({{ t['id'] }}, this);">{{ '✓' if t['status'] == 'done' else ('…' if t['status'] == 'in_progress' else '') }}</button>
         <form method="post" action="{{ url_for('duplicate_task_next_week', task_id=t['id']) }}" style="margin-left:auto;" title="Duplicate to next week">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="small-link" style="color:var(--steel); background:none; border:none; cursor:pointer; font-size:12px;">↻</button>

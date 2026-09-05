@@ -24,8 +24,10 @@
                 <span class="upload-hint">{{ t('available') }}</span>
               </label>
             </td>
-            <td><input type="time" name="from_{{ i }}" value="{{ r['from_time'] if r and r['from_time'] else '' }}"></td>
-            <td><input type="time" name="to_{{ i }}" value="{{ r['to_time'] if r and r['to_time'] else '' }}"></td>
+            <td><input type="time" name="from_{{ i }}"
+               aria-label="Available from, {{ day }}" value="{{ r['from_time'] if r and r['from_time'] else '' }}"></td>
+            <td><input type="time" name="to_{{ i }}"
+               aria-label="Available until, {{ day }}" value="{{ r['to_time'] if r and r['to_time'] else '' }}"></td>
           </tr>
           {% endfor %}
         </tbody>

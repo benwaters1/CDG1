@@ -79,6 +79,7 @@
           <th scope="row">{{ r.name }}</th>
           <td>
             <input type="text" name="revenue_{{ r.month }}" style="width:110px;"
+                 aria-label="Revenue budget for {{ r.label }}"
                    value="{{ '%.0f'|format(r.revenue) if r.revenue is not none else '' }}"
                    placeholder="&mdash;">
             {% if r.revenue_inherited %}
@@ -88,9 +89,11 @@
             {% endif %}
           </td>
           <td><input type="text" name="cost_{{ r.month }}" style="width:110px;"
+                 aria-label="Cost budget for {{ r.label }}"
                      value="{{ '%.0f'|format(r.cost) if r.cost is not none else '' }}"
                      placeholder="&mdash;"></td>
           <td><input type="text" name="note_{{ r.month }}" style="width:100%;"
+                 aria-label="Note on {{ r.label }}"
                      value="{{ r.note or '' }}" placeholder="why, if it needs saying"></td>
         </tr>
         {% endfor %}
