@@ -254,4 +254,46 @@ def run():
     if used and not layoutish:
         print(f"    ....  {len(used)} non-layout classes have no rule "
               "(mostly Jinja-built names — not checked)")
+    s.section("A media query the browser can actually evaluate")
+
+    # The PUBLIC stylesheet. CSS_PATH above is style.css, which is the staff
+    # app's -- and pointing these at it made every one of them pass by looking
+    # at a file that has none of this in it, which is the most comfortable way
+    # for a check to be useless.
+    public = _strip_comments(
+        open(os.path.join(os.path.dirname(CSS_PATH), "gudanes.css"),
+             encoding="utf-8").read())
+
+    # A CUSTOM PROPERTY CANNOT BE USED IN A MEDIA QUERY CONDITION. They are
+    # resolved at computed-value time, long after the query has been decided,
+    # so `@media (max-width: var(--m-read))` is discarded whole -- and the
+    # forty-two blocks written that way had never once applied. The navigation
+    # label that was meant to disappear below 26rem stayed on screen at 320px,
+    # the back-to-top never took its phone position, and nothing reported any
+    # of it, because a stylesheet that fails to parse a block simply drops it.
+    #
+    # The variables are fine everywhere else. This is only about the condition.
+    dead = re.findall(r"@media[^{]*var\(--[^)]*\)", public)
+    s.check("no media query is written with a custom property in it", not dead,
+            detail="; ".join(d.strip()[:60] for d in dead[:3]))
+    s.check("and the breakpoints are still declared for ordinary use",
+            "--m-tight:" in public and "--m-read:" in public,
+            detail="they work in a declaration; only the condition is the problem")
+
+    s.section("The furniture on a phone")
+
+    # Both found by scrolling a 390px screen rather than looking at the top of
+    # it: the menu button ran off the right edge, and the back-to-top arrow sat
+    # exactly where the booking bar puts its button -- covering the one control
+    # on the page that has to work.
+    s.check("the wordmark has a floor so it cannot squeeze to nothing",
+            re.search(r"\.g-logo\s*\{[^}]*min-width:\s*\d", public),
+            detail="it was allowed to absorb all the pressure and went to 34px")
+    s.check("and a ceiling so it cannot crowd out the menu",
+            re.search(r"\.g-logo\s*\{[^}]*max-width:", public))
+    s.check("the back-to-top is lifted clear of the booking bar",
+            re.search(r"\.g-totop\s*\{[^}]*bottom:\s*\d", public)
+            and re.search(r"\.g-totop\s*\{[^}]*left:", public),
+            detail="pinned bottom-right it shares a corner with Book")
+
     return s
