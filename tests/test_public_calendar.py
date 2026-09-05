@@ -78,20 +78,25 @@ def run():
     # single free day is not enough: the seeded ateliers close whole weeks, so
     # base+60 landed inside one and a check about a lapsed hold failed on a
     # date that was never free in the first place.
-    # What this suite has already handed out. Without it, two walks converge
-    # on the same night -- the confirmed event and the provisional hold both
-    # landed on one date, so expiring the hold did not free it and the last
-    # check failed on a mechanism that works perfectly.
-    claimed = set()
+    #
+    # AND IT HAS TO REMEMBER WHAT IT ALREADY GAVE OUT. Walking forward from two
+    # different offsets can land on the same day: base+40 had to step over
+    # twenty-six closed nights and arrived exactly where base+60 was waiting,
+    # so the wedding and the lapsed hold were booked on one date and the check
+    # that the hold stopped closing it failed against the wedding beside it.
+    # It only collides when the busy stretch between the two offsets is long
+    # enough to push one past the other, so it passed for weeks and then broke
+    # on a Saturday for no reason anybody had changed.
+    handed_out = set()
 
-    def _clear(from_day, span=4):
+    def _clear(from_day):
         day = from_day
         while any((day + timedelta(days=n)).isoformat() in before
-                  or (day + timedelta(days=n)).isoformat() in claimed
-                  for n in range(span)):
+                  or (day + timedelta(days=n)) in handed_out for n in range(4)):
             day += timedelta(days=1)
-        for n in range(span):
-            claimed.add((day + timedelta(days=n)).isoformat())
+        # The window, not just the day: a session or a stay booked here runs on
+        # for several nights, and the next caller must clear those too.
+        handed_out.update(day + timedelta(days=n) for n in range(4))
         return day
 
     base = _clear(m.house_today() + timedelta(days=250))
@@ -185,9 +190,39 @@ def run():
         "UPDATE event_holds SET expires_at = ? WHERE event_id = ?",
         ((datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(), maybe))
     conn.commit()
+    # Says WHAT is still closing the night, not only that something is. The
+    # dates here are picked by walking forward from a fixed offset until four
+    # days are free, so which day this lands on moves with the calendar -- and
+    # when it lands on something the walk did not know to avoid, "the same rule
+    # the booking side reads" is a sentence about the design rather than a
+    # diagnosis anybody can act on.
+    def _why_closed(day):
+        iso = day.isoformat()
+        out = []
+        for sql, label in (
+            ("""SELECT reference_code, status, preferred_date, end_date
+                  FROM event_inquiries
+                 WHERE ? BETWEEN preferred_date
+                       AND COALESCE(end_date, preferred_date)""", "event"),
+            ("""SELECT id, start_date, end_date, expires_at FROM event_holds
+                 WHERE ? BETWEEN start_date AND end_date""", "hold"),
+            ("""SELECT reference_code, status, arrival_date, departure_date
+                  FROM bookings
+                 WHERE ? >= arrival_date AND ? < departure_date
+                   AND status NOT IN ('cancelled', 'declined')""", "booking"),
+            ("""SELECT id, start_date, end_date FROM workshop_sessions
+                 WHERE ? BETWEEN start_date AND end_date""", "workshop"),
+        ):
+            try:
+                rows = conn.execute(sql, (iso,) * sql.count("?")).fetchall()
+            except Exception:                          # noqa: BLE001
+                continue
+            out += ["%s%s" % (label, dict(r)) for r in rows[:2]]
+        return "; ".join(out) or "nothing in the tables this knows to look in"
+
     s.check("the date comes back", hold_day.isoformat() not in _taken(),
-            detail="the same rule the booking side reads, so the calendar and "
-                   "the desk cannot disagree")
+            detail="%s is still closed by: %s"
+                   % (hold_day.isoformat(), _why_closed(hold_day)))
 
     s.section("Dinner comes from the published menu, and nothing else")
     cook = _clear(base + timedelta(days=5))
