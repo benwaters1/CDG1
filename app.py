@@ -10508,8 +10508,103 @@ def claim_range(conn, room_id, arrival, departure, exclude_booking_id=None,
     """
     conn.execute("UPDATE booking_write_lock SET held_at = ? WHERE id = 1",
                  (datetime.now(timezone.utc).isoformat(),))
+    # Rebuild under the lock. A picture cached earlier in this request was
+    # read BEFORE the lock was held, and answering a booking from it is how
+    # two guests get the same room.
+    _availability_picture(conn, fresh=True)
     return is_range_available(conn, room_id, arrival, departure,
                               exclude_booking_id, include_pending)
+
+
+def _availability_picture(conn, *, fresh=False):
+    """Everything that closes a date, read once and held for the request.
+
+    is_range_available used to ask six questions per call and three of them
+    took no parameters at all -- the workshops running, the events confirmed,
+    the dates provisionally held. next_free_nights calls it once per room per
+    day, so the public booking page asked those three seventy times each and
+    got the same answer seventy times. 476 queries; six distinct.
+
+    Held on `g`, so it lives exactly as long as one request. That is the
+    right lifetime: a booking taken by somebody else mid-request cannot make
+    the page wrong -- the page was already drawn from a moment in the past --
+    but a picture surviving into the NEXT request could, and a global cache
+    would need invalidating from eleven places that write bookings.
+
+    `fresh=True` rebuilds it. The write path passes it, because a check made
+    under the booking lock must not be answered from a read taken before the
+    lock was held.
+
+    Falls back to building afresh with no caching at all when there is no
+    request context -- the nightly jobs call this, and `g` does not exist
+    there.
+    """
+    if not fresh and has_request_context():
+        cached = getattr(g, "_availability_picture", None)
+        if cached is not None:
+            return cached
+
+    picture = {"bookings": {}, "blocked": {}, "manual": {}, "house": []}
+
+    # Per room, but read for every room at once rather than one room at a
+    # time. Status and id are kept so the callers that exclude a booking or
+    # ignore pending ones can still do it, in Python.
+    for row in conn.execute(
+            """SELECT id, room_id, arrival_date, departure_date, status
+                 FROM bookings WHERE status IN ('pending', 'confirmed')"""):
+        picture["bookings"].setdefault(row["room_id"], []).append(
+            (row["id"], row["status"], parse_date(row["arrival_date"]),
+             parse_date(row["departure_date"])))
+    for row in conn.execute(
+            "SELECT room_id, start_date, end_date FROM blocked_dates"):
+        picture["blocked"].setdefault(row["room_id"], []).append(
+            (parse_date(row["start_date"]), parse_date(row["end_date"])))
+    for row in conn.execute(
+            "SELECT room_id, start_date, end_date FROM room_blocks"):
+        picture["manual"].setdefault(row["room_id"], []).append(
+            (parse_date(row["start_date"]), parse_date(row["end_date"])))
+
+    # House-wide: a workshop, a confirmed event or a live hold takes the
+    # whole château, so these apply to every room. Each carries the sentence
+    # a guest is shown, because "not available" sends whoever is at the desk
+    # hunting for a booking that does not exist.
+    #
+    # END-INCLUSIVE, like the code this replaces: a workshop finishing on the
+    # 5th still holds the 5th, where a booking departing on the 5th does not.
+    for row in conn.execute(
+            """SELECT workshop_sessions.start_date, workshop_sessions.end_date,
+                      workshops.title
+                 FROM workshop_sessions
+                 JOIN workshops ON workshops.id = workshop_sessions.workshop_id"""):
+        picture["house"].append((
+            parse_date(row["start_date"]), parse_date(row["end_date"]),
+            f"Those dates are held for a workshop ({row['title']})."))
+    for row in conn.execute(
+            """SELECT preferred_date, end_date, event_type FROM event_inquiries
+                WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""):
+        e_start = parse_date(row["preferred_date"])
+        e_end = parse_date(row["end_date"]) or e_start
+        if e_end and e_start and e_end < e_start:
+            e_end = e_start
+        picture["house"].append((
+            e_start, e_end,
+            f"That date is held for a confirmed event ({row['event_type']})."))
+    for row in conn.execute(
+            """SELECT event_holds.start_date, event_holds.end_date,
+                      event_inquiries.event_type AS kind
+                 FROM event_holds
+                 JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
+                WHERE event_holds.released_at IS NULL
+                  AND event_holds.expires_at > ?""",
+            (datetime.now(timezone.utc).isoformat(),)):
+        picture["house"].append((
+            parse_date(row["start_date"]), parse_date(row["end_date"]),
+            f"Those dates are provisionally held for a {row['kind']} "
+            f"while somebody decides."))
+
+    if has_request_context():
+        g._availability_picture = picture
+    return picture
 
 
 def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=None, include_pending=True):
@@ -10527,81 +10622,30 @@ def is_range_available(conn, room_id, arrival, departure, exclude_booking_id=Non
     if departure <= arrival:
         return False, "Departure must be after arrival."
 
-    statuses = "('pending','confirmed')" if include_pending else "('confirmed')"
-    query = f"""SELECT id, arrival_date, departure_date FROM bookings
-               WHERE room_id = ? AND status IN {statuses}"""
-    params = [room_id]
-    if exclude_booking_id:
-        query += " AND id != ?"
-        params.append(exclude_booking_id)
-    for row in conn.execute(query, params).fetchall():
-        b_start, b_end = parse_date(row["arrival_date"]), parse_date(row["departure_date"])
+    picture = _availability_picture(conn)
+
+    for bid, status, b_start, b_end in picture["bookings"].get(room_id, ()):
+        if not include_pending and status != "confirmed":
+            continue
+        if exclude_booking_id and bid == exclude_booking_id:
+            continue
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates overlap an existing booking."
 
-    for row in conn.execute(
-        "SELECT start_date, end_date FROM blocked_dates WHERE room_id = ?", (room_id,)
-    ).fetchall():
-        b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    for b_start, b_end in picture["blocked"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates are blocked on another booking channel."
 
-    for row in conn.execute(
-        "SELECT start_date, end_date FROM room_blocks WHERE room_id = ?", (room_id,)
-    ).fetchall():
-        b_start, b_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    for b_start, b_end in picture["manual"].get(room_id, ()):
         if b_start and b_end and arrival < b_end and b_start < departure:
             return False, "Those dates aren't available."
 
-    # A workshop/retreat takes over the whole château for its run, not just
-    # one room — so every room is unavailable for the duration of any
-    # scheduled session, the same way a manual block would be.
-    for row in conn.execute(
-        "SELECT workshop_sessions.start_date, workshop_sessions.end_date, workshops.title "
-        "FROM workshop_sessions JOIN workshops ON workshops.id = workshop_sessions.workshop_id"
-    ).fetchall():
-        w_start, w_end = parse_date(row["start_date"]), parse_date(row["end_date"])
-        if w_start and w_end and arrival <= w_end and w_start < departure:
-            return False, f"Those dates are held for a workshop ({row['title']})."
-
-    # A confirmed event (wedding, photoshoot, etc.) takes over the château for
-    # its run, the same way a workshop does.
-    #
-    # THE WHOLE RUN, NOT THE FIRST DAY. This read preferred_date alone with a
-    # comment saying event_inquiries had no range -- and end_date had been
-    # added since, so a three-day wedding blocked one day and left the rest of
-    # itself on sale.
-    for row in conn.execute(
-        """SELECT preferred_date, end_date, event_type FROM event_inquiries
-            WHERE status = 'confirmed' AND preferred_date IS NOT NULL"""
-    ).fetchall():
-        e_start = parse_date(row["preferred_date"])
-        e_end = parse_date(row["end_date"]) or e_start
-        if e_end and e_start and e_end < e_start:
-            e_end = e_start
-        if e_start and arrival <= e_end and e_start < departure:
-            return False, f"That date is held for a confirmed event ({row['event_type']})."
-
-    # And a date PROMISED but not yet confirmed. The house only had free or
-    # confirmed, so a date held verbally for three weeks while somebody
-    # decided was, as far as this function knew, free -- and a room booking
-    # could take it without anybody noticing until the wedding was confirmed
-    # on top of it.
-    #
-    # Named as provisional, deliberately. "Not available" sends whoever is at
-    # the desk looking for a booking that does not exist; "held while somebody
-    # decides" tells them there is a person to ring.
-    for row in conn.execute(
-        """SELECT event_holds.start_date, event_holds.end_date,
-                  event_inquiries.event_type AS kind
-             FROM event_holds
-             JOIN event_inquiries ON event_inquiries.id = event_holds.event_id
-            WHERE event_holds.released_at IS NULL AND event_holds.expires_at > ?""",
-        (datetime.now(timezone.utc).isoformat(),)).fetchall():
-        h_start, h_end = parse_date(row["start_date"]), parse_date(row["end_date"])
+    # A workshop, a confirmed event or a live hold takes the whole château,
+    # so these apply to every room. End-inclusive: a workshop finishing on
+    # the 5th still holds the 5th.
+    for h_start, h_end, why in picture["house"]:
         if h_start and h_end and arrival <= h_end and h_start < departure:
-            return False, (f"Those dates are provisionally held for a "
-                           f"{row['kind']} while somebody decides.")
+            return False, why
 
     return True, None
 

@@ -296,6 +296,7 @@ SUITES = [
     "test_nightly_jobs",
     "test_who_did_it",
     "test_stated_windows",
+    "test_availability_picture",
     "test_deletes",
     "test_payment_returns",
     "test_guests_and_staff",
