@@ -206,6 +206,61 @@ def run():
             bool(on_cal), detail="tasks reach the calendar; that is why an "
                                  "action becomes one")
 
+    s.section("A name, not a fragment of one")
+    # WHY THIS IS HERE. The extractor matched an attendee's first name as a
+    # bare substring, so "test" inside "meetingtest-Roofer" put the roofer's
+    # promise on the employee's list. A promise on the wrong person's list is
+    # worse than one on nobody's: the person who made it is never asked, and
+    # the person who did not is. Two Maries in a room is all it takes.
+    two = ["Marie Lasserre", "Marie-Claire Dupont"]
+    s.check("a hyphenated name is not its shorter neighbour",
+            m.whose_action("ACTION: Marie-Claire Dupont to ring the mason", two)
+            == "Marie-Claire Dupont",
+            detail=str(m.whose_action(
+                "ACTION: Marie-Claire Dupont to ring the mason", two)))
+    s.check("and the full name beats the first name",
+            m.whose_action("ACTION: Marie Lasserre to ring the mason", two)
+            == "Marie Lasserre")
+    same_first = ["Marie Lasserre", "Marie Dupont"]
+    s.check("a first name two people really do answer to names neither",
+            m.whose_action("ACTION: Marie to ring the mason", same_first) is None,
+            detail="guessing between two people is the same fault in a "
+                   "politer form: " + str(m.whose_action(
+                       "ACTION: Marie to ring the mason", same_first)))
+    s.check("and Marie-Claire is not one of the two Maries",
+            m.whose_action("ACTION: Marie to ring the mason", two)
+            == "Marie Lasserre",
+            detail="her first name is Marie-Claire; a line saying Marie "
+                   "plainly means the other one")
+    s.check("and a first name only one answers to still works",
+            m.whose_action("ACTION: Marie to ring the mason",
+                           ["Marie Lasserre", "Bruno Sabatier"])
+            == "Marie Lasserre")
+    one_word = ["Marie", "Marie-Claire"]
+    s.check("a one-word name is not the start of a longer one",
+            m.whose_action("ACTION: Marie-Claire to ring the mason", one_word)
+            == "Marie-Claire",
+            detail="Marie is listed first, so anything that takes the first "
+                   "match rather than the longest gets this wrong: "
+                   + str(m.whose_action(
+                       "ACTION: Marie-Claire to ring the mason", one_word)))
+    s.check("and with only the shorter one in the room, nobody is credited",
+            m.whose_action("ACTION: Marie-Claire to ring the mason",
+                           ["Marie"]) is None,
+            detail="Marie-Claire is not Marie, and with Marie-Claire absent "
+                   "there is nothing to win on length: " + str(m.whose_action(
+                       "ACTION: Marie-Claire to ring the mason", ["Marie"])))
+    s.check("an apostrophe is part of a name too",
+            m.whose_action("ACTION: O'Brien to send the quote",
+                           ["O'Brien", "Brien Dupont"]) == "O'Brien")
+    s.check("and the shorter one still answers to her own name",
+            m.whose_action("ACTION: Marie to ring the mason", one_word)
+            == "Marie")
+    s.check("a name inside another word is not that name",
+            m.whose_action("ACTION: the testbed needs clearing",
+                           ["Test Employee"]) is None,
+            detail="this is the exact line that crashed this suite")
+
     # ---- ticking, and pressing the button twice ---------------------------
     s.section("Ticking it off, and doing it all again")
     oc.post(f"/meeting-actions/{mine[0]['id']}/done")

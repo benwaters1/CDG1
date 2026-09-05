@@ -60393,6 +60393,55 @@ def _meeting_due_days(text):
     return None
 
 
+def whose_action(line, attendee_names):
+    """Which attendee a line of minutes is about, or None.
+
+    THE BUG THIS REPLACES. It matched an attendee's FIRST NAME as a bare
+    substring anywhere in the line, and took the first attendee in list order
+    that hit. So "Roofer to send the scaffolding plan" was assigned to Test
+    Employee, because "test" appears inside "meetingtest-Roofer" -- and a
+    promise on the wrong person's list is worse than one on nobody's: the
+    person who made it is never asked, and the person who did not is.
+
+    It is not a contrived case. A house with a Marie and a Marie-Claire has
+    it on the first day, and so does any name that turns up inside another
+    word. Nothing errors and the minutes read perfectly.
+
+    Three rules now:
+
+      A WHOLE WORD. "Marie" does not match "Marie-Claire" and "test" does not
+      match "meetingtest".
+
+      THE FULL NAME BEATS THE FIRST NAME. Somebody who wrote out "Marie
+      Lasserre" meant her, whatever else is in the room.
+
+      AND THE LONGEST MATCH WINS, not the first one in the list. Attendee
+      order is the order people were added to a meeting, which is not a
+      statement about who a sentence is about.
+    """
+    words = re.findall(r"[^\W_]+(?:[-’'][^\W_]+)*", (line or "").lower(), re.UNICODE)
+    joined = " " + " ".join(words) + " "
+    best, best_len = None, 0
+    for name in attendee_names or ():
+        parts = re.findall(r"[^\W_]+(?:[-’'][^\W_]+)*", (name or "").lower(), re.UNICODE)
+        if not parts:
+            continue
+        full = " " + " ".join(parts) + " "
+        if full in joined and len(parts) > best_len:
+            best, best_len = name, len(parts)
+    if best:
+        return best
+    # Only then a first name, and only if exactly one attendee answers to it.
+    # Two Maries in the room means the line does not say who, and guessing
+    # between them is the same fault in a politer form.
+    hits = []
+    for name in attendee_names or ():
+        parts = re.findall(r"[^\W_]+(?:[-’'][^\W_]+)*", (name or "").lower(), re.UNICODE)
+        if parts and parts[0] in words:
+            hits.append(name)
+    return hits[0] if len(hits) == 1 else None
+
+
 def extract_meeting_minutes(notes, attendee_names=()):
     """Minutes read out of the raw note, with no help from anywhere.
 
@@ -60414,12 +60463,7 @@ def extract_meeting_minutes(notes, attendee_names=()):
         if any(low.startswith(m) for m in MEETING_ACTION_MARKERS):
             body = stripped.split(":", 1)[-1].strip() if ":" in stripped[:16] \
                 else stripped.split(" ", 1)[-1].strip()
-            owner = None
-            for name in attendee_names:
-                first = name.split()[0].lower() if name.split() else ""
-                if first and (first in low or name.lower() in low):
-                    owner = name
-                    break
+            owner = whose_action(stripped, attendee_names)
             actions.append({"title": body or stripped, "owner": owner,
                             "due_days": _meeting_due_days(stripped)})
         elif any(m in low for m in MEETING_DECISION_MARKERS):
