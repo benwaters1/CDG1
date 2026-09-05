@@ -444,6 +444,17 @@ def run():
             detail="an unlabelled job does not appear on that page at all")
     s.check("hourly, not daily", job and job[3] == 3600,
             detail=str(job[3]) if job else "no job")
+    # The jobs run one after another in a single background thread, so
+    # everything below a job waits for it -- and this is the only one that
+    # spends up to a minute on somebody else's network. Written in above
+    # maintenance to begin with, which put nine behind it, including the text
+    # telling a guest where to go on the day and the one that charges a
+    # workshop balance.
+    names = [j[0] for j in m.AUTOMATION_JOBS]
+    s.check("and last in the queue, so nothing waits behind it",
+            names[-1] == "photo_mirror",
+            detail="%d job(s) behind it, ending %s"
+                   % (len(names) - 1 - names.index("photo_mirror"), names[-1]))
 
     real_scan_j = m.hotlinked_urls
     m.hotlinked_urls = lambda: [FAKE_URL, FAKE_TWO]

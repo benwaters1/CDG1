@@ -11,17 +11,14 @@
 </div>
 <p class="pay-disclaimer" style="margin-top:-10px;">Supplier reference — contact info and payment terms, so it's not buried in old invoice emails. For everyday emergency contacts (plumber, electrician), see <a href="{{ url_for('contacts') }}" style="color:inherit;">Contacts</a>.</p>
 
-<form method="get" class="search-bar">
-  <div>
-    <label class="field-label">Search</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Name or contact person">
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
-  {% if q %}<a href="{{ url_for('vendors') }}" class="small-link" style="color:var(--steel); align-self:center;">Clear</a>{% endif %}
-</form>
+{# The toolbar every other list uses. The chips are the half a plain search
+   box does not give you: "Overdue 3 · Owed 11" has already told you where to
+   look, and the counts are worked out against the other filters so a chip
+   reading three yields three. #}
+{% include "_list_toolbar.html" %}
 
 {% if not vendors %}
-  <div class="empty-state">{% if q %}No vendors match that search.{% else %}No vendors added yet.{% endif %}</div>
+  <div class="empty-state">{% if lv.q %}No vendors match that search.{% else %}No vendors added yet.{% endif %}</div>
 {% else %}
   <div class="doc-list" style="max-width:680px;">
     {% for v in vendors %}

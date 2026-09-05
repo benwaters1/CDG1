@@ -24,7 +24,11 @@
     <span class="stat-tile-label">{% if data.days_away is not none and data.days_away >= 0 %}In {{ data.days_away }} day{{ '' if data.days_away == 1 else 's' }}{% else %}Date{% endif %}</span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.expected or '&mdash;'|safe }}</span>
-    <span class="stat-tile-label">{% if data.numbers_confirmed %}Final numbers{% else %}Quoted for &mdash; not yet final{% endif %}</span></span></div>
+    <span class="stat-tile-label">
+      {% if data.numbers_confirmed %}Final numbers
+        {% if data.numbers_fixed_on %}<span class="g-hint">fixed {{ data.numbers_fixed_on.strftime('%d %b') }}</span>{% endif %}
+      {% else %}Quoted for &mdash; not yet final{% endif %}
+    </span></span></div>
   <div class="stat-tile"><span class="stat-tile-body">
     <span class="stat-tile-value">{{ data.suppliers|length }}</span>
     <span class="stat-tile-label">Suppliers, {{ data.unconfirmed|length }} unconfirmed</span></span></div>
@@ -32,6 +36,33 @@
     <span class="stat-tile-value">{{ data.rooms_that_night }}</span>
     <span class="stat-tile-label">Rooms sold that night</span></span></div>
 </div>
+
+{% if data.numbers_moved %}
+{# final_numbers_at and the first figure have both been recorded since the
+   columns existed and read by nothing, so a headcount that moved after the
+   deadline looked exactly like one that never moved — in the same green. An
+   event is priced per head. #}
+<div class="detail-card" style="max-width:840px; border-left:3px solid {{ '#b00' if data.numbers_moved_late else '#b8860b' }};">
+  <h3 style="margin-top:0;">
+    The headcount has changed since it was fixed &mdash;
+    {{ data.first_numbers }} to {{ data.expected }}
+  </h3>
+  <p class="field-hint" style="margin-top:0;">
+    {% if data.numbers_moved_late %}
+    And it changed <strong>after the deadline</strong>, which was
+    {{ data.numbers_due.strftime('%d %B') if data.numbers_due }}. The kitchen
+    has ordered to the old figure and the quote went out on it, so this is
+    {{ (data.expected - data.first_numbers)|abs }}
+    {{ 'more' if data.expected > data.first_numbers else 'fewer' }}
+    {{ 'covers' if (data.expected - data.first_numbers)|abs != 1 else 'cover' }}
+    to re-price rather than simply note.
+    {% else %}
+    Fixed {{ data.numbers_fixed_on.strftime('%d %B') if data.numbers_fixed_on }},
+    and still inside the window &mdash; worth checking the quote follows it.
+    {% endif %}
+  </p>
+</div>
+{% endif %}
 
 {% if data.numbers_overdue %}
 <div class="detail-card" style="max-width:840px; border-left:3px solid #b8860b;">

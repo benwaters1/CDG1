@@ -4048,6 +4048,12 @@ def init_db():
          "ALTER TABLE event_inquiries ADD COLUMN final_numbers INTEGER"),
         ("event_inquiries_final_numbers_at",
          "ALTER TABLE event_inquiries ADD COLUMN final_numbers_at TEXT"),
+        # The FIRST figure given, kept beside the first date. Without it a
+        # headcount that moved from eighty to a hundred and twenty reads
+        # exactly like one that was eighty all along -- and an event is
+        # priced per head, so that is forty dinners nobody re-quoted.
+        ("event_inquiries_final_numbers_first",
+         "ALTER TABLE event_inquiries ADD COLUMN final_numbers_first INTEGER"),
         ("event_inquiries_run_sheet_note",
          "ALTER TABLE event_inquiries ADD COLUMN run_sheet_note TEXT"),
         ("event_inquiries_arrival_time",
@@ -13326,6 +13332,35 @@ def mark_booking_extra_delivered(conn, line_id, user_id=None, undo=False):
     return True, f"{line['name']} ticked off."
 
 
+def extras_delivered_today(conn, today=None):
+    """What has been ticked off for today's service, and by whom.
+
+    Scoped to the SERVICE day, the same as extras_due, so the two halves of
+    the page agree about which night it is -- and so a delivery at half past
+    midnight sits with the service it belonged to rather than opening
+    tomorrow's list.
+
+    Today only. A running history of every hamper the house has ever
+    delivered is a page nobody opens twice, and this exists to answer one
+    question asked at the moment it matters: was that one done, and by whom.
+    """
+    today = today or service_day()
+    start, end = service_day_window(today)
+    return [dict(r, when=r["delivered_at"]) for r in conn.execute(
+        """SELECT booking_extras.*, bookings.guest_name, bookings.reference_code,
+                  rooms.name AS room_name, users.name AS delivered_by
+             FROM booking_extras
+             JOIN bookings ON bookings.id = booking_extras.booking_id
+             LEFT JOIN rooms ON rooms.id = bookings.room_id
+             LEFT JOIN users ON users.id = booking_extras.delivered_by_user_id
+            WHERE booking_extras.status = 'delivered'
+              AND booking_extras.delivered_at >= ?
+              AND booking_extras.delivered_at < ?
+            ORDER BY booking_extras.delivered_at DESC""",
+        # service_day_window already hands back stored strings.
+        (start, end)).fetchall()]
+
+
 def extras_due(conn, today=None):
     """What the house still owes its guests, soonest first.
 
@@ -17979,11 +18014,20 @@ def breakage_recovery(conn, start=None, end=None):
     start = start or (house_today() - timedelta(days=365))
     end = end or house_today()
     rows = conn.execute(
-        """SELECT breakages.*, rooms.name AS room_name, bookings.guest_name
+        """SELECT breakages.*, rooms.name AS room_name, bookings.guest_name,
+                  decider.name AS decided_by
              FROM breakages
              LEFT JOIN rooms ON rooms.id = breakages.room_id
              LEFT JOIN bookings ON bookings.id = breakages.booking_id
-            WHERE breakages.found_on >= ? AND breakages.found_on < ?
+             -- Who decided a guest should pay for it. That is a judgement
+             -- about somebody else's money and it has been anonymous.
+             LEFT JOIN users AS decider
+                    ON decider.id = breakages.decided_by_user_id
+            -- <= end, not <. With end defaulting to today, a strict
+            -- comparison silently dropped everything broken this morning --
+            -- which is the thing somebody looking at this page is looking
+            -- for. Caught by a fixture dated today.
+            WHERE breakages.found_on >= ? AND breakages.found_on <= ?
             ORDER BY breakages.found_on DESC""",
         (start.isoformat(), end.isoformat())).fetchall()
 
@@ -18003,6 +18047,10 @@ def breakage_recovery(conn, start=None, end=None):
             "replacement": round(replacement, 2), "charged": round(recovered, 2),
             "decision": {"charged": "charged", "let_it_go": "let it go"}.get(
                 decision, "not decided"),
+            # Who decided it. Deciding whether a guest pays for a broken thing
+            # is a judgement about somebody else's money, and it has been
+            # anonymous since the column was added.
+            "decided_by": r["decided_by"],
             "written_off": round(replacement - recovered, 2),
         })
     return {
@@ -18404,6 +18452,26 @@ def event_run_sheet(conn, event_id, today=None):
     numbers_overdue = bool(
         day and not numbers_confirmed and days_away is not None
         and days_away <= FINAL_NUMBERS_DAYS and days_away >= 0)
+    # When the number was fixed, and whether it is still the number. Both
+    # were recorded and neither was read, so a headcount that moved after the
+    # deadline looked exactly like one that never moved -- in the same green.
+    numbers_fixed_on = house_date(event["final_numbers_at"])
+    first_numbers = event["final_numbers_first"]
+    numbers_moved = (
+        first_numbers is not None and event["final_numbers"] is not None
+        and int(first_numbers) != int(event["final_numbers"]))
+    # Moved AFTER the deadline is the one somebody has to re-price rather
+    # than simply note: the kitchen has ordered and the quote is out.
+    #
+    # Asked as "has the deadline passed", not "was the first figure given
+    # before it". The first version compared numbers_fixed_on against
+    # numbers_due and called a change ninety days out late, because a figure
+    # given today is trivially earlier than a deadline seventy-six days from
+    # now -- so every correction, however early, asked somebody to re-price.
+    # A warning that fires on the harmless case is one nobody reads on the
+    # day it is right.
+    numbers_moved_late = bool(
+        numbers_moved and numbers_due and today > numbers_due)
 
     unconfirmed = [s for s in suppliers if not s["confirmed_at"]]
 
@@ -18443,6 +18511,13 @@ def event_run_sheet(conn, event_id, today=None):
         "numbers_confirmed": numbers_confirmed,
         "numbers_due": numbers_due,
         "numbers_overdue": numbers_overdue,
+        # Recorded since the columns existed and read by nothing, so a
+        # headcount that moved after the deadline looked exactly like one
+        # that never moved — and an event is priced per head.
+        "numbers_fixed_on": numbers_fixed_on,
+        "first_numbers": first_numbers,
+        "numbers_moved": numbers_moved,
+        "numbers_moved_late": numbers_moved_late,
         "on_shift": on_shift,
         "rooms_that_night": rooms_that_night,
         "bill": bill,
@@ -18892,10 +18967,18 @@ def review_reply_times(conn, days=365):
     """
     since = (house_today() - timedelta(days=max(1, days))).isoformat()
     rows = conn.execute(
-        """SELECT guest_name, rating, comment, submitted_at, reply, replied_at,
-                  acknowledged_at
+        """SELECT guest_feedback.guest_name, guest_feedback.rating,
+                  guest_feedback.comment, guest_feedback.submitted_at,
+                  guest_feedback.reply, guest_feedback.replied_at,
+                  guest_feedback.acknowledged_at,
+                  -- Who said it had been dealt with. On a complaint that is
+                  -- somebody speaking for the house, and it was anonymous.
+                  users.name AS answered_by
              FROM guest_feedback
-            WHERE DATE(submitted_at) >= ? ORDER BY submitted_at DESC""",
+             LEFT JOIN users
+                    ON users.id = guest_feedback.acknowledged_by_user_id
+            WHERE DATE(guest_feedback.submitted_at) >= ?
+            ORDER BY guest_feedback.submitted_at DESC""",
         (since,)).fetchall()
 
     waits, waiting, answered = [], [], []
@@ -18906,7 +18989,8 @@ def review_reply_times(conn, days=365):
             continue
         item = {"who": r["guest_name"] or "A guest", "rating": r["rating"],
                 "said": (r["comment"] or "")[:140], "when": asked.isoformat(),
-                "poor": (r["rating"] or 5) <= 3}
+                "poor": (r["rating"] or 5) <= 3,
+                "answered_by": r["answered_by"]}
         answered_at = house_date(r["replied_at"]) or house_date(r["acknowledged_at"])
         if answered_at:
             item["days"] = (answered_at - asked).days
@@ -19549,6 +19633,7 @@ CAMPAIGN_SEGMENTS = {
 @app.route("/admin/emails")
 @owner_required
 def admin_emails():
+    """Campaigns and templates for writing to guests in numbers."""
     conn = get_db()
     templates = conn.execute(
         "SELECT * FROM campaign_templates ORDER BY area, name").fetchall()
@@ -20292,6 +20377,7 @@ def discard_email_outbox(outbox_id):
 @app.route("/admin/reports")
 @owner_required
 def admin_reports():
+    """The figures behind the house: what it earned, filled, paid and heard back."""
     period = period_from_request()
     conn = get_db()
     # A headline figure per report so the index is useful on its own rather
@@ -21452,6 +21538,10 @@ def inject_user():
         "bed_setups": BED_SETUPS, "bathroom_types": BATHROOM_TYPES,
         "access_bathrooms": ACCESS_BATHROOMS, "consent_routes": CONSENT_ROUTES,
         "transfer_types": TRANSFER_TYPES, "expense_doc_types": EXPENSE_DOC_TYPES,
+        # Read once per request and handed to every page, so the ten public
+        # pages that state the room count and the starting price all read the
+        # same answer from the same place.
+        "house_rooms": house_room_facts_cached(),
         "pending_approvals_count": pending_approvals_count,
         "open_hr_notes_count": open_hr_notes_count,
         "unread_notifications_count": unread_notifications_count,
@@ -24166,6 +24256,7 @@ def owner_home_next_up(conn, today, day_rows):
 
 @app.route("/")
 def dashboard():
+    """What needs attention today, for whoever is looking."""
     # Two audiences, one address. A visitor gets the château's front page; a
     # signed-in member of staff gets their dashboard. The public header links the
     # brand to "/", so without this a guest clicking the château's own name
@@ -24600,6 +24691,7 @@ def staff_dashboard():
 
 @app.route("/admin/display")
 def office_display():
+    """The wall screen: today's arrivals, jobs and covers, for a room nobody is sitting in."""
     # A kiosk device authenticates with ?token=OFFICE_DISPLAY_TOKEN instead of a
     # login session, since it's meant to sit on a wall reloading itself
     # unattended for weeks. Anyone with a normal owner session still gets in
@@ -24750,11 +24842,9 @@ def search():
 @app.route("/directory")
 @login_required
 def directory():
+    """Everybody who works here, and how to reach them."""
     user = current_user()
     conn = get_db()
-    status_filter = request.args.get("status", "").strip()
-    q = request.args.get("q", "").strip()
-
     period = period_from_request()
     overview = None
     if user["role"] == "owner":
@@ -24776,17 +24866,31 @@ def directory():
     }
     conn.close()
 
-    if status_filter:
-        employees = [e for e in employees if e["status"] == status_filter]
-    if q:
-        needle = q.lower()
-        employees = [
-            e for e in employees
-            if needle in e["name"].lower() or needle in (e["job_role"] or "").lower()
-        ]
-
+    lv = list_view(
+        employees, request.args,
+        search=["name", "job_role", "phone"],
+        search_hint="Name, job or telephone",
+        facets=[
+            facet("status", "Where they stand",
+                  lambda e: (e["status"] or "active").capitalize(),
+                  order=["Active", "Onboarding", "Left"]),
+            facet("job", "Job", lambda e: (e["job_role"] or "").strip() or None,
+                  limit=10),
+            # Who is clocked in right now. On a staff list that is the thing
+            # somebody is actually looking for half the time.
+            facet("here", "On shift",
+                  lambda e: "On now" if e["id"] in on_shift_ids else None),
+        ],
+        sorts=[
+            sort_option("name", "By name", lambda e: (e["name"] or "").lower()),
+            sort_option("status", "By where they stand",
+                        lambda e: ((e["status"] or ""), (e["name"] or "").lower())),
+        ],
+        default_sort="name",
+    )
     return render_template(
-        "directory.html", employees=employees, status_filter=status_filter, q=q, on_shift_ids=on_shift_ids,
+        "directory.html", employees=lv["rows"], lv=lv,
+        on_shift_ids=on_shift_ids,
         overview=overview, period=period,
     )
 
@@ -25288,6 +25392,7 @@ def delete_equipment_item(user_id, item_id):
 @app.route("/equipment")
 @owner_required
 def equipment_overview():
+    """Kit the house has lent to somebody, and whether it came back."""
     conn = get_db()
     issued = conn.execute(
         """SELECT equipment_items.*, users.name AS employee_name FROM equipment_items
@@ -25321,6 +25426,7 @@ def export_equipment_csv():
 @app.route("/candidates")
 @owner_required
 def candidates():
+    """People who have applied, and where each application has got to."""
     status_filter = request.args.get("status", "").strip()
     conn = get_db()
     query = "SELECT * FROM candidates"
@@ -25460,6 +25566,7 @@ def delete_check_in_note(user_id, note_id):
 @app.route("/admin/hr")
 @owner_required
 def admin_hr():
+    """Certifications, absence, reviews and working time, per person."""
     conn = get_db()
     today = house_today()
     period = period_from_request()
@@ -25968,6 +26075,7 @@ def ask_hr():
 @app.route("/admin/hr-notes")
 @owner_required
 def admin_hr_notes():
+    """Questions people have put to HR, and whether they were answered."""
     conn = get_db()
     notes = conn.execute(
         """SELECT hr_notes.*, users.name AS employee_name FROM hr_notes
@@ -26034,6 +26142,7 @@ def timesheet_query(conn, employee_id, start, end):
 @app.route("/admin/timesheets")
 @owner_required
 def admin_timesheets():
+    """Hours worked, from the clock rather than from memory."""
     conn = get_db()
     today = house_today()
     employee_id = request.args.get("employee_id", "").strip()
@@ -26216,6 +26325,7 @@ def flag_timesheet_entry(entry_id):
 @app.route("/admin/timesheets/corrections")
 @owner_required
 def admin_timesheet_corrections():
+    """Clock-ins and clock-outs that were wrong, and what they were changed to."""
     conn = get_db()
     corrections = conn.execute(
         """SELECT timesheet_corrections.*, time_entries.clock_in_at, time_entries.clock_out_at,
@@ -26236,6 +26346,7 @@ def admin_timesheet_corrections():
 @app.route("/admin/incidents")
 @owner_required
 def admin_incidents():
+    """Accidents and injuries, as the register the law expects."""
     conn = get_db()
     today = house_today()
     status_filter = request.args.get("status", "open")
@@ -26367,6 +26478,7 @@ def update_incident(incident_id):
 @app.route("/admin/compliance")
 @owner_required
 def admin_compliance():
+    """Which certificates each role needs, and who is short of one."""
     conn = get_db()
     today = house_today()
     gaps = role_compliance(conn, today)
@@ -28187,7 +28299,13 @@ def pos_journal_page():
     # inspector asks first.
     gaps = receipt_sequence_gaps(conn)
     closures = conn.execute(
-        "SELECT * FROM pos_closures ORDER BY closed_at DESC LIMIT 30").fetchall()
+        # Who cashed up. Recorded on every closure since the table existed
+        # and joined by nothing, so the question an accountant asks first --
+        # who counted this -- had no answer on the page that shows it.
+        """SELECT pos_closures.*, users.name AS closed_by
+             FROM pos_closures
+             LEFT JOIN users ON users.id = pos_closures.closed_by_user_id
+            ORDER BY pos_closures.closed_at DESC LIMIT 30""").fetchall()
     perpetual = pos_perpetual_total(conn)
     total_events = conn.execute("SELECT COUNT(*) AS c FROM pos_journal").fetchone()["c"]
     conn.close()
@@ -28953,29 +29071,54 @@ def api_palette():
 @app.route("/admin/assets")
 @owner_required
 def admin_assets():
+    """The furniture, art and antiques the house owns, and what they are insured for."""
     conn = get_db()
     today = house_today()
-    category = request.args.get("category", "")
-    q = request.args.get("q", "").strip()
+    # Everything, filtered in Python by list_view rather than concatenated
+    # into the SQL. The register is a few hundred rows; the counts on the
+    # chips are worth more than the query.
     show = request.args.get("status", "current")
-
-    sql = """SELECT assets.*, insurance_policies.provider AS insurer
+    rows = conn.execute(
+        """SELECT assets.*, insurance_policies.provider AS insurer
              FROM assets LEFT JOIN insurance_policies
-               ON insurance_policies.id = assets.insurance_policy_id WHERE 1=1"""
-    params = []
+               ON insurance_policies.id = assets.insurance_policy_id
+            ORDER BY assets.category, assets.name""").fetchall()
+    # The page has always opened on what the house still has, which is right:
+    # a register that opens on everything ever owned buries the forty things
+    # in the building under the four that were sold.
     if show == "current":
-        sql += " AND assets.status IN ('held','on_loan')"
+        rows = [a for a in rows if a["status"] in ("held", "on_loan")]
     elif show in ASSET_STATUSES:
-        sql += " AND assets.status = ?"
-        params.append(show)
-    if category in ASSET_CATEGORIES:
-        sql += " AND assets.category = ?"
-        params.append(category)
-    if q:
-        sql += " AND (assets.name LIKE ? OR assets.location LIKE ? OR assets.description LIKE ?)"
-        params += [f"%{q}%"] * 3
-    sql += " ORDER BY assets.category, assets.name"
-    assets = conn.execute(sql, params).fetchall()
+        # Asking for the sold ones has to give the sold ones. Dropped in the
+        # rewrite, which made every pool show everything — caught by the one
+        # check that had a sold piece in its fixtures.
+        rows = [a for a in rows if a["status"] == show]
+    lv = list_view(
+        rows, request.args,
+        search=["name", "location", "description", "category", "insurer"],
+        search_hint="Name, room, description or insurer",
+        facets=[
+            facet("category", "Kind",
+                  lambda a: (a["category"] or "").strip() or None, limit=12),
+            facet("where", "Where it is",
+                  lambda a: (a["location"] or "").strip() or "Unrecorded",
+                  limit=12),
+            # The question an insurance renewal is actually about: what is
+            # on the register with no cover behind it.
+            facet("cover", "Insurance",
+                  lambda a: "Not covered" if not a["insurance_policy_id"]
+                  else None),
+        ],
+        sorts=[
+            sort_option("place", "By kind, then name",
+                        lambda a: ((a["category"] or "").lower(),
+                                   (a["name"] or "").lower())),
+            sort_option("value", "Most valuable first",
+                        lambda a: a["estimated_value"] or 0, reverse=True),
+        ],
+        default_sort="place",
+    )
+    assets = lv["rows"]
 
     summary = asset_summary(conn, today)
     by_location = conn.execute(
@@ -29000,7 +29143,7 @@ def admin_assets():
     ]
     return render_template("admin_assets.html", assets=assets, overview=overview,
                            summary=summary, by_location=by_location, policies=policies,
-                           category=category, q=q, show=show,
+                           lv=lv, show=show,
                            asset_categories=ASSET_CATEGORIES,
                            asset_value_sources=ASSET_VALUE_SOURCES,
                            asset_conditions=ASSET_CONDITIONS,
@@ -29151,6 +29294,7 @@ def export_assets_csv():
 @app.route("/admin/access")
 @owner_required
 def admin_access():
+    """Who holds a key, a fob or a code, and what it opens."""
     conn = get_db()
     items = conn.execute(
         """SELECT access_items.*,
@@ -29251,6 +29395,7 @@ def return_access_item(holding_id):
 @app.route("/admin/payroll")
 @owner_required
 def admin_payroll():
+    """Hours, wages and the figures the accountant needs to run payroll."""
     conn = get_db()
     period = period_from_request()
     rows = payroll_period_rows(conn, period)
@@ -29825,6 +29970,7 @@ def manual_last_updated(conn):
 @app.route("/manual")
 @login_required
 def manual():
+    """How the house does things, written down so it does not live in one person's head."""
     user = current_user()
     conn = get_db()
     sections = conn.execute(
@@ -29947,6 +30093,7 @@ def contacts_list_view(conn, args):
 @app.route("/contacts")
 @login_required
 def contacts():
+    """Telephone numbers for the house, its suppliers and the people who work here."""
     conn = get_db()
     lv = contacts_list_view(conn, request.args)
     conn.close()
@@ -30032,6 +30179,7 @@ def current_announcements(conn, today):
 @app.route("/announcements")
 @login_required
 def announcements():
+    """Notices for everybody who works here, and who has read them."""
     conn = get_db()
     today = house_today()
     user = current_user()
@@ -30171,6 +30319,7 @@ def delete_announcement(announcement_id):
 @app.route("/shopping")
 @login_required
 def shopping_list():
+    """What the house needs bought, and what has been."""
     conn = get_db()
     items = conn.execute(
         "SELECT * FROM shopping_items ORDER BY bought, COALESCE(category, 'zzz'), name"
@@ -30243,6 +30392,7 @@ def clear_bought_items():
 @app.route("/breakfast")
 @login_required
 def breakfast():
+    """Who is eating breakfast tomorrow, and what they cannot eat."""
     conn = get_db()
     # The house's date, not the server's. A morning checklist and who is
     # sleeping here are both French calendar facts, and for the two hours
@@ -31991,6 +32141,7 @@ def admin_tax():
 @app.route("/admin/terms", methods=["GET", "POST"])
 @owner_required
 def admin_terms():
+    """The terms a guest agrees to, and what version they agreed to."""
     conn = get_db()
     if request.method == "POST":
         text = request.form.get("text", "").strip()
@@ -32035,20 +32186,8 @@ def guests():
     in_residence = [s for s in stays if s["stay_status"] == "current"]
     upcoming = [s for s in stays if s["stay_status"] == "upcoming"]
 
-    if q:
-        needle = f"%{q}%"
-        profiles = conn.execute(
-            """SELECT * FROM guests
-               WHERE name LIKE ? OR email LIKE ? OR phone LIKE ?
-                  OR notes LIKE ? OR preferences LIKE ? OR dietary_notes LIKE ?
-               ORDER BY vip DESC, name""",
-            (needle,) * 6,
-        ).fetchall()
-        lowered = q.lower()
-        in_residence = [s for s in in_residence if lowered in (s["name"] or "").lower()]
-        upcoming = [s for s in upcoming if lowered in (s["name"] or "").lower()]
-    else:
-        profiles = conn.execute("SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
+    profiles = conn.execute(
+        "SELECT * FROM guests ORDER BY vip DESC, name").fetchall()
 
     # How many past stays each profile has, so the list conveys "returning guest"
     # at a glance rather than needing a click-through.
@@ -32060,9 +32199,42 @@ def guests():
         ).fetchall()
     }
     conn.close()
+    lv = list_view(
+        profiles, request.args,
+        search=["name", "email", "phone", "notes", "preferences",
+                "dietary_notes"],
+        search_hint="Name, address, telephone or something in their notes",
+        facets=[
+            # The two questions actually asked of a guest list, and neither
+            # could be asked before: who has stayed before, and who carries
+            # a standing instruction.
+            facet("known", "Have they stayed",
+                  lambda g: "Been before" if stay_counts.get(g["id"]) else "First time",
+                  order=["Been before", "First time"]),
+            facet("caution", "Caution",
+                  lambda g: (CAUTION_LEVELS.get(g["caution_level"])
+                             if (g["caution_level"] or "").strip() else None)),
+            facet("vip", "VIP", lambda g: "VIP" if g["vip"] else None),
+        ],
+        sorts=[
+            sort_option("name", "By name",
+                        lambda g: (not g["vip"], (g["name"] or "").lower())),
+            sort_option("stays", "Most stays first",
+                        lambda g: stay_counts.get(g["id"], 0), reverse=True),
+        ],
+        default_sort="name",
+    )
+    # The who-is-here lists follow the same search, so one box narrows the
+    # whole page rather than only the half below it.
+    if lv["q"]:
+        lowered = lv["q"].lower()
+        in_residence = [x for x in in_residence
+                        if lowered in (x["name"] or "").lower()]
+        upcoming = [x for x in upcoming
+                    if lowered in (x["name"] or "").lower()]
     return render_template(
         "guests.html", in_residence=in_residence, upcoming=upcoming,
-        profiles=profiles, stay_counts=stay_counts, q=q,
+        profiles=lv["rows"], lv=lv, stay_counts=stay_counts,
         overview=overview, period=period,
     )
 
@@ -32553,9 +32725,7 @@ def save_expense_file(file):
 @app.route("/expenses")
 @owner_required
 def expenses():
-    status_filter = request.args.get("status", "").strip()
-    q = request.args.get("q", "").strip()
-
+    """Every bill and receipt, whether it was approved, and whether the accountant has it."""
     conn = get_db()
     invoices = conn.execute(
         "SELECT * FROM expenses WHERE kind = 'supplier_invoice' ORDER BY submitted_at DESC"
@@ -32580,19 +32750,44 @@ def expenses():
         "unpaid_value": sum(r["amount"] or 0 for r in all_rows if r["status"] == "approved"),
     }
 
-    if status_filter:
-        invoices = [i for i in invoices if i["status"] == status_filter]
-        claims = [c for c in claims if c["status"] == status_filter]
-    if q:
-        needle = q.lower()
-        invoices = [i for i in invoices if needle in (i["vendor_name"] or "").lower() or needle in i["description"].lower()]
-        claims = [
-            c for c in claims
-            if needle in (c["submitter_name"] or "").lower()
-            or needle in (c["vendor_name"] or "").lower()
-            or needle in c["description"].lower()
-        ]
-
+    # ONE toolbar over both lists, split back afterwards. The page renders
+    # supplier invoices and staff claims as two different card layouts, and a
+    # toolbar each would put two `q` and two `status` in the same query
+    # string. One search, one set of chips covering everything, and both
+    # sections keep the markup they have.
+    lv = list_view(
+        all_rows, request.args,
+        search=["vendor_name", "description", "submitter_name",
+                "invoice_number"],
+        search_hint="Supplier, who submitted it, or what it was for",
+        facets=[
+            facet("status", "Where it stands",
+                  lambda e: (e["status"] or "pending").capitalize(),
+                  order=["Pending", "Approved", "Paid", "Rejected"]),
+            facet("kind", "Kind",
+                  lambda e: ("Supplier bill" if e["kind"] == "supplier_invoice"
+                             else "Staff claim")),
+            facet("doc", "What it is",
+                  lambda e: EXPENSE_DOC_TYPES.get(
+                      e["doc_type"] or "bill_to_pay")),
+            # The other question this page is opened to answer, and it could
+            # not be asked at all: what has the accountant not been given.
+            facet("sent", "With the accountant",
+                  lambda e: "Sent" if e["pennylane_invoice_id"] else "Not sent",
+                  order=["Not sent", "Sent"]),
+        ],
+        sorts=[
+            sort_option("recent", "Newest first",
+                        lambda e: e["submitted_at"] or "", reverse=True),
+            sort_option("oldest", "Oldest first",
+                        lambda e: e["submitted_at"] or ""),
+            sort_option("amount", "Largest first",
+                        lambda e: e["amount"] or 0, reverse=True),
+        ],
+        default_sort="recent",
+    )
+    invoices = [r for r in lv["rows"] if r["kind"] == "supplier_invoice"]
+    claims = [r for r in lv["rows"] if r["kind"] == "staff_expense"]
     supplier_upload_url = url_for("supplier_invoice_submit", token=supplier_token, _external=True)
     reopen = get_db()
     try:
@@ -32601,8 +32796,8 @@ def expenses():
     finally:
         reopen.close()
     return render_template(
-        "expenses.html", invoices=invoices, claims=claims, supplier_upload_url=supplier_upload_url,
-        status_filter=status_filter, q=q, totals=totals,
+        "expenses.html", invoices=invoices, claims=claims,
+        supplier_upload_url=supplier_upload_url, lv=lv, totals=totals,
         pennylane_ready=pennylane_configured(),
         today_iso=house_today_iso(),
         # What the house owes its own people, which nothing could answer while
@@ -32687,11 +32882,14 @@ def submit_expense():
         conn = get_db()
         conn.execute(
             """INSERT INTO expenses
-               (kind, submitted_by_user_id, vendor_name, description, amount, filename, vehicle_id, restaurant_related, spent_on, submitted_at)
-               VALUES ('staff_expense', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (kind, submitted_by_user_id, vendor_name, description, amount,
+                filename, vehicle_id, restaurant_related, spent_on, doc_type,
+                submitted_at)
+               VALUES ('staff_expense', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user["id"], vendor_name or None, description, amount, stored_name,
              vehicle_id or None, restaurant_related,
              spent_on.isoformat() if spent_on else None,
+             expense_doc_type(request.form.get("doc_type")),
              datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
@@ -33218,6 +33416,7 @@ def join_waitlist():
 @app.route("/admin/waitlist")
 @owner_required
 def admin_waitlist():
+    """Guests waiting for a night that is full, and who has been offered one."""
     conn = get_db()
     entries = conn.execute(
         "SELECT * FROM waitlist_entries ORDER BY (status != 'open'), created_at DESC"
@@ -35691,6 +35890,7 @@ def event_stripe_success(manage_token):
 @app.route("/admin/events")
 @owner_required
 def admin_events():
+    """Weddings and private hire: every enquiry, and where each one stands."""
     conn = get_db()
     status_filter = request.args.get("status", "")
     query = "SELECT * FROM event_inquiries"
@@ -36405,6 +36605,58 @@ def next_free_nights(conn, *, limit=6, today=None):
         # perfectly good answer and not an error.
     found.sort(key=lambda f: (f["date_iso"], f["room_name"]))
     return found[:limit]
+
+
+ROOM_COUNT_WORDS = {
+    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+    7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
+}
+
+
+def house_room_facts_cached():
+    """house_room_facts for the template context, with its own connection.
+
+    The context processor already opens and closes a connection for the badge
+    counts, but only for a logged-in user -- and these two facts are needed on
+    the PUBLIC pages, where there is no user at all. So this asks for its own
+    rather than depending on a branch that does not run for a guest.
+    """
+    conn = get_db()
+    try:
+        return house_room_facts(conn)
+    finally:
+        conn.close()
+
+
+def house_room_facts(conn):
+    """How many rooms the house lets, and what the cheapest one costs.
+
+    Both facts are written in prose on ten public pages -- "five bedrooms",
+    "from EUR220 a night" -- and both are owned by the rooms table. They are
+    true this morning. Add a sixth room or change a price and ten pages are
+    wrong at once, and one of them carries the first figure a guest ever
+    reads.
+
+    The word as well as the number, because the prose says "five bedrooms"
+    and not "5 bedrooms", and a page that switches to digits the day a sixth
+    room is added has been fixed in a way somebody has to go back over.
+    Beyond twelve it gives up and returns the digits, which is the point at
+    which a château stops writing its room count out in words anyway.
+    """
+    row = conn.execute(
+        """SELECT COUNT(*) AS n, MIN(NULLIF(price_per_night, 0)) AS cheapest
+             FROM rooms WHERE active = 1""").fetchone()
+    count = int(row["n"] or 0)
+    cheapest = row["cheapest"]
+    return {
+        "count": count,
+        "count_word": ROOM_COUNT_WORDS.get(count, str(count)),
+        # None rather than nought when no room carries a price. A page saying
+        # "from EUR0 a night" is worse than one that does not mention a price
+        # at all, and this is the line guests read first.
+        "from_price": (int(cheapest) if cheapest and float(cheapest) == int(cheapest)
+                       else (round(float(cheapest), 2) if cheapest else None)),
+    }
 
 
 def deposit_percent_to_show(conn):
@@ -37534,6 +37786,33 @@ def make_workshop_reference_code():
     return "WRK-" + "".join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
 
 
+def workshop_deposit_to_show(conn):
+    """What to tell somebody a workshop costs to reserve, or None.
+
+    None means "it depends", and the page has to say that rather than pick a
+    number -- the same rule the rooms follow, and for the same reason: a guest
+    who sees 30% on the public page and is charged 50% at checkout has been
+    told a wrong figure about their own money on the page where they decided.
+
+    deposit_percent is a column on each workshop with a default of 30, not a
+    house rule. The page has always stated it as one.
+    """
+    rows = conn.execute(
+        "SELECT DISTINCT COALESCE(deposit_percent, 30) AS pct FROM workshops "
+        "WHERE active = 1").fetchall()
+    percents = {int(r["pct"]) for r in rows}
+    if len(percents) != 1:
+        return None
+    return percents.pop()
+
+
+# How close to a session the whole amount falls due. The same number
+# compute_workshop_payment_terms uses, named once so the public page cannot
+# state a different one -- which is exactly how the deposit came to be wrong
+# on four pages at once.
+WORKSHOP_BALANCE_DAYS = 30
+
+
 def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     """A workshop registration is really a whole-château retreat package, so
     it follows the same deposit/balance convention as the real thing: a
@@ -37545,11 +37824,12 @@ def compute_workshop_payment_terms(total_price, deposit_percent, start_date):
     if not total_price:
         return None, None, None
     today = house_today()
-    if (start_date - today).days < 30:
+    if (start_date - today).days < WORKSHOP_BALANCE_DAYS:
         return round(total_price, 2), 0.0, None
     deposit_amount = round(total_price * deposit_percent / 100, 2)
     balance_amount = round(total_price - deposit_amount, 2)
-    balance_due_date = (start_date - timedelta(days=30)).isoformat()
+    balance_due_date = (start_date
+                        - timedelta(days=WORKSHOP_BALANCE_DAYS)).isoformat()
     return deposit_amount, balance_amount, balance_due_date
 
 
@@ -39364,9 +39644,18 @@ def workshops_public():
              AND workshop_feedback.publish_consent = 1
            ORDER BY workshop_feedback.rating DESC, workshop_feedback.submitted_at DESC LIMIT 6"""
     ).fetchall()
+    # Read rather than stated. deposit_percent is a column on each workshop
+    # with a default of 30, and the page has always printed 30 as though it
+    # were a house rule. None means the workshops disagree, and the page has
+    # to say so rather than pick one. Asked BEFORE the close, like everything
+    # else this route reads.
+    deposit_pct = workshop_deposit_to_show(conn)
     conn.close()
     return render_template(
-        "workshops_public.html", workshops=workshops, sessions_by_workshop=sessions_by_workshop,
+        "workshops_public.html", workshops=workshops,
+        deposit_pct=deposit_pct,
+        balance_days=WORKSHOP_BALANCE_DAYS,
+        sessions_by_workshop=sessions_by_workshop,
         featured_reviews=featured_reviews,
     )
 
@@ -39950,6 +40239,7 @@ def room_photo(filename):
 @app.route("/admin/rooms")
 @owner_required
 def admin_rooms():
+    """The bedrooms the house lets, and everything a guest is told about them."""
     conn = get_db()
     rooms = conn.execute("SELECT * FROM rooms ORDER BY sort_order, name").fetchall()
     sources_by_room, ics_urls, blocks_by_room = {}, {}, {}
@@ -39981,6 +40271,7 @@ def admin_rooms():
 @app.route("/room-issues")
 @login_required
 def room_issues():
+    """What is broken in which room, and whether it is fixed."""
     conn = get_db()
     status_filter = request.args.get("status", "open")
     query = (
@@ -40443,6 +40734,7 @@ def api_owner_digest():
 @app.route("/admin/calendar")
 @owner_required
 def admin_calendar():
+    """Every night of the year, and what is in the house on it."""
     today = house_today()
     try:
         year, month = map(int, request.args.get("month", "").split("-"))
@@ -41250,6 +41542,7 @@ def delete_room_block(block_id):
 @app.route("/admin/feedback")
 @owner_required
 def admin_feedback():
+    """What guests said about their stay, and whether anybody has answered."""
     conn = get_db()
     entries = conn.execute(
         """SELECT guest_feedback.*, bookings.reference_code, rooms.name AS room_name
@@ -41531,6 +41824,7 @@ def export_workshop_feedback_csv():
 @app.route("/admin/bookings")
 @owner_required
 def admin_bookings():
+    """Every stay: who is coming, what they owe, and what still needs doing."""
     status_filter = request.args.get("status", "").strip()
     room_filter = request.args.get("room_id", "").strip()
     q = request.args.get("q", "").strip()
@@ -42345,9 +42639,15 @@ def extras_due_page():
     something to leave on a table.
     """
     conn = get_db()
+    day = service_day()
     due = extras_due(conn)
+    # And what has already been done tonight, with a name against it. The
+    # moment a line is ticked it leaves the list above and was, until now,
+    # invisible everywhere -- so "was that one done, and by whom" had no
+    # answer at all.
+    done = extras_delivered_today(conn, day)
     conn.close()
-    return render_template("extras_due.html", due=due, today=service_day())
+    return render_template("extras_due.html", due=due, done=done, today=day)
 
 
 @app.route("/extras/<int:line_id>/delivered", methods=["POST"])
@@ -43789,6 +44089,7 @@ def restaurant_profit_share(conn, year, month):
 @app.route("/admin/restaurant")
 @owner_required
 def admin_restaurant():
+    """Reservations, covers and what the dining room is doing."""
     conn = get_db()
     period = period_from_request()
     overview = restaurant_overview(conn, period, house_today())
@@ -44129,6 +44430,7 @@ def export_restaurant_csv():
 @app.route("/admin/restaurant/settings", methods=["GET", "POST"])
 @owner_required
 def admin_restaurant_settings():
+    """How many the room seats, what a cover costs, and when it serves."""
     conn = get_db()
     if request.method == "POST":
         opening_date = request.form.get("opening_date", "").strip()
@@ -44225,6 +44527,7 @@ def delete_restaurant_rate_override(rate_id):
 @app.route("/admin/deposit-rules")
 @owner_required
 def admin_deposit_rules():
+    """What a guest is asked for up front, and when that changes."""
     conn = get_db()
     rules = conn.execute("SELECT * FROM deposit_rules ORDER BY category, start_date IS NULL, start_date").fetchall()
     restaurant_settings = get_restaurant_settings(conn)
@@ -44342,6 +44645,7 @@ COURSE_TO_CATEGORY = {
 @app.route("/admin/restaurant/menu")
 @owner_required
 def admin_restaurant_menu():
+    """The dishes, their courses, their prices and what is in them."""
     conn = get_db()
     items = conn.execute(
         "SELECT * FROM menu_items ORDER BY sort_order, name").fetchall()
@@ -45168,6 +45472,7 @@ PROMO_APPLIES_TO = ["all", "room", "restaurant", "workshop", "event"]
 @app.route("/admin/promo-codes")
 @owner_required
 def admin_promo_codes():
+    """Discount codes, what each is worth, and who has used one."""
     conn = get_db()
     codes = conn.execute("SELECT * FROM promo_codes ORDER BY active DESC, created_at DESC").fetchall()
     # Why each code would be refused right now, for the owner. Guests are told
@@ -46114,6 +46419,7 @@ def workshop_session_remaining_capacity(conn, session_id, exclude_id=None):
 @app.route("/admin/workshops")
 @owner_required
 def admin_workshops():
+    """The ateliers the house runs, their sessions, and how each is filling."""
     conn = get_db()
     workshops = conn.execute("SELECT * FROM workshops ORDER BY sort_order, title").fetchall()
     today = house_today()
@@ -46891,6 +47197,7 @@ def workshop_running_sheet(session_id):
 @app.route("/admin/workshops/registrations")
 @owner_required
 def admin_workshop_registrations():
+    """Who is booked onto which session, and what each of them owes."""
     conn = get_db()
     status_filter = request.args.get("status", "")
     session_filter = request.args.get("session_id", "")
@@ -47657,6 +47964,7 @@ def export_guests_csv():
 @app.route("/management")
 @owner_required
 def management():
+    """Everything the owner can set, in one place."""
     conn = get_db()
     doc_count = conn.execute("SELECT COUNT(*) AS c FROM company_documents").fetchone()["c"]
     vault_count = conn.execute("SELECT COUNT(*) AS c FROM vault_entries").fetchone()["c"]
@@ -47687,6 +47995,7 @@ def management():
 @app.route("/management/money-ahead")
 @owner_required
 def money_ahead_page():
+    """What is already booked to come in, and how long the house can run on it."""
     days = request.args.get("days", "90")
     days = int(days) if days.isdigit() else 90
     conn = get_db()
@@ -50155,9 +50464,16 @@ def save_event_run_details(event_id):
               SET final_numbers = ?,
                   final_numbers_at = CASE WHEN ? IS NULL THEN NULL
                                           ELSE COALESCE(final_numbers_at, ?) END,
+                  -- The first figure, kept the same way the first date is.
+                  -- Clearing the numbers clears both, so re-entering them
+                  -- starts a fresh record rather than comparing against a
+                  -- figure from a different conversation.
+                  final_numbers_first = CASE WHEN ? IS NULL THEN NULL
+                                             ELSE COALESCE(final_numbers_first, ?) END,
                   arrival_time = ?, carriages_time = ?, run_sheet_note = ?
             WHERE id = ?""",
         (numbers, numbers, datetime.now(timezone.utc).isoformat(),
+         numbers, numbers,
          (request.form.get("arrival_time", "") or "").strip() or None,
          (request.form.get("carriages_time", "") or "").strip() or None,
          (request.form.get("run_sheet_note", "") or "").strip()[:2000] or None,
@@ -50897,6 +51213,7 @@ def chase_outstanding_balance(booking_id):
 @app.route("/management/financials")
 @owner_required
 def management_financials():
+    """What the house took, what it spent, and what is left."""
     today = house_today()
     conn = get_db()
     months = []
@@ -50939,6 +51256,7 @@ def management_financials():
 @app.route("/management/financials/annual-summary")
 @owner_required
 def annual_summary():
+    """Twelve months of takings and costs, as the accountant wants them."""
     try:
         year = int(request.args.get("year", "") or datetime.now(timezone.utc).year)
     except ValueError:
@@ -51279,9 +51597,16 @@ def mileage():
         return redirect(url_for("mileage"))
 
     is_owner = user["role"] == "owner"
-    query = """SELECT mileage_claims.*, users.name AS who
+    # Two names, not one. `who` is the person who made the journey; the
+    # decision to pay for it is somebody else's, recorded since the column
+    # existed and joined by nothing -- so "who approved this" had no answer
+    # on the page that shows the approval.
+    query = """SELECT mileage_claims.*, users.name AS who,
+                      decider.name AS decided_by
                  FROM mileage_claims
-                 LEFT JOIN users ON users.id = mileage_claims.user_id"""
+                 LEFT JOIN users ON users.id = mileage_claims.user_id
+                 LEFT JOIN users AS decider
+                        ON decider.id = mileage_claims.decided_by_user_id"""
     params = []
     if not is_owner:
         query += " WHERE mileage_claims.user_id = ?"
@@ -53076,6 +53401,7 @@ def management_budget():
 @app.route("/management/recurring-costs")
 @owner_required
 def management_recurring_costs():
+    """What the house pays every month whether or not anybody stays."""
     conn = get_db()
     costs = conn.execute(
         """SELECT recurring_costs.*, vendors.name AS vendor_name,
@@ -53404,6 +53730,7 @@ def delete_insurance_policy(policy_id):
 @app.route("/management/vendors")
 @owner_required
 def vendors():
+    """Who the house buys from, and what has been agreed with each."""
     conn = get_db()
     q = request.args.get("q", "").strip()
     rows = conn.execute("SELECT * FROM vendors ORDER BY name").fetchall()
@@ -53428,15 +53755,39 @@ def vendors():
         owed[r["vendor_id"]] = {"total": round(r["total"] or 0, 2), "count": r["n"],
                                 "soonest": r["soonest"]}
     conn.close()
-    if q:
-        needle = q.lower()
-        rows = [
-            v for v in rows
-            if needle in v["name"].lower() or needle in (v["contact_person"] or "").lower()
-        ]
-    return render_template("vendors.html", vendors=rows, q=q,
+    today_iso = house_today_iso()
+    lv = list_view(
+        rows, request.args,
+        search=["name", "contact_person", "email", "phone", "notes"],
+        search_hint="Name, contact, telephone or a note",
+        facets=[
+            # What the house owes them, which is the question this page is
+            # opened to answer. Bucketed rather than listed: forty suppliers
+            # is forty chips, and forty chips is a second list to read.
+            facet("owing", "What we owe", lambda v: (
+                "Overdue" if (owed.get(v["id"], {}).get("soonest") or "9999")
+                < today_iso else
+                ("Owed" if owed.get(v["id"]) else None)),
+                  order=["Overdue", "Owed"]),
+            facet("terms", "Payment terms",
+                  lambda v: (v["payment_terms"] or "").strip() or None, limit=8),
+            facet("using", "Still used",
+                  lambda v: "Retired" if not v["active"] else None),
+        ],
+        sorts=[
+            sort_option("name", "By name", lambda v: (v["name"] or "").lower()),
+            sort_option("owed", "Most owed first",
+                        lambda v: owed.get(v["id"], {}).get("total", 0),
+                        reverse=True),
+            sort_option("spend", "Most spent with",
+                        lambda v: spend_by_vendor.get(v["name"], 0),
+                        reverse=True),
+        ],
+        default_sort="name",
+    )
+    return render_template("vendors.html", vendors=lv["rows"], lv=lv,
                            spend_by_vendor=spend_by_vendor, owed=owed,
-                           today=house_today_iso())
+                           today=today_iso)
 
 
 @app.route("/management/vendors/new", methods=["POST"])
@@ -53871,6 +54222,7 @@ def save_proof_figures():
 @app.route("/management/social")
 @owner_required
 def management_social():
+    """What is going out on Instagram and Facebook, and when."""
     status_filter = request.args.get("status", "").strip()
     platform_filter = request.args.get("platform", "").strip()
     conn = get_db()
@@ -56615,6 +56967,7 @@ def delete_maintenance_schedule(schedule_id):
 @app.route("/management/vehicles")
 @owner_required
 def management_vehicles():
+    """The cars and the van: papers, fuel, mileage and the contrôle technique."""
     conn = get_db()
     vehicles = conn.execute("SELECT * FROM vehicles ORDER BY name").fetchall()
 
@@ -56748,11 +57101,17 @@ def edit_vehicle(vehicle_id):
                else None)
     conn.execute(
         """UPDATE vehicles SET name = ?, vehicle_type = ?, fuel_type = ?, license_plate = ?,
-           next_service_due = ?, ct_expires_on = ?, odometer_km = ?,
+           next_service_due = ?, ct_expires_on = ?, ct_note = ?, odometer_km = ?,
            odometer_read_at = COALESCE(?, odometer_read_at), off_road = ?,
            notes = ? WHERE id = ?""",
         (name, vehicle_type or None, fuel_type or None, license_plate or None,
-         next_service_due or None, ct_expires_on or None, odometer, read_at, off_road,
+         next_service_due or None, ct_expires_on or None,
+         # What the last contrôle technique actually said. The date has been
+         # asked for and warned about since this was built; the note beside it
+         # was asked for by nothing -- and it is the half that matters between
+         # tests, because the advisories are what fail it next time.
+         (request.form.get("ct_note", "") or "").strip()[:400] or None,
+         odometer, read_at, off_road,
          notes or None, vehicle_id),
     )
     log_audit(conn, "vehicle_edited", target=name)
@@ -57083,10 +57442,18 @@ def new_vehicle_transfer(vehicle_id):
         return redirect(url_for("vehicle_transfers_page", vehicle_id=vehicle_id))
     conn = get_db()
     conn.execute(
-        """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction, scheduled_at, driver_user_id, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO vehicle_transfers (vehicle_id, guest_name, direction,
+                   scheduled_at, driver_user_id, notes, transfer_type, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (vehicle_id, guest_name or None, direction, scheduled_at_utc,
          int(driver_user_id) if driver_user_id.isdigit() else None, notes or None,
+         # Eight kinds of journey were defined and every row was filed as an
+         # airport run, because no form asked. Falls back to the column's own
+         # default rather than to nothing, so an old client posting without
+         # the field behaves exactly as it did.
+         (request.form.get("transfer_type", "") or "").strip()
+         if (request.form.get("transfer_type", "") or "").strip()
+         in TRANSFER_TYPES else "airport",
          datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
@@ -57113,6 +57480,7 @@ def delete_vehicle_transfer(transfer_id):
 @app.route("/management/documents")
 @owner_required
 def management_documents():
+    """The house's own files, kept where somebody can find them."""
     conn = get_db()
     docs = conn.execute("SELECT * FROM company_documents ORDER BY uploaded_at DESC").fetchall()
     conn.close()
@@ -57260,6 +57628,7 @@ def template_state(row, defaults):
 @app.route("/management/email-templates")
 @owner_required
 def management_email_templates():
+    """What each automatic email says, and the merge tags it fills in."""
     conn = get_db()
     templates = conn.execute("SELECT * FROM email_templates ORDER BY label").fetchall()
     conn.close()
@@ -57370,6 +57739,7 @@ def edit_email_template(template_key):
 @app.route("/management/company-info", methods=["GET", "POST"])
 @owner_required
 def management_company_info():
+    """The legal facts about the business, and the papers that prove them."""
     conn = get_db()
     if request.method == "POST":
         fields = [
@@ -57413,6 +57783,7 @@ def management_company_info():
 @app.route("/management/bank-details")
 @owner_required
 def management_bank_details():
+    """The accounts the house is paid into and pays from."""
     conn = get_db()
     entries = conn.execute("SELECT * FROM bank_details ORDER BY label").fetchall() if vault_enabled() else None
     conn.close()
@@ -57535,6 +57906,7 @@ def reveal_bank_details(entry_id):
 @app.route("/management/vault")
 @owner_required
 def management_vault():
+    """Passwords and secrets the house cannot afford to lose."""
     if not vault_enabled():
         return render_template("management_vault.html", entries=None)
     conn = get_db()
@@ -57734,6 +58106,7 @@ def audit_list_view(conn, args):
 @app.route("/admin/audit-log")
 @owner_required
 def audit_log():
+    """Who did what, and when."""
     conn = get_db()
     lv = audit_list_view(conn, request.args)
     conn.close()
@@ -58023,6 +58396,7 @@ def readiness_checks(conn):
 @app.route("/admin/readiness")
 @owner_required
 def admin_readiness():
+    """Everything that has to be configured before the house goes live, and what is not."""
     conn = get_db()
     checks = readiness_checks(conn)
     conn.close()
@@ -58379,6 +58753,32 @@ def purge_guest_messages(conn, *, today=None):
     return {"old guest correspondence": cur.rowcount if cur.rowcount > 0 else 0}
 
 
+SUBMISSION_LOG_KEEP_DAYS = 7
+
+
+def purge_submission_log(conn, *, now=None):
+    """Drop rate-limit rows older than any limit can still see.
+
+    Every caller of rate_limited uses the one-hour default and the PIN lockout
+    looks at ten minutes, so a row stops mattering an hour after it is
+    written. What is left is an IP address -- for people who never became
+    guests at all, which is most of them: somebody who opened the availability
+    calendar and left.
+
+    A week rather than two hours, deliberately. A rate limit whose history is
+    deleted underneath it stops being a rate limit, and a week costs almost
+    nothing next to an attacker learning the counter resets at lunchtime. The
+    point is retention with a reason rather than retention by omission.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=SUBMISSION_LOG_KEEP_DAYS)).isoformat()
+    cur = conn.execute(
+        "DELETE FROM submission_log WHERE created_at < ?", (cutoff,))
+    if cur.rowcount:
+        conn.commit()
+    return {"rate-limit records dropped": cur.rowcount}
+
+
 def run_health_notes_purge_job(conn):
     """The retention pass, daily. Everything the privacy notice promises to
     delete is deleted here, so the notice can be checked against one function
@@ -58393,6 +58793,9 @@ def run_health_notes_purge_job(conn):
     cleared.update(purge_stale_access_needs(conn))
     cleared.update(purge_spent_access_codes(conn))
     cleared.update(purge_guest_messages(conn))
+    # The only one of these holding an identifier for people who never became
+    # guests at all -- somebody who opened the availability calendar and left.
+    cleared.update(purge_submission_log(conn))
     # Not a purge either, but the same daily pass: a date held on the strength
     # of a conversation nobody followed up has to come back on the market, and
     # nothing else was going to notice.
@@ -58465,6 +58868,7 @@ def ops_calendar():
 @app.route("/admin/overview")
 @owner_required
 def admin_overview():
+    """What has happened across the house lately, newest first."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
@@ -58498,6 +58902,7 @@ def admin_overview_status():
 @app.route("/admin/tasks")
 @owner_required
 def admin_tasks():
+    """Everything somebody has to do, and who it belongs to."""
     view = request.args.get("view", "week")
     anchor = parse_date(request.args.get("date", "")) or house_today()
     conn = get_db()
@@ -59344,6 +59749,7 @@ def build_shift_week(conn, anchor):
 @app.route("/admin/shifts")
 @owner_required
 def admin_shifts():
+    """Who is rostered, when, and where the gaps are."""
     anchor = parse_date(request.args.get("date", "")) or house_today()
     today = house_today()
     conn = get_db()
@@ -59757,6 +60163,7 @@ def cancel_leave_request(request_id):
 @app.route("/admin/approvals")
 @owner_required
 def admin_approvals():
+    """Expenses and time off waiting on a decision."""
     conn = get_db()
     period = period_from_request()
     overview = financial_overview(conn, period, house_today())
@@ -59906,6 +60313,7 @@ def save_leave_settings():
 @app.route("/admin/leave")
 @owner_required
 def admin_leave():
+    """Who has asked for time off, who has it, and what is left."""
     conn = get_db()
     requests_ = conn.execute(
         """SELECT leave_requests.*, users.name AS employee_name FROM leave_requests
@@ -60197,6 +60605,7 @@ def access_code_returned(code_id):
 @app.route("/admin/today-sheet")
 @owner_required
 def today_sheet():
+    """One page for today: who arrives, who leaves, what is on and who is in."""
     # Named for the day it is at the house, so that is the day it asks about.
     today = house_today()
     conn = get_db()
@@ -61705,11 +62114,6 @@ AUTOMATION_JOBS = [
     # Daily. Everything here has weeks of notice, so a missed run costs
     # nothing and nothing is ever raised at short notice.
     ("maintenance", "automation_maintenance_enabled", None, 24 * 3600, run_maintenance_job),
-    # Hourly. An idle run is a directory listing and a cached scan; the run
-    # that is not idle is the one after a handover added a photograph, and the
-    # house holding its own copy of that within the hour is the whole point.
-    ("photo_mirror", "automation_photo_mirror_enabled", None, 3600,
-     run_photo_mirror_job),
     # Daily, early. The whole argument for the morning note is that it arrives
     # rather than waiting to be looked up, and until it was registered here it
     # was waiting to be looked up.
@@ -61747,6 +62151,15 @@ AUTOMATION_JOBS = [
     # stopped being true, so the list mirrors the house rather than its history.
     ("watch_tasks", "automation_watch_tasks_enabled", None, 24 * 3600,
      run_watch_tasks_job),
+    # LAST ON PURPOSE. These run one after another in a single background
+    # thread, so everything below a job waits for it -- and this one is the
+    # only one that spends up to a minute on somebody else's network. It was
+    # written in above maintenance, which put nine jobs behind it including
+    # the text that tells a guest where to go on the day they arrive and the
+    # one that charges a workshop balance. Fetching photographs is not more
+    # urgent than either. Anything added after this will wait behind it.
+    ("photo_mirror", "automation_photo_mirror_enabled", None, 3600,
+     run_photo_mirror_job),
 ]
 
 
@@ -61908,6 +62321,7 @@ AUTOMATION_JOB_LABELS = {
 @app.route("/admin/automation")
 @owner_required
 def admin_automation():
+    """The nightly jobs: whether each one ran, and how it went."""
     conn = get_db()
     settings = get_automation_settings(conn)
     last_runs = {r["job_name"]: r for r in conn.execute(
@@ -62060,6 +62474,7 @@ def run_automation_job_now(job_name):
 @app.route("/admin/inbox-flags")
 @owner_required
 def admin_inbox_flags():
+    """Messages nobody has answered yet."""
     conn = get_db()
     status_filter = request.args.get("status", "open")
     kind_filter = request.args.get("kind", "all")
@@ -63713,6 +64128,26 @@ def staff_reimbursements_owed(conn, today=None):
             "total": round(sum(p["total"] for p in by_person.values()), 2)}
 
 
+def expense_doc_type(raw):
+    """A document type from a form, or the safe default.
+
+    'bill_to_pay' when the answer is missing or unrecognised, deliberately.
+    Every row written before this was asked carries that value, and treating
+    an unanswered question as "already paid" would quietly remove real
+    liabilities from what the house believes it owes -- the same error as
+    counting paid receipts, in the direction nobody notices.
+    """
+    value = (raw or "").strip()
+    return value if value in EXPENSE_DOC_TYPES else "bill_to_pay"
+
+
+# The document types that are actually money the house still owes. A receipt
+# for a small purchase and a bill already settled are records, not debts, and
+# counting them makes the payables figure too high -- which is the number
+# somebody looks at before paying something twice.
+PAYABLE_DOC_TYPES = ("bill_to_pay",)
+
+
 def payables_ageing(conn, today=None):
     """What the house owes suppliers, and how late it is.
 
@@ -63728,7 +64163,15 @@ def payables_ageing(conn, today=None):
             WHERE expenses.kind = 'supplier_invoice'
               AND expenses.status IN ('pending', 'approved')
               AND expenses.paid_at IS NULL
-            ORDER BY COALESCE(expenses.due_date, '9999-12-31'), expenses.id""").fetchall()
+              -- Only the documents that ARE bills. A photograph of a receipt
+              -- for something settled at the counter was ageing in here as an
+              -- outstanding payable until somebody marked a paid_at on a bill
+              -- that had never been owed.
+              AND COALESCE(expenses.doc_type, 'bill_to_pay') IN
+                  ({payable_marks})
+            ORDER BY COALESCE(expenses.due_date, '9999-12-31'), expenses.id""".format(
+            payable_marks=",".join("?" * len(PAYABLE_DOC_TYPES))),
+        PAYABLE_DOC_TYPES).fetchall()
     for r in rows:
         due = parse_date(r["due_date"]) if r["due_date"] else None
         if not due:

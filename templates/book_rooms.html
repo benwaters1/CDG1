@@ -5,7 +5,7 @@
 {% set sticky_bar = 'none' %}
 {% set crumbs = [('Stay', None)] %}
 {% block title_fr %}Séjourner au château{% endblock %}
-{% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. À partir de 220 € la nuit, petit-déjeuner compris.{% endblock %}
+{% block description_fr %}Cinq chambres dans un Monument Historique classé des Pyrénées ariégeoises, en restauration depuis 2013. {% if house_rooms.from_price %}À partir de {{ house_rooms.from_price }} € la nuit, {% endif %}petit-déjeuner compris.{% endblock %}
 {% block title %}Stay{% endblock %}
 {% block description %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}
 {% block og_desc %}Five bedrooms inside a working restoration in the French Pyrénées. Antique French beds, vintage linen, breakfast included, and the pool and parkland with them.{% endblock %}

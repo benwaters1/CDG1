@@ -49,7 +49,14 @@
         {# The control total: if the closed periods stop summing to this,
            something has been taken out of the middle. #}
         <td class="num">€{{ '%.2f'|format(c['perpetual_total']) }}</td>
-        <td class="upload-hint">{{ local_datetime_str(c['closed_at']) }}</td>
+        <td class="upload-hint">
+          {{ local_datetime_str(c['closed_at']) }}
+          {# Who counted it. Recorded on every closure since the table existed
+             and joined by nothing, so the question an accountant asks first
+             had no answer on the page that shows it. #}
+          {% if c['closed_by'] %}<br>by {{ c['closed_by'] }}
+          {% else %}<br>nobody recorded{% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>

@@ -176,6 +176,14 @@
       <label class="field-label" for="ct_{{ v['id'] }}">Contrôle technique valid until</label>
       <input type="date" id="ct_{{ v['id'] }}" name="ct_expires_on"
              value="{{ v['ct_expires_on'] or '' }}">
+      {# The date has been asked for and warned about since this was built.
+         ct_note sat beside it, asked for by nothing — and it is the half that
+         matters between tests, because the advisories are what fail the next
+         one. #}
+      <label class="field-label" for="ctnote_{{ v['id'] }}">What the test said</label>
+      <input type="text" id="ctnote_{{ v['id'] }}" name="ct_note" maxlength="400"
+             placeholder="Advisories — a tyre near the limit, a sill starting to go"
+             value="{{ v['ct_note'] or '' }}">
       <label class="field-label" for="odo_{{ v['id'] }}">Odometer (km)</label>
       <input type="number" id="odo_{{ v['id'] }}" name="odometer_km" min="0" step="1"
              value="{{ v['odometer_km'] or '' }}">

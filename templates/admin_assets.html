@@ -125,31 +125,24 @@
 </div>
 {% endif %}
 
-<form method="get" class="search-bar">
+{# The status dropdown decides which POOL the register is about — still held,
+   sold, lost — rather than filtering within one, so it stays. Everything else
+   is now chips with counts on them: "Not covered 3" is the sentence an
+   insurance renewal is actually about, and the old form could not say it. #}
+<form method="get" class="search-bar" style="margin-bottom:6px;">
   <div>
-    <label class="field-label">Category</label>
-    <select name="category">
-      <option value="">All</option>
-      {% for k, v in asset_categories.items() %}
-      <option value="{{ k }}" {{ 'selected' if category == k }}>{{ v }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="field-label">Status</label>
-    <select name="status">
+    <label class="field-label">Which of them</label>
+    <select name="status" onchange="this.form.submit()">
       <option value="current" {{ 'selected' if show == 'current' }}>Still held</option>
       {% for k, v in asset_statuses.items() %}
       <option value="{{ k }}" {{ 'selected' if show == k }}>{{ v }}</option>
       {% endfor %}
     </select>
   </div>
-  <div style="flex:2 1 200px;">
-    <label class="field-label">Search</label>
-    <input type="text" name="q" value="{{ q }}" placeholder="Name, room, description">
-  </div>
-  <button type="submit" class="btn-mini">Filter</button>
+  <noscript><button type="submit" class="btn-mini">Show</button></noscript>
 </form>
+
+{% include "_list_toolbar.html" %}
 
 {% if not assets %}
   <div class="empty-state">Nothing on the register yet — add the first item above.</div>
